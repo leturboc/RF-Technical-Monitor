@@ -8,8 +8,15 @@ workflow GitHub Actions `.github/workflows/build-exe.yml`).
 ## Qui / comment répondre
 L'utilisateur (Clément) est technicien son/HF/AV en festivals (utilise EazyRF, WWB, WSM). Il parle un français
 décontracté : réponds en français, ton détendu mais précis, concret et actionnable.
-**Dis toujours ce qui n'est pas vérifié** : l'interface Qt réelle est lancée par `tests/gui_reel.py` sous Linux sans
-écran (offscreen) ; ni Windows, ni le vrai tinySA, ni les sons, ni un vrai double écran n'ont été testés par Claude.
+**Dis toujours ce qui n'est pas vérifié** : l'interface Qt réelle est lancée par `tests/gui_reel.py` (Linux offscreen
+en local, vrai Windows dans la CI) ; ni le vrai tinySA, ni les sons, ni un vrai double écran n'ont été testés par Claude.
+
+## Exe et CI
+`.github/workflows/build-exe.yml` (windows-latest), à chaque push sur n'importe quelle branche : tests, `gui_reel.py`
+en vrai rendu Windows (non bloquant ; résultat OK/FAIL remonté en **annotations** du run), PyInstaller → artefact
+`TinySA-Monitor` (l'exe) et `captures-interface-windows`. Un tag `v*` attache l'exe à une Release.
+Depuis le conteneur Claude, `gh run view <id>` montre les annotations, mais les journaux et artefacts (stockage Azure)
+sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : il n'y a aucune police (mesures ×2).
 
 ## Organisation du fichier
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
@@ -70,5 +77,5 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 
 ## Reste à faire / idées
 - **Deuxième tinySA** (deux ports, deux `ScanWorker`, répartition des bandes) : reporté, pas de matériel pour tester.
-- Interface validée en vrai Qt sous Linux (offscreen) ; reste un essai sur Windows avec le tinySA (voir Tests).
+- Interface validée en vrai Qt (Linux + Windows CI : ≤ 1280 × 700) ; reste un essai réel avec le tinySA et les sons.
 - Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.
