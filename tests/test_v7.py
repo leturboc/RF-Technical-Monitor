@@ -234,5 +234,10 @@ ok("rapport : balises équilibrées", html.count("<table") == html.count("</tabl
 h0 = ns["build_report_html"](dict(events=[], rows=[], F=None, L=None))
 ok("rapport vide : ne plante pas", "Aucun conflit" in h0 and "Pas de mesure" in h0)
 
+# ================================================================ en-têtes anglais à l'import
+an = ns["analyze_csv"]("Name;Frequency;Group\nHF A;606.125;Plateau\nHF B;607.250;Plateau\n")
+check("import : colonne « Group » reconnue comme groupe", an["group_col"], 2)
+check("import : « Groupe » toujours reconnu", ns["header_kind"]("Groupe"), "group")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
