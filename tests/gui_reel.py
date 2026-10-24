@@ -174,7 +174,7 @@ def size_report():
 ok_w = win.minimumSizeHint().width() <= 1280
 check("largeur mini ≤ 1280 px (portable)", ok_w, str(win.minimumSizeHint()))
 print(("OK  " if ok_w else "FAIL") + " détail largeurs : " + size_report(), flush=True)
-check("hauteur mini ≤ 720 px", win.minimumSizeHint().height() <= 720, str(win.minimumSizeHint()))
+check("hauteur mini ≤ 700 px (1366×768 moins barre des tâches et titre)", win.minimumSizeHint().height() <= 700, str(win.minimumSizeHint()))
 win.resize(1280, 720); wait(1200); shot(win, "taille_1280x720")
 win.resize(1700, 980); wait(800)
 
