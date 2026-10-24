@@ -65,6 +65,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
 - Blocs larges (Spectera / WMAS) : `w["bw"]` MHz (0 = fréquence simple). Niveau `level_block` (médiane, ou max si
   « doit rester libre »), `block_choices(tv)`, `block_points` (scan ciblé, bandes depuis la liste),
   `block_overlaps` (« ⚠ dans le bloc »). Démo : `demo_blocks` → plateau. IM : calcul sur le centre seulement.
+- Shows (🎪) : fichier `.tsashow` = `show_doc` (PURE) {meta (SHOW_META), show (clés SHOW_KEYS seulement), ref} ;
+  `read_show` lit aussi les anciens profils .json ; ouverture = `show_apply(config complète actuelle, doc)` → les
+  préférences ne bougent pas. `show_meta`, `show_path`, `recent_shows` dans config.json (pas dans les shows).
+  `SHOW_DIR` = Documents/TinySA Monitor/Shows. Dialogues `ShowInfoDialog`, `ShowOpenDialog`. Ctrl+S.
+- Robustesse : `_save_config` atomique (tmp + os.replace, ancienne version en `.json.bak`, relue si config abîmée),
+  sauvegarde auto toutes les `AUTOSAVE_MS` ; `install_crash_log` (sys / threading.excepthook + faulthandler →
+  `crash.log`, message au plus 1/min) ; `install_french` charge `qtbase_fr` (aussi embarqué par PyInstaller
+  `--add-data`) : sans lui, Oui / Non / Annuler s'affichent en anglais.
 - Config : `%APPDATA%/TinySAMonitor/config.json` (`_collect_config` / `_apply_config`, avec migration des anciennes configs).
 
 ## Formats de fichiers
@@ -80,6 +88,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
 python tests/test_v7.py ; python tests/test_im.py ; python tests/test_plan.py     # logique pure
 python tests/smoke_test.py ; ...smoke_test2.py ; ...smoke_test3.py ; ...smoke_test4.py   # GUI simulée
 python tests/smoke_test5.py      # 2e tinySA dans MainWindow (faux Qt)
+python tests/smoke_test6.py      # shows, config sûre / copie de secours, crash.log (faux Qt)
 python tests/test_reseau.py      # faux tinySA (pty) → relais → TCP → TinySA ; test_reseau_qt.py : vrai ScanWorker,
                                  # coupure, liaison muette, reconnexion (Linux/macOS ; sautés sous Windows)
 python tests/test_alertes.py     # ntfy / Telegram / Notifier / WebServer ; page testée dans Chromium si Playwright
@@ -110,7 +119,8 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
-- Interface validée en vrai Qt (Linux + Windows CI : ≤ 1280 × 700) ; reste un essai réel avec le tinySA et les sons.
+- Interface validée en vrai Qt (Linux + Windows CI : ≤ 1280 × 700). **Retour terrain de Clément : 1 tinySA réel,
+  2 h sans souci** (version de test d'octobre 2026). Restent : 2 tinySA réels, relais, sons, nuit complète.
 - Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.
 - Spectera : faits issus de la doc / presse Sennheiser (6 / 8 MHz, 2 canaux larges par base, plages UHF / 1G4) ;
   **jamais mesuré** un vrai porteur Spectera au tinySA (niveau du plateau selon RBW, seuil à régler).

@@ -24,7 +24,8 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 - **Deux tinySA** en parallèle, sur le même PC ou par le réseau (relais intégré), avec bascule automatique,
   noms de position et calibration
 - **Alertes sur téléphone** (ntfy / Telegram) et **page web** en lecture seule pour l'équipe
-- Guide des bandes 100 kHz – 5,9 GHz par pays, canaux TV, profils d'événement, journal CSV automatique
+- Guide des bandes 100 kHz – 5,9 GHz par pays, canaux TV, journal CSV automatique
+- **🎪 Shows** : un show s'enregistre et se rappelle d'une année à l'autre (fréquences, scènes, référence du lieu…)
 
 ## Installer
 
@@ -65,6 +66,19 @@ reprend toutes les bandes** (alarme critique ⚠ APPAREIL, nouvel essai de conne
 Pendant le zoom live, un tinySA zoome et l'autre continue de surveiller toutes les bandes. En réseau, préfère un câble au Wi-Fi ; une liaison qui se tait
 (câble arraché) est détectée après ~30 s au réglage par défaut (plus long avec un RBW très étroit).
 
+## 🎪 Shows : rappeler un événement d'une année à l'autre
+
+Bouton **🎪 Shows** (en haut) :
+- **Enregistrer le show** (Ctrl+S) : fréquences (et blocs Spectera), scènes / groupes / priorités, statuts, bandes,
+  seuils, réglages de mesure, pays et plan, noms de position des tinySA, **courbe de référence du lieu** (bruit de
+  fond mesuré), plus les infos : nom, lieu / scène, dates, notes.
+- **Ouvrir un show** : liste des shows (nom, lieu, dates, nombre de fréquences, référence ✔) avec leurs notes.
+  **Enregistrer sous…** pour l'édition de l'année suivante ou une autre scène. **Récents** dans le menu.
+- Un show **ne contient pas tes préférences** (couleurs, fenêtres, repères, alertes, page web, adresse du 2ᵉ tinySA,
+  dossier des journaux) : rouvrir le show de l'an dernier ne dérègle pas ton installation.
+- Fichiers `.tsashow` dans `Documents\TinySA Monitor\Shows` (à sauvegarder / copier sur clé). Les anciens profils
+  `.json` s'ouvrent aussi (seule leur partie « show » est reprise).
+
 ## Repères du spectre : choisir ce qu'on affiche
 
 Bouton **📍 Repères** (au-dessus du spectre) :
@@ -100,7 +114,7 @@ L'intermodulation ne tient pas compte de la largeur des blocs (calcul sur leur f
   (`http://192.168.x.x:8080`) sur son téléphone et voit les fréquences et alarmes, filtrées par scène / groupe,
   rafraîchies toutes les 2 s. Sans mot de passe : à n'activer que sur un réseau de confiance.
 
-Le jeton Telegram reste dans la config de ce PC : il n'est pas copié dans les profils d'événement.
+Le jeton Telegram reste dans la config de ce PC : il n'est pas copié dans les fichiers de show.
 
 ## Démarrage rapide
 
@@ -112,7 +126,9 @@ Le jeton Telegram reste dans la config de ce PC : il n'est pas copié dans les p
 
 ## Où sont mes données ?
 
-- Réglages : `%APPDATA%\TinySAMonitor\` (`config.json`, `reference.json`, `profils\`)
+- Réglages : `%APPDATA%\TinySAMonitor\` (`config.json` sauvegardé toutes les minutes + copie de secours
+  `config.json.bak`, `reference.json`, `crash.log` en cas d'erreur imprévue : à m'envoyer)
+- Shows : `Documents\TinySA Monitor\Shows\`
 - Journaux, enregistrements, rapports : `Documents\TinySA Monitor\Journaux\` (dossier modifiable dans l'appli)
 
 ## Crédits

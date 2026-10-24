@@ -49,6 +49,7 @@ import bisect
 import csv
 import io
 import itertools
+import faulthandler
 import json
 import math
 import os
@@ -59,6 +60,7 @@ import socket
 import sys
 import threading
 import time
+import traceback
 import unicodedata
 import urllib.request
 from collections import deque
@@ -92,7 +94,11 @@ TINYSA_VID, TINYSA_PID = 0x0483, 0x5740
 CFG_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "TinySAMonitor" / "config.json"
 PROFILE_DIR = CFG_PATH.parent / "profils"
 REF_PATH = CFG_PATH.parent / "reference.json"
+CRASH_PATH = CFG_PATH.parent / "crash.log"
+CFG_BAK = CFG_PATH.with_suffix(".json.bak")
+AUTOSAVE_MS = 60_000
 LOG_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Journaux"
+SHOW_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Shows"
 
 # ===== PURE-BEGIN  (code sans interface graphique, testé séparément)
 
@@ -1851,6 +1857,76 @@ def safe_filename(s, default="export"):
     s = unicodedata.normalize("NFKC", str(s)).strip()
     s = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", s).strip(" ._")
     return s[:80] or default
+
+
+# --------------------------------------------------------------------------
+# Shows : ce qui appartient à un événement (rappelable d'une année à l'autre), sans les préférences du logiciel
+# --------------------------------------------------------------------------
+SHOW_EXT = ".tsashow"
+SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus",
+             "points", "rbw", "zrbw", "input", "lna", "att", "seg", "offset",
+             "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
+             "country", "plan_custom", "dev_names")
+SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
+
+
+def show_doc(cfg, meta, ref=None, app_ver=""):
+    """Fichier show (dict JSON) : infos + réglages de l'événement + courbe de référence du lieu."""
+    m = {k: str(meta.get(k, "") or "") for k in SHOW_META}
+    return dict(format="tinysa-show", version=1, app=app_ver, meta=m,
+                show={k: cfg[k] for k in SHOW_KEYS if k in cfg},
+                ref=[dict(f=[round(float(x), 6) for x in f], l=[round(float(x), 1) for x in l]) for f, l in (ref or [])])
+
+
+def read_show(text, fallback_name=""):
+    """Lit un show (.tsashow) ou un ancien profil (.json). -> doc normalisé ; ValueError si illisible."""
+    import json as _json
+    d = _json.loads(text)
+    if not isinstance(d, dict):
+        raise ValueError("ce fichier n'est pas un show")
+    if d.get("format") == "tinysa-show" and isinstance(d.get("show"), dict):
+        meta = d.get("meta") if isinstance(d.get("meta"), dict) else {}
+        show, ref = d["show"], d.get("ref") or []
+    elif "bands" in d or "watch" in d:                     # ancien profil : tout en vrac, on garde la partie show
+        meta, show, ref = {}, {k: d[k] for k in SHOW_KEYS if k in d}, []
+    else:
+        raise ValueError("ce fichier ne ressemble pas à un show")
+    meta = {k: str(meta.get(k, "") or "") for k in SHOW_META}
+    if not meta["name"]:
+        meta["name"] = fallback_name
+    curves = []
+    for c in ref if isinstance(ref, list) else []:
+        try:
+            f, l = list(map(float, c["f"])), list(map(float, c["l"]))
+            if f and len(f) == len(l):
+                curves.append((f, l))
+        except (KeyError, TypeError, ValueError):
+            pass
+    return dict(meta=meta, show={k: v for k, v in show.items() if k in SHOW_KEYS}, ref=curves)
+
+
+def show_apply(cfg_now, doc):
+    """Config complète actuelle + show -> config à appliquer (les préférences du logiciel ne bougent pas)."""
+    out = dict(cfg_now)
+    out.update(doc["show"])
+    return out
+
+
+def show_summary(doc):
+    """Résumé pour la liste des shows."""
+    sh, m = doc["show"], doc["meta"]
+    w = sh.get("watch") or []
+    dates = m["date_from"] + (f" → {m['date_to']}" if m["date_to"] and m["date_to"] != m["date_from"] else "")
+    return dict(name=m["name"], venue=m["venue"], dates=dates, n_freq=len(w),
+                n_blocks=sum(1 for x in w if isinstance(x, dict) and x.get("bw")),
+                n_scenes=len(sh.get("scenes") or []), has_ref=bool(doc["ref"]))
+
+
+def show_filename(meta):
+    """Nom de fichier proposé : « 2025 Festival X - Grande scène.tsashow »."""
+    year = (meta.get("date_from") or "")[:4]
+    base = " - ".join(x for x in (meta.get("name", ""), meta.get("venue", "")) if x) or "show"
+    return safe_filename(f"{year} {base}".strip(), "show") + SHOW_EXT
 
 
 FREQ_FORMATS = [
@@ -4636,6 +4712,130 @@ class ExportListDialog(QtWidgets.QDialog):
 # --------------------------------------------------------------------------
 # Fenêtre : mur de fréquences (tuiles, pour un 2e écran)
 # --------------------------------------------------------------------------
+class ShowInfoDialog(QtWidgets.QDialog):
+    """Infos d'un show : nom, lieu, dates, notes (pour le retrouver l'année suivante)."""
+
+    def __init__(self, parent, meta, title="Infos du show"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(480, 380)
+        self.name = QtWidgets.QLineEdit(meta.get("name", ""))
+        self.name.setPlaceholderText("ex. Festival des Vieilles Charrues")
+        self.venue = QtWidgets.QLineEdit(meta.get("venue", ""))
+        self.venue.setPlaceholderText("ex. Carhaix — scène Glenmor")
+        today = QtCore.QDate.currentDate()
+        self.d_from, self.d_to = QtWidgets.QDateEdit(), QtWidgets.QDateEdit()
+        for wd, key in ((self.d_from, "date_from"), (self.d_to, "date_to")):
+            wd.setCalendarPopup(True)
+            wd.setDisplayFormat("dd/MM/yyyy")
+            d = QtCore.QDate.fromString(meta.get(key, ""), "yyyy-MM-dd")
+            wd.setDate(d if d.isValid() else today)
+        self.notes = QtWidgets.QPlainTextEdit(meta.get("notes", ""))
+        self.notes.setPlaceholderText("Contacts, coordinateur du site, antennes, ce qui a coincé l'an dernier…")
+        f = QtWidgets.QFormLayout()
+        f.addRow("Nom du show :", self.name)
+        f.addRow("Lieu / scène :", self.venue)
+        f.addRow("Du :", self.d_from)
+        f.addRow("Au :", self.d_to)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addLayout(f)
+        lay.addWidget(QtWidgets.QLabel("Notes :"))
+        lay.addWidget(self.notes, 1)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def values(self):
+        a, b = self.d_from.date(), self.d_to.date()
+        if b < a:
+            b = a
+        return dict(name=self.name.text().strip(), venue=self.venue.text().strip(),
+                    date_from=a.toString("yyyy-MM-dd"), date_to=b.toString("yyyy-MM-dd"),
+                    notes=self.notes.toPlainText().strip())
+
+
+class ShowOpenDialog(QtWidgets.QDialog):
+    """Liste des shows enregistrés (et des anciens profils) : nom, lieu, dates, nb de fréquences."""
+
+    def __init__(self, parent, folders):
+        super().__init__(parent)
+        self.setWindowTitle("Ouvrir un show")
+        self.resize(820, 460)
+        self.path = ""
+        self.table = QtWidgets.QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["Show", "Lieu", "Dates", "Fréquences", "Référence", "Fichier"])
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.cellDoubleClicked.connect(lambda *_: self.accept_sel())
+        self.notes = QtWidgets.QLabel("")
+        self.notes.setWordWrap(True)
+        self.table.itemSelectionChanged.connect(self.on_sel)
+        self.rows = []
+        for folder, pat in folders:
+            try:
+                files = sorted(Path(folder).glob(pat))
+            except OSError:
+                files = []
+            for fp in files:
+                try:
+                    doc = read_show(fp.read_text(encoding="utf-8"), fp.stem)
+                except Exception:  # noqa: BLE001
+                    continue
+                self.rows.append((fp, doc, fp.stat().st_mtime))
+        self.rows.sort(key=lambda r: (r[1]["meta"]["date_from"] or "", r[2]), reverse=True)
+        self.table.setRowCount(len(self.rows))
+        for i, (fp, doc, _mt) in enumerate(self.rows):
+            sm = show_summary(doc)
+            fr = f"{sm['n_freq']}" + (f" (dont {sm['n_blocks']} bloc(s))" if sm["n_blocks"] else "")
+            for c, v in enumerate((sm["name"], sm["venue"], sm["dates"], fr, "✔" if sm["has_ref"] else "—",
+                                   fp.name + ("  (ancien profil)" if fp.suffix == ".json" else ""))):
+                self.table.setItem(i, c, QtWidgets.QTableWidgetItem(v))
+        empty = QtWidgets.QLabel("Aucun show enregistré pour l'instant : 🎪 Shows › Enregistrer le show."
+                                 if not self.rows else "")
+        b_browse = QtWidgets.QPushButton("Parcourir…")
+        b_browse.clicked.connect(lambda *_: self.browse())
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Open |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.button(QtWidgets.QDialogButtonBox.StandardButton.Open).setText("Ouvrir")
+        bb.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText("Annuler")
+        bb.accepted.connect(self.accept_sel)
+        bb.rejected.connect(self.reject)
+        bb.addButton(b_browse, QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(self.table, 1)
+        lay.addWidget(empty)
+        lay.addWidget(self.notes)
+        lay.addWidget(bb)
+        if self.rows:
+            self.table.selectRow(0)
+
+    def on_sel(self):
+        r = self.table.currentRow()
+        if 0 <= r < len(self.rows):
+            n = self.rows[r][1]["meta"]["notes"]
+            self.notes.setText(f"Notes : {n}" if n else "")
+
+    def accept_sel(self):
+        r = self.table.currentRow()
+        if 0 <= r < len(self.rows):
+            self.path = str(self.rows[r][0])
+            self.accept()
+
+    def browse(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Ouvrir un show", str(SHOW_DIR),
+                                                        f"Show (*{SHOW_EXT});;Ancien profil (*.json);;Tous (*)")
+        if path:
+            self.path = path
+            self.accept()
+
+
 class WallWindow(QtWidgets.QWidget):
     def __init__(self, owner):
         super().__init__()
@@ -4861,6 +5061,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_names = ["tinySA 1", "tinySA 2"]   # noms de position (« Plateau », « FOH »…)
         self.band_src = {}              # id bande -> n° du tinySA qui a fourni le dernier balayage
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
+        self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
+        self.show_path = ""
+        self.recent_shows = []
         self.notify_cfg = dict(mode="off", service="ntfy", server="https://ntfy.sh", topic="", tg_token="",
                                tg_chat="", site="")
         self.notifier = None
@@ -4896,6 +5099,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._alarm_timer.setInterval(1000)
         self._alarm_timer.timeout.connect(self._alarm_tick)
         self._alarm_timer.start()
+        self._autosave = QtCore.QTimer(self)          # coupure de courant / plantage : on perd au plus une minute
+        self._autosave.setInterval(AUTOSAVE_MS)
+        self._autosave.timeout.connect(self._save_config)
+        self._autosave.start()
         QtCore.QTimer.singleShot(0, self._late_layout)
 
     def _fit_to_screen(self):
@@ -4994,18 +5201,15 @@ class MainWindow(QtWidgets.QMainWindow):
         wall_btn.setToolTip("Ouvre une fenêtre de grandes tuiles (une par fréquence), à mettre sur un 2e écran.\n"
                             "F11 : plein écran.")
         wall_btn.clicked.connect(self.open_wall)
-        prof_btn = QtWidgets.QPushButton("📁 Profils")
-        prof_btn.setToolTip("Enregistre / recharge tout le réglage d'un événement\n"
-                            "(bandes, fréquences, statuts, seuils, couleurs, pays…).")
-        pmenu = QtWidgets.QMenu(prof_btn)
-        for txt, fn in (("Enregistrer le profil de l'événement…", self.save_profile),
-                        ("Charger un profil…", self.load_profile),
-                        (None, None),
-                        ("Ouvrir le dossier des profils", self.open_profile_dir)):
-            if txt is None:
-                pmenu.addSeparator()
-            else:
-                pmenu.addAction(txt).triggered.connect(fn)
+        prof_btn = QtWidgets.QPushButton("🎪 Shows")
+        prof_btn.setToolTip("Enregistre / rappelle un show d'une année à l'autre : fréquences, scènes, bandes, statuts,\n"
+                            "seuils, courbe de référence du lieu, infos et notes. Tes préférences (couleurs,\n"
+                            "fenêtres, alertes, 2ᵉ tinySA…) ne bougent pas.  Ctrl+S : enregistrer.")
+        self.show_menu = QtWidgets.QMenu(prof_btn)
+        self.show_menu.aboutToShow.connect(lambda *_: self._build_show_menu())
+        pmenu = self.show_menu
+        sc_save = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
+        sc_save.activated.connect(lambda *_: self.save_show())
         prof_btn.setMenu(pmenu)
         tools_btn = QtWidgets.QPushButton("🔧 Outils")
         tools_btn.setToolTip("Intermodulation, fréquence de secours, relecture, rapport, scans WSM/WWB, export par scène, "
@@ -5650,10 +5854,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _load_config(self):
         data = {}
-        try:
-            data = json.loads(CFG_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        for i, path in enumerate((CFG_PATH, CFG_BAK)):     # config abîmée : on reprend la copie de secours
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("config illisible")
+                if i:
+                    QtCore.QTimer.singleShot(500, lambda: self.set_status(
+                        "⚠ Config abîmée : la copie de secours (sauvegarde automatique) a été rechargée."))
+                break
+            except FileNotFoundError:
+                data = {}
+            except Exception:  # noqa: BLE001
+                data = {}
         self._apply_config(data, startup=True)
         g = data.get("geometry")
         if g:
@@ -5818,6 +6031,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self._dev_names_changed()
         if startup:
             self.demo_chk.setChecked(data.get("demo", False))
+            sm = data.get("show_meta")
+            if isinstance(sm, dict):
+                self.show_meta = {k: str(sm.get(k, "") or "") for k in SHOW_META}
+            self.show_path = str(data.get("show_path") or "")
+            rs = data.get("recent_shows")
+            self.recent_shows = [str(x) for x in rs if isinstance(x, str)][:8] if isinstance(rs, list) else []
+            self.update_title()
             vu = data.get("vocab")
             if isinstance(vu, dict):
                 self.vocab_user = {k: [x for x in vu.get(k, []) if isinstance(x, str)][:300]
@@ -5871,17 +6091,159 @@ class MainWindow(QtWidgets.QMainWindow):
             data["docks"] = bytes(self.saveState().toBase64()).decode()
             data["vocab"] = self.vocab_user
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
+            data["show_meta"] = dict(self.show_meta)
+            data["show_path"] = self.show_path
+            data["recent_shows"] = list(self.recent_shows)
         return data
 
     def _save_config(self):
+        """Écriture sûre : fichier temporaire puis remplacement (une coupure de courant ne laisse jamais une
+        config à moitié écrite), l'ancienne version gardée en .bak."""
         try:
             CFG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            CFG_PATH.write_text(json.dumps(self._collect_config(True), ensure_ascii=False, indent=1),
-                                encoding="utf-8")
-        except Exception:
-            pass
+            tmp = CFG_PATH.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(self._collect_config(True), ensure_ascii=False, indent=1), encoding="utf-8")
+            if CFG_PATH.exists():
+                try:
+                    os.replace(CFG_PATH, CFG_BAK)
+                except OSError:
+                    pass
+            os.replace(tmp, CFG_PATH)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
 
-    # --------------------------------------------------------------- profils
+    # --------------------------------------------------------------- shows
+    def _build_show_menu(self):
+        m = self.show_menu
+        m.clear()
+        cur = self.show_meta.get("name") or ""
+        m.addAction("🆕 Nouveau show…").triggered.connect(lambda *_: self.new_show())
+        m.addAction("📂 Ouvrir un show…").triggered.connect(lambda *_: self.open_show_dialog())
+        m.addAction(f"💾 Enregistrer « {cur} »  (Ctrl+S)" if cur else "💾 Enregistrer le show…  (Ctrl+S)"
+                    ).triggered.connect(lambda *_: self.save_show())
+        m.addAction("💾 Enregistrer sous… (nouvelle édition, autre scène)").triggered.connect(
+            lambda *_: self.save_show(as_new=True))
+        m.addAction("📝 Infos du show (nom, lieu, dates, notes)…").triggered.connect(lambda *_: self.edit_show_info())
+        rec = [p for p in self.recent_shows if Path(p).exists()]
+        if rec:
+            sub = m.addMenu("Récents")
+            for pth in rec:
+                sub.addAction(Path(pth).stem).triggered.connect(lambda *_, x=pth: self.open_show(x))
+        m.addSeparator()
+        m.addAction("Ouvrir le dossier des shows").triggered.connect(lambda *_: self.open_show_dir())
+
+    def update_title(self):
+        nm = self.show_meta.get("name") or ""
+        yr = (self.show_meta.get("date_from") or "")[:4]
+        show = f" — {nm}" + (f" {yr}" if yr and yr not in nm else "") if nm else ""
+        self.setWindowTitle(f"{APP_NAME} {APP_VER}{show}" + (f" — {self.scope_text()}" if self.scope else ""))
+
+    def edit_show_info(self, title="Infos du show"):
+        dlg = ShowInfoDialog(self, self.show_meta, title)
+        if not dlg.exec():
+            return False
+        self.show_meta = dlg.values()
+        self.update_title()
+        return True
+
+    def save_show(self, as_new=False):
+        if not self.show_meta.get("name"):
+            if not self.edit_show_info("Enregistrer le show"):
+                return
+            if not self.show_meta.get("name"):
+                self.set_status("Donne un nom au show pour l'enregistrer.")
+                return
+        path = self.show_path
+        if as_new or not path:
+            try:
+                SHOW_DIR.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Enregistrer le show", str(SHOW_DIR / show_filename(self.show_meta)), f"Show (*{SHOW_EXT})")
+            if not path:
+                return
+            if not path.endswith(SHOW_EXT):
+                path += SHOW_EXT
+        self.save_show_to(path)
+
+    def save_show_to(self, path):
+        try:
+            doc = show_doc(self._collect_config(False), self.show_meta, self.ref_curves, APP_VER)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            tmp = Path(str(path) + ".tmp")                # écriture sûre : jamais de show à moitié écrit
+            tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(tmp, path)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Impossible d'enregistrer le show :\n{e}")
+            return False
+        self.show_path = str(path)
+        self._add_recent(self.show_path)
+        self.update_title()
+        self.set_status(f"🎪 Show enregistré : {path}")
+        return True
+
+    def _add_recent(self, path):
+        self.recent_shows = [str(path)] + [p for p in self.recent_shows if p != str(path)]
+        del self.recent_shows[8:]
+
+    def open_show_dialog(self):
+        dlg = ShowOpenDialog(self, [(SHOW_DIR, "*" + SHOW_EXT), (PROFILE_DIR, "*.json")])
+        if dlg.exec() and dlg.path:
+            self.open_show(dlg.path)
+
+    def open_show(self, path, ask=True):
+        try:
+            doc = read_show(Path(path).read_text(encoding="utf-8"), Path(path).stem)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Show illisible :\n{e}")
+            return False
+        sm = show_summary(doc)
+        if ask:
+            r = QtWidgets.QMessageBox.question(
+                self, APP_NAME, f"Ouvrir « {sm['name']} » ({sm['dates'] or 'sans date'}, {sm['n_freq']} fréquences) ?\n\n"
+                                "Remplace les fréquences, scènes, bandes, statuts et seuils actuels.\n"
+                                "Tes préférences (couleurs, fenêtres, alertes, 2ᵉ tinySA) ne bougent pas.")
+            if r != QtWidgets.QMessageBox.StandardButton.Yes:
+                return False
+        self._apply_config(show_apply(self._collect_config(True), doc))
+        if doc["ref"]:
+            self._set_ref([(np.array(f), np.array(l)) for f, l in doc["ref"]])
+            self._save_ref_file(REF_PATH)
+        self.show_meta = dict(doc["meta"])
+        legacy = str(path).endswith(".json")
+        self.show_path = "" if legacy else str(path)    # un ancien profil sera enregistré en .tsashow
+        if not legacy:
+            self._add_recent(self.show_path)
+        self.update_title()
+        self.set_status(f"🎪 Show « {sm['name']} » ouvert : {sm['n_freq']} fréquences"
+                        + (", courbe de référence du lieu chargée" if doc["ref"] else "") + ".")
+        return True
+
+    def new_show(self):
+        r = QtWidgets.QMessageBox.question(
+            self, APP_NAME, "Nouveau show : la liste de fréquences, les scènes et les groupes sont vidés.\n"
+                            "Les bandes, statuts et seuils sont gardés comme point de départ.\n"
+                            "Pense à enregistrer le show en cours avant (Ctrl+S). Continuer ?")
+        if r != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        data = self._collect_config(True)
+        data.update(watch=[], scenes=[], scope=None, focus=False)
+        self._apply_config(data)
+        self.show_meta = {k: "" for k in SHOW_META}
+        self.show_path = ""
+        self.update_title()
+        self.edit_show_info("Nouveau show")
+
+    def open_show_dir(self):
+        try:
+            SHOW_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(SHOW_DIR)))
+
+    # --------------------------------------------------------------- profils (ancien format)
     def save_profile(self):
         try:
             PROFILE_DIR.mkdir(parents=True, exist_ok=True)
@@ -6653,7 +7015,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.global_btn.setStyleSheet(
             "QPushButton{background:%s;color:%s;font-weight:bold;}" % (col, contrast_text(col))
             if not self.scope else "")
-        self.setWindowTitle(f"{APP_NAME} {APP_VER}" + (f" — {self.scope_text()}" if self.scope else ""))
+        self.update_title()
 
     def set_scope(self, scope):
         self.scope = [tuple(k) for k in scope] if scope else None
@@ -9159,8 +9521,70 @@ class MainWindow(QtWidgets.QMainWindow):
         e.accept()
 
 
+def log_crash(kind, text, path=None):
+    """Ajoute une erreur inattendue à crash.log (horodatée, avec la version). -> chemin du fichier."""
+    path = Path(path or CRASH_PATH)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} · {APP_NAME} {APP_VER} · {kind}\n{text}\n")
+    except OSError:
+        pass
+    return path
+
+
+def install_crash_log(app=None):
+    """L'exe n'a pas de console : toute erreur imprévue part dans crash.log, avec un message (au plus 1 / min).
+    Plantage dur (segfault) : faulthandler écrit aussi dans crash.log."""
+    state = {"last": 0.0}
+
+    def hook(t, v, tb):
+        if issubclass(t, KeyboardInterrupt):
+            return
+        path = log_crash("erreur", "".join(traceback.format_exception(t, v, tb)))
+        if app is not None and time.time() - state["last"] > 60:
+            state["last"] = time.time()
+            try:
+                QtWidgets.QMessageBox.warning(
+                    None, APP_NAME, f"Erreur inattendue : {t.__name__}: {v}\n\nLe logiciel continue. Le détail est dans :\n"
+                                    f"{path}\n(envoie ce fichier pour qu'on corrige).")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def thook(args):
+        log_crash(f"erreur dans un fil ({getattr(args.thread, 'name', '?')})",
+                  "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
+
+    sys.excepthook = hook
+    threading.excepthook = thook
+    try:
+        CRASH_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(CRASH_PATH, "a", encoding="utf-8")
+        faulthandler.enable(fh)
+        return fh                                  # à garder ouvert
+    except OSError:
+        return None
+
+
+def install_french(app):
+    """Boutons standard de Qt en français (Oui / Non, OK / Annuler, Ouvrir…). Cherche aussi dans l'exe PyInstaller."""
+    dirs = [QtCore.QLibraryInfo.path(QtCore.QLibraryInfo.LibraryPath.TranslationsPath)]
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        dirs += [os.path.join(base, "PySide6", "Qt", "translations"), os.path.join(base, "PySide6", "translations")]
+    ok = False
+    for name in ("qtbase_fr", "qt_fr"):
+        tr = QtCore.QTranslator(app)
+        if any(tr.load(name, d) for d in dirs if d):
+            app.installTranslator(tr)
+            ok = True
+    return ok
+
+
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    install_french(app)
+    app._crash_fh = install_crash_log(app)
     if "--relais" in sys.argv:              # PC où est branché le 2ᵉ tinySA : juste le relais réseau
         win = RelayWindow()
     else:

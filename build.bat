@@ -19,7 +19,8 @@ python -m pip install -r requirements.txt pyinstaller
 if errorlevel 1 goto erreur
 
 echo [2/3] Compilation...
-python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor tinysa_monitor.py
+for /f "delims=" %%T in ('python -c "from PySide6.QtCore import QLibraryInfo as Q; print(Q.path(Q.LibraryPath.TranslationsPath))"') do set QTTR=%%T
+python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor --add-data "%QTTR%\qtbase_fr.qm;PySide6/Qt/translations" tinysa_monitor.py
 if errorlevel 1 goto erreur
 
 echo [3/3] Termine !

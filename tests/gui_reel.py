@@ -103,6 +103,11 @@ def check(label, cond, extra=""):
     fails += (not cond)
     print(("OK  " if cond else "FAIL"), label, "" if cond else extra, flush=True)
 
+check("traductions Qt en français chargées", m.install_french(app))
+_bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Yes | W.QDialogButtonBox.StandardButton.Cancel)
+_txt = (_bb.button(W.QDialogButtonBox.StandardButton.Yes).text(), _bb.button(W.QDialogButtonBox.StandardButton.Cancel).text())
+check("boutons standard en français", _txt == ("&Oui", "&Annuler") or "Oui" in _txt[0], str(_txt))
+
 win = m.MainWindow()
 win.log_dir = m.Path(tmp) / "journaux"
 win.resize(1700, 980)
@@ -283,6 +288,22 @@ saved[:] = [os.path.join(tmp, "rapport.html")]
 step("make_report accept", win.make_report)
 DLG_ACTION[0] = "reject"
 print("rapport écrit:", os.path.exists(os.path.join(tmp, "rapport.html")), flush=True)
+
+# shows : enregistrer, liste, rouvrir (vrais dialogues Qt)
+m.SHOW_DIR = m.Path(tmp) / "Shows"
+win.show_meta = dict(name="Festival test", venue="Grande scène", date_from="2025-07-17", date_to="2025-07-20",
+                     notes="Antenne FOH sur le pont lumière.")
+saved[:] = [str(m.SHOW_DIR / m.show_filename(win.show_meta))]
+step("enregistrer le show", win.save_show)
+check("show enregistré", os.path.exists(win.show_path), win.show_path)
+check("titre avec le show", "Festival test 2025" in win.windowTitle(), win.windowTitle())
+n_w = len(win.watch)
+step("infos du show", win.edit_show_info)
+DLG_ACTION[0] = lambda d: d.table.selectRow(0) if hasattr(d, "table") else None
+step("ouvrir un show (liste)", win.open_show_dialog)
+DLG_ACTION[0] = "reject"
+step("rouvrir le show", lambda: win.open_show(win.show_path, ask=False))
+check("show rouvert", len(win.watch) == n_w and win.show_meta["name"] == "Festival test")
 
 step("Arrêter", win.toggle_run); wait(2500)
 check("arrêt : plus aucun worker", not win.is_running())

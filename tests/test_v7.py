@@ -330,6 +330,41 @@ check("chevauchements : HF 1 dans le bloc 38, blocs 38/39 qui se touchent, HF 2 
       bo(items), {1: "Spectera 38", 0: "Bloc 39", 3: "Spectera 38", 2: "Bloc 39"})
 check("chevauchements : marge de garde", bo([("B", 610.0, 8.0), ("HF", 614.3, 0.0)], guard=0.5), {1: "B"})
 check("pas de bloc : rien", bo([("a", 1.0, 0.0), ("b", 1.0, 0.0)]), {})
+import json as _json
+cfg_full = dict(bands=[dict(name="UHF", start=470.0, stop=694.0, step=200.0, enabled=True)],
+                watch=[dict(name="HF 1", freq=500.0, status="En service", thr=None, scene="S", group="G"),
+                       dict(name="Spectera ch 38", freq=610.0, status="En service", thr=None, scene="", group="", bw=8.0)],
+                scenes=[dict(name="S", color="#fff", groups=[dict(name="G", color="#000", prio=2)])],
+                statuses=[dict(name="En service", color="#0f0", free=False, on=True)], thr=-75, country="FR",
+                theme=dict(ui_base="#000"), log_dir="/x", web=dict(on=True, port=8080),
+                dev2=dict(on=True, addr="192.168.1.20", offset=1.0), dev_names=["Plateau", "FOH"], markers=dict(on=False))
+meta = dict(name="Fest", venue="Grande scène", date_from="2025-07-17", date_to="2025-07-20", notes="antenne FOH")
+doc = ns["show_doc"](cfg_full, meta, [([470.0, 471.0], [-100.04, -99.0])], "7.1")
+check("show : format", (doc["format"], doc["version"], doc["app"]), ("tinysa-show", 1, "7.1"))
+check("show : contient les fréquences, scènes, bandes, seuils, noms de position",
+      all(k in doc["show"] for k in ("watch", "scenes", "bands", "thr", "country", "dev_names")), True)
+check("show : PAS les préférences du logiciel", [k for k in ("theme", "log_dir", "web", "dev2", "markers") if k in doc["show"]], [])
+check("show : courbe de référence arrondie", doc["ref"], [dict(f=[470.0, 471.0], l=[-100.0, -99.0])])
+back = ns["read_show"](_json.dumps(doc))
+check("show : relu à l'identique", (back["meta"], back["show"], back["ref"]),
+      (meta, doc["show"], [([470.0, 471.0], [-100.0, -99.0])]))
+mine = dict(cfg_full, theme=dict(ui_base="#123"), watch=[], thr=-90, log_dir="/cette-annee")
+ap = ns["show_apply"](mine, back)
+check("show appliqué : fréquences et seuils du show", (len(ap["watch"]), ap["thr"]), (2, -75))
+check("show appliqué : mes préférences gardées", (ap["theme"], ap["log_dir"]), (dict(ui_base="#123"), "/cette-annee"))
+old = ns["read_show"](_json.dumps(dict(cfg_full, profil="TinySA Monitor")), "evenement")
+check("ancien profil : lu, préférences ignorées", (old["meta"]["name"], "theme" in old["show"], len(old["show"]["watch"])),
+      ("evenement", False, 2))
+try:
+    ns["read_show"]('{"a": 1}')
+    check("fichier quelconque refusé", False, True)
+except ValueError:
+    check("fichier quelconque refusé", True, True)
+sm = ns["show_summary"](back)
+check("résumé", (sm["dates"], sm["n_freq"], sm["n_blocks"], sm["has_ref"]), ("2025-07-17 → 2025-07-20", 2, 1, True))
+check("nom de fichier", ns["show_filename"](meta), "2025 Fest - Grande scène.tsashow")
+check("nom de fichier sans infos", ns["show_filename"]({}), "show.tsashow")
+check("nom de fichier : caractères interdits", ns["show_filename"](dict(name="A/B: C?")), "A_B_ C.tsashow")
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
 print("\nÉCHECS:", fails)
