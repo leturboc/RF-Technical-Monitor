@@ -6118,6 +6118,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.watch_table.horizontalHeader().setSectionResizeMode(C_NAME, QtWidgets.QHeaderView.ResizeMode.Interactive)
         self.watch_table.setColumnWidth(C_NAME, 120)
         self.watch_table.horizontalHeader().setStretchLastSection(True)
+        # ce qu'on lit d'abord : Nom, MHz, Signal, Statut ; colonnes déplaçables à la souris (ordre mémorisé)
+        hh_ = self.watch_table.horizontalHeader()
+        hh_.setSectionsMovable(True)
+        hh_.moveSection(hh_.visualIndex(C_SIG), 2)
+        hh_.moveSection(hh_.visualIndex(C_STAT), 3)
         for c, w in ((C_FREQ, 72), (C_LVL, 56), (C_MAX, 56), (C_THR, 56), (C_SIG, 78), (C_STAT, 84),
                      (C_OCC, 48), (C_LAYER, 120), (C_BAND, 190)):
             self.watch_table.setColumnWidth(c, w)
@@ -6441,6 +6446,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.unk_chk.setChecked(data.get("unk", True))
         self.names_chk.setChecked(data.get("names", True))
         self.set_unit(str(data.get("unit", "dbm")))
+        wc = data.get("watch_cols")
+        if isinstance(wc, str) and wc:
+            try:
+                self.watch_table.horizontalHeader().restoreState(QtCore.QByteArray.fromBase64(wc.encode()))
+            except Exception:  # noqa: BLE001
+                pass
         lb = data.get("labels")
         if isinstance(lb, dict):
             self.sig_labels = {k: str(v)[:30] for k, v in lb.items() if k in SIGNAL_DEFAULTS and str(v).strip()}
@@ -6559,7 +6570,7 @@ class MainWindow(QtWidgets.QMainWindow):
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
             expert=self.expert, sections=dict(self.sections_open),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
-            unit=self.unit)
+            unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
