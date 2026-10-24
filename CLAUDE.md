@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.2.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.2.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -129,9 +129,13 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - Barre du haut = `QToolBar` `cmd_bar` (Port, Démarrer, Shows, 🔔, ☰ Plus → `more_menu` : Outils, Fenêtres, Mur,
   Couleurs, Statuts, Mode expert) sur toute la largeur. NE PAS la remettre dans une zone entre les docks : une
   rangée qui se replie y est coupée par Qt (bouton Démarrer invisible à 1280 px, vu en v7.2 dev).
-- Pas de zone centrale : widget central vide (0×0) ; le **spectre est un dock** (`dock_spec`, zone du bas, au-dessus
+- Pas de zone centrale : widget central vide de hauteur 0 (**surtout pas `setMaximumSize(0, 0)`** : la largeur
+  bloquée à 0 fige la colonne du milieu, `resizeDocks` n'a plus d'effet et le spectre reste minuscule — v7.2.1) ; le **spectre est un dock** (`dock_spec`, zone du bas, au-dessus
   du waterfall et des alarmes) ; coins inférieurs donnés aux zones gauche / droite (`setCorner`) sinon la zone du
-  bas passe sous les colonnes et la hauteur mini explose. `_dock_sizes` proportionnel à la largeur.
+  bas passe sous les colonnes et la hauteur mini explose. `_dock_sizes` (appelé ~120 ms après le 1er affichage, quand la fenêtre a sa vraie taille) : réglages ~19 %,
+  liste ~31 %, le reste au spectre ; `_middle_sizes` : waterfall ~28 % et alarmes ~170 px en bandeaux sous le
+  spectre (aussi quand ils apparaissent). `LAYOUT_VER` : une disposition enregistrée plus ancienne est ignorée.
+  Largeurs mini réduites (réglages 230, liste ~290 : boutons courts / rétrécissables) pour pouvoir agrandir le spectre.
 - Mode simple / expert : `self.expert`, `set_expert` (`_expert_rows` = (QFormLayout, widget) → `setRowVisible`,
   `ref_row`, `persist_combo`) ; sections repliables `_section(key, box)`, `sections_open` (config). Les seuils
   occupé / faible / TX absent restent visibles en mode simple (demande de Clément).

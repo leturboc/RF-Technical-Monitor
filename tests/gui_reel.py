@@ -303,6 +303,24 @@ win.dock_wall.setFloating(False)
 win.dock_wall.hide()
 wait(300)
 
+# disposition de base : le spectre a la place, les colonnes se rétrécissent
+win.layout_standard()
+wait(400)
+check("disposition de base : spectre ≥ 45 % de la largeur", win.dock_spec.width() >= 0.45 * win.width(),
+      f"spectre {win.dock_spec.width()} / fenêtre {win.width()}")
+win.resizeDocks([win.dock_set, win.dock_freq], [50, 50], Qt.Orientation.Horizontal)
+wait(300)
+check("colonnes rétrécissables (réglages ≤ 240, liste ≤ 300)", win.dock_set.width() <= 240 and win.dock_freq.width() <= 300,
+      f"réglages {win.dock_set.width()} · liste {win.dock_freq.width()}")
+win.view_combo.setCurrentIndex(1)
+wait(2500)
+if win.dock_wf.isVisible():
+    check("waterfall en bandeau (≤ 40 % de la colonne)", win.dock_wf.height() <= 0.4 * (win.dock_wf.height() + win.dock_spec.height()),
+          f"waterfall {win.dock_wf.height()} / spectre {win.dock_spec.height()}")
+win.view_combo.setCurrentIndex(0)
+win.layout_standard()
+wait(300)
+
 # spectre détachable + mode simple / expert
 check("le spectre est un panneau (détachable)", win.dock_spec in win.docks and
       bool(win.dock_spec.features() & W.QDockWidget.DockWidgetFeature.DockWidgetFloatable))

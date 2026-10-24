@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.2.1"
+APP_VER = "7.2.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -97,7 +97,8 @@ REF_PATH = CFG_PATH.parent / "reference.json"
 CRASH_PATH = CFG_PATH.parent / "crash.log"
 CFG_BAK = CFG_PATH.with_suffix(".json.bak")
 AUTOSAVE_MS = 60_000
-STOP_FORCE_MS = 4000          # « Arrêter » : au-delà, on ferme le port pour débloquer
+STOP_FORCE_MS = 4000
+LAYOUT_VER = 3                # à monter quand la disposition de base change (les anciennes sont ignorées)          # « Arrêter » : au-delà, on ferme le port pour débloquer
 LOG_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Journaux"
 SHOW_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Shows"
 
@@ -5401,7 +5402,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._autosave.setInterval(AUTOSAVE_MS)
         self._autosave.timeout.connect(self._save_config)
         self._autosave.start()
-        QtCore.QTimer.singleShot(0, self._late_layout)
+        self._first_show = True
 
     def _fit_to_screen(self):
         """Petit écran (portable 1366×768…) : la fenêtre ne doit pas déborder."""
@@ -5412,11 +5413,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.width() > 0 and g.height() > 0:
             self.resize(min(self.width(), g.width()), min(self.height(), g.height()))
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        if getattr(self, "_first_show", False):
+            self._first_show = False
+            QtCore.QTimer.singleShot(120, self._late_layout)    # la fenêtre a alors sa vraie taille
+
     def _late_layout(self):
         if not self._state_restored:
-            self._dock_sizes()
             if self.view_id == -1:
                 self.dock_wf.hide()      # pas de waterfall en vue « tout le spectre » : le spectre prend la place
+            self._dock_sizes()
 
     # ---------------------------------------------------------------- UI
     @staticmethod
@@ -6019,8 +6026,7 @@ class MainWindow(QtWidgets.QMainWindow):
         exp_btn.clicked.connect(self.export_scan)
         self.band_lbl = QtWidgets.QLabel("Survole le spectre ou les bandeaux pour voir le canal TV et "
                                          "l'attribution de la fréquence.")
-        self.band_lbl.setWordWrap(True)
-        self.band_lbl.setMinimumHeight(36)
+        self._elastic(self.band_lbl)                 # une seule ligne, coupée si besoin : le spectre garde la place
         self.readout = QtWidgets.QLabel("")
         self.readout.setMinimumWidth(210)
         self.readout.setStyleSheet("font-family:Consolas,monospace;")
@@ -6147,7 +6153,10 @@ class MainWindow(QtWidgets.QMainWindow):
         lbox = QtWidgets.QGroupBox("Couches de monitoring : scènes › groupes")
         lv2 = QtWidgets.QVBoxLayout(lbox)
         lv2.setContentsMargins(6, 4, 6, 4)
-        lv2.addLayout(self._row(self.global_btn, lb_sc, lb_gr, lb_rn, lb_dl, None))
+        for b_ in (self.global_btn, lb_sc, lb_gr, lb_rn, lb_dl):      # rétrécissables : le spectre d'abord
+            b_.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, b_.sizePolicy().verticalPolicy())
+            b_.setMinimumWidth(30)
+        lv2.addLayout(self._row(self.global_btn, lb_sc, lb_gr, lb_rn, lb_dl))
         lv2.addWidget(self.layer_tree)
         lv2.addWidget(self.focus_chk)
         lv2.addWidget(self.layer_lbl)
@@ -6187,13 +6196,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.count_lbl = self._elastic(QtWidgets.QLabel(""))
         fl.addWidget(self.count_lbl)
         r1, r2 = QtWidgets.QHBoxLayout(), QtWidgets.QHBoxLayout()
-        for txt, fn, lay in [("＋ Ajouter", self.add_watch_dialog, r1),
-                             ("📥 Importer CSV…", self.import_watch, r1),
-                             ("Coller une liste", self.paste_watch, r1),
-                             ("📤 Exporter", self.export_watch, r2),
-                             ("Supprimer", self.del_watch, r2),
-                             ("Bandes depuis la liste", self.bands_from_list, r2)]:
+        # libellés courts (le panneau doit pouvoir rétrécir pour laisser la place au spectre) ; détail en bulle
+        for txt, tip, fn, lay in [
+                ("＋ Ajouter", "Ajoute une fréquence à surveiller (dans la couche active).", self.add_watch_dialog, r1),
+                ("📥 Importer", "Importe une liste de fréquences (EazyRF, WWB, WSM, Excel…). Tu peux aussi glisser\n"
+                               "le fichier sur la fenêtre.", self.import_watch, r1),
+                ("📋 Coller", "Colle une liste copiée (Excel, mail…) : nom et fréquence par ligne.", self.paste_watch, r1),
+                ("📤 Exporter", "Exporte ta liste de fréquences (CSV).", self.export_watch, r2),
+                ("🗑 Supprimer", "Supprime la ou les lignes sélectionnées.", self.del_watch, r2),
+                ("↔ Bandes", "Bandes depuis la liste : remplace les bandes par des zones qui couvrent juste tes\n"
+                             "fréquences (scan plus rapide).", self.bands_from_list, r2)]:
             b = QtWidgets.QPushButton(txt)
+            b.setToolTip(tip)
+            b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, b.sizePolicy().verticalPolicy())
+            b.setMinimumWidth(40)
             b.clicked.connect(fn)
             lay.addWidget(b)
         fl.addLayout(r1)
@@ -6251,7 +6267,7 @@ class MainWindow(QtWidgets.QMainWindow):
         b2 = QtWidgets.QPushButton("Effacer")
         b2.clicked.connect(lambda: self.log_table.setRowCount(0))
         lg.addLayout(self._row(b1, b2, None))
-        self.autolog_chk = QtWidgets.QCheckBox("Journal automatique (un fichier CSV par jour)")
+        self.autolog_chk = QtWidgets.QCheckBox("Journal auto (CSV / jour)")
         self.autolog_chk.setToolTip("Chaque événement est ajouté tout de suite à journal_AAAAMMJJ.csv :\n"
                                     "rien n'est perdu si le logiciel ou l'ordinateur plante.")
         self.autolog_chk.setChecked(True)
@@ -6264,7 +6280,7 @@ class MainWindow(QtWidgets.QMainWindow):
         lg.addWidget(self.autolog_chk)
         lg.addLayout(self._row(b_dir, b_pick, None))
         lg.addWidget(self.logdir_lbl)
-        self.rec_chk = QtWidgets.QCheckBox("💾 Enregistrer les balayages (pour la relecture)")
+        self.rec_chk = QtWidgets.QCheckBox("💾 Enregistrer les balayages")
         self.rec_chk.setToolTip("Garde tous les balayages sur disque (un dossier par session, compressé, 2 Go max) pour\n"
                                 "revoir le spectre plus tard : 🔧 Outils › ⏪ Relecture. Sans cette case, le logiciel\n"
                                 "garde quand même les 30 dernières minutes en mémoire.")
@@ -6292,13 +6308,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # pas de zone centrale fixe : le spectre est un panneau comme les autres (détachable, déplaçable sur
         # l'autre écran, ré-accrochable). Qt exige un widget central : une case vide de taille nulle.
         root = QtWidgets.QWidget()
-        root.setMaximumSize(0, 0)
+        root.setMaximumHeight(0)          # seulement la hauteur : la largeur doit suivre la colonne du milieu
+        root.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setCentralWidget(root)
         self.setDockNestingEnabled(True)
         # colonnes Réglages / Fréquences sur toute la hauteur ; spectre, waterfall, alarmes au milieu
         self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
-        left.setMinimumWidth(300)
+        left.setMinimumWidth(230)
         self._build_docks(left, ftab, ltab, self.wf_box, center)
         self._install_tips()
         # listes déroulantes : ne pas s'élargir au plus long choix (noms de ports COM à rallonge sous Windows…) ;
@@ -6430,6 +6447,8 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
         st = data.get("docks")
+        if int(data.get("layout_ver", 0) or 0) < LAYOUT_VER:
+            st = None                    # ancienne disposition (spectre minuscule…) : on repart de la base
         if st:
             try:
                 self._state_restored = bool(self.restoreState(QtCore.QByteArray.fromBase64(st.encode())))
@@ -6671,6 +6690,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
             data["docks"] = bytes(self.saveState().toBase64()).decode()
+            data["layout_ver"] = LAYOUT_VER
             data["vocab"] = self.vocab_user
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
             data["show_meta"] = dict(self.show_meta)
@@ -9759,10 +9779,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.win_menu.addAction("🧱 Mur en plein écran sur l'autre écran").triggered.connect(self.wall_other_screen)
 
     def _dock_sizes(self):
-        w = max(self.width(), 900)                 # petit écran : le spectre garde au moins ~40 % de la largeur
-        self.resizeDocks([self.dock_set], [min(360, int(w * 0.24))], Qt.Orientation.Horizontal)
-        self.resizeDocks([self.dock_freq], [min(660, int(w * 0.34))], Qt.Orientation.Horizontal)
-        self.resizeDocks([self.dock_spec, self.dock_wf], [700, 230], Qt.Orientation.Vertical)
+        """Disposition de base : le spectre a la place (≈ la moitié de la largeur, ~70 % de la hauteur de sa
+        colonne), réglages étroits à gauche, liste à droite, waterfall et alarmes en bandeaux sous le spectre."""
+        W, H = max(self.width(), 900), max(self.height(), 600)
+        left = max(260, min(330, int(W * 0.19)))
+        right = max(380, min(560, int(W * 0.31)))
+        self.resizeDocks([self.dock_set, self.dock_freq], [left, right], Qt.Orientation.Horizontal)
+        self._middle_sizes()
+
+    def _middle_sizes(self):
+        """Colonne du milieu : spectre ~70 %, waterfall ~30 %, alarmes en bandeau (~170 px)."""
+        H = max(self.height(), 600) - 80
+        docks, sizes = [self.dock_spec], [0]
+        if self.dock_wf.isVisible() and not self.dock_wf.isFloating():
+            docks.append(self.dock_wf)
+            sizes.append(int(H * 0.28))
+        if self.dock_alarm.isVisible() and not self.dock_alarm.isFloating():
+            docks.append(self.dock_alarm)
+            sizes.append(170)
+        sizes[0] = max(250, H - sum(sizes[1:]))
+        if len(docks) > 1:
+            self.resizeDocks(docks, sizes, Qt.Orientation.Vertical)
 
     def layout_standard(self):
         L, R, B = (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea,
@@ -9834,8 +9871,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _wf_show(self, on):
         self.wf.setVisible(bool(on))
         self.wf_hint.setVisible(not on)
-        if on and getattr(self, "dock_wf", None) is not None:
+        if on and getattr(self, "dock_wf", None) is not None and not self.dock_wf.isVisible():
             self.dock_wf.show()
+            QtCore.QTimer.singleShot(0, self._middle_sizes)      # bandeau sous le spectre, pas la moitié
 
     # ------------------------------------------------------- statuts / priorités
     def is_keep_on(self, name):
@@ -9880,8 +9918,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if prio < 0:
             return
         if prio >= 2 and getattr(self, "dock_alarm", None) is not None:
+            was = self.dock_alarm.isVisible()
             self.dock_alarm.show()
             self.dock_alarm.raise_()
+            if not was:
+                QtCore.QTimer.singleShot(0, self._middle_sizes)
         if prio < 1 or not self.alert_chk.isChecked():
             return
         QtWidgets.QApplication.beep()
@@ -9990,6 +10031,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             d.show()
             d.raise_()
+            QtCore.QTimer.singleShot(0, self._middle_sizes)
 
     def _build_alarm_panel(self):
         w = QtWidgets.QWidget()
