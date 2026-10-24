@@ -72,3 +72,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/TinySA-Monitor.exe
+          # v7.1-beta1 (avec tiret) = pré-release de test ; v7.1 = version stable (« latest »)
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            **Télécharger :** `TinySA-Monitor.exe` ci-dessous (Windows, aucune installation).
+            Au premier lancement, SmartScreen peut avertir (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
+            PC du 2ᵉ tinySA en réseau : lancer `TinySA-Monitor.exe --relais`.

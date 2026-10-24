@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.1** (bêtas : tags `v7.1-betaN` → pré-releases).
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -14,7 +14,8 @@ en local, vrai Windows dans la CI) ; ni le vrai tinySA, ni les sons, ni un vrai 
 ## Exe et CI
 `.github/workflows/build-exe.yml` (windows-latest), à chaque push sur n'importe quelle branche : tests, `gui_reel.py`
 en vrai rendu Windows (non bloquant ; résultat OK/FAIL remonté en **annotations** du run), PyInstaller → artefact
-`TinySA-Monitor` (l'exe) et `captures-interface-windows`. Un tag `v*` attache l'exe à une Release.
+`TinySA-Monitor` (l'exe) et `captures-interface-windows`. Un tag `v*` attache l'exe à une Release (pré-release si le
+tag contient un tiret). Dépôt **privé** : téléchargement réservé aux comptes qui y ont accès.
 Depuis le conteneur Claude, `gh run view <id>` montre les annotations, mais les journaux et artefacts (stockage Azure)
 sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : il n'y a aucune police (mesures ×2).
 
