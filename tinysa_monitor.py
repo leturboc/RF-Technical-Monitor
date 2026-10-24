@@ -9830,8 +9830,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """Disposition de base : le spectre a la place (≈ la moitié de la largeur, ~70 % de la hauteur de sa
         colonne), réglages étroits à gauche, liste à droite, waterfall et alarmes en bandeaux sous le spectre."""
         W, H = max(self.width(), 900), max(self.height(), 600)
-        left = max(260, min(330, int(W * 0.19)))
-        right = max(380, min(560, int(W * 0.31)))
+        left = max(230, min(330, int(W * 0.19)))
+        right = max(290, min(560, int(W * 0.31)))
+        over = left + right - W // 2        # petit écran (portable ~1024 px) : le spectre garde la moitié
+        if over > 0:
+            right -= min(over, right - 290)
         self.resizeDocks([self.dock_set, self.dock_freq], [left, right], Qt.Orientation.Horizontal)
         self._middle_sizes()
 

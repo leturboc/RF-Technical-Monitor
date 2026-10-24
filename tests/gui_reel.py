@@ -335,6 +335,15 @@ if win.dock_wf.isVisible():
     check("waterfall en bandeau (≤ 40 % de la colonne)", win.dock_wf.height() <= 0.4 * (win.dock_wf.height() + win.dock_spec.height()),
           f"waterfall {win.dock_wf.height()} / spectre {win.dock_spec.height()}")
 win.view_combo.setCurrentIndex(0)
+_sz = win.size()
+win.resize(1024, 700)             # petit portable (et l'écran de la CI Windows)
+wait(300)
+win.layout_standard()
+wait(400)
+check("disposition de base à 1024 px : spectre ≥ 45 %", win.dock_spec.width() >= 0.45 * win.width(),
+      f"spectre {win.dock_spec.width()} / fenêtre {win.width()}")
+win.resize(_sz)
+wait(300)
 win.layout_standard()
 wait(300)
 
