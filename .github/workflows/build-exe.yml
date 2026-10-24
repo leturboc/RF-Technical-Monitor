@@ -1,0 +1,64 @@
+name: Build TinySA-Monitor.exe
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Tests (logique + GUI simulée)
+        shell: bash
+        run: |
+          for t in test_v7 test_im test_plan smoke_test smoke_test2 smoke_test3 smoke_test4; do
+            echo "== $t"; python tests/$t.py | tail -3
+          done
+
+      - name: Interface réelle (Qt hors écran, Windows)
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/gui_reel.py tests/captures
+
+      - name: Captures de l'interface
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captures-interface-windows
+          path: tests/captures/
+          if-no-files-found: ignore
+
+      - name: Compilation
+        run: python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor tinysa_monitor.py
+
+      - name: Exe (artefact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinySA-Monitor
+          path: dist/TinySA-Monitor.exe
+
+      - name: Release (sur tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/TinySA-Monitor.exe
