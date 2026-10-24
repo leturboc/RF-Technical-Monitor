@@ -165,6 +165,44 @@ win.set_markers(style="top")
 wait(800)
 shot(win, "reperes_filtres_discrets")
 win.reset_markers()
+
+
+def click(txt):
+    """Comme à la souris : le menu est reconstruit à chaque ouverture, puis on clique l'entrée."""
+    win.mk_menu.aboutToShow.emit()
+    acts_ = {a.text(): a for a in win.mk_menu.actions() if a.text()}
+    for sub_ in [a.menu() for a in win.mk_menu.actions() if a.menu() is not None]:
+        acts_.update({a.text(): a for a in sub_.actions() if a.text()})
+    acts_[txt].trigger()
+    app.processEvents()
+
+
+# chaque case doit marcher dans LES DEUX sens (bug v7.1 : impossible de recocher à la souris)
+for txt, get in (("Masquer tous les repères  (Ctrl+M)", lambda: not win.mk["on"]),
+                 ("Signaux inconnus (pointillés)", lambda: win.mk["unk"]),
+                 ("Libres", lambda: "free" in win.mk["states"]),
+                 ("Toujours montrer les fréquences en alarme", lambda: win.mk["alarms"]),
+                 ("Noms des fréquences", lambda: win.names_chk.isChecked()),
+                 ("Grande scène › IEM", lambda: not any("IEM" in k for k in win.mk["hide_layers"]))):
+    v0 = get()
+    click(txt)
+    v1 = get()
+    click(txt)
+    v2 = get()
+    check(f"souris, « {txt} » : {v0} → {v1} → {v2}", v1 != v0 and v2 == v0)
+win.unk_chk.setChecked(False)
+click("Signaux inconnus (pointillés)")         # affiché décoché quand la détection est coupée
+check("souris : inconnus → la détection s'active aussi", win.unk_chk.isChecked() and win.mk["unk"])
+click("Petit repère discret en haut")
+check("souris : style discret", win.mk["style"] == "top")
+click("Trait sur toute la hauteur")
+check("souris : style plein", win.mk["style"] == "full")
+click("couleur du groupe")
+check("souris : couleur du groupe", win.mark_combo.currentData() == "group")
+click("état du signal")
+check("souris : couleur état", win.mark_combo.currentData() == "signal")
+win.reset_markers()
+win.reset_markers()
 win.set_markers(style="full")
 win.toggle_markers()
 wait(600)

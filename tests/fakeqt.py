@@ -363,10 +363,23 @@ class FakeList(SigHolder):
         return len(self._its)
 
 
+class _CheckSig(Sig):
+    """triggered.emit(b) d'un test = clic qui met la case dans l'état b (comme le vrai Qt avant le signal)."""
+
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = owner
+
+    def emit(self, *a):
+        if a and isinstance(a[0], bool):
+            self.owner._c = a[0]
+        super().emit(*a)
+
+
 class FakeAction(Poly):
     def __init__(self, text=""):
         self._t, self._d, self._c = text, None, False
-        self.triggered = Sig()
+        self.triggered = _CheckSig(self)
 
     def setChecked(self, c):
         self._c = bool(c)

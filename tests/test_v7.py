@@ -365,6 +365,9 @@ check("résumé", (sm["dates"], sm["n_freq"], sm["n_blocks"], sm["has_ref"]), ("
 check("nom de fichier", ns["show_filename"](meta), "2025 Fest - Grande scène.tsashow")
 check("nom de fichier sans infos", ns["show_filename"]({}), "show.tsashow")
 check("nom de fichier : caractères interdits", ns["show_filename"](dict(name="A/B: C?")), "A_B_ C.tsashow")
+# garde-fou : une case de menu branchée sur « lambda checked=False » reçoit toujours False avec PySide6
+bad = re.findall(r"\.(?:triggered|toggled|clicked)\.connect\(lambda ([A-Za-z]\w*)=", src)
+check("pas de lambda à argument optionnel sur triggered / toggled / clicked", bad, [])
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
 print("\nÉCHECS:", fails)

@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.1"
+APP_VER = "7.1.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -97,6 +97,7 @@ REF_PATH = CFG_PATH.parent / "reference.json"
 CRASH_PATH = CFG_PATH.parent / "crash.log"
 CFG_BAK = CFG_PATH.with_suffix(".json.bak")
 AUTOSAVE_MS = 60_000
+STOP_FORCE_MS = 4000          # « Arrêter » : au-delà, on ferme le port pour débloquer
 LOG_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Journaux"
 SHOW_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Shows"
 
@@ -2326,6 +2327,10 @@ def split_band(start, stop, step):
 # --------------------------------------------------------------------------
 # Communication avec le tinySA
 # --------------------------------------------------------------------------
+class Aborted(Exception):
+    """Commande interrompue (bouton Arrêter)."""
+
+
 class TinySA:
     PROMPT = b"ch>"
     NET_IDLE_MIN = 20.0          # réseau : liaison déclarée muette après ce silence (s), allongé selon le RBW
@@ -2333,7 +2338,8 @@ class TinySA:
     def __init__(self, port):
         # port : « COM3 » (USB) ou « socket://192.168.1.20:5025 » (réseau, via le relais ou ser2net)
         self.net = "://" in str(port)
-        self.idle = self.NET_IDLE_MIN if self.net else None
+        self.idle = self.NET_IDLE_MIN          # tinySA muet (réseau coupé, appareil figé) : erreur → reconnexion
+        self.abort = None                      # fonction : True = abandonner la commande en cours (Arrêter)
         self.ser = serial.serial_for_url(port, 115200, timeout=0.2)
         self.ser.reset_input_buffer()
         self.cmd("", timeout=5)
@@ -2353,9 +2359,11 @@ class TinySA:
             now = time.time()
             if now - t0 > timeout:
                 raise TimeoutError(f"Pas de réponse du tinySA à « {text} »")
+            if self.abort is not None and self.abort():
+                raise Aborted()
             if self.idle is not None and now - t_rx > self.idle:
-                # câble réseau arraché / Wi-Fi coupé : la connexion ne se ferme pas, elle se tait
-                raise TimeoutError(f"liaison réseau muette depuis {self.idle:.0f} s")
+                # câble réseau arraché, Wi-Fi coupé, tinySA figé : la liaison ne se ferme pas, elle se tait
+                raise TimeoutError(f"tinySA muet depuis {self.idle:.0f} s")
             n = self.ser.in_waiting
             chunk = self.ser.read(n if n else 1)
             if chunk:
@@ -2392,10 +2400,9 @@ class TinySA:
         return self.try_cmd("mode high input" if high else "mode low input")
 
     def expect_scan(self, points, rbw_khz):
-        """Réseau : temps de silence toléré pendant un scan (le tinySA ne répond qu'à la fin du segment)."""
-        if self.net:
-            per_pt = 0.05 if rbw_khz is None else max(0.002, 3.0 / max(rbw_khz, 0.1))
-            self.idle = self.NET_IDLE_MIN + points * per_pt
+        """Temps de silence toléré pendant un scan (le tinySA ne répond qu'à la fin du segment)."""
+        per_pt = 0.05 if rbw_khz is None else max(0.002, 3.0 / max(rbw_khz, 0.1))
+        self.idle = self.NET_IDLE_MIN + points * per_pt
 
     def scan(self, start_hz, stop_hz, points):
         """Renvoie (freqs Hz ou None, niveaux dBm)."""
@@ -2430,6 +2437,13 @@ class ScanWorker(QtCore.QThread):
         self.demo_carriers = {}
         self.seg_auto = 290
         self.st = dict(rbw="?", front="?", high=None)
+        self.dev = None
+
+    def force_close(self):
+        """Arrêt qui traîne (tinySA qui ne répond plus) : on ferme le port depuis l'extérieur."""
+        d = self.dev
+        if d is not None:
+            d.close()
 
     def _say(self, txt):
         return f"{self.label} : {txt}" if self.label else txt
@@ -2443,6 +2457,8 @@ class ScanWorker(QtCore.QThread):
             try:
                 if not self.demo:
                     dev = TinySA(self.port)
+                    dev.abort = self.isInterruptionRequested
+                    self.dev = dev
                     ver = dev.version()
                     if "tinysa4" in ver.lower():
                         self.seg_auto = 450
@@ -2459,6 +2475,8 @@ class ScanWorker(QtCore.QThread):
                 self._loop(dev)
                 return
             except Exception as e:  # noqa: BLE001
+                if self.isInterruptionRequested():
+                    return                                  # Arrêter : pas une panne
                 if not was_up and not self.retry_first:
                     self.error.emit(self._say(str(e)))
                     return
@@ -2471,6 +2489,7 @@ class ScanWorker(QtCore.QThread):
                         return
                     self.msleep(100)
             finally:
+                self.dev = None
                 if dev is not None:
                     dev.close()
 
@@ -6307,7 +6326,8 @@ class MainWindow(QtWidgets.QMainWindow):
             for w in self.workers:
                 w.requestInterruption()
             self.start_btn.setEnabled(False)
-            self.set_status("Arrêt en cours… (le segment en cours doit se terminer)")
+            self.set_status("Arrêt en cours…")
+            QtCore.QTimer.singleShot(STOP_FORCE_MS, self._force_stop)
             return
         demo = self.demo_chk.isChecked()
         port = self.port_combo.currentData()
@@ -6357,6 +6377,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for wd in (self.dev2_chk, self.dev2_addr):
             wd.setEnabled(False)
         self.update_dev2_label()
+
+    def _force_stop(self):
+        """Le tinySA ne rend pas la main : on ferme les ports pour débloquer l'arrêt."""
+        stuck = [w for w in self.workers if w.isRunning()]
+        if not stuck:
+            return
+        for w in stuck:
+            w.force_close()
+        self.set_status("Arrêt forcé : le tinySA ne répondait plus (port fermé). Rebranche-le si le prochain "
+                        "démarrage échoue.")
+        QtCore.QTimer.singleShot(3000, lambda: self.on_finished() if not self.is_running() else None)
 
     def on_info(self, txt, dev=0):
         if dev == 0:
@@ -6845,9 +6876,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self.on_view_changed()
             self.set_status("Zoom live désactivé.")
 
+    def _band_extent(self):
+        """Étendue des bandes balayées (min début, max fin) : le zoom live n'en sort pas."""
+        bs = [b for b in self.scan_bands() if b["enabled"]] or self.bands
+        if not bs:
+            return 0.1, 6000.0
+        return min(b["start"] for b in bs), max(b["stop"] for b in bs)
+
     def _set_zoom(self, a, b):
         self._zoom_view = (a, b)
-        a, b = max(0.1, a), min(6000.0, b)
+        lo, hi = self._band_extent()
+        a, b = max(0.1, lo, a), min(6000.0, hi, b)
+        if b <= a:                                  # vue entièrement hors des bandes : on reste au bord
+            a, b = (lo, min(hi, lo + 1.0)) if b <= lo else (max(lo, hi - 1.0), hi)
         if b - a < 0.05:
             mid = (a + b) / 2
             a, b = mid - 0.025, mid + 0.025
@@ -8179,7 +8220,9 @@ class MainWindow(QtWidgets.QMainWindow):
             a = menu.addAction(txt)
             a.setCheckable(True)
             a.setChecked(bool(on))
-            a.triggered.connect(lambda checked=False, *_: setter(bool(checked)))
+            # on lit l'état de la case : avec un paramètre optionnel, PySide6 appelle la fonction SANS l'argument
+            # « checked » (il valait toujours False : impossible de recocher à la souris)
+            a.triggered.connect(lambda *_, a=a: setter(a.isChecked()))
             return a
 
         def toggle_in(key, value):
@@ -8219,7 +8262,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 lambda *_: self.hide_marker_rows([i for i, w in enumerate(self.watch) if w.get("hide_mk")], False))
         m.addSection("Affichage")
         check(m, "Noms des fréquences", self.names_chk.isChecked(), self.names_chk.setChecked)
-        check(m, "Signaux inconnus (pointillés)", mk["unk"], lambda on: self.set_markers(unk=on))
+        check(m, "Signaux inconnus (pointillés)", mk["unk"] and self.unk_chk.isChecked(), self.set_unk_markers)
         m.addSection("Style")
         grp = QtGui.QActionGroup(m)
         for key, txt in self.MK_STYLE:
@@ -8242,6 +8285,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.mk[k] = v
         self._sync_mk_menu()
         self._update_markers()
+
+    def set_unk_markers(self, on):
+        """Repères des signaux inconnus ; les afficher demande aussi la détection (Réglages › Détection)."""
+        if on and not self.unk_chk.isChecked():
+            self.unk_chk.setChecked(True)
+            self.set_status("Détection des signaux inconnus activée (Réglages › Détection) : leurs repères "
+                            "apparaissent au prochain balayage.")
+        self.set_markers(unk=on)
 
     def reset_markers(self):
         style, unk = self.mk["style"], self.mk["unk"]

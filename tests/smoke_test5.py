@@ -126,6 +126,16 @@ win.dev_live = [False, True]
 check("zoom : 1er perdu → le 2e zoome", cfg_ids(1) == [m.ZOOM_ID] and cfg_ids(0) == ids)
 win.dev_live = [True, True]
 win._zoom = None
+# zoom live borné aux bandes (bug : en dézoomant, le scan sortait de 470–694)
+lo_b, hi_b = win._band_extent()
+win._set_zoom(lo_b - 150.0, hi_b + 200.0)
+check("zoom : dézoom au-delà des bandes → reste dans les bandes", win._zoom == (lo_b, hi_b), str(win._zoom))
+win._set_zoom(lo_b - 50.0, lo_b - 10.0)
+check("zoom : vue entièrement hors bande → bord de bande", win._zoom[0] == lo_b and win._zoom[1] > lo_b, str(win._zoom))
+win._set_zoom(lo_b + 1.0, lo_b + 3.0)
+check("zoom : dans la bande, inchangé", win._zoom == (lo_b + 1.0, lo_b + 3.0))
+with win.lock:
+    win._zoom = None
 
 # ------------------------------------------------------------- noms de position et « vu par »
 import numpy as np

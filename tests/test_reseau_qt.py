@@ -97,8 +97,37 @@ fake.mute = False
 n_before = len(ev["sweeps"])
 check("retour de la liaison : link(True)", wait_until(lambda: ev["links"][-1:] == [True], 30), str(ev["links"]))
 check("les balayages reprennent encore", wait_until(lambda: len(ev["sweeps"]) > n_before + 1, 20))
+# --- « Arrêter » pendant que le tinySA ne répond plus : arrêt immédiat (bug v7.1 : « arrêt en cours » sans fin)
+m.TinySA.NET_IDLE_MIN = 60.0
+time.sleep(1.0)
+fake.mute = True
+time.sleep(1.5)                          # le worker attend une réponse qui ne vient pas
+t0 = time.time()
 w.requestInterruption()
-check("arrêt propre", w.wait(10000))
+check("Arrêter : le worker s'arrête tout de suite", w.wait(3000), f"{time.time() - t0:.1f} s")
+check(f"… en {time.time() - t0:.1f} s, sans fausse alarme", ev["links"][-1:] == [True], str(ev["links"]))
+fake.mute = False
+
+# --- USB direct (sans relais) : un tinySA figé est détecté (avant : attente jusqu'à 15 min)
+m.TinySA.NET_IDLE_MIN = 2.0
+ev4 = dict(links=[], sweeps=0)
+w4 = m.ScanWorker(path, False, lambda: cfg, lambda: 1, "")
+w4.link.connect(lambda ok: ev4["links"].append(ok))
+w4.sweep.connect(lambda *a: ev4.__setitem__("sweeps", ev4["sweeps"] + 1))
+w4.start()
+check("USB : balayage", wait_until(lambda: ev4["sweeps"] >= 1, 15))
+fake.mute = True
+check("USB : tinySA figé détecté (link False)", wait_until(lambda: ev4["links"][-1:] == [False], 40), str(ev4["links"]))
+fake.mute = False
+check("USB : reprise (link True)", wait_until(lambda: ev4["links"][-1:] == [True], 30), str(ev4["links"]))
+# --- fermeture forcée du port (bouton Arrêter qui traîne)
+fake.mute = True
+m.TinySA.NET_IDLE_MIN = 120.0
+time.sleep(2.5)
+w4.force_close()
+w4.requestInterruption()
+check("fermeture forcée : le worker sort", w4.wait(5000))
+fake.mute = False
 
 # --- 2e appareil dont le relais n'est pas encore lancé : il attend (pas de message d'erreur)
 ev2 = dict(links=[], errors=[])
