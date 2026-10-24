@@ -35,7 +35,7 @@ def chunk(start, end):
 
 
 ns = dict(__name__="tsm_net")
-exec("import bisect, csv, io, itertools, math, re, select, socket, threading, time, unicodedata\n"
+exec("import bisect, csv, io, itertools, math, os, re, select, socket, threading, time, unicodedata\n"
      "from collections import deque\nimport numpy as np\nimport serial\n", ns)
 ns.update(MIN_PTS=51, HYST=3.0, RBW_LIST=[1, 3, 10, 30, 100], APP_NAME="t", TINYSA_VID=0, TINYSA_PID=0)
 exec(chunk("# ===== PURE-BEGIN", "# ===== PURE-END"), ns)
