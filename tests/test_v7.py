@@ -381,6 +381,14 @@ check("intermod sans importance si ce n'est pas « doit rester libre »", sv("oc
 check("mes mots", sv("occ", keep_on=True, labels={"ok": "BON"}), ("BON", "ok"))
 check("mot vide = mot par défaut", sv("free", keep_free=True, labels={"free_ok": ""}), ("✔ libre", "ok"))
 check("toutes les situations ont un mot par défaut", all(ns["SIGNAL_DEFAULTS"][k] for k in ns["SIGNAL_DEFAULTS"]), True)
+tu, fu, fl = ns["to_unit"], ns["from_unit"], ns["fmt_level"]
+check("dBµV = dBm + 107", tu(-80.0, "dbuv"), 27.0)
+check("% WSM : -120 dBm = 0 %, 0 dBm = 100 %, -60 = 50 %", (tu(-120.0, "pct"), tu(0.0, "pct"), tu(-60.0, "pct")),
+      (0.0, 100.0, 50.0))
+check("% : écrêté à 0–100", (tu(-140.0, "pct"), tu(10.0, "pct")), (0.0, 100.0))
+ok("aller-retour dBµV / %", abs(fu(tu(-73.4, "dbuv"), "dbuv") + 73.4) < 1e-9 and abs(fu(tu(-73.4, "pct"), "pct") + 73.4) < 1e-9)
+check("textes", (fl(-80.0, "dbm"), fl(-80.0, "dbuv", suffix=True), fl(-60.0, "pct", suffix=True), fl(None, "pct")),
+      ("-80.0", "27.0 dBµV", "50 %", "—"))
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_

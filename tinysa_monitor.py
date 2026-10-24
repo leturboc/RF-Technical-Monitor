@@ -1200,6 +1200,41 @@ def signal_view(state, keep_free=False, keep_on=False, absent=False, intermod=Fa
     return txt, tone
 
 
+LEVEL_UNITS = (("dbm", "dBm"), ("dbuv", "dBµV (50 Ω)"), ("pct", "% (comme WSM)"))
+UNIT_SUFFIX = {"dbm": "dBm", "dbuv": "dBµV", "pct": "%"}
+
+
+def to_unit(dbm, unit):
+    """Niveau dBm -> unité d'affichage. dBµV = dBm + 107 (50 Ω) ; % = échelle WSM (0 % = −120 dBm, 100 % = 0 dBm)."""
+    if dbm is None:
+        return None
+    if unit == "dbuv":
+        return dbm + 107.0
+    if unit == "pct":
+        return min(100.0, max(0.0, (dbm + 120.0) * 100.0 / 120.0))
+    return dbm
+
+
+def from_unit(v, unit):
+    """Unité d'affichage -> dBm (inverse de to_unit)."""
+    if v is None:
+        return None
+    if unit == "dbuv":
+        return v - 107.0
+    if unit == "pct":
+        return v * 120.0 / 100.0 - 120.0
+    return v
+
+
+def fmt_level(dbm, unit, nd=1, suffix=False):
+    """Texte d'un niveau dans l'unité choisie ("—" si inconnu)."""
+    if dbm is None:
+        return "—"
+    v = to_unit(dbm, unit)
+    nd = 0 if unit == "pct" else nd
+    return f"{v:.{nd}f}" + (f" {UNIT_SUFFIX.get(unit, 'dBm')}" if suffix else "")
+
+
 def strong_peaks(F, L, thr, merge=1.0, limit=6):
     """Signaux plus forts que thr (dBm) : [(MHz, dBm)] du plus fort au plus faible, un seul par zone de merge MHz."""
     if F is None or len(F) == 0:
@@ -2320,6 +2355,7 @@ def web_state(rows, alarms, info):
         st = r.get("state")
         out.append(dict(name=r["name"], freq=round(float(r["freq"]), 4),
                         level=None if r.get("level") is None else round(float(r["level"]), 1),
+                        level_txt=r.get("level_txt") or ("" if r.get("level") is None else f"{float(r['level']):.1f} dBm"),
                         state=st or "", state_txt=r.get("sig_txt") or STATE_TXT.get(st, "—"),
                         tone=r.get("tone") or {"occ": "bad", "weak": "warn", "free": "ok"}.get(st, "none"),
                         status=r.get("status") or "",
@@ -2365,7 +2401,7 @@ function draw(d){$("#t").textContent=d.title||"TinySA Monitor";
   `<div class="al${a.acked?" ack":""}">⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}</div>`).join("");
  $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
   <div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div>
-  <div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level!==null?" · "+r.level.toFixed(1)+" dBm":""}</div>
+  <div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div>
   <div class="s">${esc(lay(r))}</div></div>`).join("")}
 $("#flt").onchange=e=>{keep=e.target.value;try{localStorage.setItem("flt",keep)}catch(x){};if(data)draw(data)};
 tick();setInterval(tick,2000);
@@ -4788,6 +4824,43 @@ class ExportListDialog(QtWidgets.QDialog):
 # --------------------------------------------------------------------------
 # Fenêtre : mur de fréquences (tuiles, pour un 2e écran)
 # --------------------------------------------------------------------------
+class LevelSpin(QtWidgets.QDoubleSpinBox):
+    """Case de saisie d'un niveau : value() / setValue() restent en dBm (tout le code interne), mais l'affichage et
+    la saisie se font dans l'unité choisie (dBm, dBµV ou %)."""
+    unit = "dbm"                                  # unité commune, réglée par MainWindow.set_unit
+
+    def textFromValue(self, v):
+        return fmt_level(v, LevelSpin.unit, 1, suffix=True)
+
+    def valueFromText(self, text):
+        t = text.replace(UNIT_SUFFIX.get(LevelSpin.unit, ""), "").replace(",", ".").strip()
+        try:
+            return from_unit(float(t), LevelSpin.unit)
+        except ValueError:
+            return self.value()
+
+    def validate(self, text, pos):
+        t = text.replace(UNIT_SUFFIX.get(LevelSpin.unit, ""), "").replace(",", ".").strip()
+        if t in ("", "-", "+"):
+            return QtGui.QValidator.State.Intermediate, text, pos
+        try:
+            float(t)
+            return QtGui.QValidator.State.Acceptable, text, pos
+        except ValueError:
+            return QtGui.QValidator.State.Invalid, text, pos
+
+    def refresh(self):
+        self.lineEdit().setText(self.textFromValue(self.value()))
+
+
+class LevelAxis(pg.AxisItem):
+    """Axe vertical du spectre gradué dans l'unité choisie (les courbes restent en dBm)."""
+    unit = "dbm"
+
+    def tickStrings(self, values, scale, spacing):
+        return [fmt_level(v * scale, LevelAxis.unit, 0) for v in values]
+
+
 class LabelsDialog(QtWidgets.QDialog):
     """Tes mots pour la colonne Signal (et le mur, la page web) : un texte par situation."""
 
@@ -5102,7 +5175,7 @@ class WallWindow(QtWidgets.QWidget):
             n_weak += st == "weak"
             conf = st == "occ" and ow.is_keep_free(w["status"])
             absn = bool(w.get("absent"))
-            lv = "—" if w["level"] is None else f'{w["level"]:.1f} dBm'
+            lv = ow.lvl(w["level"], suffix=True)
             pct = w["occw"].pct()
             layer = "" if one_group else ow.layer_text(w)
             sig = (st, conf, absn, lv, w["name"], w["status"], round(w["freq"], 3), fs, layer,
@@ -5190,6 +5263,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
         self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
         self.sig_labels = {}            # tes mots pour la colonne Signal (clé SIGNAL_LABELS -> texte)
+        self.unit = "dbm"               # unité d'affichage des niveaux (en interne : toujours dBm)
         self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
         self.show_path = ""
         self.recent_shows = []
@@ -5629,20 +5703,18 @@ class MainWindow(QtWidgets.QMainWindow):
         mform.addRow("Segment :", self.seg_combo)
         mform.addRow(self.est_lbl)
 
-        self.thr_spin = QtWidgets.QDoubleSpinBox()
+        self.thr_spin = LevelSpin()
         self.thr_spin.setRange(-130, 0)
         self.thr_spin.setValue(-80)
-        self.thr_spin.setSuffix(" dBm")
         self.thr_spin.valueChanged.connect(self._thr_from_spin)
         auto_btn = QtWidgets.QPushButton("Auto")
         auto_btn.setToolTip("Seuil = niveau médian mesuré + 10 dB")
         auto_btn.clicked.connect(self.auto_threshold)
         self.weak_chk = QtWidgets.QCheckBox("Niveau « faible » à partir de")
         self.weak_chk.setChecked(True)
-        self.weak_spin = QtWidgets.QDoubleSpinBox()
+        self.weak_spin = LevelSpin()
         self.weak_spin.setRange(-130, 0)
         self.weak_spin.setValue(-90)
-        self.weak_spin.setSuffix(" dBm")
         self.weak_spin.valueChanged.connect(self._weak_from_spin)
         self.weak_chk.toggled.connect(self._weak_toggled)
         self.win_spin = QtWidgets.QSpinBox()
@@ -5679,6 +5751,12 @@ class MainWindow(QtWidgets.QMainWindow):
                                     "⚠ ABSENT (micro éteint, pile vide, TX coupé…). Jamais moins de 2 cycles de balayage.")
         dbox = QtWidgets.QGroupBox("Détection")
         dform = QtWidgets.QFormLayout(dbox)
+        self.unit_combo = self._combo([(t, k) for k, t in LEVEL_UNITS], "dbm")
+        self.unit_combo.setToolTip("Unité des niveaux partout (seuils, liste, mur, spectre, alarmes, page web).\n"
+                                   "dBµV = dBm + 107 (50 Ω). % = échelle Sennheiser WSM : 0 % = −120 dBm, 100 % = 0 dBm.\n"
+                                   "Les fichiers (journal CSV, shows, exports) restent en dBm.")
+        self.unit_combo.currentIndexChanged.connect(lambda *_: self.set_unit(self.unit_combo.currentData()))
+        dform.addRow("Unité des niveaux :", self.unit_combo)
         dform.addRow("Seuil « occupé » :", self._row(self.thr_spin, auto_btn))
         dform.addRow(self.weak_chk)
         dform.addRow("", self.weak_spin)
@@ -5693,10 +5771,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "Un signal très fort (talkie collé à l'antenne, burst, émetteur trop près, intermod) peut saturer les\n"
             "récepteurs et faire décrocher les liaisons : alarme ⚠ TROP FORT dès qu'un signal des bandes balayées\n"
             "dépasse ce niveau (ligne violette sur le spectre). Le tinySA lui-même sature vers −10 dBm.")
-        self.strong_spin = QtWidgets.QDoubleSpinBox()
+        self.strong_spin = LevelSpin()
         self.strong_spin.setRange(-80.0, 10.0)
-        self.strong_spin.setDecimals(0)
-        self.strong_spin.setSuffix(" dBm")
         self.strong_spin.setValue(-25.0)
         self.strong_spin.setToolTip(self.strong_chk.toolTip())
         for w_ in (self.strong_chk, self.strong_spin):
@@ -5856,11 +5932,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.readout.setMinimumWidth(210)
         self.readout.setStyleSheet("font-family:Consolas,monospace;")
 
-        self.spec = pg.PlotWidget()
+        self.spec = pg.PlotWidget(axisItems={"left": LevelAxis(orientation="left")})
         pi = self.spec.getPlotItem()
         pi.showGrid(x=True, y=True, alpha=0.25)
         pi.setLabel("bottom", "Fréquence", units="MHz")
-        pi.setLabel("left", "Niveau", units="dBm")
+        pi.setLabel("left", "Niveau (dBm)")
         pi.setYRange(-120, -10, padding=0)
         pi.getAxis("left").setWidth(65)
         pi.getAxis("bottom").enableAutoSIPrefix(False)
@@ -6364,6 +6440,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alert_chk.setChecked(data.get("alert", True))
         self.unk_chk.setChecked(data.get("unk", True))
         self.names_chk.setChecked(data.get("names", True))
+        self.set_unit(str(data.get("unit", "dbm")))
         lb = data.get("labels")
         if isinstance(lb, dict):
             self.sig_labels = {k: str(v)[:30] for k, v in lb.items() if k in SIGNAL_DEFAULTS and str(v).strip()}
@@ -6481,7 +6558,8 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
             expert=self.expert, sections=dict(self.sections_open),
-            strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels))
+            strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
+            unit=self.unit)
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
@@ -7016,7 +7094,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for w in self.watch:
             txt, tone, _c = self.sig_view(w)
             rows.append(dict(w, conflict=(w["state"] == "occ" and self.is_keep_free(w["status"])), sig_txt=txt,
-                             tone=tone))
+                             tone=tone, level_txt="" if w["level"] is None else self.lvl(w["level"], suffix=True)))
         cyc = f"{self.last_cycle:.1f} s" if self.is_running() else ""
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
@@ -7818,6 +7896,36 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"décrochage des récepteurs.")
             self.refresh_alarms()
 
+    def set_unit(self, unit):
+        """Unité d'affichage des niveaux (dBm, dBµV, %). Les valeurs internes, fichiers et shows restent en dBm."""
+        unit = unit if unit in UNIT_SUFFIX else "dbm"
+        self.unit = LevelSpin.unit = LevelAxis.unit = unit
+        if self.unit_combo.currentData() != unit:
+            self.unit_combo.blockSignals(True)
+            self.unit_combo.setCurrentIndex(max(0, self.unit_combo.findData(unit)))
+            self.unit_combo.blockSignals(False)
+        for sp_ in (self.thr_spin, self.weak_spin, self.strong_spin):
+            sp_.setSingleStep(1.0)
+            sp_.refresh()
+        u = UNIT_SUFFIX[unit]
+        ax = self.spec.getPlotItem().getAxis("left")
+        self.spec.getPlotItem().setLabel("left", f"Niveau ({u})")
+        ax.picture = None
+        ax.update()
+        for c, base_ in ((C_LVL, "Niveau"), (C_MAX, "Max"), (C_THR, "Seuil")):
+            it = self.watch_table.horizontalHeaderItem(c)
+            if it is not None:
+                it.setText(base_ if unit == "dbm" else f"{base_} ({u})")
+        for w in self.watch:
+            w["sig"] = None
+        self.update_watch_table(force=True)
+        self.refresh_alarms()
+        if self.wall is not None and self.wall.isVisible():
+            self.wall.rebuild()
+
+    def lvl(self, dbm, suffix=False):
+        return fmt_level(dbm, self.unit, 1, suffix)
+
     def edit_labels(self):
         dlg = LabelsDialog(self, self.sig_labels)
         if dlg.exec():
@@ -7890,10 +7998,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     n[st] += 1
                 n_conf += conf
                 n_abs += absn
-            lv = "—" if w["level"] is None else f'{w["level"]:.1f}'
-            mx = "—" if w["max"] is None else f'{w["max"]:.1f}'
+            lv, mx = self.lvl(w["level"]), self.lvl(w["max"])
             stat = w["status"] or "—"
-            thr_txt = "—" if w["thr"] is None else f'{w["thr"]:.1f}'
+            thr_txt = self.lvl(w["thr"])
             pct = w["occw"].pct()
             occ_txt = "—" if pct is None else f"{pct:.0f} %"
             band = w["band"] or "—"
@@ -8061,8 +8168,12 @@ class MainWindow(QtWidgets.QMainWindow):
         elif act is a_thr:
             w0 = self.watch[rows[0]]
             cur = w0["thr"] if w0["thr"] is not None else self.thr_spin.value()
+            u = self.unit
+            lo_, hi_ = (0.0, 100.0) if u == "pct" else (to_unit(-140.0, u), to_unit(20.0, u))
             v, ok = QtWidgets.QInputDialog.getDouble(
-                self, "Seuil propre", f"Seuil « occupé » (dBm) pour {len(rows)} fréquence(s) :", cur, -140.0, 20.0, 1)
+                self, "Seuil propre", f"Seuil « occupé » ({UNIT_SUFFIX[u]}) pour {len(rows)} fréquence(s) :",
+                round(to_unit(cur, u), 1), lo_, hi_, 1)
+            v = from_unit(v, u)
             if ok:
                 for r in rows:
                     self.watch[r]["thr"] = v
@@ -8322,7 +8433,10 @@ class MainWindow(QtWidgets.QMainWindow):
         col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT")
                else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
-        self._auto_log(vals, w)
+        self._auto_log(vals, w)                      # fichier : toujours en dBm
+        if w["freq"]:
+            vals = list(vals)
+            vals[3] = self.lvl(level)
         for c, v in enumerate(vals):
             it = self._item(v, False, c in (2, 3))
             if c == 4:
@@ -8869,7 +8983,7 @@ class MainWindow(QtWidgets.QMainWindow):
             k = int(np.nanargmin(np.abs(x - xm)))
         except ValueError:
             return
-        self.readout.setText(f"{x[k]:.3f} MHz   {y[k]:.1f} dBm")
+        self.readout.setText(f"{x[k]:.3f} MHz   {self.lvl(float(y[k]), suffix=True)}")
 
     def capture(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -9660,7 +9774,7 @@ class MainWindow(QtWidgets.QMainWindow):
             end = now if active else a["t_end"]
             state = ("à acquitter" if not a["acked"] else "acquittée") if active else "terminée"
             vals = (ALARM_PRIO.get(a["prio"], "?"), a["kind"], a["name"], f'{a["freq"]:.3f}' if a["freq"] else "—",
-                    fmt_clock(a["t0"]), fmt_dur(end - a["t0"]), "—" if a["level"] is None else f'{a["level"]:.1f}',
+                    fmt_clock(a["t0"]), fmt_dur(end - a["t0"]), self.lvl(a["level"], suffix=True),
                     " · ".join(x for x in (a["layer"], "" if a["kind"] == "ABSENT" else a.get("info", "")) if x),
                     state)
             for c, v in enumerate(vals):

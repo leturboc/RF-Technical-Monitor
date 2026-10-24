@@ -128,6 +128,13 @@ Le sens dépend du **statut** de la fréquence :
 
 Même code couleur sur le mur, les repères du spectre et la page web.
 
+- **Tes mots** : ☰ Plus › 🔤 Mots affichés — remplace OK, ABSENT, CONFLIT, libre… par ce que tu veux.
+- **INTERMOD** : quand un signal apparaît sur une fréquence « doit rester libre » et qu'il correspond à un produit
+  d'intermodulation (ordre 3 ou 5) de tes émetteurs qui émettent, il est affiché INTERMOD au lieu de CONFLIT, avec la
+  formule dans l'alarme et le journal (ex. « IM3 : 2×HF 1 − HF 3 »).
+- **Unité des niveaux** (Réglages › Détection) : dBm, dBµV (50 Ω, = dBm + 107) ou % façon WSM (0 % = −120 dBm,
+  100 % = 0 dBm) : seuils, liste, mur, axe du spectre, alarmes, page web. Les fichiers restent en dBm.
+
 **Alerte « trop fort »** (Réglages › Détection) : un signal au-dessus du seuil (−25 dBm par défaut, ligne violette
 sur le spectre) déclenche ⚠ TROP FORT — talkie collé à l'antenne, burst, émetteur trop près : risque de saturation
 et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.

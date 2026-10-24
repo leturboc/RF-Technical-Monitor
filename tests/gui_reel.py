@@ -230,6 +230,22 @@ step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
 for name in ("layout_analyzer", "layout_monitor", "layout_dual", "layout_standard"):
     step(name, getattr(win, name)); wait(1200); shot(win, name)
 
+# unités : saisie d'un seuil en % / dBµV dans la vraie case Qt, axe du spectre
+win.thr_spin.setValue(-80.0)
+win.set_unit("dbuv")
+app.processEvents()
+check("unité dBµV : la case affiche 27.0 dBµV", win.thr_spin.text() == "27.0 dBµV", win.thr_spin.text())
+check("unité dBµV : axe gradué", win.spec.getPlotItem().getAxis("left").tickStrings([-80.0], 1.0, 10) == ["27"])
+win.set_unit("pct")
+win.thr_spin.lineEdit().setText("50 %")
+win.thr_spin.interpretText()
+check("unité % : taper « 50 % » → seuil à -60 dBm", abs(win.thr_spin.value() + 60.0) < 0.01, str(win.thr_spin.value()))
+check("unité % : en-tête de la liste", win.watch_table.horizontalHeaderItem(m.C_LVL).text() == "Niveau (%)")
+win.thr_spin.setValue(-80.0)
+win.set_unit("dbm")
+app.processEvents()
+check("retour dBm", win.thr_spin.text() == "-80.0 dBm", win.thr_spin.text())
+
 # aide au survol : tout bouton / case / liste visible a une explication
 win.set_expert(True)
 for k_ in win.sections:
@@ -334,6 +350,7 @@ check("1280×720 : boutons du haut visibles en entier", all(vis.values()), str(v
 win.resize(1700, 980); wait(800)
 
 # dialogues modaux
+step("edit_labels", win.edit_labels)
 step("edit_statuses", win.edit_statuses)
 step("edit_colors", win.edit_colors)
 step("edit_plan", win.edit_plan)

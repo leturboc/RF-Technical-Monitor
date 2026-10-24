@@ -525,6 +525,23 @@ check("config : seuil trop fort", cf["strong_on"] is True and cf["strong_thr"] =
 doc = m.show_doc(cf, dict(name="x"))
 check("show : seuil trop fort dedans", doc["show"].get("strong_thr") == -30.0)
 
+# ------------------------------------------------------------- unité des niveaux
+win.set_unit("dbuv")
+sw()
+win.update_watch_table(force=True)
+r_s = win.watch.index(ws["Spectera ch 38"])
+check("liste en dBµV : -65 dBm → 42.0", win.watch_table.item(r_s, m.C_LVL).text() == "42.0", win.watch_table.item(r_s, m.C_LVL).text())
+check("seuils internes toujours en dBm", -131 < win.thr_spin.value() < 1)
+cfu = win._collect_config(False)
+check("config : unité", cfu["unit"] == "dbuv" and cfu["thr"] == win.thr_spin.value())
+win.set_unit("pct")
+win.update_watch_table(force=True)
+check("liste en % : -65 dBm → 46", win.watch_table.item(r_s, m.C_LVL).text() == "46", win.watch_table.item(r_s, m.C_LVL).text())
+win._apply_config(dict(cfu, unit="??"))
+check("unité inconnue → dBm", win.unit == "dbm")
+win.set_unit("dbm")
+ws = {w["name"]: w for w in win.watch}
+
 # changement de largeur par le menu
 answers = ["Bloc 6 MHz"]
 W.QInputDialog.getItem = staticmethod(lambda *a, **k: (answers.pop(0), True))
