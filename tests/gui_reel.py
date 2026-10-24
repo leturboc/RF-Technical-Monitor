@@ -323,6 +323,10 @@ check("largeur mini ≤ 1280 px (portable)", ok_w, str(win.minimumSizeHint()))
 print(("OK  " if ok_w else "FAIL") + " détail largeurs : " + size_report(), flush=True)
 check("hauteur mini ≤ 700 px (1366×768 moins barre des tâches et titre)", win.minimumSizeHint().height() <= 700, str(win.minimumSizeHint()))
 win.resize(1280, 720); wait(1200); shot(win, "taille_1280x720")
+_t = win.watch_table
+_sig_x = _t.columnViewportPosition(m.C_SIG) + _t.columnWidth(m.C_SIG)
+check("1280×720 : colonne Signal visible sans faire défiler", 0 < _sig_x <= _t.viewport().width() + 2,
+      f"{_sig_x} / {_t.viewport().width()}")
 vis = {t: b.isVisible() and b.visibleRegion().boundingRect().width() >= b.width() - 2
        for t, b in (("Démarrer", win.start_btn), ("🔔", win.alarm_btn))}
 vis["Shows / Plus"] = all(a.isVisible() for a in win.cmd_bar.findChildren(W.QPushButton) if a.text() in ("🎪 Shows", "☰ Plus"))

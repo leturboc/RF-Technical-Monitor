@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.1.1"
+APP_VER = "7.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1160,6 +1160,36 @@ def key_dec(s):
     return None
 
 
+def signal_view(state, keep_free=False, keep_on=False, absent=False):
+    """Ce que veut dire le signal mesuré POUR CETTE fréquence -> (texte, ton : ok | bad | warn | none).
+    « Doit émettre » : signal = OK, c'est bien notre émetteur (vert) ; « doit rester libre » : signal = conflit (rouge) ;
+    sans statut : occupé = pas de place ici (rouge)."""
+    if keep_on:
+        if absent:
+            return "⚠ ABSENT", "bad"
+        return {"occ": ("OK", "ok"), "weak": ("OK (faible)", "warn"),
+                "free": ("muet", "warn")}.get(state, ("—", "none"))
+    if keep_free:
+        return {"occ": ("⚠ CONFLIT", "bad"), "weak": ("signal faible", "warn"),
+                "free": ("✔ libre", "ok")}.get(state, ("—", "none"))
+    return {"occ": ("OCCUPÉ", "bad"), "weak": ("faible", "warn"), "free": ("libre", "ok")}.get(state, ("—", "none"))
+
+
+def strong_peaks(F, L, thr, merge=1.0, limit=6):
+    """Signaux plus forts que thr (dBm) : [(MHz, dBm)] du plus fort au plus faible, un seul par zone de merge MHz."""
+    if F is None or len(F) == 0:
+        return []
+    idx = np.nonzero(np.asarray(L) > thr)[0]
+    out = []
+    for i in sorted(idx, key=lambda k: -L[k]):
+        f = float(F[i])
+        if all(abs(f - g) > merge for g, _ in out):
+            out.append((f, float(L[i])))
+            if len(out) >= limit:
+                break
+    return out
+
+
 MK_STATES = (("occ", "Occupées"), ("weak", "Faibles"), ("free", "Libres"), ("none", "Sans mesure"))
 
 
@@ -1864,7 +1894,7 @@ def safe_filename(s, default="export"):
 # Shows : ce qui appartient à un événement (rappelable d'une année à l'autre), sans les préférences du logiciel
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
-SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus",
+SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
              "points", "rbw", "zrbw", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names")
@@ -2265,7 +2295,9 @@ def web_state(rows, alarms, info):
         st = r.get("state")
         out.append(dict(name=r["name"], freq=round(float(r["freq"]), 4),
                         level=None if r.get("level") is None else round(float(r["level"]), 1),
-                        state=st or "", state_txt=STATE_TXT.get(st, "—"), status=r.get("status") or "",
+                        state=st or "", state_txt=r.get("sig_txt") or STATE_TXT.get(st, "—"),
+                        tone=r.get("tone") or {"occ": "bad", "weak": "warn", "free": "ok"}.get(st, "none"),
+                        status=r.get("status") or "",
                         scene=r.get("scene") or "", group=r.get("group") or "",
                         alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
     al = [dict(kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
@@ -2285,7 +2317,7 @@ h1{font-size:17px;margin:0 0 6px}#meta{color:var(--mut);font-size:13px}select{fo
 #al{margin:10px 14px}.al{background:var(--occ);color:#fff;border-radius:8px;padding:8px 10px;margin:6px 0;font-weight:600}
 .al.ack{background:var(--abs)}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
 .c{background:var(--card);border-radius:10px;padding:8px 10px;border-left:6px solid #8885}
-.c.occ{border-color:var(--occ)}.c.weak{border-color:var(--weak)}.c.free{border-color:var(--free)}
+.c.bad{border-color:var(--occ)}.c.warn{border-color:var(--weak)}.c.ok{border-color:var(--free)}
 .c.alarm{background:var(--abs);color:#000}.n{font-weight:700;font-size:16px}.f,.s{color:var(--mut);font-size:13px}
 .c.alarm .f,.c.alarm .s{color:#000}.l{font-size:15px;margin-top:2px}#stale{display:none;background:var(--occ);color:#fff;
 padding:6px 14px;font-weight:700}
@@ -2306,9 +2338,9 @@ function draw(d){$("#t").textContent=d.title||"TinySA Monitor";
  const lay=r=>r.scene+(r.group?" › "+r.group:""),ok=r=>!f.value||lay(r)===f.value||r.scene===f.value;
  $("#al").innerHTML=d.alarms.filter(a=>!a.freq||!f.value||d.rows.some(r=>ok(r)&&Math.abs(r.freq-a.freq)<1e-3)).map(a=>
   `<div class="al${a.acked?" ack":""}">⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}</div>`).join("");
- $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.state}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
+ $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
   <div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div>
-  <div class="l">${r.alarm?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level!==null?" · "+r.level.toFixed(1)+" dBm":""}</div>
+  <div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level!==null?" · "+r.level.toFixed(1)+" dBm":""}</div>
   <div class="s">${esc(lay(r))}</div></div>`).join("")}
 $("#flt").onchange=e=>{keep=e.target.value;try{localStorage.setItem("flt",keep)}catch(x){};if(data)draw(data)};
 tick();setInterval(tick,2000);
@@ -5006,23 +5038,16 @@ class WallWindow(QtWidgets.QWidget):
             if self._sig[i] == sig:
                 continue
             self._sig[i] = sig
-            if absn:
-                bg = blend(th["st_unk"], base, 0.9)
-            elif st == "occ":
-                bg = blend(th["st_occ"], base, 0.85)
-            elif st == "weak":
-                bg = blend(th["st_weak"], base, 0.6)
-            elif st == "free":
-                bg = blend(th["st_free"], base, 0.30)
-            else:
-                bg = blend(th["st_none"], base, 0.25)
+            sig_txt, tone, tone_col = ow.sig_view(w)
+            bg = {"bad": blend(tone_col, base, 0.85), "warn": blend(tone_col, base, 0.6),
+                  "ok": blend(tone_col, base, 0.45)}.get(tone, blend(th["st_none"], base, 0.25))
             fg = contrast_text(bg)
             bd = ow.status_color(w["status"]) if w["status"] else bg
             name = ("⚠ " if (conf or absn) else "") + (w["name"] or "—")
             occ = "" if pct is None else f" · occ. {pct:.0f} %"
             html = (f"<div style='font-size:{fs}px;font-weight:bold'>{_html_esc(name)}</div>"
                     f"<div style='font-size:{max(8, int(fs * 0.72))}px'>{w['freq']:.3f} MHz</div>"
-                    f"<div style='font-size:{int(fs * 0.95)}px'>{'ABSENT · ' if absn else ''}{lv}{occ}</div>")
+                    f"<div style='font-size:{int(fs * 0.95)}px'>{_html_esc(sig_txt)} · {lv}{occ}</div>")
             if layer:
                 html += f"<div style='font-size:{max(8, int(fs * 0.6))}px'>{_html_esc(layer)}</div>"
             self.tiles[i].setText(html)
@@ -5091,6 +5116,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_names = ["tinySA 1", "tinySA 2"]   # noms de position (« Plateau », « FOH »…)
         self.band_src = {}              # id bande -> n° du tinySA qui a fourni le dernier balayage
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
+        self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
         self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
         self.show_path = ""
         self.recent_shows = []
@@ -5247,6 +5273,9 @@ class MainWindow(QtWidgets.QMainWindow):
         "＋ Groupe": "Crée un groupe dans une scène (ex. Micros HF, IEM, Intercom). Clic droit sur un groupe :\n"
                      "priorité des alarmes, couleur, import.",
         "Afficher": TIPS_ATTR["showref_chk"],
+        "✔✔ Tout acquitter": "Coupe le son de toutes les alarmes en cours ; elles restent affichées tant que la\n"
+                             "cause est là.",
+        "🗑 Effacer les terminées": "Retire de la liste les alarmes terminées (le journal les garde).",
     }
 
     TIPS_MENU = {
@@ -5582,6 +5611,22 @@ class MainWindow(QtWidgets.QMainWindow):
         dform.addRow("Fenêtre :", self.win_spin)
         dform.addRow("Occupation sur :", self.occ_combo)
         dform.addRow("TX absent après :", self.absent_spin)
+        self.strong_chk = QtWidgets.QCheckBox("Alerte « trop fort » au-dessus de")
+        self.strong_chk.setChecked(True)
+        self.strong_chk.setToolTip(
+            "Un signal très fort (talkie collé à l'antenne, burst, émetteur trop près, intermod) peut saturer les\n"
+            "récepteurs et faire décrocher les liaisons : alarme ⚠ TROP FORT dès qu'un signal des bandes balayées\n"
+            "dépasse ce niveau (ligne violette sur le spectre). Le tinySA lui-même sature vers −10 dBm.")
+        self.strong_spin = QtWidgets.QDoubleSpinBox()
+        self.strong_spin.setRange(-80.0, 10.0)
+        self.strong_spin.setDecimals(0)
+        self.strong_spin.setSuffix(" dBm")
+        self.strong_spin.setValue(-25.0)
+        self.strong_spin.setToolTip(self.strong_chk.toolTip())
+        for w_ in (self.strong_chk, self.strong_spin):
+            (w_.toggled if w_ is self.strong_chk else w_.valueChanged).connect(lambda *_: self._strong_changed())
+        dform.addRow(self.strong_chk)
+        dform.addRow("", self.strong_spin)
         dform.addRow(self.alert_chk)
         dform.addRow(self.unk_chk)
 
@@ -5756,6 +5801,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.weak_line.sigPositionChanged.connect(self._weak_from_line)
         pi.addItem(self.thr_line)
         pi.addItem(self.weak_line)
+        self.strong_line = pg.InfiniteLine(pos=-25, angle=0, movable=False,
+                                           pen=pg.mkPen("#b06cff", width=1.4, style=Qt.PenStyle.DashDotLine))
+        pi.addItem(self.strong_line)
         self.proxy = pg.SignalProxy(self.spec.scene().sigMouseMoved, rateLimit=30, slot=self.on_mouse)
         self._ovl_timer = QtCore.QTimer(self)
         self._ovl_timer.setSingleShot(True)
@@ -5913,7 +5961,11 @@ class MainWindow(QtWidgets.QMainWindow):
                        (C_LAYER, "Scène et groupe de cette fréquence. Double-clic pour l'affecter."),
                        (C_BAND, "Canal TV et attribution du spectre à cette fréquence (selon le pays).")):
             self.watch_table.horizontalHeaderItem(c).setToolTip(tip)
-        self.watch_table.horizontalHeader().setSectionResizeMode(C_NAME, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        # le nom ne s'étire pas (sinon Signal / Statut sortent de la vue quand le panneau est étroit) : la dernière
+        # colonne (attribution) prend la place restante
+        self.watch_table.horizontalHeader().setSectionResizeMode(C_NAME, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.watch_table.setColumnWidth(C_NAME, 120)
+        self.watch_table.horizontalHeader().setStretchLastSection(True)
         for c, w in ((C_FREQ, 72), (C_LVL, 56), (C_MAX, 56), (C_THR, 56), (C_SIG, 78), (C_STAT, 84),
                      (C_OCC, 48), (C_LAYER, 120), (C_BAND, 190)):
             self.watch_table.setColumnWidth(c, w)
@@ -6236,6 +6288,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alert_chk.setChecked(data.get("alert", True))
         self.unk_chk.setChecked(data.get("unk", True))
         self.names_chk.setChecked(data.get("names", True))
+        self.strong_chk.setChecked(bool(data.get("strong_on", True)))
+        try:
+            self.strong_spin.setValue(float(data.get("strong_thr", -25.0)))
+        except (TypeError, ValueError):
+            pass
+        self._strong_changed()
         self.set_expert(bool(data.get("expert", False)))
         so = data.get("sections")
         if isinstance(so, dict):
@@ -6343,7 +6401,8 @@ class MainWindow(QtWidgets.QMainWindow):
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
-            expert=self.expert, sections=dict(self.sections_open))
+            expert=self.expert, sections=dict(self.sections_open),
+            strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value())
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
@@ -6874,7 +6933,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.send_notify(title, body, a["prio"])
 
     def web_json(self):
-        rows = [dict(w, conflict=(w["state"] == "occ" and self.is_keep_free(w["status"]))) for w in self.watch]
+        rows = []
+        for w in self.watch:
+            txt, tone, _c = self.sig_view(w)
+            rows.append(dict(w, conflict=(w["state"] == "occ" and self.is_keep_free(w["status"])), sig_txt=txt,
+                             tone=tone))
         cyc = f"{self.last_cycle:.1f} s" if self.is_running() else ""
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
@@ -7633,6 +7696,59 @@ class MainWindow(QtWidgets.QMainWindow):
     def is_keep_free(self, name):
         return bool(name) and any(s["name"] == name and s.get("free") for s in self.statuses)
 
+    def _strong_changed(self):
+        self.strong_line.setValue(self.strong_spin.value())
+        self.strong_line.setVisible(self.strong_chk.isChecked())
+        if not self.strong_chk.isChecked():
+            now = time.time()
+            for k in [k for k in self.alarms.active if k[0] == "FORT"]:
+                self.alarms.clear(k, now)
+            self._strong_src = {}
+
+    def check_strong(self, bid, f, l):
+        """Alarme ⚠ TROP FORT : un signal au-dessus du seuil « trop fort » dans la bande qui vient d'être balayée.
+        Une alarme par MHz ; elle se termine quand ce MHz repasse 3 dB sous le seuil."""
+        src = self._strong_src
+        if bid in CALIB_IDS or not self.strong_chk.isChecked() or l is None or not len(l):
+            return
+        thr, now = self.strong_spin.value(), time.time()
+        peaks = strong_peaks(f, l, thr)
+        keep = {("FORT", int(round(pf))) for pf, _ in peaks}
+        # fin d'alarme : seulement pour les MHz couverts par CE balayage (hystérésis 3 dB)
+        for key in [k for k, b in src.items() if b == bid and k not in keep]:
+            mhz = key[1]
+            seg = l[(f >= mhz - 0.5) & (f <= mhz + 0.5)]
+            if not len(seg) or seg.max() < thr - 3.0:
+                self.alarms.clear(key, now)
+                src.pop(key, None)
+        new = None
+        for pf, pl in peaks:
+            key = ("FORT", int(round(pf)))
+            src[key] = bid
+            w = min(self.watch, key=lambda w_: abs(w_["freq"] - pf), default=None)
+            near = w is not None and abs(w["freq"] - pf) <= max(0.3, (w.get("bw") or 0) / 2)
+            name = f"{w['name']} (trop près ?)" if near else f"Signal {pf:.3f} MHz"
+            seen = self.seen_by(pf)
+            if self.alarms.raise_(key, "TROP FORT", name, pf, 2, now, pl, self.layer_text(w) if near else "",
+                                  ("risque de décrochage" + (f" · {seen}" if seen else ""))):
+                new = (name, pf, pl)
+                self.log_event(dict(name=name, freq=pf, scene="", group="", note=f"> {thr:.0f} dBm"), pl, "TROP FORT")
+        if new is not None:
+            self._alarm_sound(2)
+            self.set_status(f"⚠ TROP FORT : {new[0]} à {new[2]:.0f} dBm ({new[1]:.3f} MHz) — risque de saturation / "
+                            f"décrochage des récepteurs.")
+            self.refresh_alarms()
+
+    def sig_view(self, w):
+        """(texte, ton, couleur) du signal de w selon son statut (voir signal_view)."""
+        txt, tone = signal_view(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
+                                bool(w.get("absent")))
+        return txt, tone, self.tone_color(tone)
+
+    def tone_color(self, tone):
+        th = self.theme
+        return {"ok": th["st_free"], "bad": th["st_occ"], "warn": th["st_weak"]}.get(tone, th["st_none"])
+
     def state_color(self, st):
         return {"free": self.theme["st_free"], "weak": self.theme["st_weak"],
                 "occ": self.theme["st_occ"]}.get(st, self.theme["st_none"])
@@ -7701,9 +7817,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if not force and w["sig"] == sig:
                 continue
             w["sig"] = sig
-            row_bg = {"occ": blend(th["st_occ"], base, 0.55), "weak": blend(th["st_weak"], base, 0.35)}.get(st, base)
-            row_fg = contrast_text(row_bg) if st in ("occ", "weak") else th["ui_text"]
-            sig_txt = CONFLICT_TEXT if conf else (ABSENT_TEXT if absn else SIG_TEXT[st])
+            sig_txt, tone, tone_col = self.sig_view(w)
+            row_bg = {"bad": blend(th["st_occ"], base, 0.55), "warn": blend(th["st_weak"], base, 0.30)}.get(tone, base)
+            row_fg = contrast_text(row_bg) if tone in ("bad", "warn") else th["ui_text"]
             cells = ((C_NAME, w["name"]), (C_FREQ, f'{w["freq"]:.3f}'), (C_LVL, lv), (C_MAX, mx),
                      (C_THR, thr_txt), (C_SIG, sig_txt), (C_STAT, stat), (C_OCC, occ_txt),
                      (C_LAYER, layer or "—"), (C_BAND, band))
@@ -7714,11 +7830,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 if it.text() != txt:
                     it.setText(txt)
                 bg, fg = row_bg, row_fg
-                if c == C_SIG and absn:
-                    bg = blend(th["st_occ"], base, 1.0)
-                    fg = contrast_text(bg)
-                elif c == C_SIG and st is not None:
-                    bg = blend(self.state_color(st), base, 1.0 if conf else 0.8)
+                if c == C_SIG and tone != "none":
+                    bg = blend(tone_col, base, 1.0 if tone == "bad" else 0.85)
                     fg = contrast_text(bg)
                 elif c == C_STAT and w["status"]:
                     bg = blend(self.status_color(w["status"]), base, 0.75)
@@ -8116,7 +8229,8 @@ class MainWindow(QtWidgets.QMainWindow):
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
                 f"{level:.1f}" if w["freq"] else "—", event,
                 self.layer_text(w) if "scene" in w else "", w.get("note", "")]
-        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "ABSENT", "APPAREIL PERDU") else self.theme["st_unk"]
+        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "ABSENT", "APPAREIL PERDU", "TROP FORT")
+               else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)
         for c, v in enumerate(vals):
@@ -8175,6 +8289,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mh = self.maxhold.get(bid)
         self.maxhold[bid] = np.maximum(mh, l) if (mh is not None and mh.shape == l.shape) else l.copy()
         self.update_watch_levels()
+        self.check_strong(bid, f, l)
         self.update_watch_table()
         if self.unk_chk.isChecked():
             self.detect_unknown(bid, f, l)
@@ -8592,7 +8707,7 @@ class MainWindow(QtWidgets.QMainWindow):
             elif mode == "group":
                 col = self.group_color(w["scene"], w["group"])
             if col is None:
-                col = self.state_color(w["state"])
+                col = self.sig_view(w)[2] if w["state"] is not None else self.theme["st_none"]
             seg = groups.setdefault((col, False), ([], []))
             bw = w.get("bw") or 0.0
             if bw:                         # bloc : bord gauche, bord droit, barre en haut
@@ -9391,7 +9506,7 @@ class MainWindow(QtWidgets.QMainWindow):
         now = time.time()
         if self.alarms.active:
             fks = {int(round(w["freq"] * 1000)) for w in self.watch}
-            for key in [k for k in self.alarms.active if k[0] != "APPAREIL" and k[1] not in fks]:
+            for key in [k for k in self.alarms.active if k[0] not in ("APPAREIL", "FORT") and k[1] not in fks]:
                 self.alarms.clear(key, now)
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])

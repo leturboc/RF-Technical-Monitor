@@ -441,6 +441,49 @@ check("fréquence dans un bloc : avertissement", txt.startswith("⚠ dans le blo
 win.watch.pop(r_in)
 win.rebuild_watch_table()
 ws = {w["name"]: w for w in win.watch}
+# ------------------------------------------------------------- sens du signal selon le statut
+sw()
+r_s = win.watch.index(ws["Spectera ch 38"])
+r_r = win.watch.index(ws["Réserve ch 40"])
+win.update_watch_table(force=True)
+check("doit émettre + signal → « OK »", win.watch_table.item(r_s, m.C_SIG).text() == "OK",
+      win.watch_table.item(r_s, m.C_SIG).text())
+check("doit rester libre + vide → « ✔ libre »", win.watch_table.item(r_r, m.C_SIG).text() == "✔ libre")
+sw(intrus=True)
+win.update_watch_table(force=True)
+check("doit rester libre + intrus → « ⚠ CONFLIT »", win.watch_table.item(r_r, m.C_SIG).text() == "⚠ CONFLIT")
+check("couleur : émetteur = vert, conflit = rouge", win.sig_view(ws["Spectera ch 38"])[1] == "ok"
+      and win.sig_view(ws["Réserve ch 40"])[1] == "bad")
+
+# ------------------------------------------------------------- alarme « trop fort »
+win.strong_chk.setChecked(True)
+win.strong_spin.setValue(-25.0)
+win.alarms.reset()
+Lf = -100 + 0 * Fs
+Lf[np.argmin(abs(Fs - 603.0))] = -12                    # HF étroite collée à l'antenne
+win.on_sweep(bidS, Fs, Lf)
+fa = [a for a in win.alarms.active.values() if a["kind"] == "TROP FORT"]
+check("trop fort : alarme critique", len(fa) == 1 and fa[0]["prio"] == 2 and abs(fa[0]["freq"] - 603.0) < 0.1, str(fa))
+check("trop fort : nom de la fréquence proche", fa and fa[0]["name"] == "HF étroite (trop près ?)", str(fa))
+win._alarm_tick()
+check("trop fort : pas effacée par le nettoyage du tick", any(a["kind"] == "TROP FORT" for a in win.alarms.active.values()))
+Lf[np.argmin(abs(Fs - 603.0))] = -26.5                  # redescend, mais dans l'hystérésis
+win.on_sweep(bidS, Fs, Lf)
+check("trop fort : hystérésis 3 dB (toujours là à -26,5)", any(a["kind"] == "TROP FORT" for a in win.alarms.active.values()))
+Lf[np.argmin(abs(Fs - 603.0))] = -40
+win.on_sweep(bidS, Fs, Lf)
+check("trop fort : fin d'alarme quand ça redescend", not any(a["kind"] == "TROP FORT" for a in win.alarms.active.values()))
+win.strong_chk.setChecked(False)
+Lf[np.argmin(abs(Fs - 603.0))] = -5
+win.on_sweep(bidS, Fs, Lf)
+check("trop fort désactivé : pas d'alarme", not any(a["kind"] == "TROP FORT" for a in win.alarms.active.values()))
+win.strong_chk.setChecked(True)
+win.strong_spin.setValue(-30.0)
+cf = win._collect_config(False)
+check("config : seuil trop fort", cf["strong_on"] is True and cf["strong_thr"] == -30.0)
+doc = m.show_doc(cf, dict(name="x"))
+check("show : seuil trop fort dedans", doc["show"].get("strong_thr") == -30.0)
+
 # changement de largeur par le menu
 answers = ["Bloc 6 MHz"]
 W.QInputDialog.getItem = staticmethod(lambda *a, **k: (answers.pop(0), True))

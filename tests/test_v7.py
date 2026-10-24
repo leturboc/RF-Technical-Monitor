@@ -368,6 +368,24 @@ check("nom de fichier : caractères interdits", ns["show_filename"](dict(name="A
 # garde-fou : une case de menu branchée sur « lambda checked=False » reçoit toujours False avec PySide6
 bad = re.findall(r"\.(?:triggered|toggled|clicked)\.connect\(lambda ([A-Za-z]\w*)=", src)
 check("pas de lambda à argument optionnel sur triggered / toggled / clicked", bad, [])
+sv = ns["signal_view"]
+check("doit émettre + signal = OK (vert)", sv("occ", keep_on=True), ("OK", "ok"))
+check("doit émettre + muet = orange, puis ABSENT rouge", (sv("free", keep_on=True), sv("free", keep_on=True, absent=True)),
+      (("muet", "warn"), ("⚠ ABSENT", "bad")))
+check("doit rester libre + signal = CONFLIT (rouge)", sv("occ", keep_free=True), ("⚠ CONFLIT", "bad"))
+check("doit rester libre + rien = ✔ libre (vert)", sv("free", keep_free=True), ("✔ libre", "ok"))
+check("sans statut : occupé = pas de place (rouge)", sv("occ"), ("OCCUPÉ", "bad"))
+check("pas de mesure", sv(None, keep_on=True), ("—", "none"))
+sp = ns["strong_peaks"]
+Fs_ = np.linspace(470, 700, 2301)
+Ls_ = -100 + 0 * Fs_
+Ls_[np.argmin(abs(Fs_ - 500.0))] = -15
+Ls_[np.argmin(abs(Fs_ - 500.3))] = -18                   # même zone (< 1 MHz) : un seul pic
+Ls_[np.argmin(abs(Fs_ - 650.0))] = -22
+check("trop fort : 2 zones, la plus forte d'abord", [(round(f, 1), l) for f, l in sp(Fs_, Ls_, -25.0)],
+      [(500.0, -15.0), (650.0, -22.0)])
+check("trop fort : rien sous le seuil", sp(Fs_, Ls_, -10.0), [])
+check("trop fort : balayage vide", sp(np.array([]), np.array([]), -25.0), [])
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
 print("\nÉCHECS:", fails)

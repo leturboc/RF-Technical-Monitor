@@ -116,6 +116,22 @@ L'intermodulation ne tient pas compte de la largeur des blocs (calcul sur leur f
 
 Le jeton Telegram reste dans la config de ce PC : il n'est pas copié dans les fichiers de show.
 
+## Lire la colonne « Signal »
+
+Le sens dépend du **statut** de la fréquence :
+
+| Statut | Signal présent | Pas de signal |
+|---|---|---|
+| Doit émettre (En service…) | **OK** (vert), « OK (faible) » (orange) | « muet » (orange), puis **⚠ ABSENT** (rouge) |
+| Doit rester libre | **⚠ CONFLIT** (rouge) | **✔ libre** (vert) |
+| Sans statut | **OCCUPÉ** (rouge : pas de place ici) | libre (vert) |
+
+Même code couleur sur le mur, les repères du spectre et la page web.
+
+**Alerte « trop fort »** (Réglages › Détection) : un signal au-dessus du seuil (−25 dBm par défaut, ligne violette
+sur le spectre) déclenche ⚠ TROP FORT — talkie collé à l'antenne, burst, émetteur trop près : risque de saturation
+et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
+
 ## Interface : mode simple / expert, panneaux libres
 
 - En haut : **Port**, **▶ Démarrer**, **🎪 Shows**, **🔔 alarmes** et **☰ Plus** (outils, fenêtres et dispositions, mur,
@@ -124,6 +140,9 @@ Le jeton Telegram reste dans la config de ce PC : il n'est pas copié dans les f
   TX absent, alerte, bandes, 2ᵉ tinySA, pays). **☰ Plus › Mode expert** (ou le bouton en haut des réglages) montre
   aussi RBW, entrée, LNA, atténuateur, offset, segments, fenêtre, seuil sur référence, calibration, relais…
 - Les réglages sont en **sections repliables** (clic sur le titre) ; l'état est mémorisé.
+- **Info-bulles** sur chaque bouton, case et liste (et dans les menus) ; l'explication s'affiche aussi en bas de la
+  fenêtre au survol.
+- Le **mur de fréquences** est un panneau (en onglet à côté du spectre) : F11 le détache en plein écran.
 - **Tous les panneaux sont détachables**, y compris le **spectre** : attrape un panneau par sa barre de titre pour
   le déplacer, le mettre sur l'autre écran ou le ré-accrocher ; ☰ Plus › Fenêtres pour les réafficher.
 

@@ -75,6 +75,8 @@ al = [dict(kind="ABSENT", name="HF 2", freq=471.8, prio=2, acked=False, layer="G
            t0=1.0, t_end=None),
       dict(kind="CONFLIT", name="X", freq=1.0, prio=1, acked=False, layer="", info="", t0=1.0, t_end=5.0)]
 st = ws(rows, al, dict(title="T", time="12:00:00", running=True, cycle="1.0 s"))
+st2 = ws([dict(rows[0], sig_txt="OK", tone="ok")], [], dict(title="T", time="t", running=True, cycle=""))
+check("état web : texte et ton selon le statut", (st2["rows"][0]["state_txt"], st2["rows"][0]["tone"]) == ("OK", "ok"))
 check("état web : 3 fréquences", len(st["rows"]) == 3 and st["rows"][0]["level"] == -60.0)
 check("état web : états lisibles", [r["state_txt"] for r in st["rows"]] == ["OCCUPÉ", "—", "libre"])
 check("état web : ABSENT marqué", st["rows"][2]["alarm"] == "ABSENT")
@@ -179,7 +181,7 @@ else:
         pg.wait_for_selector(".c", timeout=5000)
         cards = pg.locator(".c")
         check("navigateur : 3 cartes", cards.count() == 3, str(cards.count()))
-        check("navigateur : carte occupée", "occ" in (cards.nth(0).get_attribute("class") or ""))
+        check("navigateur : carte occupée (ton rouge)", "bad" in (cards.nth(0).get_attribute("class") or ""))
         check("navigateur : carte en alarme", "alarm" in (cards.nth(2).get_attribute("class") or "")
               and "ABSENT" in cards.nth(2).inner_text())
         check("navigateur : bandeau d'alarme", "ABSENT — HF 2" in pg.locator("#al").inner_text())
