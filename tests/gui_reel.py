@@ -141,7 +141,27 @@ step("toggle_alarm_dock", win.toggle_alarm_dock); wait(1500); shot(win, "panneau
 print("ALARMES actives:", len(win.alarms.active), "btn:", win.alarm_btn.text(), flush=True)
 
 # petite taille d'écran
-check("largeur mini ≤ 1280 px (portable)", win.minimumSizeHint().width() <= 1280, str(win.minimumSizeHint()))
+def size_report():
+    """Qui impose la largeur ? (docks + widgets visibles les plus larges)"""
+    out = [f"central {win.centralWidget().minimumSizeHint().width()}"]
+    for d in win.docks:
+        if d.isVisible():
+            out.append(f"{d.objectName()} {d.minimumSizeHint().width()}{'(flottant)' if d.isFloating() else ''}")
+    wide = []
+    for w in win.findChildren(QtWidgets.QWidget):
+        if w.isVisible() and not isinstance(w, (QtWidgets.QDockWidget, QtWidgets.QScrollBar)):
+            ign = w.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Ignored
+            mw = w.minimumWidth() if ign else max(w.minimumSizeHint().width(), w.minimumWidth())
+            if mw > 250:
+                txt = getattr(w, "text", lambda: "")() if hasattr(w, "text") else ""
+                wide.append((mw, f"{type(w).__name__}:{w.objectName() or str(txt)[:30]}"))
+    wide.sort(reverse=True)
+    return " | ".join(out) + " || " + " ; ".join(f"{n}={v}" for v, n in wide[:12])
+
+
+ok_w = win.minimumSizeHint().width() <= 1280
+check("largeur mini ≤ 1280 px (portable)", ok_w, str(win.minimumSizeHint()))
+print(("OK  " if ok_w else "FAIL") + " détail largeurs : " + size_report(), flush=True)
 check("hauteur mini ≤ 720 px", win.minimumSizeHint().height() <= 720, str(win.minimumSizeHint()))
 win.resize(1280, 720); wait(1200); shot(win, "taille_1280x720")
 win.resize(1700, 980); wait(800)

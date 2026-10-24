@@ -4158,6 +4158,13 @@ class MainWindow(QtWidgets.QMainWindow):
         return h
 
     @staticmethod
+    def _elastic(lab):
+        """Texte qui change en direct (compteurs, état) : coupé si trop long, n'élargit jamais la fenêtre."""
+        lab.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, lab.sizePolicy().verticalPolicy())
+        lab.setMinimumWidth(40)
+        return lab
+
+    @staticmethod
     def _flow(*groups):
         """Barre qui se replie : chaque groupe (widget, texte ou tuple) reste d'un seul tenant."""
         fl = FlowLayout()
@@ -4628,7 +4635,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.occ_only_chk = QtWidgets.QCheckBox("Occupées seulement")
         self.occ_only_chk.toggled.connect(self.apply_filter)
         fl.addLayout(self._row(self.filter_edit, self.occ_only_chk))
-        self.count_lbl = QtWidgets.QLabel("")
+        self.count_lbl = self._elastic(QtWidgets.QLabel(""))
         fl.addWidget(self.count_lbl)
         r1, r2 = QtWidgets.QHBoxLayout(), QtWidgets.QHBoxLayout()
         for txt, fn, lay in [("＋ Ajouter", self.add_watch_dialog, r1),
@@ -4733,10 +4740,11 @@ class MainWindow(QtWidgets.QMainWindow):
         left.setMinimumWidth(300)
         self._build_docks(left, ftab, ltab, self.wf_box)
 
-        self.stat_lbl = QtWidgets.QLabel("")
-        self.cycle_lbl = QtWidgets.QLabel("")
-        self.statusBar().addWidget(self.stat_lbl, 1)
-        self.statusBar().addPermanentWidget(self.cycle_lbl)
+        self.stat_lbl = self._elastic(QtWidgets.QLabel(""))
+        self.cycle_lbl = self._elastic(QtWidgets.QLabel(""))
+        self.cycle_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.statusBar().addWidget(self.stat_lbl, 3)
+        self.statusBar().addPermanentWidget(self.cycle_lbl, 2)
 
     def _style_start(self, running):
         t = self.theme
@@ -7370,7 +7378,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.alarm_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.alarm_table.cellDoubleClicked.connect(self.alarm_jump)
-        self.alarm_lbl = QtWidgets.QLabel("")
+        self.alarm_lbl = self._elastic(QtWidgets.QLabel(""))
         b_ack = QtWidgets.QPushButton("✔ Acquitter la sélection")
         b_ack.setToolTip("Coupe le son de l'alarme sans l'effacer : elle reste affichée tant que la cause est là.")
         b_ack.clicked.connect(lambda *_: self.ack_selected())
@@ -7378,7 +7386,9 @@ class MainWindow(QtWidgets.QMainWindow):
         b_all.clicked.connect(lambda *_: self.ack_all_alarms())
         b_clr = QtWidgets.QPushButton("🗑 Effacer les terminées")
         b_clr.clicked.connect(lambda *_: self.purge_alarms())
-        lay.addLayout(self._row(self.alarm_lbl, None, b_ack, b_all, b_clr))
+        bar = self._row(b_ack, b_all, b_clr)
+        bar.insertWidget(0, self.alarm_lbl, 1)
+        lay.addLayout(bar)
         lay.addWidget(self.alarm_table, 1)
         tip = QtWidgets.QLabel("⚠ CONFLIT : un signal sur une fréquence « Doit rester libre » · ⚠ ABSENT : une fréquence "
                                "« Doit émettre » reste sans signal. Double-clic = voir sur le spectre. Priorité "
