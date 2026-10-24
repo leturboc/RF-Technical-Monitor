@@ -103,6 +103,11 @@ def check(label, cond, extra=""):
     fails += (not cond)
     print(("OK  " if cond else "FAIL"), label, "" if cond else extra, flush=True)
 
+check("traductions Qt en français chargées", m.install_french(app))
+_bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Yes | W.QDialogButtonBox.StandardButton.Cancel)
+_txt = (_bb.button(W.QDialogButtonBox.StandardButton.Yes).text(), _bb.button(W.QDialogButtonBox.StandardButton.Cancel).text())
+check("boutons standard en français", _txt == ("&Oui", "&Annuler") or "Oui" in _txt[0], str(_txt))
+
 win = m.MainWindow()
 win.log_dir = m.Path(tmp) / "journaux"
 win.resize(1700, 980)
@@ -135,6 +140,50 @@ for i in range(1, min(win.view_combo.count(), 3)):
     wait(3500)
     shot(win, f"vue_bande_{i}")
 step("vue globale", lambda: win.view_combo.setCurrentIndex(0)); wait(1500)
+
+# repères : menu réel, filtres, style discret, tout masquer
+win.mk_menu.aboutToShow.emit()
+acts = {a.text(): a for a in win.mk_menu.actions() if a.text()}
+for sub in [a.menu() for a in win.mk_menu.actions() if a.menu() is not None]:
+    acts.update({a.text(): a for a in sub.actions() if a.text()})
+check("menu repères (vrai Qt) : complet", {"Occupées", "Libres", "Noms des fréquences", "Petit repère discret en haut",
+                                          "Grande scène › IEM", "(sans statut)"} <= set(acts), str(sorted(acts)))
+win.mk_menu.popup(win.mk_btn.mapToGlobal(win.mk_btn.rect().bottomLeft()))
+wait(500)
+shot(win.mk_menu, "menu_reperes")
+win.mk_menu.hide()
+win.mk_menu.aboutToShow.emit()          # l'ouverture a reconstruit le menu : on relit les actions
+acts = {a.text(): a for a in win.mk_menu.actions() if a.text()}
+for sub in [a.menu() for a in win.mk_menu.actions() if a.menu() is not None]:
+    acts.update({a.text(): a for a in sub.actions() if a.text()})
+acts["Grande scène › IEM"].trigger()
+acts["Libres"].trigger()
+wait(600)
+check("filtres appliqués (vrai Qt)", "IEM" in "".join(win.mk["hide_layers"]) and "free" not in win.mk["states"]
+      and win.mk_btn.text().endswith("(filtrés)"), str(win.mk) + win.mk_btn.text())
+win.set_markers(style="top")
+wait(800)
+shot(win, "reperes_filtres_discrets")
+win.reset_markers()
+win.set_markers(style="full")
+win.toggle_markers()
+wait(600)
+shot(win, "reperes_masques")
+check("Ctrl+M : masqués", not win.mk["on"])
+win.toggle_markers()
+
+# bloc Spectera / WMAS (canal 21 en démo : plateau simulé)
+step("ajout bloc Spectera", win.add_block_dialog)
+blk = next((w for w in win.watch if w.get("bw")), None)
+check("bloc ajouté", blk is not None and blk["bw"] == 8.0, str(blk and (blk["name"], blk["freq"])))
+wait(5000)
+check("bloc Spectera (démo) : vu en émission", blk is not None and blk["state"] == "occ", str(blk and blk["level"]))
+win.view_range(462.0, 486.0)
+wait(1500)
+shot(win, "bloc_spectera")
+win.view_combo.setCurrentIndex(0)
+win._fit_x = True
+wait(800)
 
 step("zoom sur ligne 0", lambda: win.zoom_on(0)); wait(4000); shot(win, "zoom_live")
 step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
@@ -240,9 +289,100 @@ step("make_report accept", win.make_report)
 DLG_ACTION[0] = "reject"
 print("rapport écrit:", os.path.exists(os.path.join(tmp, "rapport.html")), flush=True)
 
+# shows : enregistrer, liste, rouvrir (vrais dialogues Qt)
+m.SHOW_DIR = m.Path(tmp) / "Shows"
+win.show_meta = dict(name="Festival test", venue="Grande scène", date_from="2025-07-17", date_to="2025-07-20",
+                     notes="Antenne FOH sur le pont lumière.")
+saved[:] = [str(m.SHOW_DIR / m.show_filename(win.show_meta))]
+step("enregistrer le show", win.save_show)
+check("show enregistré", os.path.exists(win.show_path), win.show_path)
+check("titre avec le show", "Festival test 2025" in win.windowTitle(), win.windowTitle())
+n_w = len(win.watch)
+step("infos du show", win.edit_show_info)
+DLG_ACTION[0] = lambda d: d.table.selectRow(0) if hasattr(d, "table") else None
+step("ouvrir un show (liste)", win.open_show_dialog)
+DLG_ACTION[0] = "reject"
+step("rouvrir le show", lambda: win.open_show(win.show_path, ask=False))
+check("show rouvert", len(win.watch) == n_w and win.show_meta["name"] == "Festival test")
+
 step("Arrêter", win.toggle_run); wait(2500)
-print("worker running après arrêt:", win.worker.isRunning() if win.worker else None, flush=True)
+check("arrêt : plus aucun worker", not win.is_running())
 shot(win, "arrete")
+
+# ---- deux tinySA (démo) : chacun ses bandes, coupure du 2e, retour, fenêtre relais
+win.view_combo.setCurrentIndex(0)
+win.add_band("VHF", 174.0, 223.0, 100.0)
+win.dev2_chk.setChecked(True)
+win.dev2_addr.setEditText("192.168.1.20:5025")
+seen = {0: set(), 1: set()}
+step("Démarrer x2", win.toggle_run)
+check("deux workers lancés", len(win.workers) == 2 and all(w.isRunning() for w in win.workers))
+for i, w in enumerate(win.workers):
+    w.sweep.connect(lambda bid, f, l, i=i: seen[i].add(bid))
+wait(6000)
+check("les deux tinySA balayent", seen[0] and seen[1] and not (seen[0] & seen[1]), str(seen))
+check("cycles des deux appareils", set(win.dev_cycle) == {0, 1}, str(win.dev_cycle))
+win.dock_set.show()
+win.dock_set.raise_()
+wait(800)
+shot(win, "deux_tinysa")
+step("coupure du 2e", lambda: win.on_link(1, False))
+seen[0].clear()
+wait(5000)
+check("2e perdu : le 1er reprend toutes les bandes",
+      seen[0] >= {b["id"] for b in win.bands if b["enabled"]}, str(seen[0]))
+check("2e perdu : alarme APPAREIL", ("APPAREIL", -2) in win.alarms.active)
+win.dock_alarm.show()
+wait(800)
+shot(win, "tinysa2_perdu")
+step("retour du 2e", lambda: win.on_link(1, True))
+wait(1500)
+# noms de position + calibration (démo : pas de porteuse commune → base « bruit de fond »)
+win.dev1_name.setText("Plateau")
+win.dev2_name.setText("FOH")
+check("noms de position", win.dev_name(0) == "Plateau" and win.dev_name(1) == "FOH")
+step("calibration", win.start_calib)
+check("calibration lancée", win._calib is not None)
+t_cal = time.time()
+while win._calib is not None and time.time() - t_cal < 60:
+    wait(500)
+check("calibration terminée", win._calib is None and "Calibration faite" in getattr(win, "calib_msg", ""),
+      getattr(win, "calib_msg", ""))
+check("résultat de calibration affiché", any("Calibration faite" in t for _k, t in msgs), str(msgs[-2:]))
+check("offset du 2e plausible (démo)", abs(win.dev2_off.value()) < 3.0, str(win.dev2_off.value()))
+# zoom : le 2e continue la surveillance
+seen[1].clear()
+step("zoom live", lambda: win.zoom_on(0))
+wait(5000)
+check("zoom : le 2e surveille toujours les bandes", seen[1] and m.ZOOM_ID not in seen[1], str(seen[1]))
+step("zoom off", lambda: win.toggle_zoom(False))
+win.zoom_btn.setChecked(False)
+wait(1000)
+# page web servie par la vraie appli
+import json as _json
+import urllib.request as _ur
+win.web_cfg.update(on=True, port=0)
+step("apply_web", win.apply_web)
+check("page web démarrée", win.web is not None and win.web.port > 0)
+if win.web is not None:
+    wait(1500)
+    base = f"http://127.0.0.1:{win.web.port}"
+    js = _json.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())
+    check("page web : état réel", len(js["rows"]) == len(win.watch) and js["running"], str(js.get("running")))
+    check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
+    win.web_cfg["on"] = False
+    step("web off", win.apply_web)
+    check("page web arrêtée", win.web is None)
+DLG_ACTION[0] = "reject"
+step("dialogue alertes", win.open_alerts)
+step("Arrêter x2", win.toggle_run)
+wait(3000)
+check("arrêt des deux", not win.is_running())
+win.dev2_chk.setChecked(False)
+step("open_relay", win.open_relay)
+wait(600)
+shot(win._relay_win, "relais")
+win._relay_win.close()
 step("close", win.close); wait(500)
 print("config écrite:", os.path.exists(m.CFG_PATH), flush=True)
 
@@ -255,6 +395,8 @@ if win2:
 
 check("aucune exception Qt", not errors, f"{len(errors)} exception(s)")
 check("aucun message d'erreur", not [k for k, _ in msgs if k in ("warning", "critical")], str(msgs))
+for k, t in msgs:
+    print("  message", k, ":", t[:140].replace("\n", " | "), flush=True)
 print(f"\n{len(shots)} captures dans {OUT}")
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

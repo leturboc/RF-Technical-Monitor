@@ -239,5 +239,133 @@ an = ns["analyze_csv"]("Name;Frequency;Group\nHF A;606.125;Plateau\nHF B;607.250
 check("import : colonne « Group » reconnue comme groupe", an["group_col"], 2)
 check("import : « Groupe » toujours reconnu", ns["header_kind"]("Groupe"), "group")
 
+# ================================================================ 2e tinySA : adresses et répartition
+pda, asg, spl = ns["parse_device_addr"], ns["assign_bands"], ns["split_band"]
+check("adresse COM", pda("COM4"), ("serial", "COM4"))
+check("adresse COM minuscules", pda(" com12 "), ("serial", "com12"))
+check("adresse Linux", pda("/dev/ttyACM0"), ("serial", "/dev/ttyACM0"))
+check("adresse IP seule → port relais", pda("192.168.1.20"), ("net", "socket://192.168.1.20:5025"))
+check("adresse IP:port", pda("192.168.1.20:6000"), ("net", "socket://192.168.1.20:6000"))
+check("adresse nom de PC", pda("pc-scene"), ("net", "socket://pc-scene:5025"))
+check("url pyserial telle quelle", pda("rfc2217://10.0.0.5:4000"), ("net", "rfc2217://10.0.0.5:4000"))
+check("adresse vide", pda(""), (None, ""))
+check("adresse illisible", pda("pc scène")[0], None)
+check("port hors plage", pda("1.2.3.4:70000")[0], None)
+B = [dict(id=1, pts=1121, dev=None), dict(id=2, pts=300, dev=None), dict(id=3, pts=500, dev=None),
+     dict(id=4, pts=200, dev=None)]
+a = asg(B, 2)
+load = [sum(b["pts"] for b in B if a[b["id"]] == d) for d in (0, 1)]
+ok("auto : toutes les bandes affectées", set(a) == {1, 2, 3, 4} and set(a.values()) == {0, 1}, str(a))
+ok("auto : charge équilibrée", abs(load[0] - load[1]) <= 200, str(load))
+check("auto : déterministe", asg(B, 2), a)
+a = asg([dict(id=1, pts=100, dev=1), dict(id=2, pts=900, dev=None)], 2)
+check("bande fixée sur le 2", a[1], 1)
+check("auto va sur le moins chargé", a[2], 0)
+a = asg([dict(id=1, pts=100, dev=1), dict(id=2, pts=900, dev=None)], 2, live=[True, False])
+check("2e hors ligne : tout sur le 1er", a, {1: 0, 2: 0})
+a = asg([dict(id=1, pts=100, dev=0), dict(id=2, pts=900, dev=None)], 2, live=[False, True])
+check("1er hors ligne : tout sur le 2e", a, {1: 1, 2: 1})
+check("les deux hors ligne : repli sur le 1er", asg([dict(id=1, pts=10, dev=1)], 2, live=[False, False]), {1: 0})
+check("un seul appareil", asg(B, 1), {1: 0, 2: 0, 3: 0, 4: 0})
+AB = ns["AlarmBook"]()
+AB.raise_(("ABSENT", 1), "ABSENT", "HF 1", 470.0, 2, 100.0)
+AB.raise_(("APPAREIL", -2), "APPAREIL", "tinySA 2", 0.0, 2, 200.0)
+check("alarme APPAREIL en tête de liste", [a["kind"] for a in AB.listing()], ["APPAREIL", "ABSENT"])
+co = ns["calib_offset"]
+rng = np.random.default_rng(1)
+Fc = np.linspace(470, 530, 601)
+base = -100 + rng.normal(0, 1.0, Fc.size)
+for fc in (480, 495, 510, 522):
+    base = np.maximum(base, -50 - 30 * ((Fc - fc) / 0.2) ** 2)
+L2c = base - 3.0 + rng.normal(0, 0.3, Fc.size)         # le 2e lit 3 dB trop bas
+r = co(Fc, base, Fc, L2c)
+ok("calibration : +3 dB trouvé sur les signaux", r is not None and abs(r[0] - 3.0) <= 0.3 and r[2] == "signaux", str(r))
+F2c = np.linspace(470, 530, 401)                        # grilles différentes
+r = co(Fc, base, F2c, np.interp(F2c, Fc, base) + 2.0)
+ok("calibration : grilles différentes, −2 dB", r is not None and abs(r[0] + 2.0) <= 0.5, str(r))
+noise1 = -100 + rng.normal(0, 1.0, Fc.size)
+r = co(Fc, noise1, Fc, noise1 - 4.0)
+ok("calibration : sans signal → plancher de bruit", r is not None and r[2] == "bruit de fond" and abs(r[0] - 4.0) <= 0.3, str(r))
+only1 = noise1.copy()
+only1[100:110] = -40                                    # porteuse vue d'un seul côté : ignorée
+r = co(Fc, only1, Fc, noise1 - 1.0)
+ok("calibration : porteuse d'un seul côté ignorée", r is not None and abs(r[0] - 1.0) <= 0.3, str(r))
+check("calibration : pas de recouvrement", co([1, 2, 3], [0, 0, 0], [10, 11, 12], [0, 0, 0]), None)
+mv, mkd = ns["marker_visible"], ns["mk_default"]
+w0 = dict(state="occ", status="En service", scene="Grande scène", group="IEM")
+check("repère : visible par défaut", mv(w0, mkd()), True)
+check("repère : tout masqué", mv(w0, dict(mkd(), on=False), alarm=True), False)
+check("repère : état décoché", mv(w0, dict(mkd(), states=["free"])), False)
+check("repère : sans mesure = « none »", mv(dict(w0, state=None), dict(mkd(), states=["none"])), True)
+check("repère : statut masqué", mv(w0, dict(mkd(), hide_status=["En service"])), False)
+check("repère : couche masquée", mv(w0, dict(mkd(), hide_layers=[ns["mk_layer_key"]("Grande scène", "IEM")])), False)
+check("repère : autre couche non touchée", mv(w0, dict(mkd(), hide_layers=[ns["mk_layer_key"]("Grande scène", "HF")])), True)
+check("repère : sans scène", mv(dict(w0, scene="", group=""), dict(mkd(), hide_layers=[""])), False)
+check("repère : masqué à la main", mv(dict(w0, hide_mk=True), mkd()), False)
+check("repère : alarme visible malgré tout", mv(dict(w0, hide_mk=True), dict(mkd(), states=[]), alarm=True), True)
+check("repère : alarme suit les filtres si demandé", mv(dict(w0, hide_mk=True), dict(mkd(), alarms=False), alarm=True), False)
+check("filtre actif", (ns["mk_filtered"](mkd()), ns["mk_filtered"](dict(mkd(), hide_status=["x"]))), (False, True))
+lb = ns["level_block"]
+Fb = np.linspace(600, 620, 401)                          # pas 50 kHz
+Lb = -100 + 0 * Fb
+Lb[(Fb >= 606) & (Fb <= 614)] = -65                     # plateau WMAS 8 MHz centré sur 610
+check("bloc : niveau médian du plateau", lb(Fb, Lb, 610.0, 8.0), -65.0)
+Ls = -100 + 0 * Fb
+Ls[np.argmin(abs(Fb - 611.0))] = -45                    # une porteuse étroite dans un bloc vide
+check("bloc vide + porteuse : médiane reste basse", lb(Fb, Ls, 610.0, 8.0), -100.0)
+check("bloc vide + porteuse : le max la voit", lb(Fb, Ls, 610.0, 8.0, "max"), -45.0)
+check("bloc hors balayage", lb(Fb, Lb, 700.0, 8.0), None)
+check("bloc de largeur nulle", lb(Fb, Lb, 610.0, 0), None)
+bc = ns["block_choices"](ns["tv_channels"]("FR"))
+check("canaux bloc FR : 21 → 48, 8 MHz", (bc[0], len(bc), bc[-1][1]), (("CH 21 — 470–478 MHz", 474.0, 8.0), 28, 690.0))
+bcu = ns["block_choices"](ns["tv_channels"]("US"))
+ok("canaux bloc US : 6 MHz", bcu[0][2] == 6.0 and all(c[1] < 698 for c in bcu), str(bcu[:2]))
+bp = ns["block_points"]
+check("points d'un bloc", (bp(610.0, 8.0)[0], bp(610.0, 8.0)[-1], len(bp(610.0, 8.0))), (606.0, 614.0, 9))
+check("points d'une fréquence simple", bp(500.0, 0.0), [500.0])
+bo = ns["block_overlaps"]
+items = [("Spectera 38", 610.0, 8.0), ("HF 1", 607.5, 0.0), ("HF 2", 615.0, 0.0), ("Bloc 39", 616.0, 6.0),
+         ("HF 3", 620.0, 0.0)]
+check("chevauchements : HF 1 dans le bloc 38, blocs 38/39 qui se touchent, HF 2 dans le 39",
+      bo(items), {1: "Spectera 38", 0: "Bloc 39", 3: "Spectera 38", 2: "Bloc 39"})
+check("chevauchements : marge de garde", bo([("B", 610.0, 8.0), ("HF", 614.3, 0.0)], guard=0.5), {1: "B"})
+check("pas de bloc : rien", bo([("a", 1.0, 0.0), ("b", 1.0, 0.0)]), {})
+import json as _json
+cfg_full = dict(bands=[dict(name="UHF", start=470.0, stop=694.0, step=200.0, enabled=True)],
+                watch=[dict(name="HF 1", freq=500.0, status="En service", thr=None, scene="S", group="G"),
+                       dict(name="Spectera ch 38", freq=610.0, status="En service", thr=None, scene="", group="", bw=8.0)],
+                scenes=[dict(name="S", color="#fff", groups=[dict(name="G", color="#000", prio=2)])],
+                statuses=[dict(name="En service", color="#0f0", free=False, on=True)], thr=-75, country="FR",
+                theme=dict(ui_base="#000"), log_dir="/x", web=dict(on=True, port=8080),
+                dev2=dict(on=True, addr="192.168.1.20", offset=1.0), dev_names=["Plateau", "FOH"], markers=dict(on=False))
+meta = dict(name="Fest", venue="Grande scène", date_from="2025-07-17", date_to="2025-07-20", notes="antenne FOH")
+doc = ns["show_doc"](cfg_full, meta, [([470.0, 471.0], [-100.04, -99.0])], "7.1")
+check("show : format", (doc["format"], doc["version"], doc["app"]), ("tinysa-show", 1, "7.1"))
+check("show : contient les fréquences, scènes, bandes, seuils, noms de position",
+      all(k in doc["show"] for k in ("watch", "scenes", "bands", "thr", "country", "dev_names")), True)
+check("show : PAS les préférences du logiciel", [k for k in ("theme", "log_dir", "web", "dev2", "markers") if k in doc["show"]], [])
+check("show : courbe de référence arrondie", doc["ref"], [dict(f=[470.0, 471.0], l=[-100.0, -99.0])])
+back = ns["read_show"](_json.dumps(doc))
+check("show : relu à l'identique", (back["meta"], back["show"], back["ref"]),
+      (meta, doc["show"], [([470.0, 471.0], [-100.0, -99.0])]))
+mine = dict(cfg_full, theme=dict(ui_base="#123"), watch=[], thr=-90, log_dir="/cette-annee")
+ap = ns["show_apply"](mine, back)
+check("show appliqué : fréquences et seuils du show", (len(ap["watch"]), ap["thr"]), (2, -75))
+check("show appliqué : mes préférences gardées", (ap["theme"], ap["log_dir"]), (dict(ui_base="#123"), "/cette-annee"))
+old = ns["read_show"](_json.dumps(dict(cfg_full, profil="TinySA Monitor")), "evenement")
+check("ancien profil : lu, préférences ignorées", (old["meta"]["name"], "theme" in old["show"], len(old["show"]["watch"])),
+      ("evenement", False, 2))
+try:
+    ns["read_show"]('{"a": 1}')
+    check("fichier quelconque refusé", False, True)
+except ValueError:
+    check("fichier quelconque refusé", True, True)
+sm = ns["show_summary"](back)
+check("résumé", (sm["dates"], sm["n_freq"], sm["n_blocks"], sm["has_ref"]), ("2025-07-17 → 2025-07-20", 2, 1, True))
+check("nom de fichier", ns["show_filename"](meta), "2025 Fest - Grande scène.tsashow")
+check("nom de fichier sans infos", ns["show_filename"]({}), "show.tsashow")
+check("nom de fichier : caractères interdits", ns["show_filename"](dict(name="A/B: C?")), "A_B_ C.tsashow")
+check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -168,6 +168,100 @@ check("repères en couleur de groupe", (gcol, False) in win._mk_items and len(wi
       str(list(win._mk_items)))
 win.mark_combo.setCurrentIndex(0)
 
+
+# repères : choisir ce qu'on affiche
+def n_marks():
+    return sum(len(it.x) // 2 for it in win._mk_items.values() if it.x is not None and len(it.x))
+
+
+def menu_acts():
+    win._build_mk_menu()
+    return {a.text(): a for a in win.mk_menu.all_actions()}
+
+
+acts = menu_acts()
+check("menu repères : choix présents", {"✔ Tout afficher (enlève les filtres)", "Masquer tous les repères  (Ctrl+M)",
+                                       "Occupées", "Libres", "Sans mesure", "Noms des fréquences",
+                                       "Petit repère discret en haut", "état du signal",
+                                       "Toujours montrer les fréquences en alarme"} <= set(acts), str(list(acts)))
+check("menu : sous-menu par couche", any(t.startswith("Main Stage › ") for t in acts), str(list(acts)))
+check("menu : sous-menu par statut", "(sans statut)" in acts)
+check("3 repères au départ", n_marks() == 3, str(n_marks()))
+sc_vis = [w for w in win.watch if win.in_scope(w)]
+st = {w["state"] or "none" for w in sc_vis}
+acts["Masquer tous les repères  (Ctrl+M)"].triggered.emit(True)
+check("tout masquer", n_marks() == 0 and win.mk_btn.text().endswith("(masqués)"), win.mk_btn.text())
+step("Ctrl+M", win.toggle_markers)
+check("Ctrl+M réaffiche", n_marks() == 3 and not win.mk_btn.text().endswith(")"), win.mk_btn.text())
+# par état
+lab = dict(occ="Occupées", weak="Faibles", free="Libres", none="Sans mesure")
+one = sorted(st)[0]
+menu_acts()[lab[one]].triggered.emit(False)
+exp = sum(1 for w in sc_vis if (w["state"] or "none") != one)
+check(f"état « {lab[one]} » décoché", n_marks() == exp and win.mk_btn.text().endswith("(filtrés)"),
+      f"{n_marks()} / {exp} {win.mk_btn.text()}")
+menu_acts()[lab[one]].triggered.emit(True)
+check("état recoché", n_marks() == 3)
+# par couche
+grpA = next(t for t in menu_acts() if t == "Main Stage › Groupe A")
+nA = sum(1 for w in sc_vis if w["group"] == "Groupe A")
+menu_acts()[grpA].triggered.emit(False)
+check("couche Groupe A masquée", n_marks() == 3 - nA and nA > 0, f"{n_marks()} / {nA}")
+check("couche masquée décochée dans le menu", not menu_acts()[grpA].isChecked())
+menu_acts()[grpA].triggered.emit(True)
+# par statut
+stn = next(x["name"] for x in win.statuses if not x.get("free") and not x.get("on"))
+old_st = sc_vis[0]["status"]
+sc_vis[0]["status"] = stn
+nst = sum(1 for w in sc_vis if w["status"] == stn)
+menu_acts()[stn].triggered.emit(False)
+check(f"statut « {stn} » masqué", n_marks() == 3 - nst, f"{n_marks()} / {nst}")
+menu_acts()[stn].triggered.emit(True)
+sc_vis[0]["status"] = old_st
+# à la main (clic droit)
+r0 = win.watch.index(sc_vis[0])
+step("masquer un repère", lambda: win.hide_marker_rows([r0]))
+check("repère masqué à la main", n_marks() == 2 and win.watch[r0].get("hide_mk"))
+check("menu : réafficher les masqués", "Réafficher les 1 repère(s) masqué(s) à la main" in menu_acts())
+cfg_h = win._collect_config(False)
+check("config : masquage à la main enregistré", cfg_h["watch"][r0].get("hide_mk") is True)
+menu_acts()["Réafficher les 1 repère(s) masqué(s) à la main"].triggered.emit(True)
+check("réaffiché", n_marks() == 3 and not win.watch[r0].get("hide_mk"))
+# une alarme reste visible malgré les filtres
+win.hide_marker_rows([r0])
+sc_vis[0]["absent"] = True
+win._update_markers()
+check("fréquence en alarme : visible malgré le masquage", n_marks() == 3)
+menu_acts()["Toujours montrer les fréquences en alarme"].triggered.emit(False)
+check("option décochée : l'alarme suit les filtres", n_marks() == 2)
+sc_vis[0]["absent"] = False
+step("tout afficher", lambda: menu_acts()["✔ Tout afficher (enlève les filtres)"].triggered.emit(True))
+check("tout afficher : filtres et masquages enlevés", n_marks() == 3 and win.mk["alarms"]
+      and not any(w.get("hide_mk") for w in win.watch))
+# style, noms, couleur
+menu_acts()["Petit repère discret en haut"].triggered.emit(True)
+ys = [y for it in win._mk_items.values() if it.y is not None for y in it.y]
+y0, y1 = win.spec.getPlotItem().vb.viewRange()[1]
+check("style discret : repères dans le haut du graphe", ys and min(ys) >= y1 - (y1 - y0) * 0.08, f"{min(ys)} / {y0}..{y1}")
+check("tout afficher garde le style", (win.reset_markers(), win.mk["style"])[1] == "top")
+menu_acts()["Trait sur toute la hauteur"].triggered.emit(True)
+menu_acts()["Noms des fréquences"].triggered.emit(False)
+check("noms décochés", not win.names_chk.isChecked())
+menu_acts()["Noms des fréquences"].triggered.emit(True)
+menu_acts()["couleur du groupe"].triggered.emit(True)
+check("couleur via le menu", win.mark_combo.currentData() == "group")
+menu_acts()["état du signal"].triggered.emit(True)
+# config
+cfgm = win._collect_config(False)["markers"]
+mk2 = dict(on=False, states=["occ"], hide_layers=["x"], hide_status=["Libre"], alarms=False, unk=False, style="top")
+win._apply_config(dict(win._collect_config(False), markers=mk2))
+check("config : repères relus", win.mk == mk2, str(win.mk))
+win._apply_config(dict(win._collect_config(False), markers=dict(states=["??", "occ"], style=3, hide_layers="x")))
+check("config abîmée : valeurs sûres", win.mk["states"] == ["occ"] and win.mk["style"] == "full"
+      and win.mk["hide_layers"] == [], str(win.mk))
+win._apply_config(dict(win._collect_config(False), markers=cfgm))
+check("config restaurée", n_marks() == 3, str(n_marks()))
+
 # mur
 step("open_wall", win.open_wall)
 wall = win.wall
