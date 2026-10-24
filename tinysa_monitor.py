@@ -6271,14 +6271,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # le nom ne s'étire pas (sinon Signal / Statut sortent de la vue quand le panneau est étroit) : la dernière
         # colonne (attribution) prend la place restante
         self.watch_table.horizontalHeader().setSectionResizeMode(C_NAME, QtWidgets.QHeaderView.ResizeMode.Interactive)
-        self.watch_table.setColumnWidth(C_NAME, 120)
+        self.watch_table.setColumnWidth(C_NAME, 100)
         self.watch_table.horizontalHeader().setStretchLastSection(True)
         # ce qu'on lit d'abord : Nom, MHz, Signal, Statut ; colonnes déplaçables à la souris (ordre mémorisé)
         hh_ = self.watch_table.horizontalHeader()
         hh_.setSectionsMovable(True)
         hh_.moveSection(hh_.visualIndex(C_SIG), 2)
         hh_.moveSection(hh_.visualIndex(C_STAT), 3)
-        for c, w in ((C_FREQ, 72), (C_LVL, 56), (C_MAX, 56), (C_THR, 56), (C_SIG, 78), (C_STAT, 84),
+        for c, w in ((C_FREQ, 64), (C_LVL, 56), (C_MAX, 56), (C_THR, 56), (C_SIG, 78), (C_STAT, 84),
                      (C_OCC, 48), (C_LAYER, 120), (C_BAND, 190)):
             self.watch_table.setColumnWidth(c, w)
         self.watch_table.verticalHeader().setVisible(False)
