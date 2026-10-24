@@ -65,6 +65,30 @@ reprend toutes les bandes** (alarme critique ⚠ APPAREIL, nouvel essai de conne
 Pendant le zoom live, un tinySA zoome et l'autre continue de surveiller toutes les bandes. En réseau, préfère un câble au Wi-Fi ; une liaison qui se tait
 (câble arraché) est détectée après ~30 s au réglage par défaut (plus long avec un RBW très étroit).
 
+## Repères du spectre : choisir ce qu'on affiche
+
+Bouton **📍 Repères** (au-dessus du spectre) :
+- par **état mesuré** (occupées, faibles, libres, sans mesure), par **scène › groupe**, par **statut** ;
+- **fréquence par fréquence** : clic droit dans la liste › « Masquer le repère sur le spectre » ;
+- « Toujours montrer les fréquences en alarme » (coché par défaut : un filtre ne cache jamais une alarme) ;
+- noms, signaux inconnus, style **trait plein** ou **petit repère discret en haut**, couleur (état / statut / groupe) ;
+- **Ctrl+M** masque / réaffiche tout d'un coup ; « Tout afficher » enlève les filtres.
+
+## Sennheiser Spectera (WMAS) et autres porteurs larges
+
+Spectera émet un **porteur large de 6 ou 8 MHz** (un canal TV) au lieu d'une fréquence par micro : on le surveille
+comme un **bloc**.
+- 🔧 Outils › **📶 Ajouter un bloc Spectera / WMAS** : choisis le canal TV (selon le pays) ou une fréquence centrale +
+  largeur. Ou, sur une fréquence existante : clic droit › « Bloc large ».
+- « Doit émettre » : on regarde le **niveau médian** du bloc (le porteur est-il là ?) → ⚠ ABSENT s'il disparaît.
+  « Doit rester libre » : on regarde le **pic** dans le bloc → ⚠ CONFLIT au moindre signal.
+- Sur le spectre, un bloc est dessiné par ses deux bords et une barre. Une fréquence qui tombe **dans** un bloc est
+  signalée dans la liste (« ⚠ dans le bloc … »).
+- Préréglages de bandes : Spectera UHF 470–608 / 630–698 MHz et 1G4 1350–1400 / 1435–1525 MHz (selon les pays).
+- Le mode démo simule un porteur Spectera pour les blocs « Doit émettre ».
+
+L'intermodulation ne tient pas compte de la largeur des blocs (calcul sur leur fréquence centrale).
+
 ## Alertes sur téléphone et page web
 
 🔧 Outils › **📣 Alertes téléphone et page web** :

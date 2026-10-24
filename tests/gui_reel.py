@@ -167,6 +167,19 @@ shot(win, "reperes_masques")
 check("Ctrl+M : masqués", not win.mk["on"])
 win.toggle_markers()
 
+# bloc Spectera / WMAS (canal 21 en démo : plateau simulé)
+step("ajout bloc Spectera", win.add_block_dialog)
+blk = next((w for w in win.watch if w.get("bw")), None)
+check("bloc ajouté", blk is not None and blk["bw"] == 8.0, str(blk and (blk["name"], blk["freq"])))
+wait(5000)
+check("bloc Spectera (démo) : vu en émission", blk is not None and blk["state"] == "occ", str(blk and blk["level"]))
+win.view_range(462.0, 486.0)
+wait(1500)
+shot(win, "bloc_spectera")
+win.view_combo.setCurrentIndex(0)
+win._fit_x = True
+wait(800)
+
 step("zoom sur ligne 0", lambda: win.zoom_on(0)); wait(4000); shot(win, "zoom_live")
 step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
 

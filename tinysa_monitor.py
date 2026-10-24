@@ -177,6 +177,10 @@ BAND_PRESETS = [
     ("863–870 MHz", 863.0, 870.0, 100.0),
     ("1785–1805 MHz", 1785.0, 1805.0, 200.0),
     ("2,4 GHz (2400–2483)", 2400.0, 2483.5, 500.0),
+    ("Spectera UHF 470–608 MHz", 470.0, 608.0, 200.0),
+    ("Spectera UHF 630–698 MHz", 630.0, 698.0, 200.0),
+    ("Spectera 1G4 1350–1400 MHz", 1350.0, 1400.0, 200.0),
+    ("Spectera 1G4 1435–1525 MHz", 1435.0, 1525.0, 200.0),
 ]
 
 
@@ -1016,6 +1020,49 @@ def level_at(F, L, f, win, near=0.25):
         return None
     k = min(c, key=lambda k: abs(F[k] - f))
     return float(L[k]) if abs(F[k] - f) <= max(win, near) else None
+
+
+def level_block(F, L, f, bw, how="median"):
+    """Niveau d'un bloc large (Spectera / WMAS : bw MHz centré sur f, F trié). « median » : le porteur large
+    est-il là (niveau de son plateau) ; « max » : le moindre signal dans le bloc. None si trop peu de points."""
+    if F is None or len(F) == 0 or not bw or bw <= 0:
+        return None
+    lo = int(np.searchsorted(F, f - bw / 2.0))
+    hi = int(np.searchsorted(F, f + bw / 2.0, side="right"))
+    if hi - lo < 3:
+        return None
+    seg = L[lo:hi]
+    return float(np.median(seg)) if how == "median" else float(seg.max())
+
+
+def block_choices(tv):
+    """Canaux TV proposés pour un bloc Spectera / WMAS : [(libellé, centre MHz, largeur MHz)] (UHF 470–698)."""
+    out = []
+    for a, b, lab, _cat, _note in tv:
+        if 470 <= a and b <= 698 and (b - a) in (6, 8):
+            out.append((f"{lab} — {a:g}–{b:g} MHz", (a + b) / 2.0, float(b - a)))
+    return out
+
+
+def block_overlaps(items, guard=0.0):
+    """Fréquences qui tombent dans un bloc large (ou blocs qui se chevauchent) : conflit de plan.
+    items : [(nom, fréquence, largeur)] -> {index: nom du bloc gênant}. guard : marge en MHz autour des blocs."""
+    out = {}
+    blocks = [(i, n, f - bw / 2.0 - guard, f + bw / 2.0 + guard) for i, (n, f, bw) in enumerate(items) if bw]
+    for i, (n, f, bw) in enumerate(items):
+        lo, hi = (f - bw / 2.0, f + bw / 2.0) if bw else (f, f)
+        for j, bn, a, b in blocks:
+            if j != i and lo < b and hi > a:
+                out.setdefault(i, bn)
+    return out
+
+
+def block_points(f, bw, step=1.0):
+    """Points répartis sur un bloc (pour que le scan ciblé et « Bandes depuis la liste » le couvrent en entier)."""
+    if not bw or bw <= 0:
+        return [f]
+    n = max(2, int(math.ceil(bw / step)) + 1)
+    return [f - bw / 2.0 + bw * k / (n - 1) for k in range(n)]
 
 
 def eff_thresholds(own_thr, ref_lvl, rel_on, margin, gthr, gweak):
@@ -2456,6 +2503,10 @@ class ScanWorker(QtCore.QThread):
         for k, f in enumerate(cfg["demo_freqs"]):
             if k % 4 == 0:
                 car.append((f * 1e6, -62 - (k % 5) * 4, 0.4 + (k % 3) * 0.3, k))
+        for fc, bw in cfg.get("demo_blocks", ()):        # porteur large Spectera / WMAS : plateau
+            m = (fr >= (fc - bw / 2) * 1e6) & (fr <= (fc + bw / 2) * 1e6)
+            if m.any():
+                lv[m] = np.maximum(lv[m], -68 + self.rng.normal(0, 1.5, int(m.sum())))
         t = time.time()
         for pos, amp, w, ph in car:
             if fr[0] - 2e5 <= pos <= fr[-1] + 2e5 and np.sin(t * w + ph) > -0.2:
@@ -4976,7 +5027,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
                         (None, None),
                         ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
-                        ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts())):
+                        ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
+                        (None, None),
+                        ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())):
             if txt is None:
                 tmenu.addSeparator()
             else:
@@ -5589,10 +5642,11 @@ class MainWindow(QtWidgets.QMainWindow):
                               n=self._npts(b), enabled=b["enabled"]) for b in self.scan_bands()
                          if asg.get(b["id"], 0) == dev]
                 rbw = c["rbw"]
-            freqs = [w["freq"] for w in self.watch]
+            freqs = [w["freq"] for w in self.watch if not w.get("bw")]
+            blocks = [(w["freq"], w["bw"]) for w in self.watch if w.get("bw") and self.is_keep_on(w["status"])]
             off = c["offset"] + (float(self.dev2.get("offset", 0.0)) if dev == 1 else 0.0)
             return dict(bands=bands, rbw=rbw, input=c["input"], lna=c["lna"], att=c["att"],
-                        offset=off, seg=c["seg"], demo_freqs=freqs, ver=self._ver)
+                        offset=off, seg=c["seg"], demo_freqs=freqs, demo_blocks=blocks, ver=self._ver)
 
     def _load_config(self):
         data = {}
@@ -5674,6 +5728,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                    str(w.get("group", "") or ""))
                 if w.get("hide_mk"):
                     self.watch[-1]["hide_mk"] = True
+                if w.get("bw"):
+                    self.watch[-1]["bw"] = max(0.0, float(w["bw"]))
             except Exception:
                 pass
         sp = data.get("scope")
@@ -5785,7 +5841,8 @@ class MainWindow(QtWidgets.QMainWindow):
         data = dict(
             bands=[{k: v for k, v in b.items() if k != "id"} for b in self.bands],
             watch=[dict(name=w["name"], freq=w["freq"], status=w["status"], thr=w["thr"],
-                        scene=w["scene"], group=w["group"], **({"hide_mk": True} if w.get("hide_mk") else {}))
+                        scene=w["scene"], group=w["group"], **({"hide_mk": True} if w.get("hide_mk") else {}),
+                        **({"bw": w["bw"]} if w.get("bw") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1))) for g in s["groups"]])
@@ -6896,7 +6953,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_focus(self):
         new = []
         if self.scope and self.focus_chk.isChecked():
-            fr = [w["freq"] for w in self.watch if self.in_scope(w)]
+            fr = [x for w in self.watch if self.in_scope(w) for x in block_points(w["freq"], w.get("bw"))]
             for i, (a, b, n) in enumerate(focus_plan(fr, self._cfg["points"])):
                 new.append(dict(id=-100 - i, name=f"{a:.2f}–{b:.2f} MHz", start=a, stop=b,
                                 step=round((b - a) * 1000.0 / (n - 1), 6), enabled=True))
@@ -6914,7 +6971,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_estimate()
 
     # ------------------------------------------------- fréquences surveillées
-    def _append_watch(self, name, freq, status="", thr=None, scene="", group=""):
+    def _append_watch(self, name, freq, status="", thr=None, scene="", group="", bw=0.0):
         scene, group = (scene or "").strip(), (group or "").strip()
         if group and not scene:
             scene = DEFAULT_SCENE
@@ -6923,7 +6980,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.watch.append(dict(name=name, freq=freq, status=status, level=None, max=None,
                                state=None, peak=None, since=0.0, sig=None, thr=thr,
                                occw=OccWindow(self.occ_combo.currentData() or 60), t_acc=None,
-                               band=band, cat=cat, scene=scene, group=group, free_since=None, absent=False))
+                               band=band, cat=cat, scene=scene, group=group, free_since=None, absent=False,
+                               bw=float(bw or 0.0)))     # bw > 0 : bloc large (Spectera / WMAS), en MHz
 
     def sort_watch(self):
         self.watch.sort(key=lambda w: w["freq"])
@@ -6969,6 +7027,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._updating = True
         n = dict(occ=0, weak=0, free=0)
         n_conf = n_ws = n_abs = 0
+        overlaps = block_overlaps([(w["name"], w["freq"], w.get("bw") or 0.0) for w in self.watch])
         for r, w in enumerate(self.watch):
             if r >= t.rowCount():
                 break
@@ -6988,6 +7047,10 @@ class MainWindow(QtWidgets.QMainWindow):
             pct = w["occw"].pct()
             occ_txt = "—" if pct is None else f"{pct:.0f} %"
             band = w["band"] or "—"
+            if w.get("bw"):
+                band = f"▬ bloc {w['bw']:g} MHz · {band}"
+            if r in overlaps:
+                band = f"⚠ dans le bloc « {overlaps[r]} » · {band}"
             layer = self.layer_text(w)
             gc = self.group_color(w["scene"], w["group"]) if layer else None
             sig = (lv, mx, st, conf, stat, w["name"], round(w["freq"], 3), thr_txt, occ_txt, band, layer, gc, absn)
@@ -7138,6 +7201,7 @@ class MainWindow(QtWidgets.QMainWindow):
         a_thr = m.addAction("Seuil propre à la fréquence…")
         a_thr0 = m.addAction("Revenir au seuil global")
         a_occ0 = m.addAction("Remettre l'occupation à zéro")
+        a_blk = m.addAction("📶 Bloc large (Spectera / WMAS)…")
         hid = all(self.watch[r].get("hide_mk") for r in rows)
         a_mk = m.addAction("📍 Réafficher le repère sur le spectre" if hid else "📍 Masquer le repère sur le spectre")
         m.addSeparator()
@@ -7179,10 +7243,73 @@ class MainWindow(QtWidgets.QMainWindow):
             self.del_watch()
         elif act is a_mk:
             self.hide_marker_rows(rows, not hid)
+        elif act is a_blk:
+            self.set_block_rows(rows)
         elif self._assign_action(rows, act.data()):
             pass
         elif act.data() is not None:
             self.set_status_rows(rows, act.data())
+
+    BLOCK_WIDTHS = (("Fréquence simple (pas de bloc)", 0.0), ("Bloc 6 MHz", 6.0), ("Bloc 8 MHz", 8.0),
+                    ("Autre largeur…", None))
+
+    def set_block_rows(self, rows):
+        """Fréquence simple ↔ bloc large (Spectera / WMAS) pour les lignes choisies."""
+        rows = [r for r in rows if 0 <= r < len(self.watch)]
+        if not rows:
+            return
+        labels = [t for t, _ in self.BLOCK_WIDTHS]
+        cur = self.watch[rows[0]].get("bw") or 0.0
+        idx = next((i for i, (_t, v) in enumerate(self.BLOCK_WIDTHS) if v == cur), len(labels) - 1)
+        txt, ok = QtWidgets.QInputDialog.getItem(
+            self, "Bloc large", "Spectera / WMAS : un porteur large (canal TV) au lieu d'une fréquence.\n"
+                                "« Doit émettre » : niveau médian du bloc · « Doit rester libre » : pic dans le bloc.\n\n"
+                                "Largeur :", labels, idx, False)
+        if not ok:
+            return
+        bw = dict(self.BLOCK_WIDTHS)[txt]
+        if bw is None:
+            bw, ok = QtWidgets.QInputDialog.getDouble(self, "Bloc large", "Largeur du bloc (MHz) :",
+                                                      max(cur, 1.0), 0.2, 40.0, 1)
+            if not ok:
+                return
+        for r in rows:
+            self.watch[r]["bw"] = float(bw)
+            self.watch[r]["sig"] = None
+        self._refresh_focus()
+        self.update_watch_levels()
+        self.update_watch_table(force=True)
+        self._update_markers()
+
+    def add_block_dialog(self):
+        """Ajoute un bloc Spectera / WMAS : canal TV du pays, ou fréquence centrale + largeur."""
+        ch = block_choices(self.tv)
+        other = "Autre : fréquence centrale et largeur…"
+        txt, ok = QtWidgets.QInputDialog.getItem(self, "Bloc Spectera / WMAS", "Canal (selon le pays choisi) :",
+                                                 [c[0] for c in ch] + [other], 0, False)
+        if not ok:
+            return
+        if txt == other:
+            f, ok = QtWidgets.QInputDialog.getDouble(self, "Bloc Spectera / WMAS", "Fréquence centrale (MHz) :",
+                                                     610.0, 0.1, 6000.0, 3)
+            if not ok:
+                return
+            bw, ok = QtWidgets.QInputDialog.getDouble(self, "Bloc Spectera / WMAS", "Largeur (MHz) :",
+                                                      8.0 if self.country not in ("US", "CA") else 6.0, 0.2, 40.0, 1)
+            if not ok:
+                return
+            name = f"Spectera {f:.1f}"
+        else:
+            _lab, f, bw = next(c for c in ch if c[0] == txt)
+            name = "Spectera " + txt.split(" — ")[0].replace("CH ", "ch ")
+        sc, gr = self._scope_preset()
+        on = next((x["name"] for x in self.statuses if x.get("on")), "")
+        self._append_watch(name, f, status=on, scene=sc, group=gr, bw=bw)
+        self.sort_watch()
+        self.rebuild_watch_table()
+        self._refresh_focus()
+        self._update_markers()
+        self.set_status(f"Bloc « {name} » ajouté : {f - bw / 2:g}–{f + bw / 2:g} MHz (statut « {on or 'aucun'} »).")
 
     def add_watch_dialog(self):
         f, ok = QtWidgets.QInputDialog.getDouble(self, "Ajouter une fréquence", "Fréquence (MHz) :",
@@ -7314,7 +7441,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not ws:
             QtWidgets.QMessageBox.information(self, APP_NAME, "La liste de fréquences (ou la couche active) est vide.")
             return
-        fs = sorted(w["freq"] for w in ws)
+        fs = sorted(x for w in ws for x in block_points(w["freq"], w.get("bw")))
         groups, cur = [], [fs[0]]
         for f in fs[1:]:
             if f - cur[-1] <= 20.0:
@@ -7472,14 +7599,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._alarm_reset(w, now)
                 continue
             f = w["freq"]
-            lvl = level_at(F, L, f, win)
+            bw = w.get("bw") or 0.0
+            how = "max" if self.is_keep_free(w["status"]) else "median"
+            lvl = level_block(F, L, f, bw, how) if bw else level_at(F, L, f, win)
             w["level"] = lvl
             if lvl is None:
                 w["state"], w["t_acc"] = None, None
                 self._alarm_reset(w, now)
                 continue
             w["max"] = lvl if w["max"] is None else max(w["max"], lvl)
-            ref_l = level_at(self._ref_F, self._ref_L, f, win) if rel else None
+            ref_l = ((level_block(self._ref_F, self._ref_L, f, bw, how) if bw else
+                      level_at(self._ref_F, self._ref_L, f, win)) if rel else None)
             thr, weak = eff_thresholds(w["thr"], ref_l, rel, margin, gthr, gweak)
             prev = w["state"]
             new = next_state(prev, lvl, thr, weak, weak_on)
@@ -7790,7 +7920,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_markers(self):
         vb = self.spec.getPlotItem().vb
         (x0, x1), (y0, y1) = vb.viewRange()
-        vis = [w for w in self.watch if x0 <= w["freq"] <= x1 and self.in_scope(w)]
+        vis = [w for w in self.watch if x0 <= w["freq"] + (w.get("bw") or 0) / 2 and
+               w["freq"] - (w.get("bw") or 0) / 2 <= x1 and self.in_scope(w)]
         unk = [f for lst in self.unk_now.values() for f in lst if x0 <= f <= x1]
         mk = self.mk
         vis = [w for w in vis if marker_visible(
@@ -7808,13 +7939,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 col = self.group_color(w["scene"], w["group"])
             if col is None:
                 col = self.state_color(w["state"])
-            groups.setdefault((col, False), []).append(w["freq"])
+            seg = groups.setdefault((col, False), ([], []))
+            bw = w.get("bw") or 0.0
+            if bw:                         # bloc : bord gauche, bord droit, barre en haut
+                a, b = w["freq"] - bw / 2, w["freq"] + bw / 2
+                ybar = min(ys[1], y1 - (y1 - y0) * 0.015)
+                seg[0].extend([a, a, b, b, a, b])
+                seg[1].extend([ys[0], ys[1], ys[0], ys[1], ybar, ybar])
+            else:
+                seg[0].extend([w["freq"], w["freq"]])
+                seg[1].extend(ys)
             colors.append(col)
         for f in unk:
-            groups.setdefault((self.theme["st_unk"], True), []).append(f)
-        for key, fr in groups.items():
-            a = np.array(fr)
-            self._marker_item(key).setData(np.repeat(a, 2), np.tile(ys, len(a)))
+            seg = groups.setdefault((self.theme["st_unk"], True), ([], []))
+            seg[0].extend([f, f])
+            seg[1].extend(ys)
+        for key, (xs_, ys_) in groups.items():
+            self._marker_item(key).setData(np.array(xs_), np.array(ys_))
         for key, it in self._mk_items.items():
             if key not in groups:
                 it.setData(np.array([]), np.array([]))

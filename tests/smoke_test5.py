@@ -371,5 +371,100 @@ bad = dict(full, web=dict(on="oui", port="x"))
 win4._apply_config(bad)
 check("config abîmée : valeurs ignorées", win4.web_cfg == dict(on=True, port=8099), str(win4.web_cfg))
 
+# ------------------------------------------------------------- blocs Spectera / WMAS
+win.workers = []
+win.dev2_chk.setChecked(False)
+win.watch.clear()
+win.alarms.reset()
+with win.lock:
+    win.bands.clear()
+win._append_band("UHF", 600.0, 620.0, 50.0)
+win._bands_changed()
+bidS = win.bands[0]["id"]
+on = next(x["name"] for x in win.statuses if x.get("on"))
+free = next(x["name"] for x in win.statuses if x.get("free"))
+win._append_watch("Spectera ch 38", 610.0, status=on, bw=8.0)
+win._append_watch("Réserve ch 40", 618.0, status=free, bw=4.0)
+win._append_watch("HF étroite", 603.0, status=on)
+win.rebuild_watch_table()
+Fs = np.linspace(600, 620, 401)
+
+
+def sw(plateau=True, intrus=False, hf=True):
+    L = -100 + 0 * Fs
+    if plateau:
+        L[(Fs >= 606) & (Fs <= 614)] = -65
+    if intrus:
+        L[np.argmin(abs(Fs - 618.5))] = -50
+    if hf:
+        L[np.argmin(abs(Fs - 603.0))] = -40
+    win.on_sweep(bidS, Fs, L)
+
+
+ws = {w["name"]: w for w in win.watch}
+sw()
+check("bloc Spectera émet : occupé (médiane du plateau)", ws["Spectera ch 38"]["state"] == "occ"
+      and ws["Spectera ch 38"]["level"] == -65.0, str(ws["Spectera ch 38"]["level"]))
+check("bloc réservé vide : libre", ws["Réserve ch 40"]["state"] == "free")
+sw(intrus=True)
+check("signal intrus dans le bloc réservé : CONFLIT", ws["Réserve ch 40"]["state"] == "occ" and any(
+    a["kind"] == "CONFLIT" and a["name"] == "Réserve ch 40" for a in win.alarms.active.values()))
+sw(plateau=False)
+check("Spectera coupé : bloc libre", ws["Spectera ch 38"]["state"] == "free")
+txt = win.watch_table.item(win.watch.index(ws["Spectera ch 38"]), m.C_BAND).text()
+check("table : « ▬ bloc 8 MHz »", txt.startswith("▬ bloc 8 MHz"), txt)
+win.spec.getPlotItem().vb.xr = [600.0, 620.0]
+win.reset_markers()
+win._update_markers()
+xs = sorted({x for it in win._mk_items.values() if it.x is not None for x in it.x})
+check("repère du bloc : ses deux bords", 606.0 in xs and 614.0 in xs and 603.0 in xs, str(xs))
+win.scope = [("", None)] if False else None
+fp = [x for w in win.watch for x in m.block_points(w["freq"], w.get("bw"))]
+check("scan ciblé : couvre tout le bloc", min(fp) <= 606.0 and max(fp) >= 614.0)
+win._append_watch("HF dans le bloc", 609.0, status=on)
+win.sort_watch()
+win.rebuild_watch_table()
+win.update_watch_table(force=True)
+r_in = next(i for i, w in enumerate(win.watch) if w["name"] == "HF dans le bloc")
+txt = win.watch_table.item(r_in, m.C_BAND).text()
+check("fréquence dans un bloc : avertissement", txt.startswith("⚠ dans le bloc « Spectera ch 38 »"), txt)
+win.watch.pop(r_in)
+win.rebuild_watch_table()
+ws = {w["name"]: w for w in win.watch}
+# changement de largeur par le menu
+answers = ["Bloc 6 MHz"]
+W.QInputDialog.getItem = staticmethod(lambda *a, **k: (answers.pop(0), True))
+step("set_block_rows 6 MHz", lambda: win.set_block_rows([win.watch.index(ws["HF étroite"])]))
+check("fréquence → bloc 6 MHz", ws["HF étroite"]["bw"] == 6.0)
+answers[:] = ["Fréquence simple (pas de bloc)"]
+win.set_block_rows([win.watch.index(ws["HF étroite"])])
+check("bloc → fréquence simple", ws["HF étroite"]["bw"] == 0.0)
+answers[:] = ["Autre largeur…"]
+W.QInputDialog.getDouble = staticmethod(lambda *a, **k: (5.0, True))
+win.set_block_rows([win.watch.index(ws["HF étroite"])])
+check("autre largeur", ws["HF étroite"]["bw"] == 5.0)
+# ajout d'un bloc par canal TV
+n0 = len(win.watch)
+answers[:] = ["CH 38 — 606–614 MHz"]
+step("add_block_dialog", win.add_block_dialog)
+nb = [w for w in win.watch if w["name"] == "Spectera ch 38" and w is not ws["Spectera ch 38"]]
+check("bloc ajouté depuis le canal 38", len(win.watch) == n0 + 1 and nb and nb[0]["freq"] == 610.0 and nb[0]["bw"] == 8.0
+      and nb[0]["status"] == on, str([(w["name"], w["freq"], w.get("bw")) for w in win.watch]))
+answers[:] = ["Autre : fréquence centrale et largeur…"]
+vals = [612.5, 6.0]
+W.QInputDialog.getDouble = staticmethod(lambda *a, **k: (vals.pop(0), True))
+win.add_block_dialog()
+check("bloc libre (centre + largeur)", any(w["freq"] == 612.5 and w["bw"] == 6.0 for w in win.watch))
+# config
+cfgb = win._collect_config(False)
+check("config : largeur enregistrée", any(x.get("bw") == 8.0 for x in cfgb["watch"])
+      and all("bw" not in x for x in cfgb["watch"] if x["name"] == "Réserve ch 40" and False))
+win5 = step("MainWindow() #5", m.MainWindow)
+win5.apply_web = lambda: None
+win5._apply_config(cfgb)
+check("config relue : blocs", sorted(w["bw"] for w in win5.watch) == sorted(w["bw"] for w in win.watch),
+      str([w["bw"] for w in win5.watch]))
+check("préréglages Spectera", sum(1 for p in m.BAND_PRESETS if p[0].startswith("Spectera")) == 4)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

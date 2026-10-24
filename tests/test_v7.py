@@ -305,6 +305,31 @@ check("repère : masqué à la main", mv(dict(w0, hide_mk=True), mkd()), False)
 check("repère : alarme visible malgré tout", mv(dict(w0, hide_mk=True), dict(mkd(), states=[]), alarm=True), True)
 check("repère : alarme suit les filtres si demandé", mv(dict(w0, hide_mk=True), dict(mkd(), alarms=False), alarm=True), False)
 check("filtre actif", (ns["mk_filtered"](mkd()), ns["mk_filtered"](dict(mkd(), hide_status=["x"]))), (False, True))
+lb = ns["level_block"]
+Fb = np.linspace(600, 620, 401)                          # pas 50 kHz
+Lb = -100 + 0 * Fb
+Lb[(Fb >= 606) & (Fb <= 614)] = -65                     # plateau WMAS 8 MHz centré sur 610
+check("bloc : niveau médian du plateau", lb(Fb, Lb, 610.0, 8.0), -65.0)
+Ls = -100 + 0 * Fb
+Ls[np.argmin(abs(Fb - 611.0))] = -45                    # une porteuse étroite dans un bloc vide
+check("bloc vide + porteuse : médiane reste basse", lb(Fb, Ls, 610.0, 8.0), -100.0)
+check("bloc vide + porteuse : le max la voit", lb(Fb, Ls, 610.0, 8.0, "max"), -45.0)
+check("bloc hors balayage", lb(Fb, Lb, 700.0, 8.0), None)
+check("bloc de largeur nulle", lb(Fb, Lb, 610.0, 0), None)
+bc = ns["block_choices"](ns["tv_channels"]("FR"))
+check("canaux bloc FR : 21 → 48, 8 MHz", (bc[0], len(bc), bc[-1][1]), (("CH 21 — 470–478 MHz", 474.0, 8.0), 28, 690.0))
+bcu = ns["block_choices"](ns["tv_channels"]("US"))
+ok("canaux bloc US : 6 MHz", bcu[0][2] == 6.0 and all(c[1] < 698 for c in bcu), str(bcu[:2]))
+bp = ns["block_points"]
+check("points d'un bloc", (bp(610.0, 8.0)[0], bp(610.0, 8.0)[-1], len(bp(610.0, 8.0))), (606.0, 614.0, 9))
+check("points d'une fréquence simple", bp(500.0, 0.0), [500.0])
+bo = ns["block_overlaps"]
+items = [("Spectera 38", 610.0, 8.0), ("HF 1", 607.5, 0.0), ("HF 2", 615.0, 0.0), ("Bloc 39", 616.0, 6.0),
+         ("HF 3", 620.0, 0.0)]
+check("chevauchements : HF 1 dans le bloc 38, blocs 38/39 qui se touchent, HF 2 dans le 39",
+      bo(items), {1: "Spectera 38", 0: "Bloc 39", 3: "Spectera 38", 2: "Bloc 39"})
+check("chevauchements : marge de garde", bo([("B", 610.0, 8.0), ("HF", 614.3, 0.0)], guard=0.5), {1: "B"})
+check("pas de bloc : rien", bo([("a", 1.0, 0.0), ("b", 1.0, 0.0)]), {})
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
 print("\nÉCHECS:", fails)
