@@ -4879,24 +4879,35 @@ class WallWindow(QtWidgets.QWidget):
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(6)
         lay.addWidget(self.host, 1)
-        sc = QtGui.QShortcut(QtGui.QKeySequence("F11"), self)
-        sc.activated.connect(self.toggle_full)
-        sc2 = QtGui.QShortcut(QtGui.QKeySequence("Escape"), self)
-        sc2.activated.connect(self.leave_full)
+        for key, fn in (("F11", self.toggle_full), ("Escape", self.leave_full)):
+            sc = QtGui.QShortcut(QtGui.QKeySequence(key), self)
+            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)    # seulement quand le mur a le focus
+            sc.activated.connect(fn)
+        self.only_chk.setToolTip("N'affiche que les fréquences occupées ou faibles : les tuiles grossissent.")
+        self.full_btn.setToolTip("Le mur se détache et passe en plein écran (F11 ; Échap pour revenir).")
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(80)
         self._timer.timeout.connect(self.relayout)
 
+    def _win(self):
+        """Fenêtre qui passe en plein écran : le panneau (dock) qui contient le mur, ou le mur seul."""
+        p = self.parentWidget()
+        return p if isinstance(p, QtWidgets.QDockWidget) else self
+
     def toggle_full(self):
-        if self.isFullScreen():
-            self.showNormal()
-        else:
-            self.showFullScreen()
+        w = self._win()
+        if w.isFullScreen():
+            self.leave_full()
+            return
+        if isinstance(w, QtWidgets.QDockWidget):
+            w.setFloating(True)
+        w.showFullScreen()
 
     def leave_full(self):
-        if self.isFullScreen():
-            self.showNormal()
+        w = self._win()
+        if w.isFullScreen():
+            w.showNormal()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -5064,7 +5075,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._strip_rows = []
         self.ref_curves = []            # courbe de référence : liste de (freq, niveau)
         self._ref_F = self._ref_L = None
-        self.wall = None
+        self.wall = None                # mur de fréquences (panneau dock_wall, créé avec les panneaux)
         self._log_err_shown = False
         self.log_dir = LOG_DIR
         self.export_prefs = {}
@@ -5171,6 +5182,122 @@ class MainWindow(QtWidgets.QMainWindow):
         lab.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, lab.sizePolicy().verticalPolicy())
         lab.setMinimumWidth(40)
         return lab
+
+    # ------------------------------------------------------------------ aide au survol
+    TIPS_ATTR = dict(
+        port_combo="Port USB du tinySA (✔ tinySA = reconnu automatiquement). Ferme tinySA-App avant : un seul\n"
+                   "logiciel à la fois peut parler au tinySA. ⟳ : relire la liste des ports.",
+        start_btn="Lance / arrête le balayage (les deux tinySA si le 2ᵉ est activé). Pendant un arrêt, si le tinySA\n"
+                  "ne répond plus, le port est fermé au bout de 4 s.",
+        thr_spin="Seuil « occupé » : au-dessus, la fréquence est OCCUPÉE (rouge). « Auto » le place juste\n"
+                 "au-dessus du bruit mesuré. Tu peux aussi tirer la ligne rouge sur le spectre.",
+        weak_chk="Zone « faible » (jaune) entre ce niveau et le seuil occupé : un signal lointain ou un émetteur\n"
+                 "en train de partir. Décoche pour n'avoir que libre / occupé.",
+        weak_spin="Niveau à partir duquel un signal est « faible » (ligne pointillée sur le spectre).",
+        ref_chk="Seuil relatif : occupé = courbe de référence du lieu + la marge (utile quand le bruit de fond\n"
+                "n'est pas plat). Capture la référence avec 📏 Référence au-dessus du spectre.",
+        ref_margin="Marge au-dessus de la courbe de référence pour déclarer « occupé ».",
+        win_spin="Largeur de la fenêtre de mesure autour de chaque fréquence (± kHz) : le niveau retenu est le max\n"
+                 "dans cette fenêtre.",
+        occ_combo="Durée sur laquelle est calculé le taux d'occupation (colonne Occ.).",
+        absent_spin="Une fréquence « Doit émettre » silencieuse plus longtemps que ça déclenche ⚠ ABSENT.",
+        alert_chk="Son des alarmes (CONFLIT / ABSENT / appareil perdu). Les critiques sont répétées toutes les 10 s\n"
+                  "jusqu'à l'acquittement.",
+        unk_chk="Repère les pics au-dessus du seuil qui ne sont dans aucune liste : pointillés sur le spectre,\n"
+                "« INCONNU » dans le journal.",
+        rbw_combo="Résolution du tinySA (filtre). Petit RBW = plus précis et plancher plus bas, mais balayage\n"
+                  "beaucoup plus lent. 100 kHz convient au monitoring HF.",
+        zrbw_combo="RBW utilisé en zoom live. « Auto » l'adapte à la largeur zoomée (conseillé : un RBW étroit\n"
+                   "sur une zone large rend le scan très lent).",
+        input_combo="Entrée du tinySA Ultra : basse (≤ 800 MHz) ou haute. « Auto » choisit selon la fréquence.",
+        lna_combo="Préampli du tinySA : plus sensible, mais risque de saturation près des émetteurs.",
+        att_combo="Atténuateur d'entrée : à monter si des signaux forts saturent (produits parasites).",
+        offset_spin="Correction ajoutée à toutes les mesures (câble, antenne, splitter…).",
+        seg_combo="Taille des morceaux envoyés au tinySA à chaque commande. « Auto » selon le modèle.",
+        points_combo="Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.",
+        country_combo="Pays : canaux TV et attributions affichés sous le spectre, canaux proposés pour les blocs\n"
+                      "Spectera. « Éditer le plan » pour l'adapter.",
+        alloc_chk="Affiche sous le spectre à qui appartient chaque bande (TNT + micros, 4G/5G, militaire…).",
+        tv_chk="Affiche les numéros des canaux TV sous le spectre.",
+        view_combo="Toutes les bandes, ou une seule (affiche aussi son waterfall).",
+        hold_chk="Max hold : garde en orange le maximum atteint à chaque fréquence (Reset max pour effacer).",
+        showref_chk="Affiche la courbe de référence du lieu (bruit de fond enregistré) sous le spectre.",
+        filter_edit="Filtre la liste : un bout de nom, une fréquence (« 606 »), un statut…",
+        occ_only_chk="N'affiche que les fréquences occupées ou faibles.",
+        preset_combo="Ajoute une bande toute faite (UHF, Spectera, 1G4, 2,4 GHz, aperçu de tout le tinySA…).",
+    )
+    TIPS_TEXT = {
+        "▶ Démarrer": TIPS_ATTR["start_btn"],
+        "＋ Bande": "Ajoute une bande à balayer (modifie ensuite début, fin et pas dans la table).",
+        "Supprimer": "Supprime la ou les lignes sélectionnées.",
+        "Reset max": "Efface le max hold (courbe orange) et repart de zéro.",
+        "📷 Capture": "Enregistre une image PNG du spectre.",
+        "💾 Exporter le scan…": "Exporte le dernier balayage (CSV) pour WWB, WSM ou un tableur.",
+        "Exporter le journal": "Enregistre le journal des événements en CSV.",
+        "Effacer": "Vide le journal affiché (le fichier du journal automatique est gardé).",
+        "📂 Ouvrir le dossier": "Ouvre le dossier des journaux, enregistrements et rapports.",
+        "Choisir le dossier…": "Change le dossier des journaux, enregistrements et rapports.",
+        "＋ Ajouter": "Ajoute une fréquence à surveiller (dans la couche active).",
+        "📥 Importer CSV…": "Importe une liste de fréquences (EazyRF, WWB, WSM, Excel…). Tu peux aussi glisser le\n"
+                           "fichier sur la fenêtre.",
+        "Coller une liste": "Colle une liste copiée (Excel, mail…) : nom et fréquence par ligne.",
+        "📤 Exporter": "Exporte ta liste de fréquences (CSV).",
+        "Bandes depuis la liste": "Remplace les bandes par des zones qui couvrent juste tes fréquences (scan plus rapide).",
+        "＋ Scène": "Crée une scène (ex. Grande scène) pour ranger les fréquences.",
+        "＋ Groupe": "Crée un groupe dans une scène (ex. Micros HF, IEM, Intercom). Clic droit sur un groupe :\n"
+                     "priorité des alarmes, couleur, import.",
+        "Afficher": TIPS_ATTR["showref_chk"],
+    }
+
+    TIPS_MENU = {
+        "⚡ Intermodulation": "Produits d'intermodulation de tes émetteurs (2 / 3 / 5 TX) : ce qui retombe sur tes\n"
+                             "fréquences, ou d'où peut venir un signal inconnu.",
+        "🆘 Fréquence de secours": "Propose des fréquences libres d'après le spectre mesuré, sans intermod avec ta liste.",
+        "⏪ Relecture": "Revoir le spectre des 30 dernières minutes (ou d'un enregistrement), saut aux événements.",
+        "📄 Rapport de show": "Rapport de fin de show (alarmes, occupation, spectre) en HTML, imprimable en PDF.",
+        "📤 Exporter les fréquences": "Exporte la liste par scène / groupe, pour EazyRF, WWB, WSM ou un tableur.",
+        "📏 Importer un scan": "Charge un scan WSM / WWB comme courbe de référence (bruit de fond du lieu).",
+        "🔁 Convertir un scan": "Convertit un export de scan Sennheiser WSM au format Shure WWB.",
+        "💾 Exporter le scan au format WWB": "Envoie le spectre mesuré dans WWB (fichier de scan).",
+        "✏ Nommer la sélection": "Nomme d'un coup les lignes choisies : HF 1, HF 2… IEM 1…",
+        "⇣ Numéroter vers le bas": "Numérote vers le bas à partir de la 1ʳᵉ ligne sélectionnée (Ctrl+D).",
+        "Mon vocabulaire": "Mots proposés par l'auto-complétion des noms (MIC, HF, IEM, Intercom…).",
+        "📡 Relais réseau": "Partage le tinySA branché sur CE PC pour l'utiliser comme 2ᵉ tinySA depuis un autre PC.",
+        "📣 Alertes": "Alertes sur téléphone (ntfy / Telegram) et page web en lecture seule pour l'équipe.",
+        "📶 Ajouter un bloc": "Ajoute un porteur large Sennheiser Spectera / WMAS (canal 6 / 8 MHz) à surveiller.",
+        "🧱 Mur": "Grandes tuiles, une par fréquence : panneau à détacher sur un 2ᵉ écran (F11 plein écran).",
+        "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
+        "Disposition standard": "Remet les panneaux à leur place d'origine.",
+        "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
+    }
+
+    def _install_tips(self):
+        """Une explication sur chaque bouton / case / liste, aussi recopiée dans la barre d'état au survol."""
+        for name, tip in self.TIPS_ATTR.items():
+            w_ = getattr(self, name, None)
+            if w_ is not None and not w_.toolTip():
+                w_.setToolTip(tip)
+        for w_ in self.findChildren(QtWidgets.QAbstractButton):
+            if not w_.toolTip() and w_.text() in self.TIPS_TEXT:
+                w_.setToolTip(self.TIPS_TEXT[w_.text()])
+        for btn, _box in self.sections.values():
+            btn.setToolTip("Clic : replier / déplier cette section (l'état est mémorisé).")
+        for w_ in self.findChildren(QtWidgets.QWidget):
+            if w_.toolTip() and not w_.statusTip():
+                w_.setStatusTip(w_.toolTip().split("\n")[0])
+        menus = set(self.findChildren(QtWidgets.QMenu))
+        todo = [self.more_menu]                      # sous-menus (Outils…) rattachés à des boutons hors fenêtre
+        while todo:
+            m_ = todo.pop()
+            menus.add(m_)
+            todo += [a_.menu() for a_ in m_.actions() if a_.menu() is not None and a_.menu() not in menus]
+        for m_ in menus:
+            m_.setToolTipsVisible(True)
+            for a_ in m_.actions():
+                tip = next((t for k, t in self.TIPS_MENU.items() if a_.text().startswith(k)), None)
+                if tip:
+                    a_.setToolTip(tip)
+                    a_.setStatusTip(tip.split("\n")[0])
 
     SECTIONS_OPEN = dict(detect=True, bands=True, measure=False, dev2=False, country=False)
 
@@ -5871,6 +5998,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
         left.setMinimumWidth(300)
         self._build_docks(left, ftab, ltab, self.wf_box, center)
+        self._install_tips()
         # listes déroulantes : ne pas s'élargir au plus long choix (noms de ports COM à rallonge sous Windows…) ;
         # le menu déroulé affiche toujours le texte complet
         for cb in self.findChildren(QtWidgets.QComboBox):
@@ -8886,11 +9014,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # --------------------------------------------------- mur / journal auto
     def open_wall(self):
-        if self.wall is None:
-            self.wall = WallWindow(self)
-        self.wall.show()
-        self.wall.raise_()
-        self.wall.activateWindow()
+        """Le mur est un panneau : on l'affiche (en onglet à côté du spectre, ou là où tu l'as rangé)."""
+        self.dock_wall.show()
+        self.dock_wall.raise_()
+        self.wall.rebuild()
 
     # ------------------------------------------------------- vocabulaire / saisie assistée
     def vocab_all(self, kind):
@@ -9098,10 +9225,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_spec = self._make_dock("Spectre", "dock_spectre", center, B)
         self.dock_wf = self._make_dock("Waterfall", "dock_wf", wf_box, B)
         self.dock_alarm = self._make_dock("Alarmes", "dock_alarmes", self._build_alarm_panel(), B)
+        self.wall = WallWindow(self)
+        self.dock_wall = self._make_dock("Mur de fréquences", "dock_mur", self.wall, B)
         self.splitDockWidget(self.dock_spec, self.dock_wf, Qt.Orientation.Vertical)
         self.splitDockWidget(self.dock_wf, self.dock_alarm, Qt.Orientation.Vertical)
+        self.tabifyDockWidget(self.dock_spec, self.dock_wall)       # en onglet à côté du spectre
+        self.dock_spec.raise_()
         self.dock_alarm.hide()
-        self.docks = [self.dock_spec, self.dock_set, self.dock_freq, self.dock_log, self.dock_wf, self.dock_alarm]
+        self.dock_wall.hide()
+        self.docks = [self.dock_spec, self.dock_set, self.dock_freq, self.dock_log, self.dock_wf, self.dock_alarm,
+                      self.dock_wall]
         self.tabifyDockWidget(self.dock_freq, self.dock_log)
         self.dock_freq.raise_()
         self.win_menu.clear()
@@ -9136,8 +9269,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.splitDockWidget(self.dock_spec, self.dock_wf, Qt.Orientation.Vertical)
         self.splitDockWidget(self.dock_wf, self.dock_alarm, Qt.Orientation.Vertical)
         self.tabifyDockWidget(self.dock_freq, self.dock_log)
+        self.tabifyDockWidget(self.dock_spec, self.dock_wall)
         self.dock_freq.raise_()
+        self.dock_spec.raise_()
         self.dock_alarm.hide()
+        self.dock_wall.hide()
         if self.view_id == -1 and self._zoom is None:
             self.dock_wf.hide()      # rien à afficher en vue « toutes les bandes »
         self._dock_sizes()
@@ -9185,11 +9321,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if scr is None:
             self.set_status("Un seul écran détecté : le mur est ouvert en fenêtre (F11 pour le plein écran).")
             return
-        wh = self.wall.windowHandle()
+        self.dock_wall.setFloating(True)
+        wh = self.dock_wall.windowHandle()
         if wh is not None:
             wh.setScreen(scr)
-        self.wall.move(scr.geometry().topLeft())
-        self.wall.showFullScreen()
+        self.dock_wall.move(scr.geometry().topLeft())
+        self.dock_wall.showFullScreen()
 
     def _wf_show(self, on):
         self.wf.setVisible(bool(on))
@@ -9673,8 +9810,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.web is not None:
             self.web.stop()
             self.web = None
-        if self.wall is not None:
-            self.wall.close()
+        if self.wall is not None and self.dock_wall.isFullScreen():
+            self.dock_wall.showNormal()
         if self.recorder is not None:
             try:
                 self.recorder.close()

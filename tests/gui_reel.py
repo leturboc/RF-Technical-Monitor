@@ -230,6 +230,42 @@ step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
 for name in ("layout_analyzer", "layout_monitor", "layout_dual", "layout_standard"):
     step(name, getattr(win, name)); wait(1200); shot(win, name)
 
+# aide au survol : tout bouton / case / liste visible a une explication
+win.set_expert(True)
+for k_ in win.sections:
+    win.open_section(k_, True)
+wait(300)
+miss = []
+for x in win.findChildren(W.QWidget):
+    if not isinstance(x, (W.QAbstractButton, W.QComboBox, W.QAbstractSpinBox, W.QLineEdit)) or not x.isVisibleTo(win):
+        continue
+    if x.objectName().startswith("qt_") or isinstance(x.parentWidget(), (W.QAbstractSpinBox, W.QComboBox, W.QTabBar)):
+        continue
+    if isinstance(x, W.QToolButton) and not x.text():
+        continue
+    if not x.toolTip().strip():
+        miss.append((type(x).__name__, getattr(x, "text", lambda: "")() if not isinstance(x, W.QComboBox) else x.currentText()))
+check("chaque bouton / case / liste a une info-bulle", not miss, str(miss))
+tools_tips = [a.toolTip() for a in win.more_menu.actions()[0].menu().actions() if a.text()]
+check("menu Outils : bulles d'aide", all(t and not t.startswith(("⚡", "🆘")) for t in tools_tips[:2]), str(tools_tips[:2]))
+win.set_expert(False)
+
+# mur de fréquences = panneau
+step("ouvrir le mur (panneau)", win.open_wall)
+wait(1200)
+check("mur : panneau visible, accroché", win.dock_wall in win.docks and win.dock_wall.isVisible()
+      and not win.dock_wall.isFloating())
+shot(win, "mur_en_panneau")
+step("mur plein écran (F11)", win.wall.toggle_full)
+wait(600)
+check("mur : plein écran = panneau détaché", win.dock_wall.isFloating() and win.dock_wall.isFullScreen())
+step("mur : Échap", win.wall.leave_full)
+wait(400)
+check("mur : sortie du plein écran", not win.dock_wall.isFullScreen())
+win.dock_wall.setFloating(False)
+win.dock_wall.hide()
+wait(300)
+
 # spectre détachable + mode simple / expert
 check("le spectre est un panneau (détachable)", win.dock_spec in win.docks and
       bool(win.dock_spec.features() & W.QDockWidget.DockWidgetFeature.DockWidgetFloatable))
