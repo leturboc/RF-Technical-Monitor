@@ -116,6 +116,17 @@ L'intermodulation ne tient pas compte de la largeur des blocs (calcul sur leur f
 
 Le jeton Telegram reste dans la config de ce PC : il n'est pas copié dans les fichiers de show.
 
+## Interface : mode simple / expert, panneaux libres
+
+- En haut : **Port**, **▶ Démarrer**, **🎪 Shows**, **🔔 alarmes** et **☰ Plus** (outils, fenêtres et dispositions, mur,
+  couleurs, statuts, mode expert).
+- **Mode simple** (par défaut) : seuls les réglages utiles pendant le show sont affichés (seuils occupé / faible,
+  TX absent, alerte, bandes, 2ᵉ tinySA, pays). **☰ Plus › Mode expert** (ou le bouton en haut des réglages) montre
+  aussi RBW, entrée, LNA, atténuateur, offset, segments, fenêtre, seuil sur référence, calibration, relais…
+- Les réglages sont en **sections repliables** (clic sur le titre) ; l'état est mémorisé.
+- **Tous les panneaux sont détachables**, y compris le **spectre** : attrape un panneau par sa barre de titre pour
+  le déplacer, le mettre sur l'autre écran ou le ré-accrocher ; ☰ Plus › Fenêtres pour les réafficher.
+
 ## Démarrage rapide
 
 1. Branche le tinySA Ultra en USB, choisis le port (ou coche **Démo** pour essayer sans matériel), **▶ Démarrer**.

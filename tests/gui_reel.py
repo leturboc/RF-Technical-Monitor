@@ -230,6 +230,30 @@ step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
 for name in ("layout_analyzer", "layout_monitor", "layout_dual", "layout_standard"):
     step(name, getattr(win, name)); wait(1200); shot(win, name)
 
+# spectre détachable + mode simple / expert
+check("le spectre est un panneau (détachable)", win.dock_spec in win.docks and
+      bool(win.dock_spec.features() & W.QDockWidget.DockWidgetFeature.DockWidgetFloatable))
+win.dock_spec.setFloating(True)
+win.dock_spec.resize(900, 500)
+wait(800)
+check("spectre détaché : fenêtre libre", win.dock_spec.isFloating() and win.dock_spec.isVisible())
+shot(win.dock_spec, "spectre_detache")
+win.dock_spec.setFloating(False)
+wait(500)
+win.set_expert(False)
+wait(300)
+check("mode simple : RBW caché, seuils visibles", not win.rbw_combo.isVisible() and win.thr_spin.isVisible()
+      and win.absent_spin.isVisible() and win.weak_spin.isVisible())
+shot(win, "mode_simple")
+win.set_expert(True)
+wait(300)
+win.open_section("measure", True)
+wait(300)
+check("mode expert : RBW visible", win.rbw_combo.isVisible())
+win.open_section("measure", False)
+wait(300)
+check("section repliée : RBW caché", not win.rbw_combo.isVisible())
+win.set_expert(False)
 step("toggle_alarm_dock", win.toggle_alarm_dock); wait(1500); shot(win, "panneau_alarmes")
 print("ALARMES actives:", len(win.alarms.active), "btn:", win.alarm_btn.text(), flush=True)
 
@@ -263,6 +287,10 @@ check("largeur mini ≤ 1280 px (portable)", ok_w, str(win.minimumSizeHint()))
 print(("OK  " if ok_w else "FAIL") + " détail largeurs : " + size_report(), flush=True)
 check("hauteur mini ≤ 700 px (1366×768 moins barre des tâches et titre)", win.minimumSizeHint().height() <= 700, str(win.minimumSizeHint()))
 win.resize(1280, 720); wait(1200); shot(win, "taille_1280x720")
+vis = {t: b.isVisible() and b.visibleRegion().boundingRect().width() >= b.width() - 2
+       for t, b in (("Démarrer", win.start_btn), ("🔔", win.alarm_btn))}
+vis["Shows / Plus"] = all(a.isVisible() for a in win.cmd_bar.findChildren(W.QPushButton) if a.text() in ("🎪 Shows", "☰ Plus"))
+check("1280×720 : boutons du haut visibles en entier", all(vis.values()), str(vis))
 win.resize(1700, 980); wait(800)
 
 # dialogues modaux

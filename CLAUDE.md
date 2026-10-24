@@ -107,8 +107,16 @@ dispositions, dialogues, relecture, mur, imports WSM/WWB, rapport, relance avec 
 Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série, double écran, rendu natif, exe PyInstaller.
 
 ## Pièges connus
-- Barres d'outils : `MainWindow._flow(...)` (`FlowLayout`) — elles se replient au lieu d'imposer une largeur
-  minimale ; ne pas remettre une longue rangée `_row(...)` en haut de la fenêtre.
+- Barre du haut = `QToolBar` `cmd_bar` (Port, Démarrer, Shows, 🔔, ☰ Plus → `more_menu` : Outils, Fenêtres, Mur,
+  Couleurs, Statuts, Mode expert) sur toute la largeur. NE PAS la remettre dans une zone entre les docks : une
+  rangée qui se replie y est coupée par Qt (bouton Démarrer invisible à 1280 px, vu en v7.2 dev).
+- Pas de zone centrale : widget central vide (0×0) ; le **spectre est un dock** (`dock_spec`, zone du bas, au-dessus
+  du waterfall et des alarmes) ; coins inférieurs donnés aux zones gauche / droite (`setCorner`) sinon la zone du
+  bas passe sous les colonnes et la hauteur mini explose. `_dock_sizes` proportionnel à la largeur.
+- Mode simple / expert : `self.expert`, `set_expert` (`_expert_rows` = (QFormLayout, widget) → `setRowVisible`,
+  `ref_row`, `persist_combo`) ; sections repliables `_section(key, box)`, `sections_open` (config). Les seuils
+  occupé / faible / TX absent restent visibles en mode simple (demande de Clément).
+- `MainWindow._flow(...)` (`FlowLayout`) : rangées qui se replient (ligne « Vue » du spectre).
 - Textes repliés (`setWordWrap`) dans un `QSplitter` : leur réserver une hauteur mini, sinon ils se chevauchent.
 - `&` dans un titre de dock ou d'onglet = raccourci clavier Qt (il disparaît) : écrire « et ».
 - PySide6 : énumérations qualifiées complètes (`Qt.ItemDataRole.UserRole`, etc.).

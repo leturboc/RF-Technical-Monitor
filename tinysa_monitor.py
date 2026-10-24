@@ -5099,6 +5099,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.labels = []
         self._mk_items = {}
         self.mk = mk_default()          # repères du spectre : filtres (état, couche, statut), style
+        self.expert = False             # mode simple par défaut (☰ Plus › Mode expert)
+        self.sections_open = dict(self.SECTIONS_OPEN)
         self._zoom = None
         self._zoom_view = None
         self._cfg = dict(rbw=100, zrbw=None, input="auto", lna=None, att="auto", offset=0.0,
@@ -5169,6 +5171,56 @@ class MainWindow(QtWidgets.QMainWindow):
         lab.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, lab.sizePolicy().verticalPolicy())
         lab.setMinimumWidth(40)
         return lab
+
+    SECTIONS_OPEN = dict(detect=True, bands=True, measure=False, dev2=False, country=False)
+
+    def _section(self, key, box):
+        """Groupe de réglages repliable : un bouton-titre (▾ / ▸) au-dessus du contenu."""
+        title = box.title()
+        box.setTitle("")
+        wrap = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(wrap)
+        v.setContentsMargins(0, 2, 0, 2)
+        v.setSpacing(0)
+        btn = QtWidgets.QToolButton()
+        btn.setCheckable(True)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        btn.setStyleSheet("QToolButton{border:none;font-weight:bold;text-align:left;padding:4px 2px;}")
+        v.addWidget(btn)
+        v.addWidget(box)
+
+        def show(on):
+            box.setVisible(on)
+            btn.setArrowType(Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
+            self.sections_open[key] = bool(on)
+
+        btn.setText(title)
+        btn.toggled.connect(lambda *_: show(btn.isChecked()))
+        self.sections[key] = (btn, box)
+        self.sections_open = getattr(self, "sections_open", dict(self.SECTIONS_OPEN))
+        on = self.sections_open.get(key, True)
+        btn.setChecked(on)
+        show(on)
+        return wrap
+
+    def set_expert(self, on):
+        """Mode simple : seulement l'essentiel (seuils, bandes, 2ᵉ tinySA, pays). Expert : tous les réglages."""
+        self.expert = bool(on)
+        for form, w_ in getattr(self, "_expert_rows", []):
+            form.setRowVisible(w_, self.expert)
+        for w_ in (getattr(self, "ref_row", None), getattr(self, "persist_combo", None)):
+            if w_ is not None:
+                w_.setVisible(self.expert)
+        if hasattr(self, "expert_act"):
+            self.expert_act.setChecked(self.expert)
+        if hasattr(self, "expert_hint"):
+            self.expert_hint.setText("🎛 Mode expert : revenir au mode simple" if self.expert
+                                     else "🎛 Mode simple : afficher tous les réglages")
+
+    def open_section(self, key, on=True):
+        if key in self.sections:
+            self.sections[key][0].setChecked(on)
 
     @staticmethod
     def _flow(*groups):
@@ -5267,8 +5319,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_btn.setToolTip("Alarmes : conflits (signal sur une fréquence « doit rester libre ») et émetteurs "
                                   "absents (« doit émettre »).\nRouge = à acquitter · orange = acquittées, toujours là.")
         self.alarm_btn.clicked.connect(lambda *_: self.toggle_alarm_dock())
-        top = self._flow(("Port :", self.port_combo, btn_ports), (self.demo_chk, self.info_lbl),
-                         self.alarm_btn, tools_btn, win_btn, wall_btn, prof_btn, colors_btn, status_btn, self.start_btn)
+        # barre du haut épurée : l'essentiel visible, le reste dans « ☰ Plus »
+        more_btn = QtWidgets.QPushButton("☰ Plus")
+        more_btn.setToolTip("Outils (intermodulation, secours, relecture, rapport, scans WSM/WWB…), fenêtres et\n"
+                            "dispositions, mur de fréquences, couleurs, statuts, mode simple / expert.")
+        self.more_menu = QtWidgets.QMenu(more_btn)
+        more_btn.setMenu(self.more_menu)
+        tmenu.setTitle("🔧 Outils")
+        self.win_menu.setTitle("🪟 Fenêtres et dispositions")
+        self.more_menu.addMenu(tmenu)
+        self.more_menu.addMenu(self.win_menu)
+        self.more_menu.addSeparator()
+        self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
+        self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
+        self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
+        self.more_menu.addSeparator()
+        self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
+        self.expert_act.setCheckable(True)
+        self.expert_act.triggered.connect(lambda *_: self.set_expert(self.expert_act.isChecked()))
+        self._spare_btns = [tools_btn, win_btn, wall_btn, colors_btn, status_btn]   # gardés pour leurs menus
+        # barre d'outils sur toute la largeur (au-dessus des panneaux) : jamais coupée par les colonnes
+        tb = QtWidgets.QToolBar("Commandes")
+        tb.setObjectName("barre_commandes")
+        tb.setMovable(False)
+        tb.setFloatable(False)
+        tb.toggleViewAction().setEnabled(False)
+        port_box = QtWidgets.QWidget()
+        ph = QtWidgets.QHBoxLayout(port_box)
+        ph.setContentsMargins(4, 2, 8, 2)
+        for wd in (QtWidgets.QLabel("Port :"), self.port_combo, btn_ports, self.demo_chk, self.info_lbl):
+            ph.addWidget(wd)
+        tb.addWidget(port_box)
+        for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn):
+            tb.addWidget(wd)
+            tb.addSeparator()
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
+        self.cmd_bar = tb
 
         # --- panneau de gauche : réglages
         self.points_combo = self._combo([(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES], 1000)
@@ -5436,11 +5522,24 @@ class MainWindow(QtWidgets.QMainWindow):
         lcont = QtWidgets.QWidget()
         lv = QtWidgets.QVBoxLayout(lcont)
         lv.setContentsMargins(6, 4, 6, 4)
-        lv.addWidget(mbox)
-        lv.addWidget(self._build_dev2_box())
-        lv.addWidget(dbox)
-        lv.addWidget(pbox)
-        lv.addWidget(bbox, 1)
+        self.expert_hint = QtWidgets.QPushButton("🎛 Mode simple : afficher tous les réglages")
+        self.expert_hint.setFlat(True)
+        self.expert_hint.setToolTip("Le mode expert montre aussi RBW, entrée, LNA, atténuateur, offset, segments,\n"
+                                    "fenêtre, seuil sur référence, calibration, relais… (☰ Plus › Mode expert).")
+        self.expert_hint.clicked.connect(lambda *_: self.set_expert(not self.expert))
+        lv.addWidget(self.expert_hint)
+        self.sections = {}
+        dev2_box = self._build_dev2_box()
+        for key, box, stretch in (("detect", dbox, 0), ("bands", bbox, 1), ("measure", mbox, 0),
+                                  ("dev2", dev2_box, 0), ("country", pbox, 0)):
+            lv.addWidget(self._section(key, box), stretch)
+        lv.addStretch(0)
+        self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo,
+                                                   self.att_combo, self.offset_spin, self.seg_combo)]
+        self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo,
+                                                   self.unk_chk)]
+        self._expert_rows += [(self._dev2_form, w_) for w_ in (self.dev2_off, self.calib_btn, self.relay_btn)]
+        self._expert_rows += [(pform, plan_btn)]
         left = QtWidgets.QScrollArea()
         left.setWidgetResizable(True)
         left.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
@@ -5584,7 +5683,11 @@ class MainWindow(QtWidgets.QMainWindow):
         cl.setContentsMargins(6, 4, 6, 0)
         cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
                                 self.persist_combo, reset_btn, cap_btn, self.readout))
-        cl.addLayout(self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None))
+        self.ref_row = QtWidgets.QWidget()
+        rl = self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None)
+        rl.setContentsMargins(0, 0, 0, 0)
+        self.ref_row.setLayout(rl)
+        cl.addWidget(self.ref_row)
         cl.addWidget(self.band_lbl)
         cl.addWidget(self.spec, 1)
         cl.addWidget(self.bandw)
@@ -5757,14 +5860,17 @@ class MainWindow(QtWidgets.QMainWindow):
         tip2.setWordWrap(True)
         lg.addWidget(tip2)
 
+        # pas de zone centrale fixe : le spectre est un panneau comme les autres (détachable, déplaçable sur
+        # l'autre écran, ré-accrochable). Qt exige un widget central : une case vide de taille nulle.
         root = QtWidgets.QWidget()
-        rv = QtWidgets.QVBoxLayout(root)
-        rv.setContentsMargins(8, 8, 8, 0)
-        rv.addLayout(top)
-        rv.addWidget(center, 1)
+        root.setMaximumSize(0, 0)
         self.setCentralWidget(root)
+        self.setDockNestingEnabled(True)
+        # colonnes Réglages / Fréquences sur toute la hauteur ; spectre, waterfall, alarmes au milieu
+        self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
         left.setMinimumWidth(300)
-        self._build_docks(left, ftab, ltab, self.wf_box)
+        self._build_docks(left, ftab, ltab, self.wf_box, center)
         # listes déroulantes : ne pas s'élargir au plus long choix (noms de ports COM à rallonge sous Windows…) ;
         # le menu déroulé affiche toujours le texte complet
         for cb in self.findChildren(QtWidgets.QComboBox):
@@ -6002,6 +6108,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alert_chk.setChecked(data.get("alert", True))
         self.unk_chk.setChecked(data.get("unk", True))
         self.names_chk.setChecked(data.get("names", True))
+        self.set_expert(bool(data.get("expert", False)))
+        so = data.get("sections")
+        if isinstance(so, dict):
+            for k_, v_ in so.items():
+                self.open_section(k_, bool(v_))
         mk, base = data.get("markers"), mk_default()
         if isinstance(mk, dict):
             ok_states = {k for k, _ in MK_STATES}
@@ -6103,7 +6214,8 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
-            dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg))
+            dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
+            expert=self.expert, sections=dict(self.sections_open))
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
@@ -6498,6 +6610,7 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addRow(self.dev2_lbl)
         f.addRow(self.calib_btn)
         f.addRow(relay_btn)
+        self._dev2_form, self.relay_btn = f, relay_btn
         self.dev2_info = ""
         self._dev2_ports()
         return box
@@ -8976,16 +9089,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addDockWidget(area, d)
         return d
 
-    def _build_docks(self, left, ftab, ltab, wf_box):
+    def _build_docks(self, left, ftab, ltab, wf_box, center):
         L, R, B = (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea,
                    Qt.DockWidgetArea.BottomDockWidgetArea)
         self.dock_set = self._make_dock("Réglages", "dock_reglages", left, L)
         self.dock_freq = self._make_dock("Fréquences et couches", "dock_freq", ftab, R)
         self.dock_log = self._make_dock("Journal", "dock_journal", ltab, R)
+        self.dock_spec = self._make_dock("Spectre", "dock_spectre", center, B)
         self.dock_wf = self._make_dock("Waterfall", "dock_wf", wf_box, B)
         self.dock_alarm = self._make_dock("Alarmes", "dock_alarmes", self._build_alarm_panel(), B)
+        self.splitDockWidget(self.dock_spec, self.dock_wf, Qt.Orientation.Vertical)
+        self.splitDockWidget(self.dock_wf, self.dock_alarm, Qt.Orientation.Vertical)
         self.dock_alarm.hide()
-        self.docks = [self.dock_set, self.dock_freq, self.dock_log, self.dock_wf, self.dock_alarm]
+        self.docks = [self.dock_spec, self.dock_set, self.dock_freq, self.dock_log, self.dock_wf, self.dock_alarm]
         self.tabifyDockWidget(self.dock_freq, self.dock_log)
         self.dock_freq.raise_()
         self.win_menu.clear()
@@ -9002,9 +9118,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.win_menu.addAction("🧱 Mur en plein écran sur l'autre écran").triggered.connect(self.wall_other_screen)
 
     def _dock_sizes(self):
-        self.resizeDocks([self.dock_set], [360], Qt.Orientation.Horizontal)
-        self.resizeDocks([self.dock_freq], [660], Qt.Orientation.Horizontal)
-        self.resizeDocks([self.dock_wf], [230], Qt.Orientation.Vertical)
+        w = max(self.width(), 900)                 # petit écran : le spectre garde au moins ~40 % de la largeur
+        self.resizeDocks([self.dock_set], [min(360, int(w * 0.24))], Qt.Orientation.Horizontal)
+        self.resizeDocks([self.dock_freq], [min(660, int(w * 0.34))], Qt.Orientation.Horizontal)
+        self.resizeDocks([self.dock_spec, self.dock_wf], [700, 230], Qt.Orientation.Vertical)
 
     def layout_standard(self):
         L, R, B = (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea,
@@ -9015,8 +9132,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addDockWidget(L, self.dock_set)
         self.addDockWidget(R, self.dock_freq)
         self.addDockWidget(R, self.dock_log)
-        self.addDockWidget(B, self.dock_wf)
-        self.addDockWidget(B, self.dock_alarm)
+        self.addDockWidget(B, self.dock_spec)
+        self.splitDockWidget(self.dock_spec, self.dock_wf, Qt.Orientation.Vertical)
+        self.splitDockWidget(self.dock_wf, self.dock_alarm, Qt.Orientation.Vertical)
         self.tabifyDockWidget(self.dock_freq, self.dock_log)
         self.dock_freq.raise_()
         self.dock_alarm.hide()
