@@ -55,10 +55,11 @@ jobs:
           rc=$?
           cat gui_reel.log
           # résumé visible dans les annotations du run (OK / FAIL / exceptions)
-          grep -E "^(OK|FAIL)|ÉCHECS|Error|error|Traceback" gui_reel.log | head -40 | while IFS= read -r l; do
-            echo "::notice title=gui_reel::$l"
+          # seulement les échecs (GitHub ne montre que 10 annotations par étape)
+          grep -E "^FAIL|Traceback|Error:|ÉCHECS: [1-9]" gui_reel.log | head -9 | while IFS= read -r l; do
+            echo "::error title=gui_reel::$l"
           done
-          tail -15 gui_reel.log | tr '\n' '|' | sed 's/^/::warning title=gui_reel (fin)::/'; echo
+          grep -q "ÉCHECS: 0" gui_reel.log && echo "::notice title=gui_reel::interface Windows : ÉCHECS 0"
           exit $rc
 
       - name: Captures de l'interface
