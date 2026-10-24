@@ -2478,7 +2478,8 @@ class SerialRelay(threading.Thread):
     def run(self):
         try:
             srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if os.name != "nt":      # sous Windows, SO_REUSEADDR laisserait deux programmes prendre le même port
+                srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             srv.bind((self.host, self.tcp_port))
             srv.listen(2)
             self.tcp_port = srv.getsockname()[1]
@@ -2586,6 +2587,11 @@ class Notifier:
                     time.sleep(self.retry_s * (k + 1))
 
 
+class _HTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = os.name != "nt"     # Windows : sinon un port déjà pris « marche » quand même
+    daemon_threads = True
+
+
 class WebServer(threading.Thread):
     """Page web en lecture seule : « / » (page) et « /etat.json » (état, fourni par get_json())."""
 
@@ -2619,8 +2625,7 @@ class WebServer(threading.Thread):
                 pass
 
         try:
-            self.httpd = ThreadingHTTPServer((self.host, self.port), H)
-            self.httpd.daemon_threads = True
+            self.httpd = _HTTPServer((self.host, self.port), H)
             self.port = self.httpd.server_address[1]
         except OSError as e:
             self.error = f"Port {self.port} indisponible : {e}"

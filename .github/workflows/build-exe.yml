@@ -30,9 +30,20 @@ jobs:
       - name: Tests (logique + GUI simulée)
         shell: bash
         run: |
+          bad=0
           for t in test_v7 test_im test_plan smoke_test smoke_test2 smoke_test3 smoke_test4 smoke_test5 test_alertes; do
-            echo "== $t"; python tests/$t.py | tail -3
+            echo "== $t"
+            if ! python -u tests/$t.py > "out_$t.log" 2>&1; then
+              bad=1
+              # échecs visibles dans les annotations du run (journaux complets dans l'onglet Actions)
+              grep -E "^FAIL|Error|Traceback" "out_$t.log" | head -8 | while IFS= read -r l; do
+                echo "::error title=$t::$l"
+              done
+              tail -5 "out_$t.log" | tr '\n' '|' | sed "s/^/::error title=$t (fin)::/"; echo
+            fi
+            tail -3 "out_$t.log"
           done
+          exit $bad
 
       - name: Interface réelle (vrai Qt Windows)
         continue-on-error: true

@@ -36,7 +36,7 @@ exec("import bisect, csv, io, itertools, math, os, queue, re, threading, time, u
      "import numpy as np\n", ns)
 ns.update(MIN_PTS=51, HYST=3.0, RBW_LIST=[1, 3, 10, 30, 100])
 exec(chunk("# ===== PURE-BEGIN", "# ===== PURE-END"), ns)
-exec(chunk("class Notifier:", "class AlertsDialog"), ns)
+exec(chunk("class Notifier:", "class AlertsDialog"), ns)  # Notifier, _HTTPServer, WebServer
 
 # ------------------------------------------------------------- textes
 nw, nt = ns["notify_wanted"], ns["notify_text"]
