@@ -376,6 +376,11 @@ check("doit rester libre + signal = CONFLIT (rouge)", sv("occ", keep_free=True),
 check("doit rester libre + rien = ✔ libre (vert)", sv("free", keep_free=True), ("✔ libre", "ok"))
 check("sans statut : occupé = pas de place (rouge)", sv("occ"), ("OCCUPÉ", "bad"))
 check("pas de mesure", sv(None, keep_on=True), ("—", "none"))
+check("doit rester libre + intermod = INTERMOD (rouge)", sv("occ", keep_free=True, intermod=True), ("⚠ INTERMOD", "bad"))
+check("intermod sans importance si ce n'est pas « doit rester libre »", sv("occ", keep_on=True, intermod=True), ("OK", "ok"))
+check("mes mots", sv("occ", keep_on=True, labels={"ok": "BON"}), ("BON", "ok"))
+check("mot vide = mot par défaut", sv("free", keep_free=True, labels={"free_ok": ""}), ("✔ libre", "ok"))
+check("toutes les situations ont un mot par défaut", all(ns["SIGNAL_DEFAULTS"][k] for k in ns["SIGNAL_DEFAULTS"]), True)
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_

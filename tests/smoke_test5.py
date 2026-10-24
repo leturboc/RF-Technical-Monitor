@@ -455,6 +455,47 @@ check("doit rester libre + intrus → « ⚠ CONFLIT »", win.watch_table.item(r
 check("couleur : émetteur = vert, conflit = rouge", win.sig_view(ws["Spectera ch 38"])[1] == "ok"
       and win.sig_view(ws["Réserve ch 40"])[1] == "bad")
 
+# ------------------------------------------------------------- INTERMOD : le brouilleur s'explique par mes émetteurs
+win.alarms.reset()
+win._append_watch("TX A", 604.0, status=on)
+win._append_watch("TX B", 607.0, status=on)
+win._append_watch("Libre IM", 601.0, status=free)            # 2×604 − 607 = 601
+win._append_watch("Libre autre", 616.5, status=free)
+win.sort_watch()
+win.rebuild_watch_table()
+L = -100 + 0 * Fs
+for fx in (604.0, 607.0):
+    L[np.argmin(abs(Fs - fx))] = -40
+win.on_sweep(bidS, Fs, L)
+for fx, lv_ in ((601.0, -60), (616.5, -60)):
+    L[np.argmin(abs(Fs - fx))] = lv_
+win.on_sweep(bidS, Fs, L)
+wi = {w["name"]: w for w in win.watch}
+check("signal = produit d'intermod de mes TX → INTERMOD", win.sig_view(wi["Libre IM"])[0] == "⚠ INTERMOD", win.sig_view(wi["Libre IM"])[0])
+check("formule de l'intermod", "TX A" in wi["Libre IM"].get("im", "") and "TX B" in wi["Libre IM"]["im"], wi["Libre IM"].get("im"))
+check("signal sans lien avec mes TX → CONFLIT", win.sig_view(wi["Libre autre"])[0] == "⚠ CONFLIT")
+kinds = {a["name"]: a for a in win.alarms.active.values()}
+check("alarme INTERMOD avec la formule", kinds.get("Libre IM", {}).get("kind") == "INTERMOD"
+      and "TX A" in kinds["Libre IM"]["info"], str(kinds.get("Libre IM")))
+check("alarme CONFLIT pour l'autre", kinds.get("Libre autre", {}).get("kind") == "CONFLIT")
+L[np.argmin(abs(Fs - 601.0))] = -100
+win.on_sweep(bidS, Fs, L)
+check("intermod partie : plus de mention", not wi["Libre IM"].get("im") and win.sig_view(wi["Libre IM"])[0] == "✔ libre")
+# mes mots
+win.sig_labels = {"ok": "BON", "intermod": "IM !"}
+L[np.argmin(abs(Fs - 601.0))] = -60
+win.on_sweep(bidS, Fs, L)
+check("mes mots : BON / IM !", win.sig_view(wi["TX A"])[0] == "BON" and win.sig_view(wi["Libre IM"])[0] == "IM !")
+cfl = win._collect_config(False)
+check("config : mes mots", cfl["labels"] == {"ok": "BON", "intermod": "IM !"})
+win._apply_config(dict(cfl, labels={"ok": "X" * 50, "inconnu": "z", "free": "  "}))
+check("config abîmée : mots filtrés", win.sig_labels == {"ok": "X" * 30}, str(win.sig_labels))
+win.sig_labels = {}
+win.watch[:] = [w for w in win.watch if w["name"] not in ("TX A", "TX B", "Libre IM", "Libre autre")]
+ws = {w["name"]: w for w in win.watch}                  # la config relue a recréé les fréquences
+win.rebuild_watch_table()
+win.alarms.reset()
+
 # ------------------------------------------------------------- alarme « trop fort »
 win.strong_chk.setChecked(True)
 win.strong_spin.setValue(-25.0)

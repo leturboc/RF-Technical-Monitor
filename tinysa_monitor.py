@@ -1160,19 +1160,44 @@ def key_dec(s):
     return None
 
 
-def signal_view(state, keep_free=False, keep_on=False, absent=False):
-    """Ce que veut dire le signal mesuré POUR CETTE fréquence -> (texte, ton : ok | bad | warn | none).
-    « Doit émettre » : signal = OK, c'est bien notre émetteur (vert) ; « doit rester libre » : signal = conflit (rouge) ;
-    sans statut : occupé = pas de place ici (rouge)."""
+SIGNAL_LABELS = (     # clé, situation (pour la fenêtre « Mots affichés »), texte par défaut
+    ("ok", "Doit émettre : signal reçu", "OK"),
+    ("ok_weak", "Doit émettre : signal faible", "OK (faible)"),
+    ("silent", "Doit émettre : plus de signal (avant ABSENT)", "muet"),
+    ("absent", "Doit émettre : silencieux trop longtemps", "⚠ ABSENT"),
+    ("conflict", "Doit rester libre : un signal est là", "⚠ CONFLIT"),
+    ("intermod", "Doit rester libre : le signal est un produit d'intermod de tes émetteurs", "⚠ INTERMOD"),
+    ("free_weak", "Doit rester libre : signal faible", "signal faible"),
+    ("free_ok", "Doit rester libre : rien", "✔ libre"),
+    ("occ", "Sans statut : occupé (pas de place ici)", "OCCUPÉ"),
+    ("weak", "Sans statut : faible", "faible"),
+    ("free", "Sans statut : libre", "libre"),
+)
+SIGNAL_DEFAULTS = {k: t for k, _s, t in SIGNAL_LABELS}
+
+
+def signal_key(state, keep_free=False, keep_on=False, absent=False, intermod=False):
+    """Situation du signal POUR CETTE fréquence -> (clé de SIGNAL_LABELS ou None, ton : ok | bad | warn | none).
+    « Doit émettre » : signal = OK, c'est bien notre émetteur (vert) ; « doit rester libre » : signal = conflit
+    (rouge), INTERMOD s'il s'explique par tes émetteurs ; sans statut : occupé = pas de place ici (rouge)."""
     if keep_on:
         if absent:
-            return "⚠ ABSENT", "bad"
-        return {"occ": ("OK", "ok"), "weak": ("OK (faible)", "warn"),
-                "free": ("muet", "warn")}.get(state, ("—", "none"))
+            return "absent", "bad"
+        return {"occ": ("ok", "ok"), "weak": ("ok_weak", "warn"), "free": ("silent", "warn")}.get(state, (None, "none"))
     if keep_free:
-        return {"occ": ("⚠ CONFLIT", "bad"), "weak": ("signal faible", "warn"),
-                "free": ("✔ libre", "ok")}.get(state, ("—", "none"))
-    return {"occ": ("OCCUPÉ", "bad"), "weak": ("faible", "warn"), "free": ("libre", "ok")}.get(state, ("—", "none"))
+        if state == "occ":
+            return ("intermod" if intermod else "conflict"), "bad"
+        return {"weak": ("free_weak", "warn"), "free": ("free_ok", "ok")}.get(state, (None, "none"))
+    return {"occ": ("occ", "bad"), "weak": ("weak", "warn"), "free": ("free", "ok")}.get(state, (None, "none"))
+
+
+def signal_view(state, keep_free=False, keep_on=False, absent=False, intermod=False, labels=None):
+    """-> (texte affiché, ton). labels : tes mots (clé -> texte), sinon les mots par défaut."""
+    key, tone = signal_key(state, keep_free, keep_on, absent, intermod)
+    if key is None:
+        return "—", tone
+    txt = (labels or {}).get(key) or SIGNAL_DEFAULTS[key]
+    return txt, tone
 
 
 def strong_peaks(F, L, thr, merge=1.0, limit=6):
@@ -4763,6 +4788,53 @@ class ExportListDialog(QtWidgets.QDialog):
 # --------------------------------------------------------------------------
 # Fenêtre : mur de fréquences (tuiles, pour un 2e écran)
 # --------------------------------------------------------------------------
+class LabelsDialog(QtWidgets.QDialog):
+    """Tes mots pour la colonne Signal (et le mur, la page web) : un texte par situation."""
+
+    def __init__(self, parent, labels):
+        super().__init__(parent)
+        self.setWindowTitle("Mots affichés")
+        self.resize(640, 470)
+        info = QtWidgets.QLabel("Écris le mot que tu veux voir pour chaque situation (colonne Signal, mur, page web). "
+                                "Vide = mot par défaut. Les couleurs restent : vert = bon, orange = à surveiller, "
+                                "rouge = problème.")
+        info.setWordWrap(True)
+        self.table = QtWidgets.QTableWidget(len(SIGNAL_LABELS), 2)
+        self.table.setHorizontalHeaderLabels(["Situation", "Mot affiché"])
+        self.table.verticalHeader().setVisible(False)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        for r, (key, situ, dflt) in enumerate(SIGNAL_LABELS):
+            it = QtWidgets.QTableWidgetItem(situ)
+            it.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            it.setData(Qt.ItemDataRole.UserRole, key)
+            self.table.setItem(r, 0, it)
+            ed = QtWidgets.QTableWidgetItem(labels.get(key, dflt))
+            ed.setToolTip(f"Par défaut : {dflt}")
+            self.table.setItem(r, 1, ed)
+        b_reset = QtWidgets.QPushButton("Revenir aux mots par défaut")
+        b_reset.clicked.connect(lambda *_: [self.table.item(r, 1).setText(d) for r, (_k, _s, d) in enumerate(SIGNAL_LABELS)])
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.addButton(b_reset, QtWidgets.QDialogButtonBox.ButtonRole.ResetRole)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(info)
+        lay.addWidget(self.table, 1)
+        lay.addWidget(bb)
+
+    def values(self):
+        """Seulement les mots changés (clé -> texte)."""
+        out = {}
+        for r, (key, _situ, dflt) in enumerate(SIGNAL_LABELS):
+            txt = self.table.item(r, 1).text().strip()
+            if txt and txt != dflt:
+                out[key] = txt[:30]
+        return out
+
+
 class ShowInfoDialog(QtWidgets.QDialog):
     """Infos d'un show : nom, lieu, dates, notes (pour le retrouver l'année suivante)."""
 
@@ -5117,6 +5189,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.band_src = {}              # id bande -> n° du tinySA qui a fourni le dernier balayage
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
         self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
+        self.sig_labels = {}            # tes mots pour la colonne Signal (clé SIGNAL_LABELS -> texte)
         self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
         self.show_path = ""
         self.recent_shows = []
@@ -5295,6 +5368,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "📣 Alertes": "Alertes sur téléphone (ntfy / Telegram) et page web en lecture seule pour l'équipe.",
         "📶 Ajouter un bloc": "Ajoute un porteur large Sennheiser Spectera / WMAS (canal 6 / 8 MHz) à surveiller.",
         "🧱 Mur": "Grandes tuiles, une par fréquence : panneau à détacher sur un 2ᵉ écran (F11 plein écran).",
+        "🔤 Mots affichés": "Choisis tes mots pour la colonne Signal : OK, ABSENT, INTERMOD, CONFLIT, libre…",
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
@@ -5489,6 +5563,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
         self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
+        self.more_menu.addAction("🔤 Mots affichés (OK, ABSENT, INTERMOD…)…").triggered.connect(
+            lambda *_: self.edit_labels())
         self.more_menu.addSeparator()
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
         self.expert_act.setCheckable(True)
@@ -6288,6 +6364,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alert_chk.setChecked(data.get("alert", True))
         self.unk_chk.setChecked(data.get("unk", True))
         self.names_chk.setChecked(data.get("names", True))
+        lb = data.get("labels")
+        if isinstance(lb, dict):
+            self.sig_labels = {k: str(v)[:30] for k, v in lb.items() if k in SIGNAL_DEFAULTS and str(v).strip()}
         self.strong_chk.setChecked(bool(data.get("strong_on", True)))
         try:
             self.strong_spin.setValue(float(data.get("strong_thr", -25.0)))
@@ -6402,7 +6481,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
             expert=self.expert, sections=dict(self.sections_open),
-            strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value())
+            strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels))
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
@@ -7739,10 +7818,21 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"décrochage des récepteurs.")
             self.refresh_alarms()
 
+    def edit_labels(self):
+        dlg = LabelsDialog(self, self.sig_labels)
+        if dlg.exec():
+            self.sig_labels = dlg.values()
+            for w in self.watch:
+                w["sig"] = None
+            self.update_watch_table(force=True)
+            self._update_markers()
+            if self.wall is not None and self.wall.isVisible():
+                self.wall.rebuild()
+
     def sig_view(self, w):
         """(texte, ton, couleur) du signal de w selon son statut (voir signal_view)."""
         txt, tone = signal_view(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
-                                bool(w.get("absent")))
+                                bool(w.get("absent")), bool(w.get("im")), self.sig_labels)
         return txt, tone, self.tone_color(tone)
 
     def tone_color(self, tone):
@@ -8229,7 +8319,7 @@ class MainWindow(QtWidgets.QMainWindow):
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
                 f"{level:.1f}" if w["freq"] else "—", event,
                 self.layer_text(w) if "scene" in w else "", w.get("note", "")]
-        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "ABSENT", "APPAREIL PERDU", "TROP FORT")
+        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT")
                else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)
@@ -8381,7 +8471,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 w["peak"], w["since"] = lvl, now
                 seen = self.seen_by(f)
                 if keep_free:
-                    self.log_event(dict(w, note=seen) if seen else w, lvl, "CONFLIT")
+                    f_at = f
+                    if bw:                              # bloc : l'intrus est au pic mesuré dans le bloc
+                        lo_ = int(np.searchsorted(F, f - bw / 2.0))
+                        hi_ = int(np.searchsorted(F, f + bw / 2.0, side="right"))
+                        if hi_ > lo_:
+                            f_at = float(F[lo_ + int(np.argmax(L[lo_:hi_]))])
+                    w["im"] = self.im_cause(w, f_at)
+                    note = " · ".join(x for x in (w["im"], seen) if x)
+                    self.log_event(dict(w, note=note) if note else w, lvl, "INTERMOD" if w["im"] else "CONFLIT")
                     conflict = w
                 else:
                     self.log_event(dict(w, note=seen) if seen else w, lvl, "OCCUPÉ")
@@ -8389,14 +8487,16 @@ class MainWindow(QtWidgets.QMainWindow):
             elif new == "occ":
                 w["peak"] = max(w["peak"] or lvl, lvl)
             elif prev == "occ":
+                w["im"] = ""
                 self.log_event(w, w["peak"] or lvl, f"Libre ({now - w['since']:.0f} s)")
             w["state"] = new
             # ---- alarmes : CONFLIT (signal sur une fréquence « doit rester libre ») et ABSENT (« doit émettre » muette)
             fk = int(round(f * 1000))
             if new == "occ" and keep_free:
                 prio = self.freq_prio(w)
-                if self.alarms.raise_(("CONFLIT", fk), "CONFLIT", w["name"], f, prio, now, lvl, self.layer_text(w),
-                                      self.seen_by(f)):
+                kind = "INTERMOD" if w.get("im") else "CONFLIT"
+                if self.alarms.raise_(("CONFLIT", fk), kind, w["name"], f, prio, now, lvl, self.layer_text(w),
+                                      " · ".join(x for x in (w.get("im", ""), self.seen_by(f)) if x)):
                     new_prio = max(new_prio, prio)
             else:
                 self.alarms.clear(("CONFLIT", fk), now)
@@ -9252,6 +9352,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_rescue(self):
         self._rescue_dlg = RescueDialog(self)
         self._rescue_dlg.show()
+
+    def im_cause(self, w, f_at=None):
+        """Le signal apparu sur w (doit rester libre), mesuré à f_at MHz (son pic), est-il un produit d'intermod de
+        tes émetteurs qui émettent ? -> formule (« IM3 : 2×HF 1 − HF 3 ») ou ""."""
+        tx = [x for x in self.watch if x is not w and x["state"] in ("occ", "weak") and not self.is_keep_free(x["status"])]
+        if len(tx) < 2:
+            return ""
+        tx.sort(key=lambda x: -(x["level"] if x["level"] is not None else -999.0))
+        tx = tx[:25]
+        tol = max(0.05, self.win_spin.value() / 1000.0)
+        rows, _info = im_explain(w["freq"] if f_at is None else f_at, [x["freq"] for x in tx], (3, 5), 3, tol, 3)
+        if not rows:
+            return ""
+        r = rows[0]
+        return f"{IM_NAMES.get(r['order'], 'IM')} : " + im_formula(r["terms"], [x["name"] for x in tx])
 
     def im_note(self, fr, step):
         """Pour un signal inconnu : combinaison d'émetteurs actifs qui pourrait l'expliquer (IM3), sinon ''."""
