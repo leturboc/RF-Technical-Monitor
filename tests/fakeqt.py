@@ -155,6 +155,9 @@ class FakeCombo(SigHolder):
     def itemData(self, i):
         return self._items[i][1] if 0 <= i < len(self._items) else None
 
+    def itemText(self, i):
+        return self._items[i][0] if 0 <= i < len(self._items) else ""
+
     def setCurrentIndex(self, i):
         if i != self._i and 0 <= i < len(self._items):
             self._i = i
@@ -362,8 +365,14 @@ class FakeList(SigHolder):
 
 class FakeAction(Poly):
     def __init__(self, text=""):
-        self._t, self._d = text, None
+        self._t, self._d, self._c = text, None, False
         self.triggered = Sig()
+
+    def setChecked(self, c):
+        self._c = bool(c)
+
+    def isChecked(self):
+        return self._c
 
     def text(self):
         return self._t
@@ -526,7 +535,7 @@ def install():
                          QComboBox=FakeCombo, QLabel=FakeLabel, QLineEdit=FakeLabel, QTableWidget=FakeTable,
                          QTableWidgetItem=FakeItem, QTreeWidget=FakeTree, QTreeWidgetItem=FakeTreeItem,
                          QListWidget=FakeList, QListWidgetItem=FakeItem, QRadioButton=FakeCheck,
-                         QMenu=FakeMenu)
+                         QMenu=FakeMenu, QPushButton=FakeLabel)
     QtCore = make_mod("PySide6.QtCore")
     QtGui = make_mod("PySide6.QtGui")
     pyside = make_mod("PySide6", QtWidgets=QtWidgets, QtCore=QtCore, QtGui=QtGui)

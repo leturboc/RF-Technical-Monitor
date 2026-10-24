@@ -1106,6 +1106,42 @@ def key_dec(s):
     return None
 
 
+MK_STATES = (("occ", "Occupées"), ("weak", "Faibles"), ("free", "Libres"), ("none", "Sans mesure"))
+
+
+def mk_default():
+    """Réglage des repères du spectre : tout afficher."""
+    return dict(on=True, states=[k for k, _ in MK_STATES], hide_layers=[], hide_status=[], alarms=True,
+                unk=True, style="full")
+
+
+def mk_layer_key(scene, group):
+    """Clé de couche pour le filtre des repères ("" = fréquence sans scène)."""
+    return key_enc(scene, group or "") if scene else ""
+
+
+def marker_visible(w, mk, alarm=False):
+    """Le repère de la fréquence w doit-il être dessiné ? (on/off global, en alarme toujours visible si demandé,
+    masquage à la main, état mesuré, statut, couche)."""
+    if not mk.get("on", True):
+        return False
+    if alarm and mk.get("alarms", True):
+        return True
+    if w.get("hide_mk"):
+        return False
+    if (w.get("state") or "none") not in mk.get("states", ()):
+        return False
+    if (w.get("status") or "") in mk.get("hide_status", ()):
+        return False
+    return mk_layer_key(w.get("scene", ""), w.get("group", "")) not in mk.get("hide_layers", ())
+
+
+def mk_filtered(mk):
+    """Un filtre est-il actif (pour l'afficher sur le bouton) ?"""
+    return (set(mk.get("states", ())) != {k for k, _ in MK_STATES} or bool(mk.get("hide_layers"))
+            or bool(mk.get("hide_status")))
+
+
 def scope_match(scope, scene, group):
     """scope : None / [] = global ; sinon liste de (scène, groupe|None)."""
     if not scope:
@@ -4789,6 +4825,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_cycle = 10.0
         self.labels = []
         self._mk_items = {}
+        self.mk = mk_default()          # repères du spectre : filtres (état, couche, statut), style
         self._zoom = None
         self._zoom_view = None
         self._cfg = dict(rbw=100, zrbw=None, input="auto", lna=None, att="auto", offset=0.0,
@@ -5150,6 +5187,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mark_combo = self._combo([("Repères : état du signal", "signal"), ("Repères : statut manuel", "status"),
                                        ("Repères : couleur du groupe", "group")])
         self.mark_combo.currentIndexChanged.connect(lambda *_: self._update_markers())
+        self.mk_btn = QtWidgets.QPushButton("📍 Repères")
+        self.mk_btn.setToolTip("Repères des fréquences sur le spectre : lesquels afficher, noms, style, couleur.\n"
+                               "Ctrl+M : tout masquer / réafficher.")
+        self.mk_menu = QtWidgets.QMenu(self.mk_btn)
+        self.mk_btn.setMenu(self.mk_menu)
+        self.mk_menu.aboutToShow.connect(lambda *_: self._build_mk_menu())
+        sc_mk = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+M"), self)
+        sc_mk.activated.connect(lambda *_: self.toggle_markers())
         self.persist_combo = self._combo([("Rémanence : aucune", 0), ("Rémanence : 3 balayages", 3),
                                           ("Rémanence : 5 balayages", 5), ("Rémanence : 10 balayages", 10),
                                           ("Rémanence : 20 balayages", 20)])
@@ -5216,6 +5261,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ovl_timer.timeout.connect(self._update_markers)
         self._ovl_timer.timeout.connect(self.update_strip_labels)
         pi.vb.sigXRangeChanged.connect(lambda *a: self._ovl_timer.start())
+        pi.vb.sigYRangeChanged.connect(lambda *a: self._ovl_timer.start())   # repères « discrets » collés en haut
         self.zoom_timer = QtCore.QTimer(self)
         self.zoom_timer.setInterval(500)
         self.zoom_timer.timeout.connect(self.zoom_follow)
@@ -5260,8 +5306,8 @@ class MainWindow(QtWidgets.QMainWindow):
         center = QtWidgets.QWidget()
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
-        cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.names_chk, self.hold_chk,
-                                self.persist_combo, self.mark_combo, reset_btn, cap_btn, self.readout))
+        cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
+                                self.persist_combo, reset_btn, cap_btn, self.readout))
         cl.addLayout(self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None))
         cl.addWidget(self.band_lbl)
         cl.addWidget(self.spec, 1)
@@ -5626,6 +5672,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._append_watch(w["name"], float(w["freq"]), w.get("status", ""),
                                    None if thr is None else float(thr), str(w.get("scene", "") or ""),
                                    str(w.get("group", "") or ""))
+                if w.get("hide_mk"):
+                    self.watch[-1]["hide_mk"] = True
             except Exception:
                 pass
         sp = data.get("scope")
@@ -5666,6 +5714,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alert_chk.setChecked(data.get("alert", True))
         self.unk_chk.setChecked(data.get("unk", True))
         self.names_chk.setChecked(data.get("names", True))
+        mk, base = data.get("markers"), mk_default()
+        if isinstance(mk, dict):
+            ok_states = {k for k, _ in MK_STATES}
+            for k in ("on", "alarms", "unk"):
+                base[k] = bool(mk.get(k, base[k]))
+            if mk.get("style") in ("full", "top"):
+                base["style"] = mk["style"]
+            if isinstance(mk.get("states"), list):
+                base["states"] = [x for x in mk["states"] if x in ok_states]
+            for k in ("hide_layers", "hide_status"):
+                if isinstance(mk.get(k), list):
+                    base[k] = [str(x) for x in mk[k]]
+        self.mk = base
+        self._sync_mk_menu()
         self.hold_chk.setChecked(data.get("hold", True))
         self.alloc_chk.setChecked(data.get("show_alloc", True))
         self.tv_chk.setChecked(data.get("show_tv", True))
@@ -5723,7 +5785,8 @@ class MainWindow(QtWidgets.QMainWindow):
         data = dict(
             bands=[{k: v for k, v in b.items() if k != "id"} for b in self.bands],
             watch=[dict(name=w["name"], freq=w["freq"], status=w["status"], thr=w["thr"],
-                        scene=w["scene"], group=w["group"]) for w in self.watch],
+                        scene=w["scene"], group=w["group"], **({"hide_mk": True} if w.get("hide_mk") else {}))
+                   for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1))) for g in s["groups"]])
                     for s in self.scenes],
@@ -5738,7 +5801,7 @@ class MainWindow(QtWidgets.QMainWindow):
             thr=self.thr_spin.value(), weak_thr=self.weak_spin.value(), weak_on=self.weak_chk.isChecked(),
             win=self.win_spin.value(), alert=self.alert_chk.isChecked(), unk=self.unk_chk.isChecked(),
             absent_s=self.absent_spin.value(),
-            names=self.names_chk.isChecked(), hold=self.hold_chk.isChecked(),
+            names=self.names_chk.isChecked(), hold=self.hold_chk.isChecked(), markers=dict(self.mk),
             country=self.country_combo.currentData(), show_alloc=self.alloc_chk.isChecked(),
             show_tv=self.tv_chk.isChecked(), plan_custom=self.plan_custom,
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
@@ -7075,6 +7138,8 @@ class MainWindow(QtWidgets.QMainWindow):
         a_thr = m.addAction("Seuil propre à la fréquence…")
         a_thr0 = m.addAction("Revenir au seuil global")
         a_occ0 = m.addAction("Remettre l'occupation à zéro")
+        hid = all(self.watch[r].get("hide_mk") for r in rows)
+        a_mk = m.addAction("📍 Réafficher le repère sur le spectre" if hid else "📍 Masquer le repère sur le spectre")
         m.addSeparator()
         a_del = m.addAction("Supprimer")
         act = m.exec(self.watch_table.viewport().mapToGlobal(pos))
@@ -7112,6 +7177,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._update_markers()
         elif act is a_del:
             self.del_watch()
+        elif act is a_mk:
+            self.hide_marker_rows(rows, not hid)
         elif self._assign_action(rows, act.data()):
             pass
         elif act.data() is not None:
@@ -7608,6 +7675,103 @@ class MainWindow(QtWidgets.QMainWindow):
             pi.removeItem(it)
         self._hist_items = []
 
+    MK_STYLE = (("full", "Trait sur toute la hauteur"), ("top", "Petit repère discret en haut"))
+
+    def _build_mk_menu(self):
+        """Menu 📍 Repères, reconstruit à chaque ouverture (couches et statuts peuvent avoir changé)."""
+        m = self.mk_menu
+        m.clear()
+        mk = self.mk
+
+        def check(menu, txt, on, setter):
+            a = menu.addAction(txt)
+            a.setCheckable(True)
+            a.setChecked(bool(on))
+            a.triggered.connect(lambda checked=False, *_: setter(bool(checked)))
+            return a
+
+        def toggle_in(key, value):
+            def f(on):
+                lst = [x for x in mk[key] if x != value]
+                if not on:
+                    lst.append(value)
+                self.set_markers(**{key: lst})
+            return f
+
+        def toggle_state(value):
+            def f(on):
+                lst = [x for x in mk["states"] if x != value] + ([value] if on else [])
+                self.set_markers(states=lst)
+            return f
+
+        m.addAction("✔ Tout afficher (enlève les filtres)").triggered.connect(lambda *_: self.reset_markers())
+        check(m, "Masquer tous les repères  (Ctrl+M)", not mk["on"], lambda on: self.set_markers(on=not on))
+        m.addSection("Afficher selon l'état mesuré")
+        for key, txt in MK_STATES:
+            check(m, txt, key in mk["states"], toggle_state(key))
+        check(m, "Toujours montrer les fréquences en alarme", mk["alarms"], lambda on: self.set_markers(alarms=on))
+        sub_l = m.addMenu("Par scène › groupe")
+        for sc in self.scenes:
+            groups = [g["name"] for g in sc["groups"]] or [""]
+            for g in groups:
+                k = mk_layer_key(sc["name"], g)
+                check(sub_l, f"{sc['name']} › {g}" if g else sc["name"], k not in mk["hide_layers"],
+                      toggle_in("hide_layers", k))
+        check(sub_l, "Sans scène", "" not in mk["hide_layers"], toggle_in("hide_layers", ""))
+        sub_s = m.addMenu("Par statut")
+        for st in [x["name"] for x in self.statuses] + [""]:
+            check(sub_s, st or "(sans statut)", st not in mk["hide_status"], toggle_in("hide_status", st))
+        n_hid = sum(1 for w in self.watch if w.get("hide_mk"))
+        if n_hid:
+            m.addAction(f"Réafficher les {n_hid} repère(s) masqué(s) à la main").triggered.connect(
+                lambda *_: self.hide_marker_rows([i for i, w in enumerate(self.watch) if w.get("hide_mk")], False))
+        m.addSection("Affichage")
+        check(m, "Noms des fréquences", self.names_chk.isChecked(), self.names_chk.setChecked)
+        check(m, "Signaux inconnus (pointillés)", mk["unk"], lambda on: self.set_markers(unk=on))
+        m.addSection("Style")
+        grp = QtGui.QActionGroup(m)
+        for key, txt in self.MK_STYLE:
+            grp.addAction(check(m, txt, mk["style"] == key, lambda on, k=key: on and self.set_markers(style=k)))
+        m.addSection("Couleur")
+        grp2 = QtGui.QActionGroup(m)
+        for i in range(self.mark_combo.count()):
+            key, txt = self.mark_combo.itemData(i), self.mark_combo.itemText(i).replace("Repères : ", "")
+            grp2.addAction(check(m, txt, self.mark_combo.currentData() == key,
+                                 lambda on, k=key: on and self.mark_combo.setCurrentIndex(self.mark_combo.findData(k))))
+
+    def _sync_mk_menu(self):
+        if hasattr(self, "mk_btn"):
+            self.mk_btn.setText("📍 Repères" + (" (masqués)" if not self.mk["on"] else
+                                                 " (filtrés)" if mk_filtered(self.mk) else ""))
+
+    def set_markers(self, **kw):
+        for k, v in kw.items():
+            if k in self.mk:
+                self.mk[k] = v
+        self._sync_mk_menu()
+        self._update_markers()
+
+    def reset_markers(self):
+        style, unk = self.mk["style"], self.mk["unk"]
+        self.mk = dict(mk_default(), style=style, unk=unk)
+        for w in self.watch:
+            w.pop("hide_mk", None)
+        self.set_markers()
+
+    def toggle_markers(self):
+        """Ctrl+M : tout masquer / réafficher (les filtres choisis sont gardés)."""
+        self.set_markers(on=not self.mk["on"])
+        self.set_status("Repères masqués (Ctrl+M pour les réafficher)." if not self.mk["on"] else "Repères affichés.")
+
+    def hide_marker_rows(self, rows, hide=True):
+        for r in rows:
+            if 0 <= r < len(self.watch):
+                if hide:
+                    self.watch[r]["hide_mk"] = True
+                else:
+                    self.watch[r].pop("hide_mk", None)
+        self.set_markers()
+
     def _marker_item(self, key):
         it = self._mk_items.get(key)
         if it is None:
@@ -7628,6 +7792,12 @@ class MainWindow(QtWidgets.QMainWindow):
         (x0, x1), (y0, y1) = vb.viewRange()
         vis = [w for w in self.watch if x0 <= w["freq"] <= x1 and self.in_scope(w)]
         unk = [f for lst in self.unk_now.values() for f in lst if x0 <= f <= x1]
+        mk = self.mk
+        vis = [w for w in vis if marker_visible(
+            w, mk, alarm=bool(w.get("absent")) or (w["state"] == "occ" and self.is_keep_free(w["status"])))]
+        if not mk["on"] or not mk["unk"]:
+            unk = []
+        ys = [-130.0, 0.0] if self.mk["style"] == "full" else [y1 - (y1 - y0) * 0.07, y1]
         mode = self.mark_combo.currentData()
         groups, colors = {}, []
         for w in vis:
@@ -7644,7 +7814,7 @@ class MainWindow(QtWidgets.QMainWindow):
             groups.setdefault((self.theme["st_unk"], True), []).append(f)
         for key, fr in groups.items():
             a = np.array(fr)
-            self._marker_item(key).setData(np.repeat(a, 2), np.tile([-130.0, 0.0], len(a)))
+            self._marker_item(key).setData(np.repeat(a, 2), np.tile(ys, len(a)))
         for key, it in self._mk_items.items():
             if key not in groups:
                 it.setData(np.array([]), np.array([]))
@@ -7659,7 +7829,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for i, lab in enumerate(self.labels):
             if show and i < len(vis):
                 lab.setText(vis[i]["name"], color=colors[i])
-                lab.setPos(vis[i]["freq"], y1 - 2.0 - (i % 3) * 5.5)
+                dy = (y1 - y0) * (0.08 if self.mk["style"] == "top" else 0.0)
+                lab.setPos(vis[i]["freq"], y1 - 2.0 - dy - (i % 3) * 5.5)
                 lab.setVisible(True)
             else:
                 lab.setVisible(False)

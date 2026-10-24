@@ -136,6 +136,37 @@ for i in range(1, min(win.view_combo.count(), 3)):
     shot(win, f"vue_bande_{i}")
 step("vue globale", lambda: win.view_combo.setCurrentIndex(0)); wait(1500)
 
+# repères : menu réel, filtres, style discret, tout masquer
+win.mk_menu.aboutToShow.emit()
+acts = {a.text(): a for a in win.mk_menu.actions() if a.text()}
+for sub in [a.menu() for a in win.mk_menu.actions() if a.menu() is not None]:
+    acts.update({a.text(): a for a in sub.actions() if a.text()})
+check("menu repères (vrai Qt) : complet", {"Occupées", "Libres", "Noms des fréquences", "Petit repère discret en haut",
+                                          "Grande scène › IEM", "(sans statut)"} <= set(acts), str(sorted(acts)))
+win.mk_menu.popup(win.mk_btn.mapToGlobal(win.mk_btn.rect().bottomLeft()))
+wait(500)
+shot(win.mk_menu, "menu_reperes")
+win.mk_menu.hide()
+win.mk_menu.aboutToShow.emit()          # l'ouverture a reconstruit le menu : on relit les actions
+acts = {a.text(): a for a in win.mk_menu.actions() if a.text()}
+for sub in [a.menu() for a in win.mk_menu.actions() if a.menu() is not None]:
+    acts.update({a.text(): a for a in sub.actions() if a.text()})
+acts["Grande scène › IEM"].trigger()
+acts["Libres"].trigger()
+wait(600)
+check("filtres appliqués (vrai Qt)", "IEM" in "".join(win.mk["hide_layers"]) and "free" not in win.mk["states"]
+      and win.mk_btn.text().endswith("(filtrés)"), str(win.mk) + win.mk_btn.text())
+win.set_markers(style="top")
+wait(800)
+shot(win, "reperes_filtres_discrets")
+win.reset_markers()
+win.set_markers(style="full")
+win.toggle_markers()
+wait(600)
+shot(win, "reperes_masques")
+check("Ctrl+M : masqués", not win.mk["on"])
+win.toggle_markers()
+
 step("zoom sur ligne 0", lambda: win.zoom_on(0)); wait(4000); shot(win, "zoom_live")
 step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
 
