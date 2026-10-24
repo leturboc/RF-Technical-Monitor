@@ -119,11 +119,97 @@ check("libellé cycle : nb total de bandes", "3 bande(s)" in win.cycle_lbl.text(
 
 # ------------------------------------------------------------- zoom live
 win._zoom = (500.0, 510.0)
-check("zoom : fait par le 1er seulement", cfg_ids(0) == [m.ZOOM_ID] and cfg_ids(1) == [])
+check("zoom : fait par le 1er, le 2e surveille toutes les bandes", cfg_ids(0) == [m.ZOOM_ID] and cfg_ids(1) == ids,
+      f"{cfg_ids(0)} / {cfg_ids(1)}")
+check("zoom : le 2e garde le RBW normal", win.get_cfg(1)["rbw"] == win._cfg["rbw"])
 win.dev_live = [False, True]
-check("zoom : 1er perdu → le 2e zoome", cfg_ids(1) == [m.ZOOM_ID] and cfg_ids(0) == [])
+check("zoom : 1er perdu → le 2e zoome", cfg_ids(1) == [m.ZOOM_ID] and cfg_ids(0) == ids)
 win.dev_live = [True, True]
 win._zoom = None
+
+# ------------------------------------------------------------- noms de position et « vu par »
+import numpy as np
+win.dev1_name.setText("Plateau")
+win.dev2_name.setText("FOH")
+check("noms de position", win.dev_name(0) == "Plateau" and win.dev_name(1) == "FOH")
+win.dev2_name.setText("  ")
+check("nom vide → nom par défaut", win.dev_name(1) == "tinySA 2")
+win.dev2_name.setText("FOH")
+F = np.linspace(470, 582, 561)
+win.on_link(1, False)
+check("alarme APPAREIL au nom de position", win.alarms.active[("APPAREIL", -2)]["name"] == "FOH"
+      and "Plateau reprend" in win.alarms.active[("APPAREIL", -2)]["info"], str(win.alarms.active.get(("APPAREIL", -2))))
+win.on_link(1, True)
+win.band_src[ids[0]] = 1
+L = -100 + 0 * F
+L[np.argmin(abs(F - 500.0))] = -40
+win._append_watch("Libre X", 500.0, status="Libre")
+win.rebuild_watch_table()
+win.on_sweep(ids[0], F, L)
+check("« vu par » : le tinySA qui couvre la fréquence", win.seen_by(500.0) == "vu par FOH", win.seen_by(500.0))
+cf = [a for a in win.alarms.active.values() if a["kind"] == "CONFLIT"]
+check("CONFLIT : vu par FOH", cf and cf[0]["info"] == "vu par FOH", str(cf))
+lg = [win.log_table.item(r, 6).text() for r in range(win.log_table.rowCount()) if win.log_table.item(r, 4).text() == "CONFLIT"]
+check("journal : note « vu par FOH »", lg and lg[0] == "vu par FOH", str(lg))
+win.dev2_chk.setChecked(False)
+check("un seul tinySA : pas de « vu par »", win.seen_by(500.0) == "")
+win.dev2_chk.setChecked(True)
+win.watch[:] = [w for w in win.watch if w["name"] != "Libre X"]
+for k in [k for k in win.alarms.active if k[0] == "CONFLIT"]:
+    win.alarms.clear(k, 0)
+
+# ------------------------------------------------------------- calibration entre les deux tinySA
+infos = []
+W.QMessageBox.information = staticmethod(lambda p, t, x, *a, **k: infos.append(x))
+win.workers = []
+step("calibrer sans balayage", win.start_calib)
+check("calibration refusée sans balayage", infos and "lance d'abord" in infos[-1] and win._calib is None, str(infos))
+
+
+class Running:
+    def isRunning(self):
+        return True
+
+    def requestInterruption(self):
+        pass
+
+
+win.workers = [Running(), Running()]
+win.dev2_off.setValue(1.0)
+v0 = win.get_ver()
+step("start_calib", win.start_calib)
+check("calibration lancée", win._calib is not None and win.get_ver() > v0)
+c0, c1 = win.get_cfg(0)["bands"], win.get_cfg(1)["bands"]
+check("calibration : même bande pour les deux, ids distincts",
+      len(c0) == len(c1) == 1 and c0[0]["start_hz"] == c1[0]["start_hz"] and c0[0]["stop_hz"] == c1[0]["stop_hz"]
+      and (c0[0]["id"], c1[0]["id"]) == m.CALIB_IDS, f"{c0} / {c1}")
+Fc = np.linspace(c0[0]["start_hz"] / 1e6, c0[0]["stop_hz"] / 1e6, c0[0]["n"])
+Lc = -100 + 0 * Fc
+for fc in Fc[[50, 200, 400]]:
+    Lc = np.maximum(Lc, -45 - 40 * ((Fc - fc) / 0.3) ** 2)
+nl = len(win.latest)
+for k in range(m.CALIB_SWEEPS):
+    win.on_sweep(m.CALIB_IDS[0], Fc, Lc)
+    win.on_sweep(m.CALIB_IDS[1], Fc, Lc - 2.5)          # le 2e lit 2,5 dB trop bas (offset 1 déjà compris)
+check("calibration : balayages hors spectre / mémoire", len(win.latest) == nl and m.CALIB_IDS[0] not in win.latest)
+check("calibration terminée", win._calib is None)
+check("offset du 2e corrigé (1 + 2,5)", abs(win.dev2_off.value() - 3.5) < 0.05, str(win.dev2_off.value()))
+check("résultat affiché dans une fenêtre", infos and "Calibration faite" in infos[-1] and "+2.5 dB" in infos[-1], str(infos[-1:]))
+check("retour à la répartition normale", sorted(cfg_ids(0) + cfg_ids(1)) == sorted(ids))
+step("start_calib + annuler", win.start_calib)
+step("annuler", win.start_calib)
+check("calibration annulée par 2e clic", win._calib is None)
+win.start_calib()
+win.on_link(1, False)
+check("appareil perdu : calibration annulée", win._calib is None)
+win.on_link(1, True)
+win._zoom = (500.0, 510.0)
+infos.clear()
+win.start_calib()
+check("calibration refusée en zoom", win._calib is None and infos and "zoom" in infos[-1])
+win._zoom = None
+win.dev2_off.setValue(2.5)
+win.workers = []
 
 # ------------------------------------------------------------- coupe de bande
 win.band_table.currentRow = lambda: 0
@@ -145,6 +231,7 @@ check("config : appareil de la bande", data["bands"][3]["dev"] == 1)
 win2 = step("MainWindow() #2", m.MainWindow)
 step("apply_config", lambda: win2._apply_config(data))
 check("config relue : 2e tinySA", win2.dev2 == dict(on=True, addr="192.168.1.20", offset=2.5), str(win2.dev2))
+check("config relue : noms de position", win2.dev_names == ["Plateau", "FOH"], str(win2.dev_names))
 check("config relue : bande fixée", win2.bands[3]["dev"] == 1 and win2.bands[0]["dev"] is None,
       str([b.get("dev") for b in win2.bands]))
 old = dict(data)
@@ -199,7 +286,8 @@ check("2 workers", len(created) == 2 and win.workers == created, str(len(created
 if len(created) == 2:
     check("ports", created[0].port == "COM3" and created[1].port == "socket://192.168.1.20:5025",
           f"{created[0].port} / {created[1].port}")
-    check("étiquettes", created[0].label == "tinySA 1" and created[1].label == "tinySA 2")
+    check("étiquettes = noms de position", created[0].label == "Plateau" and created[1].label == "FOH",
+          f"{created[0].label} / {created[1].label}")
     check("le 2e attend son relais", created[1].retry_first and not created[0].retry_first)
     check("chacun sa config", created[1].get_cfg()["bands"] == win.get_cfg(1)["bands"])
     check("réglages du 2e verrouillés pendant le scan", win.is_running())
@@ -208,6 +296,80 @@ check("libellé 2e : réseau", "réseau 192.168.1.20:5025" in win.dev2_lbl.text(
 step("on_error du 2e : n'arrête pas le 1er", lambda: win.on_error("x", 1))
 step("on_info du 2e", lambda: win.on_info("tinySA4_v1.4", 1))
 check("info du 2e dans son libellé", "tinySA4_v1.4" in win.dev2_lbl.text(), win.dev2_lbl.text())
+
+# ------------------------------------------------------------- alertes téléphone
+import json
+
+
+class FakeNotifier:
+    def __init__(self):
+        self.reqs, self.sent, self.last_error = [], 0, ""
+
+    def post(self, req):
+        self.reqs.append(req)
+
+
+win.alarms.reset()
+win._notified.clear()
+win.notifier = FakeNotifier()
+win.notify_cfg.update(mode="crit", service="ntfy", topic="tinysa-test", site="Fest")
+for nm, fq in (("HF 1", 470.2), ("Libre 2", 499.0), ("Libre 3", 498.0), ("Libre 4", 497.0)):
+    win._append_watch(nm, fq)
+
+
+def K(kind, f):
+    return (kind, int(round(f * 1000)))
+
+
+win.alarms.raise_(K("ABSENT", 470.2), "ABSENT", "HF 1", 470.2, 2, 100.0, -98.0, "Grande scène › Micros")
+win.alarms.raise_(K("CONFLIT", 499.0), "CONFLIT", "Libre 2", 499.0, 1, 100.0, -60.0, "")
+step("_alarm_tick (notifs)", win._alarm_tick)
+r = win.notifier.reqs
+check("critique envoyée, normale non (mode critiques)", len(r) == 1 and r[0][0].endswith("/tinysa-test"), str(r))
+check("texte : site + fréquence", r and b"[Fest] 470.200 MHz" in r[0][2], str(r))
+win._alarm_tick()
+check("pas d'envoi en double", len(win.notifier.reqs) == 1)
+win.notify_cfg["mode"] = "all"
+win.alarms.raise_(K("CONFLIT", 498.0), "CONFLIT", "Libre 3", 498.0, 1, 100.0, -60.0, "")
+win._alarm_tick()
+check("mode toutes : normale envoyée, l'ancienne pas renvoyée", len(win.notifier.reqs) == 2, str(len(win.notifier.reqs)))
+win.notify_cfg["mode"] = "off"
+win.alarms.raise_(K("CONFLIT", 497.0), "CONFLIT", "Libre 4", 497.0, 2, 100.0, -60.0, "")
+win._alarm_tick()
+check("désactivées : rien", len(win.notifier.reqs) == 2)
+win.notify_cfg["mode"] = "crit"
+win.on_link(1, False)
+win._alarm_tick()
+check("appareil perdu : envoyé", any(b"liaison perdue" in q[2] for q in win.notifier.reqs))
+n0 = len(win.notifier.reqs)
+win.on_link(1, True)
+check("appareil retrouvé : envoyé", len(win.notifier.reqs) == n0 + 1 and b"r\xc3\xa9parties" in win.notifier.reqs[-1][2],
+      str(win.notifier.reqs[-1:]))
+check("ntfy sans canal : erreur claire", "canal" in win.send_notify("t", "b", 2, cfg=dict(win.notify_cfg, topic="")))
+check("telegram sans jeton : erreur claire",
+      "jeton" in win.send_notify("t", "b", 2, cfg=dict(win.notify_cfg, service="telegram", tg_token="")))
+tg = dict(win.notify_cfg, service="telegram", tg_token="1:A", tg_chat="9")
+check("telegram : requête", win.send_notify("t", "b", 2, cfg=tg) == "" and "api.telegram.org/bot1:A" in win.notifier.reqs[-1][0])
+
+# ------------------------------------------------------------- page web (état JSON) et config
+js = json.loads(win.web_json())
+check("état web : toutes les fréquences", len(js["rows"]) == len(win.watch), str(len(js["rows"])))
+check("état web : alarmes en cours", any(a["kind"] == "ABSENT" for a in js["alarms"]))
+check("état web : titre avec le site", js["title"] == "TinySA Monitor — Fest", js["title"])
+check("web désactivée : texte", "désactivée" in win.web_urls_text())
+win.notify_cfg["tg_token"] = "SECRET"
+win.web_cfg.update(on=True, port=8099)
+full, prof = win._collect_config(True), win._collect_config(False)
+check("config : alertes et web enregistrées", full["notify"]["tg_token"] == "SECRET" and full["web"]["port"] == 8099)
+check("profil partagé : pas de jeton Telegram", "notify" not in prof and prof["web"]["port"] == 8099)
+win4 = step("MainWindow() #4", m.MainWindow)
+win4.apply_web = lambda: None
+step("apply_config alertes", lambda: win4._apply_config(full))
+check("config relue : alertes", win4.notify_cfg["mode"] == "crit" and win4.notify_cfg["tg_token"] == "SECRET")
+check("config relue : web", win4.web_cfg == dict(on=True, port=8099), str(win4.web_cfg))
+bad = dict(full, web=dict(on="oui", port="x"))
+win4._apply_config(bad)
+check("config abîmée : valeurs ignorées", win4.web_cfg == dict(on=True, port=8099), str(win4.web_cfg))
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

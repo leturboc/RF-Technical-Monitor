@@ -272,6 +272,44 @@ wait(800)
 shot(win, "tinysa2_perdu")
 step("retour du 2e", lambda: win.on_link(1, True))
 wait(1500)
+# noms de position + calibration (démo : pas de porteuse commune → base « bruit de fond »)
+win.dev1_name.setText("Plateau")
+win.dev2_name.setText("FOH")
+check("noms de position", win.dev_name(0) == "Plateau" and win.dev_name(1) == "FOH")
+step("calibration", win.start_calib)
+check("calibration lancée", win._calib is not None)
+t_cal = time.time()
+while win._calib is not None and time.time() - t_cal < 60:
+    wait(500)
+check("calibration terminée", win._calib is None and "Calibration faite" in getattr(win, "calib_msg", ""),
+      getattr(win, "calib_msg", ""))
+check("résultat de calibration affiché", any("Calibration faite" in t for _k, t in msgs), str(msgs[-2:]))
+check("offset du 2e plausible (démo)", abs(win.dev2_off.value()) < 3.0, str(win.dev2_off.value()))
+# zoom : le 2e continue la surveillance
+seen[1].clear()
+step("zoom live", lambda: win.zoom_on(0))
+wait(5000)
+check("zoom : le 2e surveille toujours les bandes", seen[1] and m.ZOOM_ID not in seen[1], str(seen[1]))
+step("zoom off", lambda: win.toggle_zoom(False))
+win.zoom_btn.setChecked(False)
+wait(1000)
+# page web servie par la vraie appli
+import json as _json
+import urllib.request as _ur
+win.web_cfg.update(on=True, port=0)
+step("apply_web", win.apply_web)
+check("page web démarrée", win.web is not None and win.web.port > 0)
+if win.web is not None:
+    wait(1500)
+    base = f"http://127.0.0.1:{win.web.port}"
+    js = _json.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())
+    check("page web : état réel", len(js["rows"]) == len(win.watch) and js["running"], str(js.get("running")))
+    check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
+    win.web_cfg["on"] = False
+    step("web off", win.apply_web)
+    check("page web arrêtée", win.web is None)
+DLG_ACTION[0] = "reject"
+step("dialogue alertes", win.open_alerts)
 step("Arrêter x2", win.toggle_run)
 wait(3000)
 check("arrêt des deux", not win.is_running())
@@ -292,6 +330,8 @@ if win2:
 
 check("aucune exception Qt", not errors, f"{len(errors)} exception(s)")
 check("aucun message d'erreur", not [k for k, _ in msgs if k in ("warning", "critical")], str(msgs))
+for k, t in msgs:
+    print("  message", k, ":", t[:140].replace("\n", " | "), flush=True)
 print(f"\n{len(shots)} captures dans {OUT}")
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

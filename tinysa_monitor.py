@@ -52,6 +52,7 @@ import itertools
 import json
 import math
 import os
+import queue
 import re
 import select
 import socket
@@ -59,7 +60,9 @@ import sys
 import threading
 import time
 import unicodedata
+import urllib.request
 from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime
 from pathlib import Path
 
@@ -80,6 +83,9 @@ RBW_LIST = [0.3, 1, 3, 10, 30, 100, 300, 600, 850]
 WF_ROWS = 150                # profondeur du waterfall
 WF_MAX_COLS = 3000           # colonnes max du waterfall (réduction par maximum)
 ZOOM_ID = -2                 # identifiant interne de la "bande" de zoom live
+CALIB_IDS = (-3, -4)         # bandes internes de la calibration entre deux tinySA (1er, 2e)
+CALIB_SWEEPS = 3             # balayages par appareil pour calibrer
+CALIB_TIMEOUT = 180.0
 MAX_LABELS = 30              # nb max de noms affichés sur le graphe
 HYST = 3.0                   # hystérésis (dB) pour repasser en "libre"
 TINYSA_VID, TINYSA_PID = 0x0483, 0x5740
@@ -2007,6 +2013,148 @@ def assign_bands(items, ndev=2, live=None):
     return out
 
 
+def calib_offset(F1, L1, F2, L2, snr=10.0, min_pts=5):
+    """Écart de lecture entre deux tinySA qui ont balayé la même bande (même antenne / splitter).
+    -> (correction à AJOUTER au 2e en dB, nb de points utilisés, base « signaux » | « bruit de fond ») ou None.
+    On compare d'abord les signaux vus par les deux (> plancher + snr dB) ; sinon le plancher de bruit."""
+    F1, L1, F2, L2 = (np.asarray(x, dtype=float) for x in (F1, L1, F2, L2))
+    if len(F1) < 2 or len(F2) < 2:
+        return None
+    lo, hi = max(F1[0], F2[0]), min(F1[-1], F2[-1])
+    m = (F1 >= lo) & (F1 <= hi)
+    if m.sum() < min_pts:
+        return None
+    f, a = F1[m], L1[m]
+    b = np.interp(f, F2, L2)
+    floor = float(np.median(np.minimum(a, b)))
+    sig = np.minimum(a, b) > floor + snr          # signal vu par LES DEUX (une porteuse vue d'un seul côté fausserait)
+    if sig.sum() >= min_pts:
+        d, kind = a[sig] - b[sig], "signaux"
+    else:
+        d, kind = a - b, "bruit de fond"
+    return round(float(np.median(d)), 1) + 0.0, int(len(d)), kind      # + 0.0 : pas de « -0.0 dB »
+
+
+# --------------------------------------------------------------------------
+# Alertes sur téléphone (ntfy / Telegram) : textes et requêtes HTTP (l'envoi est fait hors de cette section)
+# --------------------------------------------------------------------------
+NOTIFY_MODES = (("off", "Désactivées"), ("crit", "Critiques seulement"), ("all", "Critiques + normales"))
+
+
+def notify_wanted(prio, mode):
+    """Faut-il envoyer une alarme de cette priorité (2 critique, 1 normale, 0 info) ?"""
+    return (mode == "crit" and prio >= 2) or (mode == "all" and prio >= 1)
+
+
+def notify_text(a, site=""):
+    """Alarme (dict AlarmBook) -> (titre, corps) courts, lisibles sur un écran verrouillé."""
+    title = f"⚠ {a['kind']} — {a['name']}"
+    bits = []
+    if a.get("freq"):
+        bits.append(f"{a['freq']:.3f} MHz")
+    if a.get("level") is not None:
+        bits.append(f"{a['level']:.0f} dBm")
+    for k in ("layer", "info"):
+        if a.get(k):
+            bits.append(str(a[k]))
+    body = " · ".join(bits) or "alarme"
+    if site:
+        body = f"[{site}] " + body
+    return title, body
+
+
+def ntfy_request(server, topic, title, body, prio=2):
+    """Requête ntfy (appli gratuite iOS / Android, sans compte) -> (url, en-têtes, données)."""
+    url = (server or "https://ntfy.sh").rstrip("/") + "/" + topic.strip().strip("/")
+    hdr = {"Title": _hdr_safe(title),
+           "Priority": "urgent" if prio >= 2 else "high", "Tags": "rotating_light" if prio >= 2 else "warning"}
+    return url, hdr, body.encode("utf-8")
+
+
+def _hdr_safe(s):
+    """Les en-têtes HTTP sont en latin-1 : ntfy accepte le format RFC 2047 pour le reste (accents, emojis)."""
+    try:
+        s.encode("latin-1")
+        return s
+    except UnicodeEncodeError:
+        import base64
+        return "=?UTF-8?B?" + base64.b64encode(s.encode("utf-8")).decode("ascii") + "?="
+
+
+def telegram_request(token, chat_id, title, body):
+    """Requête Telegram (bot créé avec @BotFather) -> (url, en-têtes, données)."""
+    import json as _json
+    url = f"https://api.telegram.org/bot{token.strip()}/sendMessage"
+    data = _json.dumps({"chat_id": str(chat_id).strip(), "text": f"{title}\n{body}",
+                        "disable_web_page_preview": True}).encode("utf-8")
+    return url, {"Content-Type": "application/json"}, data
+
+
+# --------------------------------------------------------------------------
+# Page web en lecture seule (téléphone du régisseur…) : état JSON + page autonome
+# --------------------------------------------------------------------------
+WEB_PORT = 8080
+STATE_TXT = {"occ": "OCCUPÉ", "weak": "faible", "free": "libre", None: "—"}
+
+
+def web_state(rows, alarms, info):
+    """rows : [{name, freq, level, state, status, scene, group, absent, conflict}] ; alarms : listing AlarmBook.
+    -> dict sérialisable pour /etat.json."""
+    out = []
+    for r in rows:
+        st = r.get("state")
+        out.append(dict(name=r["name"], freq=round(float(r["freq"]), 4),
+                        level=None if r.get("level") is None else round(float(r["level"]), 1),
+                        state=st or "", state_txt=STATE_TXT.get(st, "—"), status=r.get("status") or "",
+                        scene=r.get("scene") or "", group=r.get("group") or "",
+                        alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
+    al = [dict(kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
+               acked=bool(a["acked"]), layer=a.get("layer") or "", info=a.get("info") or "", t0=a["t0"])
+          for a in alarms if a.get("t_end") is None]
+    return dict(rows=out, alarms=al, **info)
+
+
+WEB_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TinySA Monitor</title>
+<style>
+:root{--bg:#14171c;--fg:#e8eaed;--mut:#8a919c;--card:#1d2128;--occ:#e5484d;--weak:#d4a017;--free:#2f9e5b;--abs:#f08c2e}
+@media (prefers-color-scheme:light){:root{--bg:#f4f5f7;--fg:#16181d;--mut:#5c636e;--card:#fff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.35 system-ui,Segoe UI,Roboto,sans-serif}
+header{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid #8883;z-index:1}
+h1{font-size:17px;margin:0 0 6px}#meta{color:var(--mut);font-size:13px}select{font-size:15px;padding:4px;max-width:100%}
+#al{margin:10px 14px}.al{background:var(--occ);color:#fff;border-radius:8px;padding:8px 10px;margin:6px 0;font-weight:600}
+.al.ack{background:var(--abs)}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
+.c{background:var(--card);border-radius:10px;padding:8px 10px;border-left:6px solid #8885}
+.c.occ{border-color:var(--occ)}.c.weak{border-color:var(--weak)}.c.free{border-color:var(--free)}
+.c.alarm{background:var(--abs);color:#000}.n{font-weight:700;font-size:16px}.f,.s{color:var(--mut);font-size:13px}
+.c.alarm .f,.c.alarm .s{color:#000}.l{font-size:15px;margin-top:2px}#stale{display:none;background:var(--occ);color:#fff;
+padding:6px 14px;font-weight:700}
+</style></head><body>
+<div id="stale">⚠ Plus de nouvelles du PC de surveillance</div>
+<header><h1 id="t">TinySA Monitor</h1><div id="meta"></div>
+<select id="flt"><option value="">Toutes les couches</option></select></header>
+<section id="al"></section><main id="g"></main>
+<script>
+const $=s=>document.querySelector(s);let last=0,data=null,keep="";try{keep=localStorage.getItem("flt")||""}catch(x){}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+async function tick(){try{const r=await fetch("etat.json",{cache:"no-store"});data=await r.json();last=Date.now();draw(data)}catch(e){}
+ $("#stale").style.display=(Date.now()-last>15000)?"block":"none"}
+function draw(d){$("#t").textContent=d.title||"TinySA Monitor";
+ $("#meta").textContent=(d.running?"● en surveillance":"○ arrêté")+" · "+d.time+(d.cycle?" · cycle "+d.cycle:"");
+ const f=$("#flt"),layers=[...new Set(d.rows.map(r=>r.scene+(r.group?" › "+r.group:"")).filter(x=>x))].sort();
+ if(f.options.length-1!==layers.length){f.innerHTML='<option value="">Toutes les couches</option>'+layers.map(l=>`<option>${esc(l)}</option>`).join("");f.value=keep}
+ const lay=r=>r.scene+(r.group?" › "+r.group:""),ok=r=>!f.value||lay(r)===f.value||r.scene===f.value;
+ $("#al").innerHTML=d.alarms.filter(a=>!a.freq||!f.value||d.rows.some(r=>ok(r)&&Math.abs(r.freq-a.freq)<1e-3)).map(a=>
+  `<div class="al${a.acked?" ack":""}">⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}</div>`).join("");
+ $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.state}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
+  <div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div>
+  <div class="l">${r.alarm?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level!==null?" · "+r.level.toFixed(1)+" dBm":""}</div>
+  <div class="s">${esc(lay(r))}</div></div>`).join("")}
+$("#flt").onchange=e=>{keep=e.target.value;try{localStorage.setItem("flt",keep)}catch(x){};if(data)draw(data)};
+tick();setInterval(tick,2000);
+</script></body></html>"""
+
+
 def split_band(start, stop, step):
     """Coupe une bande en deux moitiés jointives (pour la partager entre deux tinySA)."""
     mid = round((start + stop) / 2.0, 3)
@@ -2400,6 +2548,197 @@ class SerialRelay(threading.Thread):
                 except Exception:  # noqa: BLE001
                     pass
             self.client = None
+
+
+class Notifier:
+    """Envoie les alertes sur téléphone sans jamais bloquer l'appli : file d'attente + fil séparé, 3 essais."""
+
+    def __init__(self, sender=None, retry_s=3.0):
+        self.q = queue.Queue(maxsize=50)
+        self.sender = sender or self._http
+        self.retry_s = retry_s
+        self.last_error, self.sent = "", 0
+        threading.Thread(target=self._run, daemon=True).start()
+
+    @staticmethod
+    def _http(url, hdr, data):
+        req = urllib.request.Request(url, data=data, headers=hdr, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            r.read()
+
+    def post(self, req):
+        try:
+            self.q.put_nowait(req)
+        except queue.Full:
+            self.last_error = "trop d'alertes en attente (pas de réseau ?)"
+
+    def _run(self):
+        while True:
+            req = self.q.get()
+            for k in range(3):
+                try:
+                    self.sender(*req)
+                    self.sent += 1
+                    self.last_error = ""
+                    break
+                except Exception as e:  # noqa: BLE001
+                    self.last_error = str(e)
+                    time.sleep(self.retry_s * (k + 1))
+
+
+class WebServer(threading.Thread):
+    """Page web en lecture seule : « / » (page) et « /etat.json » (état, fourni par get_json())."""
+
+    def __init__(self, port, get_json, host="0.0.0.0"):
+        super().__init__(daemon=True)
+        self.port, self.host, self.get_json = int(port), host, get_json
+        self.httpd, self.error = None, ""
+        self.ready = threading.Event()
+
+    def run(self):
+        owner = self
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                path = self.path.split("?", 1)[0]
+                if path in ("/", "/index.html"):
+                    body, ctype = WEB_PAGE.encode("utf-8"), "text/html; charset=utf-8"
+                elif path == "/etat.json":
+                    body, ctype = owner.get_json(), "application/json; charset=utf-8"
+                else:
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        try:
+            self.httpd = ThreadingHTTPServer((self.host, self.port), H)
+            self.httpd.daemon_threads = True
+            self.port = self.httpd.server_address[1]
+        except OSError as e:
+            self.error = f"Port {self.port} indisponible : {e}"
+            self.ready.set()
+            return
+        self.ready.set()
+        self.httpd.serve_forever(poll_interval=0.3)
+
+    def stop(self):
+        if self.httpd is not None:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+
+
+class AlertsDialog(QtWidgets.QDialog):
+    """Réglages : alertes sur téléphone (ntfy / Telegram) et page web en lecture seule."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Alertes téléphone et page web")
+        self.resize(580, 680)
+        n, w = owner.notify_cfg, owner.web_cfg
+        nb = QtWidgets.QGroupBox("📣 Alertes sur téléphone")
+        nf = QtWidgets.QFormLayout(nb)
+        self.mode = QtWidgets.QComboBox()
+        for k, t in NOTIFY_MODES:
+            self.mode.addItem(t, k)
+        self.mode.setCurrentIndex(max(0, self.mode.findData(n["mode"])))
+        self.service = QtWidgets.QComboBox()
+        self.service.addItem("ntfy (appli gratuite, sans compte)", "ntfy")
+        self.service.addItem("Telegram (bot)", "telegram")
+        self.service.setCurrentIndex(max(0, self.service.findData(n["service"])))
+        self.server = QtWidgets.QLineEdit(n["server"])
+        self.topic = QtWidgets.QLineEdit(n["topic"] or f"tinysa-{os.urandom(4).hex()}")
+        self.topic.setToolTip("Nom du « canal » ntfy : choisis-le long et difficile à deviner (toute personne qui le\n"
+                              "connaît peut lire les alertes). Abonne-toi au même nom dans l'appli ntfy du téléphone.")
+        self.tg_token = QtWidgets.QLineEdit(n["tg_token"])
+        self.tg_token.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.tg_chat = QtWidgets.QLineEdit(n["tg_chat"])
+        self.site = QtWidgets.QLineEdit(n["site"])
+        self.site.setPlaceholderText("ex. Festival X — Grande scène")
+        test = QtWidgets.QPushButton("Envoyer une alerte de test")
+        test.clicked.connect(lambda *_: self.send_test())
+        self.n_lbl = QtWidgets.QLabel("")
+        self.n_lbl.setWordWrap(True)
+        help_n = QtWidgets.QLabel(
+            "<b>ntfy</b> : installe l'appli ntfy (iOS / Android), « S'abonner » au nom de canal ci-dessous. "
+            "<b>Telegram</b> : crée un bot avec @BotFather (jeton), écris-lui un message, puis récupère ton "
+            "identifiant de discussion (chat id). Il faut une connexion Internet (4G, wifi du site…).")
+        help_n.setWordWrap(True)
+        nf.addRow(help_n)
+        nf.addRow("Envoyer :", self.mode)
+        nf.addRow("Service :", self.service)
+        nf.addRow("Serveur ntfy :", self.server)
+        nf.addRow("Canal ntfy :", self.topic)
+        nf.addRow("Jeton du bot :", self.tg_token)
+        nf.addRow("Chat id :", self.tg_chat)
+        nf.addRow("Nom du site :", self.site)
+        nf.addRow(test)
+        nf.addRow(self.n_lbl)
+        self.service.currentIndexChanged.connect(lambda *_: self._svc())
+        wb = QtWidgets.QGroupBox("🌐 Page web en lecture seule (réseau local)")
+        wf = QtWidgets.QFormLayout(wb)
+        self.web_on = QtWidgets.QCheckBox("Activer la page web")
+        self.web_on.setChecked(bool(w["on"]))
+        self.web_port = QtWidgets.QSpinBox()
+        self.web_port.setRange(1024, 65535)
+        self.web_port.setValue(int(w["port"]))
+        self.w_lbl = QtWidgets.QLabel("")
+        self.w_lbl.setWordWrap(True)
+        self.w_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        help_w = QtWidgets.QLabel("Sur un téléphone ou un PC du même réseau, ouvre l'adresse affichée : état des "
+                                  "fréquences et alarmes, filtre par scène / groupe, rafraîchi toutes les 2 s. "
+                                  "Lecture seule, sans mot de passe : à n'activer que sur un réseau de confiance.")
+        help_w.setWordWrap(True)
+        wf.addRow(help_w)
+        wf.addRow(self.web_on)
+        wf.addRow("Port :", self.web_port)
+        wf.addRow(self.w_lbl)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(nb)
+        lay.addWidget(wb)
+        lay.addStretch(1)
+        lay.addWidget(bb)
+        self._svc()
+        self.refresh()
+
+    def _svc(self):
+        ntfy = self.service.currentData() == "ntfy"
+        for wd in (self.server, self.topic):
+            wd.setEnabled(ntfy)
+        for wd in (self.tg_token, self.tg_chat):
+            wd.setEnabled(not ntfy)
+
+    def values(self):
+        return dict(mode=self.mode.currentData(), service=self.service.currentData(),
+                    server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
+                    tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
+                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value())
+
+    def send_test(self):
+        n, _w = self.values()
+        err = self.owner.send_notify("✔ Test TinySA Monitor", "Les alertes arrivent bien sur ce téléphone.", 2, cfg=n)
+        self.n_lbl.setText(f"⚠ {err}" if err else "Envoyé… (vérifie le téléphone ; une erreur s'affichera ici)")
+        QtCore.QTimer.singleShot(4000, self.refresh)
+
+    def refresh(self):
+        nt = self.owner.notifier
+        if nt is not None and nt.last_error:
+            self.n_lbl.setText(f"⚠ Dernier envoi en échec : {nt.last_error}")
+        elif nt is not None and nt.sent:
+            self.n_lbl.setText(f"✔ {nt.sent} alerte(s) envoyée(s) depuis le démarrage.")
+        self.w_lbl.setText(self.owner.web_urls_text())
 
 
 class RelayWindow(QtWidgets.QWidget):
@@ -4427,6 +4766,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev2 = dict(on=False, addr="", offset=0.0)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
         self.dev_live = [True, True]    # liaison de chaque appareil (False = perdue, ses bandes passent sur l'autre)
         self.dev_cycle = {}
+        self.dev_names = ["tinySA 1", "tinySA 2"]   # noms de position (« Plateau », « FOH »…)
+        self.band_src = {}              # id bande -> n° du tinySA qui a fourni le dernier balayage
+        self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
+        self.notify_cfg = dict(mode="off", service="ntfy", server="https://ntfy.sh", topic="", tg_token="",
+                               tg_chat="", site="")
+        self.notifier = None
+        self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
+        self.web_cfg = dict(on=False, port=WEB_PORT)
+        self.web = None
+        self._web_json = b"{}"
         self.view_id = -1
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
@@ -4584,7 +4933,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
                         ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
                         (None, None),
-                        ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay())):
+                        ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
+                        ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts())):
             if txt is None:
                 tmenu.addSeparator()
             else:
@@ -5162,6 +5512,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def get_cfg(self, dev=0):
         with self.lock:
             c = self._cfg
+            cal = self._calib
+            if cal is not None and dev < 2:
+                b = cal["band"]
+                return dict(bands=[dict(id=CALIB_IDS[dev], name="Calibration", start_hz=b["start"] * 1e6,
+                                        stop_hz=b["stop"] * 1e6, n=self._npts(b), enabled=True)],
+                            rbw=c["rbw"], input=c["input"], lna=c["lna"], att=c["att"],
+                            offset=c["offset"] + (float(self.dev2.get("offset", 0.0)) if dev == 1 else 0.0),
+                            seg=c["seg"], demo_freqs=[w["freq"] for w in self.watch], ver=self._ver)
             if self._zoom:
                 a, b = self._zoom
                 n = max(2, int(c["points"]))
@@ -5170,7 +5528,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 rbw = c["zrbw"] if c["zrbw"] is not None else auto_rbw(step_khz)
                 zdev = 0 if (self.ndev() == 1 or self.dev_live[0] or not self.dev_live[1]) else 1
                 if dev != zdev:
-                    bands = []                 # le zoom live est fait par un seul tinySA
+                    # le zoom live est fait par un seul tinySA ; l'autre continue de surveiller toutes les bandes
+                    bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
+                                  n=self._npts(b), enabled=True) for b in self.scan_bands() if b["enabled"]]
+                    rbw = c["rbw"]
             else:
                 asg = self.band_devices()
                 bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
@@ -5322,6 +5683,16 @@ class MainWindow(QtWidgets.QMainWindow):
             except (TypeError, ValueError):
                 pass
             self._read_dev2()
+        for key, d in (("notify", self.notify_cfg), ("web", self.web_cfg)):
+            v = data.get(key)
+            if isinstance(v, dict):
+                d.update({k: v[k] for k in d if k in v and isinstance(v[k], type(d[k]))})
+        QtCore.QTimer.singleShot(0, self.apply_web)
+        dn = data.get("dev_names")
+        if isinstance(dn, list) and len(dn) == 2:
+            self.dev1_name.setText("" if dn[0] == "tinySA 1" else str(dn[0]))
+            self.dev2_name.setText("" if dn[1] == "tinySA 2" else str(dn[1]))
+            self._dev_names_changed()
         if startup:
             self.demo_chk.setChecked(data.get("demo", False))
             vu = data.get("vocab")
@@ -5368,12 +5739,13 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
-            dev2=dict(self.dev2))
+            dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg))
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
             data["docks"] = bytes(self.saveState().toBase64()).decode()
             data["vocab"] = self.vocab_user
+            data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
         return data
 
     def _save_config(self):
@@ -5470,13 +5842,15 @@ class MainWindow(QtWidgets.QMainWindow):
             if not demo and url == port:
                 QtWidgets.QMessageBox.warning(self, APP_NAME, "Les deux tinySA ont le même port.")
                 return
-            targets = [(port, "tinySA 1"), (url, "tinySA 2")]
+            targets = [(port, self.dev_name(0)), (url, self.dev_name(1))]
         self.dev_live = [True, True]
         self.dev_cycle = {}
+        self.band_src = {}
         self.workers = []
         for i, (addr, label) in enumerate(targets):
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
             w.retry_first = i > 0                 # le 2ᵉ (souvent en réseau) peut arriver après : on l'attend
+            w.sweep.connect(lambda bid, f, l, d=i: self.band_src.__setitem__(bid, d))
             w.sweep.connect(self.on_sweep)
             w.partial.connect(self.on_partial)
             w.cycle.connect(lambda dt, nb, d=i: self.on_cycle(dt, nb, d))
@@ -5493,7 +5867,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._style_start(True)
         self.port_combo.setEnabled(False)
         self.demo_chk.setEnabled(False)
-        self.dev2_box.setEnabled(False)
+        for wd in (self.dev2_chk, self.dev2_addr):
+            wd.setEnabled(False)
         self.update_dev2_label()
 
     def on_info(self, txt, dev=0):
@@ -5515,17 +5890,20 @@ class MainWindow(QtWidgets.QMainWindow):
         """Un tinySA décroche (câble, réseau, relais) ou revient : alarme + répartition des bandes."""
         with self.lock:
             self.dev_live[dev] = bool(ok)
+        if not ok and self._calib is not None:
+            self._calib_end("⚠ Calibration annulée : un tinySA a décroché.")
         self._bump()
         now = time.time()
         key = ("APPAREIL", -(dev + 1))
-        name = f"tinySA {dev + 1}"
+        name = self.dev_name(dev)
         w = dict(name=name, freq=0.0)
         if ok:
-            self.alarms.clear(key, now)
+            if self.alarms.clear(key, now) is not None and self.notify_cfg["mode"] != "off":
+                self.send_notify(f"✔ {name} de nouveau en ligne", "Les bandes sont réparties à nouveau.", 1)
             self.log_event(w, 0.0, "APPAREIL RETROUVÉ")
             self.set_status(f"✔ {name} de nouveau en ligne : bandes réparties à nouveau.")
         else:
-            other = "l'autre tinySA reprend ses bandes" if self.ndev() > 1 and any(self.dev_live) else \
+            other = f"{self.dev_name(1 - dev)} reprend ses bandes" if self.ndev() > 1 and any(self.dev_live) else \
                 "plus aucune mesure"
             if self.alarms.raise_(key, "APPAREIL", name, 0.0, 2, now, layer="",
                                   info=f"liaison perdue — {other}"):
@@ -5543,8 +5921,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.start_btn.setEnabled(True)
         self.port_combo.setEnabled(True)
         self.demo_chk.setEnabled(True)
-        self.dev2_box.setEnabled(True)
+        for wd in (self.dev2_chk, self.dev2_addr):
+            wd.setEnabled(True)
         self.partial_data.clear()
+        if self._calib is not None:
+            self._calib_end("Calibration annulée (balayage arrêté).", popup=False)
         for d in (0, 1):
             self.alarms.clear(("APPAREIL", -(d + 1)), time.time())
         self.dev_live = [True, True]
@@ -5553,7 +5934,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ 2ᵉ tinySA
     def _build_dev2_box(self):
-        box = QtWidgets.QGroupBox("2ᵉ tinySA (USB ou réseau)")
+        box = QtWidgets.QGroupBox("2ᵉ tinySA (USB ou réseau) · noms")
         self.dev2_box = box
         f = QtWidgets.QFormLayout(box)
         self.dev2_chk = QtWidgets.QCheckBox("Utiliser un 2ᵉ tinySA")
@@ -5580,10 +5961,24 @@ class MainWindow(QtWidgets.QMainWindow):
         relay_btn = QtWidgets.QPushButton("📡 Relais réseau (sur le PC du 2ᵉ tinySA)…")
         relay_btn.setToolTip("Partage un tinySA branché sur CE PC pour qu'un autre PC l'utilise par le réseau.")
         relay_btn.clicked.connect(lambda *_: self.open_relay())
+        self.dev1_name, self.dev2_name = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
+        for e, n in ((self.dev1_name, 1), (self.dev2_name, 2)):
+            e.setPlaceholderText(f"tinySA {n}")
+            e.setToolTip("Nom de position (Plateau, FOH, Scène B…) : affiché dans les alarmes, le journal\n"
+                         "(« vu par … ») et les messages. Utile pour savoir quelle antenne a vu le signal.")
+            e.textChanged.connect(lambda *_: self._dev_names_changed())
+        f.addRow("Nom du 1er :", self.dev1_name)
         f.addRow(self.dev2_chk)
+        f.addRow("Nom du 2ᵉ :", self.dev2_name)
         f.addRow("Adresse :", self.dev2_addr)
         f.addRow("Offset :", self.dev2_off)
+        self.calib_btn = QtWidgets.QPushButton("⚖ Calibrer le 2ᵉ sur le 1er…")
+        self.calib_btn.setToolTip("Les deux tinySA doivent recevoir le MÊME signal (même antenne via un splitter, ou\n"
+                                  "antennes côte à côte). Pendant ~20 s ils balayent la même bande, puis l'offset du\n"
+                                  "2ᵉ est réglé pour qu'il lise comme le 1er. La surveillance reprend ensuite.")
+        self.calib_btn.clicked.connect(lambda *_: self.start_calib())
         f.addRow(self.dev2_lbl)
+        f.addRow(self.calib_btn)
         f.addRow(relay_btn)
         self.dev2_info = ""
         self._dev2_ports()
@@ -5624,9 +6019,151 @@ class MainWindow(QtWidgets.QMainWindow):
             where = "démo"
         run = self.is_running()
         st = ("✔ en ligne" if self.dev_live[1] else "⚠ liaison perdue (nouvel essai…)") if run else "prêt"
-        cyc = "  ·  ".join(f"tinySA {k + 1} : {v:.1f} s" for k, v in sorted(self.dev_cycle.items())) if run else ""
+        cyc = "  ·  ".join(f"{self.dev_name(k)} : {v:.1f} s" for k, v in sorted(self.dev_cycle.items())) if run else ""
         self.dev2_lbl.setText(f"{where} · {st}" + (f" · {self.dev2_info}" if run and self.dev2_info else "")
                               + (f"\nCycle  {cyc}" if cyc else ""))
+
+    def start_calib(self):
+        """Les deux tinySA balayent la même bande quelques cycles ; l'offset du 2e est ajusté sur le 1er."""
+        if self._calib is not None:
+            self._calib_end("Calibration annulée.", popup=False)
+            return
+        if self.ndev() < 2 or not self.is_running() or not all(self.dev_live):
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Calibration : lance d'abord le balayage avec les deux "
+                                              "tinySA en ligne (et le même signal sur les deux antennes).")
+            return
+        if self._zoom is not None:
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Coupe le zoom live avant de calibrer.")
+            return
+        bs = [b for b in self.scan_bands() if b["enabled"]]
+        if not bs:
+            return
+        band = max(bs, key=lambda b: sum(1 for w in self.watch if b["start"] <= w["freq"] <= b["stop"]))
+        with self.lock:
+            self._calib = dict(band=dict(band), t0=time.time(), data={0: [], 1: []})
+        self._bump()
+        self.calib_btn.setText("⚖ Calibration en cours… (clic = annuler)")
+        self.set_status(f"⚖ Calibration : les deux tinySA balayent « {band['name']} » ({CALIB_SWEEPS} fois chacun)…")
+
+    def _calib_add(self, dev, f, l):
+        cal = self._calib
+        if cal is None:
+            return
+        cal["data"][dev].append((np.asarray(f), np.asarray(l)))
+        if time.time() - cal["t0"] > CALIB_TIMEOUT:
+            self._calib_end("⚠ Calibration abandonnée : trop long.")
+            return
+        if all(len(cal["data"][d]) >= CALIB_SWEEPS for d in (0, 1)):
+            def maxhold(lst):
+                f0 = lst[0][0]
+                ls = [l_ for f_, l_ in lst if f_.shape == f0.shape]
+                return f0, np.max(np.vstack(ls), axis=0)
+            F1, L1 = maxhold(cal["data"][0])
+            F2, L2 = maxhold(cal["data"][1])
+            res = calib_offset(F1, L1, F2, L2)
+            if res is None:
+                self._calib_end("⚠ Calibration impossible : pas assez de points communs.")
+                return
+            delta, n, kind = res
+            new = round(float(self.dev2.get("offset", 0.0)) + delta, 1)
+            self.dev2_off.setValue(max(-40.0, min(40.0, new)))
+            self._calib_end(f"⚖ Calibration faite : {self.dev_name(1)} {delta:+.1f} dB → offset {new:+.1f} dB "
+                            f"(sur {n} points, base : {kind}).")
+
+    def _calib_end(self, msg, popup=True):
+        with self.lock:
+            self._calib = None
+        self._bump()
+        self.calib_btn.setText("⚖ Calibrer le 2ᵉ sur le 1er…")
+        self.calib_msg = msg
+        self.set_status(msg)
+        if popup:                                  # la barre d'état est vite réécrite par le balayage
+            QtWidgets.QMessageBox.information(self, APP_NAME, msg)
+
+    # ------------------------------------------------- alertes téléphone / page web
+    def open_alerts(self):
+        dlg = AlertsDialog(self)
+        if dlg.exec():
+            n, w = dlg.values()
+            self.notify_cfg.update(n)
+            self.web_cfg.update(w)
+            self.apply_web()
+
+    def send_notify(self, title, body, prio, cfg=None):
+        """Met une alerte dans la file d'envoi. -> message d'erreur de réglage, ou "" si c'est parti."""
+        c = cfg or self.notify_cfg
+        if c["service"] == "telegram":
+            if not c["tg_token"] or not c["tg_chat"]:
+                return "Telegram : jeton du bot et chat id requis."
+            req = telegram_request(c["tg_token"], c["tg_chat"], title, body)
+        else:
+            if not c["topic"]:
+                return "ntfy : choisis un nom de canal."
+            req = ntfy_request(c["server"], c["topic"], title, body, prio)
+        if self.notifier is None:
+            self.notifier = Notifier()
+        self.notifier.post(req)
+        return ""
+
+    def _notify_new_alarms(self):
+        for a in list(self.alarms.active.values()):
+            if a["id"] in self._notified:
+                continue
+            self._notified.add(a["id"])
+            if notify_wanted(a["prio"], self.notify_cfg["mode"]):
+                title, body = notify_text(a, self.notify_cfg.get("site", ""))
+                self.send_notify(title, body, a["prio"])
+
+    def web_json(self):
+        rows = [dict(w, conflict=(w["state"] == "occ" and self.is_keep_free(w["status"]))) for w in self.watch]
+        cyc = f"{self.last_cycle:.1f} s" if self.is_running() else ""
+        site = self.notify_cfg.get("site", "")
+        st = web_state(rows, self.alarms.listing(), dict(
+            title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
+            running=self.is_running(), cycle=cyc))
+        return json.dumps(st, ensure_ascii=False).encode("utf-8")
+
+    def apply_web(self):
+        want = self.web_cfg["on"]
+        if self.web is not None and (not want or self.web.port != self.web_cfg["port"]):
+            self.web.stop()
+            self.web = None
+        if want and self.web is None:
+            self._web_json = self.web_json()
+            ws = WebServer(self.web_cfg["port"], lambda: self._web_json)
+            ws.start()
+            ws.ready.wait(3)
+            if ws.error:
+                self.set_status(f"⚠ Page web : {ws.error}")
+                return
+            self.web = ws
+            self.set_status("🌐 Page web active : " + self.web_urls_text())
+
+    def web_urls_text(self):
+        if self.web is None:
+            return "Page web désactivée."
+        ips = local_ips() or ["<adresse de ce PC>"]
+        return "Adresse à ouvrir sur le téléphone : " + "  ou  ".join(f"http://{ip}:{self.web.port}" for ip in ips)
+
+    def dev_name(self, d):
+        n = (self.dev_names[d] if d < len(self.dev_names) else "").strip()
+        return n or f"tinySA {d + 1}"
+
+    def seen_by(self, f):
+        """« vu par <nom> » : le tinySA qui a mesuré la fréquence f (MHz) en dernier, si deux appareils ; sinon ""."""
+        if self.ndev() < 2:
+            return ""
+        best = None
+        for bid, (F, _L) in self.latest.items():
+            if len(F) and F[0] - 0.05 <= f <= F[-1] + 0.05 and bid in self.band_src:
+                t = self.latest_t.get(bid, 0)
+                if best is None or t > best[0]:
+                    best = (t, self.band_src[bid])
+        return f"vu par {self.dev_name(best[1])}" if best else ""
+
+    def _dev_names_changed(self):
+        self.dev_names = [self.dev1_name.text().strip() or "tinySA 1", self.dev2_name.text().strip() or "tinySA 2"]
+        self.update_dev2_label()
 
     def open_relay(self):
         if getattr(self, "_relay_win", None) is None:
@@ -6774,6 +7311,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # --------------------------------------------------------- données live
     def on_sweep(self, bid, f, l):
+        if bid in CALIB_IDS:
+            self._calib_add(CALIB_IDS.index(bid), f, l)
+            return
         self.partial_data.pop(bid, None)
         old = self.latest.get(bid)
         if (old is not None and old[0].shape == f.shape and abs(old[0][0] - f[0]) < 1e-6
@@ -6801,6 +7341,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.update_waterfall(bid, f, l)
 
     def on_partial(self, bid, f, l, i, n):
+        if bid in CALIB_IDS:
+            return
         self.partial_data[bid] = (f, l)
         name = next((b["name"] for b in self.scan_bands() if b["id"] == bid), "Zoom")
         self.set_status(f"Balayage « {name} » : segment {i}/{n}")
@@ -6876,11 +7418,12 @@ class MainWindow(QtWidgets.QMainWindow):
             keep_free = self.is_keep_free(w["status"])
             if new == "occ" and prev != "occ":
                 w["peak"], w["since"] = lvl, now
+                seen = self.seen_by(f)
                 if keep_free:
-                    self.log_event(w, lvl, "CONFLIT")
+                    self.log_event(dict(w, note=seen) if seen else w, lvl, "CONFLIT")
                     conflict = w
                 else:
-                    self.log_event(w, lvl, "OCCUPÉ")
+                    self.log_event(dict(w, note=seen) if seen else w, lvl, "OCCUPÉ")
                     alert = w
             elif new == "occ":
                 w["peak"] = max(w["peak"] or lvl, lvl)
@@ -6891,7 +7434,8 @@ class MainWindow(QtWidgets.QMainWindow):
             fk = int(round(f * 1000))
             if new == "occ" and keep_free:
                 prio = self.freq_prio(w)
-                if self.alarms.raise_(("CONFLIT", fk), "CONFLIT", w["name"], f, prio, now, lvl, self.layer_text(w)):
+                if self.alarms.raise_(("CONFLIT", fk), "CONFLIT", w["name"], f, prio, now, lvl, self.layer_text(w),
+                                      self.seen_by(f)):
                     new_prio = max(new_prio, prio)
             else:
                 self.alarms.clear(("CONFLIT", fk), now)
@@ -7866,6 +8410,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.alarms.clear(key, now)
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])
+        self._notify_new_alarms()
+        if self.web is not None:
+            self._web_json = self.web_json()
         if self.recorder is not None:
             self.recorder.maybe_flush(now)
             if self.recorder.error:
@@ -7899,7 +8446,8 @@ class MainWindow(QtWidgets.QMainWindow):
             state = ("à acquitter" if not a["acked"] else "acquittée") if active else "terminée"
             vals = (ALARM_PRIO.get(a["prio"], "?"), a["kind"], a["name"], f'{a["freq"]:.3f}' if a["freq"] else "—",
                     fmt_clock(a["t0"]), fmt_dur(end - a["t0"]), "—" if a["level"] is None else f'{a["level"]:.1f}',
-                    a["layer"] or a.get("info", ""), state)
+                    " · ".join(x for x in (a["layer"], "" if a["kind"] == "ABSENT" else a.get("info", "")) if x),
+                    state)
             for c, v in enumerate(vals):
                 it = self._item(v, False, c in (3, 6))
                 if c == 0:
@@ -8274,6 +8822,9 @@ class MainWindow(QtWidgets.QMainWindow):
             w.wait(8000)
         if getattr(self, "_relay_win", None) is not None:
             self._relay_win.close()
+        if self.web is not None:
+            self.web.stop()
+            self.web = None
         if self.wall is not None:
             self.wall.close()
         if self.recorder is not None:

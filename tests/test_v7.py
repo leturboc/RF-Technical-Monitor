@@ -271,6 +271,26 @@ AB = ns["AlarmBook"]()
 AB.raise_(("ABSENT", 1), "ABSENT", "HF 1", 470.0, 2, 100.0)
 AB.raise_(("APPAREIL", -2), "APPAREIL", "tinySA 2", 0.0, 2, 200.0)
 check("alarme APPAREIL en tête de liste", [a["kind"] for a in AB.listing()], ["APPAREIL", "ABSENT"])
+co = ns["calib_offset"]
+rng = np.random.default_rng(1)
+Fc = np.linspace(470, 530, 601)
+base = -100 + rng.normal(0, 1.0, Fc.size)
+for fc in (480, 495, 510, 522):
+    base = np.maximum(base, -50 - 30 * ((Fc - fc) / 0.2) ** 2)
+L2c = base - 3.0 + rng.normal(0, 0.3, Fc.size)         # le 2e lit 3 dB trop bas
+r = co(Fc, base, Fc, L2c)
+ok("calibration : +3 dB trouvé sur les signaux", r is not None and abs(r[0] - 3.0) <= 0.3 and r[2] == "signaux", str(r))
+F2c = np.linspace(470, 530, 401)                        # grilles différentes
+r = co(Fc, base, F2c, np.interp(F2c, Fc, base) + 2.0)
+ok("calibration : grilles différentes, −2 dB", r is not None and abs(r[0] + 2.0) <= 0.5, str(r))
+noise1 = -100 + rng.normal(0, 1.0, Fc.size)
+r = co(Fc, noise1, Fc, noise1 - 4.0)
+ok("calibration : sans signal → plancher de bruit", r is not None and r[2] == "bruit de fond" and abs(r[0] - 4.0) <= 0.3, str(r))
+only1 = noise1.copy()
+only1[100:110] = -40                                    # porteuse vue d'un seul côté : ignorée
+r = co(Fc, only1, Fc, noise1 - 1.0)
+ok("calibration : porteuse d'un seul côté ignorée", r is not None and abs(r[0] - 1.0) <= 0.3, str(r))
+check("calibration : pas de recouvrement", co([1, 2, 3], [0, 0, 0], [10, 11, 12], [0, 0, 0]), None)
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
 print("\nÉCHECS:", fails)

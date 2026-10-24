@@ -185,7 +185,9 @@ class FakeLabel(SigHolder):
         self._t = text if isinstance(text, str) else ""
 
     def setText(self, t):
-        self._t = t
+        if t != self._t:
+            self._t = t
+            self.textChanged.emit(t)        # comme QLineEdit (QLabel n'a personne de connecté)
 
     def text(self):
         return self._t

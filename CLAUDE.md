@@ -51,6 +51,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
 - Réseau : `TinySA` ouvre tout par `serial.serial_for_url` (`socket://hôte:port`) ; en réseau, délai de silence
   `idle` (`NET_IDLE_MIN` + points × f(RBW), `expect_scan`) pour détecter un câble arraché. `SerialRelay` (thread,
   sans Qt) + `RelayWindow` : `TinySA-Monitor.exe --relais` sur le PC du 2ᵉ tinySA, port TCP 5025 (`RELAY_PORT`).
+- Noms de position `self.dev_names` (`dev_name(d)`), `band_src` (bande → appareil du dernier balayage) →
+  `seen_by(f)` « vu par … » (note du journal, info des alarmes CONFLIT). Zoom : l'autre appareil garde les bandes.
+- Calibration : `start_calib` → `self._calib`, `get_cfg` donne la même bande aux deux sous `CALIB_IDS` (-3, -4),
+  `on_sweep` les détourne vers `_calib_add` ; `calib_offset` (PURE, signaux vus par les deux, sinon plancher).
+- Alertes : `notify_cfg` (ntfy / Telegram, `notify_text`, `ntfy_request`, `telegram_request` en PURE) ; `Notifier`
+  (file + fil, 3 essais) ; `_notify_new_alarms` dans `_alarm_tick` (une fois par alarme, `_notified`). `notify` est
+  dans config.json mais PAS dans les profils (jeton). Page web : `web_cfg`, `WebServer` (`/`, `/etat.json`),
+  `web_json()` rafraîchi chaque seconde, page `WEB_PAGE` + `web_state` (PURE). Dialogue `AlertsDialog`.
 - Config : `%APPDATA%/TinySAMonitor/config.json` (`_collect_config` / `_apply_config`, avec migration des anciennes configs).
 
 ## Formats de fichiers
@@ -68,6 +76,7 @@ python tests/smoke_test.py ; ...smoke_test2.py ; ...smoke_test3.py ; ...smoke_te
 python tests/smoke_test5.py      # 2e tinySA dans MainWindow (faux Qt)
 python tests/test_reseau.py      # faux tinySA (pty) → relais → TCP → TinySA ; test_reseau_qt.py : vrai ScanWorker,
                                  # coupure, liaison muette, reconnexion (Linux/macOS ; sautés sous Windows)
+python tests/test_alertes.py     # ntfy / Telegram / Notifier / WebServer ; page testée dans Chromium si Playwright
 python tests/check_names.py      # noms non définis (les « hérités de Qt » sont normaux)
 python tests/gui_reel.py         # VRAI PySide6 hors écran, mode démo : captures PNG dans tests/captures/
 ```
@@ -94,6 +103,6 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 ## Reste à faire / idées
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
-- Idée : pendant le zoom live, laisser le 2ᵉ tinySA continuer la surveillance (aujourd'hui il attend).
+- Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
 - Interface validée en vrai Qt (Linux + Windows CI : ≤ 1280 × 700) ; reste un essai réel avec le tinySA et les sons.
 - Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.

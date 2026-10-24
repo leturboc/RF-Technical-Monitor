@@ -40,7 +40,7 @@ exec("import bisect, csv, io, itertools, math, re, select, socket, threading, ti
 ns.update(MIN_PTS=51, HYST=3.0, RBW_LIST=[1, 3, 10, 30, 100], APP_NAME="t", TINYSA_VID=0, TINYSA_PID=0)
 exec(chunk("# ===== PURE-BEGIN", "# ===== PURE-END"), ns)
 exec(chunk("class TinySA:", "# ----"), ns)
-exec(chunk("def local_ips():", "class RelayWindow"), ns)
+exec(chunk("def local_ips():", "class Notifier:"), ns)
 TinySA, SerialRelay = ns["TinySA"], ns["SerialRelay"]
 
 
