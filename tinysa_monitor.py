@@ -9832,7 +9832,7 @@ class MainWindow(QtWidgets.QMainWindow):
         W, H = max(self.width(), 900), max(self.height(), 600)
         left = max(230, min(330, int(W * 0.19)))
         right = max(290, min(560, int(W * 0.31)))
-        over = left + right - W // 2        # petit écran (portable ~1024 px) : le spectre garde la moitié
+        over = left + right - int(W / 2)        # petit écran (portable ~1024 px) : le spectre garde la moitié
         if over > 0:
             right -= min(over, right - 290)
         self.resizeDocks([self.dock_set, self.dock_freq], [left, right], Qt.Orientation.Horizontal)
