@@ -4259,7 +4259,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_btn.setToolTip("Alarmes : conflits (signal sur une fréquence « doit rester libre ») et émetteurs "
                                   "absents (« doit émettre »).\nRouge = à acquitter · orange = acquittées, toujours là.")
         self.alarm_btn.clicked.connect(lambda *_: self.toggle_alarm_dock())
-        top = self._flow(("Port :", self.port_combo, btn_ports, self.demo_chk, self.info_lbl),
+        top = self._flow(("Port :", self.port_combo, btn_ports), (self.demo_chk, self.info_lbl),
                          self.alarm_btn, tools_btn, win_btn, wall_btn, prof_btn, colors_btn, status_btn, self.start_btn)
 
         # --- panneau de gauche : réglages
@@ -4739,6 +4739,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(root)
         left.setMinimumWidth(300)
         self._build_docks(left, ftab, ltab, self.wf_box)
+        # listes déroulantes : ne pas s'élargir au plus long choix (noms de ports COM à rallonge sous Windows…) ;
+        # le menu déroulé affiche toujours le texte complet
+        for cb in self.findChildren(QtWidgets.QComboBox):
+            cb.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            cb.setMinimumContentsLength(12)
 
         self.stat_lbl = self._elastic(QtWidgets.QLabel(""))
         self.cycle_lbl = self._elastic(QtWidgets.QLabel(""))
@@ -7386,8 +7391,9 @@ class MainWindow(QtWidgets.QMainWindow):
         b_all.clicked.connect(lambda *_: self.ack_all_alarms())
         b_clr = QtWidgets.QPushButton("🗑 Effacer les terminées")
         b_clr.clicked.connect(lambda *_: self.purge_alarms())
-        bar = self._row(b_ack, b_all, b_clr)
-        bar.insertWidget(0, self.alarm_lbl, 1)
+        bar = QtWidgets.QHBoxLayout()
+        bar.addWidget(self.alarm_lbl, 1)
+        bar.addLayout(self._flow(b_ack, b_all, b_clr), 2)
         lay.addLayout(bar)
         lay.addWidget(self.alarm_table, 1)
         tip = QtWidgets.QLabel("⚠ CONFLIT : un signal sur une fréquence « Doit rester libre » · ⚠ ABSENT : une fréquence "

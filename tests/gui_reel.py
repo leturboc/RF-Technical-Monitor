@@ -30,7 +30,8 @@ from PySide6 import QtWidgets, QtCore, QtGui
 W = QtWidgets
 
 app = W.QApplication(sys.argv)
-app.setFont(QtGui.QFont("DejaVu Sans", 9))
+if sys.platform != "win32":
+    app.setFont(QtGui.QFont("DejaVu Sans", 9))     # Windows : police système (Segoe UI), comme l'appli
 
 def wait(ms):
     loop = QtCore.QEventLoop()
@@ -147,6 +148,12 @@ def size_report():
     for d in win.docks:
         if d.isVisible():
             out.append(f"{d.objectName()} {d.minimumSizeHint().width()}{'(flottant)' if d.isFloating() else ''}")
+    for d in [win.centralWidget()] + [d.widget() for d in win.docks if d.isVisible()]:
+        lay = d.layout()
+        items = [lay.itemAt(i) for i in range(lay.count())] if lay else []
+        top = sorted(((it.minimumSize().width(), (type(it.widget()).__name__ if it.widget() else type(it).__name__))
+                      for it in items), reverse=True)[:3]
+        out.append(f"  [{d.objectName() or type(d).__name__}] " + ", ".join(f"{n}={v}" for v, n in top))
     wide = []
     for w in win.findChildren(QtWidgets.QWidget):
         if w.isVisible() and not isinstance(w, (QtWidgets.QDockWidget, QtWidgets.QScrollBar)):
