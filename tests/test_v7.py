@@ -239,5 +239,35 @@ an = ns["analyze_csv"]("Name;Frequency;Group\nHF A;606.125;Plateau\nHF B;607.250
 check("import : colonne « Group » reconnue comme groupe", an["group_col"], 2)
 check("import : « Groupe » toujours reconnu", ns["header_kind"]("Groupe"), "group")
 
+# ================================================================ 2e tinySA : adresses et répartition
+pda, asg, spl = ns["parse_device_addr"], ns["assign_bands"], ns["split_band"]
+check("adresse COM", pda("COM4"), ("serial", "COM4"))
+check("adresse COM minuscules", pda(" com12 "), ("serial", "com12"))
+check("adresse Linux", pda("/dev/ttyACM0"), ("serial", "/dev/ttyACM0"))
+check("adresse IP seule → port relais", pda("192.168.1.20"), ("net", "socket://192.168.1.20:5025"))
+check("adresse IP:port", pda("192.168.1.20:6000"), ("net", "socket://192.168.1.20:6000"))
+check("adresse nom de PC", pda("pc-scene"), ("net", "socket://pc-scene:5025"))
+check("url pyserial telle quelle", pda("rfc2217://10.0.0.5:4000"), ("net", "rfc2217://10.0.0.5:4000"))
+check("adresse vide", pda(""), (None, ""))
+check("adresse illisible", pda("pc scène")[0], None)
+check("port hors plage", pda("1.2.3.4:70000")[0], None)
+B = [dict(id=1, pts=1121, dev=None), dict(id=2, pts=300, dev=None), dict(id=3, pts=500, dev=None),
+     dict(id=4, pts=200, dev=None)]
+a = asg(B, 2)
+load = [sum(b["pts"] for b in B if a[b["id"]] == d) for d in (0, 1)]
+ok("auto : toutes les bandes affectées", set(a) == {1, 2, 3, 4} and set(a.values()) == {0, 1}, str(a))
+ok("auto : charge équilibrée", abs(load[0] - load[1]) <= 200, str(load))
+check("auto : déterministe", asg(B, 2), a)
+a = asg([dict(id=1, pts=100, dev=1), dict(id=2, pts=900, dev=None)], 2)
+check("bande fixée sur le 2", a[1], 1)
+check("auto va sur le moins chargé", a[2], 0)
+a = asg([dict(id=1, pts=100, dev=1), dict(id=2, pts=900, dev=None)], 2, live=[True, False])
+check("2e hors ligne : tout sur le 1er", a, {1: 0, 2: 0})
+a = asg([dict(id=1, pts=100, dev=0), dict(id=2, pts=900, dev=None)], 2, live=[False, True])
+check("1er hors ligne : tout sur le 2e", a, {1: 1, 2: 1})
+check("les deux hors ligne : repli sur le 1er", asg([dict(id=1, pts=10, dev=1)], 2, live=[False, False]), {1: 0})
+check("un seul appareil", asg(B, 1), {1: 0, 2: 0, 3: 0, 4: 0})
+check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

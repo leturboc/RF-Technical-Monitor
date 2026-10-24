@@ -53,6 +53,8 @@ import json
 import math
 import os
 import re
+import select
+import socket
 import sys
 import threading
 import time
@@ -1956,6 +1958,60 @@ def build_report_html(d):
     return "".join(p)
 
 
+# --------------------------------------------------------------------------
+# Plusieurs tinySA : adresses (USB ou réseau) et répartition des bandes
+# --------------------------------------------------------------------------
+RELAY_PORT = 5025            # port TCP par défaut du relais réseau (TinySA-Monitor.exe --relais)
+
+
+def parse_device_addr(s, default_port=RELAY_PORT):
+    """Adresse d'un tinySA -> (genre, url pyserial). « COM4 », « /dev/ttyACM0 » : USB ; « 192.168.1.20 »,
+    « 192.168.1.20:5025 », « pc-scene:6000 » : réseau ; « socket://… », « rfc2217://… » tels quels.
+    Genre None = adresse illisible."""
+    s = (s or "").strip()
+    if not s:
+        return None, ""
+    if "://" in s:
+        return "net", s
+    if re.fullmatch(r"(?i)com\d{1,3}", s) or s.startswith("/dev/") or s.startswith("\\\\.\\"):
+        return "serial", s
+    host, port = s, default_port
+    m = re.fullmatch(r"(.+?):(\d{1,5})", s)
+    if m:
+        host, port = m.group(1), int(m.group(2))
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]*", host) or not 0 < port < 65536:
+        return None, s
+    return "net", f"socket://{host}:{port}"
+
+
+def assign_bands(items, ndev=2, live=None):
+    """Répartit les bandes entre les tinySA. items : [{id, pts, dev}] avec dev None (auto) ou n° d'appareil.
+    Une bande fixée sur un appareil hors ligne passe sur un appareil vivant. Les bandes « auto » vont à
+    l'appareil le moins chargé (en points), les plus grosses d'abord. -> {id: appareil}"""
+    live = list(live) if live is not None else [True] * ndev
+    ok = [d for d in range(ndev) if d < len(live) and live[d]] or [0]
+    load = {d: 0 for d in ok}
+    out, auto = {}, []
+    for it in items:
+        d = it.get("dev")
+        if d is not None and d in load:
+            out[it["id"]] = d
+            load[d] += it["pts"]
+        else:
+            auto.append(it)
+    for it in sorted(auto, key=lambda x: (-x["pts"], x["id"])):
+        d = min(ok, key=lambda k: (load[k], k))
+        out[it["id"]] = d
+        load[d] += it["pts"]
+    return out
+
+
+def split_band(start, stop, step):
+    """Coupe une bande en deux moitiés jointives (pour la partager entre deux tinySA)."""
+    mid = round((start + stop) / 2.0, 3)
+    return (start, mid, step), (mid, stop, step)
+
+
 # ===== PURE-END
 
 
@@ -1966,9 +2022,10 @@ class TinySA:
     PROMPT = b"ch>"
 
     def __init__(self, port):
-        self.ser = serial.Serial(port, 115200, timeout=0.2)
+        # port : « COM3 » (USB) ou « socket://192.168.1.20:5025 » (réseau, via le relais ou ser2net)
+        self.ser = serial.serial_for_url(port, 115200, timeout=0.2)
         self.ser.reset_input_buffer()
-        self.cmd("", timeout=3)
+        self.cmd("", timeout=5)
 
     def close(self):
         try:
@@ -2036,53 +2093,85 @@ class ScanWorker(QtCore.QThread):
     status = Signal(str)
     info = Signal(str)
     error = Signal(str)
+    link = Signal(bool)                            # liaison perdue (False) / retrouvée (True)
 
-    def __init__(self, port, demo, get_cfg, get_ver):
+    RETRY_S = 5
+
+    def __init__(self, port, demo, get_cfg, get_ver, label=""):
         super().__init__()
         self.port, self.demo = port, demo
         self.get_cfg, self.get_ver = get_cfg, get_ver
+        self.label = label                         # « tinySA 2 » quand il y a plusieurs appareils
+        self.retry_first = False                   # True : réessaie même si la toute 1re connexion échoue
         self.rng = np.random.default_rng()
         self.demo_carriers = {}
         self.seg_auto = 290
         self.st = dict(rbw="?", front="?", high=None)
 
+    def _say(self, txt):
+        return f"{self.label} : {txt}" if self.label else txt
+
     def run(self):
-        dev = None
-        try:
-            if not self.demo:
-                dev = TinySA(self.port)
-                ver = dev.version()
-                if "tinysa4" in ver.lower():
-                    self.seg_auto = 450
-                self.info.emit(ver or "tinySA")
-                self.status.emit(f"Connecté sur {self.port}")
-            else:
-                self.info.emit("Mode démo")
-                self.status.emit("Mode démo (signaux simulés)")
-            while not self.isInterruptionRequested():
-                cfg = self.get_cfg()
-                bands = [b for b in cfg["bands"] if b["enabled"]]
-                if not bands:
-                    self.status.emit("Aucune bande active")
-                    self.msleep(300)
-                    continue
+        """Balaye en boucle. Liaison perdue (câble, réseau) : signal link(False), nouvel essai toutes les
+        RETRY_S secondes, link(True) au retour. Échec de la toute 1re connexion : error (sauf retry_first)."""
+        was_up, lost = False, False
+        while not self.isInterruptionRequested():
+            dev = None
+            try:
+                if not self.demo:
+                    dev = TinySA(self.port)
+                    ver = dev.version()
+                    if "tinysa4" in ver.lower():
+                        self.seg_auto = 450
+                    self.info.emit(ver or "tinySA")
+                    self.status.emit(self._say(f"Connecté sur {self.port}"))
+                else:
+                    self.info.emit("Mode démo")
+                    self.status.emit(self._say("Mode démo (signaux simulés)"))
+                self.st = dict(rbw="?", front="?", high=None)
+                was_up = True
+                if lost:
+                    lost = False
+                    self.link.emit(True)
+                self._loop(dev)
+                return
+            except Exception as e:  # noqa: BLE001
+                if not was_up and not self.retry_first:
+                    self.error.emit(self._say(str(e)))
+                    return
+                if not lost:
+                    lost = True
+                    self.link.emit(False)
+                self.status.emit(self._say(f"⚠ liaison perdue ({e}) — nouvel essai dans {self.RETRY_S} s"))
+                for _ in range(self.RETRY_S * 10):
+                    if self.isInterruptionRequested():
+                        return
+                    self.msleep(100)
+            finally:
                 if dev is not None:
-                    self._apply_settings(dev, cfg)
-                t0, aborted = time.time(), False
-                for b in bands:
-                    res = self._scan_band(dev, b, cfg)
-                    if res is None:
-                        aborted = True
-                        break
-                    if len(res[0]):
-                        self.sweep.emit(b["id"], res[0], res[1])
-                if not aborted and not self.isInterruptionRequested():
-                    self.cycle.emit(time.time() - t0, len(bands))
-        except Exception as e:  # noqa: BLE001
-            self.error.emit(str(e))
-        finally:
+                    dev.close()
+
+    def _loop(self, dev):
+        while not self.isInterruptionRequested():
+            cfg = self.get_cfg()
+            bands = [b for b in cfg["bands"] if b["enabled"]]
+            if not bands:
+                if not self.label:
+                    self.status.emit("Aucune bande active")
+                self.msleep(300)
+                continue
             if dev is not None:
-                dev.close()
+                self._apply_settings(dev, cfg)
+            t0, aborted = time.time(), False
+            for b in bands:
+                res = self._scan_band(dev, b, cfg)
+                if res is None:
+                    aborted = True
+                    break
+                if len(res[0]):
+                    self.sweep.emit(b["id"], res[0], res[1])
+            if not aborted and not self.isInterruptionRequested():
+                self.cycle.emit(time.time() - t0, len(bands))
 
     def _apply_settings(self, dev, cfg):
         if cfg["rbw"] != self.st["rbw"]:
@@ -2172,6 +2261,234 @@ class ScanWorker(QtCore.QThread):
                 d = (fr - pos) / 100e3
                 lv = np.maximum(lv, amp - 12 * d ** 2 + self.rng.normal(0, 0.8, len(fr)))
         return lv
+
+
+# --------------------------------------------------------------------------
+# Relais réseau : partage un tinySA branché en USB sur un autre PC
+# --------------------------------------------------------------------------
+def local_ips():
+    """Adresses IPv4 de ce PC sur le réseau local (pour les afficher à l'utilisateur)."""
+    ips = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))          # aucun paquet envoyé : sert juste à choisir l'interface
+        ips.append(s.getsockname()[0])
+        s.close()
+    except OSError:
+        pass
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip not in ips:
+                ips.append(ip)
+    except OSError:
+        pass
+    return [ip for ip in ips if not ip.startswith("127.")]
+
+
+class SerialRelay(threading.Thread):
+    """Relaie les octets entre un port série (le tinySA) et UN client TCP (TinySA Monitor sur l'autre PC).
+    Un nouveau client remplace l'ancien (reconnexion après une coupure réseau). Port USB débranché :
+    réouverture automatique toutes les 2 s."""
+
+    def __init__(self, port, tcp_port=RELAY_PORT, host="0.0.0.0", opener=None):
+        super().__init__(daemon=True)
+        self.port, self.tcp_port, self.host = port, int(tcp_port), host
+        self.opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05))
+        self.stop_evt, self.ready = threading.Event(), threading.Event()
+        self.client, self.error, self.serial_ok = None, "", False
+        self.rx = self.tx = 0                     # octets tinySA → réseau / réseau → tinySA
+
+    def stop(self):
+        self.stop_evt.set()
+
+    def _open_serial(self):
+        try:
+            ser = self.opener(self.port)
+            self.serial_ok, self.error = True, ""
+            return ser
+        except Exception as e:  # noqa: BLE001
+            self.serial_ok, self.error = False, f"Port {self.port} : {e}"
+            return None
+
+    def run(self):
+        try:
+            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            srv.bind((self.host, self.tcp_port))
+            srv.listen(2)
+            self.tcp_port = srv.getsockname()[1]
+        except OSError as e:
+            self.error = f"Port réseau {self.tcp_port} indisponible : {e}"
+            self.ready.set()
+            return
+        ser, conn = self._open_serial(), None
+        self.ready.set()
+        try:
+            while not self.stop_evt.is_set():
+                if ser is None:
+                    if self.stop_evt.wait(2.0):
+                        break
+                    ser = self._open_serial()
+                    continue
+                socks = [srv] + ([conn] if conn is not None else [])
+                rd, _, _ = select.select(socks, [], [], 0.01)
+                if srv in rd:                      # nouveau client : il remplace l'ancien
+                    new, addr = srv.accept()
+                    new.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    if conn is not None:
+                        conn.close()
+                    conn, self.client = new, addr[0]
+                    try:
+                        ser.reset_input_buffer()
+                    except Exception:  # noqa: BLE001
+                        pass
+                try:
+                    if conn is not None and conn in rd:
+                        data = conn.recv(4096)
+                        if not data:
+                            conn.close()
+                            conn, self.client = None, None
+                        else:
+                            ser.write(data)
+                            self.tx += len(data)
+                    n = ser.in_waiting
+                    if n:
+                        data = ser.read(n)
+                        if conn is not None:
+                            conn.sendall(data)
+                            self.rx += len(data)
+                except (OSError, socket.error) as e:
+                    if conn is not None and isinstance(e, (ConnectionError, socket.timeout)):
+                        conn.close()
+                        conn, self.client = None, None
+                    else:                          # erreur côté USB : on rouvre le port
+                        self.serial_ok, self.error = False, f"Port {self.port} : {e}"
+                        try:
+                            ser.close()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        ser = None
+                except Exception as e:  # noqa: BLE001   (serial.SerialException)
+                    self.serial_ok, self.error = False, f"Port {self.port} : {e}"
+                    try:
+                        ser.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    ser = None
+        finally:
+            for x in (conn, srv, ser):
+                try:
+                    if x is not None:
+                        x.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            self.client = None
+
+
+class RelayWindow(QtWidgets.QWidget):
+    """Petite fenêtre « relais » à lancer sur le PC où est branché le 2ᵉ tinySA (TinySA-Monitor.exe --relais)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.WindowType.Window)
+        self.setWindowTitle(f"{APP_NAME} — relais réseau")
+        self.resize(520, 330)
+        self.relay = None
+        self.port_combo = QtWidgets.QComboBox()
+        self.port_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.port_combo.setMinimumContentsLength(20)
+        b_ref = QtWidgets.QToolButton()
+        b_ref.setText("⟳")
+        b_ref.clicked.connect(lambda *_: self.refresh_ports())
+        self.tcp_spin = QtWidgets.QSpinBox()
+        self.tcp_spin.setRange(1024, 65535)
+        self.tcp_spin.setValue(RELAY_PORT)
+        self.go_btn = QtWidgets.QPushButton("▶ Partager ce tinySA")
+        self.go_btn.clicked.connect(lambda *_: self.toggle())
+        self.addr_lbl = QtWidgets.QLabel("")
+        self.addr_lbl.setWordWrap(True)
+        self.addr_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.state_lbl = QtWidgets.QLabel("Arrêté.")
+        self.state_lbl.setWordWrap(True)
+        help_lbl = QtWidgets.QLabel(
+            "Branche le tinySA en USB sur CE PC, choisis son port puis « Partager ». Sur le PC principal : "
+            "Réglages › 2ᵉ tinySA › adresse affichée ci-dessous. Les deux PC doivent être sur le même réseau "
+            "(câble de préférence). Windows peut demander d'autoriser l'accès réseau : accepte (réseau privé).")
+        help_lbl.setWordWrap(True)
+        form = QtWidgets.QFormLayout()
+        h = QtWidgets.QHBoxLayout()
+        h.addWidget(self.port_combo, 1)
+        h.addWidget(b_ref)
+        form.addRow("Port du tinySA :", h)
+        form.addRow("Port réseau (TCP) :", self.tcp_spin)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(help_lbl)
+        lay.addLayout(form)
+        lay.addWidget(self.go_btn)
+        lay.addWidget(self.addr_lbl)
+        lay.addWidget(self.state_lbl)
+        lay.addStretch(1)
+        self.timer = QtCore.QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.tick)
+        self.refresh_ports()
+
+    def refresh_ports(self):
+        self.port_combo.clear()
+        ports = list(serial.tools.list_ports.comports())
+        ports.sort(key=lambda p: not (p.vid == TINYSA_VID and p.pid == TINYSA_PID))
+        for p in ports:
+            tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
+            self.port_combo.addItem(f"{p.device} — {p.description}{tag}", p.device)
+        if not ports:
+            self.port_combo.addItem("Aucun port détecté", None)
+
+    def toggle(self):
+        if self.relay is not None:
+            self.relay.stop()
+            self.relay.join(3)
+            self.relay = None
+            self.timer.stop()
+            self.go_btn.setText("▶ Partager ce tinySA")
+            self.port_combo.setEnabled(True)
+            self.tcp_spin.setEnabled(True)
+            self.addr_lbl.setText("")
+            self.state_lbl.setText("Arrêté.")
+            return
+        port = self.port_combo.currentData()
+        if not port:
+            self.state_lbl.setText("⚠ Aucun port : branche le tinySA (et ferme tinySA-App).")
+            return
+        self.relay = SerialRelay(port, self.tcp_spin.value())
+        self.relay.start()
+        self.relay.ready.wait(3)
+        if not self.relay.is_alive():
+            self.state_lbl.setText("⚠ " + (self.relay.error or "Démarrage impossible."))
+            self.relay = None
+            return
+        ips = local_ips() or ["<adresse IP de ce PC>"]
+        self.addr_lbl.setText("Adresse à saisir sur le PC principal :  <b>"
+                              + "</b>  ou  <b>".join(f"{ip}:{self.relay.tcp_port}" for ip in ips) + "</b>")
+        self.go_btn.setText("■ Arrêter le partage")
+        self.port_combo.setEnabled(False)
+        self.tcp_spin.setEnabled(False)
+        self.timer.start()
+        self.tick()
+
+    def tick(self):
+        r = self.relay
+        if r is None:
+            return
+        usb = "✔ tinySA ouvert" if r.serial_ok else f"⚠ {r.error or 'tinySA introuvable'} (nouvel essai…)"
+        cli = f"✔ connecté à {r.client}" if r.client else "en attente du PC principal…"
+        self.state_lbl.setText(f"{usb}\nRéseau : {cli}\nTrafic : {r.rx / 1024:.0f} Ko reçus du tinySA · "
+                               f"{r.tx / 1024:.1f} Ko de commandes")
+
+    def closeEvent(self, e):
+        if self.relay is not None:
+            self.relay.stop()
+            self.relay.join(3)
+            self.relay = None
+        super().closeEvent(e)
 
 
 # --------------------------------------------------------------------------
@@ -4088,7 +4405,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.history = {}          # anciens balayages complets par bande (rémanence)
         self._hist_items = []
         self.unk_now, self.unk_seen = {}, {}
-        self.worker = None
+        self.worker = None              # 1er tinySA (compatibilité) ; tous les appareils : self.workers
+        self.workers = []
+        self.dev2 = dict(on=False, addr="", offset=0.0)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
+        self.dev_live = [True, True]    # liaison de chaque appareil (False = perdue, ses bandes passent sur l'autre)
+        self.dev_cycle = {}
         self.view_id = -1
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
@@ -4244,7 +4565,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         (None, None),
                         ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
                         ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
-                        ("Mon vocabulaire…", lambda *_: self.edit_vocab())):
+                        ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
+                        (None, None),
+                        ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay())):
             if txt is None:
                 tmenu.addSeparator()
             else:
@@ -4397,8 +4720,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         bbox = QtWidgets.QGroupBox("Bandes à balayer")
         bl = QtWidgets.QVBoxLayout(bbox)
-        self.band_table = QtWidgets.QTableWidget(0, 5)
-        self.band_table.setHorizontalHeaderLabels(["Bande", "Début MHz", "Fin MHz", "Points", "Pas kHz"])
+        self.band_table = QtWidgets.QTableWidget(0, 6)
+        self.band_table.setHorizontalHeaderLabels(["Bande", "Début MHz", "Fin MHz", "Points", "Pas kHz", "tinySA"])
+        self.band_table.horizontalHeaderItem(5).setToolTip(
+            "Quel tinySA balaye la bande (2ᵉ tinySA activé). Double-clic : Auto → 1 → 2.\n"
+            "Auto = répartition équilibrée. Si un appareil décroche, l'autre reprend toutes les bandes.")
+        self.band_table.cellDoubleClicked.connect(self.on_band_dbl)
         self.band_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.band_table.verticalHeader().setVisible(False)
         self.band_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
@@ -4409,7 +4736,11 @@ class MainWindow(QtWidgets.QMainWindow):
         b_add.clicked.connect(lambda: self.add_band("Nouvelle bande", 470.0, 608.0, 200.0))
         b_del = QtWidgets.QPushButton("Supprimer")
         b_del.clicked.connect(self.del_band)
-        bl.addLayout(self._row(b_add, b_del))
+        b_cut = QtWidgets.QPushButton("✂ Couper")
+        b_cut.setToolTip("Coupe la bande sélectionnée en deux moitiés : avec deux tinySA, chacun en balaye une\n"
+                         "(une seule grosse bande ne se partage pas).")
+        b_cut.clicked.connect(lambda *_: self.cut_band())
+        bl.addLayout(self._row(b_add, b_del, b_cut))
         self.preset_combo = QtWidgets.QComboBox()
         self.preset_combo.addItem("➕ Ajouter un préréglage…")
         for p in BAND_PRESETS:
@@ -4421,6 +4752,7 @@ class MainWindow(QtWidgets.QMainWindow):
         lv = QtWidgets.QVBoxLayout(lcont)
         lv.setContentsMargins(6, 4, 6, 4)
         lv.addWidget(mbox)
+        lv.addWidget(self._build_dev2_box())
         lv.addWidget(dbox)
         lv.addWidget(pbox)
         lv.addWidget(bbox, 1)
@@ -4799,7 +5131,18 @@ class MainWindow(QtWidgets.QMainWindow):
             txt += "\n⚠ Cycle long : réduis les points ou la largeur des bandes."
         self.est_lbl.setText(txt)
 
-    def get_cfg(self):
+    def ndev(self):
+        return 2 if self.dev2["on"] else 1
+
+    def band_devices(self):
+        """{id bande: n° du tinySA qui la balaye} (tout sur le 1er quand il n'y en a qu'un)."""
+        bs = [b for b in self.scan_bands() if b["enabled"]]
+        if self.ndev() == 1:
+            return {b["id"]: 0 for b in bs}
+        return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
+                            2, self.dev_live)
+
+    def get_cfg(self, dev=0):
         with self.lock:
             c = self._cfg
             if self._zoom:
@@ -4808,13 +5151,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 step_khz = (b - a) * 1000.0 / (n - 1)
                 bands = [dict(id=ZOOM_ID, name="Zoom", start_hz=a * 1e6, stop_hz=b * 1e6, n=n, enabled=True)]
                 rbw = c["zrbw"] if c["zrbw"] is not None else auto_rbw(step_khz)
+                zdev = 0 if (self.ndev() == 1 or self.dev_live[0] or not self.dev_live[1]) else 1
+                if dev != zdev:
+                    bands = []                 # le zoom live est fait par un seul tinySA
             else:
+                asg = self.band_devices()
                 bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
-                              n=self._npts(b), enabled=b["enabled"]) for b in self.scan_bands()]
+                              n=self._npts(b), enabled=b["enabled"]) for b in self.scan_bands()
+                         if asg.get(b["id"], 0) == dev]
                 rbw = c["rbw"]
             freqs = [w["freq"] for w in self.watch]
+            off = c["offset"] + (float(self.dev2.get("offset", 0.0)) if dev == 1 else 0.0)
             return dict(bands=bands, rbw=rbw, input=c["input"], lna=c["lna"], att=c["att"],
-                        offset=c["offset"], seg=c["seg"], demo_freqs=freqs, ver=self._ver)
+                        offset=off, seg=c["seg"], demo_freqs=freqs, ver=self._ver)
 
     def _load_config(self):
         data = {}
@@ -4849,8 +5198,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.alarms.reset()
         for b in data.get("bands", []):
             try:
+                dv = b.get("dev")
                 self._append_band(b["name"], float(b["start"]), float(b["stop"]),
-                                  float(b["step"]), bool(b.get("enabled", True)))
+                                  float(b["step"]), bool(b.get("enabled", True)),
+                                  dv if dv in (0, 1) else None)
             except Exception:
                 pass
         if not self.bands:
@@ -4945,6 +5296,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logdir_lbl.setText(str(self.log_dir))
         ex = data.get("export")
         self.export_prefs = ex if isinstance(ex, dict) else {}
+        d2 = data.get("dev2")
+        if isinstance(d2, dict):
+            self.dev2_chk.setChecked(bool(d2.get("on")))
+            self.dev2_addr.setEditText(str(d2.get("addr", "")))
+            try:
+                self.dev2_off.setValue(float(d2.get("offset", 0.0)))
+            except (TypeError, ValueError):
+                pass
+            self._read_dev2()
         if startup:
             self.demo_chk.setChecked(data.get("demo", False))
             vu = data.get("vocab")
@@ -4990,7 +5350,8 @@ class MainWindow(QtWidgets.QMainWindow):
             show_tv=self.tv_chk.isChecked(), plan_custom=self.plan_custom,
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
-            log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs)
+            log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
+            dev2=dict(self.dev2))
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
@@ -5062,9 +5423,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.port_combo.addItem("Aucun port détecté", None)
 
     # ----------------------------------------------------------- run / stop
+    def is_running(self):
+        return any(w.isRunning() for w in self.workers)
+
     def toggle_run(self):
-        if self.worker is not None and self.worker.isRunning():
-            self.worker.requestInterruption()
+        if self.is_running():
+            for w in self.workers:
+                w.requestInterruption()
             self.start_btn.setEnabled(False)
             self.set_status("Arrêt en cours… (le segment en cours doit se terminer)")
             return
@@ -5077,40 +5442,242 @@ class MainWindow(QtWidgets.QMainWindow):
         if not any(b["enabled"] for b in self.bands):
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Coche au moins une bande à balayer.")
             return
-        self.worker = ScanWorker(port, demo, self.get_cfg, self.get_ver)
-        self.worker.sweep.connect(self.on_sweep)
-        self.worker.partial.connect(self.on_partial)
-        self.worker.cycle.connect(self.on_cycle)
-        self.worker.status.connect(self.set_status)
-        self.worker.info.connect(self.on_info)
-        self.worker.error.connect(self.on_error)
-        self.worker.finished.connect(self.on_finished)
-        self.worker.start()
+        self._read_dev2()
+        targets = [(port, "")]
+        if self.dev2["on"]:
+            kind, url = parse_device_addr(self.dev2["addr"])
+            if not demo and kind is None:
+                QtWidgets.QMessageBox.warning(self, APP_NAME, "Adresse du 2ᵉ tinySA illisible.\nExemples : COM4 "
+                                              "(USB) · 192.168.1.20:5025 (réseau, relais lancé sur l'autre PC).")
+                return
+            if not demo and url == port:
+                QtWidgets.QMessageBox.warning(self, APP_NAME, "Les deux tinySA ont le même port.")
+                return
+            targets = [(port, "tinySA 1"), (url, "tinySA 2")]
+        self.dev_live = [True, True]
+        self.dev_cycle = {}
+        self.workers = []
+        for i, (addr, label) in enumerate(targets):
+            w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
+            w.retry_first = i > 0                 # le 2ᵉ (souvent en réseau) peut arriver après : on l'attend
+            w.sweep.connect(self.on_sweep)
+            w.partial.connect(self.on_partial)
+            w.cycle.connect(lambda dt, nb, d=i: self.on_cycle(dt, nb, d))
+            w.status.connect(self.set_status)
+            w.info.connect(lambda txt, d=i: self.on_info(txt, d))
+            w.error.connect(lambda msg, d=i: self.on_error(msg, d))
+            w.link.connect(lambda ok, d=i: self.on_link(d, ok))
+            w.finished.connect(self.on_finished)
+            self.workers.append(w)
+        self.worker = self.workers[0]
+        self._bump()
+        for w in self.workers:
+            w.start()
         self._style_start(True)
         self.port_combo.setEnabled(False)
         self.demo_chk.setEnabled(False)
+        self.dev2_box.setEnabled(False)
+        self.update_dev2_label()
 
-    def on_info(self, txt):
-        self.info_lbl.setText(f"  {txt}")
-        self.seg_known = 450 if "tinysa4" in txt.lower() else 290
-        self.update_estimate()
+    def on_info(self, txt, dev=0):
+        if dev == 0:
+            self.info_lbl.setText(f"  {txt}")
+            self.seg_known = 450 if "tinysa4" in txt.lower() else 290
+            self.update_estimate()
+        else:
+            self.dev2_info = txt
+            self.update_dev2_label()
 
-    def on_error(self, msg):
+    def on_error(self, msg, dev=0):
+        if dev == 0:                              # le 1er tinySA ne répond pas : on arrête tout
+            for w in self.workers:
+                w.requestInterruption()
         QtWidgets.QMessageBox.critical(self, APP_NAME, f"Erreur de balayage :\n{msg}")
 
+    def on_link(self, dev, ok):
+        """Un tinySA décroche (câble, réseau, relais) ou revient : alarme + répartition des bandes."""
+        with self.lock:
+            self.dev_live[dev] = bool(ok)
+        self._bump()
+        now = time.time()
+        key = ("APPAREIL", -(dev + 1))
+        name = f"tinySA {dev + 1}"
+        w = dict(name=name, freq=0.0)
+        if ok:
+            self.alarms.clear(key, now)
+            self.log_event(w, 0.0, "APPAREIL RETROUVÉ")
+            self.set_status(f"✔ {name} de nouveau en ligne : bandes réparties à nouveau.")
+        else:
+            other = "l'autre tinySA reprend ses bandes" if self.ndev() > 1 and any(self.dev_live) else \
+                "plus aucune mesure"
+            if self.alarms.raise_(key, "APPAREIL", name, 0.0, 2, now, layer="",
+                                  info=f"liaison perdue — {other}"):
+                self._alarm_sound(2)
+            self.log_event(w, 0.0, "APPAREIL PERDU")
+            self.set_status(f"⚠ {name} : liaison perdue — {other}. Nouvel essai toutes les {ScanWorker.RETRY_S} s.")
+        self.update_dev2_label()
+        self.refresh_alarms()
+        self.update_band_dev_col()
+
     def on_finished(self):
+        if self.is_running():
+            return                                # l'autre tinySA tourne encore
         self._style_start(False)
         self.start_btn.setEnabled(True)
         self.port_combo.setEnabled(True)
         self.demo_chk.setEnabled(True)
+        self.dev2_box.setEnabled(True)
         self.partial_data.clear()
+        for d in (0, 1):
+            self.alarms.clear(("APPAREIL", -(d + 1)), time.time())
+        self.dev_live = [True, True]
+        self.update_dev2_label()
         self.set_status("Arrêté.")
 
+    # ------------------------------------------------------------ 2ᵉ tinySA
+    def _build_dev2_box(self):
+        box = QtWidgets.QGroupBox("2ᵉ tinySA (USB ou réseau)")
+        self.dev2_box = box
+        f = QtWidgets.QFormLayout(box)
+        self.dev2_chk = QtWidgets.QCheckBox("Utiliser un 2ᵉ tinySA")
+        self.dev2_chk.setToolTip("Deux tinySA balayent en parallèle : chaque bande est faite par l'un ou l'autre\n"
+                                 "(colonne « tinySA » des bandes). Cycle deux fois plus court, et si l'un décroche,\n"
+                                 "l'autre reprend toutes les bandes (alarme ⚠ APPAREIL).")
+        self.dev2_chk.toggled.connect(lambda *_: self._dev2_changed())
+        self.dev2_addr = QtWidgets.QComboBox()
+        self.dev2_addr.setEditable(True)
+        self.dev2_addr.setToolTip("USB : choisis le port (COM4…).\nRéseau : adresse du PC où le tinySA est branché, "
+                                  "ex. 192.168.1.20:5025\n(sur ce PC-là : 🔧 Outils › 📡 Relais réseau, ou "
+                                  "TinySA-Monitor.exe --relais).")
+        self.dev2_addr.lineEdit().setPlaceholderText("COM4  ou  192.168.1.20:5025")
+        self.dev2_addr.currentTextChanged.connect(lambda *_: self._dev2_changed())
+        self.dev2_off = QtWidgets.QDoubleSpinBox()
+        self.dev2_off.setRange(-40.0, 40.0)
+        self.dev2_off.setDecimals(1)
+        self.dev2_off.setSuffix(" dB")
+        self.dev2_off.setToolTip("Correction ajoutée aux mesures du 2ᵉ tinySA (en plus de l'offset général),\n"
+                                 "pour aligner deux appareils qui ne lisent pas tout à fait pareil.")
+        self.dev2_off.valueChanged.connect(lambda *_: self._dev2_changed())
+        self.dev2_lbl = QtWidgets.QLabel("")
+        self.dev2_lbl.setWordWrap(True)
+        relay_btn = QtWidgets.QPushButton("📡 Relais réseau (sur le PC du 2ᵉ tinySA)…")
+        relay_btn.setToolTip("Partage un tinySA branché sur CE PC pour qu'un autre PC l'utilise par le réseau.")
+        relay_btn.clicked.connect(lambda *_: self.open_relay())
+        f.addRow(self.dev2_chk)
+        f.addRow("Adresse :", self.dev2_addr)
+        f.addRow("Offset :", self.dev2_off)
+        f.addRow(self.dev2_lbl)
+        f.addRow(relay_btn)
+        self.dev2_info = ""
+        self._dev2_ports()
+        return box
+
+    def _dev2_ports(self):
+        cur = self.dev2_addr.currentText()
+        self.dev2_addr.blockSignals(True)
+        self.dev2_addr.clear()
+        for p in serial.tools.list_ports.comports():
+            tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
+            self.dev2_addr.addItem(f"{p.device}{tag}", p.device)
+        self.dev2_addr.setEditText(cur)
+        self.dev2_addr.blockSignals(False)
+
+    def _read_dev2(self):
+        txt = self.dev2_addr.currentText().strip()
+        data = self.dev2_addr.currentData()
+        if data and txt.startswith(str(data)):
+            txt = str(data)                        # « COM4  ✔ tinySA » -> « COM4 »
+        else:
+            txt = txt.split()[0] if txt else ""
+        self.dev2.update(on=self.dev2_chk.isChecked(), addr=txt, offset=float(self.dev2_off.value()))
+
+    def _dev2_changed(self):
+        self._read_dev2()
+        self._bump()
+        self.update_band_dev_col()
+        self.update_dev2_label()
+        self.update_estimate()
+
+    def update_dev2_label(self):
+        if not hasattr(self, "dev2_lbl"):
+            return
+        d = self.dev2
+        if not d["on"]:
+            self.dev2_lbl.setText("Désactivé : un seul tinySA balaye tout.")
+            return
+        kind, url = parse_device_addr(d["addr"])
+        where = {"serial": f"USB {d['addr']}", "net": f"réseau {url.split('://', 1)[-1]}"}.get(
+            kind, "⚠ adresse à saisir (COM4 ou 192.168.1.20:5025)")
+        if self.demo_chk.isChecked():
+            where = "démo"
+        run = self.is_running()
+        st = ("✔ en ligne" if self.dev_live[1] else "⚠ liaison perdue (nouvel essai…)") if run else "prêt"
+        cyc = "  ·  ".join(f"tinySA {k + 1} : {v:.1f} s" for k, v in sorted(self.dev_cycle.items())) if run else ""
+        self.dev2_lbl.setText(f"{where} · {st}" + (f" · {self.dev2_info}" if run and self.dev2_info else "")
+                              + (f"\nCycle  {cyc}" if cyc else ""))
+
+    def open_relay(self):
+        if getattr(self, "_relay_win", None) is None:
+            self._relay_win = RelayWindow()
+        self._relay_win.show()
+        self._relay_win.raise_()
+
+    def update_band_dev_col(self):
+        """Colonne « tinySA » de la table des bandes : choix (Auto / 1 / 2) et appareil réellement utilisé."""
+        if not hasattr(self, "band_table"):
+            return
+        asg = self.band_devices() if self.ndev() > 1 else {}
+        self._updating = True
+        for r, b in enumerate(self.bands):
+            if r >= self.band_table.rowCount():
+                break
+            d = b.get("dev")
+            if self.ndev() == 1:
+                txt = "1" if d is None else f"{d + 1}"
+            else:
+                real = asg.get(b["id"])
+                txt = "Auto" if d is None else f"{d + 1}"
+                if real is not None and (d is None or real != d):
+                    txt += f" → {real + 1}"
+            self.band_table.setItem(r, 5, self._item(txt))
+        self._updating = False
+
+    def on_band_dbl(self, row, col):
+        if col != 5 or row >= len(self.bands):
+            return
+        b = self.bands[row]
+        cyc = [None, 0, 1]
+        with self.lock:
+            b["dev"] = cyc[(cyc.index(b.get("dev")) + 1) % len(cyc)] if b.get("dev") in cyc else None
+        self._bands_changed()
+
+    def cut_band(self):
+        r = self.band_table.currentRow()
+        if r < 0 or r >= len(self.bands):
+            self.set_status("Sélectionne d'abord la bande à couper.")
+            return
+        b = self.bands[r]
+        (a1, m1, st), (m2, z2, _st) = split_band(b["start"], b["stop"], b["step"])
+        if m1 - a1 < 1.0:
+            self.set_status("Bande trop étroite pour être coupée.")
+            return
+        with self.lock:
+            self.bands.pop(r)
+            for d in (self.latest, self.maxhold, self.partial_data):
+                d.pop(b["id"], None)
+            for k, (lo, hi) in enumerate(((a1, m1), (m2, z2))):
+                self.bands.insert(r + k, dict(id=self._next_id, name=f"{b['name']} ({'bas' if k == 0 else 'haut'})",
+                                              start=lo, stop=hi, step=st, enabled=b["enabled"], dev=None))
+                self._next_id += 1
+        self._fit_x = True
+        self._bands_changed()
+        self.set_status(f"« {b['name']} » coupée en deux : {a1:g}–{m1:g} et {m2:g}–{z2:g} MHz.")
+
     # --------------------------------------------------------------- bandes
-    def _append_band(self, name, start, stop, step, enabled=True):
+    def _append_band(self, name, start, stop, step, enabled=True, dev=None):
         with self.lock:
             self.bands.append(dict(id=self._next_id, name=name, start=start, stop=stop,
-                                   step=step, enabled=enabled))
+                                   step=step, enabled=enabled, dev=dev))
             self._next_id += 1
 
     def _bands_changed(self):
@@ -5166,6 +5733,7 @@ class MainWindow(QtWidgets.QMainWindow):
             t.setItem(r, 3, self._item(str(self._npts(b)), True, True))
             t.setItem(r, 4, self._item(f'{b["step"]:.4g}', True, True))
         self._updating = False
+        self.update_band_dev_col()
 
     def on_band_edit(self, item):
         if self._updating or item.row() >= len(self.bands):
@@ -6153,9 +6721,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def log_event(self, w, level, event):
         t = self.log_table
         t.insertRow(0)
-        vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}', f"{level:.1f}", event,
+        vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
+                f"{level:.1f}" if w["freq"] else "—", event,
                 self.layer_text(w) if "scene" in w else "", w.get("note", "")]
-        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "ABSENT") else self.theme["st_unk"]
+        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "ABSENT", "APPAREIL PERDU") else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)
         for c, v in enumerate(vals):
@@ -6226,7 +6795,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.view_id in (-1, bid):
             self.update_plot(hist=False)
 
-    def on_cycle(self, dt, nb):
+    def on_cycle(self, dt, nb, dev=0):
+        self.dev_cycle[dev] = dt
+        live = [v for k, v in self.dev_cycle.items() if k >= len(self.dev_live) or self.dev_live[k]]
+        dt = max(live) if live else dt          # le plus lent des tinySA fixe le rythme de rafraîchissement
+        nb = len([b for b in self.scan_bands() if b["enabled"]]) if self.ndev() > 1 and self._zoom is None else nb
         self.last_cycle = dt
         ids = {b["id"] for b in self.scan_bands() if b["enabled"]}
         if self._zoom is not None:
@@ -6629,7 +7202,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self._clear_marker_pool()
         self._clear_hist_pool()
-        self._style_start(self.worker is not None and self.worker.isRunning())
+        self._style_start(self.is_running())
         self.readout.setStyleSheet("font-family:Consolas,monospace;")
         self.update_strips()
         self.update_watch_table(force=True)
@@ -7277,7 +7850,7 @@ class MainWindow(QtWidgets.QMainWindow):
         now = time.time()
         if self.alarms.active:
             fks = {int(round(w["freq"] * 1000)) for w in self.watch}
-            for key in [k for k in self.alarms.active if k[1] not in fks]:
+            for key in [k for k in self.alarms.active if k[0] != "APPAREIL" and k[1] not in fks]:
                 self.alarms.clear(key, now)
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])
@@ -7312,8 +7885,9 @@ class MainWindow(QtWidgets.QMainWindow):
             active = a["t_end"] is None
             end = now if active else a["t_end"]
             state = ("à acquitter" if not a["acked"] else "acquittée") if active else "terminée"
-            vals = (ALARM_PRIO.get(a["prio"], "?"), a["kind"], a["name"], f'{a["freq"]:.3f}', fmt_clock(a["t0"]),
-                    fmt_dur(end - a["t0"]), "—" if a["level"] is None else f'{a["level"]:.1f}', a["layer"], state)
+            vals = (ALARM_PRIO.get(a["prio"], "?"), a["kind"], a["name"], f'{a["freq"]:.3f}' if a["freq"] else "—",
+                    fmt_clock(a["t0"]), fmt_dur(end - a["t0"]), "—" if a["level"] is None else f'{a["level"]:.1f}',
+                    a["layer"] or a.get("info", ""), state)
             for c, v in enumerate(vals):
                 it = self._item(v, False, c in (3, 6))
                 if c == 0:
@@ -7358,7 +7932,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def alarm_jump(self, row, col):
         it = self.alarm_table.item(row, 3)
         f = _num(it.text()) if it is not None else None
-        if f is not None:
+        if f:
             self.view_range(f - 1.0, f + 1.0)
 
     def toggle_alarm_dock(self):
@@ -7681,9 +8255,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- close
     def closeEvent(self, e):
-        if self.worker is not None and self.worker.isRunning():
-            self.worker.requestInterruption()
-            self.worker.wait(8000)
+        for w in self.workers:
+            if w.isRunning():
+                w.requestInterruption()
+        for w in self.workers:
+            w.wait(8000)
+        if getattr(self, "_relay_win", None) is not None:
+            self._relay_win.close()
         if self.wall is not None:
             self.wall.close()
         if self.recorder is not None:
@@ -7703,7 +8281,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    win = MainWindow()
+    if "--relais" in sys.argv:              # PC où est branché le 2ᵉ tinySA : juste le relais réseau
+        win = RelayWindow()
+    else:
+        win = MainWindow()
     win.show()
     sys.exit(app.exec())
 
