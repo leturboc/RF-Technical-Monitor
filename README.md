@@ -149,7 +149,10 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 - Les réglages sont en **sections repliables** (clic sur le titre) ; l'état est mémorisé.
 - **Info-bulles** sur chaque bouton, case et liste (et dans les menus) ; l'explication s'affiche aussi en bas de la
   fenêtre au survol.
-- Le **mur de fréquences** est un panneau (en onglet à côté du spectre) : F11 le détache en plein écran.
+- Le **mur de fréquences** est un panneau (en onglet à côté du spectre) ; F11 le met en plein écran dans sa propre
+  fenêtre (Échap pour le ramener). **📋 Choisir…** sur le mur (ou clic droit sur une tuile, ou dans la liste) :
+  quelles fréquences ont une tuile ; « Alarmes toujours visibles » ramène une fréquence retirée tant qu'elle est en
+  alarme. Le choix est gardé dans les shows.
 - **Tous les panneaux sont détachables**, y compris le **spectre** : attrape un panneau par sa barre de titre pour
   le déplacer, le mettre sur l'autre écran ou le ré-accrocher ; ☰ Plus › Fenêtres pour les réafficher.
 

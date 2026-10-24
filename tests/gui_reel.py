@@ -28,6 +28,7 @@ m = importlib.util.module_from_spec(spec)
 sys.modules["tsm"] = m
 spec.loader.exec_module(m)
 from PySide6 import QtWidgets, QtCore, QtGui
+from PySide6.QtCore import Qt
 W = QtWidgets
 
 app = W.QApplication(sys.argv)
@@ -79,7 +80,7 @@ def fake_exec(self):
     shot(self, "dlg_" + type(self).__name__)
     act = DLG_ACTION[0]
     if callable(act):
-        act(self)
+        act = act(self)                  # une action perso peut renvoyer "accept" pour valider (OK)
     if act == "accept":
         self.accept()
         return 1
@@ -272,12 +273,32 @@ wait(1200)
 check("mur : panneau visible, accroché", win.dock_wall in win.docks and win.dock_wall.isVisible()
       and not win.dock_wall.isFloating())
 shot(win, "mur_en_panneau")
+n_tiles = len(win.wall._visible_idx())
+win.set_wall_rows([0], False)
+wait(300)
+check("mur : une tuile en moins après « Masquer sur le mur »",
+      len(win.wall._visible_idx()) == n_tiles - 1 or win.in_alarm(win.watch[0]), f"{n_tiles} → {len(win.wall._visible_idx())}")
+win.set_wall_rows([0], True)
+
+
+def _uncheck_first_group(d):
+    if hasattr(d, "items") and d.items:
+        d.items[0][0].parent().setCheckState(0, Qt.CheckState.Unchecked)
+
+
+DLG_ACTION[0] = lambda d: (_uncheck_first_group(d), "accept")[1]
+step("choisir les fréquences du mur", win.pick_wall)
+DLG_ACTION[0] = "reject"
+check("mur : groupe entier décoché via la fenêtre", any(w.get("hide_wall") for w in win.watch))
+win.set_wall_rows(list(range(len(win.watch))), True)
 step("mur plein écran (F11)", win.wall.toggle_full)
 wait(600)
-check("mur : plein écran = panneau détaché", win.dock_wall.isFloating() and win.dock_wall.isFullScreen())
+check("mur : plein écran dans sa propre fenêtre", win.wall_is_fullscreen() and win._wall_full.isFullScreen()
+      and win.wall.window() is win._wall_full)
 step("mur : Échap", win.wall.leave_full)
 wait(400)
-check("mur : sortie du plein écran", not win.dock_wall.isFullScreen())
+check("mur : de retour dans son panneau", not win.wall_is_fullscreen() and win.dock_wall.widget() is win.wall
+      and win.wall.isVisible())
 win.dock_wall.setFloating(False)
 win.dock_wall.hide()
 wait(300)

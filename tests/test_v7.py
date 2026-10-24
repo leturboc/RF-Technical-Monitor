@@ -389,6 +389,14 @@ check("% : écrêté à 0–100", (tu(-140.0, "pct"), tu(10.0, "pct")), (0.0, 10
 ok("aller-retour dBµV / %", abs(fu(tu(-73.4, "dbuv"), "dbuv") + 73.4) < 1e-9 and abs(fu(tu(-73.4, "pct"), "pct") + 73.4) < 1e-9)
 check("textes", (fl(-80.0, "dbm"), fl(-80.0, "dbuv", suffix=True), fl(-60.0, "pct", suffix=True), fl(None, "pct")),
       ("-80.0", "27.0 dBµV", "50 %", "—"))
+wv = ns["wall_visible"]
+check("mur : affichée par défaut", wv(dict(state="free")), True)
+check("mur : hors couche", wv(dict(state="occ"), in_scope=False), False)
+check("mur : retirée à la main", wv(dict(state="occ", hide_wall=True)), False)
+check("mur : retirée mais en alarme → revient", wv(dict(state="free", hide_wall=True), alarm=True), True)
+check("mur : … sauf si l'option est décochée", wv(dict(state="free", hide_wall=True), alarm=True, alarms_always=False), False)
+check("mur : occupées seulement", (wv(dict(state="free"), only_active=True), wv(dict(state="weak"), only_active=True)),
+      (False, True))
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_

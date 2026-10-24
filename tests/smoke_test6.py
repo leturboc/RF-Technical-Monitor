@@ -174,6 +174,45 @@ acts = [a.text() for a in win2.show_menu.all_actions()]
 check("menu : enregistrer le show nommé, récents", any("Enregistrer « Fest »" in t for t in acts)
       and any(t.startswith("2026 Fest") for t in acts), str(acts))
 
+# ------------------------------------------------------------- mur : choisir les fréquences
+win.watch.clear()
+for i_, (nm, fq, st_) in enumerate((("HF 1", 500.0, "En service"), ("HF 2", 502.0, "En service"), ("Libre 1", 499.0, "Libre"))):
+    win._append_watch(nm, fq, status=st_)
+win.rebuild_watch_table()
+win.set_wall_rows([1], False)
+check("mur : HF 2 retirée", win.watch[1].get("hide_wall") is True)
+check("mur : config garde le choix", win._collect_config(False)["watch"][1].get("hide_wall") is True)
+win.watch[1]["absent"] = True
+check("mur : HF 2 en alarme → considérée en alarme", win.in_alarm(win.watch[1]))
+win.watch[1]["absent"] = False
+win.set_wall_rows([1], True)
+check("mur : HF 2 réaffichée", "hide_wall" not in win.watch[1])
+
+
+class FakePick:
+    def __init__(self, owner):
+        pass
+
+    def exec(self):
+        return True
+
+    def shown(self):
+        return {0: True, 1: False, 2: False}
+
+
+real_pick = m.WallPickDialog
+m.WallPickDialog = FakePick
+step("pick_wall", win.pick_wall)
+m.WallPickDialog = real_pick
+check("choix du mur appliqué", [bool(w.get("hide_wall")) for w in win.watch] == [False, True, True])
+d2 = win._collect_config(False)
+win7 = step("MainWindow() #7", m.MainWindow)
+win7.apply_web = lambda: None
+win7._apply_config(d2)
+check("config relue : choix du mur", [bool(w.get("hide_wall")) for w in win7.watch] == [False, True, True])
+sd = m.show_doc(d2, dict(name="x"))
+check("show : choix du mur dedans", [bool(w.get("hide_wall")) for w in sd["show"]["watch"]] == [False, True, True])
+
 # ------------------------------------------------------------- config : écriture sûre, copie de secours
 check("sauvegarde auto prévue", m.AUTOSAVE_MS <= 60_000 and hasattr(win, "_autosave"))
 win.show_meta["name"] = "Sauvé 1"

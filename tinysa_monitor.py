@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.2"
+APP_VER = "7.2.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1257,6 +1257,18 @@ def mk_default():
     """Réglage des repères du spectre : tout afficher."""
     return dict(on=True, states=[k for k, _ in MK_STATES], hide_layers=[], hide_status=[], alarms=True,
                 unk=True, style="full")
+
+
+def wall_visible(w, in_scope=True, alarm=False, only_active=False, alarms_always=True):
+    """La fréquence w a-t-elle sa tuile sur le mur ? (couche active, retirée à la main, « occupées seulement »,
+    une alarme la ramène si demandé)."""
+    if not in_scope:
+        return False
+    if alarm and alarms_always:
+        return True
+    if w.get("hide_wall"):
+        return False
+    return not only_active or w.get("state") in ("occ", "weak")
 
 
 def mk_layer_key(scene, group):
@@ -4861,6 +4873,74 @@ class LevelAxis(pg.AxisItem):
         return [fmt_level(v * scale, LevelAxis.unit, 0) for v in values]
 
 
+class WallFullWindow(QtWidgets.QWidget):
+    """Vraie fenêtre plein écran pour le mur (un panneau détaché refuse souvent le plein écran)."""
+
+    def __init__(self, owner):
+        super().__init__(None, Qt.WindowType.Window)
+        self.owner = owner
+        self.setWindowTitle(f"{APP_NAME} – Mur de fréquences")
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+
+    def closeEvent(self, e):
+        if self.owner.wall_is_fullscreen():
+            self.owner.wall_fullscreen(False)
+        super().closeEvent(e)
+
+
+class WallPickDialog(QtWidgets.QDialog):
+    """Cases à cocher : quelles fréquences ont une tuile sur le mur (rangées par scène › groupe)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.setWindowTitle("Fréquences du mur")
+        self.resize(460, 560)
+        self.tree = QtWidgets.QTreeWidget()
+        self.tree.setHeaderLabels(["Fréquence", "MHz"])
+        self.tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.items = []                                   # (item, index dans owner.watch)
+        groups = {}
+        for i, w in enumerate(owner.watch):
+            key = owner.layer_text(w) or "Sans scène"
+            parent = groups.get(key)
+            if parent is None:
+                parent = QtWidgets.QTreeWidgetItem([key, ""])
+                parent.setFlags(parent.flags() | Qt.ItemFlag.ItemIsAutoTristate | Qt.ItemFlag.ItemIsUserCheckable)
+                self.tree.addTopLevelItem(parent)
+                groups[key] = parent
+            it = QtWidgets.QTreeWidgetItem([w["name"], f"{w['freq']:.3f}"])
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(0, Qt.CheckState.Unchecked if w.get("hide_wall") else Qt.CheckState.Checked)
+            parent.addChild(it)
+            self.items.append((it, i))
+        self.tree.expandAll()
+        b_all = QtWidgets.QPushButton("Tout cocher")
+        b_none = QtWidgets.QPushButton("Tout décocher")
+        b_all.clicked.connect(lambda *_: self._set_all(True))
+        b_none.clicked.connect(lambda *_: self._set_all(False))
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        info = QtWidgets.QLabel("Coche les fréquences qui ont une tuile sur le mur. Cocher une scène / un groupe "
+                                "coche tout ce qu'il contient.")
+        info.setWordWrap(True)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(info)
+        lay.addWidget(self.tree, 1)
+        lay.addLayout(MainWindow._row(b_all, b_none, None))
+        lay.addWidget(bb)
+
+    def _set_all(self, on):
+        for it, _i in self.items:
+            it.setCheckState(0, Qt.CheckState.Checked if on else Qt.CheckState.Unchecked)
+
+    def shown(self):
+        """-> {index: True si la fréquence a une tuile}."""
+        return {i: it.checkState(0) == Qt.CheckState.Checked for it, i in self.items}
+
+
 class LabelsDialog(QtWidgets.QDialog):
     """Tes mots pour la colonne Signal (et le mur, la page web) : un texte par situation."""
 
@@ -5045,9 +5125,20 @@ class WallWindow(QtWidgets.QWidget):
         self.only_chk = QtWidgets.QCheckBox("Occupées / faibles seulement")
         self.only_chk.toggled.connect(self.relayout)
         self.sum_lbl = QtWidgets.QLabel("")
+        self.pick_btn = QtWidgets.QPushButton("📋 Choisir…")
+        self.pick_btn.setToolTip("Choisis les fréquences qui ont une tuile sur le mur (case à cocher, par scène › groupe).\n"
+                                 "Aussi : clic droit sur une tuile, ou dans la liste des fréquences.")
+        self.pick_btn.clicked.connect(lambda *_: self.owner.pick_wall())
+        self.alarm_chk = QtWidgets.QCheckBox("Alarmes toujours visibles")
+        self.alarm_chk.setChecked(True)
+        self.alarm_chk.setToolTip("Une fréquence retirée du mur y revient tant qu'elle est en alarme\n"
+                                  "(ABSENT, CONFLIT, INTERMOD).")
+        self.alarm_chk.toggled.connect(self.relayout)
         self.full_btn = QtWidgets.QPushButton("⛶ Plein écran (F11)")
         self.full_btn.clicked.connect(self.toggle_full)
         top.addWidget(self.only_chk)
+        top.addWidget(self.alarm_chk)
+        top.addWidget(self.pick_btn)
         top.addWidget(self.sum_lbl, 1)
         top.addWidget(self.full_btn)
         lay.addLayout(top)
@@ -5067,24 +5158,24 @@ class WallWindow(QtWidgets.QWidget):
         self._timer.setInterval(80)
         self._timer.timeout.connect(self.relayout)
 
-    def _win(self):
-        """Fenêtre qui passe en plein écran : le panneau (dock) qui contient le mur, ou le mur seul."""
-        p = self.parentWidget()
-        return p if isinstance(p, QtWidgets.QDockWidget) else self
+    def tile_menu(self, k, pos):
+        if k >= len(self.owner.watch):
+            return
+        m = QtWidgets.QMenu(self)
+        a_hide = m.addAction(f"Retirer « {self.owner.watch[k]['name']} » du mur")
+        a_pick = m.addAction("📋 Choisir les fréquences du mur…")
+        act = m.exec(self.tiles[k].mapToGlobal(pos))
+        if act is a_hide:
+            self.owner.set_wall_rows([k], False)
+        elif act is a_pick:
+            self.owner.pick_wall()
 
     def toggle_full(self):
-        w = self._win()
-        if w.isFullScreen():
-            self.leave_full()
-            return
-        if isinstance(w, QtWidgets.QDockWidget):
-            w.setFloating(True)
-        w.showFullScreen()
+        self.owner.wall_fullscreen(not self.owner.wall_is_fullscreen())
 
     def leave_full(self):
-        w = self._win()
-        if w.isFullScreen():
-            w.showNormal()
+        if self.owner.wall_is_fullscreen():
+            self.owner.wall_fullscreen(False)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -5105,6 +5196,8 @@ class WallWindow(QtWidgets.QWidget):
             lb.setWordWrap(True)
             lb.setTextFormat(Qt.TextFormat.RichText)
             lb.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Ignored)
+            lb.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            lb.customContextMenuRequested.connect(lambda pos, k=len(self.tiles): self.tile_menu(k, pos))
             self.tiles.append(lb)
         self._sig = [None] * len(self.tiles)
         self._vis = None
@@ -5114,10 +5207,8 @@ class WallWindow(QtWidgets.QWidget):
     def _visible_idx(self):
         ow = self.owner
         ws = ow.watch
-        idx = [i for i, w in enumerate(ws) if ow.in_scope(w)]
-        if self.only_chk.isChecked():
-            idx = [i for i in idx if ws[i]["state"] in ("occ", "weak")]
-        return idx
+        return [i for i, w in enumerate(ws)
+                if wall_visible(w, ow.in_scope(w), ow.in_alarm(w), self.only_chk.isChecked(), self.alarm_chk.isChecked())]
 
     def relayout(self, *_):
         if len(self.tiles) != len(self.owner.watch):
@@ -5198,7 +5289,9 @@ class WallWindow(QtWidgets.QWidget):
             self.tiles[i].setText(html)
             self.tiles[i].setStyleSheet(
                 "QLabel{background:%s;color:%s;border:4px solid %s;border-radius:8px;}" % (bg, fg, bd))
-        self.sum_lbl.setText(f"  {ow.scope_text()} · {n_tot} fréquences · {n_occ} occupée(s) · {n_weak} faible(s)")
+        n_hid = sum(1 for w in ow.watch if ow.in_scope(w) and w.get("hide_wall"))
+        self.sum_lbl.setText(f"  {ow.scope_text()} · {n_tot} fréquences · {n_occ} occupée(s) · {n_weak} faible(s)"
+                             + (f" · {n_hid} retirée(s) du mur" if n_hid else ""))
 
 
 def _html_esc(s):
@@ -6405,6 +6498,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.watch[-1]["hide_mk"] = True
                 if w.get("bw"):
                     self.watch[-1]["bw"] = max(0.0, float(w["bw"]))
+                if w.get("hide_wall"):
+                    self.watch[-1]["hide_wall"] = True
             except Exception:
                 pass
         sp = data.get("scope")
@@ -6545,7 +6640,8 @@ class MainWindow(QtWidgets.QMainWindow):
             bands=[{k: v for k, v in b.items() if k != "id"} for b in self.bands],
             watch=[dict(name=w["name"], freq=w["freq"], status=w["status"], thr=w["thr"],
                         scene=w["scene"], group=w["group"], **({"hide_mk": True} if w.get("hide_mk") else {}),
-                        **({"bw": w["bw"]} if w.get("bw") else {}))
+                        **({"bw": w["bw"]} if w.get("bw") else {}),
+                        **({"hide_wall": True} if w.get("hide_wall") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1))) for g in s["groups"]])
@@ -7937,6 +8033,59 @@ class MainWindow(QtWidgets.QMainWindow):
     def lvl(self, dbm, suffix=False):
         return fmt_level(dbm, self.unit, 1, suffix)
 
+    def wall_is_fullscreen(self):
+        return getattr(self, "_wall_full", None) is not None
+
+    def wall_fullscreen(self, on, screen=None):
+        """Plein écran du mur : il quitte son panneau pour une vraie fenêtre, et y revient en sortant."""
+        if on and not self.wall_is_fullscreen():
+            win_ = WallFullWindow(self)
+            hold = QtWidgets.QLabel("🧱 Mur en plein écran — Échap ou F11 pour le ramener ici.")
+            hold.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.dock_wall.setWidget(hold)
+            win_.layout().addWidget(self.wall)
+            self._wall_full = win_
+            if screen is not None:
+                win_.setScreen(screen)
+                win_.move(screen.geometry().topLeft())
+            win_.showFullScreen()
+            win_.activateWindow()
+            self.wall.full_btn.setText("⛶ Quitter le plein écran (Échap)")
+        elif not on and self.wall_is_fullscreen():
+            win_, self._wall_full = self._wall_full, None
+            self.dock_wall.setWidget(self.wall)
+            self.wall.show()
+            win_.hide()
+            win_.deleteLater()
+            self.wall.full_btn.setText("⛶ Plein écran (F11)")
+            self.dock_wall.show()
+            self.dock_wall.raise_()
+        self.wall.relayout()
+
+    def in_alarm(self, w):
+        return bool(w.get("absent")) or (w.get("state") == "occ" and self.is_keep_free(w["status"]))
+
+    def set_wall_rows(self, rows, show):
+        for r in rows:
+            if 0 <= r < len(self.watch):
+                if show:
+                    self.watch[r].pop("hide_wall", None)
+                else:
+                    self.watch[r]["hide_wall"] = True
+        if self.wall is not None and self.wall.isVisible():
+            self.wall.relayout()
+            self.wall.refresh()
+
+    def pick_wall(self):
+        if not self.watch:
+            self.set_status("La liste de fréquences est vide.")
+            return
+        dlg = WallPickDialog(self)
+        if dlg.exec():
+            shown = dlg.shown()
+            self.set_wall_rows([i for i, on in shown.items() if on], True)
+            self.set_wall_rows([i for i, on in shown.items() if not on], False)
+
     def edit_labels(self):
         dlg = LabelsDialog(self, self.sig_labels)
         if dlg.exec():
@@ -8167,6 +8316,8 @@ class MainWindow(QtWidgets.QMainWindow):
         a_thr0 = m.addAction("Revenir au seuil global")
         a_occ0 = m.addAction("Remettre l'occupation à zéro")
         a_blk = m.addAction("📶 Bloc large (Spectera / WMAS)…")
+        wall_hid = all(self.watch[r].get("hide_wall") for r in rows)
+        a_wall = m.addAction("🧱 Afficher sur le mur" if wall_hid else "🧱 Masquer sur le mur")
         hid = all(self.watch[r].get("hide_mk") for r in rows)
         a_mk = m.addAction("📍 Réafficher le repère sur le spectre" if hid else "📍 Masquer le repère sur le spectre")
         m.addSeparator()
@@ -8214,6 +8365,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.hide_marker_rows(rows, not hid)
         elif act is a_blk:
             self.set_block_rows(rows)
+        elif act is a_wall:
+            self.set_wall_rows(rows, wall_hid)
         elif self._assign_action(rows, act.data()):
             pass
         elif act.data() is not None:
@@ -9676,12 +9829,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if scr is None:
             self.set_status("Un seul écran détecté : le mur est ouvert en fenêtre (F11 pour le plein écran).")
             return
-        self.dock_wall.setFloating(True)
-        wh = self.dock_wall.windowHandle()
-        if wh is not None:
-            wh.setScreen(scr)
-        self.dock_wall.move(scr.geometry().topLeft())
-        self.dock_wall.showFullScreen()
+        self.wall_fullscreen(True, scr)
 
     def _wf_show(self, on):
         self.wf.setVisible(bool(on))
@@ -10165,8 +10313,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.web is not None:
             self.web.stop()
             self.web = None
-        if self.wall is not None and self.dock_wall.isFullScreen():
-            self.dock_wall.showNormal()
+        if self.wall is not None and self.wall_is_fullscreen():
+            self.wall_fullscreen(False)
         if self.recorder is not None:
             try:
                 self.recorder.close()
