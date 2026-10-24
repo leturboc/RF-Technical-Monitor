@@ -38,6 +38,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   l'alarme ; les critiques rejouent le son toutes les 10 s (`_alarm_tick`, timer 1 s).
 - Relecture : `SweepStore` (tampon mémoire 30 min) + `SweepRecorder` (tranches `.npz` compressées float16 dans
   `<dossier journaux>/enregistrements/<date>/`, 2 Go max).
+- Deux tinySA : `self.dev2 = {on, addr, offset}` (adresse USB « COM4 » ou réseau « 192.168.1.20:5025 », lue par
+  `parse_device_addr`) ; bande `dev` None (auto) / 0 / 1 ; `band_devices()` → `assign_bands` (équilibre en points,
+  repli sur l'appareil vivant) ; `get_cfg(dev)` ne donne à chaque worker que ses bandes (zoom : un seul appareil).
+  `self.workers` (un `ScanWorker` par appareil, `self.worker` = le 1er), `is_running()`. `ScanWorker.link(bool)`
+  → `on_link` : `dev_live`, alarme `("APPAREIL", -(n+1))` (prio 2, en tête, ignorée par le nettoyage du tick).
+  Le worker réessaie toutes les `RETRY_S` s ; échec de la 1re connexion = `error` sauf `retry_first` (le 2ᵉ).
+- Réseau : `TinySA` ouvre tout par `serial.serial_for_url` (`socket://hôte:port`) ; en réseau, délai de silence
+  `idle` (`NET_IDLE_MIN` + points × f(RBW), `expect_scan`) pour détecter un câble arraché. `SerialRelay` (thread,
+  sans Qt) + `RelayWindow` : `TinySA-Monitor.exe --relais` sur le PC du 2ᵉ tinySA, port TCP 5025 (`RELAY_PORT`).
 - Config : `%APPDATA%/TinySAMonitor/config.json` (`_collect_config` / `_apply_config`, avec migration des anciennes configs).
 
 ## Formats de fichiers
@@ -52,6 +61,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
 ```
 python tests/test_v7.py ; python tests/test_im.py ; python tests/test_plan.py     # logique pure
 python tests/smoke_test.py ; ...smoke_test2.py ; ...smoke_test3.py ; ...smoke_test4.py   # GUI simulée
+python tests/smoke_test5.py      # 2e tinySA dans MainWindow (faux Qt)
+python tests/test_reseau.py      # faux tinySA (pty) → relais → TCP → TinySA ; test_reseau_qt.py : vrai ScanWorker,
+                                 # coupure, liaison muette, reconnexion (Linux/macOS ; sautés sous Windows)
 python tests/check_names.py      # noms non définis (les « hérités de Qt » sont normaux)
 python tests/gui_reel.py         # VRAI PySide6 hors écran, mode démo : captures PNG dans tests/captures/
 ```
@@ -76,6 +88,8 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   puis `python -m py_compile tinysa_monitor.py`, les tests, et ne jamais committer `__pycache__`.
 
 ## Reste à faire / idées
-- **Deuxième tinySA** (deux ports, deux `ScanWorker`, répartition des bandes) : reporté, pas de matériel pour tester.
+- **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
+  tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
+- Idée : pendant le zoom live, laisser le 2ᵉ tinySA continuer la surveillance (aujourd'hui il attend).
 - Interface validée en vrai Qt (Linux + Windows CI : ≤ 1280 × 700) ; reste un essai réel avec le tinySA et les sons.
 - Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.

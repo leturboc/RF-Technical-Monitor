@@ -15,7 +15,6 @@ if not hasattr(os, "openpty"):
 
 import numpy as np
 import serial
-import tty
 
 fails = 0
 
@@ -45,45 +44,10 @@ exec(chunk("def local_ips():", "class RelayWindow"), ns)
 TinySA, SerialRelay = ns["TinySA"], ns["SerialRelay"]
 
 
-class FakeTinySA(threading.Thread):
-    """Répond comme le firmware : écho de la commande, réponse, puis « ch> »."""
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from faketinysa import open_fake  # noqa: E402
 
-    def __init__(self, fd):
-        super().__init__(daemon=True)
-        self.fd, self.stop, self.cmds = fd, False, []
-
-    def out(self, txt):
-        os.write(self.fd, txt.encode())
-
-    def run(self):
-        buf = b""
-        while not self.stop:
-            try:
-                d = os.read(self.fd, 1024)
-            except OSError:
-                return
-            buf += d
-            while b"\r" in buf:
-                line, buf = buf.split(b"\r", 1)
-                c = line.decode().strip()
-                self.cmds.append(c)
-                rep = ""
-                if c == "version":
-                    rep = "tinySA4_v1.4-fake\r\n"
-                elif c.startswith("scan "):
-                    _, a, b, n, _o = c.split()
-                    for f in np.linspace(float(a), float(b), int(n)):
-                        lv = -40.0 if abs(f - 500e6) < 60e3 else -100.0
-                        rep += f"{f:.0f} {lv:.2f} \r\n"
-                self.out(c + "\r\n" + rep + "ch> ")
-
-
-master, slave = os.openpty()
-tty.setraw(master)
-tty.setraw(slave)
-fake = FakeTinySA(master)
-fake.start()
-slave_path = os.ttyname(slave)
+fake, slave_path = open_fake()
 
 relay = SerialRelay(slave_path, tcp_port=0, host="127.0.0.1")
 relay.start()

@@ -267,6 +267,10 @@ a = asg([dict(id=1, pts=100, dev=0), dict(id=2, pts=900, dev=None)], 2, live=[Fa
 check("1er hors ligne : tout sur le 2e", a, {1: 1, 2: 1})
 check("les deux hors ligne : repli sur le 1er", asg([dict(id=1, pts=10, dev=1)], 2, live=[False, False]), {1: 0})
 check("un seul appareil", asg(B, 1), {1: 0, 2: 0, 3: 0, 4: 0})
+AB = ns["AlarmBook"]()
+AB.raise_(("ABSENT", 1), "ABSENT", "HF 1", 470.0, 2, 100.0)
+AB.raise_(("APPAREIL", -2), "APPAREIL", "tinySA 2", 0.0, 2, 200.0)
+check("alarme APPAREIL en tête de liste", [a["kind"] for a in AB.listing()], ["APPAREIL", "ABSENT"])
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
 print("\nÉCHECS:", fails)

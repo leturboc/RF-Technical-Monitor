@@ -21,6 +21,7 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 - **Scans WSM / WWB** : import d'un scan comme référence, conversion WSM → WWB, export du scan au format WWB
 - **Export des fréquences** par scène / par groupe
 - **Fenêtres libres** : panneaux déplaçables / détachables (double écran), mur de fréquences plein écran
+- **Deux tinySA** en parallèle, sur le même PC ou par le réseau (relais intégré), avec bascule automatique
 - Guide des bandes 100 kHz – 5,9 GHz par pays, canaux TV, profils d'événement, journal CSV automatique
 
 ## Installer
@@ -38,6 +39,24 @@ pip install -r requirements.txt
 python tinysa_monitor.py
 ```
 Python 3.12 ou 3.13 conseillé.
+
+## Deux tinySA (USB ou réseau)
+
+Deux tinySA balayent en parallèle : le cycle est environ deux fois plus court, et **si l'un décroche, l'autre
+reprend toutes les bandes** (alarme critique ⚠ APPAREIL, nouvel essai de connexion toutes les 5 s).
+
+1. **Réglages › 2ᵉ tinySA** : coche « Utiliser un 2ᵉ tinySA » et donne son adresse.
+   - branché sur le même PC : son port (`COM4`) ;
+   - branché sur **un autre PC** : sur ce PC-là, lance `TinySA-Monitor.exe --relais` (ou 🔧 Outils › 📡 Relais
+     réseau), choisis le port du tinySA et clique « Partager ». La fenêtre affiche l'adresse à saisir sur le PC
+     principal, par ex. `192.168.1.20:5025`. Windows demande d'autoriser l'accès réseau : accepte (réseau privé).
+     Un pont série-TCP en mode brut (ser2net, Raspberry Pi…) marche aussi.
+2. Table des **bandes**, colonne « tinySA » (double-clic) : **Auto** (répartition équilibrée), **1** ou **2**.
+   Une seule grosse bande ne se partage pas : **✂ Couper** la divise en deux moitiés.
+3. **Offset** du 2ᵉ : correction en dB si les deux appareils ne lisent pas tout à fait pareil.
+
+Le zoom live est fait par un seul tinySA. En réseau, préfère un câble au Wi-Fi ; une liaison qui se tait
+(câble arraché) est détectée après ~30 s au réglage par défaut (plus long avec un RBW très étroit).
 
 ## Démarrage rapide
 

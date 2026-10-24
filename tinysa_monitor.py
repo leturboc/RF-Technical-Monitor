@@ -1646,8 +1646,9 @@ class AlarmBook:
         return [a for a in self.active.values() if not a["acked"]]
 
     def listing(self):
-        """Alarmes à afficher : en cours (non acquittées d'abord, par priorité), puis terminées (récentes d'abord)."""
-        cur = sorted(self.active.values(), key=lambda a: (a["acked"], -a["prio"], a["t0"]))
+        """Alarmes à afficher : en cours (non acquittées d'abord, appareil perdu en tête, par priorité), puis
+        terminées (récentes d'abord)."""
+        cur = sorted(self.active.values(), key=lambda a: (a["acked"], a["kind"] != "APPAREIL", -a["prio"], a["t0"]))
         return cur + list(reversed(self.done))
 
     def due_repeat(self, now):
@@ -2020,9 +2021,12 @@ def split_band(start, stop, step):
 # --------------------------------------------------------------------------
 class TinySA:
     PROMPT = b"ch>"
+    NET_IDLE_MIN = 20.0          # réseau : liaison déclarée muette après ce silence (s), allongé selon le RBW
 
     def __init__(self, port):
         # port : « COM3 » (USB) ou « socket://192.168.1.20:5025 » (réseau, via le relais ou ser2net)
+        self.net = "://" in str(port)
+        self.idle = self.NET_IDLE_MIN if self.net else None
         self.ser = serial.serial_for_url(port, 115200, timeout=0.2)
         self.ser.reset_input_buffer()
         self.cmd("", timeout=5)
@@ -2037,12 +2041,18 @@ class TinySA:
         self.ser.reset_input_buffer()
         self.ser.write((text + "\r").encode())
         buf, t0 = b"", time.time()
+        t_rx = t0
         while True:
-            if time.time() - t0 > timeout:
+            now = time.time()
+            if now - t0 > timeout:
                 raise TimeoutError(f"Pas de réponse du tinySA à « {text} »")
+            if self.idle is not None and now - t_rx > self.idle:
+                # câble réseau arraché / Wi-Fi coupé : la connexion ne se ferme pas, elle se tait
+                raise TimeoutError(f"liaison réseau muette depuis {self.idle:.0f} s")
             n = self.ser.in_waiting
             chunk = self.ser.read(n if n else 1)
             if chunk:
+                t_rx = time.time()
                 buf += chunk
                 if buf.rstrip().endswith(self.PROMPT):
                     break
@@ -2073,6 +2083,12 @@ class TinySA:
 
     def set_input(self, high):
         return self.try_cmd("mode high input" if high else "mode low input")
+
+    def expect_scan(self, points, rbw_khz):
+        """Réseau : temps de silence toléré pendant un scan (le tinySA ne répond qu'à la fin du segment)."""
+        if self.net:
+            per_pt = 0.05 if rbw_khz is None else max(0.002, 3.0 / max(rbw_khz, 0.1))
+            self.idle = self.NET_IDLE_MIN + points * per_pt
 
     def scan(self, start_hz, stop_hz, points):
         """Renvoie (freqs Hz ou None, niveaux dBm)."""
@@ -2227,6 +2243,7 @@ class ScanWorker(QtCore.QThread):
                     if not ok:
                         self.status.emit(f"⚠ Changement d'entrée refusé — {msg}")
                     self._apply_front(dev, cfg)
+                dev.expect_scan(pts, cfg["rbw"])
                 fr, lv = dev.scan(a, z, pts)
                 if fr is None or len(fr) != len(lv):
                     fr = np.linspace(a, z, len(lv))
@@ -5583,12 +5600,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev2_addr.blockSignals(False)
 
     def _read_dev2(self):
-        txt = self.dev2_addr.currentText().strip()
-        data = self.dev2_addr.currentData()
-        if data and txt.startswith(str(data)):
-            txt = str(data)                        # « COM4  ✔ tinySA » -> « COM4 »
-        else:
-            txt = txt.split()[0] if txt else ""
+        txt = self.dev2_addr.currentText().replace("✔ tinySA", "").strip()   # « COM4  ✔ tinySA » -> « COM4 »
         self.dev2.update(on=self.dev2_chk.isChecked(), addr=txt, offset=float(self.dev2_off.value()))
 
     def _dev2_changed(self):
