@@ -6,7 +6,8 @@ dialogues, capture des PNG et relève les exceptions Qt. Complète les smoke_tes
 Sous Linux il faut PySide6 + libEGL/libGL (apt install libegl1 libgl1 libxkbcommon0 fonts-noto-color-emoji).
 Ne remplace pas un essai sur Windows : sons, vrai port série, double écran et rendu natif ne sont pas testés."""
 import os, sys, tempfile, traceback, importlib.util, time
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if sys.platform != "win32":       # Windows : vrai rendu (le mode offscreen n'y a aucune police)
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 tmp = tempfile.mkdtemp(prefix="tsm_real_")
 os.environ["APPDATA"] = tmp
 os.environ["HOME"] = tmp
@@ -30,8 +31,8 @@ from PySide6 import QtWidgets, QtCore, QtGui
 W = QtWidgets
 
 app = W.QApplication(sys.argv)
-# police d'un vrai bureau : Segoe UI 9 pt sous Windows (le mode offscreen ne la fournit pas tout seul)
-app.setFont(QtGui.QFont("Segoe UI" if sys.platform == "win32" else "DejaVu Sans", 9))
+if sys.platform != "win32":
+    app.setFont(QtGui.QFont("DejaVu Sans", 9))
 _f = app.font()
 print(f"OK   police : {QtGui.QFontInfo(_f).family()} {_f.pointSize()} pt · "
       f"{QtGui.QFontMetrics(_f).averageCharWidth()} px/car · dpi {app.primaryScreen().logicalDotsPerInch():.0f}",

@@ -34,11 +34,10 @@ jobs:
             echo "== $t"; python tests/$t.py | tail -3
           done
 
-      - name: Interface réelle (Qt hors écran, Windows)
+      - name: Interface réelle (vrai Qt Windows)
         continue-on-error: true
         shell: bash
-        env:
-          QT_QPA_PLATFORM: offscreen
+        timeout-minutes: 8
         run: |
           set +e
           python -u tests/gui_reel.py tests/captures > gui_reel.log 2>&1
