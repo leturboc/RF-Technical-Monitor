@@ -8,7 +8,8 @@ workflow GitHub Actions `.github/workflows/build-exe.yml`).
 ## Qui / comment répondre
 L'utilisateur (Clément) est technicien son/HF/AV en festivals (utilise EazyRF, WWB, WSM). Il parle un français
 décontracté : réponds en français, ton détendu mais précis, concret et actionnable.
-**Dis toujours ce qui n'est pas vérifié** : l'interface Qt réelle n'a jamais été lancée par Claude (voir Tests).
+**Dis toujours ce qui n'est pas vérifié** : l'interface Qt réelle est lancée par `tests/gui_reel.py` sous Linux sans
+écran (offscreen) ; ni Windows, ni le vrai tinySA, ni les sons, ni un vrai double écran n'ont été testés par Claude.
 
 ## Organisation du fichier
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
@@ -45,13 +46,21 @@ décontracté : réponds en français, ton détendu mais précis, concret et act
 python tests/test_v7.py ; python tests/test_im.py ; python tests/test_plan.py     # logique pure
 python tests/smoke_test.py ; ...smoke_test2.py ; ...smoke_test3.py ; ...smoke_test4.py   # GUI simulée
 python tests/check_names.py      # noms non définis (les « hérités de Qt » sont normaux)
+python tests/gui_reel.py         # VRAI PySide6 hors écran, mode démo : captures PNG dans tests/captures/
 ```
 Chaque script affiche `ÉCHECS: 0` quand tout va bien. Les `smoke_test*` utilisent `tests/fakeqt.py`, un **faux Qt**
 (classes « fourre-tout ») : ils vérifient la logique de `MainWindow` et des dialogues, **pas** le rendu ni le comportement
-réel de Qt (docks, double écran, sons, redimensionnement). Sur un vrai Windows avec PySide6 installé, lancer l'appli
-et vérifier à l'œil : docks et dispositions, bouton 🔔, panneau d'alarmes, relecture, rapport, imports WSM/WWB.
+réel de Qt. `gui_reel.py` complète : il lance la vraie fenêtre (offscreen), fait tourner le mode démo, ouvre
+dispositions, dialogues, relecture, mur, imports WSM/WWB, rapport, relance avec la config, vérifie la taille minimale
+(≤ 1280×720) et l'absence d'exception ; **regarder les captures** après une modif d'interface. Sous Linux il faut
+`pip install PySide6 pyqtgraph pyserial numpy` et `apt install libegl1 libgl1 libxkbcommon0 fonts-noto-color-emoji`.
+Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série, double écran, rendu natif, exe PyInstaller.
 
 ## Pièges connus
+- Barres d'outils : `MainWindow._flow(...)` (`FlowLayout`) — elles se replient au lieu d'imposer une largeur
+  minimale ; ne pas remettre une longue rangée `_row(...)` en haut de la fenêtre.
+- Textes repliés (`setWordWrap`) dans un `QSplitter` : leur réserver une hauteur mini, sinon ils se chevauchent.
+- `&` dans un titre de dock ou d'onglet = raccourci clavier Qt (il disparaît) : écrire « et ».
 - PySide6 : énumérations qualifiées complètes (`Qt.ItemDataRole.UserRole`, etc.).
 - Les signaux `clicked` / `triggered` passent un booléen `checked` : connecter avec `lambda *_: methode()` quand la
   méthode a des paramètres optionnels.
@@ -61,5 +70,5 @@ et vérifier à l'œil : docks et dispositions, bouton 🔔, panneau d'alarmes, 
 
 ## Reste à faire / idées
 - **Deuxième tinySA** (deux ports, deux `ScanWorker`, répartition des bandes) : reporté, pas de matériel pour tester.
-- Valider l'interface sur un vrai Windows (voir Tests) et corriger ce qui cloche.
+- Interface validée en vrai Qt sous Linux (offscreen) ; reste un essai sur Windows avec le tinySA (voir Tests).
 - Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.

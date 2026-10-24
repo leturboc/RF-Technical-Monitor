@@ -362,7 +362,7 @@ _NAME_PRIORITY = ["channel name", "chan name", "device name", "rf name", "name",
                   "kanalname", "mic", "microphone"]
 _STATUS_WORDS = ("status", "statut", "state", "etat", "stato", "zustand")
 _SCENE_WORDS = ("scene", "stage", "scena", "escenario", "buhne", "zone")
-_GROUP_WORDS = ("groupe", "artiste", "artist", "act", "show", "formation")
+_GROUP_WORDS = ("groupe", "group", "artiste", "artist", "act", "show", "formation")
 
 
 def unit_hint(h):
@@ -2212,6 +2212,66 @@ def color_icon(color, size=12):
     return QtGui.QIcon(pm)
 
 
+class FlowLayout(QtWidgets.QLayout):
+    """Rangée de widgets qui passe à la ligne quand la fenêtre est trop étroite (barres d'outils)."""
+
+    def __init__(self, parent=None, hspace=6, vspace=4):
+        super().__init__(parent)
+        self._items, self._hs, self._vs = [], hspace, vspace
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, w):
+        return self._place(QtCore.QRect(0, 0, w, 0), False)
+
+    def setGeometry(self, r):
+        super().setGeometry(r)
+        self._place(r, True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        sz = QtCore.QSize()
+        for it in self._items:
+            sz = sz.expandedTo(it.minimumSize())
+        m = self.contentsMargins()
+        return sz + QtCore.QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _place(self, r, apply):
+        m = self.contentsMargins()
+        r = r.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, line_h = r.x(), r.y(), 0
+        for it in self._items:
+            if it.isEmpty():
+                continue
+            sh = it.sizeHint()
+            if x + sh.width() > r.right() + 1 and line_h > 0:
+                x, y, line_h = r.x(), y + line_h + self._vs, 0
+            if apply:
+                it.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), sh))
+            x += sh.width() + self._hs
+            line_h = max(line_h, sh.height())
+        return y + line_h - r.y() + m.top() + m.bottom()
+
+
 def swatch_style(color):
     return ("QPushButton{background:%s;color:%s;border:1px solid #888;border-radius:4px;padding:3px 10px;}"
             % (color, contrast_text(color)))
@@ -3494,7 +3554,10 @@ class ReplayDialog(QtWidgets.QDialog):
         pi.addItem(self.thr_line)
         self.table = QtWidgets.QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["Nom", "MHz", "Niveau", "Max", "À ce moment"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setWordWrap(False)
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setMinimumWidth(430)
@@ -3990,6 +4053,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VER}")
         self.resize(1700, 980)
+        self._fit_to_screen()
         self.setAcceptDrops(True)
         self.lock = threading.Lock()
         self._next_id = 1
@@ -4054,6 +4118,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._alarm_timer.start()
         QtCore.QTimer.singleShot(0, self._late_layout)
 
+    def _fit_to_screen(self):
+        """Petit écran (portable 1366×768…) : la fenêtre ne doit pas déborder."""
+        scr = QtGui.QGuiApplication.primaryScreen()
+        if scr is None:
+            return
+        g = scr.availableGeometry()
+        if g.width() > 0 and g.height() > 0:
+            self.resize(min(self.width(), g.width()), min(self.height(), g.height()))
+
     def _late_layout(self):
         if not self._state_restored:
             self._dock_sizes()
@@ -4085,6 +4158,24 @@ class MainWindow(QtWidgets.QMainWindow):
         return h
 
     @staticmethod
+    def _flow(*groups):
+        """Barre qui se replie : chaque groupe (widget, texte ou tuple) reste d'un seul tenant."""
+        fl = FlowLayout()
+        for g in groups:
+            if not isinstance(g, tuple):
+                g = (g,)
+            if len(g) == 1 and not isinstance(g[0], str):
+                fl.addWidget(g[0])
+                continue
+            box = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(box)
+            h.setContentsMargins(0, 0, 0, 0)
+            for w in g:
+                h.addWidget(QtWidgets.QLabel(w) if isinstance(w, str) else w)
+            fl.addWidget(box)
+        return fl
+
+    @staticmethod
     def _combo(items, current=None):
         c = QtWidgets.QComboBox()
         for txt, data in items:
@@ -4098,7 +4189,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             foreground=self.theme["plot_fg"])
         # --- barre du haut
         self.port_combo = QtWidgets.QComboBox()
-        self.port_combo.setMinimumWidth(260)
+        self.port_combo.setMinimumWidth(220)
         btn_ports = QtWidgets.QToolButton()
         btn_ports.setText("⟳")
         btn_ports.setToolTip("Rafraîchir les ports")
@@ -4161,8 +4252,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_btn.setToolTip("Alarmes : conflits (signal sur une fréquence « doit rester libre ») et émetteurs "
                                   "absents (« doit émettre »).\nRouge = à acquitter · orange = acquittées, toujours là.")
         self.alarm_btn.clicked.connect(lambda *_: self.toggle_alarm_dock())
-        top = self._row("Port :", self.port_combo, btn_ports, self.demo_chk, self.info_lbl, None,
-                        self.alarm_btn, tools_btn, win_btn, wall_btn, prof_btn, colors_btn, status_btn, self.start_btn)
+        top = self._flow(("Port :", self.port_combo, btn_ports, self.demo_chk, self.info_lbl),
+                         self.alarm_btn, tools_btn, win_btn, wall_btn, prof_btn, colors_btn, status_btn, self.start_btn)
 
         # --- panneau de gauche : réglages
         self.points_combo = self._combo([(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES], 1000)
@@ -4458,8 +4549,8 @@ class MainWindow(QtWidgets.QMainWindow):
         center = QtWidgets.QWidget()
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
-        cl.addLayout(self._row("Vue :", self.view_combo, self.zoom_btn, self.names_chk, self.hold_chk,
-                               self.persist_combo, self.mark_combo, reset_btn, cap_btn, None, self.readout))
+        cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.names_chk, self.hold_chk,
+                                self.persist_combo, self.mark_combo, reset_btn, cap_btn, self.readout))
         cl.addLayout(self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None))
         cl.addWidget(self.band_lbl)
         cl.addWidget(self.spec, 1)
@@ -4488,8 +4579,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layer_tree = QtWidgets.QTreeWidget()
         self.layer_tree.setHeaderHidden(True)
         self.layer_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.layer_tree.setMinimumHeight(96)
-        self.layer_tree.setMaximumHeight(190)
+        self.layer_tree.setMinimumHeight(60)
         self.layer_tree.itemSelectionChanged.connect(self.on_tree_sel)
         self.layer_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layer_tree.customContextMenuRequested.connect(self.layer_menu)
@@ -4509,9 +4599,28 @@ class MainWindow(QtWidgets.QMainWindow):
                                      "🌐 Global = tout. Clic droit : importer un CSV dans le groupe, renommer, "
                                      "couleur. Clic droit sur une fréquence ou double-clic sur « Scène › Groupe » "
                                      "pour l'affecter.")
+        layer_tip.setToolTip(layer_tip.text())
+        layer_tip.setText("ⓘ Clic = surveiller ce groupe · Ctrl+clic = plusieurs · clic droit = menu (survole pour l'aide)")
         layer_tip.setWordWrap(True)
         lv2.addWidget(layer_tip)
-        fl.addWidget(lbox)
+        # un QSplitter ignore la hauteur réelle des textes repliés : on la réserve (sinon chevauchements)
+        lh = self.fontMetrics().lineSpacing()
+        for lab, n in ((self.layer_lbl, 1), (layer_tip, 2)):
+            lab.setMinimumHeight(lh * n + 4)
+        # couches et table dans un séparateur : la table garde la place, la poignée se tire à la souris
+        wbox = QtWidgets.QWidget()
+        outer = fl
+        fl = QtWidgets.QVBoxLayout(wbox)
+        fl.setContentsMargins(0, 0, 0, 0)
+        self.freq_split = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        self.freq_split.setObjectName("freq_split")
+        self.freq_split.setChildrenCollapsible(False)
+        self.freq_split.addWidget(lbox)
+        self.freq_split.addWidget(wbox)
+        self.freq_split.setStretchFactor(0, 0)
+        self.freq_split.setStretchFactor(1, 1)
+        self.freq_split.setSizes([230, 600])
+        outer.addWidget(self.freq_split, 1)
         self.filter_edit = QtWidgets.QLineEdit()
         self.filter_edit.setPlaceholderText("🔎 Rechercher un nom, une fréquence, un statut…")
         self.filter_edit.setClearButtonEnabled(True)
@@ -4546,6 +4655,8 @@ class MainWindow(QtWidgets.QMainWindow):
                      (C_OCC, 48), (C_LAYER, 120), (C_BAND, 190)):
             self.watch_table.setColumnWidth(c, w)
         self.watch_table.verticalHeader().setVisible(False)
+        self.watch_table.setWordWrap(False)
+        self.watch_table.setMinimumHeight(120)
         self.watch_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.watch_table.itemChanged.connect(self.on_watch_edit)
         self.watch_table.cellDoubleClicked.connect(self.on_watch_dbl)
@@ -4562,7 +4673,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                "Nom : l'auto-complétion propose MIC, HF 5, IEM… · Ctrl+D numérote vers le bas "
                                "(HF 1, HF 2…).\n"
                                "Un statut « Doit rester libre » déclenche ⚠ CONFLIT si un signal apparaît.")
+        tip.setToolTip(tip.text())
+        tip.setText("ⓘ Double-clic Statut / Niveau / Seuil · clic droit = menu · Ctrl+D numérote (survole pour l'aide)")
         tip.setWordWrap(True)
+        tip.setMinimumHeight(self.fontMetrics().lineSpacing() * 2 + 4)
         fl.addWidget(tip)
 
         ltab = QtWidgets.QWidget()
@@ -6994,7 +7108,7 @@ class MainWindow(QtWidgets.QMainWindow):
         L, R, B = (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea,
                    Qt.DockWidgetArea.BottomDockWidgetArea)
         self.dock_set = self._make_dock("Réglages", "dock_reglages", left, L)
-        self.dock_freq = self._make_dock("Fréquences & couches", "dock_freq", ftab, R)
+        self.dock_freq = self._make_dock("Fréquences et couches", "dock_freq", ftab, R)
         self.dock_log = self._make_dock("Journal", "dock_journal", ltab, R)
         self.dock_wf = self._make_dock("Waterfall", "dock_wf", wf_box, B)
         self.dock_alarm = self._make_dock("Alarmes", "dock_alarmes", self._build_alarm_panel(), B)
@@ -7034,6 +7148,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabifyDockWidget(self.dock_freq, self.dock_log)
         self.dock_freq.raise_()
         self.dock_alarm.hide()
+        if self.view_id == -1 and self._zoom is None:
+            self.dock_wf.hide()      # rien à afficher en vue « toutes les bandes »
         self._dock_sizes()
 
     def layout_analyzer(self):
