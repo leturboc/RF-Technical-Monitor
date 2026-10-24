@@ -30,8 +30,12 @@ from PySide6 import QtWidgets, QtCore, QtGui
 W = QtWidgets
 
 app = W.QApplication(sys.argv)
-if sys.platform != "win32":
-    app.setFont(QtGui.QFont("DejaVu Sans", 9))     # Windows : police système (Segoe UI), comme l'appli
+# police d'un vrai bureau : Segoe UI 9 pt sous Windows (le mode offscreen ne la fournit pas tout seul)
+app.setFont(QtGui.QFont("Segoe UI" if sys.platform == "win32" else "DejaVu Sans", 9))
+_f = app.font()
+print(f"OK   police : {QtGui.QFontInfo(_f).family()} {_f.pointSize()} pt · "
+      f"{QtGui.QFontMetrics(_f).averageCharWidth()} px/car · dpi {app.primaryScreen().logicalDotsPerInch():.0f}",
+      flush=True)
 
 def wait(ms):
     loop = QtCore.QEventLoop()
