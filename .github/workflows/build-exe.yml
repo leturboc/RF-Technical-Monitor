@@ -36,9 +36,20 @@ jobs:
 
       - name: Interface réelle (Qt hors écran, Windows)
         continue-on-error: true
+        shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tests/gui_reel.py tests/captures
+        run: |
+          set +e
+          python -u tests/gui_reel.py tests/captures > gui_reel.log 2>&1
+          rc=$?
+          cat gui_reel.log
+          # résumé visible dans les annotations du run (OK / FAIL / exceptions)
+          grep -E "^(OK|FAIL)|ÉCHECS|Error|error|Traceback" gui_reel.log | head -40 | while IFS= read -r l; do
+            echo "::notice title=gui_reel::$l"
+          done
+          tail -15 gui_reel.log | tr '\n' '|' | sed 's/^/::warning title=gui_reel (fin)::/'; echo
+          exit $rc
 
       - name: Captures de l'interface
         if: always()
