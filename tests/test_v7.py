@@ -397,6 +397,14 @@ check("mur : retirée mais en alarme → revient", wv(dict(state="free", hide_wa
 check("mur : … sauf si l'option est décochée", wv(dict(state="free", hide_wall=True), alarm=True, alarms_always=False), False)
 check("mur : occupées seulement", (wv(dict(state="free"), only_active=True), wv(dict(state="weak"), only_active=True)),
       (False, True))
+wg = ns["wall_grid"]
+check("grille mur : petites tuiles, 300 px de large → 1 colonne, défile", wg(15, 300, 200, "s")[:3], (1, 15, 64))
+check("grille mur : petites tuiles, 1000 px → 6 colonnes", wg(15, 1000, 400, "s")[:2], (6, 3))
+check("grille mur : police fixe selon la taille", (wg(5, 800, 400, "s")[3], wg(5, 800, 400, "l")[3]), (11, 22))
+c_, r_, h_, f_ = wg(15, 1200, 700, "auto")
+ok("grille mur : auto remplit (hauteur 0 = s'étire)", h_ == 0 and c_ * r_ >= 15 and 8 <= f_ <= 44)
+check("grille mur : petit panneau auto → police mini 8", wg(40, 250, 120)[3], 8)
+check("grille mur : aucune tuile", wg(0, 500, 300)[1], 0)
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_

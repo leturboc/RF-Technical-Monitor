@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.2.2"
+APP_VER = "7.2.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1270,6 +1270,27 @@ def wall_visible(w, in_scope=True, alarm=False, only_active=False, alarms_always
     if w.get("hide_wall"):
         return False
     return not only_active or w.get("state") in ("occ", "weak")
+
+
+WALL_SIZES = [("auto", "Taille auto"), ("s", "Petites"), ("m", "Moyennes"), ("l", "Grandes")]
+WALL_TILE = {"s": (150, 64, 11), "m": (210, 90, 15), "l": (300, 128, 22)}   # largeur mini, hauteur, police (px)
+
+
+def wall_grid(n, W, H, size="auto", gap=6):
+    """Grille du mur : (colonnes, rangées, hauteur de tuile ou 0 si elle s'étire, police px).
+    auto = les tuiles remplissent la place ; s / m / l = taille fixe, autant de colonnes que la largeur en
+    permet, et on fait défiler s'il y en a trop."""
+    W, H = max(100, W), max(60, H)
+    if n <= 0:
+        return 1, 0, 0, 14
+    if size in WALL_TILE:
+        tw, th, fs = WALL_TILE[size]
+        cols = max(1, min(n, int((W + gap) // (tw + gap))))
+        return cols, int(math.ceil(n / cols)), th, fs
+    cols = max(1, min(n, int(math.ceil(math.sqrt(n * W / H / 1.5)))))
+    rows = int(math.ceil(n / cols))
+    tw, th = W / cols, H / rows
+    return cols, rows, 0, int(max(8, min(36, th * 0.16, tw / 9.5)))
 
 
 def mk_layer_key(scene, group):
@@ -5122,8 +5143,8 @@ class WallWindow(QtWidgets.QWidget):
         self.tiles, self._sig, self._vis, self._fs = [], [], None, 0
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(6, 6, 6, 6)
-        top = QtWidgets.QHBoxLayout()
-        self.only_chk = QtWidgets.QCheckBox("Occupées / faibles seulement")
+        top = FlowLayout()          # se replie : le panneau peut devenir étroit (avant : 929 px minimum)
+        self.only_chk = QtWidgets.QCheckBox("Occupées / faibles")
         self.only_chk.toggled.connect(self.relayout)
         self.sum_lbl = QtWidgets.QLabel("")
         self.pick_btn = QtWidgets.QPushButton("📋 Choisir…")
@@ -5135,25 +5156,38 @@ class WallWindow(QtWidgets.QWidget):
         self.alarm_chk.setToolTip("Une fréquence retirée du mur y revient tant qu'elle est en alarme\n"
                                   "(ABSENT, CONFLIT, INTERMOD).")
         self.alarm_chk.toggled.connect(self.relayout)
-        self.full_btn = QtWidgets.QPushButton("⛶ Plein écran (F11)")
+        self.full_btn = QtWidgets.QPushButton("⛶ Plein écran")
         self.full_btn.clicked.connect(self.toggle_full)
-        top.addWidget(self.only_chk)
-        top.addWidget(self.alarm_chk)
-        top.addWidget(self.pick_btn)
-        top.addWidget(self.sum_lbl, 1)
-        top.addWidget(self.full_btn)
+        self.size_combo = QtWidgets.QComboBox()
+        for k, t in WALL_SIZES:
+            self.size_combo.addItem(t, k)
+        self.size_combo.setToolTip("Taille des tuiles. Auto : elles remplissent le panneau.\n"
+                                   "Petites / Moyennes / Grandes : taille fixe, on fait défiler s'il y en a trop\n"
+                                   "(pratique pour un mur rangé dans un petit panneau).")
+        self.size_combo.currentIndexChanged.connect(lambda *_: self.relayout())
+        for wd in (self.only_chk, self.alarm_chk, self.pick_btn, self.size_combo, self.full_btn):
+            top.addWidget(wd)
         lay.addLayout(top)
+        self.sum_lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
+        lay.addWidget(self.sum_lbl)
         self.host = QtWidgets.QWidget()
         self.grid = QtWidgets.QGridLayout(self.host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(6)
-        lay.addWidget(self.host, 1)
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setWidget(self.host)
+        self.scroll.setMinimumSize(120, 60)
+        lay.addWidget(self.scroll, 1)
         for key, fn in (("F11", self.toggle_full), ("Escape", self.leave_full)):
             sc = QtGui.QShortcut(QtGui.QKeySequence(key), self)
             sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)    # seulement quand le mur a le focus
             sc.activated.connect(fn)
         self.only_chk.setToolTip("N'affiche que les fréquences occupées ou faibles : les tuiles grossissent.")
         self.full_btn.setToolTip("Le mur se détache et passe en plein écran (F11 ; Échap pour revenir).")
+        self.sum_lbl.setToolTip("Résumé : couche affichée, nombre de fréquences, occupées, faibles.")
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(80)
@@ -5221,25 +5255,37 @@ class WallWindow(QtWidgets.QWidget):
             self.grid.removeWidget(t)
             t.setVisible(False)
         n = len(vis)
-        W, H = max(200, self.host.width()), max(120, self.host.height())
-        if n:
-            cols = max(1, min(n, int(math.ceil(math.sqrt(n * W / H / 1.5)))))
-            rows = int(math.ceil(n / cols))
-            for k in range(self.grid.columnCount() + 1):
-                self.grid.setColumnStretch(k, 0)
-            for k in range(self.grid.rowCount() + 1):
-                self.grid.setRowStretch(k, 0)
-            for c in range(cols):
-                self.grid.setColumnStretch(c, 1)
-            for r in range(rows):
-                self.grid.setRowStretch(r, 1)
-            for k, i in enumerate(vis):
-                self.grid.addWidget(self.tiles[i], k // cols, k % cols)
-                self.tiles[i].setVisible(True)
-            tw, th = W / cols, H / rows
-            fs = int(max(8, min(44, th * 0.22, tw / 7.5)))
-        else:
-            fs = 14
+        size = self.size_combo.currentData() or "auto"
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded if size in WALL_TILE
+                                               else Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        vp = self.scroll.viewport()
+        W, H = vp.width(), vp.height()
+        cols, rows, tile_h, fs = wall_grid(n, W, H, size)
+        for k in range(self.grid.columnCount() + 1):
+            self.grid.setColumnStretch(k, 0)
+        for k in range(self.grid.rowCount() + 2):
+            self.grid.setRowStretch(k, 0)
+        for c in range(cols):
+            self.grid.setColumnStretch(c, 1)
+        for r in range(rows):
+            self.grid.setRowStretch(r, 0 if tile_h else 1)
+        if tile_h:
+            self.grid.setRowStretch(rows, 1)            # tuiles fixes : calées en haut
+        for k, i in enumerate(vis):
+            t = self.tiles[i]
+            if tile_h:
+                t.setFixedHeight(tile_h)
+            else:
+                t.setMinimumHeight(0)
+                t.setMaximumHeight(16777215)
+            self.grid.addWidget(t, k // cols, k % cols)
+            t.setVisible(True)
+        if tile_h:
+            self.host.setMaximumHeight(16777215)
+            self.host.setMinimumHeight(rows * (tile_h + 6))
+        else:       # auto : calé sur la partie visible (le texte replié des tuiles réclamerait plus de hauteur)
+            self.host.setMinimumHeight(0)
+            self.host.setMaximumHeight(max(1, H))
         if fs != self._fs:
             self._fs = fs
             self._sig = [None] * len(self.tiles)
@@ -6576,6 +6622,8 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self._strong_changed()
         self.set_expert(bool(data.get("expert", False)))
+        ix = self.wall.size_combo.findData(data.get("wall_size", "auto"))
+        self.wall.size_combo.setCurrentIndex(max(0, ix))
         so = data.get("sections")
         if isinstance(so, dict):
             for k_, v_ in so.items():
@@ -6683,7 +6731,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
-            expert=self.expert, sections=dict(self.sections_open),
+            expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
         if full:
@@ -8070,14 +8118,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 win_.move(screen.geometry().topLeft())
             win_.showFullScreen()
             win_.activateWindow()
-            self.wall.full_btn.setText("⛶ Quitter le plein écran (Échap)")
+            self.wall.full_btn.setText("⛶ Quitter (Échap)")
         elif not on and self.wall_is_fullscreen():
             win_, self._wall_full = self._wall_full, None
             self.dock_wall.setWidget(self.wall)
             self.wall.show()
             win_.hide()
             win_.deleteLater()
-            self.wall.full_btn.setText("⛶ Plein écran (F11)")
+            self.wall.full_btn.setText("⛶ Plein écran")
             self.dock_wall.show()
             self.dock_wall.raise_()
         self.wall.relayout()
