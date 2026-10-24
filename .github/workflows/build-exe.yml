@@ -79,3 +79,32 @@ jobs:
             **Télécharger :** `TinySA-Monitor.exe` ci-dessous (Windows, aucune installation).
             Au premier lancement, SmartScreen peut avertir (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
             PC du 2ᵉ tinySA en réseau : lancer `TinySA-Monitor.exe --relais`.
+
+      - name: Pré-release de test (push sur une branche autre que main)
+        if: github.ref_type == 'branch' && github.ref_name != 'main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="test-${GITHUB_REF_NAME//\//-}"
+          gh release delete "$tag" --cleanup-tag -y || true
+          gh release create "$tag" dist/TinySA-Monitor.exe --prerelease --target "$GITHUB_SHA" \
+            --title "Test ${GITHUB_REF_NAME} — $(date -u +'%d/%m %H:%M') UTC" \
+            --notes "Version de test (branche ${GITHUB_REF_NAME}, commit ${GITHUB_SHA::7}), remplacée à chaque push.
+          Télécharger TinySA-Monitor.exe ci-dessous. SmartScreen (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
+          PC du 2ᵉ tinySA en réseau : lancer TinySA-Monitor.exe --relais."
+
+      - name: Release stable (push sur main, une fois par version)
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver=$(grep -m1 -oP '^APP_VER = "\K[^"]+' tinysa_monitor.py)
+          if gh release view "v$ver" >/dev/null 2>&1; then
+            echo "Release v$ver déjà publiée : rien à faire (monte APP_VER pour une nouvelle version)."
+          else
+            gh release create "v$ver" dist/TinySA-Monitor.exe --target "$GITHUB_SHA" --title "TinySA Monitor $ver" \
+              --generate-notes --latest
+          fi
+

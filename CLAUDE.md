@@ -14,8 +14,11 @@ en local, vrai Windows dans la CI) ; ni le vrai tinySA, ni les sons, ni un vrai 
 ## Exe et CI
 `.github/workflows/build-exe.yml` (windows-latest), à chaque push sur n'importe quelle branche : tests, `gui_reel.py`
 en vrai rendu Windows (non bloquant ; résultat OK/FAIL remonté en **annotations** du run), PyInstaller → artefact
-`TinySA-Monitor` (l'exe) et `captures-interface-windows`. Un tag `v*` attache l'exe à une Release (pré-release si le
-tag contient un tiret). Dépôt **privé** : téléchargement réservé aux comptes qui y ont accès.
+`TinySA-Monitor` (l'exe) et `captures-interface-windows`. Publication automatique : push sur une branche ≠ main →
+pré-release `test-<branche>` remplacée à chaque push ; push sur main → release `v<APP_VER>` (une fois par version :
+monter `APP_VER` pour publier). Un tag `v*` poussé à la main attache aussi l'exe. Le proxy du conteneur Claude
+interdit de pousser des tags / créer des releases : passer par le workflow. Dépôt **privé** : téléchargement réservé
+aux comptes qui y ont accès.
 Depuis le conteneur Claude, `gh run view <id>` montre les annotations, mais les journaux et artefacts (stockage Azure)
 sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : il n'y a aucune police (mesures ×2).
 
