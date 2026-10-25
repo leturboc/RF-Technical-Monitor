@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.5"
+APP_VER = "7.4.6"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1440,6 +1440,7 @@ IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
 # tolérances (MHz) par type de produit : un produit plus loin que ça de la porteuse est accepté.
 # 2 TX / 3 TX = défauts des guides EazyRF (100 / 50 kHz) ; 5ᵉ / 7ᵉ ordre : notre choix (pas de défaut publié trouvé)
 IM_TOL_PRESETS = [("EazyRF : 2 TX 100 · 3 TX 50 · 5ᵉ / 7ᵉ 50 kHz", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}),
+                  ("2A − B seulement : 2 TX 100 kHz · 3 TX et 5ᵉ ignorés", {"2tx3": 0.100, "3tx3": 0.0, "5": 0.0, "7": 0.0}),
                   ("Prudent : 200 · 100 · 100 kHz", {"2tx3": 0.200, "3tx3": 0.100, "5": 0.100, "7": 0.100}),
                   ("Ancien réglage : 300 kHz partout", {"2tx3": 0.300, "3tx3": 0.300, "5": 0.300, "7": 0.300})]
 
@@ -1472,7 +1473,8 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     bws / tbws : largeur (MHz) de chaque émetteur / cible, 0 = fréquence simple. Blocs larges (Spectera, WMAS) :
     a·A − b·B s'étale sur ± (a·largeur A + b·largeur B) / 2 autour de son centre ; « tombe sur » une cible quand
     cette bande arrive à moins de guard du bord de la cible.
-    guard : tolérance (MHz), ou dict par type de produit (im_class : {"2tx3": 0.1, "3tx3": 0.05, "5": 0.05}).
+    guard : tolérance (MHz), ou dict par type de produit (im_class : {"2tx3": 0.1, "3tx3": 0.05, "5": 0.05}) ;
+    dans le dict, 0 = type ignoré (comme une tolérance 0 dans EazyRF).
     -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta, hw, gap)] ; terms = [(indice, coefficient)] ;
     hw = demi-largeur du produit ; gap = écart bord à bord avec la cible (≤ 0 : ça se chevauche)."""
     gd = dict(guard) if isinstance(guard, dict) else None
@@ -1480,6 +1482,10 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
 
     def tol(order, ntx):
         return guard if gd is None else gd.get(im_class(order, ntx), guard)
+
+    def ignored(order, ntx):
+        """Tolérance 0 dans le dict = ce type de produit n'est pas compté (comme 0 dans EazyRF)."""
+        return gd is not None and tol(order, ntx) <= 0
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
     info = dict(pairs=0, truncated=False, too_big=False)
@@ -1526,7 +1532,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             if T is not None:
                 ti, gap = near_t(vals, hw)
                 tv = T[ti]
-                msk &= gap <= tol(order, 2)
+                msk &= (gap <= tol(order, 2)) & (not ignored(order, 2))
                 msk &= (np.abs(F[ii] - tv) >= 1e-6) & (np.abs(F[jj] - tv) >= 1e-6)
             hits = np.nonzero(msk)[0]
             if len(hits) > cap:
@@ -1578,6 +1584,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 ti, gap = near_t(vals, hw)
                 tv = T[ti]
                 ok &= gap <= np.where(ntx <= 2, tol(order, 2), tol(order, 3))
+                ok &= np.where(ntx <= 2, not ignored(order, 2), not ignored(order, 3))
                 ok &= ~(np.abs(F[allidx] - tv[:, None]) < 1e-6).any(axis=1)
             for h in np.nonzero(ok)[0]:
                 terms = {}
@@ -4905,8 +4912,9 @@ class IntermodDialog(QtWidgets.QDialog):
             sp.setSingleStep(10)
             sp.setSuffix(" kHz")
             sp.setPrefix("± ")
+            sp.setSpecialValueText("ignoré")            # 0 = ce type de produit n'est pas compté (comme EazyRF)
             sp.setToolTip(tip + "\nUn produit plus loin que ça de ta fréquence est accepté (comme les tolérances "
-                                "d'EazyRF).")
+                                "d'EazyRF).\n0 = « ignoré » : ce type de produit n'est pas compté du tout.")
             self.tol_spins[key] = sp
         self.tol_combo = QtWidgets.QComboBox()
         for txt, d in IM_TOL_PRESETS:

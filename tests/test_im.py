@@ -229,6 +229,17 @@ ok("une seule tolérance (ancien appel) : 3 TX à 80 kHz gênant", [r for r in r
 ok("im3_clash : 3 TX séparé", im3_clash(493.08, [500.0, 503.0, 510.0], 0.1, 0.05) == []
    and im3_clash(493.08, [500.0, 503.0, 510.0], 0.1) != [])
 
+# ---- tolérance 0 = type ignoré (comme EazyRF)
+TXc = [558.0, 574.0, 606.0, 614.0, 646.0, 478.0]       # le plan de Clément : 606 + 614 − 646 = 574 pile
+rows, _ = im_scan(TXc, (3,), 3, targets=TXc, guard=dict(EZ))
+ok("plan de Clément : A + B − C pile dessus trouvé", any(r["ntx"] == 3 and r["gap"] <= 1e-9 for r in rows))
+rows, _ = im_scan(TXc, (3,), 3, targets=TXc, guard=dict(EZ, **{"3tx3": 0.0}))
+ok("tolérance 3 TX = 0 → les A + B − C ne sont plus comptés", not [r for r in rows if r["ntx"] == 3], str(rows[:2]))
+rows, _ = im_scan(TXc, (3, 5), 3, targets=TXc, guard={"2tx3": 0.1, "3tx3": 0.0, "5": 0.0, "7": 0.0})
+ok("seulement 2A − B : plan propre", not rows, str([(r["f"], r["terms"]) for r in rows[:3]]))
+rows, _ = im_scan(TXc, (3,), 2, targets=TXc, guard={"2tx3": 0.0, "3tx3": 0.05})
+ok("tolérance 2 TX = 0 (chemin rapide) → rien", not rows)
+
 # ---- verdict : gravité en couleurs
 iv = ns["im_verdict"]
 ok("verdict : mesuré au-dessus du seuil occupé → 🔴", iv(-60.0, -80.0, -90.0, True, 3, 3)[0] == 3)
