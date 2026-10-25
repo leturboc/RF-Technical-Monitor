@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.2.3"
+APP_VER = "7.3.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1426,6 +1426,16 @@ def focus_plan(freqs, pts_cap, step_khz=20.0, gap=4.0, margin=0.3, min_pts=101, 
 IM_MAX_PAIRS = 40_000_000       # au-delà, le calcul est refusé (trop long)
 IM_CHUNK = 1_500_000
 IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
+# tolérances (MHz) par type de produit : un produit plus loin que ça de la porteuse est accepté.
+# 2 TX / 3 TX = défauts des guides EazyRF (100 / 50 kHz) ; 5ᵉ / 7ᵉ ordre : notre choix (pas de défaut publié trouvé)
+IM_TOL_PRESETS = [("EazyRF : 2 TX 100 · 3 TX 50 · 5ᵉ / 7ᵉ 50 kHz", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}),
+                  ("Prudent : 200 · 100 · 100 kHz", {"2tx3": 0.200, "3tx3": 0.100, "5": 0.100, "7": 0.100}),
+                  ("Ancien réglage : 300 kHz partout", {"2tx3": 0.300, "3tx3": 0.300, "5": 0.300, "7": 0.300})]
+
+
+def im_class(order, ntx):
+    """Type de produit pour les tolérances : 2tx3 (2A − B), 3tx3 (A + B − C), puis "5", "7"…"""
+    return ("2tx3" if ntx <= 2 else "3tx3") if order == 3 else str(order)
 
 
 def im_pairs(n, order, max_tx=None):
@@ -1451,8 +1461,14 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     bws / tbws : largeur (MHz) de chaque émetteur / cible, 0 = fréquence simple. Blocs larges (Spectera, WMAS) :
     a·A − b·B s'étale sur ± (a·largeur A + b·largeur B) / 2 autour de son centre ; « tombe sur » une cible quand
     cette bande arrive à moins de guard du bord de la cible.
+    guard : tolérance (MHz), ou dict par type de produit (im_class : {"2tx3": 0.1, "3tx3": 0.05, "5": 0.05}).
     -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta, hw, gap)] ; terms = [(indice, coefficient)] ;
     hw = demi-largeur du produit ; gap = écart bord à bord avec la cible (≤ 0 : ça se chevauche)."""
+    gd = dict(guard) if isinstance(guard, dict) else None
+    guard = max(gd.values()) if gd else float(guard)
+
+    def tol(order, ntx):
+        return guard if gd is None else gd.get(im_class(order, ntx), guard)
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
     info = dict(pairs=0, truncated=False, too_big=False)
@@ -1499,7 +1515,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             if T is not None:
                 ti, gap = near_t(vals, hw)
                 tv = T[ti]
-                msk &= gap <= guard
+                msk &= gap <= tol(order, 2)
                 msk &= (np.abs(F[ii] - tv) >= 1e-6) & (np.abs(F[jj] - tv) >= 1e-6)
             hits = np.nonzero(msk)[0]
             if len(hits) > cap:
@@ -1550,7 +1566,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             if T is not None:
                 ti, gap = near_t(vals, hw)
                 tv = T[ti]
-                ok &= gap <= guard
+                ok &= gap <= np.where(ntx <= 2, tol(order, 2), tol(order, 3))
                 ok &= ~(np.abs(F[allidx] - tv[:, None]) < 1e-6).any(axis=1)
             for h in np.nonzero(ok)[0]:
                 terms = {}
@@ -1597,9 +1613,11 @@ def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40, bws=None):
     return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit, bws=bws)
 
 
-def im3_clash(c, F, guard):
+def im3_clash(c, F, guard, guard3=None):
     """Collisions d'intermodulation 3e ordre mettant en jeu la fréquence candidate c (MHz) avec les émetteurs F.
-    -> [(texte, écart en MHz)] ; vide = aucun risque à ± guard."""
+    guard : tolérance des produits 2 TX (2A − B) ; guard3 : celle des 3 TX (A + B − C), = guard si absente.
+    -> [(texte, écart en MHz)] ; vide = aucun risque."""
+    g3 = guard if guard3 is None else guard3
     F = np.sort(np.asarray(F, dtype=float))
     n = len(F)
     out = []
@@ -1626,12 +1644,12 @@ def im3_clash(c, F, guard):
         J, K = np.meshgrid(ar, ar, indexing="ij")
         # c + fj − fk ≈ fl
         idx, d = nearest(c + F[J] - F[K])
-        m = (J != K) & (idx != J) & (idx != K) & (np.abs(d) <= guard)
+        m = (J != K) & (idx != J) & (idx != K) & (np.abs(d) <= g3)
         for j, k in zip(*np.nonzero(m)):
             out.append((f"{c:.3f} + {F[j]:.3f} − {F[k]:.3f} ≈ {F[idx[j, k]]:.3f}", float(d[j, k])))
         # fj + fk − c ≈ fl
         idx, d = nearest(F[J] + F[K] - c)
-        m = (J < K) & (idx != J) & (idx != K) & (np.abs(d) <= guard)
+        m = (J < K) & (idx != J) & (idx != K) & (np.abs(d) <= g3)
         for j, k in zip(*np.nonzero(m)):
             out.append((f"{F[j]:.3f} + {F[k]:.3f} − {c:.3f} ≈ {F[idx[j, k]]:.3f}", float(d[j, k])))
     out.sort(key=lambda t: abs(t[1]))
@@ -1639,7 +1657,7 @@ def im3_clash(c, F, guard):
 
 
 def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guard=0.2, grid=0.025,
-              max_check=600):
+              max_check=600, guard3=None):
     """Cherche n fréquences libres entre a et b (MHz) d'après un spectre mesuré (F trié, L en dBm) :
     niveau max sur ± width/2 sous thr, à plus de min_sep de toute fréquence existante ou déjà choisie,
     et sans intermodulation 3e ordre à ± guard sur l'ensemble.
@@ -1675,7 +1693,7 @@ def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guar
         if dist_to(c, allf) < min_sep:
             diag["trop_proches"] += 1
             continue
-        if im3_clash(c, allf, guard):
+        if im3_clash(c, allf, guard, guard3):
             diag["intermod"] += 1
             continue
         chosen.append(c)
@@ -4192,7 +4210,7 @@ class IntermodDialog(QtWidgets.QDialog):
         self.freq_spin.setValue(origin if origin else 500.0)
         self.freq_spin.setSuffix(" MHz")
         self.src_combo = QtWidgets.QComboBox()
-        self.src_combo.addItem("Émetteurs : toute la liste", "all")
+        self.src_combo.addItem("Émetteurs : toute la liste (sauf « doit rester libre »)", "all")
         self.src_combo.addItem("Émetteurs : la couche active", "scope")
         self.src_combo.addItem("Émetteurs : les lignes sélectionnées", "sel")
         self.active_chk = QtWidgets.QCheckBox("Seulement ceux qui émettent (vus sur le spectre)")
@@ -4212,15 +4230,26 @@ class IntermodDialog(QtWidgets.QDialog):
         self.tgt_combo.addItem("Protéger : toutes les fréquences de la liste", "all")
         self.tgt_combo.addItem("Protéger : la couche active seulement", "scope")
         self.tgt_combo.addItem("Aucune cible : lister tous les produits dans la plage", "none")
-        self.guard_spin = QtWidgets.QDoubleSpinBox()
-        self.guard_spin.setDecimals(3)
-        self.guard_spin.setRange(0.005, 5.0)
-        self.guard_spin.setSingleStep(0.05)
-        self.guard_spin.setValue(0.30)
-        self.guard_spin.setPrefix("± ")
-        self.guard_spin.setSuffix(" MHz")
-        self.guard_spin.setToolTip("Écart sous lequel un produit est considéré comme gênant.\n"
-                                   "300 kHz = écart par défaut d'EazyRF · 350 kHz = minimum de WWB (mode Standard).")
+        # tolérances par type de produit (comme EazyRF : un 2A − B est bien plus fort qu'un A + B − C)
+        self.tol_spins = {}
+        for key, tip in (("2tx3", "2 TX, 3ᵉ ordre (2A − B) : le produit le plus fort."),
+                         ("3tx3", "3 TX, 3ᵉ ordre (A + B − C) : plus faible, tolérance plus serrée."),
+                         ("5", "5ᵉ ordre et au-delà (3A − 2B, 2A + B − 2C…) : faibles.")):
+            sp = QtWidgets.QSpinBox()
+            sp.setRange(0, 2000)
+            sp.setSingleStep(10)
+            sp.setSuffix(" kHz")
+            sp.setPrefix("± ")
+            sp.setToolTip(tip + "\nUn produit plus loin que ça de ta fréquence est accepté (comme les tolérances "
+                                "d'EazyRF).")
+            self.tol_spins[key] = sp
+        self.tol_combo = QtWidgets.QComboBox()
+        for txt, d in IM_TOL_PRESETS:
+            self.tol_combo.addItem(txt, d)
+        self.tol_combo.setToolTip("Préréglages de tolérances. EazyRF : valeurs par défaut de ses guides (2 TX 100 kHz,\n"
+                                  "3 TX 50 kHz). Mets les mêmes que dans ton logiciel de coordination pour comparer.")
+        self.tol_combo.currentIndexChanged.connect(lambda *_: self._tol_preset())
+        self._tol_preset()
         bands = [b for b in owner.bands if b["enabled"]]
         self.fmin_spin = QtWidgets.QDoubleSpinBox()
         self.fmax_spin = QtWidgets.QDoubleSpinBox()
@@ -4237,7 +4266,9 @@ class IntermodDialog(QtWidgets.QDialog):
         lay.addLayout(R("Mode :", self.mode_combo, self.freq_spin, None))
         lay.addLayout(R(self.src_combo, self.active_chk, self.src_lbl, None))
         lay.addLayout(R("Combinaisons :", self.maxtx_combo, self.o3_chk, self.o5_chk, self.o7_chk, None))
-        lay.addLayout(R(self.tgt_combo, "Marge :", self.guard_spin, None))
+        lay.addLayout(R(self.tgt_combo, "Tolérances :", self.tol_combo, None))
+        lay.addLayout(R("2 TX :", self.tol_spins["2tx3"], "3 TX :", self.tol_spins["3tx3"],
+                        "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], None))
         lay.addLayout(R("Plage (liste complète) :", self.fmin_spin, "à", self.fmax_spin, None, self.go_btn))
         lay.addWidget(self.msg)
         self.table = QtWidgets.QTableWidget(0, 7)
@@ -4291,12 +4322,25 @@ class IntermodDialog(QtWidgets.QDialog):
             idx = [i for i, w in enumerate(o.watch) if o.in_scope(w)]
         else:
             idx = list(range(len(o.watch)))
+        if kind != "sel":                   # une réserve « doit rester libre » n'émet pas : pas un émetteur
+            idx = [i for i in idx if not o.is_keep_free(o.watch[i]["status"])]
         if self.active_chk.isChecked():
             idx = [i for i in idx if o.watch[i]["state"] in ("occ", "weak")]
         return idx
 
     def update_src(self, *_):
         self.src_lbl.setText(f"→ {len(self.source_indices())} émetteur(s)")
+
+    def _tol_preset(self):
+        d = self.tol_combo.currentData()
+        for k, sp in self.tol_spins.items():
+            sp.setValue(int(round(d[k] * 1000)))
+
+    def tolerances(self):
+        """-> dict pour im_scan (MHz) : 2 TX, 3 TX, 5ᵉ et 7ᵉ ordre."""
+        t5 = self.tol_spins["5"].value() / 1000.0
+        return {"2tx3": self.tol_spins["2tx3"].value() / 1000.0, "3tx3": self.tol_spins["3tx3"].value() / 1000.0,
+                "5": t5, "7": t5}
 
     def orders(self):
         out = tuple(x for x, c in ((3, self.o3_chk), (5, self.o5_chk), (7, self.o7_chk)) if c.isChecked())
@@ -4308,7 +4352,7 @@ class IntermodDialog(QtWidgets.QDialog):
         freqs = [o.watch[i]["freq"] for i in idx]
         names = [o.watch[i]["name"] for i in idx]
         bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]        # blocs Spectera / WMAS : produits en bandes
-        orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.guard_spin.value()
+        orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.tolerances()
         if len(freqs) < 2:
             self.msg.setText("Il faut au moins 2 émetteurs (change la source ou décoche « seulement ceux qui émettent »).")
             return
@@ -4340,11 +4384,22 @@ class IntermodDialog(QtWidgets.QDialog):
         win = max(0.05, o.win_spin.value() / 1000.0)
         thr, weak = o.thr_spin.value(), o.weak_spin.value()
         by_freq = {int(round(w["freq"] * 1000)): w["name"] for w in o.watch}
+        by_w = {int(round(w["freq"] * 1000)): w for w in o.watch}
         for r in rows:
             r["text"] = im_formula(r["terms"], names)
             r["numtext"] = im_formula(r["terms"], freqs=freqs, numeric=True)
-            r["meas"] = (None if F is None else level_block(F, L, r["f"], 2 * r["hw"], "max") if r["hw"] > 0.05
-                         else level_at(F, L, r["f"], win))
+            tw_ = None if (r["target"] is None or origin) else by_w.get(int(round(r["target"] * 1000)))
+            masked = tw_ is not None and tw_["state"] in ("occ", "weak") and o.is_keep_on(tw_["status"])
+            if F is None or masked:     # la cible émet : on mesurerait sa propre porteuse, pas le produit
+                r["meas"] = None
+            elif tw_ is not None:       # niveau là où ça gêne : sur la fréquence (ou le bloc) protégée
+                tb_ = float(tw_.get("bw") or 0.0)
+                r["meas"] = (level_block(F, L, tw_["freq"], tb_, "max") if tb_ else level_at(F, L, tw_["freq"], win))
+            elif r["hw"] > 0.05:        # produit large sans cible : son « plateau »
+                r["meas"] = level_block(F, L, r["f"], 2 * r["hw"], "median")
+            else:
+                r["meas"] = level_at(F, L, r["f"], win)
+            r["masked"] = masked
             if r["target"] is None:
                 r["tname"] = ""
             elif origin:
@@ -4356,7 +4411,8 @@ class IntermodDialog(QtWidgets.QDialog):
             elif r["meas"] is not None and o.weak_chk.isChecked() and r["meas"] >= weak:
                 r["verdict"], r["level"] = "énergie faible mesurée", 1
             elif r["target"] is not None and not origin:
-                r["verdict"], r["level"] = "à risque (calcul)", 1
+                r["verdict"], r["level"] = ("à risque (calcul · cible en émission)" if r.get("masked")
+                                            else "à risque (calcul)"), 1
             elif origin:
                 r["verdict"], r["level"] = "origine possible", 1
             else:
@@ -4495,10 +4551,11 @@ class RescueDialog(QtWidgets.QDialog):
         self.guard_spin.setDecimals(3)
         self.guard_spin.setRange(0.005, 5.0)
         self.guard_spin.setSingleStep(0.05)
-        self.guard_spin.setValue(0.30)
+        self.guard_spin.setValue(0.10)
         self.guard_spin.setPrefix("± ")
         self.guard_spin.setSuffix(" MHz")
-        self.guard_spin.setToolTip("Marge d'intermodulation 3ᵉ ordre avec tes fréquences.")
+        self.guard_spin.setToolTip("Tolérance d'intermodulation 3ᵉ ordre 2 TX (2A − B) avec tes fréquences ;\n"
+                                   "la moitié pour les 3 TX (A + B − C). 100 kHz = défaut 2 TX d'EazyRF.")
         self.thr_spin = QtWidgets.QDoubleSpinBox()
         self.thr_spin.setRange(-130, 0)
         self.thr_spin.setValue(owner.weak_spin.value() if owner.weak_chk.isChecked() else owner.thr_spin.value() - 10)
@@ -4557,7 +4614,7 @@ class RescueDialog(QtWidgets.QDialog):
         else:
             ex = [w["freq"] for w in o.watch]
         res, d = find_free(F, L, a, b, ex, self.n_spin.value(), self.width_spin.value(), self.sep_spin.value(),
-                           self.thr_spin.value(), self.guard_spin.value())
+                           self.thr_spin.value(), self.guard_spin.value(), guard3=self.guard_spin.value() / 2.0)
         self.found = res
         exa = sorted(w["freq"] for w in o.watch)
         t = self.table

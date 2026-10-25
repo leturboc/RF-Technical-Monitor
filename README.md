@@ -13,7 +13,11 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 - **Couches Scènes › Groupes** : un clic = on ne surveille / ne scanne que le groupe voulu ; bouton Global pour tout voir
 - **Statuts** : « doit rester libre » (⚠ CONFLIT si un signal apparaît) et « doit émettre » (⚠ ABSENT si un TX se tait)
 - **Alarmes** : panneau dédié, acquittement, priorité par groupe (Critique ❗ = son répété jusqu'à acquittement)
-- **Intermodulation** 2 / 3 / 5 TX (ordres 3, 5, 7) et « d'où ça peut venir ? » pour un signal inconnu
+- **Intermodulation** 2 / 3 / 5 TX (ordres 3, 5, 7), tolérances par type de produit comme EazyRF (2 TX 100 kHz,
+  3 TX 50 kHz par défaut), et « d'où ça peut venir ? » pour un signal inconnu
+- **🎤 Appel des micros** (Ctrl+L) : allume tes émetteurs, chaque fréquence passe ✓ ; résumé au journal, pack mal
+  réglé repéré (signal inconnu tout près d'une fréquence qui manque)
+- **Page web** pour l'équipe : état en direct, et acquittement des alarmes depuis le téléphone avec un code PIN
 - **Fréquence de secours** : canaux libres d'après le spectre mesuré, sans intermod avec ta liste
 - **Nommage rapide** (MIC 1, HF 1, IEM 1, Intercom… avec numérotation automatique +1)
 - **Enregistrement des balayages + relecture** (curseur de temps, lecture accélérée, saut à un événement)
@@ -101,7 +105,7 @@ comme un **bloc**.
 - Préréglages de bandes : Spectera UHF 470–608 / 630–698 MHz et 1G4 1350–1400 / 1435–1525 MHz (selon les pays).
 - Le mode démo simule un porteur Spectera pour les blocs « Doit émettre ».
 
-L'intermodulation ne tient pas compte de la largeur des blocs (calcul sur leur fréquence centrale).
+L'intermodulation tient compte de la largeur des blocs : leurs produits sont des bandes (« 540.000 ± 8.0 »).
 
 ## Alertes sur téléphone et page web
 
