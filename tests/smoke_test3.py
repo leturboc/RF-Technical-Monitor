@@ -71,7 +71,7 @@ tgt = {r["tname"] for r in dlg.rows}
 check("2A−B tombe sur Victime", any("Victime" in t for t in tgt), str(tgt))
 v = [r for r in dlg.rows if "Victime" in r["tname"]]
 check("formule HF 1 / HF 2", v and v[0]["text"] == "2×HF 1 − HF 2", str([r["text"] for r in v]))
-check("verdict 'à risque'", v and v[0]["verdict"].startswith("à risque"), str(v[:1]))
+check("verdict « calcul seul »", v and v[0]["verdict"].startswith("calcul seul"), str(v[:1]))
 check("table remplie", dlg.table.rowCount() == len(dlg.rows) and dlg.table.rowCount() > 0)
 check("message", "produit" in dlg.msg._t, dlg.msg._t)
 

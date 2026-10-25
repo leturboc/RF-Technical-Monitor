@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.4"
+APP_VER = "7.4.5"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4919,8 +4919,17 @@ class IntermodDialog(QtWidgets.QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        for c, w in ((0, 96), (1, 52), (3, 190), (4, 76), (5, 88), (6, 190)):
+        for c, w in ((0, 96), (1, 92), (3, 190), (4, 76), (5, 88), (6, 200)):
             self.table.setColumnWidth(c, w)
+        for c, tip in ((1, "IM3 = 3ᵉ ordre, IM5 = 5ᵉ ordre ; « 2 TX » = 2 émetteurs (2A − B : le plus fort),\n"
+                           "« 3 TX » = A + B − C (plus faible), etc."),
+                       (4, "Écart entre le produit calculé et ta fréquence (0 = pile dessus)."),
+                       (5, "Ce que le tinySA mesure EN CE MOMENT à cet endroit (pas la force du produit)."),
+                       (6, "⚠ visible = le niveau mesuré dépasse ton seuil « occupé » : le produit est sans doute là.\n"
+                           "énergie faible = au-dessus du seuil « faible ».\n"
+                           "calcul seul = les maths disent que ça tombe dessus, mais rien n'est mesuré : à surveiller,\n"
+                           "pas une panne (dépend de la puissance, des distances, des récepteurs).")):
+            self.table.horizontalHeaderItem(c).setToolTip(tip)
         self.table.cellDoubleClicked.connect(lambda r, c: self.on_zoom())
         lay.addWidget(self.table, 1)
         b_zoom = QtWidgets.QPushButton("🔍 Voir le produit sur le spectre")
@@ -5052,8 +5061,10 @@ class IntermodDialog(QtWidgets.QDialog):
             elif r["meas"] is not None and o.weak_chk.isChecked() and r["meas"] >= weak:
                 r["verdict"], r["level"] = "énergie faible mesurée", 1
             elif r["target"] is not None and not origin:
-                r["verdict"], r["level"] = ("à risque (calcul · cible en émission)" if r.get("masked")
-                                            else "à risque (calcul)"), 1
+                # le calcul dit « ça tombe dessus » ; ce n'est PAS une mesure (le niveau mesuré est sous le seuil)
+                r["verdict"], r["level"] = ("calcul seul · cible en émission" if r.get("masked") else
+                                            "calcul seul · rien mesuré" if r["meas"] is not None else
+                                            "calcul seul (pas de mesure)"), 1
             elif origin:
                 r["verdict"], r["level"] = "origine possible", 1
             else:
@@ -5061,8 +5072,15 @@ class IntermodDialog(QtWidgets.QDialog):
         self.rows = rows
         self.cur_freqs, self.cur_names = freqs, names
         self.fill()
-        txt = f"{len(rows)} produit(s)" + (" (liste tronquée)" if info["truncated"] else "")
-        txt += f" · {len(freqs)} émetteur(s) · ordres {', '.join(str(x) for x in orders)} · {info['pairs']:,} combinaisons examinées".replace(",", " ")
+        if targets is not None and not origin:
+            npairs = f"{info['pairs']:,}".replace(",", " ")
+            txt = (f"{npairs} combinaisons calculées ({len(freqs)} émetteurs, ordres "
+                   f"{', '.join(str(x) for x in orders)}) · seules celles qui tombent sur une de tes fréquences "
+                   f"(dans la tolérance) sont listées : {len(rows)} produit(s)")
+            txt += " (liste tronquée)" if info["truncated"] else ""
+        else:
+            txt = f"{len(rows)} produit(s)" + (" (liste tronquée)" if info["truncated"] else "")
+            txt += f" · {len(freqs)} émetteur(s) · ordres {', '.join(str(x) for x in orders)} · {info['pairs']:,} combinaisons examinées".replace(",", " ")
         n_vis = sum(1 for r in rows if r["level"] == 2)
         if n_vis:
             txt += f"\n⚠ {n_vis} produit(s) retombent sur un niveau mesuré au-dessus du seuil : à regarder en priorité."
