@@ -5631,6 +5631,7 @@ class WallWindow(QtWidgets.QWidget):
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setWidget(self.host)
         self.scroll.setMinimumSize(120, 60)
+        self.scroll.viewport().installEventFilter(self)     # la barre qui se replie change la place des tuiles
         lay.addWidget(self.scroll, 1)
         for key, fn in (("F11", self.toggle_full), ("Escape", self.leave_full)):
             sc = QtGui.QShortcut(QtGui.QKeySequence(key), self)
@@ -5666,6 +5667,11 @@ class WallWindow(QtWidgets.QWidget):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._timer.start()
+
+    def eventFilter(self, obj, e):
+        if e.type() == QtCore.QEvent.Type.Resize and obj is self.scroll.viewport():
+            self._timer.start()
+        return super().eventFilter(obj, e)
 
     def showEvent(self, e):
         super().showEvent(e)
