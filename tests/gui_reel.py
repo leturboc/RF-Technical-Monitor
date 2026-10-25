@@ -646,8 +646,24 @@ if win.web is not None:
           and len(_sp["bands"][0]["f"]) == len(_sp["bands"][0]["l"]), str(len(_sp["bands"])))
     check("page web : la régie voit le client", any(e["name"] == "Test" and e["view"] == "spectre"
                                                     for e in win.web.client_list()))
-    DLG_ACTION[0] = lambda d: (check("alertes : liste des connectés", any("Test" in d.clients.item(i).text()
-                                                                          for i in range(d.clients.count()))), "reject")[1]
+    def _clients_act(d):
+        if not isinstance(d, m.AlertsDialog):
+            return "reject"
+        check("alertes : liste des connectés", any("Test" in d.clients.item(i).text() for i in range(d.clients.count())))
+        d.clients.setCurrentRow(0)
+        _orig_gt = W.QInputDialog.getText
+        W.QInputDialog.getText = staticmethod(lambda *a, **k: ("Tablette régie", True))
+        try:
+            d.rename_client()
+        finally:
+            W.QInputDialog.getText = _orig_gt
+        check("alertes : client renommé depuis le PC", any(e["name"] == "Tablette régie" for e in win.web.client_list()))
+        d.clients.setCurrentRow(0)
+        d.identify_client()
+        check("alertes : identifier (clignotement demandé)", any(e.get("ident", 0) > time.time() for e in win.web.client_list()))
+        return "reject"
+
+    DLG_ACTION[0] = _clients_act
     step("dialogue alertes (connectés)", win.open_alerts)
     DLG_ACTION[0] = "reject"
     check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())

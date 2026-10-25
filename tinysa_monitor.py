@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.0"
+APP_VER = "7.4.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2534,6 +2534,9 @@ bot</b>. Garde-le secret (il permet d'écrire au nom du bot).</li>
 <ul>
 <li>Le PC de surveillance doit avoir <b>Internet</b> (partage 4G du téléphone, wifi du site…). Sans réseau,
 les alertes attendent et sont réessayées 3 fois ; l'erreur s'affiche dans cette fenêtre.</li>
+<li>Erreur « <i>hostname ntfy.sh not verified</i> » / « certificat » avec un nom bizarre
+(<code>portail.hotspot…</code>) : le téléphone (ou le PC) est sur un <b>Wi-Fi à portail</b> (hôtel, camping, hotspot)
+pas encore validé. Ouvre une page web pour valider le portail, ou coupe le Wi-Fi et passe en 4G.</li>
 <li>Une alerte est envoyée <b>une fois</b> par alarme (pas à chaque bip).</li>
 <li>Le jeton Telegram reste dans la config de CE PC : il n'est jamais copié dans les fichiers de show.</li>
 </ul>"""
@@ -2614,6 +2617,19 @@ class ClientBook:
             e["view"] = str(view)[:20]
         return e
 
+    def rename(self, token, name):
+        e = self.c.get(token)
+        if e is not None:
+            e["name"] = re.sub(r"\s+", " ", str(name or "")).strip()[:32] or e["name"]
+        return e
+
+    def identify(self, token, now, secs=8.0):
+        """Fait clignoter l'écran de ce client pendant `secs` s (pour savoir quelle tablette est laquelle)."""
+        e = self.c.get(token)
+        if e is not None:
+            e["ident"] = now + secs
+        return e
+
     def purge(self, now):
         for t in [t for t, e in self.c.items() if now - e["last"] > self.keep_s]:
             del self.c[t]
@@ -2626,7 +2642,7 @@ class ClientBook:
         return any(e["view"] in views and now - e["last"] <= self.online_s for e in self.c.values())
 
     def listing(self, now):
-        out = [dict(e, online=now - e["last"] <= self.online_s) for e in self.c.values()]
+        out = [dict(e, token=t, online=now - e["last"] <= self.online_s) for t, e in self.c.items()]
         out.sort(key=lambda e: (not e["online"], e["name"].lower()))
         return out
 
@@ -2686,6 +2702,9 @@ body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,
 button,input,select{font:inherit;color:inherit}
 .hidden{display:none!important}.mut{color:var(--mut)}
 #stale{display:none;position:sticky;top:0;z-index:9;background:var(--bad);color:#fff;padding:8px 16px;font-weight:700;text-align:center}
+#ident{position:fixed;inset:0;z-index:50;display:grid;place-items:center;text-align:center;animation:blink .5s steps(1) infinite}
+#ident div{font-size:72px}#ident b{display:block;font-size:42px;margin:8px 16px}#ident span{font-size:20px;opacity:.85}
+@keyframes blink{0%{background:#ff9f1c;color:#111}50%{background:#111;color:#ff9f1c}}
 /* --- connexion --- */
 #login{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;
@@ -2766,6 +2785,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
 .ttl span{display:none}.chip{max-width:90px}main{padding:12px 12px 40px}}
 </style></head><body>
 <div id="stale">⚠ Plus de nouvelles du PC de surveillance</div>
+<div id="ident" class="hidden"><div>👋<b id="identn"></b><span>C'est cet écran-ci</span></div></div>
 <div id="login" class="hidden"><form class="card" id="lf">
  <div class="logo">📡</div><h1 id="lt">TinySA Monitor</h1><p>Surveillance HF en direct</p>
  <label for="ln">Ton nom (pour que la régie sache qui regarde)</label>
@@ -2790,9 +2810,10 @@ function route(){const h=(location.hash||"").replace(/^#\/?/,"");return h}
 async function api(u,o){return fetch(u,Object.assign({cache:"no-store",credentials:"same-origin"},o||{}))}
 function post(u,b){return api(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})}
 // ---------- connexion
-function showLogin(needPw,msg){$("#app").classList.add("hidden");$("#login").classList.remove("hidden");
- $("#lpw").classList.toggle("hidden",!needPw);$("#ln").value=LS.get("name","");$("#le").textContent=msg||"";
- (LS.get("name","")&&needPw?$("#lp"):$("#ln")).focus()}
+function showLogin(needPw,msg){const was=!$("#login").classList.contains("hidden");
+ $("#app").classList.add("hidden");$("#login").classList.remove("hidden");$("#lpw").classList.toggle("hidden",!needPw);
+ if(was)return;   // déjà affiché : surtout ne pas effacer ce que la personne est en train de taper
+ $("#ln").value=LS.get("name","");$("#le").textContent=msg||"";(LS.get("name","")&&needPw?$("#lp"):$("#ln")).focus()}
 $("#lf").onsubmit=async e=>{e.preventDefault();const name=$("#ln").value.trim()||"Invité";
  let r;try{r=await post("connexion",{name:name,password:$("#lp").value})}catch(x){$("#le").textContent="PC injoignable";return}
  if(r.ok){LS.set("name",name);$("#lp").value="";$("#login").classList.add("hidden");tick();return}
@@ -2807,6 +2828,8 @@ async function tick(){if(busy)return;busy=true;try{
  if(!d.me){const n=LS.get("name","");if(n&&!d.password){await post("connexion",{name:n,password:""});}
   else if(!n){showLogin(d.password);return}}
  $("#login").classList.add("hidden");$("#app").classList.remove("hidden");
+ if(d.me&&d.me!==LS.get("name",""))LS.set("name",d.me);       // renommé depuis le PC
+ $("#ident").classList.toggle("hidden",!d.ident);$("#identn").textContent=d.me||"";
  if((v==="spectre"||v==="waterfall")&&d.views.includes(v)){try{const s=await api("spectre.json");if(s.ok){spec=await s.json()}}catch(e){}}
  render()}finally{busy=false;$("#stale").style.display=(last&&Date.now()-last>8000)?"block":"none"}}
 function clock(){const n=new Date();$("#clock").textContent=n.toLocaleTimeString("fr-FR",{hour12:false})}
@@ -3403,6 +3426,14 @@ class WebServer(threading.Thread):
         with self._lock:
             self.clients.revoke_all()
 
+    def rename(self, token, name):
+        with self._lock:
+            return self.clients.rename(token, name) is not None
+
+    def identify(self, token):
+        with self._lock:
+            return self.clients.identify(token, time.time()) is not None
+
     def run(self):
         owner = self
 
@@ -3465,6 +3496,7 @@ class WebServer(threading.Thread):
                     self._send(200, owner.get_spec(), "application/json; charset=utf-8")
                     return
                 head = dict(me=None if me is None else me["name"], password=bool(cfg["password"]),
+                            ident=bool(me and me.get("ident", 0) > time.time()),
                             views=[k for k in WEB_VIEW_KEYS if cfg["views"][k]],
                             ack=len(str(owner.get_pin() or "").strip()) >= 4)
                 body = (json.dumps(head, ensure_ascii=False)[:-1] + ',"state":').encode("utf-8") + owner.get_json() + b"}"
@@ -3621,6 +3653,13 @@ class AlertsDialog(QtWidgets.QDialog):
         self.clients = QtWidgets.QListWidget()
         self.clients.setMaximumHeight(110)
         self.clients.setToolTip("Les personnes qui ont la page ouverte (nom choisi, adresse, vue regardée).")
+        self.ren_btn = QtWidgets.QPushButton("✏ Renommer…")
+        self.ren_btn.setToolTip("Change le nom du client choisi (il le voit tout de suite sur sa page).")
+        self.ren_btn.clicked.connect(lambda *_: self.rename_client())
+        self.id_btn = QtWidgets.QPushButton("👋 Identifier")
+        self.id_btn.setToolTip("Fait clignoter l'écran du client choisi pendant 8 s : pratique pour savoir quelle\n"
+                               "tablette / quel téléphone est lequel.")
+        self.id_btn.clicked.connect(lambda *_: self.identify_client())
         self.kick_btn = QtWidgets.QPushButton("Déconnecter tout le monde")
         self.kick_btn.setToolTip("Oublie toutes les connexions : avec un mot de passe, chacun doit se reconnecter.")
         self.kick_btn.clicked.connect(lambda *_: (owner.web.revoke_all() if owner.web is not None else None,
@@ -3651,7 +3690,10 @@ class AlertsDialog(QtWidgets.QDialog):
         wf.addRow("Vues partagées :", vbox)
         wf.addRow(self.w_lbl)
         wf.addRow("Connectés :", self.clients)
-        wf.addRow(self.kick_btn)
+        cr = QtWidgets.QHBoxLayout()
+        for b_ in (self.ren_btn, self.id_btn, self.kick_btn):
+            cr.addWidget(b_)
+        wf.addRow(cr)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -3745,13 +3787,49 @@ class AlertsDialog(QtWidgets.QDialog):
             self.clients.addItem("(page web arrêtée)")
             return
         names = {k: t for k, _i, t, _d in WEB_VIEWS}
+        sel = self._sel_token()
         lst = ws.client_list()
         for e in lst:
             ago = int(time.time() - e["last"])
-            self.clients.addItem(("🟢 " if e["online"] else "⚪ ") + f"{e['name']} · {e['addr']}"
-                                 + (f" · {names.get(e['view'], 'Accueil')}" if e["online"] else f" · vu il y a {ago // 60} min"))
+            it = QtWidgets.QListWidgetItem(("🟢 " if e["online"] else "⚪ ") + f"{e['name']} · {e['addr']}"
+                                           + (f" · {names.get(e['view'], 'Accueil')}" if e["online"]
+                                              else f" · vu il y a {ago // 60} min"))
+            it.setData(Qt.ItemDataRole.UserRole, (e["token"], e["name"]))
+            self.clients.addItem(it)
+            if e["token"] == sel:
+                it.setSelected(True)
+                self.clients.setCurrentItem(it)
         if not lst:
             self.clients.addItem("Personne pour l'instant")
+
+    def _sel_token(self):
+        it = self.clients.currentItem()
+        d = it.data(Qt.ItemDataRole.UserRole) if it is not None and it.isSelected() else None
+        return d[0] if d else None
+
+    def _picked(self):
+        it = self.clients.currentItem()
+        d = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+        if not d or self.owner.web is None:
+            self.n_lbl.setText("Choisis d'abord un client dans la liste des connectés.")
+            return None
+        return d
+
+    def rename_client(self):
+        d = self._picked()
+        if d is None:
+            return
+        name, ok = QtWidgets.QInputDialog.getText(self, "Renommer", "Nouveau nom :", text=d[1])
+        if ok and name.strip():
+            self.owner.web.rename(d[0], name.strip())
+            self.refresh_clients()
+
+    def identify_client(self):
+        d = self._picked()
+        if d is None:
+            return
+        self.owner.web.identify(d[0])
+        self.n_lbl.setText(f"👋 L'écran de « {d[1]} » clignote pendant 8 s.")
 
 
 class RelayWindow(QtWidgets.QWidget):

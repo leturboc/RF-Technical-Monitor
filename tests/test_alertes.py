@@ -174,9 +174,14 @@ cb.login("b" * 32, "", "10.0.0.3", "UA", 0.0)
 cb.touch("a" * 32, "10.0.0.2", "mur", 5.0)
 L_ = cb.listing(12.0)
 check("clients : nom nettoyé, invité par défaut", [e["name"] for e in L_] == ["Clément FOH", "Invité"], str(L_))
+check("clients : jeton dans la liste (pour renommer)", L_[0]["token"] == "a" * 32)
 check("clients : en ligne / hors ligne", [e["online"] for e in L_] == [True, False])
 check("clients : qui regarde quoi", cb.watching(("mur",), 12.0) and not cb.watching(("spectre",), 12.0))
 check("clients : jeton inconnu", cb.touch("c" * 32, "x", "", 1.0) is None)
+cb.rename("a" * 32, "  Tablette   1 ")
+cb.identify("a" * 32, 12.0)
+check("clients : renommer / identifier", cb.c["a" * 32]["name"] == "Tablette 1" and cb.c["a" * 32]["ident"] == 20.0
+      and cb.rename("z" * 32, "x") is None)
 cb.purge(200.0)
 check("clients : oubliés après le délai", cb.listing(200.0) == [])
 wsp = ns["web_spectrum"]
@@ -311,11 +316,26 @@ else:
         check("navigateur : 1re visite → demande du nom, sans mot de passe", pg.locator("#lpw").is_hidden())
         if CAP:
             pg.screenshot(path=os.path.join(CAP, "web_connexion.png"))
-        pg.fill("#ln", "Clément FOH")
+        pg.type("#ln", "Clément FO")
+        pg.wait_for_timeout(2500)                     # la page se rafraîchit chaque seconde pendant la saisie
+        check("connexion : le nom tapé ne s'efface pas", pg.input_value("#ln") == "Clément FO", pg.input_value("#ln"))
+        pg.type("#ln", "H")
         pg.click("button[type=submit]")
         pg.wait_for_selector("#app:not(.hidden)", timeout=5000)
         check("navigateur : connecté, nom affiché", "Clément FOH" in pg.locator("#me").inner_text())
         check("navigateur : la régie le voit", any(e["name"] == "Clément FOH" for e in w.client_list()))
+        tok_ = next(e["token"] for e in w.client_list() if e["name"] == "Clément FOH")
+        w.rename(tok_, "Tablette FOH")
+        pg.wait_for_function("document.querySelector('#me').textContent.includes('Tablette FOH')", timeout=4000)
+        check("renommé depuis le PC : la page suit", "Tablette FOH" in pg.locator("#me").inner_text()
+              and pg.evaluate("localStorage.getItem('name')") == "Tablette FOH")
+        w.identify(tok_)
+        pg.wait_for_selector("#ident:not(.hidden)", timeout=4000)
+        check("identifier : l'écran clignote avec son nom", "Tablette FOH" in pg.locator("#ident").inner_text())
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_identifier.png"))
+        w.clients.c[tok_]["ident"] = 0
+        pg.wait_for_selector("#ident.hidden", state="attached", timeout=4000)
         check("navigateur : accueil avec les 5 vues", pg.locator(".vcard").count() == 5 and pg.locator("nav a").count() == 6,
               f'{pg.locator(".vcard").count()} {pg.locator("nav a").count()}')
         check("navigateur : pastille d'alarme", "1 alarme" in pg.locator("#pill").inner_text())

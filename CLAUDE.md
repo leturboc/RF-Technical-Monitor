@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.4.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.4.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -111,7 +111,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `/etat.json` = {me, password, views, ack, state}, `/spectre.json` (`web_spectrum` : max par paquet, ≤ 900 pts,
   préparé par `web_spec_json` seulement si quelqu'un regarde), `POST /connexion` (cookie `tsm`, `ClientBook`,
   `login_guard`), `POST /acquitter` (PIN, `PinGuard`, file `_web_acks`). Liste des connectés dans `AlertsDialog`
-  (`refresh_clients`, « Déconnecter tout le monde » = `revoke_all`). Waterfall rempli côté navigateur (vue ouverte).
+  (`refresh_clients`, « Déconnecter tout le monde » = `revoke_all`, « Renommer » = `rename`, « 👋 Identifier » =
+  `identify` → `ident` dans /etat.json → écran du client qui clignote 8 s). Waterfall rempli côté navigateur (vue ouverte).
+  Piège corrigé en 7.4.1 : `showLogin` ne doit pas réécrire le champ nom s'il est déjà affiché (tick chaque seconde).
 - Icône : `assets/icone.png` / `.ico` (parabole Noto Color Emoji, Apache 2.0), `--icon` + `--add-data` PyInstaller,
   `app.setWindowIcon` dans `main()`, favicon `APP_ICON_PNG64`.
 - Statut au clavier (liste) : Ctrl+1…9 = statut n° 1…9 (ordre de `self.statuses`), Ctrl+0 = aucun, Ctrl+E = 1er
@@ -185,4 +187,7 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.
 - Spectera : faits issus de la doc / presse Sennheiser (6 / 8 MHz, 2 canaux larges par base, plages UHF / 1G4) ;
   **jamais mesuré** un vrai porteur Spectera au tinySA (niveau du plateau selon RBW, seuil à régler).
-- Idée : IM des blocs larges (produits en bandes), import d'un plan Spectera (WSM / Spectera Control).
+- Idée : import d'un plan Spectera (WSM / Spectera Control).
+- **Plus tard (demande de Clément, pas maintenant)** : d'autres appareils de mesure que le tinySA (SDR type RTL-SDR /
+  HackRF / Airspy, autres analyseurs…) → isoler une interface « appareil » (balayage → F, L) derrière `TinySA` /
+  `ScanWorker` pour en brancher plusieurs.
