@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.2.3"
+APP_VER = "7.3.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1293,6 +1293,76 @@ def wall_grid(n, W, H, size="auto", gap=6):
     return cols, rows, 0, int(max(8, min(36, th * 0.16, tw / 9.5)))
 
 
+# ---------------------------------------------------------------- appel des micros (line check)
+LC_TEXT = {None: "⏳ en attente", "ok": "✓ OK", "weak": "✓ faible", "manual": "✓ à la main", "skip": "⏭ ignorée"}
+
+
+def lc_new(items):
+    """Appel des micros : items = [(clé, nom, MHz, couche)] -> {clé: entrée}. res : None (attendue), ok, weak
+    (vue mais faible), manual (validée à la main), skip (ignorée : spare, pack absent du show…)."""
+    return {k: dict(name=n, freq=f, layer=ly, res=None, t=None, lvl=None) for k, n, f, ly in items}
+
+
+def lc_feed(lc, key, state, level, now):
+    """Un balayage : True si l'entrée vient d'être validée (ou de passer de faible à OK)."""
+    e = lc.get(key)
+    if e is None or state not in ("occ", "weak") or level is None:
+        return False
+    if e["res"] in ("ok", "weak"):
+        e["lvl"] = max(e["lvl"], level) if e["lvl"] is not None else level
+    if e["res"] is None or (e["res"] == "weak" and state == "occ"):
+        e["res"] = "ok" if state == "occ" else "weak"
+        e["t"], e["lvl"] = now, level if e["lvl"] is None else max(e["lvl"], level)
+        return True
+    return False
+
+
+def lc_summary(lc):
+    """-> dict(n, ok, weak, missing [noms], skipped, done, text)."""
+    es = sorted(lc.values(), key=lambda e: e["freq"])
+    n = sum(1 for e in es if e["res"] != "skip")
+    ok = sum(1 for e in es if e["res"] in ("ok", "manual"))
+    weak = sum(1 for e in es if e["res"] == "weak")
+    miss = [e["name"] or f"{e['freq']:.3f}" for e in es if e["res"] is None]
+    skipped = sum(1 for e in es if e["res"] == "skip")
+    if not n:
+        text = "Rien à appeler"
+    elif not miss:
+        text = f"Tout est là ✓ ({ok + weak} / {n})" + (f" (dont {weak} faible{'s' if weak > 1 else ''})" if weak else "")
+    else:
+        text = (f"{ok + weak} / {n} OK" + (f" (dont {weak} faible{'s' if weak > 1 else ''})" if weak else "") + f" · manque{'nt' if len(miss) > 1 else ''} : "
+                + ", ".join(miss[:8]) + (f" … (+{len(miss) - 8})" if len(miss) > 8 else ""))
+    if skipped:
+        text += f" · {skipped} ignorée(s)"
+    return dict(n=n, ok=ok, weak=weak, missing=miss, skipped=skipped, done=bool(n) and not miss, text=text)
+
+
+def lc_hints(lc, unknown, span=3.0):
+    """Pour chaque fréquence encore attendue : un signal inconnu tout près ? (pack réglé sur le mauvais canal).
+    unknown = [MHz] -> [(nom, MHz attendue, MHz vue)]."""
+    out = []
+    for e in sorted(lc.values(), key=lambda e: e["freq"]):
+        if e["res"] is not None or not unknown:
+            continue
+        u = min(unknown, key=lambda x: abs(x - e["freq"]))
+        if abs(u - e["freq"]) <= span:
+            out.append((e["name"] or f"{e['freq']:.3f}", e["freq"], u))
+    return out
+
+
+def lc_text(lc, title="", when="", fmt=None):
+    """Résumé à copier (WhatsApp, mail à la régie…). fmt(niveau) -> texte du niveau."""
+    fmt = fmt or (lambda v: f"{v:.0f} dBm")
+    sm = lc_summary(lc)
+    lines = [f"Appel des micros{' — ' + title if title else ''}{' · ' + when if when else ''}", sm["text"], ""]
+    for e in sorted(lc.values(), key=lambda e: e["freq"]):
+        mark = {"ok": "✓", "weak": "~", "manual": "✓", "skip": "–"}.get(e["res"], "✗")
+        extra = (f" · {fmt(e['lvl'])}" if e["lvl"] is not None else "") + (" (faible)" if e["res"] == "weak" else "") \
+            + (" (à la main)" if e["res"] == "manual" else "") + (" (ignorée)" if e["res"] == "skip" else "")
+        lines.append(f"{mark} {e['name'] or '—'} · {e['freq']:.3f} MHz{extra}")
+    return "\n".join(lines)
+
+
 def mk_layer_key(scene, group):
     """Clé de couche pour le filtre des repères ("" = fréquence sans scène)."""
     return key_enc(scene, group or "") if scene else ""
@@ -1356,6 +1426,16 @@ def focus_plan(freqs, pts_cap, step_khz=20.0, gap=4.0, margin=0.3, min_pts=101, 
 IM_MAX_PAIRS = 40_000_000       # au-delà, le calcul est refusé (trop long)
 IM_CHUNK = 1_500_000
 IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
+# tolérances (MHz) par type de produit : un produit plus loin que ça de la porteuse est accepté.
+# 2 TX / 3 TX = défauts des guides EazyRF (100 / 50 kHz) ; 5ᵉ / 7ᵉ ordre : notre choix (pas de défaut publié trouvé)
+IM_TOL_PRESETS = [("EazyRF : 2 TX 100 · 3 TX 50 · 5ᵉ / 7ᵉ 50 kHz", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}),
+                  ("Prudent : 200 · 100 · 100 kHz", {"2tx3": 0.200, "3tx3": 0.100, "5": 0.100, "7": 0.100}),
+                  ("Ancien réglage : 300 kHz partout", {"2tx3": 0.300, "3tx3": 0.300, "5": 0.300, "7": 0.300})]
+
+
+def im_class(order, ntx):
+    """Type de produit pour les tolérances : 2tx3 (2A − B), 3tx3 (A + B − C), puis "5", "7"…"""
+    return ("2tx3" if ntx <= 2 else "3tx3") if order == 3 else str(order)
 
 
 def im_pairs(n, order, max_tx=None):
@@ -1368,7 +1448,8 @@ def im_pairs(n, order, max_tx=None):
     return math.comb(n + p - 1, p) * math.comb(n + q - 1, q)
 
 
-def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fmax=6000.0, limit=20000):
+def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fmax=6000.0, limit=20000,
+            bws=None, tbws=None):
     """Produits d'intermodulation d'une liste d'émetteurs (MHz).
 
     Un produit d'ordre n vaut (somme de p fréquences) − (somme de q fréquences), avec p = q + 1 et p + q = n
@@ -1377,18 +1458,44 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     2 -> 2A−B ; 3 -> A+B−C ; 5 -> A+B+C−D−E…
     targets : fréquences à protéger. Si fourni, on ne garde que les produits qui tombent à moins de `guard`
     MHz de l'une d'elles (hors émetteurs impliqués dans le produit lui-même).
-    -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta)] ; terms = [(indice, coefficient)]."""
+    bws / tbws : largeur (MHz) de chaque émetteur / cible, 0 = fréquence simple. Blocs larges (Spectera, WMAS) :
+    a·A − b·B s'étale sur ± (a·largeur A + b·largeur B) / 2 autour de son centre ; « tombe sur » une cible quand
+    cette bande arrive à moins de guard du bord de la cible.
+    guard : tolérance (MHz), ou dict par type de produit (im_class : {"2tx3": 0.1, "3tx3": 0.05, "5": 0.05}).
+    -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta, hw, gap)] ; terms = [(indice, coefficient)] ;
+    hw = demi-largeur du produit ; gap = écart bord à bord avec la cible (≤ 0 : ça se chevauche)."""
+    gd = dict(guard) if isinstance(guard, dict) else None
+    guard = max(gd.values()) if gd else float(guard)
+
+    def tol(order, ntx):
+        return guard if gd is None else gd.get(im_class(order, ntx), guard)
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
     info = dict(pairs=0, truncated=False, too_big=False)
     rows = []
     if n < 2:
         return rows, info
-    T = None
+    B = np.zeros(n) if bws is None else np.clip(np.asarray(list(bws), dtype=float), 0.0, None)
+    T = TB = None
     if targets is not None:
-        T = np.sort(np.asarray(list(targets), dtype=float))
+        T = np.asarray(list(targets), dtype=float)
+        TB = np.zeros(len(T)) if tbws is None else np.clip(np.asarray(list(tbws), dtype=float), 0.0, None)
+        o_ = np.argsort(T, kind="stable")
+        T, TB = T[o_], TB[o_]
         if len(T) == 0:
             return rows, info
+    wide = bool(B.any()) or (TB is not None and bool(TB.any()))
+    # pré-filtre élargi (les produits de blocs sont larges), puis test exact bord à bord
+    g_pre = guard + ((max(orders) * float(B.max()) / 2.0 + float(TB.max()) / 2.0) if wide and TB is not None else 0.0)
+
+    def near_t(vals, hw):
+        """Cible la plus proche (bord à bord) parmi les 2 voisines -> (indice, écart bord à bord)."""
+        k = np.searchsorted(T, vals)
+        ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
+        gl = np.abs(T[ilo] - vals) - TB[ilo] / 2.0
+        gh = np.abs(T[ihi] - vals) - TB[ihi] / 2.0
+        ti = np.where(gh < gl, ihi, ilo)
+        return ti, np.minimum(gl, gh) - hw
     total = sum(im_pairs(n, o, max_tx) for o in orders)
     info["pairs"] = total
     if total > IM_MAX_PAIRS:
@@ -1402,13 +1509,13 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             a = (order + 1) // 2
             b = order - a
             vals = a * F[ii] - b * F[jj]
+            hw = (a * B[ii] + b * B[jj]) / 2.0
             msk = (vals >= fmin) & (vals <= fmax)
-            tv = None
+            tv = gap = None
             if T is not None:
-                k = np.searchsorted(T, vals)
-                ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
-                tv = np.where(np.abs(T[ihi] - vals) < np.abs(T[ilo] - vals), T[ihi], T[ilo])
-                msk &= np.abs(vals - tv) <= guard
+                ti, gap = near_t(vals, hw)
+                tv = T[ti]
+                msk &= gap <= tol(order, 2)
                 msk &= (np.abs(F[ii] - tv) >= 1e-6) & (np.abs(F[jj] - tv) >= 1e-6)
             hits = np.nonzero(msk)[0]
             if len(hits) > cap:
@@ -1418,9 +1525,10 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 rows.append(dict(f=float(vals[h]), order=order, ntx=2,
                                  terms=[(int(ii[h]), a), (int(jj[h]), -b)],
                                  target=None if tv is None else float(tv[h]),
-                                 delta=None if tv is None else float(vals[h] - tv[h])))
+                                 delta=None if tv is None else float(vals[h] - tv[h]),
+                                 hw=float(hw[h]), gap=None if gap is None else float(gap[h])))
         if T is not None:
-            rows.sort(key=lambda r: (r["order"], r["ntx"], abs(r["delta"]), r["f"]))
+            rows.sort(key=lambda r: (r["order"], r["ntx"], r["gap"], r["f"]))
         else:
             rows.sort(key=lambda r: (r["f"], r["order"]))
         if len(rows) > limit:
@@ -1442,7 +1550,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 k = np.searchsorted(T, prod)
                 lo = T[np.clip(k - 1, 0, len(T) - 1)]
                 hi = T[np.clip(k, 0, len(T) - 1)]
-                m &= np.minimum(np.abs(prod - lo), np.abs(prod - hi)) <= guard
+                m &= np.minimum(np.abs(prod - lo), np.abs(prod - hi)) <= g_pre
             ir, jj = np.nonzero(m)
             if not len(ir):
                 continue
@@ -1453,11 +1561,12 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             ntx = 1 + (np.diff(srt, axis=1) != 0).sum(axis=1)
             ok = (~overlap) & (ntx <= max_tx)
             vals = prod[ir, jj]
-            tv = None
+            hw = (B[pi].sum(axis=1) + B[qj].sum(axis=1)) / 2.0
+            tv = gap = None
             if T is not None:
-                k = np.searchsorted(T, vals)
-                ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
-                tv = np.where(np.abs(T[ihi] - vals) < np.abs(T[ilo] - vals), T[ihi], T[ilo])
+                ti, gap = near_t(vals, hw)
+                tv = T[ti]
+                ok &= gap <= np.where(ntx <= 2, tol(order, 2), tol(order, 3))
                 ok &= ~(np.abs(F[allidx] - tv[:, None]) < 1e-6).any(axis=1)
             for h in np.nonzero(ok)[0]:
                 terms = {}
@@ -1468,14 +1577,15 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 rows.append(dict(f=float(vals[h]), order=order, ntx=int(ntx[h]),
                                  terms=sorted(terms.items(), key=lambda kv: (-kv[1], kv[0])),
                                  target=None if tv is None else float(tv[h]),
-                                 delta=None if tv is None else float(vals[h] - tv[h])))
+                                 delta=None if tv is None else float(vals[h] - tv[h]),
+                                 hw=float(hw[h]), gap=None if gap is None else float(gap[h])))
             if len(rows) > cap:
                 info["truncated"] = True
                 break
         if info["truncated"]:
             break
     if T is not None:
-        rows.sort(key=lambda r: (r["order"], r["ntx"], abs(r["delta"]), r["f"]))
+        rows.sort(key=lambda r: (r["order"], r["ntx"], r["gap"], r["f"]))
     else:
         rows.sort(key=lambda r: (r["f"], r["order"]))
     if len(rows) > limit:
@@ -1498,14 +1608,16 @@ def im_formula(terms, names=None, freqs=None, numeric=False):
     return out
 
 
-def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40):
-    """Quelles combinaisons d'émetteurs peuvent produire un signal à f (MHz) ?"""
-    return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit)
+def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40, bws=None):
+    """Quelles combinaisons d'émetteurs peuvent produire un signal à f (MHz) ? bws : largeurs des émetteurs."""
+    return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit, bws=bws)
 
 
-def im3_clash(c, F, guard):
+def im3_clash(c, F, guard, guard3=None):
     """Collisions d'intermodulation 3e ordre mettant en jeu la fréquence candidate c (MHz) avec les émetteurs F.
-    -> [(texte, écart en MHz)] ; vide = aucun risque à ± guard."""
+    guard : tolérance des produits 2 TX (2A − B) ; guard3 : celle des 3 TX (A + B − C), = guard si absente.
+    -> [(texte, écart en MHz)] ; vide = aucun risque."""
+    g3 = guard if guard3 is None else guard3
     F = np.sort(np.asarray(F, dtype=float))
     n = len(F)
     out = []
@@ -1532,12 +1644,12 @@ def im3_clash(c, F, guard):
         J, K = np.meshgrid(ar, ar, indexing="ij")
         # c + fj − fk ≈ fl
         idx, d = nearest(c + F[J] - F[K])
-        m = (J != K) & (idx != J) & (idx != K) & (np.abs(d) <= guard)
+        m = (J != K) & (idx != J) & (idx != K) & (np.abs(d) <= g3)
         for j, k in zip(*np.nonzero(m)):
             out.append((f"{c:.3f} + {F[j]:.3f} − {F[k]:.3f} ≈ {F[idx[j, k]]:.3f}", float(d[j, k])))
         # fj + fk − c ≈ fl
         idx, d = nearest(F[J] + F[K] - c)
-        m = (J < K) & (idx != J) & (idx != K) & (np.abs(d) <= guard)
+        m = (J < K) & (idx != J) & (idx != K) & (np.abs(d) <= g3)
         for j, k in zip(*np.nonzero(m)):
             out.append((f"{F[j]:.3f} + {F[k]:.3f} − {c:.3f} ≈ {F[idx[j, k]]:.3f}", float(d[j, k])))
     out.sort(key=lambda t: abs(t[1]))
@@ -1545,7 +1657,7 @@ def im3_clash(c, F, guard):
 
 
 def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guard=0.2, grid=0.025,
-              max_check=600):
+              max_check=600, guard3=None):
     """Cherche n fréquences libres entre a et b (MHz) d'après un spectre mesuré (F trié, L en dBm) :
     niveau max sur ± width/2 sous thr, à plus de min_sep de toute fréquence existante ou déjà choisie,
     et sans intermodulation 3e ordre à ± guard sur l'ensemble.
@@ -1581,7 +1693,7 @@ def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guar
         if dist_to(c, allf) < min_sep:
             diag["trop_proches"] += 1
             continue
-        if im3_clash(c, allf, guard):
+        if im3_clash(c, allf, guard, guard3):
             diag["intermod"] += 1
             continue
         chosen.append(c)
@@ -2381,6 +2493,34 @@ WEB_PORT = 8080
 STATE_TXT = {"occ": "OCCUPÉ", "weak": "faible", "free": "libre", None: "—"}
 
 
+class PinGuard:
+    """Code PIN de la page web (acquitter depuis le téléphone). Trop d'erreurs depuis une même adresse → bloquée
+    un moment (on ne devine pas un code à 4 chiffres en tapant 10 000 fois)."""
+
+    def __init__(self, tries=5, lock_s=60.0):
+        self.tries, self.lock_s, self.bad = tries, lock_s, {}       # adresse -> [erreurs, bloquée jusqu'à]
+
+    def check(self, pin, given, addr, now):
+        """-> "ok" | "bad" | "locked" | "off" (pas de code réglé = acquittement désactivé)."""
+        pin, given = str(pin or "").strip(), str(given or "").strip()
+        if len(pin) < 4:
+            return "off"
+        st = self.bad.setdefault(addr, [0, 0.0])
+        if now < st[1]:
+            return "locked"
+        acc = len(pin) ^ len(given)                    # comparaison à temps constant
+        for a, b in zip(pin, given.ljust(len(pin))):
+            acc |= ord(a) ^ ord(b)
+        if acc == 0:
+            st[0] = 0
+            return "ok"
+        st[0] += 1
+        if st[0] >= self.tries:
+            st[:] = [0, now + self.lock_s]
+            return "locked"
+        return "bad"
+
+
 def web_state(rows, alarms, info):
     """rows : [{name, freq, level, state, status, scene, group, absent, conflict}] ; alarms : listing AlarmBook.
     -> dict sérialisable pour /etat.json."""
@@ -2395,7 +2535,7 @@ def web_state(rows, alarms, info):
                         status=r.get("status") or "",
                         scene=r.get("scene") or "", group=r.get("group") or "",
                         alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
-    al = [dict(kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
+    al = [dict(id=int(a.get("id", 0)), kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
                acked=bool(a["acked"]), layer=a.get("layer") or "", info=a.get("info") or "", t0=a["t0"])
           for a in alarms if a.get("t_end") is None]
     return dict(rows=out, alarms=al, **info)
@@ -2410,7 +2550,8 @@ WEB_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
 header{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid #8883;z-index:1}
 h1{font-size:17px;margin:0 0 6px}#meta{color:var(--mut);font-size:13px}select{font-size:15px;padding:4px;max-width:100%}
 #al{margin:10px 14px}.al{background:var(--occ);color:#fff;border-radius:8px;padding:8px 10px;margin:6px 0;font-weight:600}
-.al.ack{background:var(--abs)}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
+.al.ack{background:var(--abs)}.al button,#ackall{float:right;font:600 14px system-ui;border:0;border-radius:6px;
+padding:5px 10px;margin:-3px 0 0 8px;background:#fff;color:#000}#ackall{float:none;margin:0 0 4px;display:none}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
 .c{background:var(--card);border-radius:10px;padding:8px 10px;border-left:6px solid #8885}
 .c.bad{border-color:var(--occ)}.c.warn{border-color:var(--weak)}.c.ok{border-color:var(--free)}
 .c.alarm{background:var(--abs);color:#000}.n{font-weight:700;font-size:16px}.f,.s{color:var(--mut);font-size:13px}
@@ -2420,7 +2561,7 @@ padding:6px 14px;font-weight:700}
 <div id="stale">⚠ Plus de nouvelles du PC de surveillance</div>
 <header><h1 id="t">TinySA Monitor</h1><div id="meta"></div>
 <select id="flt"><option value="">Toutes les couches</option></select></header>
-<section id="al"></section><main id="g"></main>
+<section id="al"></section><div style="margin:0 14px"><button id="ackall">✔ Tout acquitter</button></div><main id="g"></main>
 <script>
 const $=s=>document.querySelector(s);let last=0,data=null,keep="";try{keep=localStorage.getItem("flt")||""}catch(x){}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
@@ -2432,11 +2573,21 @@ function draw(d){$("#t").textContent=d.title||"TinySA Monitor";
  if(f.options.length-1!==layers.length){f.innerHTML='<option value="">Toutes les couches</option>'+layers.map(l=>`<option>${esc(l)}</option>`).join("");f.value=keep}
  const lay=r=>r.scene+(r.group?" › "+r.group:""),ok=r=>!f.value||lay(r)===f.value||r.scene===f.value;
  $("#al").innerHTML=d.alarms.filter(a=>!a.freq||!f.value||d.rows.some(r=>ok(r)&&Math.abs(r.freq-a.freq)<1e-3)).map(a=>
-  `<div class="al${a.acked?" ack":""}">⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}</div>`).join("");
+  `<div class="al${a.acked?" ack":""}">${d.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}</div>`).join("");
+ $("#ackall").style.display=(d.ack&&d.alarms.filter(a=>!a.acked).length>1)?"inline-block":"none";
  $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
   <div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div>
   <div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div>
   <div class="s">${esc(lay(r))}</div></div>`).join("")}
+async function ack(id){let pin="";try{pin=localStorage.getItem("pin")||""}catch(x){}
+ if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ let r;try{r=await fetch("acquitter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin,id:id})})}
+ catch(e){alert("PC injoignable");return}
+ if(r.ok){try{localStorage.setItem("pin",pin)}catch(x){};tick();return}
+ try{localStorage.removeItem("pin")}catch(x){}
+ alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou acquittement désactivé sur le PC).":"Erreur "+r.status)}
+$("#al").onclick=e=>{const b=e.target.closest("button[data-id]");if(b)ack(+b.dataset.id)};
+$("#ackall").onclick=()=>ack("all");
 $("#flt").onchange=e=>{keep=e.target.value;try{localStorage.setItem("flt",keep)}catch(x){};if(data)draw(data)};
 tick();setInterval(tick,2000);
 </script></body></html>"""
@@ -2902,11 +3053,14 @@ class _HTTPServer(ThreadingHTTPServer):
 
 
 class WebServer(threading.Thread):
-    """Page web en lecture seule : « / » (page) et « /etat.json » (état, fourni par get_json())."""
+    """Page web : « / » (page), « /etat.json » (état, fourni par get_json()) et POST « /acquitter »
+    ({pin, id | "all"}) si get_pin() donne un code : on_ack(id) est appelé depuis le fil du serveur."""
 
-    def __init__(self, port, get_json, host="0.0.0.0"):
+    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
+        self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
+        self.guard, self._lock = PinGuard(), threading.Lock()
         self.httpd, self.error = None, ""
         self.ready = threading.Event()
 
@@ -2929,6 +3083,35 @@ class WebServer(threading.Thread):
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
+
+            def _json(self, code, obj):
+                body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                if self.path.split("?", 1)[0] != "/acquitter" or owner.on_ack is None:
+                    self.send_error(404)
+                    return
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    req = json.loads(self.rfile.read(min(max(n, 0), 2048)).decode("utf-8")) if n > 0 else {}
+                    target = req.get("id")
+                    if not (target == "all" or (isinstance(target, int) and not isinstance(target, bool))):
+                        raise ValueError
+                except (ValueError, AttributeError, UnicodeDecodeError):
+                    self._json(400, dict(error="requête invalide"))
+                    return
+                with owner._lock:
+                    res = owner.guard.check(owner.get_pin(), req.get("pin"), self.client_address[0], time.time())
+                if res != "ok":
+                    self._json(429 if res == "locked" else 403, dict(error=res))
+                    return
+                owner.on_ack(target)
+                self._json(200, dict(ok=True))
 
             def log_message(self, *a):
                 pass
@@ -2997,23 +3180,31 @@ class AlertsDialog(QtWidgets.QDialog):
         nf.addRow(test)
         nf.addRow(self.n_lbl)
         self.service.currentIndexChanged.connect(lambda *_: self._svc())
-        wb = QtWidgets.QGroupBox("🌐 Page web en lecture seule (réseau local)")
+        wb = QtWidgets.QGroupBox("🌐 Page web pour l'équipe (réseau local)")
         wf = QtWidgets.QFormLayout(wb)
         self.web_on = QtWidgets.QCheckBox("Activer la page web")
         self.web_on.setChecked(bool(w["on"]))
         self.web_port = QtWidgets.QSpinBox()
         self.web_port.setRange(1024, 65535)
         self.web_port.setValue(int(w["port"]))
+        self.web_pin = QtWidgets.QLineEdit(str(w.get("pin", "")))
+        self.web_pin.setPlaceholderText("vide = lecture seule")
+        self.web_pin.setMaxLength(12)
+        self.web_pin.setToolTip("Code (4 caractères ou plus) demandé sur le téléphone pour acquitter une alarme.\n"
+                                "Vide : la page reste en lecture seule. 5 codes faux → l'adresse est bloquée 1 min.")
         self.w_lbl = QtWidgets.QLabel("")
         self.w_lbl.setWordWrap(True)
         self.w_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         help_w = QtWidgets.QLabel("Sur un téléphone ou un PC du même réseau, ouvre l'adresse affichée : état des "
                                   "fréquences et alarmes, filtre par scène / groupe, rafraîchi toutes les 2 s. "
-                                  "Lecture seule, sans mot de passe : à n'activer que sur un réseau de confiance.")
+                                  "Avec un code PIN, on peut aussi y acquitter les alarmes (le son s'arrête sur le "
+                                  "PC). Le code passe en clair sur le réseau : à n'activer que sur un réseau de "
+                                  "confiance (réseau de prod, pas le Wi-Fi public).")
         help_w.setWordWrap(True)
         wf.addRow(help_w)
         wf.addRow(self.web_on)
         wf.addRow("Port :", self.web_port)
+        wf.addRow("Code PIN (acquitter) :", self.web_pin)
         wf.addRow(self.w_lbl)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
@@ -3038,7 +3229,8 @@ class AlertsDialog(QtWidgets.QDialog):
         return dict(mode=self.mode.currentData(), service=self.service.currentData(),
                     server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
                     tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
-                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value())
+                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value(),
+                                                     pin=self.web_pin.text().strip())
 
     def send_test(self):
         n, _w = self.values()
@@ -4005,7 +4197,8 @@ class IntermodDialog(QtWidgets.QDialog):
             "Calcule les produits d'intermodulation de tes émetteurs (les fréquences de la liste) : 2 TX → 2A − B ; "
             "3 TX → A + B − C ; 5 TX → A + B + C − D − E… Tu vois quelle combinaison peut retomber sur une de tes "
             "fréquences, ou expliquer un signal inconnu vu sur le spectre. C'est un calcul théorique : il ne dit "
-            "pas quel appareil (émetteur, ampli d'antenne, combiner…) le fabrique vraiment.")
+            "pas quel appareil (émetteur, ampli d'antenne, combiner…) le fabrique vraiment. Blocs larges "
+            "(Spectera / WMAS) : leurs produits sont des bandes (« 540.000 ± 8.0 »), comptées bord à bord.")
         info.setWordWrap(True)
         lay.addWidget(info)
         self.mode_combo = QtWidgets.QComboBox()
@@ -4017,7 +4210,7 @@ class IntermodDialog(QtWidgets.QDialog):
         self.freq_spin.setValue(origin if origin else 500.0)
         self.freq_spin.setSuffix(" MHz")
         self.src_combo = QtWidgets.QComboBox()
-        self.src_combo.addItem("Émetteurs : toute la liste", "all")
+        self.src_combo.addItem("Émetteurs : toute la liste (sauf « doit rester libre »)", "all")
         self.src_combo.addItem("Émetteurs : la couche active", "scope")
         self.src_combo.addItem("Émetteurs : les lignes sélectionnées", "sel")
         self.active_chk = QtWidgets.QCheckBox("Seulement ceux qui émettent (vus sur le spectre)")
@@ -4037,15 +4230,26 @@ class IntermodDialog(QtWidgets.QDialog):
         self.tgt_combo.addItem("Protéger : toutes les fréquences de la liste", "all")
         self.tgt_combo.addItem("Protéger : la couche active seulement", "scope")
         self.tgt_combo.addItem("Aucune cible : lister tous les produits dans la plage", "none")
-        self.guard_spin = QtWidgets.QDoubleSpinBox()
-        self.guard_spin.setDecimals(3)
-        self.guard_spin.setRange(0.005, 5.0)
-        self.guard_spin.setSingleStep(0.05)
-        self.guard_spin.setValue(0.30)
-        self.guard_spin.setPrefix("± ")
-        self.guard_spin.setSuffix(" MHz")
-        self.guard_spin.setToolTip("Écart sous lequel un produit est considéré comme gênant.\n"
-                                   "300 kHz = écart par défaut d'EazyRF · 350 kHz = minimum de WWB (mode Standard).")
+        # tolérances par type de produit (comme EazyRF : un 2A − B est bien plus fort qu'un A + B − C)
+        self.tol_spins = {}
+        for key, tip in (("2tx3", "2 TX, 3ᵉ ordre (2A − B) : le produit le plus fort."),
+                         ("3tx3", "3 TX, 3ᵉ ordre (A + B − C) : plus faible, tolérance plus serrée."),
+                         ("5", "5ᵉ ordre et au-delà (3A − 2B, 2A + B − 2C…) : faibles.")):
+            sp = QtWidgets.QSpinBox()
+            sp.setRange(0, 2000)
+            sp.setSingleStep(10)
+            sp.setSuffix(" kHz")
+            sp.setPrefix("± ")
+            sp.setToolTip(tip + "\nUn produit plus loin que ça de ta fréquence est accepté (comme les tolérances "
+                                "d'EazyRF).")
+            self.tol_spins[key] = sp
+        self.tol_combo = QtWidgets.QComboBox()
+        for txt, d in IM_TOL_PRESETS:
+            self.tol_combo.addItem(txt, d)
+        self.tol_combo.setToolTip("Préréglages de tolérances. EazyRF : valeurs par défaut de ses guides (2 TX 100 kHz,\n"
+                                  "3 TX 50 kHz). Mets les mêmes que dans ton logiciel de coordination pour comparer.")
+        self.tol_combo.currentIndexChanged.connect(lambda *_: self._tol_preset())
+        self._tol_preset()
         bands = [b for b in owner.bands if b["enabled"]]
         self.fmin_spin = QtWidgets.QDoubleSpinBox()
         self.fmax_spin = QtWidgets.QDoubleSpinBox()
@@ -4062,7 +4266,9 @@ class IntermodDialog(QtWidgets.QDialog):
         lay.addLayout(R("Mode :", self.mode_combo, self.freq_spin, None))
         lay.addLayout(R(self.src_combo, self.active_chk, self.src_lbl, None))
         lay.addLayout(R("Combinaisons :", self.maxtx_combo, self.o3_chk, self.o5_chk, self.o7_chk, None))
-        lay.addLayout(R(self.tgt_combo, "Marge :", self.guard_spin, None))
+        lay.addLayout(R(self.tgt_combo, "Tolérances :", self.tol_combo, None))
+        lay.addLayout(R("2 TX :", self.tol_spins["2tx3"], "3 TX :", self.tol_spins["3tx3"],
+                        "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], None))
         lay.addLayout(R("Plage (liste complète) :", self.fmin_spin, "à", self.fmax_spin, None, self.go_btn))
         lay.addWidget(self.msg)
         self.table = QtWidgets.QTableWidget(0, 7)
@@ -4116,12 +4322,25 @@ class IntermodDialog(QtWidgets.QDialog):
             idx = [i for i, w in enumerate(o.watch) if o.in_scope(w)]
         else:
             idx = list(range(len(o.watch)))
+        if kind != "sel":                   # une réserve « doit rester libre » n'émet pas : pas un émetteur
+            idx = [i for i in idx if not o.is_keep_free(o.watch[i]["status"])]
         if self.active_chk.isChecked():
             idx = [i for i in idx if o.watch[i]["state"] in ("occ", "weak")]
         return idx
 
     def update_src(self, *_):
         self.src_lbl.setText(f"→ {len(self.source_indices())} émetteur(s)")
+
+    def _tol_preset(self):
+        d = self.tol_combo.currentData()
+        for k, sp in self.tol_spins.items():
+            sp.setValue(int(round(d[k] * 1000)))
+
+    def tolerances(self):
+        """-> dict pour im_scan (MHz) : 2 TX, 3 TX, 5ᵉ et 7ᵉ ordre."""
+        t5 = self.tol_spins["5"].value() / 1000.0
+        return {"2tx3": self.tol_spins["2tx3"].value() / 1000.0, "3tx3": self.tol_spins["3tx3"].value() / 1000.0,
+                "5": t5, "7": t5}
 
     def orders(self):
         out = tuple(x for x, c in ((3, self.o3_chk), (5, self.o5_chk), (7, self.o7_chk)) if c.isChecked())
@@ -4132,7 +4351,8 @@ class IntermodDialog(QtWidgets.QDialog):
         idx = self.source_indices()
         freqs = [o.watch[i]["freq"] for i in idx]
         names = [o.watch[i]["name"] for i in idx]
-        orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.guard_spin.value()
+        bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]        # blocs Spectera / WMAS : produits en bandes
+        orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.tolerances()
         if len(freqs) < 2:
             self.msg.setText("Il faut au moins 2 émetteurs (change la source ou décoche « seulement ceux qui émettent »).")
             return
@@ -4143,30 +4363,43 @@ class IntermodDialog(QtWidgets.QDialog):
                               f"petite, ou retire les ordres 5 / 7 qui sont les plus gourmands.").replace(",", " "))
             return
         origin = self.mode_combo.currentData() == "origin"
+        tbws = None
         if origin:
             targets, fmin, fmax = [self.freq_spin.value()], 0.1, 6000.0
         else:
             tm = self.tgt_combo.currentData()
             fmin, fmax = self.fmin_spin.value(), self.fmax_spin.value()
-            if tm == "all":
-                targets, fmin, fmax = [w["freq"] for w in o.watch], 0.1, 6000.0
-            elif tm == "scope":
-                targets, fmin, fmax = [w["freq"] for w in o.scope_ws()], 0.1, 6000.0
+            tw = o.watch if tm == "all" else (o.scope_ws() if tm == "scope" else None)
+            if tw is not None:
+                targets, fmin, fmax = [w["freq"] for w in tw], 0.1, 6000.0
+                tbws = [float(w.get("bw") or 0.0) for w in tw]
             else:
                 targets = None
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            rows, info = im_scan(freqs, orders, max_tx, targets, guard, fmin, fmax, limit=5000)
+            rows, info = im_scan(freqs, orders, max_tx, targets, guard, fmin, fmax, limit=5000, bws=bws, tbws=tbws)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         F, L = o.fresh_FL()
         win = max(0.05, o.win_spin.value() / 1000.0)
         thr, weak = o.thr_spin.value(), o.weak_spin.value()
         by_freq = {int(round(w["freq"] * 1000)): w["name"] for w in o.watch}
+        by_w = {int(round(w["freq"] * 1000)): w for w in o.watch}
         for r in rows:
             r["text"] = im_formula(r["terms"], names)
             r["numtext"] = im_formula(r["terms"], freqs=freqs, numeric=True)
-            r["meas"] = level_at(F, L, r["f"], win) if F is not None else None
+            tw_ = None if (r["target"] is None or origin) else by_w.get(int(round(r["target"] * 1000)))
+            masked = tw_ is not None and tw_["state"] in ("occ", "weak") and o.is_keep_on(tw_["status"])
+            if F is None or masked:     # la cible émet : on mesurerait sa propre porteuse, pas le produit
+                r["meas"] = None
+            elif tw_ is not None:       # niveau là où ça gêne : sur la fréquence (ou le bloc) protégée
+                tb_ = float(tw_.get("bw") or 0.0)
+                r["meas"] = (level_block(F, L, tw_["freq"], tb_, "max") if tb_ else level_at(F, L, tw_["freq"], win))
+            elif r["hw"] > 0.05:        # produit large sans cible : son « plateau »
+                r["meas"] = level_block(F, L, r["f"], 2 * r["hw"], "median")
+            else:
+                r["meas"] = level_at(F, L, r["f"], win)
+            r["masked"] = masked
             if r["target"] is None:
                 r["tname"] = ""
             elif origin:
@@ -4178,7 +4411,8 @@ class IntermodDialog(QtWidgets.QDialog):
             elif r["meas"] is not None and o.weak_chk.isChecked() and r["meas"] >= weak:
                 r["verdict"], r["level"] = "énergie faible mesurée", 1
             elif r["target"] is not None and not origin:
-                r["verdict"], r["level"] = "à risque (calcul)", 1
+                r["verdict"], r["level"] = ("à risque (calcul · cible en émission)" if r.get("masked")
+                                            else "à risque (calcul)"), 1
             elif origin:
                 r["verdict"], r["level"] = "origine possible", 1
             else:
@@ -4203,8 +4437,16 @@ class IntermodDialog(QtWidgets.QDialog):
         t.setRowCount(len(self.rows))
         base = th["ui_base"]
         for r, row in enumerate(self.rows):
-            vals = (f"{row['f']:.3f}", IM_NAMES.get(row["order"], str(row["order"])), row["text"], row["tname"],
-                    "" if row["delta"] is None else f"{row['delta'] * 1000:+.0f}",
+            wide = row["hw"] > 0.05 or (row["gap"] is not None and row["delta"] is not None
+                                        and abs(abs(row["delta"]) - row["gap"]) > 1e-6)
+            if row["delta"] is None:
+                d_txt = ""
+            elif wide:
+                d_txt = "dans la bande" if row["gap"] <= 0 else f"bord à {row['gap'] * 1000:.0f}"
+            else:
+                d_txt = f"{row['delta'] * 1000:+.0f}"
+            vals = (f"{row['f']:.3f}" + (f" ± {row['hw']:.1f}" if row["hw"] > 0.05 else ""),
+                    IM_NAMES.get(row["order"], str(row["order"])), row["text"], row["tname"], d_txt,
                     "—" if row["meas"] is None else f"{row['meas']:.1f}", row["verdict"])
             for c, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
@@ -4309,10 +4551,11 @@ class RescueDialog(QtWidgets.QDialog):
         self.guard_spin.setDecimals(3)
         self.guard_spin.setRange(0.005, 5.0)
         self.guard_spin.setSingleStep(0.05)
-        self.guard_spin.setValue(0.30)
+        self.guard_spin.setValue(0.10)
         self.guard_spin.setPrefix("± ")
         self.guard_spin.setSuffix(" MHz")
-        self.guard_spin.setToolTip("Marge d'intermodulation 3ᵉ ordre avec tes fréquences.")
+        self.guard_spin.setToolTip("Tolérance d'intermodulation 3ᵉ ordre 2 TX (2A − B) avec tes fréquences ;\n"
+                                   "la moitié pour les 3 TX (A + B − C). 100 kHz = défaut 2 TX d'EazyRF.")
         self.thr_spin = QtWidgets.QDoubleSpinBox()
         self.thr_spin.setRange(-130, 0)
         self.thr_spin.setValue(owner.weak_spin.value() if owner.weak_chk.isChecked() else owner.thr_spin.value() - 10)
@@ -4371,7 +4614,7 @@ class RescueDialog(QtWidgets.QDialog):
         else:
             ex = [w["freq"] for w in o.watch]
         res, d = find_free(F, L, a, b, ex, self.n_spin.value(), self.width_spin.value(), self.sep_spin.value(),
-                           self.thr_spin.value(), self.guard_spin.value())
+                           self.thr_spin.value(), self.guard_spin.value(), guard3=self.guard_spin.value() / 2.0)
         self.found = res
         exa = sorted(w["freq"] for w in o.watch)
         t = self.table
@@ -4767,6 +5010,209 @@ def fmt_dur(s, signed=False):
 # --------------------------------------------------------------------------
 # Dialogue : rapport de fin de show
 # --------------------------------------------------------------------------
+class LineCheckDialog(QtWidgets.QDialog):
+    """Appel des micros : allume tes émetteurs un par un, chaque fréquence passe ✓ dès que son signal arrive."""
+    COLS = ["État", "Nom", "MHz", "Niveau", "Heure", "Scène › Groupe"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Appel des micros")
+        self.resize(760, 620)
+        self.lc, self.keys, self.unknown, self.t0 = {}, [], {}, time.time()
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Allume tes émetteurs (micros, IEM, intercom…) : chaque fréquence passe ✓ dès que le tinySA voit son "
+            "signal. À la fin, « Terminer » note le résultat dans le journal. Un signal inconnu tout près d'une "
+            "fréquence qui manque = pack sans doute réglé sur le mauvais canal.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        self.what_combo = QtWidgets.QComboBox()
+        self.what_combo.addItem("Les « doit émettre » de la couche active", "on")
+        self.what_combo.addItem("Toute la couche active (sauf « doit rester libre »)", "all")
+        self.what_combo.setToolTip("Quelles fréquences sont appelées. La couche active se choisit dans « Fréquences et "
+                                   "couches » (Global = tout).")
+        self.what_combo.currentIndexChanged.connect(lambda *_: self.restart())
+        self.beep_chk = QtWidgets.QCheckBox("Bip à chaque ✓")
+        self.beep_chk.setChecked(True)
+        self.beep_chk.setToolTip("Un bip du PC quand une fréquence est validée : pratique quand tu es loin de l'écran.")
+        self.restart_btn = QtWidgets.QPushButton("🔄 Recommencer")
+        self.restart_btn.setToolTip("Remet toutes les fréquences « en attente » (nouvel appel).")
+        self.restart_btn.clicked.connect(lambda *_: self.restart())
+        lay.addLayout(owner._row(self.what_combo, self.beep_chk, None, self.restart_btn))
+        self.run_lbl = QtWidgets.QLabel("La surveillance est arrêtée : démarre-la pour que l'appel avance.")
+        self.run_btn = QtWidgets.QPushButton("▶ Démarrer la surveillance")
+        self.run_btn.setToolTip("Lance les balayages (comme le bouton Démarrer en haut).")
+        self.run_btn.clicked.connect(lambda *_: owner.toggle_run())
+        self.run_box = QtWidgets.QWidget()
+        rb = QtWidgets.QHBoxLayout(self.run_box)
+        rb.setContentsMargins(0, 0, 0, 0)
+        rb.addWidget(self.run_lbl, 1)
+        rb.addWidget(self.run_btn)
+        lay.addWidget(self.run_box)
+        self.sum_lbl = QtWidgets.QLabel("")
+        f_ = self.sum_lbl.font()
+        f_.setPointSize(f_.pointSize() + 5)
+        f_.setBold(True)
+        self.sum_lbl.setFont(f_)
+        self.sum_lbl.setWordWrap(True)
+        self.sum_lbl.setMinimumHeight(self.sum_lbl.fontMetrics().height() * 2 + 4)
+        lay.addWidget(self.sum_lbl)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setFormat("%v / %m")
+        self.bar.setToolTip("Fréquences validées / fréquences appelées.")
+        lay.addWidget(self.bar)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setToolTip("Double-clic : voir la fréquence sur le spectre.")
+        self.table.cellDoubleClicked.connect(lambda r, c: self._goto(r))
+        for c, w_ in enumerate((96, 130, 72, 80, 64)):
+            self.table.setColumnWidth(c, w_)
+        lay.addWidget(self.table, 1)
+        self.hint_lbl = QtWidgets.QLabel("")
+        self.hint_lbl.setWordWrap(True)
+        lay.addWidget(self.hint_lbl)
+        self.ok_btn = QtWidgets.QPushButton("✓ Valider à la main")
+        self.ok_btn.setToolTip("Valide les lignes choisies sans signal mesuré (vérifiée à l'oreille, émetteur hors "
+                               "de portée du tinySA…).")
+        self.ok_btn.clicked.connect(lambda *_: self.mark("manual"))
+        self.skip_btn = QtWidgets.QPushButton("⏭ Ignorer")
+        self.skip_btn.setToolTip("Retire les lignes choisies de l'appel (spare, émetteur pas utilisé ce soir…).")
+        self.skip_btn.clicked.connect(lambda *_: self.mark("skip"))
+        self.undo_btn = QtWidgets.QPushButton("↺ Remettre en attente")
+        self.undo_btn.setToolTip("Les lignes choisies redeviennent « en attente ».")
+        self.undo_btn.clicked.connect(lambda *_: self.mark(None))
+        self.copy_btn = QtWidgets.QPushButton("📋 Copier le résumé")
+        self.copy_btn.setToolTip("Copie le résultat (une ligne par fréquence) pour l'envoyer à la régie, sur WhatsApp…")
+        self.copy_btn.clicked.connect(lambda *_: self.copy())
+        self.done_btn = QtWidgets.QPushButton("📝 Terminer")
+        self.done_btn.setToolTip("Note le résultat de l'appel dans le journal (et le journal auto CSV), puis ferme.")
+        self.done_btn.clicked.connect(lambda *_: self.finish())
+        lay.addLayout(owner._row(self.ok_btn, self.skip_btn, self.undo_btn, None, self.copy_btn, self.done_btn))
+        self.restart()
+
+    def _wanted(self):
+        ow, mode = self.owner, self.what_combo.currentData()
+        out = []
+        for w in ow.watch:
+            if not ow.in_scope(w) or ow.is_keep_free(w["status"]):
+                continue
+            if mode == "on" and not ow.is_keep_on(w["status"]):
+                continue
+            out.append(w)
+        return out
+
+    def restart(self):
+        ws = self._wanted()
+        if not ws and self.what_combo.currentData() == "on" and self.owner.watch:
+            self.what_combo.blockSignals(True)          # aucun « doit émettre » : on appelle toute la couche
+            self.what_combo.setCurrentIndex(1)
+            self.what_combo.blockSignals(False)
+            ws = self._wanted()
+        self.keys = [int(round(w["freq"] * 1000)) for w in ws]
+        self.lc = lc_new([(k, w["name"], w["freq"], self.owner.layer_text(w)) for k, w in zip(self.keys, ws)])
+        self.keys = sorted(set(self.keys), key=lambda k: self.lc[k]["freq"])
+        self.unknown, self.t0 = {}, time.time()
+        self.table.setRowCount(len(self.keys))
+        self.feed(beep=False)
+
+    def feed(self, beep=True):
+        """Appelé après chaque balayage (MainWindow.on_sweep)."""
+        ow, now, new = self.owner, time.time(), 0
+        for w in ow.watch:
+            new += lc_feed(self.lc, int(round(w["freq"] * 1000)), w["state"], w["level"], now)
+        for lst in ow.unk_now.values():
+            for fr in lst:
+                self.unknown[round(fr, 3)] = now
+        self.unknown = {f: t for f, t in self.unknown.items() if now - t < 120}
+        if new and beep and self.beep_chk.isChecked():
+            QtWidgets.QApplication.beep()
+        self.refresh()
+
+    def refresh(self):
+        ow, th = self.owner, self.owner.theme
+        sm = lc_summary(self.lc)
+        running = ow.is_running()
+        self.run_box.setVisible(not running)
+        col = {"ok": th["st_free"], "manual": th["st_free"], "weak": th["st_weak"], "skip": th["st_none"]}
+        for r, k in enumerate(self.keys):
+            e = self.lc[k]
+            vals = [LC_TEXT[e["res"]], e["name"], f"{e['freq']:.3f}",
+                    ow.lvl(e["lvl"], suffix=True) if e["lvl"] is not None else "",
+                    datetime.fromtimestamp(e["t"]).strftime("%H:%M:%S") if e["t"] else "", e["layer"]]
+            bg = QtGui.QColor(col.get(e["res"], th["ui_base"]))
+            for c, v in enumerate(vals):
+                it = self.table.item(r, c)
+                if it is None:
+                    it = QtWidgets.QTableWidgetItem()
+                    self.table.setItem(r, c, it)
+                if it.text() != v:
+                    it.setText(v)
+                if c == 0:
+                    it.setBackground(bg)
+                    it.setForeground(QtGui.QColor(contrast_text(bg.name())))
+        self.bar.setMaximum(max(1, sm["n"]))
+        self.bar.setValue(sm["ok"] + sm["weak"])
+        self.sum_lbl.setText(sm["text"])
+        self.sum_lbl.setStyleSheet(f"color:{th['st_free'] if sm['done'] else th['ui_text']}")
+        hints = lc_hints(self.lc, list(self.unknown))
+        self.hint_lbl.setText("" if not hints else "🔎 " + " · ".join(
+            f"{n} ({fa:.3f}) manque, mais signal inconnu à {fu:.3f} MHz ({(fu - fa) * 1000:+.0f} kHz) : mauvais canal ?"
+            for n, fa, fu in hints[:4]))
+
+    def _sel_keys(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes()})
+        return [self.keys[r] for r in rows if r < len(self.keys)]
+
+    def mark(self, res):
+        now = time.time()
+        for k in self._sel_keys():
+            e = self.lc[k]
+            e["res"], e["t"] = res, (now if res else None)
+            if res is None:
+                e["lvl"] = None
+        self.refresh()
+
+    def _goto(self, r):
+        if r < len(self.keys):
+            f = self.lc[self.keys[r]]["freq"]
+            try:
+                self.owner.spec.getPlotItem().vb.setXRange(f - 2.0, f + 2.0, padding=0)
+            except Exception:
+                pass
+
+    def summary_text(self):
+        ow = self.owner
+        return lc_text(self.lc, ow.show_meta.get("name", ""), datetime.now().strftime("%d/%m %H:%M"),
+                       lambda v: ow.lvl(v, suffix=True))
+
+    def copy(self):
+        QtWidgets.QApplication.clipboard().setText(self.summary_text())
+        self.owner.set_status("Résumé de l'appel copié : colle-le où tu veux.")
+
+    def finish(self):
+        sm = lc_summary(self.lc)
+        self.owner.log_event(dict(name="Appel des micros", freq=0.0, note=sm["text"]), 0.0,
+                             "APPEL OK" if sm["done"] else "APPEL INCOMPLET")
+        self.owner.set_status(f"Appel des micros : {sm['text']}")
+        self.close()
+
+    def closeEvent(self, e):
+        if self.owner._linecheck is self:
+            self.owner._linecheck = None
+        super().closeEvent(e)
+
+    def done(self, r):
+        if self.owner._linecheck is self:
+            self.owner._linecheck = None
+        super().done(r)
+
+
 class ReportDialog(QtWidgets.QDialog):
     def __init__(self, owner, prefs, has_im):
         super().__init__(owner)
@@ -5370,6 +5816,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tree_items, self._tree_sig, self._tree_lock = {}, {}, False
         self._guide = None
         self._im_dlg = self._rescue_dlg = self._replay = None
+        self._linecheck = None          # appel des micros en cours (LineCheckDialog)
         self.alarms = AlarmBook()
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
@@ -5411,7 +5858,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                tg_chat="", site="")
         self.notifier = None
         self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
-        self.web_cfg = dict(on=False, port=WEB_PORT)
+        self.web_cfg = dict(on=False, port=WEB_PORT, pin="")
+        self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self.web = None
         self._web_json = b"{}"
         self.view_id = -1
@@ -5572,6 +6020,8 @@ class MainWindow(QtWidgets.QMainWindow):
     }
 
     TIPS_MENU = {
+        "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
+                               "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
         "⚡ Intermodulation": "Produits d'intermodulation de tes émetteurs (2 / 3 / 5 TX) : ce qui retombe sur tes\n"
                              "fréquences, ou d'où peut venir un signal inconnu.",
         "🆘 Fréquence de secours": "Propose des fréquences libres d'après le spectre mesuré, sans intermod avec ta liste.",
@@ -5731,12 +6181,16 @@ class MainWindow(QtWidgets.QMainWindow):
         pmenu = self.show_menu
         sc_save = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(lambda *_: self.save_show())
+        sc_lc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
+        sc_lc.activated.connect(lambda *_: self.open_linecheck())
         prof_btn.setMenu(pmenu)
         tools_btn = QtWidgets.QPushButton("🔧 Outils")
         tools_btn.setToolTip("Intermodulation, fréquence de secours, relecture, rapport, scans WSM/WWB, export par scène, "
                              "nommage rapide, vocabulaire.")
         tmenu = QtWidgets.QMenu(tools_btn)
-        for txt, fn in (("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
+        for txt, fn in (("🎤 Appel des micros (line check)…  Ctrl+L", lambda *_: self.open_linecheck()),
+                        (None, None),
+                        ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
                         ("🆘 Fréquence de secours…", lambda *_: self.open_rescue()),
                         (None, None),
                         ("⏪ Relecture : revoir le spectre…", lambda *_: self.open_replay()),
@@ -5780,6 +6234,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu.addMenu(tmenu)
         self.more_menu.addMenu(self.win_menu)
         self.more_menu.addSeparator()
+        self.more_menu.addAction("🎤 Appel des micros (line check)…").triggered.connect(lambda *_: self.open_linecheck())
         self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
         self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
@@ -6730,7 +7185,7 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
-            dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
+            dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k != "pin"},
             expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
@@ -6741,6 +7196,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["layout_ver"] = LAYOUT_VER
             data["vocab"] = self.vocab_user
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
+            data["web"]["pin"] = self.web_cfg.get("pin", "")          # code PIN : idem
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
@@ -7274,7 +7730,7 @@ class MainWindow(QtWidgets.QMainWindow):
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
-            running=self.is_running(), cycle=cyc))
+            running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4))
         return json.dumps(st, ensure_ascii=False).encode("utf-8")
 
     def apply_web(self):
@@ -7284,7 +7740,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.web = None
         if want and self.web is None:
             self._web_json = self.web_json()
-            ws = WebServer(self.web_cfg["port"], lambda: self._web_json)
+            ws = WebServer(self.web_cfg["port"], lambda: self._web_json, get_pin=lambda: self.web_cfg.get("pin", ""),
+                           on_ack=self._web_acks.put)
             ws.start()
             ws.ready.wait(3)
             if ws.error:
@@ -8662,7 +9119,8 @@ class MainWindow(QtWidgets.QMainWindow):
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
                 f"{level:.1f}" if w["freq"] else "—", event,
                 self.layer_text(w) if "scene" in w else "", w.get("note", "")]
-        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT")
+        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT",
+                                                 "APPEL INCOMPLET")
                else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)                      # fichier : toujours en dBm
@@ -8727,8 +9185,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_watch_levels()
         self.check_strong(bid, f, l)
         self.update_watch_table()
-        if self.unk_chk.isChecked():
+        if self.unk_chk.isChecked() or self._linecheck is not None:     # l'appel repère les packs mal réglés
             self.detect_unknown(bid, f, l)
+        if self._linecheck is not None and bid != ZOOM_ID:
+            self._linecheck.feed()
         if self.view_id in (-1, bid):
             self.update_plot()
         if self.view_id == bid:
@@ -9695,6 +10155,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._im_dlg = IntermodDialog(self, origin=f)
         self._im_dlg.show()
 
+    def open_linecheck(self):
+        if self._linecheck is not None:
+            self._linecheck.raise_()
+            self._linecheck.activateWindow()
+            return
+        self._linecheck = LineCheckDialog(self)
+        self._linecheck.show()
+
     def open_rescue(self):
         self._rescue_dlg = RescueDialog(self)
         self._rescue_dlg.show()
@@ -9708,7 +10176,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tx.sort(key=lambda x: -(x["level"] if x["level"] is not None else -999.0))
         tx = tx[:25]
         tol = max(0.05, self.win_spin.value() / 1000.0)
-        rows, _info = im_explain(w["freq"] if f_at is None else f_at, [x["freq"] for x in tx], (3, 5), 3, tol, 3)
+        rows, _info = im_explain(w["freq"] if f_at is None else f_at, [x["freq"] for x in tx], (3, 5), 3, tol, 3,
+                                 bws=[float(x.get("bw") or 0.0) for x in tx])
         if not rows:
             return ""
         r = rows[0]
@@ -9721,7 +10190,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return ""
         act.sort(key=lambda w: -(w["level"] if w["level"] is not None else -999.0))
         act = act[:25]
-        rows, _info = im_explain(fr, [w["freq"] for w in act], (3,), 3, max(0.1, step * 1.5), 3)
+        rows, _info = im_explain(fr, [w["freq"] for w in act], (3,), 3, max(0.1, step * 1.5), 3,
+                                 bws=[float(w.get("bw") or 0.0) for w in act])
         if not rows:
             return ""
         r = rows[0]
@@ -9991,6 +10461,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])
         self._notify_new_alarms()
+        self._web_ack_pending()
         if self.web is not None:
             self._web_json = self.web_json()
         if self.recorder is not None:
@@ -10058,6 +10529,20 @@ class MainWindow(QtWidgets.QMainWindow):
         n = sum(1 for i in ids if self.alarms.ack(i))
         self.refresh_alarms()
         self.set_status(f"{n} alarme(s) acquittée(s)." if n else "Sélectionne une alarme en cours à acquitter.")
+
+    def _web_ack_pending(self):
+        """Acquittements faits depuis un téléphone (page web, code PIN)."""
+        n = 0
+        while True:
+            try:
+                target = self._web_acks.get_nowait()
+            except queue.Empty:
+                break
+            n += self.alarms.ack_all() if target == "all" else int(self.alarms.ack(target))
+        if n:
+            self.refresh_alarms()
+            self.set_status(f"📱 {n} alarme(s) acquittée(s) depuis la page web.")
+        return n
 
     def ack_all_alarms(self):
         n = self.alarms.ack_all()

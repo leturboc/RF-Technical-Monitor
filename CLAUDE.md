@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.2.3**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.3.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -67,7 +67,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`_build_mk_menu`) ; `names_chk` / `mark_combo` gardés comme modèles (config) mais hors de la barre ; Ctrl+M.
 - Blocs larges (Spectera / WMAS) : `w["bw"]` MHz (0 = fréquence simple). Niveau `level_block` (médiane, ou max si
   « doit rester libre »), `block_choices(tv)`, `block_points` (scan ciblé, bandes depuis la liste),
-  `block_overlaps` (« ⚠ dans le bloc »). Démo : `demo_blocks` → plateau. IM : calcul sur le centre seulement.
+  `block_overlaps` (« ⚠ dans le bloc »). Démo : `demo_blocks` → plateau. IM des blocs : `im_scan(..., bws, tbws)` → produits en bandes
+  (demi-largeur `hw` = Σ|coef|·bw/2, `gap` bord à bord).
 - Shows (🎪) : fichier `.tsashow` = `show_doc` (PURE) {meta (SHOW_META), show (clés SHOW_KEYS seulement), ref} ;
   `read_show` lit aussi les anciens profils .json ; ouverture = `show_apply(config complète actuelle, doc)` → les
   préférences ne bougent pas. `show_meta`, `show_path`, `recent_shows` dans config.json (pas dans les shows).
@@ -95,6 +96,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `WallPickDialog`, case « Alarmes toujours visibles » (`in_alarm`). Barre du mur en `FlowLayout` (avant : 929 px
   de large mini, impossible à réduire) ; tuiles dans un `QScrollArea`, taille `size_combo` (`wall_grid` /
   `WALL_TILE` en PURE, `wall_size` dans config.json) : auto = remplit, s / m / l = hauteur fixe + défilement.
+- Intermod : tolérances par type de produit (`im_class` : 2tx3 / 3tx3 / 5 / 7, `IM_TOL_PRESETS`, défaut EazyRF
+  100 / 50 kHz d'après ses guides V3.75 / V4.00 ; 5ᵉ / 7ᵉ = notre choix). `guard` de `im_scan` = float ou dict.
+  Les « doit rester libre » ne sont pas des émetteurs. Niveau « mesuré » masqué quand la cible est un « doit émettre »
+  qui émet (on mesurerait sa porteuse). Clément trouvait l'ancien calcul (±300 kHz partout) « tout faux » face à
+  Wisycom Manager : **demander sa liste Wisycom pour comparer** avant de toucher encore aux règles.
+- Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
+  PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
+- Page web : acquittement `POST /acquitter` {pin, id|"all"} si `web_cfg["pin"]` (≥ 4) ; `PinGuard` (PURE, 5 erreurs
+  → 60 s) ; file `_web_acks` vidée par `_alarm_tick` ; PIN dans config.json, jamais dans la config partagée.
 - Aide : `TIPS_ATTR` / `TIPS_TEXT` / `TIPS_MENU` + `_install_tips` (bulles + statusTip) ; gui_reel échoue si un
   contrôle visible n'a pas de bulle.
 - Config : `%APPDATA%/TinySAMonitor/config.json` (`_collect_config` / `_apply_config`, avec migration des anciennes configs).

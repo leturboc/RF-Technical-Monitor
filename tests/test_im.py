@@ -183,5 +183,51 @@ ok("suggestion « contient »", s3 and s3[0] == "Intercom", str(s3))
 cands = ns["name_candidates"](vocab, names)
 ok("pas de doublons", len({c.lower() for c in cands}) == len(cands))
 
+# ---- blocs larges (Spectera / WMAS) : les produits sont des bandes
+TX, BW = [550.0, 560.0], [8.0, 0.0]          # bloc de 8 MHz centré 550 + un micro à 560
+rows, _ = im_scan(TX, (3,), 2, targets=[547.0], guard=0.2)
+ok("bloc : sans largeur, 2A−B = 540 ne touche pas 547", not rows)
+rows, _ = im_scan(TX, (3,), 2, targets=[547.0], guard=0.2, bws=BW)
+ok("bloc : 2×bloc − micro = bande 532–548, touche 547", len(rows) == 1 and abs(rows[0]["f"] - 540.0) < 1e-9
+   and abs(rows[0]["hw"] - 8.0) < 1e-9 and abs(rows[0]["gap"] + 1.0) < 1e-9, str(rows))
+rows, _ = im_scan(TX, (3,), 2, targets=[549.5], guard=0.2, bws=BW)
+ok("bloc : 1,5 MHz au-dessus de la bande → rien", all(r["f"] != 540.0 for r in rows), str(rows))
+rows, _ = im_scan(TX, (3,), 2, targets=[573.9], guard=0.2, bws=BW)
+ok("bloc : 2×micro − bloc = 566–574 (demi-largeur 4)", len(rows) == 1 and abs(rows[0]["hw"] - 4.0) < 1e-9, str(rows))
+rows, _ = im_scan([590.0, 596.5], (3,), 2, targets=[600.0], tbws=[8.0], guard=0.2)
+ok("cible = bloc 596–604 : un produit à 603 tombe dedans", any(abs(r["f"] - 603.0) < 1e-9 and r["gap"] < 0 for r in rows), str(rows))
+rows, _ = im_scan([590.0, 599.0], (3,), 2, targets=[600.0], tbws=[8.0], guard=0.2)
+ok("cible = bloc : un produit à 608 reste dehors", all(abs(r["f"] - 608.0) > 1e-9 for r in rows), str(rows))
+# 2 TX rapide = chemin général, avec des blocs
+TXw = [520.0, 530.0, 548.0, 561.0, 575.0]
+BWw = [8.0, 0.0, 6.0, 0.0, 0.2]
+TG = [505.0, 512.0, 538.5, 566.0, 589.0, 600.0]
+r2, _ = im_scan(TXw, (3, 5), 2, targets=TG, guard=0.3, bws=BWw, tbws=[0, 8, 0, 6, 0, 0])
+rg, _ = im_scan(TXw, (3, 5), 3, targets=TG, guard=0.3, bws=BWw, tbws=[0, 8, 0, 6, 0, 0])
+k2 = sorted((round(r["f"], 6), r["order"], round(r["hw"], 6)) for r in r2)
+kg = sorted((round(r["f"], 6), r["order"], round(r["hw"], 6)) for r in rg if r["ntx"] == 2)
+ok("blocs : 2 TX rapide = chemin général", k2 == kg and len(k2) > 0, f"{len(k2)} / {len(kg)}")
+ok("blocs : A+B−C en bandes aussi (3 TX)", any(r["ntx"] == 3 for r in rg))
+ok("blocs : tri du plus gênant (chevauchement) au moins gênant", all(
+    (a["order"], a["ntx"], a["gap"]) <= (b["order"], b["ntx"], b["gap"]) for a, b in zip(rg, rg[1:])))
+
+# ---- tolérances par type de produit (façon EazyRF)
+ok("classes de produits", [ns["im_class"](3, 2), ns["im_class"](3, 3), ns["im_class"](5, 2), ns["im_class"](5, 4)]
+   == ["2tx3", "3tx3", "5", "5"])
+EZ = dict(ns["IM_TOL_PRESETS"][0][1])
+ok("préréglage EazyRF : 100 / 50 kHz", EZ["2tx3"] == 0.1 and EZ["3tx3"] == 0.05)
+# 2A − B à 80 kHz d'une cible : gênant (2 TX, < 100) ; A + B − C à 80 kHz : accepté (3 TX, > 50)
+rows, _ = im_scan([500.0, 501.0], (3,), 2, targets=[499.08], guard=EZ)
+ok("2 TX à 80 kHz : gênant", len(rows) == 1 and rows[0]["ntx"] == 2, str(rows))
+rows, _ = im_scan([500.0, 503.0, 510.0], (3,), 3, targets=[493.08], guard=EZ)
+ok("3 TX à 80 kHz : accepté", not [r for r in rows if r["ntx"] == 3], str(rows))
+rows, _ = im_scan([500.0, 503.0, 510.0], (3,), 3, targets=[493.03], guard=EZ)
+ok("3 TX à 30 kHz : gênant", [r for r in rows if r["ntx"] == 3], str(rows))
+rows, _ = im_scan([500.0, 503.0, 510.0], (3,), 3, targets=[493.08], guard=0.1)
+ok("une seule tolérance (ancien appel) : 3 TX à 80 kHz gênant", [r for r in rows if r["ntx"] == 3])
+# im3_clash : tolérance 3 TX séparée
+ok("im3_clash : 3 TX séparé", im3_clash(493.08, [500.0, 503.0, 510.0], 0.1, 0.05) == []
+   and im3_clash(493.08, [500.0, 503.0, 510.0], 0.1) != [])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -31,7 +31,7 @@ def chunk(start, end):
 
 
 ns = dict(__name__="tsm_alertes")
-exec("import bisect, csv, io, itertools, math, os, queue, re, threading, time, unicodedata, urllib.request\n"
+exec("import bisect, csv, io, itertools, json, math, os, queue, re, threading, time, unicodedata, urllib.request\n"
      "from collections import deque\nfrom http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
      "import numpy as np\n", ns)
 ns.update(MIN_PTS=51, HYST=3.0, RBW_LIST=[1, 3, 10, 30, 100])
@@ -82,6 +82,17 @@ check("état web : états lisibles", [r["state_txt"] for r in st["rows"]] == ["O
 check("état web : ABSENT marqué", st["rows"][2]["alarm"] == "ABSENT")
 check("état web : seulement les alarmes en cours", [x["kind"] for x in st["alarms"]] == ["ABSENT"])
 check("état web : sérialisable", json.loads(json.dumps(st))["title"] == "T")
+
+# ------------------------------------------------------------- code PIN
+pg_ = ns["PinGuard"](tries=3, lock_s=60.0)
+check("PIN : pas de code = désactivé", pg_.check("", "1234", "a", 0.0) == "off" and pg_.check("12", "12", "a", 0.0) == "off")
+check("PIN : bon code", pg_.check("1234", "1234", "a", 0.0) == "ok")
+check("PIN : code faux", pg_.check("1234", "1235", "a", 0.0) == "bad" and pg_.check("1234", "12345", "a", 0.0) == "bad")
+check("PIN : 3ᵉ erreur → bloqué, même avec le bon code", pg_.check("1234", "", "a", 1.0) == "locked"
+      and pg_.check("1234", "1234", "a", 30.0) == "locked")
+check("PIN : une autre adresse n'est pas bloquée", pg_.check("1234", "1234", "b", 30.0) == "ok")
+check("PIN : débloqué après le délai", pg_.check("1234", "1234", "a", 62.0) == "ok")
+check("état web : id des alarmes", st["alarms"][0]["id"] == 0 and "ack" not in st)
 
 # ------------------------------------------------------------- Notifier
 got = []
@@ -158,6 +169,32 @@ try:
     check("chemin inconnu : 404", False)
 except urllib.error.HTTPError as e:
     check("chemin inconnu : 404", e.code == 404)
+def post(port, obj, raw=None):
+    rq = urllib.request.Request(f"http://127.0.0.1:{port}/acquitter", data=raw if raw is not None else json.dumps(obj).encode(),
+                                headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        return urllib.request.urlopen(rq, timeout=5).status
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
+check("POST sans acquittement branché : 404", post(w.port, dict(pin="1234", id=1)) == 404)
+acks, pin_ = [], {"v": "4321"}
+wa = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_pin=lambda: pin_["v"], on_ack=acks.append)
+wa.start()
+wa.ready.wait(3)
+check("acquitter : code faux → 403", post(wa.port, dict(pin="0000", id=7)) == 403 and not acks)
+check("acquitter : bon code → 200", post(wa.port, dict(pin="4321", id=7)) == 200 and acks == [7], str(acks))
+check("acquitter : tout", post(wa.port, dict(pin="4321", id="all")) == 200 and acks[-1] == "all")
+check("acquitter : requête bancale → 400", post(wa.port, None, raw=b"{pas du json") == 400
+      and post(wa.port, dict(pin="4321", id="1; rm")) == 400 and post(wa.port, dict(pin="4321", id=True)) == 400)
+for _ in range(5):                  # 5 codes faux de suite
+    post(wa.port, dict(pin="9999", id=1))
+check("acquitter : trop d'essais → 429", post(wa.port, dict(pin="4321", id=1)) == 429)
+wa.guard.bad.clear()
+pin_["v"] = ""
+check("acquitter : code effacé sur le PC → refusé", post(wa.port, dict(pin="4321", id=1)) == 403)
+pin_["v"] = "4321"
 busy = ns["WebServer"](w.port, lambda: b"{}", host="127.0.0.1")
 busy.start()
 busy.ready.wait(3)
@@ -199,11 +236,38 @@ else:
         check("navigateur : filtre gardé", pg.locator("#flt").input_value() == "Grande scène › Micros")
         if os.environ.get("CAPTURES"):
             pg.screenshot(path=os.path.join(os.environ["CAPTURES"], "page_web.png"), full_page=True)
+        # acquitter depuis le téléphone : bouton visible seulement si un code est réglé sur le PC
+        check("navigateur : pas de bouton sans code", pg.locator(".al button").count() == 0)
+        st_ack = ws(rows, al, dict(title="T", time="12:00:04", running=True, cycle="", ack=True))
+        st_ack["alarms"][0]["id"] = 7
+        state["v"] = json.dumps(st_ack, ensure_ascii=False).encode("utf-8")
+        pa = br.new_page(viewport=dict(width=390, height=800))
+        pa.on("pageerror", lambda e: errs.append(str(e)))
+        prompts = []
+        pa.on("dialog", lambda d: (prompts.append(d.type), d.accept("4321") if d.type == "prompt" else d.accept()))
+        pa.goto(f"http://127.0.0.1:{wa.port}/")
+        pa.wait_for_selector(".al button", timeout=5000)
+        n0 = len(acks)
+        pa.click(".al button")
+        pa.wait_for_function("1", timeout=1000)
+        t0 = time.time()
+        while len(acks) == n0 and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("navigateur : Acquitter → code demandé puis envoyé", prompts == ["prompt"] and acks[-1] == 7, f"{prompts} {acks}")
+        pa.click(".al button")
+        t0 = time.time()
+        while len(acks) == n0 + 1 and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("navigateur : code retenu (pas redemandé)", prompts == ["prompt"] and len(acks) == n0 + 2, f"{prompts} {acks}")
+        if os.environ.get("CAPTURES"):
+            pa.screenshot(path=os.path.join(os.environ["CAPTURES"], "page_web_acquitter.png"), full_page=True)
+        pa.close()
         w.stop()
         pg.wait_for_function("document.querySelector('#stale').style.display === 'block'", timeout=25000)
         check("navigateur : PC injoignable signalé", pg.locator("#stale").is_visible())
         check("navigateur : aucune erreur JavaScript", not errs, str(errs))
         br.close()
 w.stop()
+wa.stop()
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

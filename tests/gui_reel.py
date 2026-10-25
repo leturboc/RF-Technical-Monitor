@@ -320,6 +320,31 @@ win.dock_wall.setFloating(False)
 win.dock_wall.hide()
 wait(300)
 
+# appel des micros (line check), en mode démo
+step("appel des micros (Ctrl+L)", win.open_linecheck)
+lcd = win._linecheck
+wait(4000)
+if lcd is not None:
+    sm_ = m.lc_summary(lcd.lc)
+    check("appel : des fréquences validées en démo", sm_["ok"] + sm_["weak"] > 0 and sm_["n"] > 0, sm_["text"])
+    check("appel : les ABSENT de la démo manquent", any(w.get("absent") for w in win.watch) <= bool(sm_["missing"]), sm_["text"])
+    check("appel : tableau rempli", lcd.table.rowCount() == sm_["n"] + sm_["skipped"])
+    miss_t = [type(x).__name__ for x in lcd.findChildren(W.QAbstractButton) + lcd.findChildren(W.QComboBox)
+              if x.isVisibleTo(lcd) and not x.toolTip().strip()]
+    check("appel : info-bulles", not miss_t, str(miss_t))
+    shot(lcd, "appel_des_micros")
+    lcd.table.selectRow(0)
+    step("appel : ignorer la 1re ligne", lambda: lcd.mark("skip"))
+    check("appel : ligne ignorée", lcd.lc[lcd.keys[0]]["res"] == "skip")
+    step("appel : copier", lcd.copy)
+    check("appel : résumé copié", app.clipboard().text().startswith("Appel des micros"))
+    n_log = win.log_table.rowCount()
+    step("appel : terminer", lcd.finish)
+    check("appel : noté au journal, fenêtre fermée", win.log_table.rowCount() == n_log + 1
+          and win.log_table.item(0, 4).text().startswith("APPEL") and win._linecheck is None)
+else:
+    check("appel : fenêtre ouverte", False)
+
 # disposition de base : le spectre a la place, les colonnes se rétrécissent
 win.layout_standard()
 wait(400)
@@ -451,7 +476,20 @@ step("export_scan_wwb", win.export_scan_wwb)
 
 # dialogues non modaux
 step("open_intermod", win.open_intermod); wait(1500)
-if win._im_dlg: shot(win._im_dlg, "intermod")
+if win._im_dlg:
+    shot(win._im_dlg, "intermod")
+    _d = win._im_dlg
+    _d.active_chk.setChecked(False)
+    _d.src_combo.setCurrentIndex(0)
+    _d.maxtx_combo.setCurrentIndex(0)
+    if any(w.get("bw") for w in win.watch):
+        step("intermod avec un bloc large", _d.compute)
+        _wide = [r for r in _d.rows if r["hw"] > 0.05]
+        check("intermod : produits du bloc en bandes (± MHz)", bool(_wide)
+              and any("±" in (_d.table.item(i, 0).text()) for i in range(_d.table.rowCount())), f"{len(_d.rows)} produits")
+        shot(_d, "intermod_bloc")
+    else:
+        print("(pas de bloc large dans la liste : IM des blocs non testée en vrai Qt)")
 step("open_rescue", win.open_rescue); wait(1500)
 if win._rescue_dlg: shot(win._rescue_dlg, "rescue")
 step("open_guide", win.open_guide); wait(800)
@@ -558,6 +596,22 @@ if win.web is not None:
     js = _json.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())
     check("page web : état réel", len(js["rows"]) == len(win.watch) and js["running"], str(js.get("running")))
     check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
+    # acquitter depuis le téléphone (code PIN)
+    import json as _js
+    win.web_cfg["pin"] = "2468"
+    win._alarm_tick()
+    _al = [a for a in _js.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())["alarms"] if not a["acked"]]
+    check("page web : acquittement proposé", _js.loads(win.web_json())["ack"] is True)
+    if _al:
+        _rq = _ur.Request(base + "/acquitter", data=_js.dumps(dict(pin="2468", id=_al[0]["id"])).encode(),
+                          headers={"Content-Type": "application/json"}, method="POST")
+        check("page web : POST acquitter accepté", _ur.urlopen(_rq, timeout=5).status == 200)
+        win._alarm_tick()
+        a_ = next((a for a in win.alarms.active.values() if a["id"] == _al[0]["id"]), None)
+        check("page web : alarme acquittée sur le PC", a_ is None or a_["acked"])
+    else:
+        print("(pas d'alarme en cours : acquittement web non testé)")
+    win.web_cfg["pin"] = ""
     win.web_cfg["on"] = False
     step("web off", win.apply_web)
     check("page web arrêtée", win.web is None)
