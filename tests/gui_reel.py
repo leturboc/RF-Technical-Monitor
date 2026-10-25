@@ -478,7 +478,31 @@ check("1280×720 : boutons du haut visibles en entier", all(vis.values()), str(v
 win.resize(1700, 980); wait(800)
 
 # dialogues modaux
+def _labels_act(d):
+    if not isinstance(d, m.LabelsDialog):
+        return "reject"
+    _og = W.QColorDialog.getColor
+    W.QColorDialog.getColor = staticmethod(lambda *a, **k: QtGui.QColor("#a855f7"))
+    try:
+        d.pick_color("free_ok")
+    finally:
+        W.QColorDialog.getColor = _og
+    check("mots et couleurs : pastille mise à jour", "#a855f7" in d.table.cellWidget(
+        [k for k, *_ in m.SIGNAL_LABELS].index("free_ok"), 2).text())
+    return "accept"
+
+
+DLG_ACTION[0] = _labels_act
 step("edit_labels", win.edit_labels)
+DLG_ACTION[0] = "reject"
+check("couleur « libre » choisie retenue", win.sig_colors == {"free_ok": "#a855f7"}, str(win.sig_colors))
+_fr = next((w for w in win.watch if win.is_keep_free(w["status"]) and w["state"] == "free"), None)
+if _fr is not None:
+    check("couleur « libre » appliquée", win.sig_view(_fr)[2] == "#a855f7", str(win.sig_view(_fr)))
+_ok = next((w for w in win.watch if win.is_keep_on(w["status"]) and w["state"] == "occ"), None)
+if _ok is not None:
+    check("OK reste vert (différent de libre)", win.sig_view(_ok)[1] == "ok" and win.sig_view(_ok)[2] != "#a855f7")
+win.sig_colors = {}
 step("edit_statuses", win.edit_statuses)
 step("edit_colors", win.edit_colors)
 step("edit_plan", win.edit_plan)

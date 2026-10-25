@@ -373,13 +373,23 @@ check("doit émettre + signal = OK (vert)", sv("occ", keep_on=True), ("OK", "ok"
 check("doit émettre + muet = orange, puis ABSENT rouge", (sv("free", keep_on=True), sv("free", keep_on=True, absent=True)),
       (("muet", "warn"), ("⚠ ABSENT", "bad")))
 check("doit rester libre + signal = CONFLIT (rouge)", sv("occ", keep_free=True), ("⚠ CONFLIT", "bad"))
-check("doit rester libre + rien = ✔ libre (vert)", sv("free", keep_free=True), ("✔ libre", "ok"))
+check("doit rester libre + rien = ✔ libre (ton « libre », distinct de OK)", sv("free", keep_free=True), ("✔ libre", "free"))
+check("sans statut + rien = libre (ton « libre »)", sv("free"), ("libre", "free"))
+check("doit émettre + signal = OK (ton « ok »)", sv("occ", keep_on=True), ("OK", "ok"))
+cc_ = ns["clean_colors"]
+check("couleurs : seules les valides restent", cc_({"ok": "#22C55E", "free": "bleu", "zzz": "#000000", "free_ok": "#3b82f6"}),
+      {"ok": "#22c55e", "free_ok": "#3b82f6"})
+ok("tons par situation : tous connus", set(ns["SIGNAL_TONES"]) == set(ns["SIGNAL_DEFAULTS"]))
+_sk = ns["signal_key"]
+_cas = [(st, kf, ko, ab, im) for st in ("occ", "weak", "free") for kf, ko in ((0, 0), (1, 0), (0, 1)) for ab in (0, 1) for im in (0, 1)]
+ok("tons par situation : identiques à signal_key", all(ns["SIGNAL_TONES"][k] == t for k, t in
+                                                      (_sk(*c) for c in _cas) if k is not None))
 check("sans statut : occupé = pas de place (rouge)", sv("occ"), ("OCCUPÉ", "bad"))
 check("pas de mesure", sv(None, keep_on=True), ("—", "none"))
 check("doit rester libre + intermod = INTERMOD (rouge)", sv("occ", keep_free=True, intermod=True), ("⚠ INTERMOD", "bad"))
 check("intermod sans importance si ce n'est pas « doit rester libre »", sv("occ", keep_on=True, intermod=True), ("OK", "ok"))
 check("mes mots", sv("occ", keep_on=True, labels={"ok": "BON"}), ("BON", "ok"))
-check("mot vide = mot par défaut", sv("free", keep_free=True, labels={"free_ok": ""}), ("✔ libre", "ok"))
+check("mot vide = mot par défaut", sv("free", keep_free=True, labels={"free_ok": ""}), ("✔ libre", "free"))
 check("toutes les situations ont un mot par défaut", all(ns["SIGNAL_DEFAULTS"][k] for k in ns["SIGNAL_DEFAULTS"]), True)
 tu, fu, fl = ns["to_unit"], ns["from_unit"], ns["fmt_level"]
 check("dBµV = dBm + 107", tu(-80.0, "dbuv"), 27.0)

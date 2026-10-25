@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.1"
+APP_VER = "7.4.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1175,10 +1175,20 @@ SIGNAL_LABELS = (     # clé, situation (pour la fenêtre « Mots affichés »),
     ("free", "Sans statut : libre", "libre"),
 )
 SIGNAL_DEFAULTS = {k: t for k, _s, t in SIGNAL_LABELS}
+SIGNAL_TONES = {"ok": "ok", "ok_weak": "warn", "silent": "warn", "absent": "bad", "conflict": "bad", "intermod": "bad",
+                "free_weak": "warn", "free_ok": "free", "occ": "bad", "weak": "warn", "free": "free"}
+LIBRE_COLOR = "#3b82f6"          # couleur par défaut de « libre » (bleu), distincte du vert « OK »
+
+
+def clean_colors(d):
+    """{clé de SIGNAL_LABELS: "#rrggbb"} valides seulement (config relue, saisie)."""
+    d = d if isinstance(d, dict) else {}
+    return {k: str(v).lower() for k, v in d.items() if k in SIGNAL_DEFAULTS and re.fullmatch(r"#[0-9a-fA-F]{6}", str(v))}
 
 
 def signal_key(state, keep_free=False, keep_on=False, absent=False, intermod=False):
-    """Situation du signal POUR CETTE fréquence -> (clé de SIGNAL_LABELS ou None, ton : ok | bad | warn | none).
+    """Situation du signal POUR CETTE fréquence -> (clé de SIGNAL_LABELS ou None, ton : ok | free | bad | warn | none).
+    ok = mon émetteur est bien là ; free = rien sur la fréquence (libre) : deux couleurs différentes.
     « Doit émettre » : signal = OK, c'est bien notre émetteur (vert) ; « doit rester libre » : signal = conflit
     (rouge), INTERMOD s'il s'explique par tes émetteurs ; sans statut : occupé = pas de place ici (rouge)."""
     if keep_on:
@@ -1188,8 +1198,8 @@ def signal_key(state, keep_free=False, keep_on=False, absent=False, intermod=Fal
     if keep_free:
         if state == "occ":
             return ("intermod" if intermod else "conflict"), "bad"
-        return {"weak": ("free_weak", "warn"), "free": ("free_ok", "ok")}.get(state, (None, "none"))
-    return {"occ": ("occ", "bad"), "weak": ("weak", "warn"), "free": ("free", "ok")}.get(state, (None, "none"))
+        return {"weak": ("free_weak", "warn"), "free": ("free_ok", "free")}.get(state, (None, "none"))
+    return {"occ": ("occ", "bad"), "weak": ("weak", "warn"), "free": ("free", "free")}.get(state, (None, "none"))
 
 
 def signal_view(state, keep_free=False, keep_on=False, absent=False, intermod=False, labels=None):
@@ -2679,7 +2689,8 @@ def web_state(rows, alarms, info):
                         level=None if r.get("level") is None else round(float(r["level"]), 1),
                         level_txt=r.get("level_txt") or ("" if r.get("level") is None else f"{float(r['level']):.1f} dBm"),
                         state=st or "", state_txt=r.get("sig_txt") or STATE_TXT.get(st, "—"),
-                        tone=r.get("tone") or {"occ": "bad", "weak": "warn", "free": "ok"}.get(st, "none"),
+                        tone=r.get("tone") or {"occ": "bad", "weak": "warn", "free": "free"}.get(st, "none"),
+                        color=r.get("color") or "",
                         status=r.get("status") or "",
                         scene=r.get("scene") or "", group=r.get("group") or "",
                         alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
@@ -2759,6 +2770,7 @@ border-radius:var(--r);padding:18px;transition:transform .1s,border-color .1s}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px}
 .c{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--none);border-radius:12px;padding:10px 12px}
 .c.ok{border-left-color:var(--ok)}.c.bad{border-left-color:var(--bad)}.c.warn{border-left-color:var(--warn)}
+.c.free{border-left-color:#3b82f6}.t.free{background:#1e3a8a;border-color:#3b82f6}
 .c.alarm{background:var(--abs);color:#111;border-color:var(--abs)}
 .c .n{font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c .f{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}.c.alarm .f,.c.alarm .s{color:#111}
@@ -2870,14 +2882,14 @@ function mount(v){const el=$("#view");
  if(v==="alarmes"){el.innerHTML=`<div class="tools"><b style="flex:1">Alarmes en cours</b><span id="aa"></span></div><div class="alist" id="g"></div>`;return}}
 function update(v){const st=D.state;
  if(v===""){const rs=st.rows,occ=rs.filter(r=>r.state==="occ").length,ab=rs.filter(r=>r.alarm).length,k=$("#kpi");
-  if(k)k.innerHTML=`<div class="kpi"><b>${rs.length}</b><span>fréquences</span></div><div class="kpi"><b>${rs.filter(r=>r.tone==="ok").length}</b><span>OK / libres</span></div><div class="kpi"><b>${occ}</b><span>avec signal</span></div><div class="kpi"><b style="color:${ab?"var(--bad)":"inherit"}">${ab}</b><span>en alarme</span></div>`;return}
+  if(k)k.innerHTML=`<div class="kpi"><b>${rs.length}</b><span>fréquences</span></div><div class="kpi"><b>${rs.filter(r=>r.tone==="ok"||r.tone==="free").length}</b><span>OK / libres</span></div><div class="kpi"><b>${occ}</b><span>avec signal</span></div><div class="kpi"><b style="color:${ab?"var(--bad)":"inherit"}">${ab}</b><span>en alarme</span></div>`;return}
  if(v==="liste"){const q=($("#q").value||"").toLowerCase(),oo=$("#oo").checked;
-  $("#g").innerHTML=st.rows.filter(r=>inLayer(r)&&(!oo||r.state==="occ"||r.state==="weak")&&(!q||(r.name+" "+r.freq.toFixed(3)+" "+r.status).toLowerCase().includes(q))).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div><div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div><div class="s">${esc(lay(r))}</div></div>`).join("")||'<div class="empty">Aucune fréquence</div>';return}
+  $("#g").innerHTML=st.rows.filter(r=>inLayer(r)&&(!oo||r.state==="occ"||r.state==="weak")&&(!q||(r.name+" "+r.freq.toFixed(3)+" "+r.status).toLowerCase().includes(q))).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm?` style="border-left-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div><div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div><div class="s">${esc(lay(r))}</div></div>`).join("")||'<div class="empty">Aucune fréquence</div>';return}
  if(v==="mur"){const oo=$("#oo").checked,rs=st.rows.filter(r=>inLayer(r)&&(!oo||r.alarm||r.state==="occ"||r.state==="weak")),g=$("#g");
   const W=g.clientWidth||innerWidth,H=Math.max(200,innerHeight-g.getBoundingClientRect().top-20),n=Math.max(1,rs.length);
   let cols=Math.max(1,Math.min(n,Math.round(Math.sqrt(n*W/H/1.4))));const tw=Math.max(140,W/cols-10),th=Math.max(90,Math.min(H/Math.ceil(n/cols)-10,tw*.8));
   g.style.setProperty("--tw",tw+"px");g.style.setProperty("--th",th+"px");g.style.setProperty("--fs",Math.max(13,Math.min(40,th*.17,tw/9))+"px");
-  g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
+  g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm&&r.tone!=="none"?` style="background:${r.color}${r.tone==="bad"?"aa":"55"};border-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
   $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
   if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
@@ -2893,8 +2905,8 @@ function setup(cv,h){const d=devicePixelRatio||1,w=cv.clientWidth;cv.style.heigh
 const PL=44,PB=24,PT=24;
 function ticks(a,b,n){const st=[.01,.025,.05,.1,.25,.5,1,2,5,10,20,25,50,100,200,500,1000],raw=(b-a)/n,s=st.find(x=>x>=raw)||raw;const o=[];for(let x=Math.ceil(a/s)*s;x<=b;x+=s)o.push(+x.toFixed(4));return o}
 function marks(c,w,h,f0,f1,top){if(!$("#mk")||!$("#mk").checked)return;const X=f=>PL+(f-f0)/(f1-f0)*(w-PL-8);let lastX=-99;
- const col={ok:"#22c55e",bad:"#ef4444",warn:"#eab308",none:"#8b95a5"};
- D.state.rows.filter(r=>r.freq>=f0&&r.freq<=f1).sort((a,b)=>a.freq-b.freq).forEach(r=>{const x=X(r.freq),cc=r.alarm?"#f97316":col[r.tone]||"#8b95a5";
+ const col={ok:"#22c55e",free:"#3b82f6",bad:"#ef4444",warn:"#eab308",none:"#8b95a5"};
+ D.state.rows.filter(r=>r.freq>=f0&&r.freq<=f1).sort((a,b)=>a.freq-b.freq).forEach(r=>{const x=X(r.freq),cc=r.alarm?"#f97316":(r.color||col[r.tone]||"#8b95a5");
   c.globalAlpha=.85;c.strokeStyle=cc;c.lineWidth=1.5;
   if(r.bw){const x0=X(r.freq-r.bw/2),x1=X(r.freq+r.bw/2);c.fillStyle=cc+"22";c.fillRect(x0,top,x1-x0,h-PB-top);c.strokeRect(x0,top,x1-x0,h-PB-top)}
   else{c.setLineDash([3,3]);c.beginPath();c.moveTo(x,top);c.lineTo(x,h-PB);c.stroke();c.setLineDash([])}
@@ -5996,18 +6008,20 @@ class WallPickDialog(QtWidgets.QDialog):
 
 
 class LabelsDialog(QtWidgets.QDialog):
-    """Tes mots pour la colonne Signal (et le mur, la page web) : un texte par situation."""
+    """Tes mots ET tes couleurs pour la colonne Signal (et le mur, la page web) : un réglage par situation."""
 
-    def __init__(self, parent, labels):
+    def __init__(self, parent, labels, colors=None, default_color=None):
         super().__init__(parent)
-        self.setWindowTitle("Mots affichés")
-        self.resize(640, 470)
-        info = QtWidgets.QLabel("Écris le mot que tu veux voir pour chaque situation (colonne Signal, mur, page web). "
-                                "Vide = mot par défaut. Les couleurs restent : vert = bon, orange = à surveiller, "
-                                "rouge = problème.")
+        self.setWindowTitle("Mots et couleurs affichés")
+        self.resize(720, 500)
+        self._dflt = default_color or (lambda k: "#808080")
+        self._cols = dict(colors or {})
+        info = QtWidgets.QLabel("Pour chaque situation : le mot que tu veux voir (colonne Signal, mur, page web) et sa "
+                                "couleur (clic sur la pastille). Vide = mot par défaut. Par défaut : vert = mon "
+                                "émetteur est là (OK), bleu = libre, orange = à surveiller, rouge = problème.")
         info.setWordWrap(True)
-        self.table = QtWidgets.QTableWidget(len(SIGNAL_LABELS), 2)
-        self.table.setHorizontalHeaderLabels(["Situation", "Mot affiché"])
+        self.table = QtWidgets.QTableWidget(len(SIGNAL_LABELS), 3)
+        self.table.setHorizontalHeaderLabels(["Situation", "Mot affiché", "Couleur"])
         self.table.verticalHeader().setVisible(False)
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
@@ -6020,8 +6034,13 @@ class LabelsDialog(QtWidgets.QDialog):
             ed = QtWidgets.QTableWidgetItem(labels.get(key, dflt))
             ed.setToolTip(f"Par défaut : {dflt}")
             self.table.setItem(r, 1, ed)
-        b_reset = QtWidgets.QPushButton("Revenir aux mots par défaut")
-        b_reset.clicked.connect(lambda *_: [self.table.item(r, 1).setText(d) for r, (_k, _s, d) in enumerate(SIGNAL_LABELS)])
+            b = QtWidgets.QPushButton()
+            b.setToolTip("Clic : choisir la couleur de cette situation.")
+            b.clicked.connect(lambda *_, k=key: self.pick_color(k))
+            self.table.setCellWidget(r, 2, b)
+        self._paint()
+        b_reset = QtWidgets.QPushButton("Revenir aux mots et couleurs par défaut")
+        b_reset.clicked.connect(lambda *_: self.reset())
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.addButton(b_reset, QtWidgets.QDialogButtonBox.ButtonRole.ResetRole)
@@ -6031,6 +6050,30 @@ class LabelsDialog(QtWidgets.QDialog):
         lay.addWidget(info)
         lay.addWidget(self.table, 1)
         lay.addWidget(bb)
+
+    def _paint(self):
+        for r, (key, _s, _d) in enumerate(SIGNAL_LABELS):
+            c = self._cols.get(key) or self._dflt(key)
+            b = self.table.cellWidget(r, 2)
+            b.setText(("● " if key in self._cols else "") + c)
+            b.setStyleSheet(f"QPushButton{{background:{c};color:{contrast_text(c)};border-radius:4px;padding:2px 8px}}")
+
+    def pick_color(self, key):
+        c = QtWidgets.QColorDialog.getColor(QtGui.QColor(self._cols.get(key) or self._dflt(key)), self,
+                                            "Couleur de la situation")
+        if c.isValid():
+            self._cols[key] = c.name()
+            self._paint()
+
+    def reset(self):
+        for r, (_k, _s, d) in enumerate(SIGNAL_LABELS):
+            self.table.item(r, 1).setText(d)
+        self._cols = {}
+        self._paint()
+
+    def colors(self):
+        """Seulement les couleurs choisies (clé -> "#rrggbb")."""
+        return clean_colors(self._cols)
 
     def values(self):
         """Seulement les mots changés (clé -> texte)."""
@@ -6366,7 +6409,7 @@ class WallWindow(QtWidgets.QWidget):
             self._sig[i] = sig
             sig_txt, tone, tone_col = ow.sig_view(w)
             bg = {"bad": blend(tone_col, base, 0.85), "warn": blend(tone_col, base, 0.6),
-                  "ok": blend(tone_col, base, 0.45)}.get(tone, blend(th["st_none"], base, 0.25))
+                  "ok": blend(tone_col, base, 0.45), "free": blend(tone_col, base, 0.45)}.get(tone, blend(th["st_none"], base, 0.25))
             fg = contrast_text(bg)
             bd = ow.status_color(w["status"]) if w["status"] else bg
             name = ("⚠ " if (conf or absn) else "") + (w["name"] or "—")
@@ -6447,6 +6490,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
         self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
         self.sig_labels = {}            # tes mots pour la colonne Signal (clé SIGNAL_LABELS -> texte)
+        self.sig_colors = {}            # tes couleurs par situation (clé SIGNAL_LABELS -> "#rrggbb")
         self.unit = "dbm"               # unité d'affichage des niveaux (en interne : toujours dBm)
         self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
         self.show_path = ""
@@ -6636,7 +6680,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "📣 Alertes": "Alertes sur téléphone (ntfy / Telegram) et page web en lecture seule pour l'équipe.",
         "📶 Ajouter un bloc": "Ajoute un porteur large Sennheiser Spectera / WMAS (canal 6 / 8 MHz) à surveiller.",
         "🧱 Mur": "Grandes tuiles, une par fréquence : panneau à détacher sur un 2ᵉ écran (F11 plein écran).",
-        "🔤 Mots affichés": "Choisis tes mots pour la colonne Signal : OK, ABSENT, INTERMOD, CONFLIT, libre…",
+        "🔤 Mots": "Choisis tes mots ET leurs couleurs pour la colonne Signal : OK, libre, ABSENT, INTERMOD, CONFLIT…",
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
@@ -6836,7 +6880,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
         self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
-        self.more_menu.addAction("🔤 Mots affichés (OK, ABSENT, INTERMOD…)…").triggered.connect(
+        self.more_menu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(
             lambda *_: self.edit_labels())
         self.more_menu.addSeparator()
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
@@ -7677,6 +7721,8 @@ class MainWindow(QtWidgets.QMainWindow):
         lb = data.get("labels")
         if isinstance(lb, dict):
             self.sig_labels = {k: str(v)[:30] for k, v in lb.items() if k in SIGNAL_DEFAULTS and str(v).strip()}
+        if "sig_colors" in data:
+            self.sig_colors = clean_colors(data.get("sig_colors"))
         self.strong_chk.setChecked(bool(data.get("strong_on", True)))
         try:
             self.strong_spin.setValue(float(data.get("strong_thr", -25.0)))
@@ -7796,6 +7842,7 @@ class MainWindow(QtWidgets.QMainWindow):
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
+            sig_colors=dict(self.sig_colors),
             unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
         if full:
             data["demo"] = self.demo_chk.isChecked()
@@ -8335,9 +8382,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def web_json(self):
         rows = []
         for w in self.watch:
-            txt, tone, _c = self.sig_view(w)
+            txt, tone, c_ = self.sig_view(w)
             rows.append(dict(w, conflict=(w["state"] == "occ" and self.is_keep_free(w["status"])), sig_txt=txt,
-                             tone=tone, level_txt="" if w["level"] is None else self.lvl(w["level"], suffix=True)))
+                             tone=tone, color=c_ if tone != "none" else "", level_txt="" if w["level"] is None else self.lvl(w["level"], suffix=True)))
         cyc = f"{self.last_cycle:.1f} s" if self.is_running() else ""
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
@@ -9260,9 +9307,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_wall_rows([i for i, on in shown.items() if not on], False)
 
     def edit_labels(self):
-        dlg = LabelsDialog(self, self.sig_labels)
+        dlg = LabelsDialog(self, self.sig_labels, self.sig_colors,
+                           lambda k: self.tone_color(SIGNAL_TONES.get(k, "none")))
         if dlg.exec():
             self.sig_labels = dlg.values()
+            self.sig_colors = dlg.colors()
             for w in self.watch:
                 w["sig"] = None
             self.update_watch_table(force=True)
@@ -9272,13 +9321,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def sig_view(self, w):
         """(texte, ton, couleur) du signal de w selon son statut (voir signal_view)."""
-        txt, tone = signal_view(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
-                                bool(w.get("absent")), bool(w.get("im")), self.sig_labels)
-        return txt, tone, self.tone_color(tone)
+        key, tone = signal_key(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
+                               bool(w.get("absent")), bool(w.get("im")))
+        txt, _t = signal_view(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
+                              bool(w.get("absent")), bool(w.get("im")), self.sig_labels)
+        return txt, tone, self.sig_colors.get(key) or self.tone_color(tone)
 
     def tone_color(self, tone):
         th = self.theme
-        return {"ok": th["st_free"], "bad": th["st_occ"], "warn": th["st_weak"]}.get(tone, th["st_none"])
+        return {"ok": th["st_free"], "free": th.get("st_libre", LIBRE_COLOR), "bad": th["st_occ"],
+                "warn": th["st_weak"]}.get(tone, th["st_none"])
 
     def state_color(self, st):
         return {"free": self.theme["st_free"], "weak": self.theme["st_weak"],
