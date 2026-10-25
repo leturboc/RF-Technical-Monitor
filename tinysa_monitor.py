@@ -2860,7 +2860,7 @@ window.addEventListener("resize",()=>{if(mounted==="spectre"||mounted==="waterfa
 // ---------- rendu
 function render(){if(!D)return;const st=D.state,v0=route(),v=(v0===""||D.views.includes(v0))?v0:"";
  $("#t").textContent=st.title||"TinySA Monitor";document.title=st.title||"TinySA Monitor";$("#lt").textContent=st.title||"TinySA Monitor";
- $("#meta").textContent=(st.running?"● en surveillance":"○ arrêté")+(st.cycle?" · cycle "+st.cycle:"");
+ $("#meta").textContent=(st.running?"● en surveillance":"○ arrêté")+(st.cycle?" · cycle "+st.cycle:"")+(st.ver?" · v"+st.ver:"");
  const un=st.alarms.filter(a=>!a.acked).length,all=st.alarms.length,p=$("#pill");
  p.className="pill "+(un?"bad":(all?"":"ok"));p.textContent=un?("⚠ "+un+" alarme"+(un>1?"s":"")):(all?all+" acquittée"+(all>1?"s":""):"✔ Tout va bien");
  p.onclick=()=>{if(D.views.includes("alarmes"))location.hash="#/alarmes"};
@@ -2880,7 +2880,7 @@ function layerSel(id){const k=LS.get("flt","");return `<select class="in" id="${
 function keepLayer(id){const s=$("#"+id);if(s)s.onchange=()=>{LS.set("flt",s.value);update(mounted)}}
 function inLayer(r){const f=LS.get("flt","");return !f||lay(r)===f||r.scene===f}
 function mount(v){const el=$("#view");
- if(v===""){el.innerHTML=`<div class="sum" id="kpi"></div><div class="home">${D.views.map(k=>`<a class="vcard" href="#/${k}"><div class="i">${VIEWS[k][0]}</div><b>${VIEWS[k][1]}</b><span>${VIEWS[k][2]}</span></a>`).join("")}</div><div class="who">Connecté en tant que <b>${esc(D.me||"Invité")}</b></div>`;return}
+ if(v===""){el.innerHTML=`<div class="sum" id="kpi"></div><div class="home">${D.views.map(k=>`<a class="vcard" href="#/${k}"><div class="i">${VIEWS[k][0]}</div><b>${VIEWS[k][1]}</b><span>${VIEWS[k][2]}</span></a>`).join("")}</div><div class="who">Connecté en tant que <b>${esc(D.me||"Invité")}</b>${D.state.ver?" · TinySA Monitor v"+esc(D.state.ver):""}</div>`;return}
  if(v==="liste"){el.innerHTML=`<div class="tools">${layerSel("flt")}<input class="in" id="q" placeholder="🔎 Nom, fréquence…"><label class="sw"><input type="checkbox" id="oo"> Occupées seulement</label></div><div class="grid" id="g"></div>`;
   keepLayer("flt");$("#q").oninput=()=>update(v);$("#oo").onchange=()=>update(v);return}
  if(v==="mur"){el.innerHTML=`<div class="tools">${layerSel("flt")}<label class="sw"><input type="checkbox" id="oo"> Occupées / faibles seulement</label><button class="btn" id="fs">⛶ Plein écran</button></div><div class="wall" id="g"></div>`;
@@ -6725,6 +6725,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "📶 Ajouter un bloc": "Ajoute un porteur large Sennheiser Spectera / WMAS (canal 6 / 8 MHz) à surveiller.",
         "🧱 Mur": "Grandes tuiles, une par fréquence : panneau à détacher sur un 2ᵉ écran (F11 plein écran).",
         "🔤 Mots": "Choisis tes mots ET leurs couleurs pour la colonne Signal : OK, libre, ABSENT, INTERMOD, CONFLIT…",
+        "ℹ À propos": "Version de TinySA Monitor, du tinySA branché, et où sont la config et les journaux.",
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
@@ -6927,6 +6928,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(
             lambda *_: self.edit_labels())
         self.more_menu.addSeparator()
+        self.more_menu.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
         self.expert_act.setCheckable(True)
         self.expert_act.triggered.connect(lambda *_: self.set_expert(self.expert_act.isChecked()))
@@ -7525,6 +7527,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cycle_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.statusBar().addWidget(self.stat_lbl, 3)
         self.statusBar().addPermanentWidget(self.cycle_lbl, 2)
+        self.ver_lbl = QtWidgets.QLabel(f" v{APP_VER} ")
+        self.ver_lbl.setToolTip(f"{APP_NAME} version {APP_VER} (☰ Plus › À propos pour les détails).")
+        self.statusBar().addPermanentWidget(self.ver_lbl)
 
     def _style_start(self, running):
         t = self.theme
@@ -8433,7 +8438,7 @@ class MainWindow(QtWidgets.QMainWindow):
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
-            running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4,
+            running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
             thr=round(float(self.thr_spin.value()), 1)))
         return json.dumps(st, ensure_ascii=False).encode("utf-8")
 
@@ -10916,6 +10921,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_intermod_for(self, f):
         self._im_dlg = IntermodDialog(self, origin=f)
         self._im_dlg.show()
+
+    def show_about(self):
+        fw = self.info_lbl.text().strip() or "pas encore connecté"
+        fw2 = f"<br>2ᵉ tinySA : {getattr(self, 'dev2_info', '') or '—'}" if self.dev2.get("on") else ""
+        QtWidgets.QMessageBox.information(
+            self, f"À propos de {APP_NAME}",
+            f"<b>{APP_NAME}</b> version <b>{APP_VER}</b><br>"
+            f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()}<br><br>"
+            f"tinySA : {fw}{fw2}<br><br>"
+            f"Config : {CFG_PATH}<br>Journaux : {self.log_dir}")
 
     def open_linecheck(self):
         if self._linecheck is not None:

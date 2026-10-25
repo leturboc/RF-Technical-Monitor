@@ -384,6 +384,11 @@ if win.is_running():
     win.apply_points()
     wait(1500)
 
+check("version affichée (barre d'état)", m.APP_VER in win.ver_lbl.text() and win.ver_lbl.isVisible())
+step("à propos", win.show_about)
+check("à propos : version et tinySA", any(m.APP_VER in t and "tinySA" in t for k, t in msgs), str(msgs[-1:]))
+check("version dans l'état de la page web", m.json.loads(win.web_json())["ver"] == m.APP_VER)
+
 # appel des micros (line check), en mode démo
 step("appel des micros (Ctrl+L)", win.open_linecheck)
 lcd = win._linecheck
