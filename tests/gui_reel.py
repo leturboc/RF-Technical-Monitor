@@ -476,7 +476,20 @@ step("export_scan_wwb", win.export_scan_wwb)
 
 # dialogues non modaux
 step("open_intermod", win.open_intermod); wait(1500)
-if win._im_dlg: shot(win._im_dlg, "intermod")
+if win._im_dlg:
+    shot(win._im_dlg, "intermod")
+    _d = win._im_dlg
+    _d.active_chk.setChecked(False)
+    _d.src_combo.setCurrentIndex(0)
+    _d.maxtx_combo.setCurrentIndex(0)
+    if any(w.get("bw") for w in win.watch):
+        step("intermod avec un bloc large", _d.compute)
+        _wide = [r for r in _d.rows if r["hw"] > 0.05]
+        check("intermod : produits du bloc en bandes (± MHz)", bool(_wide)
+              and any("±" in (_d.table.item(i, 0).text()) for i in range(_d.table.rowCount())), f"{len(_d.rows)} produits")
+        shot(_d, "intermod_bloc")
+    else:
+        print("(pas de bloc large dans la liste : IM des blocs non testée en vrai Qt)")
 step("open_rescue", win.open_rescue); wait(1500)
 if win._rescue_dlg: shot(win._rescue_dlg, "rescue")
 step("open_guide", win.open_guide); wait(800)

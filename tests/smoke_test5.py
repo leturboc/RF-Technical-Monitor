@@ -418,8 +418,15 @@ check("bloc Spectera émet : occupé (médiane du plateau)", ws["Spectera ch 38"
       and ws["Spectera ch 38"]["level"] == -65.0, str(ws["Spectera ch 38"]["level"]))
 check("bloc réservé vide : libre", ws["Réserve ch 40"]["state"] == "free")
 sw(intrus=True)
-check("signal intrus dans le bloc réservé : CONFLIT", ws["Réserve ch 40"]["state"] == "occ" and any(
-    a["kind"] == "CONFLIT" and a["name"] == "Réserve ch 40" for a in win.alarms.active.values()))
+# 2 × Spectera (606–614) − HF 603 = bande 609–625 : l'intrus à 618,5 est un produit possible du bloc
+check("signal intrus dans le bloc réservé : INTERMOD du bloc", ws["Réserve ch 40"]["state"] == "occ" and any(
+    a["kind"] == "INTERMOD" and a["name"] == "Réserve ch 40" and "Spectera" in a["info"] for a in win.alarms.active.values()),
+    str([(a["kind"], a["info"]) for a in win.alarms.active.values()]))
+sw(intrus=False, hf=False)
+sw(intrus=True, hf=False)          # HF coupée : plus de produit possible → simple CONFLIT
+check("intrus sans produit possible : CONFLIT", ws["Réserve ch 40"]["state"] == "occ" and any(
+    a["kind"] == "CONFLIT" and a["name"] == "Réserve ch 40" for a in win.alarms.active.values()),
+    str([(a["kind"], a["info"]) for a in win.alarms.active.values()]))
 sw(plateau=False)
 check("Spectera coupé : bloc libre", ws["Spectera ch 38"]["state"] == "free")
 txt = win.watch_table.item(win.watch.index(ws["Spectera ch 38"]), m.C_BAND).text()
@@ -450,7 +457,8 @@ win.update_watch_table(force=True)
 check("doit émettre + signal → « OK »", win.watch_table.item(r_s, m.C_SIG).text() == "OK",
       win.watch_table.item(r_s, m.C_SIG).text())
 check("doit rester libre + vide → « ✔ libre »", win.watch_table.item(r_r, m.C_SIG).text() == "✔ libre")
-sw(intrus=True)
+sw(intrus=False)
+sw(intrus=True, hf=False)
 win.update_watch_table(force=True)
 check("doit rester libre + intrus → « ⚠ CONFLIT »", win.watch_table.item(r_r, m.C_SIG).text() == "⚠ CONFLIT")
 check("couleur : émetteur = vert, conflit = rouge", win.sig_view(ws["Spectera ch 38"])[1] == "ok"

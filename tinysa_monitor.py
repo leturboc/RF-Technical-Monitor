@@ -1438,7 +1438,8 @@ def im_pairs(n, order, max_tx=None):
     return math.comb(n + p - 1, p) * math.comb(n + q - 1, q)
 
 
-def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fmax=6000.0, limit=20000):
+def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fmax=6000.0, limit=20000,
+            bws=None, tbws=None):
     """Produits d'intermodulation d'une liste d'émetteurs (MHz).
 
     Un produit d'ordre n vaut (somme de p fréquences) − (somme de q fréquences), avec p = q + 1 et p + q = n
@@ -1447,18 +1448,38 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     2 -> 2A−B ; 3 -> A+B−C ; 5 -> A+B+C−D−E…
     targets : fréquences à protéger. Si fourni, on ne garde que les produits qui tombent à moins de `guard`
     MHz de l'une d'elles (hors émetteurs impliqués dans le produit lui-même).
-    -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta)] ; terms = [(indice, coefficient)]."""
+    bws / tbws : largeur (MHz) de chaque émetteur / cible, 0 = fréquence simple. Blocs larges (Spectera, WMAS) :
+    a·A − b·B s'étale sur ± (a·largeur A + b·largeur B) / 2 autour de son centre ; « tombe sur » une cible quand
+    cette bande arrive à moins de guard du bord de la cible.
+    -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta, hw, gap)] ; terms = [(indice, coefficient)] ;
+    hw = demi-largeur du produit ; gap = écart bord à bord avec la cible (≤ 0 : ça se chevauche)."""
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
     info = dict(pairs=0, truncated=False, too_big=False)
     rows = []
     if n < 2:
         return rows, info
-    T = None
+    B = np.zeros(n) if bws is None else np.clip(np.asarray(list(bws), dtype=float), 0.0, None)
+    T = TB = None
     if targets is not None:
-        T = np.sort(np.asarray(list(targets), dtype=float))
+        T = np.asarray(list(targets), dtype=float)
+        TB = np.zeros(len(T)) if tbws is None else np.clip(np.asarray(list(tbws), dtype=float), 0.0, None)
+        o_ = np.argsort(T, kind="stable")
+        T, TB = T[o_], TB[o_]
         if len(T) == 0:
             return rows, info
+    wide = bool(B.any()) or (TB is not None and bool(TB.any()))
+    # pré-filtre élargi (les produits de blocs sont larges), puis test exact bord à bord
+    g_pre = guard + ((max(orders) * float(B.max()) / 2.0 + float(TB.max()) / 2.0) if wide and TB is not None else 0.0)
+
+    def near_t(vals, hw):
+        """Cible la plus proche (bord à bord) parmi les 2 voisines -> (indice, écart bord à bord)."""
+        k = np.searchsorted(T, vals)
+        ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
+        gl = np.abs(T[ilo] - vals) - TB[ilo] / 2.0
+        gh = np.abs(T[ihi] - vals) - TB[ihi] / 2.0
+        ti = np.where(gh < gl, ihi, ilo)
+        return ti, np.minimum(gl, gh) - hw
     total = sum(im_pairs(n, o, max_tx) for o in orders)
     info["pairs"] = total
     if total > IM_MAX_PAIRS:
@@ -1472,13 +1493,13 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             a = (order + 1) // 2
             b = order - a
             vals = a * F[ii] - b * F[jj]
+            hw = (a * B[ii] + b * B[jj]) / 2.0
             msk = (vals >= fmin) & (vals <= fmax)
-            tv = None
+            tv = gap = None
             if T is not None:
-                k = np.searchsorted(T, vals)
-                ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
-                tv = np.where(np.abs(T[ihi] - vals) < np.abs(T[ilo] - vals), T[ihi], T[ilo])
-                msk &= np.abs(vals - tv) <= guard
+                ti, gap = near_t(vals, hw)
+                tv = T[ti]
+                msk &= gap <= guard
                 msk &= (np.abs(F[ii] - tv) >= 1e-6) & (np.abs(F[jj] - tv) >= 1e-6)
             hits = np.nonzero(msk)[0]
             if len(hits) > cap:
@@ -1488,9 +1509,10 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 rows.append(dict(f=float(vals[h]), order=order, ntx=2,
                                  terms=[(int(ii[h]), a), (int(jj[h]), -b)],
                                  target=None if tv is None else float(tv[h]),
-                                 delta=None if tv is None else float(vals[h] - tv[h])))
+                                 delta=None if tv is None else float(vals[h] - tv[h]),
+                                 hw=float(hw[h]), gap=None if gap is None else float(gap[h])))
         if T is not None:
-            rows.sort(key=lambda r: (r["order"], r["ntx"], abs(r["delta"]), r["f"]))
+            rows.sort(key=lambda r: (r["order"], r["ntx"], r["gap"], r["f"]))
         else:
             rows.sort(key=lambda r: (r["f"], r["order"]))
         if len(rows) > limit:
@@ -1512,7 +1534,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 k = np.searchsorted(T, prod)
                 lo = T[np.clip(k - 1, 0, len(T) - 1)]
                 hi = T[np.clip(k, 0, len(T) - 1)]
-                m &= np.minimum(np.abs(prod - lo), np.abs(prod - hi)) <= guard
+                m &= np.minimum(np.abs(prod - lo), np.abs(prod - hi)) <= g_pre
             ir, jj = np.nonzero(m)
             if not len(ir):
                 continue
@@ -1523,11 +1545,12 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             ntx = 1 + (np.diff(srt, axis=1) != 0).sum(axis=1)
             ok = (~overlap) & (ntx <= max_tx)
             vals = prod[ir, jj]
-            tv = None
+            hw = (B[pi].sum(axis=1) + B[qj].sum(axis=1)) / 2.0
+            tv = gap = None
             if T is not None:
-                k = np.searchsorted(T, vals)
-                ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
-                tv = np.where(np.abs(T[ihi] - vals) < np.abs(T[ilo] - vals), T[ihi], T[ilo])
+                ti, gap = near_t(vals, hw)
+                tv = T[ti]
+                ok &= gap <= guard
                 ok &= ~(np.abs(F[allidx] - tv[:, None]) < 1e-6).any(axis=1)
             for h in np.nonzero(ok)[0]:
                 terms = {}
@@ -1538,14 +1561,15 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
                 rows.append(dict(f=float(vals[h]), order=order, ntx=int(ntx[h]),
                                  terms=sorted(terms.items(), key=lambda kv: (-kv[1], kv[0])),
                                  target=None if tv is None else float(tv[h]),
-                                 delta=None if tv is None else float(vals[h] - tv[h])))
+                                 delta=None if tv is None else float(vals[h] - tv[h]),
+                                 hw=float(hw[h]), gap=None if gap is None else float(gap[h])))
             if len(rows) > cap:
                 info["truncated"] = True
                 break
         if info["truncated"]:
             break
     if T is not None:
-        rows.sort(key=lambda r: (r["order"], r["ntx"], abs(r["delta"]), r["f"]))
+        rows.sort(key=lambda r: (r["order"], r["ntx"], r["gap"], r["f"]))
     else:
         rows.sort(key=lambda r: (r["f"], r["order"]))
     if len(rows) > limit:
@@ -1568,9 +1592,9 @@ def im_formula(terms, names=None, freqs=None, numeric=False):
     return out
 
 
-def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40):
-    """Quelles combinaisons d'émetteurs peuvent produire un signal à f (MHz) ?"""
-    return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit)
+def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40, bws=None):
+    """Quelles combinaisons d'émetteurs peuvent produire un signal à f (MHz) ? bws : largeurs des émetteurs."""
+    return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit, bws=bws)
 
 
 def im3_clash(c, F, guard):
@@ -4155,7 +4179,8 @@ class IntermodDialog(QtWidgets.QDialog):
             "Calcule les produits d'intermodulation de tes émetteurs (les fréquences de la liste) : 2 TX → 2A − B ; "
             "3 TX → A + B − C ; 5 TX → A + B + C − D − E… Tu vois quelle combinaison peut retomber sur une de tes "
             "fréquences, ou expliquer un signal inconnu vu sur le spectre. C'est un calcul théorique : il ne dit "
-            "pas quel appareil (émetteur, ampli d'antenne, combiner…) le fabrique vraiment.")
+            "pas quel appareil (émetteur, ampli d'antenne, combiner…) le fabrique vraiment. Blocs larges "
+            "(Spectera / WMAS) : leurs produits sont des bandes (« 540.000 ± 8.0 »), comptées bord à bord.")
         info.setWordWrap(True)
         lay.addWidget(info)
         self.mode_combo = QtWidgets.QComboBox()
@@ -4282,6 +4307,7 @@ class IntermodDialog(QtWidgets.QDialog):
         idx = self.source_indices()
         freqs = [o.watch[i]["freq"] for i in idx]
         names = [o.watch[i]["name"] for i in idx]
+        bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]        # blocs Spectera / WMAS : produits en bandes
         orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.guard_spin.value()
         if len(freqs) < 2:
             self.msg.setText("Il faut au moins 2 émetteurs (change la source ou décoche « seulement ceux qui émettent »).")
@@ -4293,20 +4319,21 @@ class IntermodDialog(QtWidgets.QDialog):
                               f"petite, ou retire les ordres 5 / 7 qui sont les plus gourmands.").replace(",", " "))
             return
         origin = self.mode_combo.currentData() == "origin"
+        tbws = None
         if origin:
             targets, fmin, fmax = [self.freq_spin.value()], 0.1, 6000.0
         else:
             tm = self.tgt_combo.currentData()
             fmin, fmax = self.fmin_spin.value(), self.fmax_spin.value()
-            if tm == "all":
-                targets, fmin, fmax = [w["freq"] for w in o.watch], 0.1, 6000.0
-            elif tm == "scope":
-                targets, fmin, fmax = [w["freq"] for w in o.scope_ws()], 0.1, 6000.0
+            tw = o.watch if tm == "all" else (o.scope_ws() if tm == "scope" else None)
+            if tw is not None:
+                targets, fmin, fmax = [w["freq"] for w in tw], 0.1, 6000.0
+                tbws = [float(w.get("bw") or 0.0) for w in tw]
             else:
                 targets = None
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            rows, info = im_scan(freqs, orders, max_tx, targets, guard, fmin, fmax, limit=5000)
+            rows, info = im_scan(freqs, orders, max_tx, targets, guard, fmin, fmax, limit=5000, bws=bws, tbws=tbws)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         F, L = o.fresh_FL()
@@ -4316,7 +4343,8 @@ class IntermodDialog(QtWidgets.QDialog):
         for r in rows:
             r["text"] = im_formula(r["terms"], names)
             r["numtext"] = im_formula(r["terms"], freqs=freqs, numeric=True)
-            r["meas"] = level_at(F, L, r["f"], win) if F is not None else None
+            r["meas"] = (None if F is None else level_block(F, L, r["f"], 2 * r["hw"], "max") if r["hw"] > 0.05
+                         else level_at(F, L, r["f"], win))
             if r["target"] is None:
                 r["tname"] = ""
             elif origin:
@@ -4353,8 +4381,16 @@ class IntermodDialog(QtWidgets.QDialog):
         t.setRowCount(len(self.rows))
         base = th["ui_base"]
         for r, row in enumerate(self.rows):
-            vals = (f"{row['f']:.3f}", IM_NAMES.get(row["order"], str(row["order"])), row["text"], row["tname"],
-                    "" if row["delta"] is None else f"{row['delta'] * 1000:+.0f}",
+            wide = row["hw"] > 0.05 or (row["gap"] is not None and row["delta"] is not None
+                                        and abs(abs(row["delta"]) - row["gap"]) > 1e-6)
+            if row["delta"] is None:
+                d_txt = ""
+            elif wide:
+                d_txt = "dans la bande" if row["gap"] <= 0 else f"bord à {row['gap'] * 1000:.0f}"
+            else:
+                d_txt = f"{row['delta'] * 1000:+.0f}"
+            vals = (f"{row['f']:.3f}" + (f" ± {row['hw']:.1f}" if row["hw"] > 0.05 else ""),
+                    IM_NAMES.get(row["order"], str(row["order"])), row["text"], row["tname"], d_txt,
                     "—" if row["meas"] is None else f"{row['meas']:.1f}", row["verdict"])
             for c, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
@@ -10083,7 +10119,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tx.sort(key=lambda x: -(x["level"] if x["level"] is not None else -999.0))
         tx = tx[:25]
         tol = max(0.05, self.win_spin.value() / 1000.0)
-        rows, _info = im_explain(w["freq"] if f_at is None else f_at, [x["freq"] for x in tx], (3, 5), 3, tol, 3)
+        rows, _info = im_explain(w["freq"] if f_at is None else f_at, [x["freq"] for x in tx], (3, 5), 3, tol, 3,
+                                 bws=[float(x.get("bw") or 0.0) for x in tx])
         if not rows:
             return ""
         r = rows[0]
@@ -10096,7 +10133,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return ""
         act.sort(key=lambda w: -(w["level"] if w["level"] is not None else -999.0))
         act = act[:25]
-        rows, _info = im_explain(fr, [w["freq"] for w in act], (3,), 3, max(0.1, step * 1.5), 3)
+        rows, _info = im_explain(fr, [w["freq"] for w in act], (3,), 3, max(0.1, step * 1.5), 3,
+                                 bws=[float(w.get("bw") or 0.0) for w in act])
         if not rows:
             return ""
         r = rows[0]
