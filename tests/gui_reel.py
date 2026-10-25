@@ -583,6 +583,22 @@ if win.web is not None:
     js = _json.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())
     check("page web : état réel", len(js["rows"]) == len(win.watch) and js["running"], str(js.get("running")))
     check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
+    # acquitter depuis le téléphone (code PIN)
+    import json as _js
+    win.web_cfg["pin"] = "2468"
+    win._alarm_tick()
+    _al = [a for a in _js.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())["alarms"] if not a["acked"]]
+    check("page web : acquittement proposé", _js.loads(win.web_json())["ack"] is True)
+    if _al:
+        _rq = _ur.Request(base + "/acquitter", data=_js.dumps(dict(pin="2468", id=_al[0]["id"])).encode(),
+                          headers={"Content-Type": "application/json"}, method="POST")
+        check("page web : POST acquitter accepté", _ur.urlopen(_rq, timeout=5).status == 200)
+        win._alarm_tick()
+        a_ = next((a for a in win.alarms.active.values() if a["id"] == _al[0]["id"]), None)
+        check("page web : alarme acquittée sur le PC", a_ is None or a_["acked"])
+    else:
+        print("(pas d'alarme en cours : acquittement web non testé)")
+    win.web_cfg["pin"] = ""
     win.web_cfg["on"] = False
     step("web off", win.apply_web)
     check("page web arrêtée", win.web is None)

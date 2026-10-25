@@ -2451,6 +2451,34 @@ WEB_PORT = 8080
 STATE_TXT = {"occ": "OCCUPÉ", "weak": "faible", "free": "libre", None: "—"}
 
 
+class PinGuard:
+    """Code PIN de la page web (acquitter depuis le téléphone). Trop d'erreurs depuis une même adresse → bloquée
+    un moment (on ne devine pas un code à 4 chiffres en tapant 10 000 fois)."""
+
+    def __init__(self, tries=5, lock_s=60.0):
+        self.tries, self.lock_s, self.bad = tries, lock_s, {}       # adresse -> [erreurs, bloquée jusqu'à]
+
+    def check(self, pin, given, addr, now):
+        """-> "ok" | "bad" | "locked" | "off" (pas de code réglé = acquittement désactivé)."""
+        pin, given = str(pin or "").strip(), str(given or "").strip()
+        if len(pin) < 4:
+            return "off"
+        st = self.bad.setdefault(addr, [0, 0.0])
+        if now < st[1]:
+            return "locked"
+        acc = len(pin) ^ len(given)                    # comparaison à temps constant
+        for a, b in zip(pin, given.ljust(len(pin))):
+            acc |= ord(a) ^ ord(b)
+        if acc == 0:
+            st[0] = 0
+            return "ok"
+        st[0] += 1
+        if st[0] >= self.tries:
+            st[:] = [0, now + self.lock_s]
+            return "locked"
+        return "bad"
+
+
 def web_state(rows, alarms, info):
     """rows : [{name, freq, level, state, status, scene, group, absent, conflict}] ; alarms : listing AlarmBook.
     -> dict sérialisable pour /etat.json."""
@@ -2465,7 +2493,7 @@ def web_state(rows, alarms, info):
                         status=r.get("status") or "",
                         scene=r.get("scene") or "", group=r.get("group") or "",
                         alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
-    al = [dict(kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
+    al = [dict(id=int(a.get("id", 0)), kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
                acked=bool(a["acked"]), layer=a.get("layer") or "", info=a.get("info") or "", t0=a["t0"])
           for a in alarms if a.get("t_end") is None]
     return dict(rows=out, alarms=al, **info)
@@ -2480,7 +2508,8 @@ WEB_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
 header{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid #8883;z-index:1}
 h1{font-size:17px;margin:0 0 6px}#meta{color:var(--mut);font-size:13px}select{font-size:15px;padding:4px;max-width:100%}
 #al{margin:10px 14px}.al{background:var(--occ);color:#fff;border-radius:8px;padding:8px 10px;margin:6px 0;font-weight:600}
-.al.ack{background:var(--abs)}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
+.al.ack{background:var(--abs)}.al button,#ackall{float:right;font:600 14px system-ui;border:0;border-radius:6px;
+padding:5px 10px;margin:-3px 0 0 8px;background:#fff;color:#000}#ackall{float:none;margin:0 0 4px;display:none}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
 .c{background:var(--card);border-radius:10px;padding:8px 10px;border-left:6px solid #8885}
 .c.bad{border-color:var(--occ)}.c.warn{border-color:var(--weak)}.c.ok{border-color:var(--free)}
 .c.alarm{background:var(--abs);color:#000}.n{font-weight:700;font-size:16px}.f,.s{color:var(--mut);font-size:13px}
@@ -2490,7 +2519,7 @@ padding:6px 14px;font-weight:700}
 <div id="stale">⚠ Plus de nouvelles du PC de surveillance</div>
 <header><h1 id="t">TinySA Monitor</h1><div id="meta"></div>
 <select id="flt"><option value="">Toutes les couches</option></select></header>
-<section id="al"></section><main id="g"></main>
+<section id="al"></section><div style="margin:0 14px"><button id="ackall">✔ Tout acquitter</button></div><main id="g"></main>
 <script>
 const $=s=>document.querySelector(s);let last=0,data=null,keep="";try{keep=localStorage.getItem("flt")||""}catch(x){}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
@@ -2502,11 +2531,21 @@ function draw(d){$("#t").textContent=d.title||"TinySA Monitor";
  if(f.options.length-1!==layers.length){f.innerHTML='<option value="">Toutes les couches</option>'+layers.map(l=>`<option>${esc(l)}</option>`).join("");f.value=keep}
  const lay=r=>r.scene+(r.group?" › "+r.group:""),ok=r=>!f.value||lay(r)===f.value||r.scene===f.value;
  $("#al").innerHTML=d.alarms.filter(a=>!a.freq||!f.value||d.rows.some(r=>ok(r)&&Math.abs(r.freq-a.freq)<1e-3)).map(a=>
-  `<div class="al${a.acked?" ack":""}">⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}</div>`).join("");
+  `<div class="al${a.acked?" ack":""}">${d.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}</div>`).join("");
+ $("#ackall").style.display=(d.ack&&d.alarms.filter(a=>!a.acked).length>1)?"inline-block":"none";
  $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
   <div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div>
   <div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div>
   <div class="s">${esc(lay(r))}</div></div>`).join("")}
+async function ack(id){let pin="";try{pin=localStorage.getItem("pin")||""}catch(x){}
+ if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ let r;try{r=await fetch("acquitter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin,id:id})})}
+ catch(e){alert("PC injoignable");return}
+ if(r.ok){try{localStorage.setItem("pin",pin)}catch(x){};tick();return}
+ try{localStorage.removeItem("pin")}catch(x){}
+ alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou acquittement désactivé sur le PC).":"Erreur "+r.status)}
+$("#al").onclick=e=>{const b=e.target.closest("button[data-id]");if(b)ack(+b.dataset.id)};
+$("#ackall").onclick=()=>ack("all");
 $("#flt").onchange=e=>{keep=e.target.value;try{localStorage.setItem("flt",keep)}catch(x){};if(data)draw(data)};
 tick();setInterval(tick,2000);
 </script></body></html>"""
@@ -2972,11 +3011,14 @@ class _HTTPServer(ThreadingHTTPServer):
 
 
 class WebServer(threading.Thread):
-    """Page web en lecture seule : « / » (page) et « /etat.json » (état, fourni par get_json())."""
+    """Page web : « / » (page), « /etat.json » (état, fourni par get_json()) et POST « /acquitter »
+    ({pin, id | "all"}) si get_pin() donne un code : on_ack(id) est appelé depuis le fil du serveur."""
 
-    def __init__(self, port, get_json, host="0.0.0.0"):
+    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
+        self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
+        self.guard, self._lock = PinGuard(), threading.Lock()
         self.httpd, self.error = None, ""
         self.ready = threading.Event()
 
@@ -2999,6 +3041,35 @@ class WebServer(threading.Thread):
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
+
+            def _json(self, code, obj):
+                body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                if self.path.split("?", 1)[0] != "/acquitter" or owner.on_ack is None:
+                    self.send_error(404)
+                    return
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    req = json.loads(self.rfile.read(min(max(n, 0), 2048)).decode("utf-8")) if n > 0 else {}
+                    target = req.get("id")
+                    if not (target == "all" or (isinstance(target, int) and not isinstance(target, bool))):
+                        raise ValueError
+                except (ValueError, AttributeError, UnicodeDecodeError):
+                    self._json(400, dict(error="requête invalide"))
+                    return
+                with owner._lock:
+                    res = owner.guard.check(owner.get_pin(), req.get("pin"), self.client_address[0], time.time())
+                if res != "ok":
+                    self._json(429 if res == "locked" else 403, dict(error=res))
+                    return
+                owner.on_ack(target)
+                self._json(200, dict(ok=True))
 
             def log_message(self, *a):
                 pass
@@ -3067,23 +3138,31 @@ class AlertsDialog(QtWidgets.QDialog):
         nf.addRow(test)
         nf.addRow(self.n_lbl)
         self.service.currentIndexChanged.connect(lambda *_: self._svc())
-        wb = QtWidgets.QGroupBox("🌐 Page web en lecture seule (réseau local)")
+        wb = QtWidgets.QGroupBox("🌐 Page web pour l'équipe (réseau local)")
         wf = QtWidgets.QFormLayout(wb)
         self.web_on = QtWidgets.QCheckBox("Activer la page web")
         self.web_on.setChecked(bool(w["on"]))
         self.web_port = QtWidgets.QSpinBox()
         self.web_port.setRange(1024, 65535)
         self.web_port.setValue(int(w["port"]))
+        self.web_pin = QtWidgets.QLineEdit(str(w.get("pin", "")))
+        self.web_pin.setPlaceholderText("vide = lecture seule")
+        self.web_pin.setMaxLength(12)
+        self.web_pin.setToolTip("Code (4 caractères ou plus) demandé sur le téléphone pour acquitter une alarme.\n"
+                                "Vide : la page reste en lecture seule. 5 codes faux → l'adresse est bloquée 1 min.")
         self.w_lbl = QtWidgets.QLabel("")
         self.w_lbl.setWordWrap(True)
         self.w_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         help_w = QtWidgets.QLabel("Sur un téléphone ou un PC du même réseau, ouvre l'adresse affichée : état des "
                                   "fréquences et alarmes, filtre par scène / groupe, rafraîchi toutes les 2 s. "
-                                  "Lecture seule, sans mot de passe : à n'activer que sur un réseau de confiance.")
+                                  "Avec un code PIN, on peut aussi y acquitter les alarmes (le son s'arrête sur le "
+                                  "PC). Le code passe en clair sur le réseau : à n'activer que sur un réseau de "
+                                  "confiance (réseau de prod, pas le Wi-Fi public).")
         help_w.setWordWrap(True)
         wf.addRow(help_w)
         wf.addRow(self.web_on)
         wf.addRow("Port :", self.web_port)
+        wf.addRow("Code PIN (acquitter) :", self.web_pin)
         wf.addRow(self.w_lbl)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
@@ -3108,7 +3187,8 @@ class AlertsDialog(QtWidgets.QDialog):
         return dict(mode=self.mode.currentData(), service=self.service.currentData(),
                     server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
                     tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
-                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value())
+                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value(),
+                                                     pin=self.web_pin.text().strip())
 
     def send_test(self):
         n, _w = self.values()
@@ -5685,7 +5765,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                tg_chat="", site="")
         self.notifier = None
         self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
-        self.web_cfg = dict(on=False, port=WEB_PORT)
+        self.web_cfg = dict(on=False, port=WEB_PORT, pin="")
+        self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self.web = None
         self._web_json = b"{}"
         self.view_id = -1
@@ -7011,7 +7092,7 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
-            dev2=dict(self.dev2), dev_names=list(self.dev_names), web=dict(self.web_cfg),
+            dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k != "pin"},
             expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
@@ -7022,6 +7103,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["layout_ver"] = LAYOUT_VER
             data["vocab"] = self.vocab_user
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
+            data["web"]["pin"] = self.web_cfg.get("pin", "")          # code PIN : idem
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
@@ -7555,7 +7637,7 @@ class MainWindow(QtWidgets.QMainWindow):
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
-            running=self.is_running(), cycle=cyc))
+            running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4))
         return json.dumps(st, ensure_ascii=False).encode("utf-8")
 
     def apply_web(self):
@@ -7565,7 +7647,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.web = None
         if want and self.web is None:
             self._web_json = self.web_json()
-            ws = WebServer(self.web_cfg["port"], lambda: self._web_json)
+            ws = WebServer(self.web_cfg["port"], lambda: self._web_json, get_pin=lambda: self.web_cfg.get("pin", ""),
+                           on_ack=self._web_acks.put)
             ws.start()
             ws.ready.wait(3)
             if ws.error:
@@ -10283,6 +10366,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])
         self._notify_new_alarms()
+        self._web_ack_pending()
         if self.web is not None:
             self._web_json = self.web_json()
         if self.recorder is not None:
@@ -10350,6 +10434,20 @@ class MainWindow(QtWidgets.QMainWindow):
         n = sum(1 for i in ids if self.alarms.ack(i))
         self.refresh_alarms()
         self.set_status(f"{n} alarme(s) acquittée(s)." if n else "Sélectionne une alarme en cours à acquitter.")
+
+    def _web_ack_pending(self):
+        """Acquittements faits depuis un téléphone (page web, code PIN)."""
+        n = 0
+        while True:
+            try:
+                target = self._web_acks.get_nowait()
+            except queue.Empty:
+                break
+            n += self.alarms.ack_all() if target == "all" else int(self.alarms.ack(target))
+        if n:
+            self.refresh_alarms()
+            self.set_status(f"📱 {n} alarme(s) acquittée(s) depuis la page web.")
+        return n
 
     def ack_all_alarms(self):
         n = self.alarms.ack_all()

@@ -368,18 +368,19 @@ check("état web : alarmes en cours", any(a["kind"] == "ABSENT" for a in js["ala
 check("état web : titre avec le site", js["title"] == "TinySA Monitor — Fest", js["title"])
 check("web désactivée : texte", "désactivée" in win.web_urls_text())
 win.notify_cfg["tg_token"] = "SECRET"
-win.web_cfg.update(on=True, port=8099)
+win.web_cfg.update(on=True, port=8099, pin="2468")
 full, prof = win._collect_config(True), win._collect_config(False)
 check("config : alertes et web enregistrées", full["notify"]["tg_token"] == "SECRET" and full["web"]["port"] == 8099)
 check("profil partagé : pas de jeton Telegram", "notify" not in prof and prof["web"]["port"] == 8099)
+check("profil partagé : pas de code PIN", "pin" not in prof["web"] and full["web"]["pin"] == "2468")
 win4 = step("MainWindow() #4", m.MainWindow)
 win4.apply_web = lambda: None
 step("apply_config alertes", lambda: win4._apply_config(full))
 check("config relue : alertes", win4.notify_cfg["mode"] == "crit" and win4.notify_cfg["tg_token"] == "SECRET")
-check("config relue : web", win4.web_cfg == dict(on=True, port=8099), str(win4.web_cfg))
+check("config relue : web", win4.web_cfg == dict(on=True, port=8099, pin="2468"), str(win4.web_cfg))
 bad = dict(full, web=dict(on="oui", port="x"))
 win4._apply_config(bad)
-check("config abîmée : valeurs ignorées", win4.web_cfg == dict(on=True, port=8099), str(win4.web_cfg))
+check("config abîmée : valeurs ignorées", win4.web_cfg == dict(on=True, port=8099, pin="2468"), str(win4.web_cfg))
 
 # ------------------------------------------------------------- blocs Spectera / WMAS
 win.workers = []
