@@ -332,6 +332,32 @@ win.dock_wall.setFloating(False)
 win.dock_wall.hide()
 wait(300)
 
+# statut au clavier : sélection + Ctrl+E / Ctrl+0
+_t = win.watch_table
+_t.clearSelection()
+win.activateWindow()
+_t.setFocus()
+wait(300)
+for _r in (0, 1):
+    _t.selectionModel().select(_t.model().index(_r, 0), QtCore.QItemSelectionModel.SelectionFlag.Select
+                               | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+_rows = win._sel_rows()
+_old = [win.watch[r]["status"] for r in _rows]
+from PySide6 import QtTest
+QtTest.QTest.keyClick(_t, Qt.Key.Key_0, Qt.KeyboardModifier.ControlModifier)
+app.processEvents()
+check("Ctrl+0 : statut retiré de la sélection", len(_rows) == 2 and all(win.watch[r]["status"] == "" for r in _rows),
+      str([win.watch[r]["status"] for r in _rows]))
+QtTest.QTest.keyClick(_t, Qt.Key.Key_E, Qt.KeyboardModifier.ControlModifier)
+app.processEvents()
+_on = next(x["name"] for x in win.statuses if x.get("on"))
+check("Ctrl+E : sélection « en service »", all(win.watch[r]["status"] == _on for r in _rows),
+      str([win.watch[r]["status"] for r in _rows]))
+for r, st in zip(_rows, _old):
+    win.watch[r]["status"] = st
+win.update_watch_table(force=True)
+_t.clearSelection()
+
 # appel des micros (line check), en mode démo
 step("appel des micros (Ctrl+L)", win.open_linecheck)
 lcd = win._linecheck
@@ -627,8 +653,35 @@ if win.web is not None:
     win.web_cfg["on"] = False
     step("web off", win.apply_web)
     check("page web arrêtée", win.web is None)
-DLG_ACTION[0] = "reject"
+class _FakeResp:
+    def __init__(self, b): self.b = b
+    def read(self): return self.b
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+def _alerts_act(d):
+    if not isinstance(d, m.AlertsDialog):
+        return "reject"                      # le tuto (dialogue imbriqué) : on le ferme
+    d.service.setCurrentIndex(d.service.findData("telegram"))
+    d.tg_token.setText("123:FAUX")
+    _orig = m.urllib.request.urlopen
+    m.urllib.request.urlopen = lambda url, timeout=0: _FakeResp(
+        b'{"ok":true,"result":[{"update_id":1,"message":{"chat":{"id":4242,"first_name":"Cl"}}}]}')
+    try:
+        d.fetch_chat_id()
+    finally:
+        m.urllib.request.urlopen = _orig
+    check("alertes : chat id trouvé tout seul", d.tg_chat.text() == "4242", d.tg_chat.text())
+    check("alertes : bouton visible en mode Telegram", d.find_chat.isEnabled())
+    d.show_tuto()
+    check("alertes : tuto ouvert sans erreur", True)
+    return "reject"
+
+
+DLG_ACTION[0] = _alerts_act
 step("dialogue alertes", win.open_alerts)
+DLG_ACTION[0] = "reject"
 step("Arrêter x2", win.toggle_run)
 wait(3000)
 check("arrêt des deux", not win.is_running())

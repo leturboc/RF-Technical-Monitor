@@ -107,6 +107,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web : acquittement `POST /acquitter` {pin, id|"all"} si `web_cfg["pin"]` (≥ 4) ; `PinGuard` (PURE, 5 erreurs
   → 60 s) ; file `_web_acks` vidée par `_alarm_tick` ; PIN dans config.json, jamais dans la config partagée.
+- Statut au clavier (liste) : Ctrl+1…9 = statut n° 1…9 (ordre de `self.statuses`), Ctrl+0 = aucun, Ctrl+E = 1er
+  « doit émettre » → `quick_status`. Alertes : bouton « 📖 Tuto » (`TUTO_ALERTES`, PURE) et « 🔎 Trouver mon chat id »
+  (`getUpdates` → `telegram_chats`, PURE). Intermod : colonne Origine = noms = chiffres, Ordre = « IM3 · 3 TX ».
 - Aide : `TIPS_ATTR` / `TIPS_TEXT` / `TIPS_MENU` + `_install_tips` (bulles + statusTip) ; gui_reel échoue si un
   contrôle visible n'a pas de bulle.
 - Config : `%APPDATA%/TinySAMonitor/config.json` (`_collect_config` / `_apply_config`, avec migration des anciennes configs).

@@ -18,6 +18,8 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 - **🎤 Appel des micros** (Ctrl+L) : allume tes émetteurs, chaque fréquence passe ✓ ; résumé au journal, pack mal
   réglé repéré (signal inconnu tout près d'une fréquence qui manque)
 - **Page web** pour l'équipe : état en direct, et acquittement des alarmes depuis le téléphone avec un code PIN
+- **Statut au clavier** : sélectionne des fréquences, **Ctrl+E** = En service, Ctrl+1…9 = statut n° 1…9, Ctrl+0 = aucun
+- **Alertes téléphone** : tuto pas à pas (ntfy / Telegram) dans la fenêtre Alertes, chat id Telegram trouvé tout seul
 - **Fréquence de secours** : canaux libres d'après le spectre mesuré, sans intermod avec ta liste
 - **Nommage rapide** (MIC 1, HF 1, IEM 1, Intercom… avec numérotation automatique +1)
 - **Enregistrement des balayages + relecture** (curseur de temps, lecture accélérée, saut à un événement)

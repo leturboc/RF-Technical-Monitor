@@ -2486,6 +2486,59 @@ def telegram_request(token, chat_id, title, body):
     return url, {"Content-Type": "application/json"}, data
 
 
+def telegram_chats(updates):
+    """Réponse de getUpdates (dict JSON) -> [(chat id, nom)] des discussions qui ont écrit au bot, plus récente
+    d'abord, sans doublon. Sert à remplir le « chat id » tout seul."""
+    out, seen = [], set()
+    for u in reversed((updates or {}).get("result") or []):
+        msg = u.get("message") or u.get("channel_post") or u.get("my_chat_member") or u.get("edited_message") or {}
+        chat = msg.get("chat") or {}
+        cid = chat.get("id")
+        if cid is None or cid in seen:
+            continue
+        seen.add(cid)
+        name = chat.get("title") or " ".join(x for x in (chat.get("first_name"), chat.get("last_name")) if x) \
+            or chat.get("username") or str(cid)
+        out.append((str(cid), str(name)))
+    return out
+
+
+TUTO_ALERTES = """<h3>📱 ntfy — le plus simple (gratuit, sans compte)</h3>
+<ol>
+<li>Sur le téléphone, installe l'appli <b>ntfy</b> (App Store / Google Play / F-Droid).</li>
+<li>Dans TinySA Monitor (cette fenêtre) : <b>Service</b> = ntfy, garde le <b>Canal ntfy</b> proposé
+(ex. <code>tinysa-3f9a1c7e</code>) ou mets le tien — long et difficile à deviner : <b>quiconque connaît ce
+nom peut lire tes alertes</b>.</li>
+<li>Dans l'appli ntfy : <b>+</b> (S'abonner à un sujet) → tape <b>exactement le même nom</b> de canal → serveur
+par défaut (ntfy.sh) → S'abonner.</li>
+<li>Choisis <b>Envoyer</b> (critiques seulement, ou toutes les alarmes), puis <b>Envoyer une alerte de test</b> :
+elle doit arriver en quelques secondes.</li>
+<li>Android : dans l'appli ntfy, ouvre le canal › Paramètres › autorise les priorités « urgentes » à sonner
+même en mode Ne pas déranger si tu veux être réveillé. iPhone : autorise les notifications de ntfy.</li>
+</ol>
+<p>Plusieurs personnes ? Chacun s'abonne au même canal sur son téléphone.</p>
+<h3>✈ Telegram — si l'équipe est déjà dessus</h3>
+<ol>
+<li>Dans Telegram, cherche <b>@BotFather</b> (le compte officiel, coche bleue) → envoie <code>/newbot</code> →
+donne un nom (ex. « TinySA Festival ») puis un identifiant qui finit par <code>bot</code>
+(ex. <code>tinysa_festival_bot</code>).</li>
+<li>BotFather répond avec un <b>jeton</b> du genre <code>123456789:AAE…</code> : colle-le dans <b>Jeton du
+bot</b>. Garde-le secret (il permet d'écrire au nom du bot).</li>
+<li>Ouvre la discussion avec ton bot (lien donné par BotFather) et envoie-lui un message, par exemple
+<code>/start</code>. Pour un <b>groupe</b> d'équipe : ajoute le bot au groupe et écris un message dans le groupe.</li>
+<li>Clique <b>🔎 Trouver mon chat id</b> : TinySA Monitor demande à Telegram qui a écrit au bot et remplit le
+<b>Chat id</b> (un groupe a un id négatif, ex. <code>-1001234…</code>).</li>
+<li><b>Envoyer une alerte de test</b>.</li>
+</ol>
+<h3>⚠ À savoir</h3>
+<ul>
+<li>Le PC de surveillance doit avoir <b>Internet</b> (partage 4G du téléphone, wifi du site…). Sans réseau,
+les alertes attendent et sont réessayées 3 fois ; l'erreur s'affiche dans cette fenêtre.</li>
+<li>Une alerte est envoyée <b>une fois</b> par alarme (pas à chaque bip).</li>
+<li>Le jeton Telegram reste dans la config de CE PC : il n'est jamais copié dans les fichiers de show.</li>
+</ul>"""
+
+
 # --------------------------------------------------------------------------
 # Page web en lecture seule (téléphone du régisseur…) : état JSON + page autonome
 # --------------------------------------------------------------------------
@@ -3161,21 +3214,34 @@ class AlertsDialog(QtWidgets.QDialog):
         self.site = QtWidgets.QLineEdit(n["site"])
         self.site.setPlaceholderText("ex. Festival X — Grande scène")
         test = QtWidgets.QPushButton("Envoyer une alerte de test")
+        test.setToolTip("Envoie une alerte d'essai avec les réglages ci-dessus (sans les enregistrer).")
         test.clicked.connect(lambda *_: self.send_test())
+        tuto = QtWidgets.QPushButton("📖 Tuto pas à pas")
+        tuto.setToolTip("Comment installer ntfy ou créer un bot Telegram, étape par étape.")
+        tuto.clicked.connect(lambda *_: self.show_tuto())
+        self.find_chat = QtWidgets.QPushButton("🔎 Trouver mon chat id")
+        self.find_chat.setToolTip("Après avoir écrit un message à ton bot (ou dans le groupe où il est) : demande à\n"
+                                  "Telegram qui lui a écrit et remplit le chat id.")
+        self.find_chat.clicked.connect(lambda *_: self.fetch_chat_id())
         self.n_lbl = QtWidgets.QLabel("")
         self.n_lbl.setWordWrap(True)
         help_n = QtWidgets.QLabel(
             "<b>ntfy</b> : installe l'appli ntfy (iOS / Android), « S'abonner » au nom de canal ci-dessous. "
             "<b>Telegram</b> : crée un bot avec @BotFather (jeton), écris-lui un message, puis récupère ton "
-            "identifiant de discussion (chat id). Il faut une connexion Internet (4G, wifi du site…).")
+            "identifiant de discussion (chat id). Il faut une connexion Internet (4G, wifi du site…). "
+            "Détails : « 📖 Tuto pas à pas ».")
         help_n.setWordWrap(True)
         nf.addRow(help_n)
+        nf.addRow(tuto)
         nf.addRow("Envoyer :", self.mode)
         nf.addRow("Service :", self.service)
         nf.addRow("Serveur ntfy :", self.server)
         nf.addRow("Canal ntfy :", self.topic)
         nf.addRow("Jeton du bot :", self.tg_token)
-        nf.addRow("Chat id :", self.tg_chat)
+        chat_row = QtWidgets.QHBoxLayout()
+        chat_row.addWidget(self.tg_chat, 1)
+        chat_row.addWidget(self.find_chat)
+        nf.addRow("Chat id :", chat_row)
         nf.addRow("Nom du site :", self.site)
         nf.addRow(test)
         nf.addRow(self.n_lbl)
@@ -3222,7 +3288,7 @@ class AlertsDialog(QtWidgets.QDialog):
         ntfy = self.service.currentData() == "ntfy"
         for wd in (self.server, self.topic):
             wd.setEnabled(ntfy)
-        for wd in (self.tg_token, self.tg_chat):
+        for wd in (self.tg_token, self.tg_chat, self.find_chat):
             wd.setEnabled(not ntfy)
 
     def values(self):
@@ -3231,6 +3297,50 @@ class AlertsDialog(QtWidgets.QDialog):
                     tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
                     site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value(),
                                                      pin=self.web_pin.text().strip())
+
+    def show_tuto(self):
+        d = QtWidgets.QDialog(self)
+        d.setWindowTitle("Alertes téléphone : tuto")
+        d.resize(640, 620)
+        v = QtWidgets.QVBoxLayout(d)
+        tb = QtWidgets.QTextBrowser()
+        tb.setOpenExternalLinks(True)
+        tb.setHtml(TUTO_ALERTES)
+        v.addWidget(tb)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(d.reject)
+        v.addWidget(bb)
+        d.exec()
+
+    def fetch_chat_id(self):
+        token = self.tg_token.text().strip()
+        if not token:
+            self.n_lbl.setText("⚠ Colle d'abord le jeton du bot (donné par @BotFather).")
+            return
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=8) as r:
+                chats = telegram_chats(json.loads(r.read().decode("utf-8")))
+        except Exception as e:
+            self.n_lbl.setText(f"⚠ Telegram injoignable ou jeton refusé : {e}")
+            return
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        if not chats:
+            self.n_lbl.setText("Personne n'a encore écrit au bot : envoie-lui un message (/start) dans Telegram, "
+                               "puis réessaie.")
+            return
+        if len(chats) == 1:
+            cid = chats[0][0]
+        else:
+            labels = [f"{n} ({c})" for c, n in chats]
+            pick, ok = QtWidgets.QInputDialog.getItem(self, "Chat id", "Quelle discussion reçoit les alertes ?",
+                                                      labels, 0, False)
+            if not ok:
+                return
+            cid = chats[labels.index(pick)][0]
+        self.tg_chat.setText(cid)
+        self.n_lbl.setText(f"✔ Chat id trouvé : {cid} — clique « Envoyer une alerte de test ».")
 
     def send_test(self):
         n, _w = self.values()
@@ -6760,15 +6870,24 @@ class MainWindow(QtWidgets.QMainWindow):
         sc_fill = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+D"), self.watch_table)
         sc_fill.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         sc_fill.activated.connect(lambda *_: self.fill_down_names())
+        # statut de la sélection au clavier : Ctrl+1…9 = statut n° 1…9, Ctrl+0 = aucun, Ctrl+E = « doit émettre »
+        for key, which in [(f"Ctrl+{n}", n - 1) for n in range(1, 10)] + [("Ctrl+0", None), ("Ctrl+E", "on")]:
+            sc_ = QtGui.QShortcut(QtGui.QKeySequence(key), self.watch_table)
+            sc_.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc_.activated.connect(lambda *_, w_=which: self.quick_status(w_))
         fl.addWidget(self.watch_table, 1)
         tip = QtWidgets.QLabel("Double-clic sur « Statut » : change le statut · sur Niveau / Signal : zoom live · "
                                "sur « Seuil » : seuil propre à la fréquence.\n"
                                "Clic droit : menu complet. Tu peux aussi glisser un CSV sur la fenêtre.\n"
                                "Nom : l'auto-complétion propose MIC, HF 5, IEM… · Ctrl+D numérote vers le bas "
                                "(HF 1, HF 2…).\n"
+                               "Statut de la sélection au clavier : Ctrl+E = En service (doit émettre), Ctrl+1…9 = "
+                               "statut n° 1…9 (ordre du menu Statut), Ctrl+0 = aucun. Sélection rapide : Maj+clic, "
+                               "Ctrl+clic, Ctrl+A.\n"
                                "Un statut « Doit rester libre » déclenche ⚠ CONFLIT si un signal apparaît.")
         tip.setToolTip(tip.text())
-        tip.setText("ⓘ Double-clic Statut / Niveau / Seuil · clic droit = menu · Ctrl+D numérote (survole pour l'aide)")
+        tip.setText("ⓘ Double-clic Statut / Niveau / Seuil · clic droit = menu · Ctrl+E = en service · Ctrl+D numérote "
+                    "(survole pour l'aide)")
         tip.setWordWrap(True)
         tip.setMinimumHeight(self.fontMetrics().lineSpacing() * 2 + 4)
         fl.addWidget(tip)
@@ -8833,12 +8952,30 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _status_menu(self, parent):
         m = QtWidgets.QMenu(parent)
-        a0 = m.addAction("— aucun statut")
+        a0 = m.addAction("— aucun statut\tCtrl+0")
         a0.setData("")
-        for s in self.statuses:
-            a = m.addAction(color_icon(s["color"]), s["name"])
+        for i, s in enumerate(self.statuses):
+            a = m.addAction(color_icon(s["color"]), s["name"] + (f"\tCtrl+{i + 1}" if i < 9 else ""))
             a.setData(s["name"])
         return m
+
+    def quick_status(self, which):
+        """Raccourci clavier : statut n° which (0 = le 1er), None = aucun, "on" = le 1er « doit émettre »."""
+        rows = self._sel_rows()
+        if not rows:
+            self.set_status("Sélectionne d'abord des fréquences dans la liste (clic, Maj+clic, Ctrl+A…).")
+            return
+        if which == "on":
+            st = next((x for x in self.statuses if x.get("on")), None)
+        elif which is None:
+            st = dict(name="")
+        else:
+            st = self.statuses[which] if which < len(self.statuses) else None
+        if st is None:
+            self.set_status("Aucun statut à ce numéro (☰ Plus › Statuts… pour les voir / les ranger).")
+            return
+        self.set_status_rows(rows, st["name"])
+        self.set_status(f"{len(rows)} fréquence(s) → « {st['name'] or 'aucun statut'} ».")
 
     def status_popup(self, rows):
         m = self._status_menu(self)

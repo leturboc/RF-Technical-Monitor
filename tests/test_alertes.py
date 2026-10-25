@@ -63,6 +63,17 @@ url, hdr, data = ns["telegram_request"](" 123:ABC ", " 42 ", "Titre", "Corps")
 check("telegram : url", url == "https://api.telegram.org/bot123:ABC/sendMessage", url)
 check("telegram : json", json.loads(data) == dict(chat_id="42", text="Titre\nCorps", disable_web_page_preview=True))
 
+tc = ns["telegram_chats"]
+upd = {"ok": True, "result": [
+    {"update_id": 1, "message": {"chat": {"id": 42, "first_name": "Clément", "type": "private"}, "text": "/start"}},
+    {"update_id": 2, "message": {"chat": {"id": -1001234, "title": "Équipe HF", "type": "supergroup"}}},
+    {"update_id": 3, "message": {"chat": {"id": 42, "first_name": "Clément"}, "text": "re"}},
+    {"update_id": 4, "my_chat_member": {"chat": {"id": -555, "title": "Régie"}}}]}
+check("telegram : chats trouvés, récents d'abord, sans doublon", tc(upd) == [("-555", "Régie"), ("42", "Clément"),
+                                                                            ("-1001234", "Équipe HF")], str(tc(upd)))
+check("telegram : réponse vide", tc({"ok": True, "result": []}) == [] and tc(None) == [])
+check("tuto : ntfy et Telegram expliqués", "BotFather" in ns["TUTO_ALERTES"] and "ntfy" in ns["TUTO_ALERTES"])
+
 # ------------------------------------------------------------- état web
 ws = ns["web_state"]
 rows = [dict(name="HF 1", freq=470.2, level=-60.04, state="occ", status="En service", scene="Grande scène",
