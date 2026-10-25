@@ -17,7 +17,9 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
   3 TX 50 kHz par défaut), et « d'où ça peut venir ? » pour un signal inconnu
 - **🎤 Appel des micros** (Ctrl+L) : allume tes émetteurs, chaque fréquence passe ✓ ; résumé au journal, pack mal
   réglé repéré (signal inconnu tout près d'une fréquence qui manque)
-- **Page web** pour l'équipe : état en direct, et acquittement des alarmes depuis le téléphone avec un code PIN
+- **Page web** pour l'équipe, façon Ontime : une adresse, plusieurs vues (liste, mur, spectre en direct, waterfall,
+  alarmes). Le PC choisit les vues partagées, peut mettre un mot de passe, voit qui est connecté ; acquittement
+  depuis le téléphone avec un code PIN
 - **Statut au clavier** : sélectionne des fréquences, **Ctrl+E** = En service, Ctrl+1…9 = statut n° 1…9, Ctrl+0 = aucun
 - **Alertes téléphone** : tuto pas à pas (ntfy / Telegram) dans la fenêtre Alertes, chat id Telegram trouvé tout seul
 - **Fréquence de secours** : canaux libres d'après le spectre mesuré, sans intermod avec ta liste

@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.3.2"
+APP_VER = "7.4.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2574,13 +2574,92 @@ class PinGuard:
         return "bad"
 
 
+# icône de l'appli (parabole 📡, Noto Color Emoji — Apache 2.0), 64 px, pour la page web (favicon / écran d'accueil)
+APP_ICON_PNG64 = "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"
+
+# vues de la page web (façon Ontime : une adresse, plusieurs écrans au choix) ; le PC choisit celles qu'il partage
+WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par scène / groupe"),
+             ("mur", "🧱", "Mur", "Grandes tuiles lisibles de loin, plein écran"),
+             ("spectre", "📈", "Spectre", "Le spectre en direct, avec tes fréquences"),
+             ("waterfall", "🌊", "Waterfall", "L'historique du spectre qui défile"),
+             ("alarmes", "🔔", "Alarmes", "Conflits et émetteurs absents, à acquitter")]
+WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
+
+
+def web_views_norm(v):
+    """{vue: bool} complet (les vues inconnues sont ignorées, les manquantes sont partagées)."""
+    v = v if isinstance(v, dict) else {}
+    return {k: bool(v.get(k, True)) for k in WEB_VIEW_KEYS}
+
+
+class ClientBook:
+    """Qui regarde la page web : un jeton par navigateur (cookie), un nom choisi par la personne, la vue ouverte.
+    En ligne = vu depuis moins de `online_s` ; oublié après `keep_s` sans nouvelles."""
+
+    def __init__(self, online_s=12.0, keep_s=3600.0):
+        self.online_s, self.keep_s, self.c = online_s, keep_s, {}
+
+    def login(self, token, name, addr, ua, now):
+        name = re.sub(r"\s+", " ", str(name or "")).strip()[:32] or "Invité"
+        self.c[token] = dict(name=name, addr=str(addr), ua=str(ua or "")[:120], view="", since=now, last=now)
+        self.purge(now)
+        return self.c[token]
+
+    def touch(self, token, addr, view, now):
+        e = self.c.get(token)
+        if e is None:
+            return None
+        e["last"], e["addr"] = now, str(addr)
+        if view:
+            e["view"] = str(view)[:20]
+        return e
+
+    def purge(self, now):
+        for t in [t for t, e in self.c.items() if now - e["last"] > self.keep_s]:
+            del self.c[t]
+
+    def revoke_all(self):
+        self.c.clear()
+
+    def watching(self, views, now):
+        """Quelqu'un regarde-t-il une de ces vues en ce moment ?"""
+        return any(e["view"] in views and now - e["last"] <= self.online_s for e in self.c.values())
+
+    def listing(self, now):
+        out = [dict(e, online=now - e["last"] <= self.online_s) for e in self.c.values()]
+        out.sort(key=lambda e: (not e["online"], e["name"].lower()))
+        return out
+
+
+def web_spectrum(segments, n_max=900, nd=1):
+    """Spectre allégé pour le téléphone : segments = [(nom, F, L, maxhold ou None)] -> [{name, f, l, mh}].
+    Chaque segment est ramené à n_max points au plus en gardant le MAX de chaque paquet (un pic étroit ne
+    disparaît pas)."""
+    out = []
+    for name, F, L, MH in segments:
+        F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+        if len(F) == 0 or len(F) != len(L):
+            continue
+        MH = None if MH is None or len(MH) != len(F) else np.asarray(MH, dtype=float)
+        if len(F) > n_max:
+            edges = np.linspace(0, len(F), n_max + 1).astype(int)[:-1]
+            f2 = (np.add.reduceat(F, edges) / np.diff(np.append(edges, len(F))))
+            l2 = np.maximum.reduceat(L, edges)
+            m2 = None if MH is None else np.maximum.reduceat(MH, edges)
+        else:
+            f2, l2, m2 = F, L, MH
+        out.append(dict(name=str(name), f=[round(float(x), 4) for x in f2], l=[round(float(x), nd) for x in l2],
+                        mh=None if m2 is None else [round(float(x), nd) for x in m2]))
+    return out
+
+
 def web_state(rows, alarms, info):
     """rows : [{name, freq, level, state, status, scene, group, absent, conflict}] ; alarms : listing AlarmBook.
     -> dict sérialisable pour /etat.json."""
     out = []
     for r in rows:
         st = r.get("state")
-        out.append(dict(name=r["name"], freq=round(float(r["freq"]), 4),
+        out.append(dict(name=r["name"], freq=round(float(r["freq"]), 4), bw=float(r.get("bw") or 0.0),
                         level=None if r.get("level") is None else round(float(r["level"]), 1),
                         level_txt=r.get("level_txt") or ("" if r.get("level") is None else f"{float(r['level']):.1f} dBm"),
                         state=st or "", state_txt=r.get("sig_txt") or STATE_TXT.get(st, "—"),
@@ -2594,56 +2673,239 @@ def web_state(rows, alarms, info):
     return dict(rows=out, alarms=al, **info)
 
 
-WEB_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>TinySA Monitor</title>
+WEB_PAGE = r"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f13"><title>TinySA Monitor</title>
+<link rel="icon" href="data:image/png;base64,__ICON__"><link rel="apple-touch-icon" href="data:image/png;base64,__ICON__">
 <style>
-:root{--bg:#14171c;--fg:#e8eaed;--mut:#8a919c;--card:#1d2128;--occ:#e5484d;--weak:#d4a017;--free:#2f9e5b;--abs:#f08c2e}
-@media (prefers-color-scheme:light){:root{--bg:#f4f5f7;--fg:#16181d;--mut:#5c636e;--card:#fff}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.35 system-ui,Segoe UI,Roboto,sans-serif}
-header{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid #8883;z-index:1}
-h1{font-size:17px;margin:0 0 6px}#meta{color:var(--mut);font-size:13px}select{font-size:15px;padding:4px;max-width:100%}
-#al{margin:10px 14px}.al{background:var(--occ);color:#fff;border-radius:8px;padding:8px 10px;margin:6px 0;font-weight:600}
-.al.ack{background:var(--abs)}.al button,#ackall{float:right;font:600 14px system-ui;border:0;border-radius:6px;
-padding:5px 10px;margin:-3px 0 0 8px;background:#fff;color:#000}#ackall{float:none;margin:0 0 4px;display:none}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px 14px 30px}
-.c{background:var(--card);border-radius:10px;padding:8px 10px;border-left:6px solid #8885}
-.c.bad{border-color:var(--occ)}.c.warn{border-color:var(--weak)}.c.ok{border-color:var(--free)}
-.c.alarm{background:var(--abs);color:#000}.n{font-weight:700;font-size:16px}.f,.s{color:var(--mut);font-size:13px}
-.c.alarm .f,.c.alarm .s{color:#000}.l{font-size:15px;margin-top:2px}#stale{display:none;background:var(--occ);color:#fff;
-padding:6px 14px;font-weight:700}
+:root{--bg:#0d0f13;--panel:#161a21;--panel2:#1c212a;--line:#272d38;--fg:#f2f4f7;--mut:#8b95a5;--acc:#ff9f1c;
+--ok:#22c55e;--bad:#ef4444;--warn:#eab308;--abs:#f97316;--none:#3a4150;--r:14px}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+.hidden{display:none!important}.mut{color:var(--mut)}
+#stale{display:none;position:sticky;top:0;z-index:9;background:var(--bad);color:#fff;padding:8px 16px;font-weight:700;text-align:center}
+/* --- connexion --- */
+#login{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px 24px;width:100%;max-width:380px;
+box-shadow:0 20px 60px #0008}
+.card h1{margin:8px 0 4px;font-size:22px}.card p{margin:0 0 18px;color:var(--mut)}
+.logo{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#ff9f1c,#ff5e3a);display:grid;
+place-items:center;font-size:28px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
+.in{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);outline:none}
+.in:focus{border-color:var(--acc)}
+.btn{border:0;border-radius:10px;padding:10px 16px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;
+font-weight:600}.btn:hover{border-color:#3a4252}
+.btn.pri{background:var(--acc);color:#111;border-color:var(--acc);width:100%;padding:13px;margin-top:18px;font-size:16px}
+.err{color:var(--bad);min-height:20px;margin-top:10px;font-size:14px}
+/* --- en-tête --- */
+.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);
+border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.bar .logo{width:38px;height:38px;font-size:20px;border-radius:10px;flex:none}
+.ttl{min-width:0;flex:1}.ttl b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl span{font-size:12.5px}
+.clock{font:700 22px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+.pill{padding:6px 12px;border-radius:999px;font-weight:700;font-size:13px;white-space:nowrap;background:var(--panel2);
+border:1px solid var(--line)}.pill.ok{background:#22c55e22;color:#4ade80;border-color:#22c55e55}
+.pill.bad{background:var(--bad);color:#fff;border-color:var(--bad);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.75}}
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;
+font-size:13px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+nav{display:flex;gap:6px;padding:0 12px 10px;overflow-x:auto;scrollbar-width:none}nav::-webkit-scrollbar{display:none}
+nav a{flex:none;text-decoration:none;color:var(--mut);padding:8px 14px;border-radius:10px;font-weight:600;
+border:1px solid transparent}nav a.on{color:var(--fg);background:var(--panel2);border-color:var(--line)}
+/* --- bandeau d'alarmes --- */
+#al{padding:0 16px}#al:empty{display:none}
+.al{display:flex;align-items:center;gap:10px;background:var(--bad);color:#fff;border-radius:12px;padding:10px 12px;
+margin-top:10px;font-weight:600}.al.ack{background:var(--abs)}.al .x{flex:1;min-width:0}
+.al small{display:block;font-weight:500;opacity:.9}
+.al button,.ackbtn{border:0;border-radius:8px;padding:7px 12px;background:#fff;color:#000;font-weight:700;cursor:pointer;flex:none}
+/* --- contenu --- */
+main{padding:14px 16px 40px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.tools .in{width:auto;padding:8px 10px;flex:1;min-width:140px}
+.tools select.in{flex:0 1 auto}
+.sw{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:14px;cursor:pointer;user-select:none}
+.home{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.vcard{display:block;text-decoration:none;color:inherit;background:var(--panel);border:1px solid var(--line);
+border-radius:var(--r);padding:18px;transition:transform .1s,border-color .1s}
+.vcard:hover{border-color:var(--acc);transform:translateY(-2px)}
+.vcard .i{font-size:30px}.vcard b{display:block;font-size:18px;margin:8px 0 4px}.vcard span{color:var(--mut);font-size:13.5px}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.kpi b{display:block;font-size:26px;font-variant-numeric:tabular-nums}.kpi span{color:var(--mut);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px}
+.c{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--none);border-radius:12px;padding:10px 12px}
+.c.ok{border-left-color:var(--ok)}.c.bad{border-left-color:var(--bad)}.c.warn{border-left-color:var(--warn)}
+.c.alarm{background:var(--abs);color:#111;border-color:var(--abs)}
+.c .n{font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c .f{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}.c.alarm .f,.c.alarm .s{color:#111}
+.c .l{font-size:15px;margin-top:3px;font-weight:600}.c .s{color:var(--mut);font-size:12.5px}
+.wall{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(var(--tw,200px),1fr))}
+.t{border-radius:16px;padding:14px;text-align:center;background:var(--panel2);border:3px solid var(--line);min-height:var(--th,130px);
+display:flex;flex-direction:column;justify-content:center}
+.t.ok{background:#14532d;border-color:#22c55e}.t.bad{background:#7f1d1d;border-color:#ef4444}
+.t.warn{background:#713f12;border-color:#eab308}.t.alarm{background:var(--abs);border-color:#fff;color:#111}
+.t .n{font-weight:800;font-size:calc(var(--fs,22px)*1.15);line-height:1.1}.t .f{opacity:.8;font-size:calc(var(--fs,22px)*.62)}
+.t .l{font-weight:700;font-size:var(--fs,22px);margin-top:4px}
+.wallfs{position:fixed;inset:0;z-index:20;background:var(--bg);padding:12px;overflow:auto}
+.plot{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.plot canvas{display:block;width:100%;touch-action:none}
+.read{position:absolute;right:10px;top:8px;background:#000a;padding:4px 8px;border-radius:8px;font:600 13px ui-monospace,Menlo,monospace;
+pointer-events:none}.read:empty{display:none}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:12.5px;margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.alist .row{display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--bad);
+border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-color:var(--abs)}
+.alist .row .x{flex:1;min-width:0}.alist b{font-size:16px}.empty{color:var(--mut);text-align:center;padding:40px 10px;font-size:16px}
+.who{font-size:13px;color:var(--mut);margin-top:16px;text-align:center}
+@media (max-width:560px){.clock{font-size:17px}.bar{gap:8px;padding:8px 12px}.pill{font-size:12px;padding:5px 9px}
+.ttl span{display:none}.chip{max-width:90px}main{padding:12px 12px 40px}}
 </style></head><body>
 <div id="stale">⚠ Plus de nouvelles du PC de surveillance</div>
-<header><h1 id="t">TinySA Monitor</h1><div id="meta"></div>
-<select id="flt"><option value="">Toutes les couches</option></select></header>
-<section id="al"></section><div style="margin:0 14px"><button id="ackall">✔ Tout acquitter</button></div><main id="g"></main>
+<div id="login" class="hidden"><form class="card" id="lf">
+ <div class="logo">📡</div><h1 id="lt">TinySA Monitor</h1><p>Surveillance HF en direct</p>
+ <label for="ln">Ton nom (pour que la régie sache qui regarde)</label>
+ <input class="in" id="ln" maxlength="32" placeholder="ex. Clément — FOH" autocomplete="name">
+ <div id="lpw"><label for="lp">Mot de passe</label><input class="in" id="lp" type="password" autocomplete="current-password"></div>
+ <button class="btn pri" type="submit">Entrer</button><div class="err" id="le"></div></form></div>
+<div id="app" class="hidden">
+ <header class="top"><div class="bar"><div class="logo">📡</div>
+  <div class="ttl"><b id="t">TinySA Monitor</b><span id="meta" class="mut"></span></div>
+  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button></div>
+  <nav id="nav"></nav></header>
+ <section id="al"></section><main id="view"></main>
+</div>
 <script>
-const $=s=>document.querySelector(s);let last=0,data=null,keep="";try{keep=localStorage.getItem("flt")||""}catch(x){}
-function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-async function tick(){try{const r=await fetch("etat.json",{cache:"no-store"});data=await r.json();last=Date.now();draw(data)}catch(e){}
- $("#stale").style.display=(Date.now()-last>15000)?"block":"none"}
-function draw(d){$("#t").textContent=d.title||"TinySA Monitor";
- $("#meta").textContent=(d.running?"● en surveillance":"○ arrêté")+" · "+d.time+(d.cycle?" · cycle "+d.cycle:"");
- const f=$("#flt"),layers=[...new Set(d.rows.map(r=>r.scene+(r.group?" › "+r.group:"")).filter(x=>x))].sort();
- if(f.options.length-1!==layers.length){f.innerHTML='<option value="">Toutes les couches</option>'+layers.map(l=>`<option>${esc(l)}</option>`).join("");f.value=keep}
- const lay=r=>r.scene+(r.group?" › "+r.group:""),ok=r=>!f.value||lay(r)===f.value||r.scene===f.value;
- $("#al").innerHTML=d.alarms.filter(a=>!a.freq||!f.value||d.rows.some(r=>ok(r)&&Math.abs(r.freq-a.freq)<1e-3)).map(a=>
-  `<div class="al${a.acked?" ack":""}">${d.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}⚠ ${esc(a.kind)} — ${esc(a.name)}${a.freq?" · "+a.freq.toFixed(3)+" MHz":""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}</div>`).join("");
- $("#ackall").style.display=(d.ack&&d.alarms.filter(a=>!a.acked).length>1)?"inline-block":"none";
- $("#g").innerHTML=d.rows.filter(ok).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div>
-  <div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div>
-  <div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div>
-  <div class="s">${esc(lay(r))}</div></div>`).join("")}
-async function ack(id){let pin="";try{pin=localStorage.getItem("pin")||""}catch(x){}
- if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
- let r;try{r=await fetch("acquitter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin,id:id})})}
- catch(e){alert("PC injoignable");return}
- if(r.ok){try{localStorage.setItem("pin",pin)}catch(x){};tick();return}
+const VIEWS=__VIEWS__;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+let D=null,last=0,cur="",mounted=null,spec=null,specT=0,wf=null,busy=false;
+const lay=r=>r.scene+(r.group?" › "+r.group:"");
+function route(){const h=(location.hash||"").replace(/^#\/?/,"");return h}
+async function api(u,o){return fetch(u,Object.assign({cache:"no-store",credentials:"same-origin"},o||{}))}
+function post(u,b){return api(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})}
+// ---------- connexion
+function showLogin(needPw,msg){$("#app").classList.add("hidden");$("#login").classList.remove("hidden");
+ $("#lpw").classList.toggle("hidden",!needPw);$("#ln").value=LS.get("name","");$("#le").textContent=msg||"";
+ (LS.get("name","")&&needPw?$("#lp"):$("#ln")).focus()}
+$("#lf").onsubmit=async e=>{e.preventDefault();const name=$("#ln").value.trim()||"Invité";
+ let r;try{r=await post("connexion",{name:name,password:$("#lp").value})}catch(x){$("#le").textContent="PC injoignable";return}
+ if(r.ok){LS.set("name",name);$("#lp").value="";$("#login").classList.add("hidden");tick();return}
+ $("#le").textContent=r.status===429?"Trop d'essais : attends une minute.":"Mot de passe incorrect."};
+$("#me").onclick=()=>showLogin(D&&D.password,"");
+// ---------- boucle
+async function tick(){if(busy)return;busy=true;try{
+ const v=route();let r;
+ try{r=await api("etat.json?v="+encodeURIComponent(v))}catch(e){return}
+ if(r.status===401){showLogin(true);return}
+ const d=await r.json();last=Date.now();D=d;
+ if(!d.me){const n=LS.get("name","");if(n&&!d.password){await post("connexion",{name:n,password:""});}
+  else if(!n){showLogin(d.password);return}}
+ $("#login").classList.add("hidden");$("#app").classList.remove("hidden");
+ if((v==="spectre"||v==="waterfall")&&d.views.includes(v)){try{const s=await api("spectre.json");if(s.ok){spec=await s.json()}}catch(e){}}
+ render()}finally{busy=false;$("#stale").style.display=(last&&Date.now()-last>8000)?"block":"none"}}
+function clock(){const n=new Date();$("#clock").textContent=n.toLocaleTimeString("fr-FR",{hour12:false})}
+setInterval(clock,500);clock();setInterval(tick,1000);tick();
+window.addEventListener("hashchange",()=>{render();tick()});
+window.addEventListener("resize",()=>{if(mounted==="spectre"||mounted==="waterfall"){wf=null;draw()}else if(mounted==="mur")render()});
+// ---------- rendu
+function render(){if(!D)return;const st=D.state,v0=route(),v=(v0===""||D.views.includes(v0))?v0:"";
+ $("#t").textContent=st.title||"TinySA Monitor";document.title=st.title||"TinySA Monitor";$("#lt").textContent=st.title||"TinySA Monitor";
+ $("#meta").textContent=(st.running?"● en surveillance":"○ arrêté")+(st.cycle?" · cycle "+st.cycle:"");
+ const un=st.alarms.filter(a=>!a.acked).length,all=st.alarms.length,p=$("#pill");
+ p.className="pill "+(un?"bad":(all?"":"ok"));p.textContent=un?("⚠ "+un+" alarme"+(un>1?"s":"")):(all?all+" acquittée"+(all>1?"s":""):"✔ Tout va bien");
+ p.onclick=()=>{if(D.views.includes("alarmes"))location.hash="#/alarmes"};
+ $("#me").textContent="👤 "+(D.me||"Invité");
+ $("#nav").innerHTML=`<a href="#/" class="${v===""?"on":""}">🏠 Accueil</a>`+D.views.map(k=>`<a href="#/${k}" class="${v===k?"on":""}">${VIEWS[k][0]} ${VIEWS[k][1]}</a>`).join("");
+ $("#al").innerHTML=v==="alarmes"?"":st.alarms.filter(a=>!a.acked).slice(0,3).map(alHtml).join("");
+ if(mounted!==v){mounted=v;wf=null;mount(v)}update(v)}
+function alHtml(a){return `<div class="al${a.acked?" ack":""}"><div class="x">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}</small></div>${D.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}</div>`}
+document.addEventListener("click",e=>{const b=e.target.closest("button[data-id]");if(b)ack(b.dataset.id==="all"?"all":+b.dataset.id)});
+async function ack(id){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ let r;try{r=await post("acquitter",{pin:pin,id:id})}catch(e){alert("PC injoignable");return}
+ if(r.ok){LS.set("pin",pin);tick();return}
  try{localStorage.removeItem("pin")}catch(x){}
  alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou acquittement désactivé sur le PC).":"Erreur "+r.status)}
-$("#al").onclick=e=>{const b=e.target.closest("button[data-id]");if(b)ack(+b.dataset.id)};
-$("#ackall").onclick=()=>ack("all");
-$("#flt").onchange=e=>{keep=e.target.value;try{localStorage.setItem("flt",keep)}catch(x){};if(data)draw(data)};
-tick();setInterval(tick,2000);
-</script></body></html>"""
+function layers(){return[...new Set(D.state.rows.map(lay).filter(x=>x))].sort()}
+function layerSel(id){const k=LS.get("flt","");return `<select class="in" id="${id}"><option value="">Toutes les couches</option>${layers().map(l=>`<option${l===k?" selected":""}>${esc(l)}</option>`).join("")}</select>`}
+function keepLayer(id){const s=$("#"+id);if(s)s.onchange=()=>{LS.set("flt",s.value);update(mounted)}}
+function inLayer(r){const f=LS.get("flt","");return !f||lay(r)===f||r.scene===f}
+function mount(v){const el=$("#view");
+ if(v===""){el.innerHTML=`<div class="sum" id="kpi"></div><div class="home">${D.views.map(k=>`<a class="vcard" href="#/${k}"><div class="i">${VIEWS[k][0]}</div><b>${VIEWS[k][1]}</b><span>${VIEWS[k][2]}</span></a>`).join("")}</div><div class="who">Connecté en tant que <b>${esc(D.me||"Invité")}</b></div>`;return}
+ if(v==="liste"){el.innerHTML=`<div class="tools">${layerSel("flt")}<input class="in" id="q" placeholder="🔎 Nom, fréquence…"><label class="sw"><input type="checkbox" id="oo"> Occupées seulement</label></div><div class="grid" id="g"></div>`;
+  keepLayer("flt");$("#q").oninput=()=>update(v);$("#oo").onchange=()=>update(v);return}
+ if(v==="mur"){el.innerHTML=`<div class="tools">${layerSel("flt")}<label class="sw"><input type="checkbox" id="oo"> Occupées / faibles seulement</label><button class="btn" id="fs">⛶ Plein écran</button></div><div class="wall" id="g"></div>`;
+  keepLayer("flt");$("#oo").onchange=()=>update(v);$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
+ if(v==="spectre"||v==="waterfall"){el.innerHTML=`<div class="tools"><select class="in" id="band"></select>${v==="spectre"?'<label class="sw"><input type="checkbox" id="mh" checked> Max hold</label>':""}<label class="sw"><input type="checkbox" id="mk" checked> Mes fréquences</label></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div>`;
+  $("#band").onchange=()=>{LS.set("band",$("#band").value);wf=null;draw()};["mh","mk"].forEach(i=>{const c=$("#"+i);if(c)c.onchange=()=>draw()});
+  const cv=$("#cv");cv.onpointermove=cv.onpointerdown=e=>readout(e);cv.onpointerleave=()=>{$("#rd").textContent=""};return}
+ if(v==="alarmes"){el.innerHTML=`<div class="tools"><b style="flex:1">Alarmes en cours</b><span id="aa"></span></div><div class="alist" id="g"></div>`;return}}
+function update(v){const st=D.state;
+ if(v===""){const rs=st.rows,occ=rs.filter(r=>r.state==="occ").length,ab=rs.filter(r=>r.alarm).length,k=$("#kpi");
+  if(k)k.innerHTML=`<div class="kpi"><b>${rs.length}</b><span>fréquences</span></div><div class="kpi"><b>${rs.filter(r=>r.tone==="ok").length}</b><span>OK / libres</span></div><div class="kpi"><b>${occ}</b><span>avec signal</span></div><div class="kpi"><b style="color:${ab?"var(--bad)":"inherit"}">${ab}</b><span>en alarme</span></div>`;return}
+ if(v==="liste"){const q=($("#q").value||"").toLowerCase(),oo=$("#oo").checked;
+  $("#g").innerHTML=st.rows.filter(r=>inLayer(r)&&(!oo||r.state==="occ"||r.state==="weak")&&(!q||(r.name+" "+r.freq.toFixed(3)+" "+r.status).toLowerCase().includes(q))).map(r=>`<div class="c ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz${r.status?" · "+esc(r.status):""}</div><div class="l">${r.alarm&&!r.state_txt.includes(r.alarm)?esc(r.alarm)+" · ":""}${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div><div class="s">${esc(lay(r))}</div></div>`).join("")||'<div class="empty">Aucune fréquence</div>';return}
+ if(v==="mur"){const oo=$("#oo").checked,rs=st.rows.filter(r=>inLayer(r)&&(!oo||r.alarm||r.state==="occ"||r.state==="weak")),g=$("#g");
+  const W=g.clientWidth||innerWidth,H=Math.max(200,innerHeight-g.getBoundingClientRect().top-20),n=Math.max(1,rs.length);
+  let cols=Math.max(1,Math.min(n,Math.round(Math.sqrt(n*W/H/1.4))));const tw=Math.max(140,W/cols-10),th=Math.max(90,Math.min(H/Math.ceil(n/cols)-10,tw*.8));
+  g.style.setProperty("--tw",tw+"px");g.style.setProperty("--th",th+"px");g.style.setProperty("--fs",Math.max(13,Math.min(40,th*.17,tw/9))+"px");
+  g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
+ if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
+  $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
+  if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
+ if(v==="spectre"||v==="waterfall"){const b=$("#band"),bs=(spec&&spec.bands)||[],want=LS.get("band","*");
+  const opts='<option value="*">Toutes les bandes</option>'+bs.map(x=>`<option${x.name===want?" selected":""}>${esc(x.name)}</option>`).join("");
+  if(b.dataset.o!==opts){b.innerHTML=opts;b.dataset.o=opts;b.value=bs.some(x=>x.name===want)?want:"*"}
+  if(spec&&spec.t!==specT){specT=spec.t;if(v==="waterfall")wfAdd()}draw()}}
+// ---------- spectre / waterfall
+function segs(){const bs=(spec&&spec.bands)||[],k=$("#band")?$("#band").value:"*";return bs.filter(x=>k==="*"||x.name===k)}
+function span(ss){let a=1e9,b=-1e9;ss.forEach(s=>{if(s.f.length){a=Math.min(a,s.f[0]);b=Math.max(b,s.f[s.f.length-1])}});return b>a?[a,b]:null}
+function setup(cv,h){const d=devicePixelRatio||1,w=cv.clientWidth;cv.style.height=h+"px";if(cv.width!==Math.round(w*d)||cv.height!==Math.round(h*d)){cv.width=Math.round(w*d);cv.height=Math.round(h*d)}
+ const c=cv.getContext("2d");c.setTransform(d,0,0,d,0,0);return[c,w,h]}
+const PL=44,PB=24,PT=24;
+function ticks(a,b,n){const st=[.01,.025,.05,.1,.25,.5,1,2,5,10,20,25,50,100,200,500,1000],raw=(b-a)/n,s=st.find(x=>x>=raw)||raw;const o=[];for(let x=Math.ceil(a/s)*s;x<=b;x+=s)o.push(+x.toFixed(4));return o}
+function marks(c,w,h,f0,f1,top){if(!$("#mk")||!$("#mk").checked)return;const X=f=>PL+(f-f0)/(f1-f0)*(w-PL-8);let lastX=-99;
+ const col={ok:"#22c55e",bad:"#ef4444",warn:"#eab308",none:"#8b95a5"};
+ D.state.rows.filter(r=>r.freq>=f0&&r.freq<=f1).sort((a,b)=>a.freq-b.freq).forEach(r=>{const x=X(r.freq),cc=r.alarm?"#f97316":col[r.tone]||"#8b95a5";
+  c.globalAlpha=.85;c.strokeStyle=cc;c.lineWidth=1.5;
+  if(r.bw){const x0=X(r.freq-r.bw/2),x1=X(r.freq+r.bw/2);c.fillStyle=cc+"22";c.fillRect(x0,top,x1-x0,h-PB-top);c.strokeRect(x0,top,x1-x0,h-PB-top)}
+  else{c.setLineDash([3,3]);c.beginPath();c.moveTo(x,top);c.lineTo(x,h-PB);c.stroke();c.setLineDash([])}
+  c.globalAlpha=1;if(x-lastX>46){c.fillStyle=cc;c.font="600 11px system-ui";c.textAlign="center";c.fillText(r.name.slice(0,10),x,top-6);lastX=x}})}
+function draw(){const cv=$("#cv");if(!cv||!spec)return;const ss=segs(),sp=span(ss),lg=$("#lg");
+ const H=mounted==="spectre"?Math.max(240,Math.min(innerHeight-230,520)):Math.max(260,innerHeight-220);
+ const[c,w,h]=setup(cv,H);c.clearRect(0,0,w,h);if(!sp){c.fillStyle="#8b95a5";c.font="15px system-ui";c.textAlign="center";c.fillText(spec.bands.length?"…":"Pas encore de balayage",w/2,h/2);return}
+ const[f0,f1]=sp,X=f=>PL+(f-f0)/(f1-f0)*(w-PL-8);
+ c.font="11px system-ui";c.fillStyle="#8b95a5";c.strokeStyle="#272d38";c.lineWidth=1;c.textAlign="center";
+ ticks(f0,f1,Math.max(3,Math.floor(w/90))).forEach(f=>{const x=X(f);c.beginPath();c.moveTo(x,PT);c.lineTo(x,h-PB);c.stroke();c.fillText(f.toFixed(f1-f0<5?2:(f1-f0<50?1:0)),x,h-8)});
+ if(mounted==="waterfall"){wfDraw(c,w,h,f0,f1);marks(c,w,h,f0,f1,PT);lg.innerHTML='<span>Récent en haut · une ligne par balayage (il se remplit tant que la vue est ouverte)</span><span><i style="background:linear-gradient(90deg,#0b1e5b,#1d9bf0,#22c55e,#eab308,#ef4444)"></i>faible → fort</span>';return}
+ const lo=-120,hi=Math.max(-20,Math.ceil((Math.max(...ss.flatMap(s=>s.mh||s.l))+5)/10)*10),Y=v=>PT+(hi-v)/(hi-lo)*(h-PT-PB);
+ c.textAlign="right";for(let v=lo;v<=hi;v+=10){const y=Y(v);c.strokeStyle="#272d38";c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.fillText(v,PL-6,y+4)}
+ const line=(arr,f,col,lw,fill)=>{c.beginPath();arr.forEach((v,i)=>{const x=X(f[i]),y=Y(Math.max(lo,v));i?c.lineTo(x,y):c.moveTo(x,y)});c.strokeStyle=col;c.lineWidth=lw;c.stroke();
+  if(fill){c.lineTo(X(f[f.length-1]),h-PB);c.lineTo(X(f[0]),h-PB);c.closePath();const g=c.createLinearGradient(0,PT,0,h-PB);g.addColorStop(0,"#ff9f1c55");g.addColorStop(1,"#ff9f1c05");c.fillStyle=g;c.fill()}};
+ const mh=$("#mh")&&$("#mh").checked;ss.forEach(s=>{if(mh&&s.mh)line(s.mh,s.f,"#ff9f1c55",1,false);line(s.l,s.f,"#ff9f1c",1.6,true)});
+ if(D.state.thr!=null){const y=Y(D.state.thr);c.setLineDash([6,4]);c.strokeStyle="#ef4444";c.lineWidth=1.2;c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.setLineDash([]);c.fillStyle="#ef4444";c.textAlign="left";c.fillText("seuil "+D.state.thr+" dBm",PL+4,y-4)}
+ marks(c,w,h,f0,f1,PT);c.fillStyle="#8b95a5";c.textAlign="left";c.fillText("dBm",4,PT-8);
+ lg.innerHTML='<span><i style="background:#ff9f1c"></i>en direct</span>'+(mh?'<span><i style="background:#ff9f1c55"></i>max hold</span>':"")+'<span><i style="background:#ef4444"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
+function levelAt(f){let best=null,bd=1e9;segs().forEach(s=>{let lo=0,hi=s.f.length-1;while(hi-lo>1){const m=(lo+hi)>>1;s.f[m]<f?lo=m:hi=m}[lo,hi].forEach(i=>{const d=Math.abs(s.f[i]-f);if(d<bd){bd=d;best=s.l[i]}})});return best}
+function readout(e){const cv=$("#cv"),sp=span(segs());if(!sp)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,f=sp[0]+(x-PL)/(r.width-PL-8)*(sp[1]-sp[0]);
+ if(f<sp[0]||f>sp[1]){$("#rd").textContent="";return}const l=levelAt(f),near=D.state.rows.filter(w=>Math.abs(w.freq-f)<Math.max(.15,(w.bw||0)/2)).sort((a,b)=>Math.abs(a.freq-f)-Math.abs(b.freq-f))[0];
+ $("#rd").textContent=f.toFixed(3)+" MHz"+(l!=null?" · "+l.toFixed(1)+" dBm":"")+(near?" · "+near.name:"")}
+function wfCol(v){const t=Math.max(0,Math.min(1,(v+110)/70)),S=[[11,30,91],[29,155,240],[34,197,94],[234,179,8],[239,68,68]],p=t*(S.length-1),i=Math.min(S.length-2,Math.floor(p)),k=p-i;
+ return S[i].map((a,j)=>Math.round(a+(S[i+1][j]-a)*k))}
+function wfAdd(){const cv=$("#cv");if(!cv)return;const ss=segs(),sp=span(ss);if(!sp)return;const W=Math.max(50,Math.round(cv.clientWidth-PL-8)),N=Math.max(100,Math.round(innerHeight));
+ if(!wf||wf.w!==W||wf.key!==($("#band").value||"*")){const b=document.createElement("canvas");b.width=W;b.height=N;wf={c:b,w:W,key:$("#band").value||"*",n:0}}
+ const g=wf.c.getContext("2d");g.drawImage(wf.c,0,1);const img=g.createImageData(W,1);
+ for(let x=0;x<W;x++){const f=sp[0]+x/(W-1)*(sp[1]-sp[0]),v=levelAt(f),q=v==null?[13,15,19]:wfCol(v);img.data.set([q[0],q[1],q[2],255],x*4)}
+ g.putImageData(img,0,0);wf.n++}
+function wfDraw(c,w,h,f0,f1){if(!wf){c.fillStyle="#8b95a5";c.textAlign="center";c.fillText("Le waterfall se remplit à chaque balayage…",w/2,h/2);return}
+ c.imageSmoothingEnabled=false;const rows=Math.min(wf.n,Math.floor((h-PT-PB)/2));c.drawImage(wf.c,0,0,wf.w,rows,PL,PT,w-PL-8,rows*2)}
+</script></body></html>""".replace("__ICON__", APP_ICON_PNG64).replace(
+    "__VIEWS__", "{" + ",".join(f'"{k}":["{i}","{t}","{d}"]' for k, i, t, d in WEB_VIEWS) + "}")
 
 
 def split_band(start, stop, step):
@@ -3106,52 +3368,140 @@ class _HTTPServer(ThreadingHTTPServer):
 
 
 class WebServer(threading.Thread):
-    """Page web : « / » (page), « /etat.json » (état, fourni par get_json()) et POST « /acquitter »
-    ({pin, id | "all"}) si get_pin() donne un code : on_ack(id) est appelé depuis le fil du serveur."""
+    """Page web de l'équipe (façon Ontime : une adresse, plusieurs vues).
+    GET  « / » page · « /etat.json » état (+ qui je suis, vues partagées) · « /spectre.json » spectre allégé
+    POST « /connexion » {name, password} → cookie de session · « /acquitter » {pin, id | "all"}.
+    get_cfg() -> {password, views} (lu à chaque requête : les réglages du PC s'appliquent tout de suite).
+    Sans mot de passe tout le monde entre ; avec, il faut s'être connecté (5 essais faux → bloqué 1 min)."""
 
-    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None):
+    COOKIE = "tsm"
+
+    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
         self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
-        self.guard, self._lock = PinGuard(), threading.Lock()
+        self.get_spec = get_spec or (lambda: b'{"bands":[]}')
+        self.get_cfg = get_cfg or (lambda: {})
+        self.guard, self.login_guard, self._lock = PinGuard(), PinGuard(), threading.Lock()
+        self.clients = ClientBook()
         self.httpd, self.error = None, ""
         self.ready = threading.Event()
+
+    def cfg(self):
+        c = dict(self.get_cfg() or {})
+        return dict(password=str(c.get("password", "") or ""), views=web_views_norm(c.get("views")))
+
+    def client_list(self):
+        with self._lock:
+            return self.clients.listing(time.time())
+
+    def watching(self, views):
+        with self._lock:
+            return self.clients.watching(views, time.time())
+
+    def revoke_all(self):
+        with self._lock:
+            self.clients.revoke_all()
 
     def run(self):
         owner = self
 
         class H(BaseHTTPRequestHandler):
-            def do_GET(self):
-                path = self.path.split("?", 1)[0]
-                if path in ("/", "/index.html"):
-                    body, ctype = WEB_PAGE.encode("utf-8"), "text/html; charset=utf-8"
-                elif path == "/etat.json":
-                    body, ctype = owner.get_json(), "application/json; charset=utf-8"
-                else:
-                    self.send_error(404)
-                    return
-                self.send_response(200)
+            def _send(self, code, body, ctype, extra=()):
+                self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
+                for k, v in extra:
+                    self.send_header(k, v)
                 self.end_headers()
                 self.wfile.write(body)
 
-            def _json(self, code, obj):
-                body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            def _json(self, code, obj, extra=()):
+                self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                           "application/json; charset=utf-8", extra)
 
-            def do_POST(self):
-                if self.path.split("?", 1)[0] != "/acquitter" or owner.on_ack is None:
+            def _token(self):
+                for part in (self.headers.get("Cookie") or "").split(";"):
+                    k, _, v = part.strip().partition("=")
+                    if k == owner.COOKIE and re.fullmatch(r"[0-9a-f]{32}", v or ""):
+                        return v
+                return ""
+
+            def _who(self, view=""):
+                """-> (autorisé, entrée du client ou None)."""
+                tok, cfg = self._token(), owner.cfg()
+                with owner._lock:
+                    e = owner.clients.touch(tok, self.client_address[0], view, time.time()) if tok else None
+                    e = dict(e) if e else None
+                return (e is not None or not cfg["password"]), e
+
+            def _body(self):
+                n = int(self.headers.get("Content-Length", 0) or 0)
+                req = json.loads(self.rfile.read(min(max(n, 0), 4096)).decode("utf-8")) if n > 0 else {}
+                if not isinstance(req, dict):
+                    raise ValueError
+                return req
+
+            def do_GET(self):
+                path, _, qs = self.path.partition("?")
+                view = next((v for k, _, v in (p.partition("=") for p in qs.split("&")) if k == "v"), "")
+                view = view if view in WEB_VIEW_KEYS else ""
+                if path in ("/", "/index.html"):
+                    self._send(200, WEB_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                    return
+                if path not in ("/etat.json", "/spectre.json"):
                     self.send_error(404)
                     return
+                ok, me = self._who(view)
+                cfg = owner.cfg()
+                if not ok:
+                    self._json(401, dict(login=True, password=True))
+                    return
+                if path == "/spectre.json":
+                    if not (cfg["views"]["spectre"] or cfg["views"]["waterfall"]):
+                        self._json(403, dict(error="vue non partagée"))
+                        return
+                    self._send(200, owner.get_spec(), "application/json; charset=utf-8")
+                    return
+                head = dict(me=None if me is None else me["name"], password=bool(cfg["password"]),
+                            views=[k for k in WEB_VIEW_KEYS if cfg["views"][k]],
+                            ack=len(str(owner.get_pin() or "").strip()) >= 4)
+                body = (json.dumps(head, ensure_ascii=False)[:-1] + ',"state":').encode("utf-8") + owner.get_json() + b"}"
+                self._send(200, body, "application/json; charset=utf-8")
+
+            def do_POST(self):
+                path = self.path.split("?", 1)[0]
+                if path == "/connexion":
+                    try:
+                        req = self._body()
+                    except (ValueError, UnicodeDecodeError):
+                        self._json(400, dict(error="requête invalide"))
+                        return
+                    pw = owner.cfg()["password"]
+                    if pw:
+                        with owner._lock:
+                            res = owner.login_guard.check(pw, req.get("password"), self.client_address[0], time.time())
+                        if res != "ok":
+                            self._json(429 if res == "locked" else 403, dict(error=res))
+                            return
+                    tok = os.urandom(16).hex()
+                    with owner._lock:
+                        e = owner.clients.login(tok, req.get("name"), self.client_address[0],
+                                                self.headers.get("User-Agent", ""), time.time())
+                        name = e["name"]
+                    self._json(200, dict(ok=True, name=name), [(
+                        "Set-Cookie", f"{owner.COOKIE}={tok}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200")])
+                    return
+                if path != "/acquitter" or owner.on_ack is None:
+                    self.send_error(404)
+                    return
+                ok, _me = self._who()
+                if not ok:
+                    self._json(401, dict(login=True))
+                    return
                 try:
-                    n = int(self.headers.get("Content-Length", 0))
-                    req = json.loads(self.rfile.read(min(max(n, 0), 2048)).decode("utf-8")) if n > 0 else {}
+                    req = self._body()
                     target = req.get("id")
                     if not (target == "all" or (isinstance(target, int) and not isinstance(target, bool))):
                         raise ValueError
@@ -3253,6 +3603,31 @@ class AlertsDialog(QtWidgets.QDialog):
         self.web_port = QtWidgets.QSpinBox()
         self.web_port.setRange(1024, 65535)
         self.web_port.setValue(int(w["port"]))
+        self.web_pw = QtWidgets.QLineEdit(str(w.get("password", "")))
+        self.web_pw.setPlaceholderText("vide = ouvert à tout le réseau")
+        self.web_pw.setMaxLength(40)
+        self.web_pw.setToolTip("Mot de passe demandé pour ouvrir la page (en plus du nom de la personne).\n"
+                               "Le changer déconnecte tout le monde.")
+        self.view_chks = {}
+        vbox = QtWidgets.QWidget()
+        vfl = FlowLayout(vbox)
+        cur_v = web_views_norm(w.get("views"))
+        for k, ic, t, d in WEB_VIEWS:
+            cb = QtWidgets.QCheckBox(f"{ic} {t}")
+            cb.setChecked(cur_v[k])
+            cb.setToolTip(d + "\nDécoché : la vue n'apparaît pas sur la page.")
+            self.view_chks[k] = cb
+            vfl.addWidget(cb)
+        self.clients = QtWidgets.QListWidget()
+        self.clients.setMaximumHeight(110)
+        self.clients.setToolTip("Les personnes qui ont la page ouverte (nom choisi, adresse, vue regardée).")
+        self.kick_btn = QtWidgets.QPushButton("Déconnecter tout le monde")
+        self.kick_btn.setToolTip("Oublie toutes les connexions : avec un mot de passe, chacun doit se reconnecter.")
+        self.kick_btn.clicked.connect(lambda *_: (owner.web.revoke_all() if owner.web is not None else None,
+                                                  self.refresh_clients()))
+        self._ct = QtCore.QTimer(self)
+        self._ct.timeout.connect(self.refresh_clients)
+        self._ct.start(2000)
         self.web_pin = QtWidgets.QLineEdit(str(w.get("pin", "")))
         self.web_pin.setPlaceholderText("vide = lecture seule")
         self.web_pin.setMaxLength(12)
@@ -3262,16 +3637,21 @@ class AlertsDialog(QtWidgets.QDialog):
         self.w_lbl.setWordWrap(True)
         self.w_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         help_w = QtWidgets.QLabel("Sur un téléphone ou un PC du même réseau, ouvre l'adresse affichée : état des "
-                                  "fréquences et alarmes, filtre par scène / groupe, rafraîchi toutes les 2 s. "
-                                  "Avec un code PIN, on peut aussi y acquitter les alarmes (le son s'arrête sur le "
-                                  "PC). Le code passe en clair sur le réseau : à n'activer que sur un réseau de "
-                                  "confiance (réseau de prod, pas le Wi-Fi public).")
+                                  "fréquences et alarmes, filtre par scène / groupe, rafraîchi chaque seconde. "
+                                  "Vues au choix (liste, mur, spectre, waterfall, alarmes) ; chacun entre son nom, tu "
+                                  "vois qui est connecté. Mot de passe pour fermer l'accès, code PIN pour pouvoir "
+                                  "acquitter depuis le téléphone. Tout passe en clair sur le réseau : à n'activer que "
+                                  "sur un réseau de confiance (réseau de prod, pas le Wi-Fi public).")
         help_w.setWordWrap(True)
         wf.addRow(help_w)
         wf.addRow(self.web_on)
         wf.addRow("Port :", self.web_port)
+        wf.addRow("Mot de passe :", self.web_pw)
         wf.addRow("Code PIN (acquitter) :", self.web_pin)
+        wf.addRow("Vues partagées :", vbox)
         wf.addRow(self.w_lbl)
+        wf.addRow("Connectés :", self.clients)
+        wf.addRow(self.kick_btn)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -3296,7 +3676,8 @@ class AlertsDialog(QtWidgets.QDialog):
                     server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
                     tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
                     site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value(),
-                                                     pin=self.web_pin.text().strip())
+                                                     pin=self.web_pin.text().strip(), password=self.web_pw.text(),
+                                                     views={k: c.isChecked() for k, c in self.view_chks.items()})
 
     def show_tuto(self):
         d = QtWidgets.QDialog(self)
@@ -3355,6 +3736,22 @@ class AlertsDialog(QtWidgets.QDialog):
         elif nt is not None and nt.sent:
             self.n_lbl.setText(f"✔ {nt.sent} alerte(s) envoyée(s) depuis le démarrage.")
         self.w_lbl.setText(self.owner.web_urls_text())
+        self.refresh_clients()
+
+    def refresh_clients(self):
+        ws = self.owner.web
+        self.clients.clear()
+        if ws is None:
+            self.clients.addItem("(page web arrêtée)")
+            return
+        names = {k: t for k, _i, t, _d in WEB_VIEWS}
+        lst = ws.client_list()
+        for e in lst:
+            ago = int(time.time() - e["last"])
+            self.clients.addItem(("🟢 " if e["online"] else "⚪ ") + f"{e['name']} · {e['addr']}"
+                                 + (f" · {names.get(e['view'], 'Accueil')}" if e["online"] else f" · vu il y a {ago // 60} min"))
+        if not lst:
+            self.clients.addItem("Personne pour l'instant")
 
 
 class RelayWindow(QtWidgets.QWidget):
@@ -5980,7 +6377,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                tg_chat="", site="")
         self.notifier = None
         self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
-        self.web_cfg = dict(on=False, port=WEB_PORT, pin="")
+        self.web_cfg = dict(on=False, port=WEB_PORT, pin="", password="", views=web_views_norm(None))
+        self._web_spec = b'{"t":0,"bands":[]}'
         self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self.web = None
         self._web_json = b"{}"
@@ -7254,6 +7652,7 @@ class MainWindow(QtWidgets.QMainWindow):
             v = data.get(key)
             if isinstance(v, dict):
                 d.update({k: v[k] for k in d if k in v and isinstance(v[k], type(d[k]))})
+        self.web_cfg["views"] = web_views_norm(self.web_cfg.get("views"))
         QtCore.QTimer.singleShot(0, self.apply_web)
         dn = data.get("dev_names")
         if isinstance(dn, list) and len(dn) == 2:
@@ -7316,7 +7715,7 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
-            dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k != "pin"},
+            dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
@@ -7328,6 +7727,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["vocab"] = self.vocab_user
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
             data["web"]["pin"] = self.web_cfg.get("pin", "")          # code PIN : idem
+            data["web"]["password"] = self.web_cfg.get("password", "")
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
@@ -7823,7 +8223,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if dlg.exec():
             n, w = dlg.values()
             self.notify_cfg.update(n)
+            pw_changed = w.get("password", "") != self.web_cfg.get("password", "")
             self.web_cfg.update(w)
+            if pw_changed and self.web is not None:
+                self.web.revoke_all()              # nouveau mot de passe : tout le monde se reconnecte
             self.apply_web()
 
     def send_notify(self, title, body, prio, cfg=None):
@@ -7861,8 +8264,22 @@ class MainWindow(QtWidgets.QMainWindow):
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
-            running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4))
+            running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4,
+            thr=round(float(self.thr_spin.value()), 1)))
         return json.dumps(st, ensure_ascii=False).encode("utf-8")
+
+    def web_spec_json(self):
+        """Spectre allégé pour les vues Spectre / Waterfall de la page web (une entrée par bande récente)."""
+        now = time.time()
+        stale = max(15.0, 4 * self.last_cycle)
+        names = {b["id"]: b["name"] for b in self.scan_bands()}
+        segs, t = [], 0.0
+        for k in sorted((k for k in self.latest if k != ZOOM_ID and now - self.latest_t.get(k, 0) <= stale),
+                        key=lambda k: float(self.latest[k][0][0]) if len(self.latest[k][0]) else 0.0):
+            f, l = self.latest[k]
+            segs.append((names.get(k, f"{f[0]:.0f}–{f[-1]:.0f} MHz"), f, l, self.maxhold.get(k)))
+            t = max(t, self.latest_t.get(k, 0.0))
+        return json.dumps(dict(t=round(t, 3), bands=web_spectrum(segs)), ensure_ascii=False).encode("utf-8")
 
     def apply_web(self):
         want = self.web_cfg["on"]
@@ -7872,7 +8289,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if want and self.web is None:
             self._web_json = self.web_json()
             ws = WebServer(self.web_cfg["port"], lambda: self._web_json, get_pin=lambda: self.web_cfg.get("pin", ""),
-                           on_ack=self._web_acks.put)
+                           on_ack=self._web_acks.put, get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg)
             ws.start()
             ws.ready.wait(3)
             if ws.error:
@@ -10636,6 +11053,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._web_ack_pending()
         if self.web is not None:
             self._web_json = self.web_json()
+            if self.web_cfg["views"].get("spectre") or self.web_cfg["views"].get("waterfall"):
+                if self.web.watching(("spectre", "waterfall")):        # seulement si quelqu'un regarde
+                    self._web_spec = self.web_spec_json()
         if self.recorder is not None:
             self.recorder.maybe_flush(now)
             if self.recorder.error:
@@ -11143,6 +11563,11 @@ def install_french(app):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     install_french(app)
+    ico = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    for cand in (ico / "icone.png", ico / "assets" / "icone.png"):     # exe (PyInstaller) ou sources
+        if cand.exists():
+            app.setWindowIcon(QtGui.QIcon(str(cand)))
+            break
     app._crash_fh = install_crash_log(app)
     if "--relais" in sys.argv:              # PC où est branché le 2ᵉ tinySA : juste le relais réseau
         win = RelayWindow()

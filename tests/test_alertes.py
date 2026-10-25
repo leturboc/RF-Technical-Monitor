@@ -164,52 +164,132 @@ if recv:
     check("ntfy local : priorité urgente", h.get("Priority") == "urgent")
 srv.shutdown()
 
+# ------------------------------------------------------------- vues, clients, spectre (PURE)
+vn = ns["web_views_norm"]
+check("vues : toutes par défaut", all(vn(None).values()) and list(vn(None)) == ns["WEB_VIEW_KEYS"])
+check("vues : une décochée, inconnue ignorée", vn({"spectre": False, "x": True}) == dict(vn(None), spectre=False))
+cb = ns["ClientBook"](online_s=10, keep_s=100)
+cb.login("a" * 32, "  Clément   FOH ", "10.0.0.2", "UA", 0.0)
+cb.login("b" * 32, "", "10.0.0.3", "UA", 0.0)
+cb.touch("a" * 32, "10.0.0.2", "mur", 5.0)
+L_ = cb.listing(12.0)
+check("clients : nom nettoyé, invité par défaut", [e["name"] for e in L_] == ["Clément FOH", "Invité"], str(L_))
+check("clients : en ligne / hors ligne", [e["online"] for e in L_] == [True, False])
+check("clients : qui regarde quoi", cb.watching(("mur",), 12.0) and not cb.watching(("spectre",), 12.0))
+check("clients : jeton inconnu", cb.touch("c" * 32, "x", "", 1.0) is None)
+cb.purge(200.0)
+check("clients : oubliés après le délai", cb.listing(200.0) == [])
+wsp = ns["web_spectrum"]
+import numpy as _np
+F_ = _np.linspace(470, 694, 5001)
+L_ = -100 + 0 * F_
+L_[2500] = -40.0                              # pic étroit
+out = wsp([("UHF", F_, L_, L_ + 1)], n_max=900)
+check("spectre allégé : 900 points", len(out[0]["f"]) == 900 and len(out[0]["mh"]) == 900)
+check("spectre allégé : le pic étroit reste", max(out[0]["l"]) == -40.0)
+check("spectre allégé : petit segment intact", len(wsp([("x", F_[:100], L_[:100], None)])[0]["f"]) == 100)
+
 # ------------------------------------------------------------- WebServer
+import http.cookiejar
 state = {"v": json.dumps(st, ensure_ascii=False).encode("utf-8")}
-w = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1")
+spec_b = json.dumps(dict(t=1.0, bands=out)).encode()
+wcfg = dict(password="", views=vn(None))
+w = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_spec=lambda: spec_b, get_cfg=lambda: wcfg)
 w.start()
 w.ready.wait(3)
 check("serveur web démarré", not w.error and w.port > 0, w.error)
 base = f"http://127.0.0.1:{w.port}"
-page = urllib.request.urlopen(base + "/", timeout=5).read().decode("utf-8")
-check("page servie", "<title>TinySA Monitor</title>" in page and "etat.json" in page)
-js = json.loads(urllib.request.urlopen(base + "/etat.json", timeout=5).read())
-check("etat.json servi", js["rows"][0]["name"] == "HF 1")
-try:
-    urllib.request.urlopen(base + "/../config.json", timeout=5)
-    check("chemin inconnu : 404", False)
-except urllib.error.HTTPError as e:
-    check("chemin inconnu : 404", e.code == 404)
-def post(port, obj, raw=None):
-    rq = urllib.request.Request(f"http://127.0.0.1:{port}/acquitter", data=raw if raw is not None else json.dumps(obj).encode(),
+
+
+def opener():
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+
+def get(op, path):
+    try:
+        r = op.open(base + path, timeout=5)
+        return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def post_(op, path, obj, port=None):
+    rq = urllib.request.Request(f"http://127.0.0.1:{port or w.port}{path}", data=json.dumps(obj).encode(),
                                 headers={"Content-Type": "application/json"}, method="POST")
     try:
-        return urllib.request.urlopen(rq, timeout=5).status
+        r = op.open(rq, timeout=5)
+        return r.status, json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
-        return e.code
+        return e.code, {}
 
 
-check("POST sans acquittement branché : 404", post(w.port, dict(pin="1234", id=1)) == 404)
-acks, pin_ = [], {"v": "4321"}
-wa = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_pin=lambda: pin_["v"], on_ack=acks.append)
-wa.start()
-wa.ready.wait(3)
-check("acquitter : code faux → 403", post(wa.port, dict(pin="0000", id=7)) == 403 and not acks)
-check("acquitter : bon code → 200", post(wa.port, dict(pin="4321", id=7)) == 200 and acks == [7], str(acks))
-check("acquitter : tout", post(wa.port, dict(pin="4321", id="all")) == 200 and acks[-1] == "all")
-check("acquitter : requête bancale → 400", post(wa.port, None, raw=b"{pas du json") == 400
-      and post(wa.port, dict(pin="4321", id="1; rm")) == 400 and post(wa.port, dict(pin="4321", id=True)) == 400)
-for _ in range(5):                  # 5 codes faux de suite
-    post(wa.port, dict(pin="9999", id=1))
-check("acquitter : trop d'essais → 429", post(wa.port, dict(pin="4321", id=1)) == 429)
-wa.guard.bad.clear()
-pin_["v"] = ""
-check("acquitter : code effacé sur le PC → refusé", post(wa.port, dict(pin="4321", id=1)) == 403)
-pin_["v"] = "4321"
+o1 = opener()
+code, page = get(o1, "/")
+page = page.decode("utf-8")
+check("page servie", code == 200 and "<title>TinySA Monitor</title>" in page and "etat.json" in page)
+check("page : icône (parabole) en favicon", 'rel="icon" href="data:image/png;base64,iVBOR' in page and "__ICON__" not in page)
+check("icône de l'exe présente", all(os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", f))
+                                     for f in ("icone.ico", "icone.png")))
+check("page : vues injectées", '"waterfall":["🌊","Waterfall"' in page and "__VIEWS__" not in page)
+code, b_ = get(o1, "/etat.json?v=liste")
+js = json.loads(b_)
+check("sans mot de passe : état lisible", code == 200 and js["state"]["rows"][0]["name"] == "HF 1" and js["me"] is None)
+check("état : vues partagées", js["views"] == ns["WEB_VIEW_KEYS"] and js["password"] is False)
+code, r_ = post_(o1, "/connexion", dict(name="Régie", password=""))
+check("connexion sans mot de passe : nom enregistré", code == 200 and r_["name"] == "Régie")
+code, b_ = get(o1, "/etat.json?v=mur")
+check("connecté : « me »", json.loads(b_)["me"] == "Régie")
+check("clients : la régie regarde le mur", [(e["name"], e["view"]) for e in w.client_list()] == [("Régie", "mur")])
+code, b_ = get(o1, "/spectre.json")
+check("spectre servi", code == 200 and json.loads(b_)["bands"][0]["name"] == "UHF")
+wcfg["views"] = dict(vn(None), spectre=False, waterfall=False)
+check("vues spectre / waterfall coupées → 403", get(o1, "/spectre.json")[0] == 403
+      and "spectre" not in json.loads(get(o1, "/etat.json")[1])["views"])
+wcfg["views"] = vn(None)
+check("chemin inconnu : 404", get(o1, "/../config.json")[0] == 404)
+# --- mot de passe
+wcfg["password"] = "festival"
+o2 = opener()
+check("mot de passe : état refusé sans connexion", get(o2, "/etat.json")[0] == 401 and get(o2, "/spectre.json")[0] == 401)
+check("mot de passe : faux → 403", post_(o2, "/connexion", dict(name="X", password="nope"))[0] == 403)
+check("mot de passe : bon → cookie", post_(o2, "/connexion", dict(name="Plateau", password="festival"))[0] == 200
+      and get(o2, "/etat.json")[0] == 200)
+check("mot de passe : l'ancienne session reste valable", get(o1, "/etat.json")[0] == 200)
+w.revoke_all()
+check("déconnecter tout le monde", get(o1, "/etat.json")[0] == 401 and get(o2, "/etat.json")[0] == 401)
+o3 = opener()
+for _ in range(5):
+    post_(o3, "/connexion", dict(name="X", password="bad"))
+check("mot de passe : 5 essais faux → bloqué", post_(o3, "/connexion", dict(name="X", password="festival"))[0] == 429)
+wcfg["password"] = ""
+w.login_guard.bad.clear()
 busy = ns["WebServer"](w.port, lambda: b"{}", host="127.0.0.1")
 busy.start()
 busy.ready.wait(3)
 check("port déjà pris : erreur claire", "indisponible" in busy.error, busy.error)
+
+# --- acquitter (code PIN)
+acks, pin_ = [], {"v": "4321"}
+wa = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_pin=lambda: pin_["v"], on_ack=acks.append,
+                     get_spec=lambda: spec_b, get_cfg=lambda: wcfg)
+wa.start()
+wa.ready.wait(3)
+oa = opener()
+check("POST sans acquittement branché : 404", post_(o1, "/acquitter", dict(pin="1234", id=1))[0] == 404)
+check("acquitter : code faux → 403", post_(oa, "/acquitter", dict(pin="0000", id=7), wa.port)[0] == 403 and not acks)
+check("acquitter : bon code → 200", post_(oa, "/acquitter", dict(pin="4321", id=7), wa.port)[0] == 200 and acks == [7])
+check("acquitter : tout", post_(oa, "/acquitter", dict(pin="4321", id="all"), wa.port)[0] == 200 and acks[-1] == "all")
+check("acquitter : requête bancale → 400", post_(oa, "/acquitter", dict(pin="4321", id="1; rm"), wa.port)[0] == 400
+      and post_(oa, "/acquitter", dict(pin="4321", id=True), wa.port)[0] == 400)
+for _ in range(5):
+    post_(oa, "/acquitter", dict(pin="9999", id=1), wa.port)
+check("acquitter : trop d'essais → 429", post_(oa, "/acquitter", dict(pin="4321", id=1), wa.port)[0] == 429)
+wa.guard.bad.clear()
+pin_["v"] = ""
+check("acquitter : code effacé sur le PC → refusé", post_(oa, "/acquitter", dict(pin="4321", id=1), wa.port)[0] == 403)
+pin_["v"] = "4321"
+check("état : acquittement proposé si code", json.loads(get(oa, "/etat.json".replace("/", "/", 1))[1] if False else
+      urllib.request.urlopen(f"http://127.0.0.1:{wa.port}/etat.json", timeout=5).read())["ack"] is True)
 
 # ------------------------------------------------------------- la page dans un vrai navigateur
 try:
@@ -219,63 +299,138 @@ except ImportError:
 if sync_playwright is None:
     print("Playwright absent : rendu de la page non testé")
 else:
+    CAP = os.environ.get("CAPTURES")
     with sync_playwright() as p:
         exe = "/opt/pw-browsers/chromium"            # Chromium préinstallé (conteneur Claude) ; sinon celui de Playwright
         br = p.chromium.launch(executable_path=exe) if os.path.exists(exe) else p.chromium.launch()
-        pg = br.new_page(viewport=dict(width=390, height=800))
         errs = []
+        pg = br.new_page(viewport=dict(width=390, height=800))
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto(base + "/")
+        pg.wait_for_selector("#login:not(.hidden)", timeout=5000)
+        check("navigateur : 1re visite → demande du nom, sans mot de passe", pg.locator("#lpw").is_hidden())
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_connexion.png"))
+        pg.fill("#ln", "Clément FOH")
+        pg.click("button[type=submit]")
+        pg.wait_for_selector("#app:not(.hidden)", timeout=5000)
+        check("navigateur : connecté, nom affiché", "Clément FOH" in pg.locator("#me").inner_text())
+        check("navigateur : la régie le voit", any(e["name"] == "Clément FOH" for e in w.client_list()))
+        check("navigateur : accueil avec les 5 vues", pg.locator(".vcard").count() == 5 and pg.locator("nav a").count() == 6,
+              f'{pg.locator(".vcard").count()} {pg.locator("nav a").count()}')
+        check("navigateur : pastille d'alarme", "1 alarme" in pg.locator("#pill").inner_text())
+        check("navigateur : bandeau d'alarme", "ABSENT — HF 2" in pg.locator("#al").inner_text())
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_accueil.png"), full_page=True)
+        pg.goto(base + "/#/liste")
         pg.wait_for_selector(".c", timeout=5000)
         cards = pg.locator(".c")
-        check("navigateur : 3 cartes", cards.count() == 3, str(cards.count()))
-        check("navigateur : carte occupée (ton rouge)", "bad" in (cards.nth(0).get_attribute("class") or ""))
-        check("navigateur : carte en alarme", "alarm" in (cards.nth(2).get_attribute("class") or "")
-              and "ABSENT" in cards.nth(2).inner_text())
-        check("navigateur : bandeau d'alarme", "ABSENT — HF 2" in pg.locator("#al").inner_text())
-        check("navigateur : en-tête", "en surveillance" in pg.locator("#meta").inner_text())
+        check("liste : 3 cartes", cards.count() == 3, str(cards.count()))
+        check("liste : carte occupée (ton rouge)", "bad" in (cards.nth(0).get_attribute("class") or ""))
+        check("liste : carte en alarme", "alarm" in (cards.nth(2).get_attribute("class") or ""))
         pg.select_option("#flt", "Grande scène › Micros")
-        check("navigateur : filtre par couche", pg.locator(".c").count() == 2)
+        pg.wait_for_function("document.querySelectorAll('.c').length === 2", timeout=3000)
+        check("liste : filtre par couche", pg.locator(".c").count() == 2)
+        pg.fill("#q", "HF 2")
+        pg.wait_for_function("document.querySelectorAll('.c').length === 1", timeout=3000)
+        check("liste : recherche", pg.locator(".c").count() == 1)
+        pg.fill("#q", "")
         rows.append(dict(name="<b>x</b>", freq=600.0, level=-90.0, state="weak", status="", scene="Grande scène",
                          group="Micros", absent=False, conflict=False))
-        state["v"] = json.dumps(ws(rows, al, dict(title="T", time="12:00:02", running=False, cycle="")),
+        state["v"] = json.dumps(ws(rows, al, dict(title="T", time="12:00:02", running=False, cycle="", thr=-80.0)),
                                 ensure_ascii=False).encode("utf-8")
         pg.wait_for_function("document.querySelectorAll('.c').length === 3", timeout=6000)
-        check("navigateur : mise à jour toute seule (2 s)", pg.locator(".c").count() == 3)
-        check("navigateur : texte échappé (pas de HTML injecté)", pg.locator(".c b").count() == 0
+        check("liste : mise à jour toute seule", pg.locator(".c").count() == 3)
+        check("liste : texte échappé (pas de HTML injecté)", pg.locator(".c b").count() == 0
               and "<b>x</b>" in pg.locator(".c").nth(2).inner_text())
-        check("navigateur : filtre gardé", pg.locator("#flt").input_value() == "Grande scène › Micros")
-        if os.environ.get("CAPTURES"):
-            pg.screenshot(path=os.path.join(os.environ["CAPTURES"], "page_web.png"), full_page=True)
-        # acquitter depuis le téléphone : bouton visible seulement si un code est réglé sur le PC
-        check("navigateur : pas de bouton sans code", pg.locator(".al button").count() == 0)
-        st_ack = ws(rows, al, dict(title="T", time="12:00:04", running=True, cycle="", ack=True))
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_liste.png"), full_page=True)
+        pg.goto(base + "/#/mur")
+        pg.wait_for_selector(".t", timeout=5000)
+        check("mur : tuiles", pg.locator(".t").count() >= 3)
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_mur.png"))
+        pg.goto(base + "/#/spectre")
+        pg.wait_for_function("document.querySelector('#lg') && document.querySelector('#lg').textContent.includes('direct')",
+                             timeout=6000)
+        nonblank = pg.evaluate("""() => {const c=document.querySelector('#cv'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+            let n=0;for(let i=0;i<d.length;i+=4){if(d[i]>200&&d[i+1]>120&&d[i+2]<80)n++}return n}""")
+        check("spectre : courbe orange dessinée", nonblank > 200, str(nonblank))
+        pg.mouse.move(200, 330)
+        check("spectre : lecture au doigt (MHz · dBm)", "MHz" in pg.locator("#rd").inner_text())
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_spectre.png"))
+        pg.goto(base + "/#/waterfall")
+        for k in range(4):
+            spec_b = json.dumps(dict(t=2.0 + k, bands=out)).encode()
+            pg.wait_for_timeout(1100)
+        rowsn = pg.evaluate("() => (typeof wf !== 'undefined' && wf ? wf.n : -1)")
+        check("waterfall : une ligne par nouveau balayage", isinstance(rowsn, int) and rowsn >= 2, str(rowsn))
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_waterfall.png"))
+        pg.goto(base + "/#/alarmes")
+        pg.wait_for_selector(".alist .row", timeout=5000)
+        check("alarmes : liste, pas de bouton sans code PIN", pg.locator(".alist .row").count() == 1
+              and pg.locator(".ackbtn").count() == 0)
+        w.stop()
+        pg.wait_for_function("document.querySelector('#stale').style.display === 'block'", timeout=25000)
+        check("navigateur : PC injoignable signalé", pg.locator("#stale").is_visible())
+        pg.close()
+        # --- acquitter depuis la vue Alarmes (serveur avec code PIN)
+        st_ack = ws(rows, al, dict(title="T", time="12:00:04", running=True, cycle="", thr=-80.0))
         st_ack["alarms"][0]["id"] = 7
         state["v"] = json.dumps(st_ack, ensure_ascii=False).encode("utf-8")
         pa = br.new_page(viewport=dict(width=390, height=800))
         pa.on("pageerror", lambda e: errs.append(str(e)))
+        pa.add_init_script("localStorage.setItem('name','Plateau')")
         prompts = []
         pa.on("dialog", lambda d: (prompts.append(d.type), d.accept("4321") if d.type == "prompt" else d.accept()))
-        pa.goto(f"http://127.0.0.1:{wa.port}/")
-        pa.wait_for_selector(".al button", timeout=5000)
+        pa.goto(f"http://127.0.0.1:{wa.port}/#/alarmes")
+        pa.wait_for_selector(".ackbtn", timeout=5000)
         n0 = len(acks)
-        pa.click(".al button")
-        pa.wait_for_function("1", timeout=1000)
+        pa.click(".ackbtn")
         t0 = time.time()
         while len(acks) == n0 and time.time() - t0 < 5:
             time.sleep(0.05)
-        check("navigateur : Acquitter → code demandé puis envoyé", prompts == ["prompt"] and acks[-1] == 7, f"{prompts} {acks}")
-        pa.click(".al button")
+        check("acquitter : code demandé puis envoyé", prompts == ["prompt"] and acks[-1] == 7, f"{prompts} {acks}")
+        pa.click(".ackbtn")
         t0 = time.time()
         while len(acks) == n0 + 1 and time.time() - t0 < 5:
             time.sleep(0.05)
-        check("navigateur : code retenu (pas redemandé)", prompts == ["prompt"] and len(acks) == n0 + 2, f"{prompts} {acks}")
-        if os.environ.get("CAPTURES"):
-            pa.screenshot(path=os.path.join(os.environ["CAPTURES"], "page_web_acquitter.png"), full_page=True)
-        pa.close()
-        w.stop()
-        pg.wait_for_function("document.querySelector('#stale').style.display === 'block'", timeout=25000)
-        check("navigateur : PC injoignable signalé", pg.locator("#stale").is_visible())
+        check("acquitter : code retenu (pas redemandé)", prompts == ["prompt"] and len(acks) == n0 + 2, f"{prompts} {acks}")
+        check("nom retenu : connecté sans redemander", any(e["name"] == "Plateau" for e in wa.client_list()))
+        if CAP:
+            pa.screenshot(path=os.path.join(CAP, "web_alarmes.png"))
+        # --- grand écran (tablette / PC de la régie)
+        pt = br.new_page(viewport=dict(width=1280, height=760))
+        pt.on("pageerror", lambda e: errs.append(str(e)))
+        pt.add_init_script("localStorage.setItem('name','Régie')")
+        pt.goto(f"http://127.0.0.1:{wa.port}/#/spectre")
+        pt.wait_for_timeout(2500)
+        if CAP:
+            pt.screenshot(path=os.path.join(CAP, "web_spectre_large.png"))
+        pt.goto(f"http://127.0.0.1:{wa.port}/#/")
+        pt.wait_for_timeout(1500)
+        if CAP:
+            pt.screenshot(path=os.path.join(CAP, "web_accueil_large.png"))
+        # --- avec mot de passe
+        wcfg["password"] = "festival"
+        wa.revoke_all()
+        pp = br.new_page(viewport=dict(width=390, height=800))
+        pp.on("pageerror", lambda e: errs.append(str(e)))
+        pp.goto(f"http://127.0.0.1:{wa.port}/")
+        pp.wait_for_selector("#login:not(.hidden)", timeout=5000)
+        check("mot de passe : champ affiché", pp.locator("#lpw").is_visible())
+        pp.fill("#ln", "Plateau")
+        pp.fill("#lp", "faux")
+        pp.click("button[type=submit]")
+        pp.wait_for_function("document.querySelector('#le').textContent.length > 0", timeout=3000)
+        check("mot de passe : faux → message", "incorrect" in pp.locator("#le").inner_text())
+        pp.fill("#lp", "festival")
+        pp.click("button[type=submit]")
+        pp.wait_for_selector("#app:not(.hidden)", timeout=5000)
+        check("mot de passe : bon → entré", pp.locator("#app").is_visible())
+        wcfg["password"] = ""
         check("navigateur : aucune erreur JavaScript", not errs, str(errs))
         br.close()
 w.stop()

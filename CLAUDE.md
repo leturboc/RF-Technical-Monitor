@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.3.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.4.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -105,8 +105,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Wisycom Manager : **demander sa liste Wisycom pour comparer** avant de toucher encore aux règles.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
-- Page web : acquittement `POST /acquitter` {pin, id|"all"} si `web_cfg["pin"]` (≥ 4) ; `PinGuard` (PURE, 5 erreurs
-  → 60 s) ; file `_web_acks` vidée par `_alarm_tick` ; PIN dans config.json, jamais dans la config partagée.
+- Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
+  routes `#/liste` `#/mur` `#/spectre` `#/waterfall` `#/alarmes` + accueil ; `WEB_VIEWS` / `web_views_norm` ;
+  `web_cfg = {on, port, pin, password, views}` (pin et password jamais dans la config partagée) ; `WebServer` :
+  `/etat.json` = {me, password, views, ack, state}, `/spectre.json` (`web_spectrum` : max par paquet, ≤ 900 pts,
+  préparé par `web_spec_json` seulement si quelqu'un regarde), `POST /connexion` (cookie `tsm`, `ClientBook`,
+  `login_guard`), `POST /acquitter` (PIN, `PinGuard`, file `_web_acks`). Liste des connectés dans `AlertsDialog`
+  (`refresh_clients`, « Déconnecter tout le monde » = `revoke_all`). Waterfall rempli côté navigateur (vue ouverte).
+- Icône : `assets/icone.png` / `.ico` (parabole Noto Color Emoji, Apache 2.0), `--icon` + `--add-data` PyInstaller,
+  `app.setWindowIcon` dans `main()`, favicon `APP_ICON_PNG64`.
 - Statut au clavier (liste) : Ctrl+1…9 = statut n° 1…9 (ordre de `self.statuses`), Ctrl+0 = aucun, Ctrl+E = 1er
   « doit émettre » → `quick_status`. Alertes : bouton « 📖 Tuto » (`TUTO_ALERTES`, PURE) et « 🔎 Trouver mon chat id »
   (`getUpdates` → `telegram_chats`, PURE). Intermod : colonne Origine = noms = chiffres, Ordre = « IM3 · 3 TX ».

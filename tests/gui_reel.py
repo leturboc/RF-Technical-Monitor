@@ -632,13 +632,30 @@ if win.web is not None:
     wait(1500)
     base = f"http://127.0.0.1:{win.web.port}"
     js = _json.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())
-    check("page web : état réel", len(js["rows"]) == len(win.watch) and js["running"], str(js.get("running")))
+    check("page web : état réel", len(js["state"]["rows"]) == len(win.watch) and js["state"]["running"],
+          str(js["state"].get("running")))
+    # vue Spectre : un téléphone se connecte, regarde le spectre → le PC prépare le spectre allégé
+    import http.cookiejar as _cj
+    _op = _ur.build_opener(_ur.HTTPCookieProcessor(_cj.CookieJar()))
+    _op.open(_ur.Request(base + "/connexion", data=_json.dumps(dict(name="Test", password="")).encode(),
+                         headers={"Content-Type": "application/json"}, method="POST"), timeout=5)
+    _op.open(base + "/etat.json?v=spectre", timeout=5).read()
+    win._alarm_tick()
+    _sp = _json.loads(_op.open(base + "/spectre.json", timeout=5).read())
+    check("page web : spectre en direct servi", _sp["bands"] and len(_sp["bands"][0]["f"]) <= 900
+          and len(_sp["bands"][0]["f"]) == len(_sp["bands"][0]["l"]), str(len(_sp["bands"])))
+    check("page web : la régie voit le client", any(e["name"] == "Test" and e["view"] == "spectre"
+                                                    for e in win.web.client_list()))
+    DLG_ACTION[0] = lambda d: (check("alertes : liste des connectés", any("Test" in d.clients.item(i).text()
+                                                                          for i in range(d.clients.count()))), "reject")[1]
+    step("dialogue alertes (connectés)", win.open_alerts)
+    DLG_ACTION[0] = "reject"
     check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
     # acquitter depuis le téléphone (code PIN)
     import json as _js
     win.web_cfg["pin"] = "2468"
     win._alarm_tick()
-    _al = [a for a in _js.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())["alarms"] if not a["acked"]]
+    _al = [a for a in _js.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())["state"]["alarms"] if not a["acked"]]
     check("page web : acquittement proposé", _js.loads(win.web_json())["ack"] is True)
     if _al:
         _rq = _ur.Request(base + "/acquitter", data=_js.dumps(dict(pin="2468", id=_al[0]["id"])).encode(),

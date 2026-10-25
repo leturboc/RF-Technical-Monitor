@@ -377,10 +377,10 @@ win4 = step("MainWindow() #4", m.MainWindow)
 win4.apply_web = lambda: None
 step("apply_config alertes", lambda: win4._apply_config(full))
 check("config relue : alertes", win4.notify_cfg["mode"] == "crit" and win4.notify_cfg["tg_token"] == "SECRET")
-check("config relue : web", win4.web_cfg == dict(on=True, port=8099, pin="2468"), str(win4.web_cfg))
+check("config relue : web", win4.web_cfg == dict(on=True, port=8099, pin="2468", password="", views=m.web_views_norm(None)), str(win4.web_cfg))
 bad = dict(full, web=dict(on="oui", port="x"))
 win4._apply_config(bad)
-check("config abîmée : valeurs ignorées", win4.web_cfg == dict(on=True, port=8099, pin="2468"), str(win4.web_cfg))
+check("config abîmée : valeurs ignorées", win4.web_cfg == dict(on=True, port=8099, pin="2468", password="", views=m.web_views_norm(None)), str(win4.web_cfg))
 
 # ------------------------------------------------------------- blocs Spectera / WMAS
 win.workers = []

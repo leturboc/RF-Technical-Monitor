@@ -76,6 +76,7 @@ jobs:
           # traductions françaises de Qt (boutons Oui / Non, Annuler…) embarquées explicitement
           tr=$(python -c "from PySide6.QtCore import QLibraryInfo as Q; print(Q.path(Q.LibraryPath.TranslationsPath))")
           python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor \
+            --icon assets/icone.ico --add-data "assets/icone.png;." \
             --add-data "$tr/qtbase_fr.qm;PySide6/Qt/translations" tinysa_monitor.py
 
       - name: Exe (artefact)
