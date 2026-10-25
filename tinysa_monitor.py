@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.3.1"
+APP_VER = "7.3.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4446,7 +4446,8 @@ class IntermodDialog(QtWidgets.QDialog):
             else:
                 d_txt = f"{row['delta'] * 1000:+.0f}"
             vals = (f"{row['f']:.3f}" + (f" ± {row['hw']:.1f}" if row["hw"] > 0.05 else ""),
-                    IM_NAMES.get(row["order"], str(row["order"])), row["text"], row["tname"], d_txt,
+                    f'{IM_NAMES.get(row["order"], str(row["order"]))} · {row["ntx"]} TX',
+                    f'{row["text"]}   =   {row["numtext"]}', row["tname"], d_txt,
                     "—" if row["meas"] is None else f"{row['meas']:.1f}", row["verdict"])
             for c, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
