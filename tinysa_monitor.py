@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.3.0"
+APP_VER = "7.3.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -5604,6 +5604,11 @@ class WallWindow(QtWidgets.QWidget):
         self.alarm_chk.toggled.connect(self.relayout)
         self.full_btn = QtWidgets.QPushButton("⛶ Plein écran")
         self.full_btn.clicked.connect(self.toggle_full)
+        self.float_btn = QtWidgets.QPushButton("🗗 Détacher")
+        self.float_btn.setToolTip("Détache le mur dans sa propre petite fenêtre : tu la poses où tu veux (2ᵉ écran,\n"
+                                  "coin de l'écran) et tu choisis sa taille à la souris, les tuiles suivent.\n"
+                                  "« Raccrocher » le remet en onglet à côté du spectre.")
+        self.float_btn.clicked.connect(lambda *_: self.owner.wall_detach(not self.owner.dock_wall.isFloating()))
         self.size_combo = QtWidgets.QComboBox()
         for k, t in WALL_SIZES:
             self.size_combo.addItem(t, k)
@@ -5611,7 +5616,7 @@ class WallWindow(QtWidgets.QWidget):
                                    "Petites / Moyennes / Grandes : taille fixe, on fait défiler s'il y en a trop\n"
                                    "(pratique pour un mur rangé dans un petit panneau).")
         self.size_combo.currentIndexChanged.connect(lambda *_: self.relayout())
-        for wd in (self.only_chk, self.alarm_chk, self.pick_btn, self.size_combo, self.full_btn):
+        for wd in (self.only_chk, self.alarm_chk, self.pick_btn, self.size_combo, self.float_btn, self.full_btn):
             top.addWidget(wd)
         lay.addLayout(top)
         self.sum_lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
@@ -8587,6 +8592,28 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dock_wall.raise_()
         self.wall.relayout()
 
+    def wall_detach(self, on):
+        """Mur dans sa propre fenêtre (taille libre à la souris) ou en onglet à côté du spectre."""
+        d = self.dock_wall
+        if self.wall_is_fullscreen():
+            self.wall_fullscreen(False)
+        d.show()
+        if on and not d.isFloating():
+            d.setFloating(True)
+            if d.width() > 900 or d.height() > 650 or d.width() < 250:     # 1re fois : une taille de vignette
+                d.resize(560, 380)
+                g = self.frameGeometry()
+                d.move(g.right() - 600, g.top() + 80)
+        elif not on and d.isFloating():
+            d.setFloating(False)
+        d.raise_()
+        d.activateWindow()
+        self._wall_float_txt()
+
+    def _wall_float_txt(self, *_):
+        if self.wall is not None:
+            self.wall.float_btn.setText("📌 Raccrocher" if self.dock_wall.isFloating() else "🗗 Détacher")
+
     def in_alarm(self, w):
         return bool(w.get("absent")) or (w.get("state") == "occ" and self.is_keep_free(w["status"]))
 
@@ -10273,6 +10300,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_alarm = self._make_dock("Alarmes", "dock_alarmes", self._build_alarm_panel(), B)
         self.wall = WallWindow(self)
         self.dock_wall = self._make_dock("Mur de fréquences", "dock_mur", self.wall, B)
+        self.dock_wall.topLevelChanged.connect(self._wall_float_txt)
         self.splitDockWidget(self.dock_spec, self.dock_wf, Qt.Orientation.Vertical)
         self.splitDockWidget(self.dock_wf, self.dock_alarm, Qt.Orientation.Vertical)
         self.tabifyDockWidget(self.dock_spec, self.dock_wall)       # en onglet à côté du spectre
