@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.4.3**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.4.4**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -181,6 +181,13 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   argument (checked vaut toujours False → impossible de recocher à la souris, bug v7.1 du menu Repères). Lire l'état
   avec `lambda *_, a=a: f(a.isChecked())`. Garde-fou dans test_v7 ; gui_reel clique chaque case dans les 2 sens.
 - Dans les tests, un balayage doit contenir de l'énergie aux fréquences testées : `on_sweep` recalcule tous les états.
+- **Ramasse-miettes dans le fil de l'interface** (`install_gc_main_thread`, appelé dans `main()` et par gui_reel) :
+  `gc.disable()` + minuteur 500 ms. Sans ça (Python 3.12), le GC tourne dans le fil `ScanWorker` et détruit des
+  objets Qt de l'interface → « access violation » (crash.log de Clément 7.4.2 en changeant le nombre de points).
+  Ne jamais réactiver `gc` automatique.
+- `TinySA.expect_scan(points, rbw, step_khz)` : en RBW auto, délai de silence calculé avec `auto_rbw(pas)` (avant :
+  0,05 s / point fixe → tinySA déclaré « muet » à tort avec beaucoup de points). Après 3 reconnexions ratées, le
+  message conseille de débrancher / rebrancher le tinySA (il peut figer au bout d'un moment, aussi avec tinySA-App).
 - Modifications du gros fichier : patchs « remplacer exactement une occurrence » (échouer si 0 ou 2 correspondances),
   puis `python -m py_compile tinysa_monitor.py`, les tests, et ne jamais committer `__pycache__`.
 

@@ -108,5 +108,16 @@ relay.stop()
 relay.join(4)
 fake.stop = True
 check("relais arrêté proprement", not relay.is_alive())
+# --- délai de silence toléré (scan long en RBW auto = pas fin = RBW étroite)
+import types
+_d = types.SimpleNamespace(NET_IDLE_MIN=TinySA.NET_IDLE_MIN)
+TinySA.expect_scan(_d, 450, None)
+idle_old = _d.idle
+TinySA.expect_scan(_d, 450, None, 7.5)              # 30 000 pts sur 470–694 MHz : pas ≈ 7,5 kHz
+check("RBW auto, pas fin : délai allongé (plus de « muet » à tort)", _d.idle > idle_old * 3, f"{idle_old} → {_d.idle}")
+TinySA.expect_scan(_d, 450, None, 500.0)            # pas large : RBW large, scan rapide
+check("RBW auto, pas large : délai court", _d.idle < idle_old + 1, str(_d.idle))
+TinySA.expect_scan(_d, 450, 30, 7.5)                # RBW imposée : c'est elle qui compte
+check("RBW imposée : inchangé", abs(_d.idle - (TinySA.NET_IDLE_MIN + 450 * 0.1)) < 1e-6, str(_d.idle))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

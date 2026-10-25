@@ -104,6 +104,21 @@ def check(label, cond, extra=""):
     fails += (not cond)
     print(("OK  " if cond else "FAIL"), label, "" if cond else extra, flush=True)
 
+import gc as _gc
+_gct = m.install_gc_main_thread(app, 100)        # comme dans main() : ramasse-miettes dans le fil de l'interface
+check("ramasse-miettes : automatique coupé (fil de l'interface seulement)", not _gc.isenabled())
+class _Cyc:
+    pass
+_c = _Cyc(); _c.me = _c
+import weakref as _wr
+_ref = _wr.ref(_c)
+del _c
+for _ in range(_gc.get_threshold()[0] + 50):        # des déchets en cycle, comme l'interface en produit
+    _x = _Cyc()
+    _x.me = _x
+del _x
+_l = QtCore.QEventLoop(); QtCore.QTimer.singleShot(400, _l.quit); _l.exec()
+check("ramasse-miettes : les cycles sont quand même nettoyés (par le minuteur)", _ref() is None)
 check("traductions Qt en français chargées", m.install_french(app))
 _bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Yes | W.QDialogButtonBox.StandardButton.Cancel)
 _txt = (_bb.button(W.QDialogButtonBox.StandardButton.Yes).text(), _bb.button(W.QDialogButtonBox.StandardButton.Cancel).text())
@@ -357,6 +372,17 @@ for r, st in zip(_rows, _old):
     win.watch[r]["status"] = st
 win.update_watch_table(force=True)
 _t.clearSelection()
+
+# changer le nombre de points pendant le balayage (crash.log de Clément, 7.4.2)
+if win.is_running():
+    for _ix in (len(m.POINTS_CHOICES) - 2, 0, 4, 2):
+        win.points_combo.setCurrentIndex(_ix)
+        step(f"points → {win.points_combo.currentText()}", win.apply_points)
+        wait(700)
+    check("changer les points en plein balayage : ça tourne toujours", win.is_running())
+    win.points_combo.setCurrentIndex(m.POINTS_CHOICES.index(1000))
+    win.apply_points()
+    wait(1500)
 
 # appel des micros (line check), en mode démo
 step("appel des micros (Ctrl+L)", win.open_linecheck)

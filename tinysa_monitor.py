@@ -50,6 +50,7 @@ import csv
 import io
 import itertools
 import faulthandler
+import gc
 import json
 import math
 import os
@@ -77,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.3"
+APP_VER = "7.4.4"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3035,8 +3036,13 @@ class TinySA:
     def set_input(self, high):
         return self.try_cmd("mode high input" if high else "mode low input")
 
-    def expect_scan(self, points, rbw_khz):
-        """Temps de silence toléré pendant un scan (le tinySA ne répond qu'à la fin du segment)."""
+    def expect_scan(self, points, rbw_khz, step_khz=None):
+        """Temps de silence toléré pendant un scan (le tinySA ne répond qu'à la fin du segment).
+        RBW auto : le tinySA la règle sur le pas ; un pas fin (beaucoup de points) = RBW étroite = scan bien plus
+        long. Avant, on supposait toujours 0,05 s / point : avec 10 000 points ou plus le tinySA était déclaré
+        « muet » à tort → liaison perdue (retour de Clément)."""
+        if rbw_khz is None and step_khz:
+            rbw_khz = auto_rbw(step_khz)
         per_pt = 0.05 if rbw_khz is None else max(0.002, 3.0 / max(rbw_khz, 0.1))
         self.idle = self.NET_IDLE_MIN + points * per_pt
 
@@ -3087,7 +3093,7 @@ class ScanWorker(QtCore.QThread):
     def run(self):
         """Balaye en boucle. Liaison perdue (câble, réseau) : signal link(False), nouvel essai toutes les
         RETRY_S secondes, link(True) au retour. Échec de la toute 1re connexion : error (sauf retry_first)."""
-        was_up, lost = False, False
+        was_up, lost, fails = False, False, 0
         while not self.isInterruptionRequested():
             dev = None
             try:
@@ -3104,7 +3110,7 @@ class ScanWorker(QtCore.QThread):
                     self.info.emit("Mode démo")
                     self.status.emit(self._say("Mode démo (signaux simulés)"))
                 self.st = dict(rbw="?", front="?", high=None)
-                was_up = True
+                was_up, fails = True, 0
                 if lost:
                     lost = False
                     self.link.emit(True)
@@ -3119,7 +3125,10 @@ class ScanWorker(QtCore.QThread):
                 if not lost:
                     lost = True
                     self.link.emit(False)
-                self.status.emit(self._say(f"⚠ liaison perdue ({e}) — nouvel essai dans {self.RETRY_S} s"))
+                fails += 1
+                hint = (" · le tinySA semble figé : débranche / rebranche son USB (ou éteins-le / rallume-le)"
+                        if fails >= 3 else "")
+                self.status.emit(self._say(f"⚠ liaison perdue ({e}) — nouvel essai dans {self.RETRY_S} s{hint}"))
                 for _ in range(self.RETRY_S * 10):
                     if self.isInterruptionRequested():
                         return
@@ -3205,7 +3214,7 @@ class ScanWorker(QtCore.QThread):
                     if not ok:
                         self.status.emit(f"⚠ Changement d'entrée refusé — {msg}")
                     self._apply_front(dev, cfg)
-                dev.expect_scan(pts, cfg["rbw"])
+                dev.expect_scan(pts, cfg["rbw"], (z - a) / max(1, pts - 1) / 1e3)
                 fr, lv = dev.scan(a, z, pts)
                 if fr is None or len(fr) != len(lv):
                     fr = np.linspace(a, z, len(lv))
@@ -11725,8 +11734,32 @@ def install_french(app):
     return ok
 
 
+def install_gc_main_thread(app, interval_ms=500):
+    """Le ramasse-miettes de Python ne tourne plus que dans le fil de l'interface.
+    Sinon (Python 3.12+) il peut se déclencher dans le fil du tinySA et y détruire des objets Qt de l'interface
+    (courbes, lignes de tableau jetées quand on change le nombre de points…) → « access violation » (crash.log de
+    Clément, 7.4.2 : ScanWorker.run, boucle d'attente de reconnexion). Même remède que GarbageCollector de pyqtgraph."""
+    gc.disable()
+    thr = gc.get_threshold()
+
+    def tick():
+        c0, c1, c2 = gc.get_count()
+        if c0 > thr[0]:
+            gc.collect(0)
+            if c1 > thr[1]:
+                gc.collect(1)
+                if c2 > thr[2]:
+                    gc.collect(2)
+
+    t = QtCore.QTimer(app)
+    t.timeout.connect(tick)
+    t.start(interval_ms)
+    return t
+
+
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    app._gc_timer = install_gc_main_thread(app)
     install_french(app)
     ico = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     for cand in (ico / "icone.png", ico / "assets" / "icone.png"):     # exe (PyInstaller) ou sources
