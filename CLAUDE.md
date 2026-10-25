@@ -108,6 +108,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Wisycom Manager : **demander sa liste Wisycom pour comparer** avant de toucher encore aux règles.
   Verdict « calcul seul · rien mesuré » (avant « à risque ») : le calcul dit que ça tombe dessus, le niveau mesuré
   est sous les seuils ; seules les combinaisons qui tombent dans la tolérance sont listées (message en tête).
+  Gravité `im_verdict` (PURE) : 🔴 mesuré ≥ seuil occupé, 🟠 ≥ seuil faible, 🟡 IM3 2 TX non mesuré, ⚪ le reste ;
+  triées du plus grave au moins grave (`sev`).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

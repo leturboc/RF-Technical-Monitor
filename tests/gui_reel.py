@@ -409,8 +409,9 @@ if lcd is not None:
     check("appel : résumé copié", app.clipboard().text().startswith("Appel des micros"))
     n_log = win.log_table.rowCount()
     step("appel : terminer", lcd.finish)
-    check("appel : noté au journal, fenêtre fermée", win.log_table.rowCount() == n_log + 1
-          and win.log_table.item(0, 4).text().startswith("APPEL") and win._linecheck is None)
+    check("appel : noté au journal, fenêtre fermée", win.log_table.rowCount() > n_log      # (la démo journalise aussi)
+          and any(win.log_table.item(i, 4).text().startswith("APPEL") for i in range(min(5, win.log_table.rowCount())))
+          and win._linecheck is None)
 else:
     check("appel : fenêtre ouverte", False)
 

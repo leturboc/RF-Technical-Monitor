@@ -229,5 +229,17 @@ ok("une seule tolérance (ancien appel) : 3 TX à 80 kHz gênant", [r for r in r
 ok("im3_clash : 3 TX séparé", im3_clash(493.08, [500.0, 503.0, 510.0], 0.1, 0.05) == []
    and im3_clash(493.08, [500.0, 503.0, 510.0], 0.1) != [])
 
+# ---- verdict : gravité en couleurs
+iv = ns["im_verdict"]
+ok("verdict : mesuré au-dessus du seuil occupé → 🔴", iv(-60.0, -80.0, -90.0, True, 3, 3)[0] == 3)
+ok("verdict : au-dessus du seuil faible → 🟠", iv(-85.0, -80.0, -90.0, True, 5, 3)[0] == 2)
+ok("verdict : faible ignoré si la case est décochée", iv(-85.0, -80.0, -90.0, False, 5, 3)[0] == 0)
+ok("verdict : rien mesuré, IM3 2 TX → 🟡", iv(-98.0, -80.0, -90.0, True, 3, 2)[0] == 1)
+ok("verdict : rien mesuré, A + B − C → ⚪", iv(-98.0, -80.0, -90.0, True, 3, 3)[0] == 0)
+ok("verdict : rien mesuré, IM5 → ⚪", iv(-98.0, -80.0, -90.0, True, 5, 2)[0] == 0)
+s_, t_ = iv(-50.0, -80.0, -90.0, True, 3, 2, masked=True)
+ok("verdict : cible en émission → pas de mesure, calcul seul", s_ == 1 and "cible émet" in t_, t_)
+ok("verdict : pas de scan", "pas de mesure" in iv(None, -80.0, -90.0, True, 3, 3)[1])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

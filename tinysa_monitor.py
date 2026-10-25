@@ -1605,6 +1605,30 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     return rows, info
 
 
+IM_SEV_TEXT = {3: "🔴 visible sur le spectre", 2: "🟠 à vérifier (énergie)", 1: "🟡 à surveiller (IM3 2 TX)",
+               0: "⚪ faible risque (calcul)"}
+
+
+def im_verdict(meas, thr, weak, weak_on, order, ntx, masked=False):
+    """Gravité d'un produit qui tombe sur une de tes fréquences -> (0…3, texte).
+    3 rouge : on MESURE au-dessus du seuil « occupé » à cet endroit ; 2 orange : au-dessus du seuil « faible » ;
+    1 jaune : rien de mesuré mais c'est un IM3 à 2 émetteurs (2A − B, le produit le plus fort) ;
+    0 gris : rien de mesuré, produit plus faible (A + B − C, 5ᵉ / 7ᵉ ordre). Cible en émission : son niveau est
+    celui de sa propre porteuse, on ne peut pas mesurer le produit → gravité selon le calcul seulement."""
+    if meas is not None and not masked:
+        if meas >= thr:
+            return 3, IM_SEV_TEXT[3]
+        if weak_on and meas >= weak:
+            return 2, IM_SEV_TEXT[2]
+    sev = 1 if (order == 3 and ntx <= 2) else 0
+    txt = IM_SEV_TEXT[sev]
+    if masked:
+        txt += " · cible émet"
+    elif meas is None:
+        txt += " (pas de mesure)"
+    return sev, txt
+
+
 def im_formula(terms, names=None, freqs=None, numeric=False):
     """[(indice, coefficient)] -> '2×Chant − Basse' (ou avec les fréquences si numeric)."""
     out = ""
@@ -4919,16 +4943,18 @@ class IntermodDialog(QtWidgets.QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        for c, w in ((0, 96), (1, 92), (3, 190), (4, 76), (5, 88), (6, 200)):
+        for c, w in ((0, 96), (1, 92), (3, 190), (4, 76), (5, 88), (6, 240)):
             self.table.setColumnWidth(c, w)
         for c, tip in ((1, "IM3 = 3ᵉ ordre, IM5 = 5ᵉ ordre ; « 2 TX » = 2 émetteurs (2A − B : le plus fort),\n"
                            "« 3 TX » = A + B − C (plus faible), etc."),
                        (4, "Écart entre le produit calculé et ta fréquence (0 = pile dessus)."),
                        (5, "Ce que le tinySA mesure EN CE MOMENT à cet endroit (pas la force du produit)."),
-                       (6, "⚠ visible = le niveau mesuré dépasse ton seuil « occupé » : le produit est sans doute là.\n"
-                           "énergie faible = au-dessus du seuil « faible ».\n"
-                           "calcul seul = les maths disent que ça tombe dessus, mais rien n'est mesuré : à surveiller,\n"
-                           "pas une panne (dépend de la puissance, des distances, des récepteurs).")):
+                       (6, "🔴 problème : on mesure un signal au-dessus de ton seuil « occupé » là où le produit tombe.\n"
+                           "🟠 à vérifier : on mesure de l'énergie (au-dessus du seuil « faible »).\n"
+                           "🟡 à surveiller : rien de mesuré, mais c'est un IM3 à 2 émetteurs (2A − B, le plus fort).\n"
+                           "⚪ faible risque : rien de mesuré, produit plus faible (A + B − C, 5ᵉ ordre…).\n"
+                           "Le calcul ne dit pas si c'est audible : ça dépend de la puissance, des distances et des\n"
+                           "récepteurs. « cible en émission » : on ne peut pas mesurer sous sa propre porteuse.")):
             self.table.horizontalHeaderItem(c).setToolTip(tip)
         self.table.cellDoubleClicked.connect(lambda r, c: self.on_zoom())
         lay.addWidget(self.table, 1)
@@ -5056,19 +5082,20 @@ class IntermodDialog(QtWidgets.QDialog):
                 r["tname"] = f"signal à {r['target']:.3f}"
             else:
                 r["tname"] = f"{by_freq.get(int(round(r['target'] * 1000)), '?')} ({r['target']:.3f})"
-            if r["meas"] is not None and r["meas"] >= thr:
-                r["verdict"], r["level"] = "⚠ visible sur le spectre", 2
-            elif r["meas"] is not None and o.weak_chk.isChecked() and r["meas"] >= weak:
-                r["verdict"], r["level"] = "énergie faible mesurée", 1
-            elif r["target"] is not None and not origin:
-                # le calcul dit « ça tombe dessus » ; ce n'est PAS une mesure (le niveau mesuré est sous le seuil)
-                r["verdict"], r["level"] = ("calcul seul · cible en émission" if r.get("masked") else
-                                            "calcul seul · rien mesuré" if r["meas"] is not None else
-                                            "calcul seul (pas de mesure)"), 1
+            if r["target"] is not None and not origin:
+                r["sev"], r["verdict"] = im_verdict(r["meas"], thr, weak, o.weak_chk.isChecked(), r["order"],
+                                                    r["ntx"], r.get("masked", False))
             elif origin:
-                r["verdict"], r["level"] = "origine possible", 1
+                r["sev"], r["verdict"] = 1, "origine possible"
+            elif r["meas"] is not None and r["meas"] >= thr:
+                r["sev"], r["verdict"] = 3, "⚠ visible sur le spectre"
+            elif r["meas"] is not None and o.weak_chk.isChecked() and r["meas"] >= weak:
+                r["sev"], r["verdict"] = 2, "énergie faible mesurée"
             else:
-                r["verdict"], r["level"] = "", 0
+                r["sev"], r["verdict"] = 0, ""
+            r["level"] = 2 if r["sev"] == 3 else (1 if r["sev"] else 0)
+        if targets is not None and not origin:
+            rows.sort(key=lambda r: -r["sev"])                # le plus grave en haut
         self.rows = rows
         self.cur_freqs, self.cur_names = freqs, names
         self.fill()
@@ -5081,7 +5108,11 @@ class IntermodDialog(QtWidgets.QDialog):
         else:
             txt = f"{len(rows)} produit(s)" + (" (liste tronquée)" if info["truncated"] else "")
             txt += f" · {len(freqs)} émetteur(s) · ordres {', '.join(str(x) for x in orders)} · {info['pairs']:,} combinaisons examinées".replace(",", " ")
-        n_vis = sum(1 for r in rows if r["level"] == 2)
+        cnt = [sum(1 for r in rows if r["sev"] == k) for k in range(4)]
+        if targets is not None and not origin and rows:
+            txt += (f"\n🔴 {cnt[3]} problème(s) mesuré(s) · 🟠 {cnt[2]} à vérifier · 🟡 {cnt[1]} à surveiller (IM3 2 TX) · "
+                    f"⚪ {cnt[0]} faible risque — survole « Verdict » pour le détail")
+        n_vis = cnt[3]
         if n_vis:
             txt += f"\n⚠ {n_vis} produit(s) retombent sur un niveau mesuré au-dessus du seuil : à regarder en priorité."
         elif not origin and targets is not None and not rows:
@@ -5114,12 +5145,14 @@ class IntermodDialog(QtWidgets.QDialog):
                     it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 if c == 2:
                     it.setToolTip(row["numtext"])
-                if row["level"] == 2:
+                sev = row.get("sev", 0)
+                if sev == 3:
                     bg = blend(th["st_occ"], base, 0.6)
                     it.setBackground(QtGui.QColor(bg))
                     it.setForeground(QtGui.QColor(contrast_text(bg)))
-                elif row["level"] == 1 and c == 6:
-                    bg = blend(th["st_weak"], base, 0.5)
+                elif c == 6 and row["verdict"]:
+                    col_ = {2: "#f97316", 1: th["st_weak"]}.get(sev, th["st_none"])
+                    bg = blend(col_, base, 0.55 if sev else 0.35)
                     it.setBackground(QtGui.QColor(bg))
                     it.setForeground(QtGui.QColor(contrast_text(bg)))
                 t.setItem(r, c, it)
