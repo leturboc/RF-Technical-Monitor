@@ -252,6 +252,9 @@ check("vues spectre / waterfall coupées → 403", get(o1, "/spectre.json")[0] =
       and "spectre" not in json.loads(get(o1, "/etat.json")[1])["views"])
 wcfg["views"] = vn(None)
 check("chemin inconnu : 404", get(o1, "/../config.json")[0] == 404)
+check("renommer sans session : 401", post_(opener(), "/renommer", dict(name="X"))[0] == 401)
+check("renommer sa session", post_(o1, "/renommer", dict(name="  Régie   bis ")) == (200, dict(ok=True, name="Régie bis")))
+post_(o1, "/renommer", dict(name="Régie"))
 # --- mot de passe
 wcfg["password"] = "festival"
 o2 = opener()
@@ -336,6 +339,25 @@ else:
             pg.screenshot(path=os.path.join(CAP, "web_identifier.png"))
         w.clients.c[tok_]["ident"] = 0
         pg.wait_for_selector("#ident.hidden", state="attached", timeout=4000)
+        # changer son nom depuis le téléphone : l'écran ne se referme pas pendant la saisie, même session
+        n_cli = len(w.client_list())
+        pg.click("#me")
+        pg.wait_for_selector("#login:not(.hidden)", timeout=3000)
+        pg.fill("#ln", "")
+        pg.type("#ln", "Tablette ret")
+        pg.wait_for_timeout(2500)
+        check("renommer (client) : l'écran reste ouvert, la saisie aussi", pg.locator("#login").is_visible()
+              and pg.input_value("#ln") == "Tablette ret", pg.input_value("#ln"))
+        pg.type("#ln", "our")
+        pg.click("#lgo")
+        pg.wait_for_selector("#app:not(.hidden)", timeout=3000)
+        pg.wait_for_function("document.querySelector('#me').textContent.includes('Tablette retour')", timeout=4000)
+        check("renommer (client) : même session, nouveau nom côté PC", len(w.client_list()) == n_cli
+              and any(e["token"] == tok_ and e["name"] == "Tablette retour" for e in w.client_list()))
+        pg.click("#me")
+        pg.wait_for_selector("#lcancel:not(.hidden)", timeout=3000)
+        pg.click("#lcancel")
+        check("renommer (client) : Annuler revient à la page", pg.locator("#app").is_visible())
         check("navigateur : accueil avec les 5 vues", pg.locator(".vcard").count() == 5 and pg.locator("nav a").count() == 6,
               f'{pg.locator(".vcard").count()} {pg.locator("nav a").count()}')
         check("navigateur : pastille d'alarme", "1 alarme" in pg.locator("#pill").inner_text())

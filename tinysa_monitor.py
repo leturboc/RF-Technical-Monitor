@@ -77,7 +77,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.2"
+APP_VER = "7.4.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2803,7 +2803,8 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
  <label for="ln">Ton nom (pour que la régie sache qui regarde)</label>
  <input class="in" id="ln" maxlength="32" placeholder="ex. Clément — FOH" autocomplete="name">
  <div id="lpw"><label for="lp">Mot de passe</label><input class="in" id="lp" type="password" autocomplete="current-password"></div>
- <button class="btn pri" type="submit">Entrer</button><div class="err" id="le"></div></form></div>
+ <button class="btn pri" type="submit" id="lgo">Entrer</button><button class="btn hidden" type="button" id="lcancel" style="width:100%;margin-top:8px">Annuler</button>
+ <div class="err" id="le"></div></form></div>
 <div id="app" class="hidden">
  <header class="top"><div class="bar"><div class="logo">📡</div>
   <div class="ttl"><b id="t">TinySA Monitor</b><span id="meta" class="mut"></span></div>
@@ -2816,7 +2817,7 @@ const VIEWS=__VIEWS__;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-let D=null,last=0,cur="",mounted=null,spec=null,specT=0,wf=null,busy=false;
+let editing=false,D=null,last=0,cur="",mounted=null,spec=null,specT=0,wf=null,busy=false;
 const lay=r=>r.scene+(r.group?" › "+r.group:"");
 function route(){const h=(location.hash||"").replace(/^#\/?/,"");return h}
 async function api(u,o){return fetch(u,Object.assign({cache:"no-store",credentials:"same-origin"},o||{}))}
@@ -2826,20 +2827,27 @@ function showLogin(needPw,msg){const was=!$("#login").classList.contains("hidden
  $("#app").classList.add("hidden");$("#login").classList.remove("hidden");$("#lpw").classList.toggle("hidden",!needPw);
  if(was)return;   // déjà affiché : surtout ne pas effacer ce que la personne est en train de taper
  $("#ln").value=LS.get("name","");$("#le").textContent=msg||"";(LS.get("name","")&&needPw?$("#lp"):$("#ln")).focus()}
+function closeLogin(){editing=false;$("#lcancel").classList.add("hidden");$("#lgo").textContent="Entrer";
+ $("#login").classList.add("hidden");$("#app").classList.remove("hidden")}
+$("#lcancel").onclick=()=>closeLogin();
 $("#lf").onsubmit=async e=>{e.preventDefault();const name=$("#ln").value.trim()||"Invité";
+ if(editing&&D&&D.me){let r;try{r=await post("renommer",{name:name})}catch(x){$("#le").textContent="PC injoignable";return}
+  if(r.ok){const j=await r.json();LS.set("name",j.name);D.me=j.name;closeLogin();render();return}
+  editing=false}
  let r;try{r=await post("connexion",{name:name,password:$("#lp").value})}catch(x){$("#le").textContent="PC injoignable";return}
- if(r.ok){LS.set("name",name);$("#lp").value="";$("#login").classList.add("hidden");tick();return}
+ if(r.ok){LS.set("name",name);$("#lp").value="";closeLogin();tick();return}
  $("#le").textContent=r.status===429?"Trop d'essais : attends une minute.":"Mot de passe incorrect."};
-$("#me").onclick=()=>showLogin(D&&D.password,"");
+$("#me").onclick=()=>{editing=true;$("#login").classList.add("hidden");showLogin(false,"");
+ $("#ln").value=(D&&D.me)||LS.get("name","");$("#lcancel").classList.remove("hidden");$("#lgo").textContent="Changer de nom";$("#ln").select()};
 // ---------- boucle
 async function tick(){if(busy)return;busy=true;try{
  const v=route();let r;
  try{r=await api("etat.json?v="+encodeURIComponent(v))}catch(e){return}
- if(r.status===401){showLogin(true);return}
+ if(r.status===401){editing=false;showLogin(true);return}
  const d=await r.json();last=Date.now();D=d;
  if(!d.me){const n=LS.get("name","");if(n&&!d.password){await post("connexion",{name:n,password:""});}
   else if(!n){showLogin(d.password);return}}
- $("#login").classList.add("hidden");$("#app").classList.remove("hidden");
+ if(!editing){$("#login").classList.add("hidden");$("#app").classList.remove("hidden")}
  if(d.me&&d.me!==LS.get("name",""))LS.set("name",d.me);       // renommé depuis le PC
  $("#ident").classList.toggle("hidden",!d.ident);$("#identn").textContent=d.me||"";
  if((v==="spectre"||v==="waterfall")&&d.views.includes(v)){try{const s=await api("spectre.json");if(s.ok){spec=await s.json()}}catch(e){}}
@@ -3537,6 +3545,21 @@ class WebServer(threading.Thread):
                     self._json(200, dict(ok=True, name=name), [(
                         "Set-Cookie", f"{owner.COOKIE}={tok}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200")])
                     return
+                if path == "/renommer":
+                    tok = self._token()
+                    try:
+                        req = self._body()
+                    except (ValueError, UnicodeDecodeError):
+                        self._json(400, dict(error="requête invalide"))
+                        return
+                    with owner._lock:
+                        e = owner.clients.rename(tok, req.get("name")) if tok else None
+                        name = e["name"] if e else None
+                    if name is None:
+                        self._json(401, dict(login=True))
+                        return
+                    self._json(200, dict(ok=True, name=name))
+                    return
                 if path != "/acquitter" or owner.on_ack is None:
                     self.send_error(404)
                     return
@@ -3664,7 +3687,10 @@ class AlertsDialog(QtWidgets.QDialog):
             vfl.addWidget(cb)
         self.clients = QtWidgets.QListWidget()
         self.clients.setMaximumHeight(110)
-        self.clients.setToolTip("Les personnes qui ont la page ouverte (nom choisi, adresse, vue regardée).")
+        self.clients.setToolTip("Les personnes qui ont la page ouverte (nom choisi, adresse, vue regardée).\n"
+                                "Clic sur une ligne, puis « Renommer » ou « Identifier ».")
+        self._sel_tok = None
+        self.clients.itemSelectionChanged.connect(self._remember_sel)
         self.ren_btn = QtWidgets.QPushButton("✏ Renommer…")
         self.ren_btn.setToolTip("Change le nom du client choisi (il le voit tout de suite sur sa page).")
         self.ren_btn.clicked.connect(lambda *_: self.rename_client())
@@ -3792,14 +3818,27 @@ class AlertsDialog(QtWidgets.QDialog):
         self.w_lbl.setText(self.owner.web_urls_text())
         self.refresh_clients()
 
+    def _remember_sel(self):
+        """Clic dans la liste : on retient QUI est choisi (la liste est reconstruite toutes les 2 s)."""
+        it = self.clients.currentItem()
+        d = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+        self._sel_tok = d[0] if d else None
+
     def refresh_clients(self):
         ws = self.owner.web
+        self.clients.blockSignals(True)         # ne pas perdre le choix pendant qu'on reconstruit
+        try:
+            self._fill_clients(ws)
+        finally:
+            self.clients.blockSignals(False)
+
+    def _fill_clients(self, ws):
         self.clients.clear()
         if ws is None:
             self.clients.addItem("(page web arrêtée)")
             return
         names = {k: t for k, _i, t, _d in WEB_VIEWS}
-        sel = self._sel_token()
+        sel = getattr(self, "_sel_tok", None)
         lst = ws.client_list()
         for e in lst:
             ago = int(time.time() - e["last"])
@@ -3809,23 +3848,19 @@ class AlertsDialog(QtWidgets.QDialog):
             it.setData(Qt.ItemDataRole.UserRole, (e["token"], e["name"]))
             self.clients.addItem(it)
             if e["token"] == sel:
-                it.setSelected(True)
                 self.clients.setCurrentItem(it)
+                it.setSelected(True)
         if not lst:
             self.clients.addItem("Personne pour l'instant")
 
-    def _sel_token(self):
-        it = self.clients.currentItem()
-        d = it.data(Qt.ItemDataRole.UserRole) if it is not None and it.isSelected() else None
-        return d[0] if d else None
-
     def _picked(self):
-        it = self.clients.currentItem()
-        d = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
-        if not d or self.owner.web is None:
+        tok = getattr(self, "_sel_tok", None)
+        e = next((x for x in (self.owner.web.client_list() if self.owner.web is not None else [])
+                  if x["token"] == tok), None)
+        if e is None:
             self.n_lbl.setText("Choisis d'abord un client dans la liste des connectés.")
             return None
-        return d
+        return e["token"], e["name"]
 
     def rename_client(self):
         d = self._picked()

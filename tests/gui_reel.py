@@ -675,6 +675,12 @@ if win.web is not None:
             return "reject"
         check("alertes : liste des connectés", any("Test" in d.clients.item(i).text() for i in range(d.clients.count())))
         d.clients.setCurrentRow(0)
+        _tok0 = d._sel_tok
+        d.refresh_clients()
+        d.refresh_clients()
+        _it = d.clients.currentItem()
+        check("alertes : le choix reste après le rafraîchissement", _tok0 is not None and _it is not None and _it.isSelected()
+              and _it.data(Qt.ItemDataRole.UserRole)[0] == _tok0)
         _orig_gt = W.QInputDialog.getText
         W.QInputDialog.getText = staticmethod(lambda *a, **k: ("Tablette régie", True))
         try:
@@ -682,7 +688,7 @@ if win.web is not None:
         finally:
             W.QInputDialog.getText = _orig_gt
         check("alertes : client renommé depuis le PC", any(e["name"] == "Tablette régie" for e in win.web.client_list()))
-        d.clients.setCurrentRow(0)
+        d.refresh_clients()
         d.identify_client()
         check("alertes : identifier (clignotement demandé)", any(e.get("ident", 0) > time.time() for e in win.web.client_list()))
         return "reject"
