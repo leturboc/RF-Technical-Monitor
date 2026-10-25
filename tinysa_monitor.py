@@ -1293,6 +1293,76 @@ def wall_grid(n, W, H, size="auto", gap=6):
     return cols, rows, 0, int(max(8, min(36, th * 0.16, tw / 9.5)))
 
 
+# ---------------------------------------------------------------- appel des micros (line check)
+LC_TEXT = {None: "⏳ en attente", "ok": "✓ OK", "weak": "✓ faible", "manual": "✓ à la main", "skip": "⏭ ignorée"}
+
+
+def lc_new(items):
+    """Appel des micros : items = [(clé, nom, MHz, couche)] -> {clé: entrée}. res : None (attendue), ok, weak
+    (vue mais faible), manual (validée à la main), skip (ignorée : spare, pack absent du show…)."""
+    return {k: dict(name=n, freq=f, layer=ly, res=None, t=None, lvl=None) for k, n, f, ly in items}
+
+
+def lc_feed(lc, key, state, level, now):
+    """Un balayage : True si l'entrée vient d'être validée (ou de passer de faible à OK)."""
+    e = lc.get(key)
+    if e is None or state not in ("occ", "weak") or level is None:
+        return False
+    if e["res"] in ("ok", "weak"):
+        e["lvl"] = max(e["lvl"], level) if e["lvl"] is not None else level
+    if e["res"] is None or (e["res"] == "weak" and state == "occ"):
+        e["res"] = "ok" if state == "occ" else "weak"
+        e["t"], e["lvl"] = now, level if e["lvl"] is None else max(e["lvl"], level)
+        return True
+    return False
+
+
+def lc_summary(lc):
+    """-> dict(n, ok, weak, missing [noms], skipped, done, text)."""
+    es = sorted(lc.values(), key=lambda e: e["freq"])
+    n = sum(1 for e in es if e["res"] != "skip")
+    ok = sum(1 for e in es if e["res"] in ("ok", "manual"))
+    weak = sum(1 for e in es if e["res"] == "weak")
+    miss = [e["name"] or f"{e['freq']:.3f}" for e in es if e["res"] is None]
+    skipped = sum(1 for e in es if e["res"] == "skip")
+    if not n:
+        text = "Rien à appeler"
+    elif not miss:
+        text = f"Tout est là ✓ ({ok + weak} / {n})" + (f" (dont {weak} faible{'s' if weak > 1 else ''})" if weak else "")
+    else:
+        text = (f"{ok + weak} / {n} OK" + (f" (dont {weak} faible{'s' if weak > 1 else ''})" if weak else "") + f" · manque{'nt' if len(miss) > 1 else ''} : "
+                + ", ".join(miss[:8]) + (f" … (+{len(miss) - 8})" if len(miss) > 8 else ""))
+    if skipped:
+        text += f" · {skipped} ignorée(s)"
+    return dict(n=n, ok=ok, weak=weak, missing=miss, skipped=skipped, done=bool(n) and not miss, text=text)
+
+
+def lc_hints(lc, unknown, span=3.0):
+    """Pour chaque fréquence encore attendue : un signal inconnu tout près ? (pack réglé sur le mauvais canal).
+    unknown = [MHz] -> [(nom, MHz attendue, MHz vue)]."""
+    out = []
+    for e in sorted(lc.values(), key=lambda e: e["freq"]):
+        if e["res"] is not None or not unknown:
+            continue
+        u = min(unknown, key=lambda x: abs(x - e["freq"]))
+        if abs(u - e["freq"]) <= span:
+            out.append((e["name"] or f"{e['freq']:.3f}", e["freq"], u))
+    return out
+
+
+def lc_text(lc, title="", when="", fmt=None):
+    """Résumé à copier (WhatsApp, mail à la régie…). fmt(niveau) -> texte du niveau."""
+    fmt = fmt or (lambda v: f"{v:.0f} dBm")
+    sm = lc_summary(lc)
+    lines = [f"Appel des micros{' — ' + title if title else ''}{' · ' + when if when else ''}", sm["text"], ""]
+    for e in sorted(lc.values(), key=lambda e: e["freq"]):
+        mark = {"ok": "✓", "weak": "~", "manual": "✓", "skip": "–"}.get(e["res"], "✗")
+        extra = (f" · {fmt(e['lvl'])}" if e["lvl"] is not None else "") + (" (faible)" if e["res"] == "weak" else "") \
+            + (" (à la main)" if e["res"] == "manual" else "") + (" (ignorée)" if e["res"] == "skip" else "")
+        lines.append(f"{mark} {e['name'] or '—'} · {e['freq']:.3f} MHz{extra}")
+    return "\n".join(lines)
+
+
 def mk_layer_key(scene, group):
     """Clé de couche pour le filtre des repères ("" = fréquence sans scène)."""
     return key_enc(scene, group or "") if scene else ""
@@ -4767,6 +4837,209 @@ def fmt_dur(s, signed=False):
 # --------------------------------------------------------------------------
 # Dialogue : rapport de fin de show
 # --------------------------------------------------------------------------
+class LineCheckDialog(QtWidgets.QDialog):
+    """Appel des micros : allume tes émetteurs un par un, chaque fréquence passe ✓ dès que son signal arrive."""
+    COLS = ["État", "Nom", "MHz", "Niveau", "Heure", "Scène › Groupe"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Appel des micros")
+        self.resize(760, 620)
+        self.lc, self.keys, self.unknown, self.t0 = {}, [], {}, time.time()
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Allume tes émetteurs (micros, IEM, intercom…) : chaque fréquence passe ✓ dès que le tinySA voit son "
+            "signal. À la fin, « Terminer » note le résultat dans le journal. Un signal inconnu tout près d'une "
+            "fréquence qui manque = pack sans doute réglé sur le mauvais canal.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        self.what_combo = QtWidgets.QComboBox()
+        self.what_combo.addItem("Les « doit émettre » de la couche active", "on")
+        self.what_combo.addItem("Toute la couche active (sauf « doit rester libre »)", "all")
+        self.what_combo.setToolTip("Quelles fréquences sont appelées. La couche active se choisit dans « Fréquences et "
+                                   "couches » (Global = tout).")
+        self.what_combo.currentIndexChanged.connect(lambda *_: self.restart())
+        self.beep_chk = QtWidgets.QCheckBox("Bip à chaque ✓")
+        self.beep_chk.setChecked(True)
+        self.beep_chk.setToolTip("Un bip du PC quand une fréquence est validée : pratique quand tu es loin de l'écran.")
+        self.restart_btn = QtWidgets.QPushButton("🔄 Recommencer")
+        self.restart_btn.setToolTip("Remet toutes les fréquences « en attente » (nouvel appel).")
+        self.restart_btn.clicked.connect(lambda *_: self.restart())
+        lay.addLayout(owner._row(self.what_combo, self.beep_chk, None, self.restart_btn))
+        self.run_lbl = QtWidgets.QLabel("La surveillance est arrêtée : démarre-la pour que l'appel avance.")
+        self.run_btn = QtWidgets.QPushButton("▶ Démarrer la surveillance")
+        self.run_btn.setToolTip("Lance les balayages (comme le bouton Démarrer en haut).")
+        self.run_btn.clicked.connect(lambda *_: owner.toggle_run())
+        self.run_box = QtWidgets.QWidget()
+        rb = QtWidgets.QHBoxLayout(self.run_box)
+        rb.setContentsMargins(0, 0, 0, 0)
+        rb.addWidget(self.run_lbl, 1)
+        rb.addWidget(self.run_btn)
+        lay.addWidget(self.run_box)
+        self.sum_lbl = QtWidgets.QLabel("")
+        f_ = self.sum_lbl.font()
+        f_.setPointSize(f_.pointSize() + 5)
+        f_.setBold(True)
+        self.sum_lbl.setFont(f_)
+        self.sum_lbl.setWordWrap(True)
+        self.sum_lbl.setMinimumHeight(self.sum_lbl.fontMetrics().height() * 2 + 4)
+        lay.addWidget(self.sum_lbl)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setFormat("%v / %m")
+        self.bar.setToolTip("Fréquences validées / fréquences appelées.")
+        lay.addWidget(self.bar)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setToolTip("Double-clic : voir la fréquence sur le spectre.")
+        self.table.cellDoubleClicked.connect(lambda r, c: self._goto(r))
+        for c, w_ in enumerate((96, 130, 72, 80, 64)):
+            self.table.setColumnWidth(c, w_)
+        lay.addWidget(self.table, 1)
+        self.hint_lbl = QtWidgets.QLabel("")
+        self.hint_lbl.setWordWrap(True)
+        lay.addWidget(self.hint_lbl)
+        self.ok_btn = QtWidgets.QPushButton("✓ Valider à la main")
+        self.ok_btn.setToolTip("Valide les lignes choisies sans signal mesuré (vérifiée à l'oreille, émetteur hors "
+                               "de portée du tinySA…).")
+        self.ok_btn.clicked.connect(lambda *_: self.mark("manual"))
+        self.skip_btn = QtWidgets.QPushButton("⏭ Ignorer")
+        self.skip_btn.setToolTip("Retire les lignes choisies de l'appel (spare, émetteur pas utilisé ce soir…).")
+        self.skip_btn.clicked.connect(lambda *_: self.mark("skip"))
+        self.undo_btn = QtWidgets.QPushButton("↺ Remettre en attente")
+        self.undo_btn.setToolTip("Les lignes choisies redeviennent « en attente ».")
+        self.undo_btn.clicked.connect(lambda *_: self.mark(None))
+        self.copy_btn = QtWidgets.QPushButton("📋 Copier le résumé")
+        self.copy_btn.setToolTip("Copie le résultat (une ligne par fréquence) pour l'envoyer à la régie, sur WhatsApp…")
+        self.copy_btn.clicked.connect(lambda *_: self.copy())
+        self.done_btn = QtWidgets.QPushButton("📝 Terminer")
+        self.done_btn.setToolTip("Note le résultat de l'appel dans le journal (et le journal auto CSV), puis ferme.")
+        self.done_btn.clicked.connect(lambda *_: self.finish())
+        lay.addLayout(owner._row(self.ok_btn, self.skip_btn, self.undo_btn, None, self.copy_btn, self.done_btn))
+        self.restart()
+
+    def _wanted(self):
+        ow, mode = self.owner, self.what_combo.currentData()
+        out = []
+        for w in ow.watch:
+            if not ow.in_scope(w) or ow.is_keep_free(w["status"]):
+                continue
+            if mode == "on" and not ow.is_keep_on(w["status"]):
+                continue
+            out.append(w)
+        return out
+
+    def restart(self):
+        ws = self._wanted()
+        if not ws and self.what_combo.currentData() == "on" and self.owner.watch:
+            self.what_combo.blockSignals(True)          # aucun « doit émettre » : on appelle toute la couche
+            self.what_combo.setCurrentIndex(1)
+            self.what_combo.blockSignals(False)
+            ws = self._wanted()
+        self.keys = [int(round(w["freq"] * 1000)) for w in ws]
+        self.lc = lc_new([(k, w["name"], w["freq"], self.owner.layer_text(w)) for k, w in zip(self.keys, ws)])
+        self.keys = sorted(set(self.keys), key=lambda k: self.lc[k]["freq"])
+        self.unknown, self.t0 = {}, time.time()
+        self.table.setRowCount(len(self.keys))
+        self.feed(beep=False)
+
+    def feed(self, beep=True):
+        """Appelé après chaque balayage (MainWindow.on_sweep)."""
+        ow, now, new = self.owner, time.time(), 0
+        for w in ow.watch:
+            new += lc_feed(self.lc, int(round(w["freq"] * 1000)), w["state"], w["level"], now)
+        for lst in ow.unk_now.values():
+            for fr in lst:
+                self.unknown[round(fr, 3)] = now
+        self.unknown = {f: t for f, t in self.unknown.items() if now - t < 120}
+        if new and beep and self.beep_chk.isChecked():
+            QtWidgets.QApplication.beep()
+        self.refresh()
+
+    def refresh(self):
+        ow, th = self.owner, self.owner.theme
+        sm = lc_summary(self.lc)
+        running = ow.is_running()
+        self.run_box.setVisible(not running)
+        col = {"ok": th["st_free"], "manual": th["st_free"], "weak": th["st_weak"], "skip": th["st_none"]}
+        for r, k in enumerate(self.keys):
+            e = self.lc[k]
+            vals = [LC_TEXT[e["res"]], e["name"], f"{e['freq']:.3f}",
+                    ow.lvl(e["lvl"], suffix=True) if e["lvl"] is not None else "",
+                    datetime.fromtimestamp(e["t"]).strftime("%H:%M:%S") if e["t"] else "", e["layer"]]
+            bg = QtGui.QColor(col.get(e["res"], th["ui_base"]))
+            for c, v in enumerate(vals):
+                it = self.table.item(r, c)
+                if it is None:
+                    it = QtWidgets.QTableWidgetItem()
+                    self.table.setItem(r, c, it)
+                if it.text() != v:
+                    it.setText(v)
+                if c == 0:
+                    it.setBackground(bg)
+                    it.setForeground(QtGui.QColor(contrast_text(bg.name())))
+        self.bar.setMaximum(max(1, sm["n"]))
+        self.bar.setValue(sm["ok"] + sm["weak"])
+        self.sum_lbl.setText(sm["text"])
+        self.sum_lbl.setStyleSheet(f"color:{th['st_free'] if sm['done'] else th['ui_text']}")
+        hints = lc_hints(self.lc, list(self.unknown))
+        self.hint_lbl.setText("" if not hints else "🔎 " + " · ".join(
+            f"{n} ({fa:.3f}) manque, mais signal inconnu à {fu:.3f} MHz ({(fu - fa) * 1000:+.0f} kHz) : mauvais canal ?"
+            for n, fa, fu in hints[:4]))
+
+    def _sel_keys(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes()})
+        return [self.keys[r] for r in rows if r < len(self.keys)]
+
+    def mark(self, res):
+        now = time.time()
+        for k in self._sel_keys():
+            e = self.lc[k]
+            e["res"], e["t"] = res, (now if res else None)
+            if res is None:
+                e["lvl"] = None
+        self.refresh()
+
+    def _goto(self, r):
+        if r < len(self.keys):
+            f = self.lc[self.keys[r]]["freq"]
+            try:
+                self.owner.spec.getPlotItem().vb.setXRange(f - 2.0, f + 2.0, padding=0)
+            except Exception:
+                pass
+
+    def summary_text(self):
+        ow = self.owner
+        return lc_text(self.lc, ow.show_meta.get("name", ""), datetime.now().strftime("%d/%m %H:%M"),
+                       lambda v: ow.lvl(v, suffix=True))
+
+    def copy(self):
+        QtWidgets.QApplication.clipboard().setText(self.summary_text())
+        self.owner.set_status("Résumé de l'appel copié : colle-le où tu veux.")
+
+    def finish(self):
+        sm = lc_summary(self.lc)
+        self.owner.log_event(dict(name="Appel des micros", freq=0.0, note=sm["text"]), 0.0,
+                             "APPEL OK" if sm["done"] else "APPEL INCOMPLET")
+        self.owner.set_status(f"Appel des micros : {sm['text']}")
+        self.close()
+
+    def closeEvent(self, e):
+        if self.owner._linecheck is self:
+            self.owner._linecheck = None
+        super().closeEvent(e)
+
+    def done(self, r):
+        if self.owner._linecheck is self:
+            self.owner._linecheck = None
+        super().done(r)
+
+
 class ReportDialog(QtWidgets.QDialog):
     def __init__(self, owner, prefs, has_im):
         super().__init__(owner)
@@ -5370,6 +5643,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tree_items, self._tree_sig, self._tree_lock = {}, {}, False
         self._guide = None
         self._im_dlg = self._rescue_dlg = self._replay = None
+        self._linecheck = None          # appel des micros en cours (LineCheckDialog)
         self.alarms = AlarmBook()
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
@@ -5572,6 +5846,8 @@ class MainWindow(QtWidgets.QMainWindow):
     }
 
     TIPS_MENU = {
+        "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
+                               "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
         "⚡ Intermodulation": "Produits d'intermodulation de tes émetteurs (2 / 3 / 5 TX) : ce qui retombe sur tes\n"
                              "fréquences, ou d'où peut venir un signal inconnu.",
         "🆘 Fréquence de secours": "Propose des fréquences libres d'après le spectre mesuré, sans intermod avec ta liste.",
@@ -5731,12 +6007,16 @@ class MainWindow(QtWidgets.QMainWindow):
         pmenu = self.show_menu
         sc_save = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(lambda *_: self.save_show())
+        sc_lc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
+        sc_lc.activated.connect(lambda *_: self.open_linecheck())
         prof_btn.setMenu(pmenu)
         tools_btn = QtWidgets.QPushButton("🔧 Outils")
         tools_btn.setToolTip("Intermodulation, fréquence de secours, relecture, rapport, scans WSM/WWB, export par scène, "
                              "nommage rapide, vocabulaire.")
         tmenu = QtWidgets.QMenu(tools_btn)
-        for txt, fn in (("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
+        for txt, fn in (("🎤 Appel des micros (line check)…  Ctrl+L", lambda *_: self.open_linecheck()),
+                        (None, None),
+                        ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
                         ("🆘 Fréquence de secours…", lambda *_: self.open_rescue()),
                         (None, None),
                         ("⏪ Relecture : revoir le spectre…", lambda *_: self.open_replay()),
@@ -5780,6 +6060,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu.addMenu(tmenu)
         self.more_menu.addMenu(self.win_menu)
         self.more_menu.addSeparator()
+        self.more_menu.addAction("🎤 Appel des micros (line check)…").triggered.connect(lambda *_: self.open_linecheck())
         self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
         self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
@@ -8662,7 +8943,8 @@ class MainWindow(QtWidgets.QMainWindow):
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
                 f"{level:.1f}" if w["freq"] else "—", event,
                 self.layer_text(w) if "scene" in w else "", w.get("note", "")]
-        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT")
+        col = (self.theme["st_occ"] if event in ("OCCUPÉ", "CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT",
+                                                 "APPEL INCOMPLET")
                else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)                      # fichier : toujours en dBm
@@ -8727,8 +9009,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_watch_levels()
         self.check_strong(bid, f, l)
         self.update_watch_table()
-        if self.unk_chk.isChecked():
+        if self.unk_chk.isChecked() or self._linecheck is not None:     # l'appel repère les packs mal réglés
             self.detect_unknown(bid, f, l)
+        if self._linecheck is not None and bid != ZOOM_ID:
+            self._linecheck.feed()
         if self.view_id in (-1, bid):
             self.update_plot()
         if self.view_id == bid:
@@ -9694,6 +9978,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_intermod_for(self, f):
         self._im_dlg = IntermodDialog(self, origin=f)
         self._im_dlg.show()
+
+    def open_linecheck(self):
+        if self._linecheck is not None:
+            self._linecheck.raise_()
+            self._linecheck.activateWindow()
+            return
+        self._linecheck = LineCheckDialog(self)
+        self._linecheck.show()
 
     def open_rescue(self):
         self._rescue_dlg = RescueDialog(self)

@@ -405,6 +405,25 @@ c_, r_, h_, f_ = wg(15, 1200, 700, "auto")
 ok("grille mur : auto remplit (hauteur 0 = s'étire)", h_ == 0 and c_ * r_ >= 15 and 8 <= f_ <= 44)
 check("grille mur : petit panneau auto → police mini 8", wg(40, 250, 120)[3], 8)
 check("grille mur : aucune tuile", wg(0, 500, 300)[1], 0)
+lcn, lcf, lcs, lch, lct = ns["lc_new"], ns["lc_feed"], ns["lc_summary"], ns["lc_hints"], ns["lc_text"]
+lc = lcn([(470200, "HF 1", 470.2, "A"), (471800, "HF 2", 471.8, "A"), (483600, "HF 6", 483.6, "A")])
+check("appel : rien de validé au départ", lcs(lc)["text"], "0 / 3 OK · manquent : HF 1, HF 2, HF 6")
+ok("appel : un signal fort valide", lcf(lc, 470200, "occ", -60.0, 10.0) and lc[470200]["res"] == "ok")
+ok("appel : déjà validée → pas de 2ᵉ bip", not lcf(lc, 470200, "occ", -55.0, 11.0) and lc[470200]["lvl"] == -55.0)
+ok("appel : libre ne valide pas", not lcf(lc, 471800, "free", -100.0, 11.0) and lc[471800]["res"] is None)
+ok("appel : faible, puis fort = mise à jour", lcf(lc, 471800, "weak", -88.0, 12.0) and lc[471800]["res"] == "weak"
+   and lcf(lc, 471800, "occ", -70.0, 13.0) and lc[471800]["res"] == "ok")
+ok("appel : clé inconnue ignorée", not lcf(lc, 999, "occ", -50.0, 1.0))
+check("appel : manque HF 6", lcs(lc)["text"], "2 / 3 OK · manque : HF 6")
+check("appel : pack mal réglé repéré", lch(lc, [483.9, 600.0]), [("HF 6", 483.6, 483.9)])
+check("appel : inconnu trop loin ignoré", lch(lc, [495.0]), [])
+lc[483600]["res"] = "skip"
+s_ = lcs(lc)
+ok("appel : ignorée = hors compte, terminé", s_["done"] and s_["n"] == 2 and s_["text"] == "Tout est là ✓ (2 / 2) · 1 ignorée(s)")
+t_ = lct(lc, "Festival", "24/10 18:00")
+ok("appel : résumé à copier", t_.splitlines()[0] == "Appel des micros — Festival · 24/10 18:00"
+   and "✓ HF 1 · 470.200 MHz · -55 dBm" in t_ and "– HF 6 · 483.600 MHz (ignorée)" in t_, t_)
+check("appel : liste vide", lcs(lcn([]))["text"], "Rien à appeler")
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_

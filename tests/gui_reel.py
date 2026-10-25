@@ -320,6 +320,31 @@ win.dock_wall.setFloating(False)
 win.dock_wall.hide()
 wait(300)
 
+# appel des micros (line check), en mode démo
+step("appel des micros (Ctrl+L)", win.open_linecheck)
+lcd = win._linecheck
+wait(4000)
+if lcd is not None:
+    sm_ = m.lc_summary(lcd.lc)
+    check("appel : des fréquences validées en démo", sm_["ok"] + sm_["weak"] > 0 and sm_["n"] > 0, sm_["text"])
+    check("appel : les ABSENT de la démo manquent", any(w.get("absent") for w in win.watch) <= bool(sm_["missing"]), sm_["text"])
+    check("appel : tableau rempli", lcd.table.rowCount() == sm_["n"] + sm_["skipped"])
+    miss_t = [type(x).__name__ for x in lcd.findChildren(W.QAbstractButton) + lcd.findChildren(W.QComboBox)
+              if x.isVisibleTo(lcd) and not x.toolTip().strip()]
+    check("appel : info-bulles", not miss_t, str(miss_t))
+    shot(lcd, "appel_des_micros")
+    lcd.table.selectRow(0)
+    step("appel : ignorer la 1re ligne", lambda: lcd.mark("skip"))
+    check("appel : ligne ignorée", lcd.lc[lcd.keys[0]]["res"] == "skip")
+    step("appel : copier", lcd.copy)
+    check("appel : résumé copié", app.clipboard().text().startswith("Appel des micros"))
+    n_log = win.log_table.rowCount()
+    step("appel : terminer", lcd.finish)
+    check("appel : noté au journal, fenêtre fermée", win.log_table.rowCount() == n_log + 1
+          and win.log_table.item(0, 4).text().startswith("APPEL") and win._linecheck is None)
+else:
+    check("appel : fenêtre ouverte", False)
+
 # disposition de base : le spectre a la place, les colonnes se rétrécissent
 win.layout_standard()
 wait(400)
