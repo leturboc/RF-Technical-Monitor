@@ -188,6 +188,7 @@ python tests/smoke_test5.py      # 2e tinySA dans MainWindow (faux Qt)
 python tests/smoke_test6.py      # shows, config sûre / copie de secours, crash.log (faux Qt)
 python tests/test_reseau.py      # faux tinySA (pty) → relais → TCP → TinySA ; test_reseau_qt.py : vrai ScanWorker,
                                  # coupure, liaison muette, reconnexion (Linux/macOS ; sautés sous Windows)
+python tests/test_sdr.py ; python tests/test_sdr_qt.py   # V8 : SDR (faux hackrf_sweep)
 python tests/test_alertes.py     # ntfy / Telegram / Notifier / WebServer ; page testée dans Chromium si Playwright
 python tests/check_names.py      # noms non définis (les « hérités de Qt » sont normaux)
 python tests/gui_reel.py         # VRAI PySide6 hors écran, mode démo : captures PNG dans tests/captures/
@@ -260,6 +261,19 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - Spectera : faits issus de la doc / presse Sennheiser (6 / 8 MHz, 2 canaux larges par base, plages UHF / 1G4) ;
   **jamais mesuré** un vrai porteur Spectera au tinySA (niveau du plateau selon RBW, seuil à régler).
 - Idée : import d'un plan Spectera (WSM / Spectera Control).
+- **V8 étape 1 (fait, branche `v8-sdr`) : SDR en balayage** par leur outil officiel : `hackrf_sweep` (HackRF One)
+  et `rtl_power` (RTL-SDR), même CSV. PURE : `SDR_KINDS`, `parse_sdr_addr` (« hackrf », « hackrf:<série> »,
+  « rtlsdr:1 » ; `parse_device_addr` → genre « sdr »), `sweep_line`, `SweepAccum` (passage complet quand un bloc
+  revient), `resample_max` (max par cellule, `reduceat` + sentinelle), `sdr_ranges` (MHz entiers, ≤ 10 plages),
+  `sdr_bin_hz`, `sdr_cmd`. Qt-side : `find_sdr_tool` (dossier choisi, à côté de l'appli / `outils`, PATH, PothosSDR),
+  `SDRSweep` (même interface que `TinySA` : l'outil tourne en continu sur toutes les bandes, `configure()` le
+  relance si plages / case / gains changent, `scan()` rend le dernier passage pas encore servi ; outil arrêté ou
+  muet → erreur → reconnexion du worker). `ScanWorker.sdr / sdr_dir / sdr_tool (tests) / get_sdr`, un seul segment
+  par bande. Ports : « 📡 HackRF One / RTL-SDR » dans `port_combo` et `dev2_addr` ; `self.sdr_cfg` {dir, lna, vga,
+  amp} (config « sdr ») ; port choisi gardé (config « port », `_want_port`) ; `SdrDialog` (Outils › 📡).
+  Tests : `tests/fake_sdr.py` (faux hackrf_sweep, `FAKE_SDR_CARRIERS`, `FAKE_SDR_DIE`), `test_sdr.py`,
+  `test_sdr_qt.py` (vrai ScanWorker). **Jamais testé avec un vrai HackRF / RTL-SDR** ; niveaux non étalonnés.
+  Prochaine étape : écoute (démodulation, voir ci-dessous), WiNRADiO (SDK Windows propre à chaque modèle).
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
   fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
   analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non

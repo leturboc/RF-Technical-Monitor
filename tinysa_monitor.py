@@ -57,6 +57,8 @@ import os
 import queue
 import re
 import select
+import shutil
+import subprocess
 import socket
 import sys
 import threading
@@ -2752,12 +2754,14 @@ RELAY_PORT = 5025            # port TCP par défaut du relais réseau (TinySA-Mo
 
 
 def parse_device_addr(s, default_port=RELAY_PORT):
-    """Adresse d'un tinySA -> (genre, url pyserial). « COM4 », « /dev/ttyACM0 » : USB ; « 192.168.1.20 »,
+    """Adresse d'un appareil -> (genre, url pyserial). « COM4 », « /dev/ttyACM0 » : USB ; « 192.168.1.20 »,
     « 192.168.1.20:5025 », « pc-scene:6000 » : réseau ; « socket://… », « rfc2217://… » tels quels.
     Genre None = adresse illisible."""
     s = (s or "").strip()
     if not s:
         return None, ""
+    if parse_sdr_addr(s) is not None:                  # V8 : « hackrf », « rtlsdr:1 » (outil de balayage)
+        return "sdr", s
     if "://" in s:
         return "net", s
     if re.fullmatch(r"(?i)com\d{1,3}", s) or s.startswith("/dev/") or s.startswith("\\\\.\\"):
@@ -3331,6 +3335,142 @@ def split_band(start, stop, step):
     return (start, mid, step), (mid, stop, step)
 
 
+
+# ------------------------------------------------------------------ SDR (V8) : balayage par les outils officiels
+# hackrf_sweep (HackRF One) et rtl_power (RTL-SDR) écrivent le même CSV : date, heure, Hz bas, Hz haut, largeur de
+# case (Hz), nb d'échantillons, puis les niveaux en dB des cases. Niveaux NON étalonnés en dBm (offset / calibration).
+SDR_KINDS = {
+    "hackrf": dict(name="HackRF One", tool="hackrf_sweep", fmin=1.0, fmax=6000.0, bin_min=2445.0, bin_max=5e6,
+                   lna=(0, 40, 8), vga=(0, 62, 2), amp=True),
+    "rtlsdr": dict(name="RTL-SDR", tool="rtl_power", fmin=24.0, fmax=1766.0, bin_min=1.0, bin_max=2.8e6,
+                   lna=(0, 50, 1), vga=None, amp=False),
+}
+
+
+def parse_sdr_addr(s):
+    """« hackrf », « hackrf:<n° de série> », « rtlsdr », « rtlsdr:1 » -> (genre, n° de série / index ou ""), sinon None."""
+    m = re.fullmatch(r"\s*(hackrf|rtlsdr|rtl-sdr|rtl)\s*(?::\s*([A-Za-z0-9]+))?\s*", str(s or ""), re.I)
+    if not m:
+        return None
+    kind = "hackrf" if m.group(1).lower() == "hackrf" else "rtlsdr"
+    return kind, (m.group(2) or "")
+
+
+def sweep_line(line):
+    """Une ligne hackrf_sweep / rtl_power -> (Hz bas, Hz haut, case Hz, niveaux np.array) ou None."""
+    parts = [x.strip() for x in str(line).split(",")]
+    if len(parts) < 7:
+        return None
+    try:
+        lo, hi, bw = float(parts[2]), float(parts[3]), float(parts[4])
+        lv = np.array([float(x) for x in parts[6:] if x not in ("", "nan", "-nan")], dtype=float)
+    except ValueError:
+        return None
+    if not len(lv) or bw <= 0 or hi <= lo:
+        return None
+    return lo, hi, bw, lv
+
+
+class SweepAccum:
+    """Reconstitue les passages complets d'un outil de balayage à partir de ses lignes (dans le désordre de
+    fréquence par bloc, comme hackrf_sweep). Un passage est fini quand une ligne revient en arrière (Hz bas ≤
+    au plus bas déjà vu dans le passage en cours) : snapshot() = dernier passage complet, passes = compteur."""
+
+    def __init__(self):
+        self.cur, self.lo_seen, self.passes, self.last = {}, None, 0, None
+
+    def feed(self, item):
+        if item is None:
+            return False
+        lo, hi, bw, lv = item
+        done = False
+        if self.cur and lo in self.cur:                 # même bloc revu : nouveau passage
+            done = True
+        if done:
+            self._close()
+        f = lo + (np.arange(len(lv)) + 0.5) * bw
+        self.cur[lo] = (f, lv)
+        return done
+
+    def _close(self):
+        keys = sorted(self.cur)
+        F = np.concatenate([self.cur[k][0] for k in keys])
+        L = np.concatenate([self.cur[k][1] for k in keys])
+        o = np.argsort(F, kind="stable")
+        self.last = (F[o], L[o])
+        self.passes += 1
+        self.cur = {}
+
+    def snapshot(self):
+        return self.last
+
+
+def resample_max(F, L, a, z, pts):
+    """Niveaux (dB) aux pts fréquences de a à z (Hz) : le MAX des cases qui tombent dans chaque cellule (pour ne
+    pas rater une porteuse), interpolation quand les cases sont plus larges que les cellules. -> np.array."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    x = np.linspace(a, z, int(pts))
+    if not len(F):
+        return np.full(len(x), np.nan)
+    out = np.interp(x, F, L)
+    if len(x) > 1:
+        half = (x[1] - x[0]) / 2.0
+        idx = np.searchsorted(F, np.append(x - half, x[-1] + half), side="left")   # cellule k = [idx[k], idx[k+1])
+        has = idx[1:] > idx[:-1]
+        if has.any():
+            Lp = np.append(L, -np.inf)                     # sentinelle : la dernière cellule s'arrête à idx[-1]
+            mx = np.maximum.reduceat(Lp, np.minimum(idx, len(L)))[:-1]
+            out[has] = mx[has]
+    return out
+
+
+def sdr_ranges(bands_hz, maxn=10, fmin=1.0, fmax=6000.0):
+    """Bandes [(Hz début, Hz fin)] -> plages en MHz entiers pour l'outil (fusionnées, au plus maxn : on réunit les
+    plus proches). -> [(lo, hi)]."""
+    r = sorted((max(fmin, math.floor(a / 1e6)), min(fmax, math.ceil(b / 1e6))) for a, b in bands_hz if b > a)
+    r = [(lo, max(hi, lo + 1)) for lo, hi in r]
+    out = []
+    for lo, hi in r:
+        if out and lo <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], hi))
+        else:
+            out.append((lo, hi))
+    while len(out) > maxn:
+        k = min(range(len(out) - 1), key=lambda i: out[i + 1][0] - out[i][1])
+        out[k:k + 2] = [(out[k][0], out[k + 1][1])]
+    return [(int(lo), int(hi)) for lo, hi in out]
+
+
+def sdr_bin_hz(kind, bands, rbw_khz=None, finest=5000.0):
+    """Largeur de case de l'outil : la RBW si elle est fixée, sinon le pas le plus fin des bandes (pas plus fin
+    que `finest` Hz : au-delà, le balayage devient très lent), dans les limites de l'outil."""
+    k = SDR_KINDS[kind]
+    if rbw_khz:
+        b = rbw_khz * 1000.0
+    else:
+        steps = [(x["stop_hz"] - x["start_hz"]) / max(1, int(x["n"]) - 1) for x in bands] or [25000.0]
+        b = max(finest, min(steps))
+    return float(min(k["bin_max"], max(k["bin_min"], b)))
+
+
+def sdr_cmd(kind, exe, ranges, bin_hz, lna=24, vga=20, amp=False, serial=""):
+    """Ligne de commande de l'outil de balayage (liste d'arguments)."""
+    exe = list(exe) if isinstance(exe, (list, tuple)) else [exe]
+    if kind == "hackrf":
+        a = exe[:]
+        for lo, hi in ranges:
+            a += ["-f", f"{lo}:{hi}"]
+        a += ["-w", str(int(round(bin_hz))), "-l", str(int(lna) // 8 * 8), "-g", str(int(vga) // 2 * 2),
+              "-a", "1" if amp else "0"]
+        if serial:
+            a += ["-d", serial]
+        return a
+    lo, hi = min(r[0] for r in ranges), max(r[1] for r in ranges)
+    a = exe + ["-f", f"{lo}M:{hi}M:{int(round(bin_hz))}", "-i", "1", "-g", str(int(lna))]
+    if serial:
+        a += ["-d", serial]
+    return a + ["-"]
+
 # ===== PURE-END
 
 
@@ -3445,6 +3585,161 @@ class TinySA:
 
 
 # --------------------------------------------------------------------------
+# V8 : SDR (HackRF One, RTL-SDR) vus comme un tinySA, par leur outil de balayage officiel
+# --------------------------------------------------------------------------
+SDR_TOOL_DIRS = [r"C:\Program Files\PothosSDR\bin", r"C:\Program Files (x86)\PothosSDR\bin",
+                 r"C:\Program Files\HackRF\bin", r"C:\Program Files\rtl-sdr\bin", "/usr/bin", "/usr/local/bin",
+                 "/opt/homebrew/bin"]
+
+
+def find_sdr_tool(name, extra_dir=""):
+    """Chemin de hackrf_sweep / rtl_power : dossier choisi, à côté de l'appli (et ./outils), PATH, dossiers
+    d'installation habituels (PothosSDR…). -> chemin ou None."""
+    exe = name + (".exe" if sys.platform.startswith("win") else "")
+    here = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    for d in [extra_dir, str(here), str(here / "outils"), str(here / "tools")]:
+        if d and (Path(d) / exe).is_file():
+            return str(Path(d) / exe)
+    w = shutil.which(name)
+    if w:
+        return w
+    for d in SDR_TOOL_DIRS:
+        if (Path(d) / exe).is_file():
+            return str(Path(d) / exe)
+    return None
+
+
+class SDRSweep:
+    """Un SDR qui se comporte comme un TinySA pour le ScanWorker : l'outil de balayage tourne en continu sur
+    toutes les bandes (une seule commande), un fil lit ses lignes (SweepAccum) ; scan(a, z, pts) rend le dernier
+    passage complet rééchantillonné (max par cellule). Outil arrêté (SDR débranché) ou muet : erreur → le worker
+    reconnecte comme pour un tinySA. Niveaux non étalonnés en dBm : offset / calibration avec un tinySA."""
+    PROMPT = None
+
+    def __init__(self, addr, tool_dir="", trace=None, tool=None):
+        self.kind, self.serial = parse_sdr_addr(addr)
+        self.spec = SDR_KINDS[self.kind]
+        exe = tool if tool is not None else find_sdr_tool(self.spec["tool"], tool_dir)
+        if exe is None:
+            raise RuntimeError(f"{self.spec['tool']} introuvable : installe les outils {self.spec['name']} "
+                               f"(PothosSDR sous Windows) ou indique leur dossier dans Outils › 📡 Réglages SDR.")
+        self.exe, self.trace, self.abort = exe, trace, None
+        self.idle = 30.0
+        self.proc, self.key, self.rbw = None, None, None
+        self.acc, self.lock = SweepAccum(), threading.Lock()
+        self.err = deque(maxlen=30)
+        self.served = {}
+
+    def _t(self, txt):
+        if self.trace is not None:
+            self.trace(txt)
+
+    def version(self):
+        name = self.exe if isinstance(self.exe, str) else " ".join(map(str, self.exe))
+        return f"{self.spec['name']} · {os.path.basename(str(name))}" + (f" · {self.serial}" if self.serial else "")
+
+    def try_cmd(self, text):
+        return True, ""
+
+    def set_rbw(self, khz):
+        self.rbw = khz
+        return True, ""
+
+    def set_input(self, high):
+        return True, ""
+
+    def expect_scan(self, points, rbw_khz, step_khz=None):
+        self.idle = 30.0 + points * 0.0005
+
+    def configure(self, bands, rbw_khz, gains):
+        """Bandes du cycle -> (re)lance l'outil si les plages, la case ou les gains ont changé."""
+        rng = sdr_ranges([(b["start_hz"], b["stop_hz"]) for b in bands], 10 if self.kind == "hackrf" else 1,
+                         self.spec["fmin"], self.spec["fmax"])
+        if not rng:
+            return
+        bw = sdr_bin_hz(self.kind, bands, rbw_khz)
+        g = dict(lna=24, vga=20, amp=False)
+        g.update(gains or {})
+        key = (tuple(rng), bw, g["lna"], g["vga"], bool(g["amp"]))
+        if key == self.key and self.proc is not None and self.proc.poll() is None:
+            return
+        self.key = key
+        self._start(sdr_cmd(self.kind, self.exe, rng, bw, g["lna"], g["vga"], g["amp"], self.serial))
+
+    def _start(self, argv):
+        self._stop()
+        with self.lock:
+            self.acc = SweepAccum()
+        self.served = {}
+        self._t("lancement : " + " ".join(str(x) for x in argv))
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     stdin=subprocess.DEVNULL, text=True, bufsize=1, creationflags=flags)
+        proc = self.proc
+        threading.Thread(target=self._read_out, args=(proc,), daemon=True).start()
+        threading.Thread(target=self._read_err, args=(proc,), daemon=True).start()
+
+    def _read_out(self, proc):
+        acc = self.acc
+        try:
+            for line in proc.stdout:
+                it = sweep_line(line)
+                if it is not None:
+                    with self.lock:
+                        acc.feed(it)
+        except Exception:  # noqa: BLE001 — processus tué pendant la lecture
+            pass
+
+    def _read_err(self, proc):
+        try:
+            for line in proc.stderr:
+                line = line.strip()
+                if line:
+                    self.err.append(line)
+                    self._t("outil : " + line[:160])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def scan(self, start_hz, stop_hz, points):
+        """-> (freqs Hz, niveaux dB) du dernier passage complet pas encore servi pour cette plage."""
+        if self.proc is None:
+            raise RuntimeError(f"{self.spec['tool']} pas lancé (aucune bande ?)")
+        key = (round(start_hz), round(stop_hz), int(points))
+        need = self.served.get(key, 0)
+        t0 = time.time()
+        while True:
+            with self.lock:
+                passes, snap = self.acc.passes, self.acc.snapshot()
+            if snap is not None and passes > need:
+                break
+            if self.abort is not None and self.abort():
+                raise Aborted()
+            if self.proc.poll() is not None:
+                time.sleep(0.1)                          # laisse le fil d'erreur lire la dernière ligne
+                why = self.err[-1] if self.err else f"code {self.proc.returncode}"
+                raise RuntimeError(f"{self.spec['tool']} s'est arrêté ({why}) — {self.spec['name']} débranché ?")
+            if time.time() - t0 > self.idle:
+                raise TimeoutError(f"{self.spec['name']} muet depuis {self.idle:.0f} s")
+            time.sleep(0.02)
+        self.served[key] = passes
+        F, L = snap
+        x = np.linspace(start_hz, stop_hz, int(points))
+        return x, resample_max(F, L, start_hz, stop_hz, int(points))
+
+    def _stop(self):
+        p, self.proc = self.proc, None
+        if p is not None and p.poll() is None:
+            try:
+                p.kill()
+                p.wait(timeout=3)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def close(self):
+        self._stop()
+
+
+# --------------------------------------------------------------------------
 # Thread de balayage
 # --------------------------------------------------------------------------
 class ScanWorker(QtCore.QThread):
@@ -3470,6 +3765,9 @@ class ScanWorker(QtCore.QThread):
         self.ultra = False                         # tinySA Ultra (une seule prise, mode « ultra » > 800 MHz)
         self.baud = 115200
         self.trace = deque(maxlen=800)             # derniers échanges avec le tinySA (diagnostic)
+        self.sdr = parse_sdr_addr(port) is not None    # V8 : HackRF / RTL-SDR par leur outil de balayage
+        self.sdr_dir, self.sdr_tool = "", None          # dossier des outils ; sdr_tool : commande imposée (tests)
+        self.get_sdr = lambda: {}                       # gains LNA / VGA / ampli
         self.st = dict(rbw="?", front="?", high=None)
         self.dev = None
 
@@ -3492,7 +3790,14 @@ class ScanWorker(QtCore.QThread):
         while not self.isInterruptionRequested():
             dev = None
             try:
-                if not self.demo:
+                if not self.demo and self.sdr:
+                    self._tr(f"SDR {self.port}")
+                    dev = SDRSweep(self.port, self.sdr_dir, self._tr, self.sdr_tool)
+                    dev.abort = self.isInterruptionRequested
+                    self.dev = dev
+                    self.info.emit(dev.version())
+                    self.status.emit(self._say(f"{dev.spec['name']} prêt ({dev.spec['tool']})"))
+                elif not self.demo:
                     self._tr(f"connexion à {self.port} ({self.baud} bauds)")
                     dev = TinySA(self.port, self.baud, self._tr)
                     dev.abort = self.isInterruptionRequested
@@ -3547,6 +3852,8 @@ class ScanWorker(QtCore.QThread):
                 continue
             if dev is not None:
                 self._apply_settings(dev, cfg)
+                if hasattr(dev, "configure"):
+                    dev.configure(bands, cfg["rbw"], self.get_sdr())
                 self._tr("cycle : " + ", ".join(f"{b['name']} {b['start_hz'] / 1e6:g}–{b['stop_hz'] / 1e6:g} MHz "
                                                 f"{int(b['n'])} pts" for b in bands)
                          + f" · RBW {cfg['rbw'] or 'auto'} · entrée {cfg['input']}")
@@ -3595,7 +3902,7 @@ class ScanWorker(QtCore.QThread):
         n = max(2, int(b["n"]))
         grid = np.linspace(b["start_hz"], b["stop_hz"], n)
         step = (b["stop_hz"] - b["start_hz"]) / (n - 1)
-        seg = cfg["seg"] or self.seg_auto
+        seg = 10 ** 7 if self.sdr else (cfg["seg"] or self.seg_auto)     # SDR : une bande d'un coup
         plan = segment_plan(n, seg)
         fo, lo = [], []
         for k, (i0, i1) in enumerate(plan):
@@ -6487,6 +6794,96 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.owner.set_status(f"{w['name']} : {old:.3f} → {c:.3f} MHz (plan vérifié).")
 
 
+class SdrDialog(QtWidgets.QDialog):
+    """V8 : réglages des SDR (HackRF One, RTL-SDR) : dossier des outils, gains, et comment les installer."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Réglages SDR (HackRF, RTL-SDR)")
+        self.resize(640, 470)
+        c = owner.sdr_cfg
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "<b>Un SDR remplace (ou complète) un tinySA</b> : choisis « 📡 HackRF One » ou « 📡 RTL-SDR » dans la "
+            "liste des ports (ou comme 2ᵉ appareil). L'appli lance l'outil officiel de balayage "
+            "(<code>hackrf_sweep</code> / <code>rtl_power</code>) et lit ses mesures.<br><br>"
+            "<b>Installer les outils (Windows)</b> : le plus simple est <b>PothosSDR</b> (contient hackrf_sweep, "
+            "rtl_power et les pilotes), ou les outils HackRF de Great Scott Gadgets. Le pilote USB se met avec "
+            "<b>Zadig</b> (WinUSB). Tu peux aussi copier <code>hackrf_sweep.exe</code> (et ses .dll) dans un dossier "
+            "<code>outils</code> à côté de l'appli.<br><br>"
+            "⚠ Les niveaux d'un SDR <b>ne sont pas des dBm étalonnés</b> : règle l'offset, ou fais la calibration "
+            "automatique avec un tinySA (2ᵉ appareil).")
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.TextFormat.RichText)
+        info.setMinimumHeight(info.fontMetrics().height() * 9)
+        lay.addWidget(info)
+        f = QtWidgets.QFormLayout()
+        self.dir_edit = QtWidgets.QLineEdit(c.get("dir", ""))
+        self.dir_edit.setPlaceholderText("automatique (PATH, PothosSDR, dossier « outils »)")
+        self.dir_edit.setToolTip("Dossier qui contient hackrf_sweep(.exe) / rtl_power(.exe). Vide = recherche "
+                                 "automatique.")
+        browse = QtWidgets.QPushButton("Parcourir…")
+        browse.setToolTip("Choisir le dossier des outils SDR.")
+        browse.clicked.connect(lambda *_: self._browse())
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.dir_edit, 1)
+        row.addWidget(browse)
+        f.addRow("Dossier des outils :", row)
+        self.found_lbl = QtWidgets.QLabel("")
+        self.found_lbl.setWordWrap(True)
+        f.addRow("Trouvés :", self.found_lbl)
+        self.lna_spin = QtWidgets.QSpinBox()
+        self.lna_spin.setRange(0, 50)
+        self.lna_spin.setValue(int(c.get("lna", 24)))
+        self.lna_spin.setSuffix(" dB")
+        self.lna_spin.setToolTip("HackRF : gain LNA (0 à 40 dB par pas de 8). RTL-SDR : gain du tuner (0 à 50 dB).\n"
+                                 "Trop de gain = le SDR sature et invente des signaux (intermod interne).")
+        self.vga_spin = QtWidgets.QSpinBox()
+        self.vga_spin.setRange(0, 62)
+        self.vga_spin.setSingleStep(2)
+        self.vga_spin.setValue(int(c.get("vga", 20)))
+        self.vga_spin.setSuffix(" dB")
+        self.vga_spin.setToolTip("HackRF seulement : gain VGA (bande de base, 0 à 62 dB par pas de 2).")
+        self.amp_chk = QtWidgets.QCheckBox("Ampli d'entrée du HackRF (+14 dB)")
+        self.amp_chk.setChecked(bool(c.get("amp", False)))
+        self.amp_chk.setToolTip("HackRF seulement. Utile avec une petite antenne loin des émetteurs ; à éviter près "
+                                "d'une scène (saturation).")
+        f.addRow("Gain LNA / tuner :", self.lna_spin)
+        f.addRow("Gain VGA :", self.vga_spin)
+        f.addRow(self.amp_chk)
+        lay.addLayout(f)
+        note = QtWidgets.QLabel("Les gains s'appliquent au cycle suivant (l'outil est relancé). Pas encore testé "
+                                "avec un vrai HackRF / RTL-SDR : dis-moi ce que ça donne !")
+        note.setWordWrap(True)
+        note.setMinimumHeight(note.fontMetrics().height() * 2)
+        lay.addWidget(note)
+        lay.addStretch(1)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self.dir_edit.textChanged.connect(lambda *_: self._found())
+        self._found()
+
+    def _browse(self):
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier des outils SDR", self.dir_edit.text())
+        if d:
+            self.dir_edit.setText(d)
+
+    def _found(self):
+        out = []
+        for k, sp in SDR_KINDS.items():
+            p_ = find_sdr_tool(sp["tool"], self.dir_edit.text().strip())
+            out.append(f"✔ {sp['tool']} ({p_})" if p_ else f"✗ {sp['tool']} introuvable")
+        self.found_lbl.setText("\n".join(out))
+
+    def values(self):
+        return dict(dir=self.dir_edit.text().strip(), lna=self.lna_spin.value(), vga=self.vga_spin.value(),
+                    amp=self.amp_chk.isChecked())
+
+
 class ScanConvertDialog(QtWidgets.QDialog):
     """Convertit un scan d'un logiciel à l'autre : entrée (auto, CSV au choix, scan en cours) → sortie (WWB, WSM,
     CSV au choix), avec un aperçu."""
@@ -7596,6 +7993,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
         self.sig_labels = {}            # tes mots pour la colonne Signal (clé SIGNAL_LABELS -> texte)
         self.sig_colors = {}            # tes couleurs par situation (clé SIGNAL_LABELS -> "#rrggbb")
+        self.sdr_cfg = dict(dir="", lna=24, vga=20, amp=False)    # V8 : HackRF / RTL-SDR
         self.plan_opts = dict(sep=int(round(PF_SEP * 1000)), filt=32.0, step=25, prof="")   # 🧮 : kHz, MHz, kHz, profil
         self.unit = "dbm"               # unité d'affichage des niveaux (en interne : toujours dBm)
         self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
@@ -7768,6 +8166,8 @@ class MainWindow(QtWidgets.QMainWindow):
     }
 
     TIPS_MENU = {
+        "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
+                          "(hackrf_sweep, rtl_power), gains, et comment les installer.",
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
         "🧮 Vérifier le plan": "Comme EazyRF : écart entre porteuses et intermod selon des tolérances, un verdict\n"
@@ -7960,6 +8360,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         (None, None),
                         ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
                         ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag()),
+                        ("📡 Réglages SDR (HackRF, RTL-SDR)…", lambda *_: self.open_sdr()),
                         ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
                         (None, None),
                         ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())):
@@ -8851,6 +9252,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sig_labels = {k: str(v)[:30] for k, v in lb.items() if k in SIGNAL_DEFAULTS and str(v).strip()}
         if "sig_colors" in data:
             self.sig_colors = clean_colors(data.get("sig_colors"))
+        sd = data.get("sdr")
+        if isinstance(sd, dict):
+            for k_, cast in (("dir", str), ("lna", int), ("vga", int), ("amp", bool)):
+                try:
+                    if k_ in sd:
+                        self.sdr_cfg[k_] = cast(sd[k_])
+                except (TypeError, ValueError):
+                    pass
+        if data.get("port"):
+            self._want_port = str(data["port"])
+            ix = self.port_combo.findData(self._want_port)
+            if ix >= 0:
+                self.port_combo.setCurrentIndex(ix)
         po = data.get("plan_opts")
         if isinstance(po, dict):
             if rx_profile(po.get("prof")) is not None:
@@ -8981,7 +9395,8 @@ class MainWindow(QtWidgets.QMainWindow):
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
-            sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts),
+            sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts), sdr=dict(self.sdr_cfg),
+            port=self.port_combo.currentData() or "",
             unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
         if full:
             data["demo"] = self.demo_chk.isChecked()
@@ -9198,6 +9613,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.port_combo.addItem(f"{p.device} — {p.description}{tag}", p.device)
         if not ports:
             self.port_combo.addItem("Aucun port détecté", None)
+        for k, sp in SDR_KINDS.items():                 # V8 : SDR par leur outil de balayage
+            self.port_combo.addItem(f"📡 {sp['name']} ({sp['tool']})", k)
+        ix = self.port_combo.findData(getattr(self, "_want_port", None))
+        if ix >= 0:
+            self.port_combo.setCurrentIndex(ix)
 
     # ----------------------------------------------------------- run / stop
     def is_running(self):
@@ -9214,8 +9634,9 @@ class MainWindow(QtWidgets.QMainWindow):
         demo = self.demo_chk.isChecked()
         port = self.port_combo.currentData()
         if not demo and not port:
-            QtWidgets.QMessageBox.warning(self, APP_NAME, "Aucun port série sélectionné.\n"
-                                          "Branche le tinySA (et ferme tinySA-App) ou active le mode démo.")
+            QtWidgets.QMessageBox.warning(self, APP_NAME, "Aucun appareil sélectionné.\n"
+                                          "Branche le tinySA (et ferme tinySA-App), choisis un SDR (📡) "
+                                          "ou active le mode démo.")
             return
         if not any(b["enabled"] for b in self.bands):
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Coche au moins une bande à balayer.")
@@ -9240,6 +9661,8 @@ class MainWindow(QtWidgets.QMainWindow):
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
             w.retry_first = i > 0                 # le 2ᵉ (souvent en réseau) peut arriver après : on l'attend
             w.baud = int(self.baud_combo.currentData() or 115200)
+            w.sdr_dir = self.sdr_cfg.get("dir", "")
+            w.get_sdr = lambda: dict(self.sdr_cfg)
             w.sweep.connect(lambda bid, f, l, d=i: self.band_src.__setitem__(bid, d))
             w.sweep.connect(self.on_sweep)
             w.partial.connect(self.on_partial)
@@ -9436,6 +9859,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for p in serial.tools.list_ports.comports():
             tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
             self.dev2_addr.addItem(f"{p.device}{tag}", p.device)
+        for k in SDR_KINDS:
+            self.dev2_addr.addItem(k, k)                 # V8 : « hackrf », « rtlsdr » (ou « hackrf:n° de série »)
         self.dev2_addr.setEditText(cur)
         self.dev2_addr.blockSignals(False)
 
@@ -12079,6 +12504,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sort_watch()
         QtCore.QTimer.singleShot(0, self.rebuild_watch_table)
         self._update_markers()
+
+    def open_sdr(self):
+        d = SdrDialog(self)
+        if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self.sdr_cfg.update(d.values())
+            for w in self.workers:
+                w.sdr_dir = self.sdr_cfg.get("dir", "")
+            self.set_status("Réglages SDR enregistrés" + (" (appliqués au prochain cycle)." if self.is_running()
+                                                          else "."))
 
     def open_scan_convert(self):
         self._conv_dlg = ScanConvertDialog(self)

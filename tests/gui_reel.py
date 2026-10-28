@@ -675,6 +675,22 @@ step("conv : scan en cours", _cd.use_current)
 check("conv : scan en cours chargé", "Scan en cours" in _cd.src_lbl.text(), _cd.src_lbl.text())
 _cd.close()
 
+# V8 : SDR dans la liste des ports + fenêtre de réglages
+check("SDR : HackRF dans la liste des ports", win.port_combo.findData("hackrf") >= 0
+      and win.port_combo.findData("rtlsdr") >= 0)
+check("SDR : HackRF proposé comme 2e appareil", win.dev2_addr.findData("hackrf") >= 0)
+_sd = m.SdrDialog(win)
+_sd.show()
+wait(300)
+check("SDR : outils cherchés", "hackrf_sweep" in _sd.found_lbl.text(), _sd.found_lbl.text())
+shot(_sd, "reglages_sdr")
+_sd.lna_spin.setValue(32)
+_sd.amp_chk.setChecked(True)
+win.sdr_cfg.update(_sd.values())
+_sd.close()
+check("SDR : réglages gardés dans la config", win._collect_config()["sdr"]["lna"] == 32
+      and win._collect_config()["sdr"]["amp"] is True)
+
 # dialogues non modaux
 step("open_intermod", win.open_intermod); wait(1500)
 if win._im_dlg:
