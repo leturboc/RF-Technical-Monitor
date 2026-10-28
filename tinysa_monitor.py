@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.6.0"
+APP_VER = "7.6.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -7057,6 +7057,11 @@ class WallWindow(QtWidgets.QWidget):
                                   "coin de l'écran) et tu choisis sa taille à la souris, les tuiles suivent.\n"
                                   "« Raccrocher » le remet en onglet à côté du spectre.")
         self.float_btn.clicked.connect(lambda *_: self.owner.wall_detach(not self.owner.dock_wall.isFloating()))
+        self.screen_btn = QtWidgets.QPushButton("🖥 Autre écran")
+        self.screen_btn.setToolTip("Envoie le mur dans une fenêtre sur l'autre écran (2ᵉ écran branché).\n"
+                                   "F11 ensuite : plein écran sur cet écran-là.")
+        self.screen_btn.clicked.connect(lambda *_: self.owner.wall_window_other_screen())
+        self.screen_btn.setVisible(len(QtGui.QGuiApplication.screens()) > 1)
         self.size_combo = QtWidgets.QComboBox()
         for k, t in WALL_SIZES:
             self.size_combo.addItem(t, k)
@@ -7064,7 +7069,8 @@ class WallWindow(QtWidgets.QWidget):
                                    "Petites / Moyennes / Grandes : taille fixe, on fait défiler s'il y en a trop\n"
                                    "(pratique pour un mur rangé dans un petit panneau).")
         self.size_combo.currentIndexChanged.connect(lambda *_: self.relayout())
-        for wd in (self.only_chk, self.alarm_chk, self.pick_btn, self.size_combo, self.float_btn, self.full_btn):
+        for wd in (self.only_chk, self.alarm_chk, self.pick_btn, self.size_combo, self.float_btn, self.screen_btn,
+                   self.full_btn):
             top.addWidget(wd)
         lay.addLayout(top)
         self.sum_lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
@@ -10124,17 +10130,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def wall_fullscreen(self, on, screen=None):
         """Plein écran du mur : il quitte son panneau pour une vraie fenêtre, et y revient en sortant."""
         if on and not self.wall_is_fullscreen():
+            if screen is None:
+                screen = self.wall.screen()                 # l'écran où est le mur (2ᵉ écran s'il y est)
             win_ = WallFullWindow(self)
             hold = QtWidgets.QLabel("🧱 Mur en plein écran — Échap ou F11 pour le ramener ici.")
             hold.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.dock_wall.setWidget(hold)
             win_.layout().addWidget(self.wall)
+            self.wall.show()                # le panneau le cache en le lâchant : sinon plein écran tout noir (7.6.0)
             self._wall_full = win_
             if screen is not None:
                 win_.setScreen(screen)
                 win_.move(screen.geometry().topLeft())
             win_.showFullScreen()
             win_.activateWindow()
+            QtCore.QTimer.singleShot(150, self.wall.rebuild)
             self.wall.full_btn.setText("⛶ Quitter (Échap)")
         elif not on and self.wall_is_fullscreen():
             win_, self._wall_full = self._wall_full, None
@@ -11924,6 +11934,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.win_menu.addAction(txt).triggered.connect(fn)
         self.win_menu.addSeparator()
         self.win_menu.addAction("🧱 Ouvrir le mur de fréquences").triggered.connect(self.open_wall)
+        self.win_menu.addAction("🧱 Mur sur l'autre écran (fenêtre)").triggered.connect(
+            lambda *_: self.wall_window_other_screen())
         self.win_menu.addAction("🧱 Mur en plein écran sur l'autre écran").triggered.connect(self.wall_other_screen)
 
     def _dock_sizes(self):
@@ -12010,6 +12022,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_wf.setGeometry(QtCore.QRect(g.x() + half, g.y() + g.height() // 2, g.width() - half,
                                               g.height() - g.height() // 2))
         self.set_status("Panneaux placés sur l'autre écran (tu peux les déplacer / les ré-accrocher à la souris).")
+
+    def wall_window_other_screen(self):
+        """Le mur dans une fenêtre normale qui occupe l'autre écran (la barre des tâches reste visible)."""
+        scr = self._other_screen()
+        self.open_wall()
+        if scr is None:
+            self.set_status("Un seul écran détecté : branche le 2ᵉ écran (ou détache le mur et place-le à la souris).")
+            return
+        if self.wall_is_fullscreen():
+            self.wall_fullscreen(False)
+        self.wall_detach(True)
+        self.dock_wall.setGeometry(scr.availableGeometry())
+        self.dock_wall.raise_()
+        self.set_status("Mur sur l'autre écran. « 📌 Raccrocher » le remet à côté du spectre ; F11 = plein écran.")
 
     def wall_other_screen(self):
         scr = self._other_screen()

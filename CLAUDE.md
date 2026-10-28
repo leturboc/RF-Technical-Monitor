@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.6.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.6.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -101,6 +101,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `WALL_TILE` en PURE, `wall_size` dans config.json) : auto = remplit, s / m / l = hauteur fixe + défilement.
   Bouton « 🗗 Détacher / 📌 Raccrocher » (`wall_detach`) : en onglet du spectre, le mur ne peut pas être petit à
   côté d'un grand spectre ; détaché, il se redimensionne librement (demande de Clément, comme l'ancienne fenêtre).
+  Plein écran : `self.wall.show()` après l'avoir mis dans `WallFullWindow` (sinon écran noir, 7.6.0) ; écran = celui
+  où est le mur. `wall_window_other_screen` (bouton « 🖥 Autre écran » si 2 écrans, menu Fenêtres) : fenêtre sur
+  l'autre écran.
 - Intermod : tolérances par type de produit (`im_class` : 2tx3 / 3tx3 / 5 / 7, `IM_TOL_PRESETS`, défaut EazyRF
   100 / 50 kHz d'après ses guides V3.75 / V4.00 ; 5ᵉ / 7ᵉ = notre choix). `guard` de `im_scan` = float ou dict.
   Les « doit rester libre » ne sont pas des émetteurs. Niveau « mesuré » masqué quand la cible est un « doit émettre »
