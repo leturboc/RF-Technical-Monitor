@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.6.1"
+APP_VER = "8.0-dev"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
