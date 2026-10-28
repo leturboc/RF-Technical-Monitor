@@ -70,6 +70,8 @@ if ev["sweeps"]:
 check("version lue", ev["info"] and ev["info"][0] == "tinySA4_v1.4-fake", str(ev["info"]))
 check("statut préfixé « tinySA 2 »", any(s.startswith("tinySA 2 : Connecté") for s in ev["status"]), str(ev["status"][:3]))
 check("réglages envoyés (rbw)", any(c.startswith("rbw") for c in fake.cmds), str(fake.cmds[:6]))
+check("Ultra : entrée normale envoyée (« mode low input »), jamais « mode high »",
+      "mode low input" in fake.cmds and not any(c.startswith("mode high") for c in fake.cmds), str(fake.cmds[:8]))
 
 # --- coupure : on arrête le relais
 relay.stop()
