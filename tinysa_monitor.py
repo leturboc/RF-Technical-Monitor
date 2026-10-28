@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.4.6"
+APP_VER = "7.5.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1440,6 +1440,7 @@ IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
 # tolérances (MHz) par type de produit : un produit plus loin que ça de la porteuse est accepté.
 # 2 TX / 3 TX = défauts des guides EazyRF (100 / 50 kHz) ; 5ᵉ / 7ᵉ ordre : notre choix (pas de défaut publié trouvé)
 IM_TOL_PRESETS = [("EazyRF : 2 TX 100 · 3 TX 50 · 5ᵉ / 7ᵉ 50 kHz", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}),
+                  ("EazyRF de base : 2 TX 100 · 3 TX 50 kHz · 5ᵉ ignoré", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
                   ("2A − B seulement : 2 TX 100 kHz · 3 TX et 5ᵉ ignorés", {"2tx3": 0.100, "3tx3": 0.0, "5": 0.0, "7": 0.0}),
                   ("Prudent : 200 · 100 · 100 kHz", {"2tx3": 0.200, "3tx3": 0.100, "5": 0.100, "7": 0.100}),
                   ("Ancien réglage : 300 kHz partout", {"2tx3": 0.300, "3tx3": 0.300, "5": 0.300, "7": 0.300})]
@@ -1505,14 +1506,26 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     # pré-filtre élargi (les produits de blocs sont larges), puis test exact bord à bord
     g_pre = guard + ((max(orders) * float(B.max()) / 2.0 + float(TB.max()) / 2.0) if wide and TB is not None else 0.0)
 
-    def near_t(vals, hw):
-        """Cible la plus proche (bord à bord) parmi les 2 voisines -> (indice, écart bord à bord)."""
-        k = np.searchsorted(T, vals)
-        ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
-        gl = np.abs(T[ilo] - vals) - TB[ilo] / 2.0
-        gh = np.abs(T[ihi] - vals) - TB[ihi] / 2.0
-        ti = np.where(gh < gl, ihi, ilo)
-        return ti, np.minimum(gl, gh) - hw
+    def near_t(vals, hw, inv):
+        """Cible la plus proche (bord à bord) qui n'est PAS un des émetteurs du produit (inv : leurs fréquences,
+        une ligne par produit) -> (indice, écart bord à bord ; inf si aucune). Fréquences simples : les 2 voisines
+        suffisent ; blocs larges : un produit large peut en recouvrir plusieurs → toutes les cibles sont regardées."""
+        if not wide:
+            k = np.searchsorted(T, vals)
+            ilo, ihi = np.clip(k - 1, 0, len(T) - 1), np.clip(k, 0, len(T) - 1)
+            gl = np.abs(T[ilo] - vals) - TB[ilo] / 2.0
+            gh = np.abs(T[ihi] - vals) - TB[ihi] / 2.0
+            gl = np.where((np.abs(inv - T[ilo][:, None]) < 1e-6).any(axis=1), np.inf, gl)
+            gh = np.where((np.abs(inv - T[ihi][:, None]) < 1e-6).any(axis=1), np.inf, gh)
+            return np.where(gh < gl, ihi, ilo), np.minimum(gl, gh) - hw
+        ti, gg = np.zeros(len(vals), dtype=int), np.full(len(vals), np.inf)
+        for a in range(0, len(vals), 4000):
+            v, h, iv = vals[a:a + 4000], hw[a:a + 4000], inv[a:a + 4000]
+            G = np.abs(v[:, None] - T[None, :]) - TB[None, :] / 2.0 - h[:, None]
+            G = np.where((np.abs(iv[:, :, None] - T[None, None, :]) < 1e-6).any(axis=1), np.inf, G)
+            k = np.argmin(G, axis=1)
+            ti[a:a + 4000], gg[a:a + 4000] = k, G[np.arange(len(v)), k]
+        return ti, gg
     total = sum(im_pairs(n, o, max_tx) for o in orders)
     info["pairs"] = total
     if total > IM_MAX_PAIRS:
@@ -1530,10 +1543,9 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             msk = (vals >= fmin) & (vals <= fmax)
             tv = gap = None
             if T is not None:
-                ti, gap = near_t(vals, hw)
+                ti, gap = near_t(vals, hw, np.stack([F[ii], F[jj]], axis=1))
                 tv = T[ti]
                 msk &= (gap <= tol(order, 2)) & (not ignored(order, 2))
-                msk &= (np.abs(F[ii] - tv) >= 1e-6) & (np.abs(F[jj] - tv) >= 1e-6)
             hits = np.nonzero(msk)[0]
             if len(hits) > cap:
                 info["truncated"] = True
@@ -1581,11 +1593,10 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
             hw = (B[pi].sum(axis=1) + B[qj].sum(axis=1)) / 2.0
             tv = gap = None
             if T is not None:
-                ti, gap = near_t(vals, hw)
+                ti, gap = near_t(vals, hw, F[allidx])
                 tv = T[ti]
                 ok &= gap <= np.where(ntx <= 2, tol(order, 2), tol(order, 3))
                 ok &= np.where(ntx <= 2, not ignored(order, 2), not ignored(order, 3))
-                ok &= ~(np.abs(F[allidx] - tv[:, None]) < 1e-6).any(axis=1)
             for h in np.nonzero(ok)[0]:
                 terms = {}
                 for t_i in pi[h]:
@@ -1653,6 +1664,154 @@ def im_formula(terms, names=None, freqs=None, numeric=False):
 def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40, bws=None):
     """Quelles combinaisons d'émetteurs peuvent produire un signal à f (MHz) ? bws : largeurs des émetteurs."""
     return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit, bws=bws)
+
+
+# ------------------------------------------------- vérification d'un plan de fréquences (façon EazyRF)
+PF_SEP = 0.300          # écart mini par défaut entre deux porteuses (MHz) ; réglable dans la fenêtre
+
+
+def pf_orders(tol):
+    """Ordres à calculer d'après les tolérances (0 = ignoré). Jusqu'au 5ᵉ comme EazyRF : le 7ᵉ multiplie les
+    combinaisons par ~100 (30 émetteurs : 200 millions) pour des produits très faibles."""
+    return tuple(o for o, k in ((3, "2tx3"), (5, "5")) if tol.get(k, 0) > 0 or (o == 3 and tol.get("3tx3", 0) > 0))
+
+
+def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=3):
+    """Compatibilité d'un plan : pour chaque fréquence, la liste de ses problèmes.
+    - « sep » : une autre porteuse à moins de `sep` MHz (bord à bord pour un bloc large) ;
+    - « im » : un produit d'intermod des ÉMETTEURS (is_tx) tombe dessus, dans la tolérance de son type (`tol`,
+      comme EazyRF : 2 TX / 3 TX / 5ᵉ ; 0 = type ignoré). Les réserves (is_tx False) sont protégées sans émettre.
+    -> (issues, info) ; issues[i] = [dict(kind, others=[indices], gap MHz, order, ntx, terms)]."""
+    F = np.asarray(list(freqs), dtype=float)
+    n = len(F)
+    B = np.zeros(n) if bws is None else np.clip(np.asarray(list(bws), dtype=float), 0.0, None)
+    tx = np.ones(n, dtype=bool) if is_tx is None else np.asarray(list(is_tx), dtype=bool)
+    tol = dict(IM_TOL_PRESETS[0][1] if tol is None else tol)
+    issues = [[] for _ in range(n)]
+    info = dict(pairs=0, truncated=False, too_big=False)
+    if n < 2:
+        return issues, info
+    D = np.abs(F[:, None] - F[None, :]) - (B[:, None] + B[None, :]) / 2.0
+    ii, jj = np.nonzero(np.triu(D < sep - 1e-9, 1))
+    for a, b in zip(ii.tolist(), jj.tolist()):
+        g = float(D[a, b])
+        issues[a].append(dict(kind="sep", others=[b], gap=g))
+        issues[b].append(dict(kind="sep", others=[a], gap=g))
+    txi = np.nonzero(tx)[0]
+    orders = pf_orders(tol)
+    if len(txi) >= 2 and orders:
+        rows, info = im_scan(F[txi], orders, max_tx, targets=F, guard=tol, bws=B[txi], tbws=B, limit=20000)
+        for r in rows:
+            src = [(int(txi[i]), c) for i, c in r["terms"]]
+            used = {k for k, _c in src}
+            if r["hw"] > 0 or B.any():         # produit / cibles larges : toutes les fréquences recouvertes
+                g_ = np.abs(F - r["f"]) - r["hw"] - B / 2.0
+                vs = np.nonzero(g_ <= tol.get(im_class(r["order"], r["ntx"]), 0.0))[0].tolist()
+            else:
+                vs = np.nonzero(np.abs(F - r["target"]) < 1e-9)[0].tolist()
+            for v in vs:
+                if v in used:
+                    continue
+                issues[v].append(dict(kind="im", others=sorted(used), gap=float(r["gap"]), order=r["order"],
+                                      ntx=r["ntx"], terms=src, f=r["f"], hw=r["hw"]))
+    return issues, info
+
+
+def pf_issue_text(it, names, freqs):
+    """Une ligne lisible pour un problème de pf_check."""
+    if it["kind"] == "sep":
+        o = it["others"][0]
+        if it["gap"] < 0:
+            return f"chevauche {names[o]} ({freqs[o]:.3f})"
+        return f"trop près de {names[o]} ({freqs[o]:.3f}) : {it['gap'] * 1000:.0f} kHz d'écart"
+    lab = IM_NAMES.get(it["order"], "IM") + f" {it['ntx']} TX"
+    return f"{lab} : " + im_formula(it["terms"], names) + (" (pile dessus)" if it["gap"] <= 0.001 else
+                                                        f" (à {it['gap'] * 1000:.0f} kHz)")
+
+
+def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=3, lo=None, hi=None, step=0.025,
+               n=5, busy=None, max_check=600):
+    """Fréquences de remplacement pour la n° i, les plus proches d'abord : aucune incompatibilité pour elle,
+    et pas de NOUVEAU problème pour les autres. busy(c) -> True si le spectre mesuré y est occupé (on évite).
+    Pré-filtre vectorisé (écart, produits des autres qui tombent sur la candidate, 3ᵉ ordre impliquant la
+    candidate), puis vérification exacte (pf_check) des meilleures seulement : rapide même avec des blocs larges.
+    -> [(MHz, écart à l'actuelle en MHz)]."""
+    F = [float(x) for x in freqs]
+    nn = len(F)
+    B = [0.0] * nn if bws is None else [float(x or 0.0) for x in bws]
+    T = [True] * nn if is_tx is None else [bool(x) for x in is_tx]
+    tol = dict(IM_TOL_PRESETS[0][1] if tol is None else tol)
+    f0, bi = F[i], B[i]
+    lo = f0 - 10.0 if lo is None else lo
+    hi = f0 + 10.0 if hi is None else hi
+    others = [k for k in range(nn) if k != i]
+    Fo, Bo, To = [F[k] for k in others], [B[k] for k in others], [T[k] for k in others]
+    base, _ = pf_check(Fo, To, Bo, sep, tol, max_tx)
+    base_n = sum(len(x) for x in base)
+    grid = np.arange(math.ceil(lo / step) * step, hi + 1e-9, step)
+    grid = grid[np.abs(grid - f0) > 1e-9]
+    Fa, Ba = np.asarray(Fo, dtype=float), np.asarray(Bo, dtype=float)
+    ok = np.ones(len(grid), dtype=bool)
+    if len(Fa):                                                  # écart entre porteuses
+        for k0 in range(0, len(grid), 4000):
+            g = grid[k0:k0 + 4000]
+            ok[k0:k0 + 4000] &= ~np.any(np.abs(g[:, None] - Fa[None, :]) - (Ba[None, :] + bi) / 2.0 < sep - 1e-9, axis=1)
+    t2, t3 = tol.get("2tx3", 0.0), tol.get("3tx3", 0.0)
+    txo = np.asarray([k for k, t in enumerate(To) if t], dtype=int)
+    orders = pf_orders(tol)
+    if len(txo) >= 2 and orders:                                 # produits des autres qui tombent sur la candidate
+        rows, _ = im_scan(Fa[txo], orders, max_tx, fmin=lo - 1.0, fmax=hi + 1.0, limit=400000, bws=Ba[txo])
+        if rows:
+            pv = np.array([r["f"] for r in rows])
+            ph = np.array([r["hw"] for r in rows])
+            pt = np.array([tol.get(im_class(r["order"], r["ntx"]), 0.0) for r in rows])
+            keep = pt > 0
+            pv, ph, pt = pv[keep], ph[keep], pt[keep]
+            for k0 in range(0, len(grid), 2000):
+                g = grid[k0:k0 + 2000]
+                if len(pv):
+                    ok[k0:k0 + 2000] &= ~np.any(np.abs(g[:, None] - pv[None, :]) - ph[None, :] - bi / 2.0
+                                                <= pt[None, :], axis=1)
+    if T[i] and len(txo) >= 1 and len(Fa) and (t2 > 0 or t3 > 0):   # 3ᵉ ordre impliquant la candidate
+        Ft, Bt = Fa[txo], Ba[txo]
+        for k0 in range(0, len(grid), 500):
+            g = grid[k0:k0 + 500][:, None, None]
+            bad = np.zeros(g.shape[0], dtype=bool)
+            vic, bv = Fa[None, None, :], Ba[None, None, :]
+            if t2 > 0:
+                for val, hw in ((2 * g - Ft[None, :, None], (2 * bi + Bt[None, :, None]) / 2.0),
+                                (2 * Ft[None, :, None] - g, (bi + 2 * Bt[None, :, None]) / 2.0)):
+                    hit = np.abs(val - vic) - hw - bv / 2.0 <= t2
+                    hit &= np.abs(Ft[None, :, None] - vic) > 1e-9          # pas sur un émetteur du produit
+                    bad |= hit.any(axis=(1, 2))
+            if t3 > 0 and max_tx >= 3 and len(Ft) >= 2:
+                J, K = np.meshgrid(np.arange(len(Ft)), np.arange(len(Ft)), indexing="ij")
+                m = (J != K).ravel()
+                fj, fk = Ft[J.ravel()[m]], Ft[K.ravel()[m]]
+                bj, bk = Bt[J.ravel()[m]], Bt[K.ravel()[m]]
+                for val, hw in ((g + fj[None, :, None] - fk[None, :, None], (bi + bj + bk)[None, :, None] / 2.0),
+                                (fj[None, :, None] + fk[None, :, None] - g, (bi + bj + bk)[None, :, None] / 2.0)):
+                    hit = np.abs(val - vic) - hw - bv / 2.0 <= t3
+                    hit &= (np.abs(fj[None, :, None] - vic) > 1e-9) & (np.abs(fk[None, :, None] - vic) > 1e-9)
+                    bad |= hit.any(axis=(1, 2))
+            ok[k0:k0 + 500] &= ~bad
+    cand = grid[ok]
+    cand = cand[np.argsort(np.abs(cand - f0), kind="stable")]
+    out, checked = [], 0
+    for c in cand:
+        c = round(float(c), 6)
+        if busy is not None and busy(c):
+            continue
+        checked += 1
+        if checked > max_check:
+            break
+        iss, _ = pf_check(Fo + [c], To + [T[i]], Bo + [bi], sep, tol, max_tx)      # vérification exacte
+        if iss[-1] or sum(len(x) for x in iss[:-1]) > base_n:
+            continue
+        out.append((c, c - f0))
+        if len(out) >= n:
+            break
+    return out
 
 
 def im3_clash(c, F, guard, guard3=None):
@@ -5711,6 +5870,231 @@ def fmt_dur(s, signed=False):
 # --------------------------------------------------------------------------
 # Dialogue : rapport de fin de show
 # --------------------------------------------------------------------------
+class PlanCheckDialog(QtWidgets.QDialog):
+    """Vérifie un plan de fréquences comme un logiciel de coordination (EazyRF…) : écart entre porteuses et
+    intermod selon des tolérances, un verdict par fréquence, et une fréquence de remplacement compatible."""
+    COLS = ["État", "Nom", "MHz", "Problèmes"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Vérifier le plan de fréquences")
+        self.resize(940, 660)
+        self.ws, self.issues = [], []
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Comme le calcul de plan d'EazyRF : pour chaque fréquence, est-elle trop près d'une autre (écart entre "
+            "porteuses), et un produit d'intermod de tes émetteurs tombe-t-il dessus (selon les tolérances) ? C'est un "
+            "calcul, sans mesure. Les « doit rester libre » (réserves) sont protégées mais ne comptent pas comme "
+            "émetteurs. Choisis une fréquence ✗ puis « Proposer » pour une remplaçante compatible.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 4)
+        lay.addWidget(info)
+        R = owner._row
+        self.src_combo = QtWidgets.QComboBox()
+        self.src_combo.addItem("Plan : toute la liste", "all")
+        self.src_combo.addItem("Plan : la couche active", "scope")
+        self.src_combo.setToolTip("Les fréquences vérifiées ensemble (celles qui émettent en même temps au même endroit).")
+        self.sep_spin = QtWidgets.QSpinBox()
+        self.sep_spin.setRange(0, 3000)
+        self.sep_spin.setSingleStep(25)
+        self.sep_spin.setValue(int(round(PF_SEP * 1000)))
+        self.sep_spin.setSuffix(" kHz")
+        self.sep_spin.setToolTip("Écart minimal entre deux porteuses (bord à bord pour un bloc large).\n"
+                                 "Mets la même valeur que dans ton logiciel de coordination / tes appareils.")
+        self.maxtx_combo = QtWidgets.QComboBox()
+        self.maxtx_combo.addItem("Intermod jusqu'à 3 TX", 3)
+        self.maxtx_combo.addItem("Intermod 2 TX seulement", 2)
+        self.maxtx_combo.setToolTip("Nombre d'émetteurs combinés dans un produit (3 TX : A + B − C en plus de 2A − B).")
+        self.tol_combo = QtWidgets.QComboBox()
+        for txt, d in IM_TOL_PRESETS:
+            self.tol_combo.addItem(txt, d)
+        self.tol_combo.setToolTip("Tolérances d'intermod (comme EazyRF). 0 = ce type de produit est ignoré.\n"
+                                  "Par défaut « EazyRF de base » : le 5ᵉ ordre est une option dans EazyRF (version Pro).")
+        self.tol_combo.setCurrentIndex(max(0, next((k for k, (t_, _d) in enumerate(IM_TOL_PRESETS)
+                                                    if t_.startswith("EazyRF de base")), 0)))
+        self.tol_spins = {}
+        for key in ("2tx3", "3tx3", "5"):
+            sp = QtWidgets.QSpinBox()
+            sp.setRange(0, 2000)
+            sp.setSingleStep(10)
+            sp.setPrefix("± ")
+            sp.setSuffix(" kHz")
+            sp.setSpecialValueText("ignoré")
+            sp.setToolTip({"2tx3": "2 TX, 3ᵉ ordre (2A − B).", "3tx3": "3 TX, 3ᵉ ordre (A + B − C).",
+                           "5": "5ᵉ ordre et plus."}[key] + "\n0 = ignoré.")
+            self.tol_spins[key] = sp
+        self.tol_combo.currentIndexChanged.connect(lambda *_: self._preset())
+        self._preset()
+        self.go_btn = QtWidgets.QPushButton("🧮 Vérifier")
+        self.go_btn.setToolTip("Calcule la compatibilité de tout le plan.")
+        self.go_btn.clicked.connect(lambda *_: self.compute())
+        lay.addLayout(R(self.src_combo, "Écart mini :", self.sep_spin, self.maxtx_combo, None))
+        lay.addLayout(R("Tolérances :", self.tol_combo, "2 TX :", self.tol_spins["2tx3"], "3 TX :",
+                        self.tol_spins["3tx3"], "5ᵉ :", self.tol_spins["5"], None, self.go_btn))
+        self.sum_lbl = QtWidgets.QLabel("")
+        f_ = self.sum_lbl.font()
+        f_.setPointSize(f_.pointSize() + 3)
+        f_.setBold(True)
+        self.sum_lbl.setFont(f_)
+        self.sum_lbl.setWordWrap(True)
+        lay.addWidget(self.sum_lbl)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        for c, w_ in enumerate((120, 140, 80)):
+            self.table.setColumnWidth(c, w_)
+        self.table.setToolTip("Survole « Problèmes » pour le détail complet. Double-clic : proposer une remplaçante.")
+        self.table.cellDoubleClicked.connect(lambda r, c: self.suggest())
+        lay.addWidget(self.table, 1)
+        self.sug_list = QtWidgets.QListWidget()
+        self.sug_list.setMaximumHeight(110)
+        self.sug_list.setToolTip("Fréquences compatibles avec tout le reste du plan, les plus proches d'abord.")
+        self.avoid_chk = QtWidgets.QCheckBox("Éviter ce que le tinySA voit occupé")
+        self.avoid_chk.setChecked(True)
+        self.avoid_chk.setToolTip("Écarte les fréquences où le spectre mesuré dépasse ton seuil « faible »\n"
+                                  "(ou « occupé » si le niveau faible est désactivé).")
+        self.sug_btn = QtWidgets.QPushButton("🔍 Proposer une fréquence compatible")
+        self.sug_btn.setToolTip("Pour la fréquence choisie : cherche à ± 10 MHz une fréquence sans aucun problème,\n"
+                                "qui n'en crée pas de nouveau pour les autres.")
+        self.sug_btn.clicked.connect(lambda *_: self.suggest())
+        self.rep_btn = QtWidgets.QPushButton("✔ Remplacer")
+        self.rep_btn.setToolTip("Remplace la fréquence choisie par la proposition sélectionnée (dans ta liste).")
+        self.rep_btn.clicked.connect(lambda *_: self.replace())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addLayout(R(self.sug_btn, self.avoid_chk, None))
+        lay.addWidget(self.sug_list)
+        lay.addLayout(R(self.rep_btn, None, close))
+        self._target = None
+        self.compute()
+
+    def _preset(self):
+        d = self.tol_combo.currentData()
+        for k, sp in self.tol_spins.items():
+            sp.setValue(int(round(d[k] * 1000)))
+
+    def tolerances(self):
+        t5 = self.tol_spins["5"].value() / 1000.0
+        return {"2tx3": self.tol_spins["2tx3"].value() / 1000.0, "3tx3": self.tol_spins["3tx3"].value() / 1000.0,
+                "5": t5, "7": t5}
+
+    def _params(self):
+        o = self.owner
+        ws = [w for w in o.watch if self.src_combo.currentData() == "all" or o.in_scope(w)]
+        return (ws, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
+                [float(w.get("bw") or 0.0) for w in ws], self.sep_spin.value() / 1000.0, self.tolerances(),
+                self.maxtx_combo.currentData())
+
+    def compute(self):
+        ws, F, T, B, sep, tol, mx = self._params()
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.issues, info = pf_check(F, T, B, sep, tol, mx)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        self.ws = ws
+        names = [w["name"] or f"{w['freq']:.3f}" for w in ws]
+        th, base = self.owner.theme, self.owner.theme["ui_base"]
+        t = self.table
+        t.setRowCount(len(ws))
+        bad = 0
+        for r, (w, iss) in enumerate(zip(ws, self.issues)):
+            bad += bool(iss)
+            txts = [pf_issue_text(it, names, F) for it in iss]
+            state = "✔ compatible" if not iss else f"✗ {len(iss)} problème{'s' if len(iss) > 1 else ''}"
+            if not T[r] and not iss:
+                state = "✔ réserve libre"
+            vals = [state, names[r], f"{w['freq']:.3f}", " · ".join(txts[:3]) + (" …" if len(txts) > 3 else "")]
+            col = th["st_occ"] if iss else th["st_free"]
+            for c, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                if c == 0:
+                    bg = blend(col, base, 0.7)
+                    it.setBackground(QtGui.QColor(bg))
+                    it.setForeground(QtGui.QColor(contrast_text(bg)))
+                if c == 3 and txts:
+                    it.setToolTip("\n".join(txts))
+                t.setItem(r, c, it)
+        n = len(ws)
+        self.too_big = bool(info.get("too_big"))
+        if self.too_big:
+            self.sum_lbl.setText("⚠ Trop de combinaisons pour calculer l'intermod (seuls les écarts sont vérifiés) : "
+                                 "passe en « 2 TX seulement », ignore le 5ᵉ ordre, ou vérifie une couche à la fois.")
+        elif not n:
+            self.sum_lbl.setText("Aucune fréquence à vérifier.")
+        elif not bad:
+            self.sum_lbl.setText(f"✔ Plan compatible : {n} / {n} fréquences sans problème (pour ces règles).")
+        else:
+            self.sum_lbl.setText(f"✗ {bad} fréquence(s) à revoir sur {n} · ✔ {n - bad} compatibles. "
+                                 "Choisis une ligne ✗ puis « Proposer ».")
+        self.sum_lbl.setStyleSheet(f"color:{th['st_free'] if n and not bad else th['st_occ'] if bad else th['ui_text']}")
+        self.sug_list.clear()
+        self._target = None
+
+    def _sel(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes()})
+        return rows[0] if rows and rows[0] < len(self.ws) else None
+
+    def suggest(self):
+        r = self._sel()
+        self.sug_list.clear()
+        if getattr(self, "too_big", False):
+            self.sum_lbl.setText("⚠ Calcul trop gros : passe en « 2 TX seulement » ou ignore le 5ᵉ ordre, puis Vérifier.")
+            return
+        if r is None:
+            self.sum_lbl.setText("Choisis d'abord une fréquence dans le tableau.")
+            return
+        ws, F, T, B, sep, tol, mx = self._params()
+        busy = None
+        if self.avoid_chk.isChecked():
+            o = self.owner
+            Fm, Lm = o.fresh_FL(use_max=True)
+            if Fm is not None:
+                lim = o.weak_spin.value() if o.weak_chk.isChecked() else o.thr_spin.value()
+                win = max(0.05, o.win_spin.value() / 1000.0)
+                busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            sg = pf_suggest(r, F, T, B, sep, tol, mx, n=6, busy=busy)
+            if not sg:                                  # rien tout près : on cherche dans toutes les bandes
+                ext = self.owner._band_extent()
+                if ext:
+                    sg = pf_suggest(r, F, T, B, sep, tol, mx, lo=ext[0], hi=ext[1], n=6, busy=busy, max_check=1500)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        self._target = ws[r]
+        name = ws[r]["name"] or f"{ws[r]['freq']:.3f}"
+        if not sg:
+            self.sug_list.addItem(f"Rien de compatible pour {name} dans tes bandes : élargis les tolérances, baisse "
+                                  "l'écart mini ou décoche « Éviter ce que le tinySA voit occupé ».")
+            return
+        for c, d in sg:
+            it = QtWidgets.QListWidgetItem(f"{c:.3f} MHz   ({d * 1000:+.0f} kHz)   pour {name}")
+            it.setData(Qt.ItemDataRole.UserRole, c)
+            self.sug_list.addItem(it)
+        self.sug_list.setCurrentRow(0)
+
+    def replace(self):
+        it = self.sug_list.currentItem()
+        c = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+        w = self._target
+        if c is None or w is None or not any(x is w for x in self.owner.watch):
+            self.sum_lbl.setText("Propose d'abord une fréquence, puis choisis-la dans la liste.")
+            return
+        old = w["freq"]
+        self.owner.set_watch_freq(w, c)
+        self.owner.log_event(dict(name=w["name"], freq=0.0, note=f"{old:.3f} → {c:.3f} MHz (vérification du plan)"),
+                             0.0, "NOUVELLE FRÉQUENCE")
+        self.compute()
+        self.owner.set_status(f"{w['name']} : {old:.3f} → {c:.3f} MHz (plan vérifié).")
+
+
 class LineCheckDialog(QtWidgets.QDialog):
     """Appel des micros : allume tes émetteurs un par un, chaque fréquence passe ✓ dès que son signal arrive."""
     COLS = ["État", "Nom", "MHz", "Niveau", "Heure", "Scène › Groupe"]
@@ -6767,6 +7151,8 @@ class MainWindow(QtWidgets.QMainWindow):
     TIPS_MENU = {
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
+        "🧮 Vérifier le plan": "Comme EazyRF : écart entre porteuses et intermod selon des tolérances, un verdict\n"
+                               "par fréquence, et une fréquence de remplacement compatible.",
         "⚡ Intermodulation": "Produits d'intermodulation de tes émetteurs (2 / 3 / 5 TX) : ce qui retombe sur tes\n"
                              "fréquences, ou d'où peut venir un signal inconnu.",
         "🆘 Fréquence de secours": "Propose des fréquences libres d'après le spectre mesuré, sans intermod avec ta liste.",
@@ -6936,6 +7322,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tmenu = QtWidgets.QMenu(tools_btn)
         for txt, fn in (("🎤 Appel des micros (line check)…  Ctrl+L", lambda *_: self.open_linecheck()),
                         (None, None),
+                        ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
                         ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
                         ("🆘 Fréquence de secours…", lambda *_: self.open_rescue()),
                         (None, None),
@@ -9578,11 +9965,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if v is None:
                 QtCore.QTimer.singleShot(0, self.rebuild_watch_table)
                 return
-            w.update(freq=v, level=None, max=None, state=None, t_acc=None)
-            w["occw"].clear()
-            self.sort_watch()
-            QtCore.QTimer.singleShot(0, self.rebuild_watch_table)
-            self._update_markers()
+            self.set_watch_freq(w, v)
         elif item.column() == C_THR:
             txt = item.text().strip().lower()
             if txt in ("", "—", "-", "global"):
@@ -10990,6 +11373,18 @@ class MainWindow(QtWidgets.QMainWindow):
             f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()}<br><br>"
             f"tinySA : {fw}{fw2}<br><br>"
             f"Config : {CFG_PATH}<br>Journaux : {self.log_dir}")
+
+    def set_watch_freq(self, w, v):
+        """Change la fréquence d'une ligne (mesures remises à zéro, liste retriée)."""
+        w.update(freq=float(v), level=None, max=None, state=None, t_acc=None)
+        w["occw"].clear()
+        self.sort_watch()
+        QtCore.QTimer.singleShot(0, self.rebuild_watch_table)
+        self._update_markers()
+
+    def open_plan_check(self):
+        self._plan_dlg = PlanCheckDialog(self)
+        self._plan_dlg.show()
 
     def open_linecheck(self):
         if self._linecheck is not None:

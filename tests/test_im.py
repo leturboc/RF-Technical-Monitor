@@ -240,6 +240,76 @@ ok("seulement 2A − B : plan propre", not rows, str([(r["f"], r["terms"]) for r
 rows, _ = im_scan(TXc, (3,), 2, targets=TXc, guard={"2tx3": 0.0, "3tx3": 0.05})
 ok("tolérance 2 TX = 0 (chemin rapide) → rien", not rows)
 
+# ---- vérification d'un plan (façon EazyRF)
+pfc, pfs, pft = ns["pf_check"], ns["pf_suggest"], ns["pf_issue_text"]
+NM = ["HF1", "HF2", "HF3", "DJL", "DJR", "SAX"]
+iss, _ = pfc(TXc, tol=dict(EZ))
+ok("plan : HF2 (574) a un problème A + B − C", any(it["kind"] == "im" and it["ntx"] == 3 for it in iss[1]), str(iss[1]))
+txt_ = pft(next(it for it in iss[1] if it["kind"] == "im"), NM, TXc)
+ok("plan : texte lisible", "pile dessus" in txt_ and "TX" in txt_, txt_)
+iss2, _ = pfc(TXc, tol={"2tx3": 0.1, "3tx3": 0.0, "5": 0.0, "7": 0.0})
+ok("plan : en 2A − B seulement, tout est compatible", not any(iss2), str(iss2))
+iss3, _ = pfc([500.0, 500.2, 510.0], tol=dict(EZ))
+ok("plan : écart entre porteuses (200 kHz < 300)", iss3[0] and iss3[0][0]["kind"] == "sep" and iss3[1] and not iss3[2])
+ok("plan : texte écart", "trop près de" in pft(iss3[0][0], ["A", "B", "C"], [500.0, 500.2, 510.0]))
+ok("plan : bloc large compté bord à bord", pfc([500.0, 504.2], bws=[8.0, 0.0], tol=dict(EZ))[0][0][0]["kind"] == "sep")
+# une réserve (doit rester libre) est protégée mais n'émet pas
+F_ = [500.0, 501.0, 499.0]                     # 2×500 − 501 = 499
+ok("plan : réserve touchée par 2A − B", pfc(F_, is_tx=[True, True, False], tol=dict(EZ))[0][2])
+ok("plan : réserve qui n'émet pas → ne crée pas de produit", not pfc([500.0, 499.0, 501.0], is_tx=[True, False, True],
+                                                                      tol=dict(EZ))[0][0])
+sg = pfs(1, TXc, tol=dict(EZ), n=3)
+ok("suggestion : 3 fréquences proposées, les plus proches d'abord", len(sg) == 3
+   and abs(sg[0][1]) <= abs(sg[-1][1]), str(sg))
+for c_, d_ in sg:
+    Fn = list(TXc)
+    Fn[1] = c_
+    iss_n, _ = pfc(Fn, tol=dict(EZ))
+    ok(f"suggestion {c_:.3f} : compatible pour elle, rien de nouveau ailleurs",
+       not iss_n[1] and sum(map(len, iss_n)) <= sum(map(len, pfc([f for k, f in enumerate(TXc) if k != 1], tol=dict(EZ))[0])),
+       str(iss_n))
+sg2 = pfs(1, TXc, tol=dict(EZ), n=2, busy=lambda c: abs(c - sg[0][0]) < 1e-6)
+ok("suggestion : évite une fréquence occupée sur le spectre", all(abs(c - sg[0][0]) > 1e-6 for c, _ in sg2))
+
+# suggestion rapide (pré-filtre) = recherche brute, sur des plans aléatoires avec blocs larges
+def _brute(i, F, T, B, sep, tol, lo, hi, n):
+    Fo = [f for k, f in enumerate(F) if k != i]
+    To = [t for k, t in enumerate(T) if k != i]
+    Bo = [b for k, b in enumerate(B) if k != i]
+    base = sum(map(len, pfc(Fo, To, Bo, sep, tol)[0]))
+    out = []
+    g = np.arange(np.ceil(lo / 0.025) * 0.025, hi + 1e-9, 0.025)
+    for c in g[np.argsort(np.abs(g - F[i]), kind="stable")]:
+        c = round(float(c), 6)
+        if abs(c - F[i]) < 1e-9:
+            continue
+        iss = pfc(Fo + [c], To + [T[i]], Bo + [B[i]], sep, tol)[0]
+        if not iss[-1] and sum(map(len, iss[:-1])) <= base:
+            out.append(c)
+            if len(out) >= n:
+                break
+    return out
+
+
+rgs = random.Random(7)
+same = tot_ = 0
+for _ in range(12):
+    nf = rgs.randint(4, 9)
+    Fr = sorted({round(rgs.uniform(500, 530), 3) for _ in range(nf)})
+    Br = [8.0 if rgs.random() < 0.15 else 0.0 for _ in Fr]
+    Tr = [rgs.random() > 0.2 for _ in Fr]
+    i_ = rgs.randrange(len(Fr))
+    fast = [c for c, _d in pfs(i_, Fr, Tr, Br, 0.3, dict(EZ), 3, lo=Fr[i_] - 3, hi=Fr[i_] + 3, n=3)]
+    slow = _brute(i_, Fr, Tr, Br, 0.3, dict(EZ), Fr[i_] - 3, Fr[i_] + 3, 3)
+    tot_ += 1
+    same += fast == slow
+ok(f"suggestion rapide = recherche brute ({same}/{tot_})", same == tot_)
+rgb = np.random.default_rng(1)
+F30 = sorted(470 + rgb.uniform(0, 224, 30).round(3))
+_iss30, _inf30 = pfc(F30, tol=dict(EZ))
+ok("plan de 30 émetteurs, ordres 3 + 5 : calculable (pas « trop gros »)", not _inf30["too_big"], str(_inf30))
+ok("le 7ᵉ ordre n'est pas compté dans le plan", ns["pf_orders"](dict(EZ)) == (3, 5))
+
 # ---- verdict : gravité en couleurs
 iv = ns["im_verdict"]
 ok("verdict : mesuré au-dessus du seuil occupé → 🔴", iv(-60.0, -80.0, -90.0, True, 3, 3)[0] == 3)

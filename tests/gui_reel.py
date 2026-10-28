@@ -373,6 +373,37 @@ for r, st in zip(_rows, _old):
 win.update_watch_table(force=True)
 _t.clearSelection()
 
+# vérification du plan de fréquences (façon EazyRF)
+step("vérifier le plan", win.open_plan_check)
+_pd = win._plan_dlg
+wait(500)
+if _pd is not None:
+    check("plan : une ligne par fréquence", _pd.table.rowCount() == len(win.watch))
+    shot(_pd, "plan_frequences")
+    _bad = [r for r, iss in enumerate(_pd.issues) if iss]
+    if not _bad:                                   # la démo n'a peut-être pas de conflit : on en fabrique un
+        win._append_watch("Trop près", win.watch[0]["freq"] + 0.1, status=next(x["name"] for x in win.statuses if x.get("on")))
+        win.rebuild_watch_table()
+        _pd.compute()
+        _bad = [r for r, iss in enumerate(_pd.issues) if iss]
+    check("plan : au moins un problème trouvé", bool(_bad))
+    _r = _bad[0]
+    _w = _pd.ws[_r]
+    _pd.table.selectRow(_r)
+    step("plan : proposer", _pd.suggest)
+    _c = _pd.sug_list.currentItem().data(Qt.ItemDataRole.UserRole) if _pd.sug_list.currentItem() else None
+    check("plan : proposition trouvée", _c is not None, _pd.sug_list.item(0).text() if _pd.sug_list.count() else "")
+    shot(_pd, "plan_proposition")
+    if _c is not None:
+        _n0 = sum(map(len, _pd.issues))
+        step("plan : remplacer", _pd.replace)
+        app.processEvents()
+        check("plan : fréquence remplacée dans la liste", abs(_w["freq"] - _c) < 1e-9)
+        check("plan : moins de problèmes après", sum(map(len, _pd.issues)) < _n0, f"{_n0} → {sum(map(len, _pd.issues))}")
+    _pd.close()
+else:
+    check("plan : fenêtre ouverte", False)
+
 # changer le nombre de points pendant le balayage (crash.log de Clément, 7.4.2)
 if win.is_running():
     for _ix in (len(m.POINTS_CHOICES) - 2, 0, 4, 2):

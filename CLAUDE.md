@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.4.6**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.5.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -112,6 +112,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   triées du plus grave au moins grave (`sev`). Tolérance 0 (dict) = type ignoré, comme EazyRF ; préréglage
   « 2A − B seulement ». Sur le plan de Clément (558/574/606/614/646/478) : propre en 2A − B seul, conflits en
   A + B − C et IM5 pile dessus → EazyRF / Wisycom ne comptent probablement pas ces produits (non vérifié).
+- Vérifier le plan (🧮, Outils, `PlanCheckDialog`, demande de Clément « comme EazyRF ») : PURE `pf_check` (écart entre
+  porteuses `PF_SEP` bord à bord + intermod des émetteurs selon tolérances ; réserves protégées sans émettre ;
+  produits larges → toutes les fréquences recouvertes), `pf_issue_text`, `pf_suggest` (pré-filtre vectorisé :
+  écart, produits des autres sur la candidate, 3ᵉ ordre impliquant la candidate ; puis `pf_check` exact ;
+  « aucun nouveau problème pour les autres »), `pf_orders` (3 et 5 seulement : le 7ᵉ = 200 M combinaisons à
+  30 TX → « trop gros » silencieux avant). Préréglage par défaut « EazyRF de base » (5ᵉ ignoré). « Remplacer »
+  → `MainWindow.set_watch_freq` + journal « NOUVELLE FRÉQUENCE ». Corrigé au passage : `im_scan.near_t` choisit
+  la cible la plus proche qui n'est pas un émetteur du produit (un produit large était jeté s'il touchait d'abord
+  un de ses émetteurs).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

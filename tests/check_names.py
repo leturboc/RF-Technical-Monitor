@@ -4,7 +4,7 @@ src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("
 tree = ast.parse(src)
 
 # ---- 1. noms globaux non définis (approximation)
-stored = set(dir(builtins))
+stored = set(dir(builtins)) | {"__file__"}       # toujours défini dans un module
 for n in ast.walk(tree):
     if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
         stored.add(n.id)
