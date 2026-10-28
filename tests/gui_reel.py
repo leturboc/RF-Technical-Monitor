@@ -6,6 +6,7 @@ dialogues, capture des PNG et relève les exceptions Qt. Complète les smoke_tes
 Sous Linux il faut PySide6 + libEGL/libGL (apt install libegl1 libgl1 libxkbcommon0 fonts-noto-color-emoji).
 Ne remplace pas un essai sur Windows : sons, vrai port série, double écran et rendu natif ne sont pas testés."""
 import os, sys, tempfile, traceback, importlib.util, time
+import numpy as np
 if sys.platform != "win32":       # Windows : vrai rendu (le mode offscreen n'y a aucune police)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 tmp = tempfile.mkdtemp(prefix="tsm_real_")
@@ -372,6 +373,31 @@ for r, st in zip(_rows, _old):
     win.watch[r]["status"] = st
 win.update_watch_table(force=True)
 _t.clearSelection()
+
+# changer de bande en plein balayage, vue « Toutes les bandes » (retour de Clément : spectre bugué)
+if win.is_running():
+    win.view_combo.setCurrentIndex(0)
+    _old_en = [b["enabled"] for b in win.bands]
+    for _b in win.bands:
+        _b["enabled"] = False
+    _ix = next(i for i in range(win.preset_combo.count()) if win.preset_combo.itemText(i).startswith("2,4 GHz"))
+    step("bande 2,4 GHz à la place des autres", lambda: win.on_preset(_ix))
+    wait(4000)
+    _nb = win.bands[-1]
+    _x = win.curve.getData()[0]
+    _x = _x[~np.isnan(_x)] if _x is not None else _x
+    check("changement de bande : seule la nouvelle bande est tracée", _x is not None and len(_x) > 0
+          and _x.min() >= _nb["start"] - 1 and _x.max() <= _nb["stop"] + 1,
+          f"{None if _x is None or not len(_x) else (_x.min(), _x.max())}")
+    _xr = win.spec.getPlotItem().vb.viewRange()[0]
+    check("changement de bande : l'axe suit", _xr[0] < _nb["start"] + 5 and _xr[1] > _nb["stop"] - 5, str(_xr))
+    shot(win, "bande_2g4")
+    with win.lock:
+        win.bands.pop()
+    for _b, _e in zip(win.bands, _old_en):
+        _b["enabled"] = _e
+    win._bands_changed()
+    wait(3000)
 
 # vérification du plan de fréquences (façon EazyRF)
 step("vérifier le plan", win.open_plan_check)

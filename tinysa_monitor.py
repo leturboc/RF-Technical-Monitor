@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.5.0"
+APP_VER = "7.5.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -256,6 +256,18 @@ def auto_rbw(step_khz):
     """RBW adaptée au pas de mesure (utilisée par le zoom live)."""
     ok = [c for c in RBW_LIST if c <= step_khz * 3]
     return max(ok) if ok else RBW_LIST[0]
+
+
+def input_plan(model_ultra, setting, start_hz):
+    """Entrée à demander au tinySA pour un segment qui commence à start_hz -> "low" | "high" | None (ne rien
+    envoyer). tinySA d'origine : deux prises, « haute » au-delà de ~800 MHz en Auto. tinySA Ultra : UNE seule
+    prise, il monte au-dessus de 800 MHz en mode « ultra » ; lui envoyer « mode high input » en Auto le mettait
+    dans un état bancal (retour de Clément : bandes prédéfinies au-dessus de 800 MHz qui plantent)."""
+    if setting in ("low", "high"):
+        return setting
+    if model_ultra:
+        return None
+    return "high" if start_hz >= 800e6 else "low"
 
 
 def segment_plan(n, max_pts):
@@ -3268,6 +3280,7 @@ class ScanWorker(QtCore.QThread):
         self.rng = np.random.default_rng()
         self.demo_carriers = {}
         self.seg_auto = 290
+        self.ultra = False                         # tinySA Ultra (une seule prise, mode « ultra » > 800 MHz)
         self.st = dict(rbw="?", front="?", high=None)
         self.dev = None
 
@@ -3292,7 +3305,8 @@ class ScanWorker(QtCore.QThread):
                     dev.abort = self.isInterruptionRequested
                     self.dev = dev
                     ver = dev.version()
-                    if "tinysa4" in ver.lower():
+                    self.ultra = "tinysa4" in ver.lower()
+                    if self.ultra:
                         self.seg_auto = 450
                     self.info.emit(ver or "tinySA")
                     self.status.emit(self._say(f"Connecté sur {self.port}"))
@@ -3397,13 +3411,17 @@ class ScanWorker(QtCore.QThread):
             if pts < MIN_PTS:
                 pts = MIN_PTS
             if dev is not None:
-                high = (cfg["input"] == "high") or (cfg["input"] == "auto" and a >= 800e6)
-                if high != self.st["high"]:
+                want = input_plan(self.ultra, cfg["input"], a)
+                if want is not None and (want == "high") != self.st["high"]:
+                    high = want == "high"
                     ok, msg = dev.set_input(high)
                     self.st["high"] = high
                     if not ok:
                         self.status.emit(f"⚠ Changement d'entrée refusé — {msg}")
                     self._apply_front(dev, cfg)
+                if self.ultra and a >= 800e6 and not self.st.get("ultra"):
+                    dev.try_cmd("ultra on")                # au-delà de 800 MHz (sans effet si déjà actif)
+                    self.st["ultra"] = True
                 dev.expect_scan(pts, cfg["rbw"], (z - a) / max(1, pts - 1) / 1e3)
                 fr, lv = dev.scan(a, z, pts)
                 if fr is None or len(fr) != len(lv):
@@ -7406,6 +7424,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.zrbw_combo = self._combo([("Auto (selon zoom)", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])
         self.input_combo = self._combo([("Auto", "auto"), ("Basse (≤ 800 MHz)", "low"),
                                         ("Haute (> 800 MHz)", "high")])
+        self.input_combo.setToolTip("Auto : tinySA d'origine → prise « haute » au-delà de 800 MHz ; tinySA Ultra (une\n"
+                                    "seule prise) → rien n'est changé, il passe en mode « ultra » au-delà de 800 MHz.\n"
+                                    "Basse / Haute : forcé (seulement utile sur un tinySA d'origine).")
         self.lna_combo = self._combo([("Inchangé", None), ("ON", True), ("OFF", False)])
         self.lna_combo.setToolTip("LNA interne du tinySA Ultra (désactive l'atténuateur quand il est ON)")
         self.att_combo = self._combo([("Auto", "auto")] + [(f"{n} dB", n) for n in (0, 5, 10, 15, 20, 25, 30)])
@@ -9010,6 +9031,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _bands_changed(self):
         self._bump()
+        live = {b["id"] for b in self.scan_bands() if b["enabled"]} | {ZOOM_ID} | set(CALIB_IDS)
+        for d in (self.latest, self.maxhold, self.partial_data, self.history):
+            for k in [k for k in d if k not in live]:
+                d.pop(k, None)
         self.rebuild_band_table()
         self.refresh_view_combo()
         self.update_estimate()
@@ -10601,7 +10626,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_plot(self, hist=True):
         nan = np.array([np.nan])
         if self.view_id == -1:
-            keys = [k for k in set(self.latest) | set(self.partial_data) if k != ZOOM_ID]
+            live = {b["id"] for b in self.scan_bands() if b["enabled"]}
+            keys = [k for k in set(self.latest) | set(self.partial_data) if k != ZOOM_ID and k in live]
+            keys = [k for k in keys if self._series(k) is not None and len(self._series(k)[0])]
             keys.sort(key=lambda k: self._series(k)[0][0])
         else:
             keys = [self.view_id] if self._series(self.view_id) is not None else []

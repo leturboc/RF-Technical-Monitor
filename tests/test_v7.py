@@ -434,6 +434,11 @@ t_ = lct(lc, "Festival", "24/10 18:00")
 ok("appel : résumé à copier", t_.splitlines()[0] == "Appel des micros — Festival · 24/10 18:00"
    and "✓ HF 1 · 470.200 MHz · -55 dBm" in t_ and "– HF 6 · 483.600 MHz (ignorée)" in t_, t_)
 check("appel : liste vide", lcs(lcn([]))["text"], "Rien à appeler")
+ip_ = ns["input_plan"]
+check("entrée : tinySA d'origine en Auto", (ip_(False, "auto", 500e6), ip_(False, "auto", 2400e6)), ("low", "high"))
+check("entrée : Ultra en Auto → on ne touche à rien (pas de « mode high »)", (ip_(True, "auto", 500e6), ip_(True, "auto", 2400e6)),
+      (None, None))
+check("entrée : forcée", (ip_(True, "low", 2400e6), ip_(False, "high", 100e6)), ("low", "high"))
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_
