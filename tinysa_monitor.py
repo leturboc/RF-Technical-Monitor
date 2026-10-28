@@ -7061,7 +7061,11 @@ class WallWindow(QtWidgets.QWidget):
         self.screen_btn.setToolTip("Envoie le mur dans une fenêtre sur l'autre écran (2ᵉ écran branché).\n"
                                    "F11 ensuite : plein écran sur cet écran-là.")
         self.screen_btn.clicked.connect(lambda *_: self.owner.wall_window_other_screen())
-        self.screen_btn.setVisible(len(QtGui.QGuiApplication.screens()) > 1)
+        try:
+            n_scr = len(QtGui.QGuiApplication.screens())
+        except TypeError:                     # (faux Qt des tests)
+            n_scr = 1
+        self.screen_btn.setVisible(n_scr > 1)
         self.size_combo = QtWidgets.QComboBox()
         for k, t in WALL_SIZES:
             self.size_combo.addItem(t, k)
