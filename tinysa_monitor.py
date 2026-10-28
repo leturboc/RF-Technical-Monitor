@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.6.2"
+APP_VER = "7.7.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1449,13 +1449,34 @@ def focus_plan(freqs, pts_cap, step_khz=20.0, gap=4.0, margin=0.3, min_pts=101, 
 IM_MAX_PAIRS = 40_000_000       # au-delà, le calcul est refusé (trop long)
 IM_CHUNK = 1_500_000
 IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
-# tolérances (MHz) par type de produit : un produit plus loin que ça de la porteuse est accepté.
-# 2 TX / 3 TX = défauts des guides EazyRF (100 / 50 kHz) ; 5ᵉ / 7ᵉ ordre : notre choix (pas de défaut publié trouvé)
-IM_TOL_PRESETS = [("EazyRF : 2 TX 100 · 3 TX 50 · 5ᵉ / 7ᵉ 50 kHz", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}),
-                  ("EazyRF de base : 2 TX 100 · 3 TX 50 kHz · 5ᵉ ignoré", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
-                  ("2A − B seulement : 2 TX 100 kHz · 3 TX et 5ᵉ ignorés", {"2tx3": 0.100, "3tx3": 0.0, "5": 0.0, "7": 0.0}),
-                  ("Prudent : 200 · 100 · 100 kHz", {"2tx3": 0.200, "3tx3": 0.100, "5": 0.100, "7": 0.100}),
-                  ("Ancien réglage : 300 kHz partout", {"2tx3": 0.300, "3tx3": 0.300, "5": 0.300, "7": 0.300})]
+# Règles d'intermod : tolérance (MHz) par type de produit ; un produit plus loin que ça de la porteuse est accepté,
+# 0 = type ignoré. 100 / 50 kHz = défauts des guides EazyRF (2 TX / 3 TX) ; 5ᵉ ordre : notre choix.
+# Le 1er réglage (Standard, 2A − B seul) est celui par défaut : c'est le contrôle de base des logiciels de
+# coordination, et le plan Wisycom de Clément validé par EazyRF passe avec (pas avec A + B − C ni IM5).
+IM_TOL_PRESETS = [
+    ("🟢 Standard : 2A − B seulement", {"2tx3": 0.100, "3tx3": 0.0, "5": 0.0, "7": 0.0},
+     "Le contrôle classique des logiciels de coordination : les produits à 2 émetteurs (2A − B), les plus forts, "
+     "à ±100 kHz. Un plan validé par EazyRF / Wisycom passe en général avec ce réglage."),
+    ("🟡 3ᵉ ordre complet : + A + B − C", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0},
+     "Ajoute les produits à 3 émetteurs (A + B − C), plus faibles, à ±50 kHz (valeur des guides EazyRF). "
+     "Plus strict : beaucoup de plans utilisables en ont quelques-uns."),
+    ("🟠 Prudent : + 5ᵉ ordre", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.0},
+     "Ajoute le 5ᵉ ordre (3A − 2B, 2A + B − 2C…), encore plus faible. Pour un plan très serré ou du matériel "
+     "sensible."),
+    ("🔴 Très prudent : marges doublées", {"2tx3": 0.200, "3tx3": 0.100, "5": 0.100, "7": 0.0},
+     "Comme « Prudent », avec des marges doublées (200 / 100 / 100 kHz)."),
+]
+IM_TOL_CUSTOM = "✏ Personnalisé"
+
+
+def im_rules_text(tol, sep_mhz=None):
+    """Phrase « ce qui est vérifié » pour des tolérances (et un écart mini entre porteuses)."""
+    def one(k, lab):
+        v = tol.get(k, 0.0)
+        return f"{lab} à moins de {v * 1000:.0f} kHz d'une fréquence" if v > 0 else f"{lab} : non vérifié"
+    parts = ([f"écart d'au moins {sep_mhz * 1000:.0f} kHz entre deux porteuses"] if sep_mhz is not None else [])
+    parts += [one("2tx3", "2A − B (2 émetteurs)"), one("3tx3", "A + B − C (3 émetteurs)"), one("5", "5ᵉ ordre")]
+    return "On vérifie : " + " · ".join(parts)
 
 
 def im_class(order, ntx):
@@ -1688,7 +1709,7 @@ def pf_orders(tol):
     return tuple(o for o, k in ((3, "2tx3"), (5, "5")) if tol.get(k, 0) > 0 or (o == 3 and tol.get("3tx3", 0) > 0))
 
 
-def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=3):
+def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None):
     """Compatibilité d'un plan : pour chaque fréquence, la liste de ses problèmes.
     - « sep » : une autre porteuse à moins de `sep` MHz (bord à bord pour un bloc large) ;
     - « im » : un produit d'intermod des ÉMETTEURS (is_tx) tombe dessus, dans la tolérance de son type (`tol`,
@@ -1699,6 +1720,8 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=3):
     B = np.zeros(n) if bws is None else np.clip(np.asarray(list(bws), dtype=float), 0.0, None)
     tx = np.ones(n, dtype=bool) if is_tx is None else np.asarray(list(is_tx), dtype=bool)
     tol = dict(IM_TOL_PRESETS[0][1] if tol is None else tol)
+    if max_tx is None:
+        max_tx = 3 if tol.get("3tx3", 0) > 0 or tol.get("5", 0) > 0 else 2
     issues = [[] for _ in range(n)]
     info = dict(pairs=0, truncated=False, too_big=False)
     if n < 2:
@@ -1741,7 +1764,7 @@ def pf_issue_text(it, names, freqs):
                                                         f" (à {it['gap'] * 1000:.0f} kHz)")
 
 
-def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=3, lo=None, hi=None, step=0.025,
+def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, lo=None, hi=None, step=0.025,
                n=5, busy=None, max_check=600):
     """Fréquences de remplacement pour la n° i, les plus proches d'abord : aucune incompatibilité pour elle,
     et pas de NOUVEAU problème pour les autres. busy(c) -> True si le spectre mesuré y est occupé (on évite).
@@ -1753,6 +1776,8 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=3, l
     B = [0.0] * nn if bws is None else [float(x or 0.0) for x in bws]
     T = [True] * nn if is_tx is None else [bool(x) for x in is_tx]
     tol = dict(IM_TOL_PRESETS[0][1] if tol is None else tol)
+    if max_tx is None:
+        max_tx = 3 if tol.get("3tx3", 0) > 0 or tol.get("5", 0) > 0 else 2
     f0, bi = F[i], B[i]
     lo = f0 - 10.0 if lo is None else lo
     hi = f0 + 10.0 if hi is None else hi
@@ -5131,6 +5156,15 @@ class QuickNameDialog(QtWidgets.QDialog):
 # --------------------------------------------------------------------------
 # Dialogue : intermodulation (2 / 3 / 5 TX) et origine d'un signal
 # --------------------------------------------------------------------------
+def fill_rules_combo(combo):
+    """Règles d'intermod dans une liste : nom + explication en bulle, et « Personnalisé » à la fin."""
+    for txt, d, why in IM_TOL_PRESETS:
+        combo.addItem(txt, d)
+        combo.setItemData(combo.count() - 1, why, Qt.ItemDataRole.ToolTipRole)
+    combo.addItem(IM_TOL_CUSTOM, None)
+    combo.setItemData(combo.count() - 1, "Tes tolérances à toi (0 = type ignoré).", Qt.ItemDataRole.ToolTipRole)
+
+
 class IntermodDialog(QtWidgets.QDialog):
     def __init__(self, owner, origin=None):
         super().__init__(owner)
@@ -5192,12 +5226,13 @@ class IntermodDialog(QtWidgets.QDialog):
                                 "d'EazyRF).\n0 = « ignoré » : ce type de produit n'est pas compté du tout.")
             self.tol_spins[key] = sp
         self.tol_combo = QtWidgets.QComboBox()
-        for txt, d in IM_TOL_PRESETS:
-            self.tol_combo.addItem(txt, d)
-        self.tol_combo.setToolTip("Préréglages de tolérances. EazyRF : valeurs par défaut de ses guides (2 TX 100 kHz,\n"
-                                  "3 TX 50 kHz). Mets les mêmes que dans ton logiciel de coordination pour comparer.")
+        fill_rules_combo(self.tol_combo)
+        self.tol_combo.setToolTip("Quels produits comptent, et à quelle distance de ta fréquence (survole chaque choix).\n"
+                                  "Standard = 2A − B seulement, le contrôle classique des logiciels de coordination.")
         self.tol_combo.currentIndexChanged.connect(lambda *_: self._tol_preset())
         self._tol_preset()
+        for sp in self.tol_spins.values():
+            sp.valueChanged.connect(lambda *_: self._tol_custom())
         bands = [b for b in owner.bands if b["enabled"]]
         self.fmin_spin = QtWidgets.QDoubleSpinBox()
         self.fmax_spin = QtWidgets.QDoubleSpinBox()
@@ -5214,7 +5249,7 @@ class IntermodDialog(QtWidgets.QDialog):
         lay.addLayout(R("Mode :", self.mode_combo, self.freq_spin, None))
         lay.addLayout(R(self.src_combo, self.active_chk, self.src_lbl, None))
         lay.addLayout(R("Combinaisons :", self.maxtx_combo, self.o3_chk, self.o5_chk, self.o7_chk, None))
-        lay.addLayout(R(self.tgt_combo, "Tolérances :", self.tol_combo, None))
+        lay.addLayout(R(self.tgt_combo, "Règles :", self.tol_combo, None))
         lay.addLayout(R("2 TX :", self.tol_spins["2tx3"], "3 TX :", self.tol_spins["3tx3"],
                         "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], None))
         lay.addLayout(R("Plage (liste complète) :", self.fmin_spin, "à", self.fmax_spin, None, self.go_btn))
@@ -5292,8 +5327,19 @@ class IntermodDialog(QtWidgets.QDialog):
 
     def _tol_preset(self):
         d = self.tol_combo.currentData()
+        if d is None:
+            return
+        self._applying = True
         for k, sp in self.tol_spins.items():
             sp.setValue(int(round(d[k] * 1000)))
+        self._applying = False
+
+    def _tol_custom(self):
+        if getattr(self, "_applying", False):
+            return
+        self.tol_combo.blockSignals(True)
+        self.tol_combo.setCurrentIndex(self.tol_combo.count() - 1)
+        self.tol_combo.blockSignals(False)
 
     def tolerances(self):
         """-> dict pour im_scan (MHz) : 2 TX, 3 TX, 5ᵉ et 7ᵉ ordre."""
@@ -6018,17 +6064,10 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.sep_spin.setSuffix(" kHz")
         self.sep_spin.setToolTip("Écart minimal entre deux porteuses (bord à bord pour un bloc large).\n"
                                  "Mets la même valeur que dans ton logiciel de coordination / tes appareils.")
-        self.maxtx_combo = QtWidgets.QComboBox()
-        self.maxtx_combo.addItem("Intermod jusqu'à 3 TX", 3)
-        self.maxtx_combo.addItem("Intermod 2 TX seulement", 2)
-        self.maxtx_combo.setToolTip("Nombre d'émetteurs combinés dans un produit (3 TX : A + B − C en plus de 2A − B).")
         self.tol_combo = QtWidgets.QComboBox()
-        for txt, d in IM_TOL_PRESETS:
-            self.tol_combo.addItem(txt, d)
-        self.tol_combo.setToolTip("Tolérances d'intermod (comme EazyRF). 0 = ce type de produit est ignoré.\n"
-                                  "Par défaut « EazyRF de base » : le 5ᵉ ordre est une option dans EazyRF (version Pro).")
-        self.tol_combo.setCurrentIndex(max(0, next((k for k, (t_, _d) in enumerate(IM_TOL_PRESETS)
-                                                    if t_.startswith("EazyRF de base")), 0)))
+        fill_rules_combo(self.tol_combo)
+        self.tol_combo.setToolTip("Quelle sévérité ? Survole chaque choix pour l'explication.\n"
+                                  "Standard = 2A − B seulement : le contrôle classique (EazyRF, WWB…).")
         self.tol_spins = {}
         for key in ("2tx3", "3tx3", "5"):
             sp = QtWidgets.QSpinBox()
@@ -6040,14 +6079,21 @@ class PlanCheckDialog(QtWidgets.QDialog):
             sp.setToolTip({"2tx3": "2 TX, 3ᵉ ordre (2A − B).", "3tx3": "3 TX, 3ᵉ ordre (A + B − C).",
                            "5": "5ᵉ ordre et plus."}[key] + "\n0 = ignoré.")
             self.tol_spins[key] = sp
+        self.rule_lbl = QtWidgets.QLabel("")
+        self.rule_lbl.setWordWrap(True)
+        self.rule_lbl.setMinimumHeight(self.rule_lbl.fontMetrics().height() * 3)
         self.tol_combo.currentIndexChanged.connect(lambda *_: self._preset())
+        for sp in self.tol_spins.values():
+            sp.valueChanged.connect(lambda *_: self._custom())
+        self.sep_spin.valueChanged.connect(lambda *_: self._explain())
         self._preset()
         self.go_btn = QtWidgets.QPushButton("🧮 Vérifier")
         self.go_btn.setToolTip("Calcule la compatibilité de tout le plan.")
         self.go_btn.clicked.connect(lambda *_: self.compute())
-        lay.addLayout(R(self.src_combo, "Écart mini :", self.sep_spin, self.maxtx_combo, None))
-        lay.addLayout(R("Tolérances :", self.tol_combo, "2 TX :", self.tol_spins["2tx3"], "3 TX :",
-                        self.tol_spins["3tx3"], "5ᵉ :", self.tol_spins["5"], None, self.go_btn))
+        lay.addLayout(R(self.src_combo, "Règles :", self.tol_combo, None, self.go_btn))
+        lay.addLayout(R("Écart mini :", self.sep_spin, "2A − B :", self.tol_spins["2tx3"], "A + B − C :",
+                        self.tol_spins["3tx3"], "5ᵉ ordre :", self.tol_spins["5"], None))
+        lay.addWidget(self.rule_lbl)
         self.sum_lbl = QtWidgets.QLabel("")
         f_ = self.sum_lbl.font()
         f_.setPointSize(f_.pointSize() + 3)
@@ -6092,8 +6138,24 @@ class PlanCheckDialog(QtWidgets.QDialog):
 
     def _preset(self):
         d = self.tol_combo.currentData()
-        for k, sp in self.tol_spins.items():
-            sp.setValue(int(round(d[k] * 1000)))
+        if d is not None:
+            self._applying = True
+            for k, sp in self.tol_spins.items():
+                sp.setValue(int(round(d[k] * 1000)))
+            self._applying = False
+        self._explain()
+
+    def _custom(self):
+        if not getattr(self, "_applying", False):
+            self.tol_combo.blockSignals(True)
+            self.tol_combo.setCurrentIndex(self.tol_combo.count() - 1)
+            self.tol_combo.blockSignals(False)
+        self._explain()
+
+    def _explain(self):
+        why = self.tol_combo.itemData(self.tol_combo.currentIndex(), Qt.ItemDataRole.ToolTipRole) or ""
+        self.rule_lbl.setText(f"<b>{self.tol_combo.currentText()}</b> — {why}<br>"
+                              + im_rules_text(self.tolerances(), self.sep_spin.value() / 1000.0) + ".")
 
     def tolerances(self):
         t5 = self.tol_spins["5"].value() / 1000.0
@@ -6104,8 +6166,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         o = self.owner
         ws = [w for w in o.watch if self.src_combo.currentData() == "all" or o.in_scope(w)]
         return (ws, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
-                [float(w.get("bw") or 0.0) for w in ws], self.sep_spin.value() / 1000.0, self.tolerances(),
-                self.maxtx_combo.currentData())
+                [float(w.get("bw") or 0.0) for w in ws], self.sep_spin.value() / 1000.0, self.tolerances(), None)
 
     def compute(self):
         ws, F, T, B, sep, tol, mx = self._params()
@@ -6147,7 +6208,14 @@ class PlanCheckDialog(QtWidgets.QDialog):
         elif not bad:
             self.sum_lbl.setText(f"✔ Plan compatible : {n} / {n} fréquences sans problème (pour ces règles).")
         else:
-            self.sum_lbl.setText(f"✗ {bad} fréquence(s) à revoir sur {n} · ✔ {n - bad} compatibles. "
+            kinds = {"sep": 0, "2tx3": 0, "3tx3": 0, "5": 0}
+            for iss in self.issues:
+                for it in iss:
+                    k_ = "sep" if it["kind"] == "sep" else im_class(it["order"], it["ntx"])
+                    kinds[k_ if k_ in kinds else "5"] += 1
+            det = " · ".join(f"{v} {lab}" for lab, v in (("écart trop faible", kinds["sep"]), ("2A − B", kinds["2tx3"]),
+                                                          ("A + B − C", kinds["3tx3"]), ("5ᵉ ordre", kinds["5"])) if v)
+            self.sum_lbl.setText(f"✗ {bad} fréquence(s) à revoir sur {n} · ✔ {n - bad} compatibles ({det}). "
                                  "Choisis une ligne ✗ puis « Proposer ».")
         self.sum_lbl.setStyleSheet(f"color:{th['st_free'] if n and not bad else th['st_occ'] if bad else th['ui_text']}")
         self.sug_list.clear()

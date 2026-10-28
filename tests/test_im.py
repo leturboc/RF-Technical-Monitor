@@ -214,8 +214,16 @@ ok("blocs : tri du plus gênant (chevauchement) au moins gênant", all(
 # ---- tolérances par type de produit (façon EazyRF)
 ok("classes de produits", [ns["im_class"](3, 2), ns["im_class"](3, 3), ns["im_class"](5, 2), ns["im_class"](5, 4)]
    == ["2tx3", "3tx3", "5", "5"])
-EZ = dict(ns["IM_TOL_PRESETS"][0][1])
-ok("préréglage EazyRF : 100 / 50 kHz", EZ["2tx3"] == 0.1 and EZ["3tx3"] == 0.05)
+EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}      # tolérances EazyRF complètes (2 / 3 TX + 5ᵉ)
+_P = ns["IM_TOL_PRESETS"]
+ok("règles : Standard d'abord = 2A − B seulement", _P[0][0].startswith("🟢 Standard") and _P[0][1]["3tx3"] == 0
+   and _P[0][1]["5"] == 0 and _P[0][1]["2tx3"] == 0.1)
+ok("règles : chaque niveau est expliqué", all(len(w_) > 40 for _t, _d, w_ in _P))
+ok("règles : phrase « on vérifie »", ns["im_rules_text"](_P[0][1], 0.3) ==
+   "On vérifie : écart d'au moins 300 kHz entre deux porteuses · 2A − B (2 émetteurs) à moins de 100 kHz d'une "
+   "fréquence · A + B − C (3 émetteurs) : non vérifié · 5ᵉ ordre : non vérifié")
+ok("plan Wisycom de Clément : compatible avec la règle Standard (comme EazyRF)",
+   not any(ns["pf_check"]([558.0, 574.0, 606.0, 614.0, 646.0, 478.0])[0]))
 # 2A − B à 80 kHz d'une cible : gênant (2 TX, < 100) ; A + B − C à 80 kHz : accepté (3 TX, > 50)
 rows, _ = im_scan([500.0, 501.0], (3,), 2, targets=[499.08], guard=EZ)
 ok("2 TX à 80 kHz : gênant", len(rows) == 1 and rows[0]["ntx"] == 2, str(rows))
