@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.5.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.6.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -209,6 +209,15 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   Commande « ultra on » **non vérifiée sur un vrai Ultra** (si refusée : ignorée).
 - Vue « Toutes les bandes » : `update_plot` ne trace que les bandes cochées ; `_bands_changed` oublie les données
   des bandes décochées / supprimées (avant : ancienne et nouvelle bande mélangées jusqu'à la fin d'un cycle).
+- **Diagnostic tinySA** : `TinySA(port, baud, trace)` note chaque commande / réponse / erreur ; `ScanWorker.trace`
+  (deque 800) ; `MainWindow.dump_diag` → `<journaux>/diagnostic/diagnostic_tinysa_*.txt` (versions, réglages,
+  bandes, échanges), automatique sur liaison perdue / erreur (1 / min), menu Outils › 🩺. **Le demander à Clément**
+  pour tout bug avec le vrai tinySA (bandes qui « plantent » après 7.5.1 : cause non trouvée en démo).
+- Vitesse série `baud_combo` (expert, config `baud`, 115200) : ignorée en USB (CDC), utile sur un vrai port série.
+- Convertisseur de scans `ScanConvertDialog` (Outils › 🔁) : entrée auto (`parse_scan_text`) ou CSV personnalisé
+  (`parse_scan_custom` : séparateur, colonnes, unités, lignes sautées), ou scan en cours ; sortie `scan_write`
+  (wwb, wsm — format supposé —, csv : séparateur, décimale, unités, en-tête). Remplace « WSM → WWB » et
+  « Exporter le scan au format WWB » dans le menu (`convert_wsm_wwb` / `export_scan_wwb` restent, testés).
 - Modifications du gros fichier : patchs « remplacer exactement une occurrence » (échouer si 0 ou 2 correspondances),
   puis `python -m py_compile tinysa_monitor.py`, les tests, et ne jamais committer `__pycache__`.
 

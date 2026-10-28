@@ -76,6 +76,12 @@ relay.stop()
 relay.join(4)
 check("coupure détectée : link(False)", wait_until(lambda: ev["links"][:1] == [False], 30), str(ev["links"]))
 check("pas d'erreur bloquante", not ev["errors"], str(ev["errors"]))
+tr_ = list(w.trace)
+check("diagnostic : échanges notés (connexion, commandes, réponses, liaison perdue)",
+      any("connexion à" in t for t in tr_) and any(">> version" in t for t in tr_)
+      and any(">> scan " in t for t in tr_) and any("<< " in t for t in tr_)
+      and any("liaison perdue" in t for t in tr_) and any("cycle : UHF 470–530 MHz 301 pts" in t for t in tr_),
+      "\n".join(tr_[-8:]))
 check("le worker tourne toujours (réessaie)", w.isRunning())
 n_before = len(ev["sweeps"])
 # --- retour du relais sur le même port

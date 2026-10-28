@@ -15,6 +15,8 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 - **Alarmes** : panneau dédié, acquittement, priorité par groupe (Critique ❗ = son répété jusqu'à acquittement)
 - **Intermodulation** 2 / 3 / 5 TX (ordres 3, 5, 7), tolérances par type de produit comme EazyRF (2 TX 100 kHz,
   3 TX 50 kHz par défaut), et « d'où ça peut venir ? » pour un signal inconnu
+- **🔁 Convertisseur de scans** : WSM, WWB ou CSV au choix (colonnes, unités, séparateur), en entrée comme en sortie
+- **🩺 Diagnostic tinySA** : fichier avec les derniers échanges avec le tinySA, à envoyer en cas de bug
 - **🧮 Vérifier le plan de fréquences** (Outils), comme EazyRF : écart entre porteuses et intermod selon tes
   tolérances, ✔ / ✗ par fréquence avec le détail, et une fréquence de remplacement compatible en un clic
 - **🎤 Appel des micros** (Ctrl+L) : allume tes émetteurs, chaque fréquence passe ✓ ; résumé au journal, pack mal

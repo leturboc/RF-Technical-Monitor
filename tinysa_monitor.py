@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.5.1"
+APP_VER = "7.6.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2127,6 +2127,78 @@ def wwb_scan_text(F, L):
     return "\r\n".join(out) + "\r\n"
 
 
+# ------------------------------------------------- convertisseur de scans (entrée / sortie au choix)
+SCAN_LEVEL_UNITS = [("dbm", "dBm"), ("dbuv", "dBµV"), ("pct", "% (échelle WSM : 0 % = −120 dBm, 100 % = 0 dBm)")]
+SCAN_FREQ_UNITS = ["auto", "Hz", "kHz", "MHz", "GHz"]
+SCAN_SEPS = [("auto", "auto"), (";", "point-virgule ;"), (",", "virgule ,"), ("\t", "tabulation"), (" ", "espace")]
+
+
+def parse_scan_custom(text, sep="auto", fcol=0, lcol=1, funit="auto", lunit="dbm", skip=0, dec="auto"):
+    """Lit un scan CSV « à la main » : colonnes (comptées à partir de 0), unités, lignes d'en-tête à sauter.
+    Les lignes illisibles (en-têtes, pieds de page) sont ignorées. -> (F MHz croissant, L dBm, info)."""
+    text = str(text).lstrip("\ufeff")
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")[max(0, int(skip)):]
+    F, L, hint = [], [], None
+    for ln in lines:
+        s_ = ln.strip()
+        if not s_:
+            continue
+        if sep == "auto":
+            toks = _scan_tokens(s_)
+        else:
+            toks = [t.strip().strip('"') for t in (s_.split(sep) if sep != " " else s_.split())]
+        if len(toks) <= max(fcol, lcol):
+            hint = hint or _scan_unit_hint(s_)
+            continue
+        a, b = toks[fcol], toks[lcol]
+        if dec == ".":
+            a, b = a.replace(",", ""), b.replace(",", "")
+        f, l = _scan_float(a), _scan_float(b)
+        if f is None or l is None:
+            hint = hint or _scan_unit_hint(s_)
+            continue
+        F.append(f)
+        L.append(l)
+    if len(F) < 2:
+        raise ValueError("je ne trouve pas de lignes lisibles avec ces colonnes / ce séparateur")
+    F = np.asarray(F, dtype=float)
+    L = np.asarray(L, dtype=float)
+    F = F * scan_unit_scale(F, hint if funit == "auto" else funit)
+    L = np.asarray([from_unit(float(v), lunit) for v in L], dtype=float)
+    o = np.argsort(F, kind="stable")
+    return F[o], L[o], dict(fmt="custom", n=len(F), unit=funit, note="")
+
+
+def scan_write(F, L, fmt="wwb", sep=";", dec=",", funit="MHz", lunit="dbm", header=True, title=""):
+    """Écrit un scan : fmt « wwb » (Shure : « 470.000, -98 »), « wsm » (Sennheiser, format supposé d'après
+    les exports WSM : kHz et %), « csv » (personnalisé : séparateur, décimale, unités, en-tête)."""
+    if fmt == "wwb":
+        return wwb_scan_text(F, L)
+    if fmt == "wsm":
+        out = ["Sennheiser Wireless Systems Manager", f"Scan : {title or 'TinySA Monitor'}", "Receiver : tinySA",
+               f"Start : {float(F[0]) * 1000:.0f} kHz", f"Stop : {float(F[-1]) * 1000:.0f} kHz", "",
+               "Frequency;RF level (%);RF level;Memory (%);Memory"]
+        for f, l in zip(F, L):
+            if math.isfinite(float(f)) and math.isfinite(float(l)):
+                pct = to_unit(float(l), "pct")
+                out.append(f"{float(f) * 1000:.0f};{pct:.1f};{float(l):.1f};{pct:.1f};{float(l):.1f}".replace(".", ","))
+        return "\r\n".join(out) + "\r\n"
+    div = {"Hz": 1e-6, "kHz": 1e-3, "MHz": 1.0, "GHz": 1e3}.get(funit, 1.0)
+    nd = {"Hz": 0, "kHz": 3, "MHz": 6, "GHz": 9}.get(funit, 6)
+    sp = sep
+    lu = dict(SCAN_LEVEL_UNITS).get(lunit, "dBm").split(" ")[0]
+    out = [sp.join([f"Fréquence ({funit})", f"Niveau ({lu})"])] if header else []
+    for f, l in zip(F, L):
+        f, l = float(f), float(l)
+        if not (math.isfinite(f) and math.isfinite(l)):
+            continue
+        a, b = f"{f / div:.{nd}f}", f"{to_unit(l, lunit):.1f}"
+        if dec == ",":
+            a, b = a.replace(".", ","), b.replace(".", ",")
+        out.append(sp.join([a, b]))
+    return "\r\n".join(out) + "\r\n"
+
+
 def wsm_to_wwb_text(text):
     """Export WSM (ou tout scan lisible) -> texte pour WWB. -> (texte, info)."""
     F, L, info = parse_scan_text(text)
@@ -3174,12 +3246,14 @@ class TinySA:
     PROMPT = b"ch>"
     NET_IDLE_MIN = 20.0          # réseau : liaison déclarée muette après ce silence (s), allongé selon le RBW
 
-    def __init__(self, port):
+    def __init__(self, port, baud=115200, trace=None):
         # port : « COM3 » (USB) ou « socket://192.168.1.20:5025 » (réseau, via le relais ou ser2net)
+        # baud : ignoré en USB (port COM virtuel) ; ne compte que sur un vrai port série (adaptateur, connecteur)
         self.net = "://" in str(port)
         self.idle = self.NET_IDLE_MIN          # tinySA muet (réseau coupé, appareil figé) : erreur → reconnexion
         self.abort = None                      # fonction : True = abandonner la commande en cours (Arrêter)
-        self.ser = serial.serial_for_url(port, 115200, timeout=0.2)
+        self.trace = trace                     # fonction(texte) : journal des échanges (diagnostic)
+        self.ser = serial.serial_for_url(port, int(baud), timeout=0.2)
         self.ser.reset_input_buffer()
         self.cmd("", timeout=5)
 
@@ -3190,6 +3264,20 @@ class TinySA:
             pass
 
     def cmd(self, text, timeout=15.0):
+        if self.trace is None:
+            return self._cmd(text, timeout)
+        t0 = time.time()
+        self.trace(f">> {text or '(entrée)'}")
+        try:
+            lines = self._cmd(text, timeout)
+        except Exception as e:
+            self.trace(f"!! {type(e).__name__} : {e} (après {time.time() - t0:.1f} s)")
+            raise
+        first = lines[0][:70] if lines else ""
+        self.trace(f"<< {len(lines)} ligne(s) en {time.time() - t0:.2f} s" + (f" : {first}" if first else ""))
+        return lines
+
+    def _cmd(self, text, timeout=15.0):
         self.ser.reset_input_buffer()
         self.ser.write((text + "\r").encode())
         buf, t0 = b"", time.time()
@@ -3281,6 +3369,8 @@ class ScanWorker(QtCore.QThread):
         self.demo_carriers = {}
         self.seg_auto = 290
         self.ultra = False                         # tinySA Ultra (une seule prise, mode « ultra » > 800 MHz)
+        self.baud = 115200
+        self.trace = deque(maxlen=800)             # derniers échanges avec le tinySA (diagnostic)
         self.st = dict(rbw="?", front="?", high=None)
         self.dev = None
 
@@ -3293,6 +3383,9 @@ class ScanWorker(QtCore.QThread):
     def _say(self, txt):
         return f"{self.label} : {txt}" if self.label else txt
 
+    def _tr(self, txt):
+        self.trace.append(f"{datetime.now():%H:%M:%S.%f}"[:-3] + " " + txt)
+
     def run(self):
         """Balaye en boucle. Liaison perdue (câble, réseau) : signal link(False), nouvel essai toutes les
         RETRY_S secondes, link(True) au retour. Échec de la toute 1re connexion : error (sauf retry_first)."""
@@ -3301,7 +3394,8 @@ class ScanWorker(QtCore.QThread):
             dev = None
             try:
                 if not self.demo:
-                    dev = TinySA(self.port)
+                    self._tr(f"connexion à {self.port} ({self.baud} bauds)")
+                    dev = TinySA(self.port, self.baud, self._tr)
                     dev.abort = self.isInterruptionRequested
                     self.dev = dev
                     ver = dev.version()
@@ -3330,6 +3424,7 @@ class ScanWorker(QtCore.QThread):
                     lost = True
                     self.link.emit(False)
                 fails += 1
+                self._tr(f"liaison perdue : {e}")
                 hint = (" · le tinySA semble figé : débranche / rebranche son USB (ou éteins-le / rallume-le)"
                         if fails >= 3 else "")
                 self.status.emit(self._say(f"⚠ liaison perdue ({e}) — nouvel essai dans {self.RETRY_S} s{hint}"))
@@ -3353,6 +3448,9 @@ class ScanWorker(QtCore.QThread):
                 continue
             if dev is not None:
                 self._apply_settings(dev, cfg)
+                self._tr("cycle : " + ", ".join(f"{b['name']} {b['start_hz'] / 1e6:g}–{b['stop_hz'] / 1e6:g} MHz "
+                                                f"{int(b['n'])} pts" for b in bands)
+                         + f" · RBW {cfg['rbw'] or 'auto'} · entrée {cfg['input']}")
             t0, aborted = time.time(), False
             for b in bands:
                 res = self._scan_band(dev, b, cfg)
@@ -6113,6 +6211,222 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.owner.set_status(f"{w['name']} : {old:.3f} → {c:.3f} MHz (plan vérifié).")
 
 
+class ScanConvertDialog(QtWidgets.QDialog):
+    """Convertit un scan d'un logiciel à l'autre : entrée (auto, CSV au choix, scan en cours) → sortie (WWB, WSM,
+    CSV au choix), avec un aperçu."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Convertir / exporter un scan")
+        self.resize(820, 600)
+        self.paths, self.F, self.L = [], None, None
+        lay = QtWidgets.QVBoxLayout(self)
+        R = owner._row
+        # ---- entrée
+        ib = QtWidgets.QGroupBox("Entrée")
+        il = QtWidgets.QVBoxLayout(ib)
+        self.open_btn = QtWidgets.QPushButton("📂 Ouvrir un ou plusieurs fichiers…")
+        self.open_btn.setToolTip("Scans exportés de WSM, WWB, EazyRF, d'un tableur…")
+        self.open_btn.clicked.connect(lambda *_: self.open_files())
+        self.cur_btn = QtWidgets.QPushButton("📈 Prendre le scan en cours")
+        self.cur_btn.setToolTip("Le spectre mesuré par le tinySA (max hold ou dernier balayage).")
+        self.cur_btn.clicked.connect(lambda *_: self.use_current())
+        self.cur_combo = QtWidgets.QComboBox()
+        self.cur_combo.addItem("Max hold (recommandé)", True)
+        self.cur_combo.addItem("Dernier balayage", False)
+        self.cur_combo.setToolTip("Quelle courbe prendre quand on part du scan en cours.")
+        self.src_lbl = QtWidgets.QLabel("Aucun scan chargé.")
+        self.src_lbl.setWordWrap(True)
+        self.in_fmt = QtWidgets.QComboBox()
+        self.in_fmt.addItem("Format : reconnaître tout seul (WSM, WWB, « fréquence ; niveau »)", "auto")
+        self.in_fmt.addItem("Format : CSV personnalisé (je choisis les colonnes)", "custom")
+        self.in_fmt.setToolTip("Auto : export WSM (kHz, %) ou fichier « fréquence, niveau ».\n"
+                               "Personnalisé : séparateur, colonnes, unités et lignes à sauter au choix.")
+        self.in_sep = QtWidgets.QComboBox()
+        for k, t in SCAN_SEPS:
+            self.in_sep.addItem(t, k)
+        self.in_sep.setToolTip("Séparateur des colonnes du fichier.")
+        self.in_fcol, self.in_lcol, self.in_skip = QtWidgets.QSpinBox(), QtWidgets.QSpinBox(), QtWidgets.QSpinBox()
+        for sp_, v, tip in ((self.in_fcol, 1, "Numéro de la colonne des fréquences (1 = la première)."),
+                            (self.in_lcol, 2, "Numéro de la colonne des niveaux."),
+                            (self.in_skip, 0, "Lignes à sauter au début (titre, réglages…). Les lignes illisibles\n"
+                                              "sont de toute façon ignorées.")):
+            sp_.setRange(0 if sp_ is self.in_skip else 1, 200)
+            sp_.setValue(v)
+            sp_.setToolTip(tip)
+        self.in_funit, self.in_lunit = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+        for u in SCAN_FREQ_UNITS:
+            self.in_funit.addItem("auto (d'après les valeurs)" if u == "auto" else u, u)
+        for k, t in SCAN_LEVEL_UNITS:
+            self.in_lunit.addItem(t, k)
+        self.in_funit.setToolTip("Unité des fréquences du fichier.")
+        self.in_lunit.setToolTip("Unité des niveaux du fichier.")
+        self.custom_box = QtWidgets.QWidget()
+        cb = QtWidgets.QVBoxLayout(self.custom_box)
+        cb.setContentsMargins(0, 0, 0, 0)
+        cb.addLayout(R("Séparateur :", self.in_sep, "Colonne fréquence :", self.in_fcol, "Colonne niveau :",
+                       self.in_lcol, None))
+        cb.addLayout(R("Fréquences en :", self.in_funit, "Niveaux en :", self.in_lunit, "Sauter :", self.in_skip,
+                       "ligne(s)", None))
+        il.addLayout(R(self.open_btn, self.cur_btn, self.cur_combo, None))
+        il.addWidget(self.in_fmt)
+        il.addWidget(self.custom_box)
+        il.addWidget(self.src_lbl)
+        lay.addWidget(ib)
+        # ---- sortie
+        ob = QtWidgets.QGroupBox("Sortie")
+        ol = QtWidgets.QVBoxLayout(ob)
+        self.out_fmt = QtWidgets.QComboBox()
+        self.out_fmt.addItem("Shure WWB (scan à importer)", "wwb")
+        self.out_fmt.addItem("Sennheiser WSM (format supposé, d'après les exports WSM)", "wsm")
+        self.out_fmt.addItem("CSV personnalisé (EazyRF, tableur…)", "csv")
+        self.out_fmt.setToolTip("WWB : « 470.000, -98 », MHz et dBm, sans en-tête.\n"
+                                "WSM : kHz et % comme ses exports (import dans WSM non vérifié).\n"
+                                "CSV : à toi de choisir séparateur, décimale, unités.")
+        self.out_sep, self.out_dec = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+        for k, t in SCAN_SEPS[1:]:
+            self.out_sep.addItem(t, k)
+        self.out_dec.addItem("virgule (0,5)", ",")
+        self.out_dec.addItem("point (0.5)", ".")
+        self.out_funit, self.out_lunit = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+        for u in SCAN_FREQ_UNITS[1:]:
+            self.out_funit.addItem(u, u)
+        self.out_funit.setCurrentIndex(2)
+        for k, t in SCAN_LEVEL_UNITS:
+            self.out_lunit.addItem(t, k)
+        self.out_hdr = QtWidgets.QCheckBox("Ligne d'en-tête")
+        self.out_hdr.setChecked(True)
+        for wd, tip in ((self.out_sep, "Séparateur des colonnes."), (self.out_dec, "Séparateur décimal."),
+                        (self.out_funit, "Unité des fréquences."), (self.out_lunit, "Unité des niveaux."),
+                        (self.out_hdr, "Ajoute « Fréquence (MHz) ; Niveau (dBm) » en première ligne.")):
+            wd.setToolTip(tip)
+        self.csv_box = QtWidgets.QWidget()
+        xb = QtWidgets.QVBoxLayout(self.csv_box)
+        xb.setContentsMargins(0, 0, 0, 0)
+        xb.addLayout(R("Séparateur :", self.out_sep, "Décimale :", self.out_dec, self.out_hdr, None))
+        xb.addLayout(R("Fréquences en :", self.out_funit, "Niveaux en :", self.out_lunit, None))
+        ol.addWidget(self.out_fmt)
+        ol.addWidget(self.csv_box)
+        lay.addWidget(ob)
+        self.preview = QtWidgets.QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setToolTip("Les premières lignes du fichier qui sera écrit.")
+        f_ = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
+        self.preview.setFont(f_)
+        lay.addWidget(QtWidgets.QLabel("Aperçu du fichier de sortie :"))
+        lay.addWidget(self.preview, 1)
+        self.save_btn = QtWidgets.QPushButton("💾 Convertir et enregistrer…")
+        self.save_btn.setToolTip("Écrit le fichier (un par fichier d'entrée s'il y en a plusieurs, à côté d'eux).")
+        self.save_btn.clicked.connect(lambda *_: self.save())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addLayout(R(None, self.save_btn, close))
+        for wd in (self.in_fmt, self.in_sep, self.in_funit, self.in_lunit, self.out_fmt, self.out_sep, self.out_dec,
+                   self.out_funit, self.out_lunit):
+            wd.currentIndexChanged.connect(lambda *_: self.reload())
+        for wd in (self.in_fcol, self.in_lcol, self.in_skip):
+            wd.valueChanged.connect(lambda *_: self.reload())
+        self.out_hdr.toggled.connect(lambda *_: self.reload())
+        self.reload()
+
+    def _read(self, text):
+        if self.in_fmt.currentData() == "custom":
+            return parse_scan_custom(text, self.in_sep.currentData(), self.in_fcol.value() - 1,
+                                     self.in_lcol.value() - 1, self.in_funit.currentData(),
+                                     self.in_lunit.currentData(), self.in_skip.value())
+        return parse_scan_text(text)
+
+    def _write(self, F, L, title=""):
+        return scan_write(F, L, self.out_fmt.currentData(), self.out_sep.currentData(), self.out_dec.currentData(),
+                          self.out_funit.currentData(), self.out_lunit.currentData(), self.out_hdr.isChecked(), title)
+
+    def open_files(self):
+        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Scans à convertir", "",
+                                                          "Scans (*.csv *.txt);;Tous les fichiers (*)")
+        if paths:
+            self.paths = list(paths)
+            self.F = self.L = None
+            self.reload()
+
+    def use_current(self):
+        F, L = self.owner.fresh_FL(use_max=self.cur_combo.currentData(), any_age=True)
+        if F is None:
+            self.src_lbl.setText("Pas encore de balayage : lance d'abord ▶ Démarrer.")
+            return
+        self.paths, self.F, self.L = [], F, L
+        self.reload()
+
+    def reload(self):
+        self.custom_box.setVisible(self.in_fmt.currentData() == "custom")
+        self.csv_box.setVisible(self.out_fmt.currentData() == "csv")
+        F = L = None
+        try:
+            if self.paths:
+                F, L, info = self._read(decode_text(Path(self.paths[0]).read_bytes()))
+                kind = {"wsm": "export WSM", "simple": "fichier « fréquence, niveau »",
+                        "custom": "CSV personnalisé"}.get(info["fmt"], info["fmt"])
+                more = f" (+ {len(self.paths) - 1} autre(s) fichier(s))" if len(self.paths) > 1 else ""
+                self.src_lbl.setText(f"✔ {os.path.basename(self.paths[0])}{more} : {kind}, {len(F)} points, "
+                                     f"{F[0]:.3f} – {F[-1]:.3f} MHz, {L.min():.0f} … {L.max():.0f} dBm"
+                                     + (f" · ⚠ {info['note']}" if info.get("note") else ""))
+            elif self.F is not None:
+                F, L = self.F, self.L
+                self.src_lbl.setText(f"✔ Scan en cours : {len(F)} points, {F[0]:.3f} – {F[-1]:.3f} MHz")
+        except Exception as e:  # noqa: BLE001
+            self.src_lbl.setText(f"⚠ Illisible avec ces réglages : {e}. Essaie « CSV personnalisé ».")
+        self.cur = (F, L)
+        if F is None:
+            self.preview.setPlainText("")
+            self.save_btn.setEnabled(False)
+            return
+        txt = self._write(F, L)
+        lines = txt.splitlines()
+        self.preview.setPlainText("\n".join(lines[:14]) + (f"\n… ({len(lines)} lignes)" if len(lines) > 14 else ""))
+        self.save_btn.setEnabled(True)
+
+    def save(self):
+        ext = {"wwb": "_WWB.csv", "wsm": "_WSM.csv"}.get(self.out_fmt.currentData(), "_conv.csv")
+        done, errs = [], []
+        if not self.paths:
+            F, L = self.cur
+            out, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Enregistrer le scan",
+                                                           f"scan_{datetime.now():%Y%m%d_%H%M%S}{ext}", "CSV (*.csv)")
+            if not out:
+                return
+            jobs = [(None, out, F, L)]
+        else:
+            jobs = []
+            for k, p_ in enumerate(self.paths):
+                dflt = Path(p_).with_name(Path(p_).stem + ext)
+                if len(self.paths) == 1:
+                    out, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Enregistrer le scan converti", str(dflt),
+                                                                   "CSV (*.csv)")
+                    if not out:
+                        return
+                else:
+                    out, n_ = dflt, 2
+                    while Path(out).exists():
+                        out = dflt.with_name(f"{dflt.stem} ({n_}).csv")
+                        n_ += 1
+                jobs.append((p_, str(out), None, None))
+        for p_, out, F, L in jobs:
+            try:
+                if p_ is not None:
+                    F, L, _i = self._read(decode_text(Path(p_).read_bytes()))
+                with open(out, "w", newline="", encoding="utf-8") as fh:
+                    fh.write(self._write(F, L, Path(p_).stem if p_ else ""))
+                done.append(os.path.basename(out))
+            except Exception as e:  # noqa: BLE001
+                errs.append(f"{os.path.basename(p_ or out)} : {e}")
+        if done:
+            self.src_lbl.setText(f"✔ {len(done)} fichier(s) écrit(s) : {', '.join(done[:3])}" + (" …" if len(done) > 3 else ""))
+            self.owner.set_status(f"Scan converti : {', '.join(done[:3])}")
+        if errs:
+            QtWidgets.QMessageBox.warning(self, APP_NAME, "Conversion impossible pour :\n" + "\n".join(errs))
+
+
 class LineCheckDialog(QtWidgets.QDialog):
     """Appel des micros : allume tes émetteurs un par un, chaque fréquence passe ✓ dès que son signal arrive."""
     COLS = ["État", "Nom", "MHz", "Niveau", "Heure", "Scène › Groupe"]
@@ -7178,12 +7492,14 @@ class MainWindow(QtWidgets.QMainWindow):
         "📄 Rapport de show": "Rapport de fin de show (alarmes, occupation, spectre) en HTML, imprimable en PDF.",
         "📤 Exporter les fréquences": "Exporte la liste par scène / groupe, pour EazyRF, WWB, WSM ou un tableur.",
         "📏 Importer un scan": "Charge un scan WSM / WWB comme courbe de référence (bruit de fond du lieu).",
-        "🔁 Convertir un scan": "Convertit un export de scan Sennheiser WSM au format Shure WWB.",
-        "💾 Exporter le scan au format WWB": "Envoie le spectre mesuré dans WWB (fichier de scan).",
+        "🔁 Convertir / exporter un scan": "Convertit un scan d'un logiciel à l'autre (WSM, WWB, CSV au choix :\n"
+                                          "colonnes, unités, séparateur), ou exporte le scan en cours.",
         "✏ Nommer la sélection": "Nomme d'un coup les lignes choisies : HF 1, HF 2… IEM 1…",
         "⇣ Numéroter vers le bas": "Numérote vers le bas à partir de la 1ʳᵉ ligne sélectionnée (Ctrl+D).",
         "Mon vocabulaire": "Mots proposés par l'auto-complétion des noms (MIC, HF, IEM, Intercom…).",
         "📡 Relais réseau": "Partage le tinySA branché sur CE PC pour l'utiliser comme 2ᵉ tinySA depuis un autre PC.",
+        "🩺 Diagnostic": "Écrit un fichier avec les réglages, les bandes et les derniers échanges avec le tinySA,\n"
+                         "à envoyer quand quelque chose bugue (aussi écrit tout seul quand le tinySA décroche).",
         "📣 Alertes": "Alertes sur téléphone (ntfy / Telegram) et page web en lecture seule pour l'équipe.",
         "📶 Ajouter un bloc": "Ajoute un porteur large Sennheiser Spectera / WMAS (canal 6 / 8 MHz) à surveiller.",
         "🧱 Mur": "Grandes tuiles, une par fréquence : panneau à détacher sur un 2ᵉ écran (F11 plein écran).",
@@ -7349,14 +7665,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene()),
                         (None, None),
                         ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
-                        ("🔁 Convertir un scan WSM → WWB…", lambda *_: self.convert_wsm_wwb()),
-                        ("💾 Exporter le scan au format WWB…", lambda *_: self.export_scan_wwb()),
+                        ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert()),
                         (None, None),
                         ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
                         ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
                         ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
                         (None, None),
                         ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
+                        ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag()),
                         ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
                         (None, None),
                         ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())):
@@ -7457,6 +7773,12 @@ class MainWindow(QtWidgets.QMainWindow):
         mform.addRow("Atténuateur :", self.att_combo)
         mform.addRow("Offset :", self.offset_spin)
         mform.addRow("Segment :", self.seg_combo)
+        self.baud_combo = self._combo([(f"{b:,}".replace(",", " ") + " bauds", b)
+                                       for b in (9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)], 115200)
+        self.baud_combo.setToolTip("Vitesse du port série. En USB elle ne sert à rien (port COM virtuel : la vitesse\n"
+                                   "est ignorée). Seulement pour un vrai port série (adaptateur USB-série, connecteur\n"
+                                   "interne du tinySA, module série réseau) : mets la même que dans le tinySA.")
+        mform.addRow("Vitesse série :", self.baud_combo)
         mform.addRow(self.est_lbl)
 
         self.thr_spin = LevelSpin()
@@ -7615,7 +7937,7 @@ class MainWindow(QtWidgets.QMainWindow):
             lv.addWidget(self._section(key, box), stretch)
         lv.addStretch(0)
         self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo,
-                                                   self.att_combo, self.offset_spin, self.seg_combo)]
+                                                   self.att_combo, self.offset_spin, self.seg_combo, self.baud_combo)]
         self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo,
                                                    self.unk_chk)]
         self._expert_rows += [(self._dev2_form, w_) for w_ in (self.dev2_off, self.calib_btn, self.relay_btn)]
@@ -8214,7 +8536,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for combo, key in [(self.points_combo, "points"), (self.rbw_combo, "rbw"), (self.zrbw_combo, "zrbw"),
                            (self.input_combo, "input"), (self.lna_combo, "lna"), (self.att_combo, "att"),
                            (self.seg_combo, "seg"), (self.mark_combo, "mark"), (self.persist_combo, "persist"),
-                           (self.occ_combo, "occ_minutes"), (self.country_combo, "country")]:
+                           (self.occ_combo, "occ_minutes"), (self.country_combo, "country"),
+                           (self.baud_combo, "baud")]:
             setc(combo, key)
         pc = data.get("plan_custom")
         self.plan_custom = {k: v for k, v in pc.items() if isinstance(v, str)} if isinstance(pc, dict) else {}
@@ -8345,6 +8668,7 @@ class MainWindow(QtWidgets.QMainWindow):
             theme=self.theme,
             points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
+            baud=self.baud_combo.currentData(),
             persist=self.persist_combo.currentData(),
             thr=self.thr_spin.value(), weak_thr=self.weak_spin.value(), weak_on=self.weak_chk.isChecked(),
             win=self.win_spin.value(), alert=self.alert_chk.isChecked(), unk=self.unk_chk.isChecked(),
@@ -8616,6 +8940,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for i, (addr, label) in enumerate(targets):
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
             w.retry_first = i > 0                 # le 2ᵉ (souvent en réseau) peut arriver après : on l'attend
+            w.baud = int(self.baud_combo.currentData() or 115200)
             w.sweep.connect(lambda bid, f, l, d=i: self.band_src.__setitem__(bid, d))
             w.sweep.connect(self.on_sweep)
             w.partial.connect(self.on_partial)
@@ -8657,7 +8982,48 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dev2_info = txt
             self.update_dev2_label()
 
+    def dump_diag(self, reason="", quiet=False):
+        """Écrit un fichier de diagnostic (pour le support) : versions, réglages, bandes, derniers échanges avec
+        le(s) tinySA. -> chemin, ou None."""
+        now = time.time()
+        if quiet and now - getattr(self, "_diag_t", 0.0) < 60:          # automatique : au plus une fois par minute
+            return None
+        self._diag_t = now
+        c = self._cfg
+        out = [f"{APP_NAME} {APP_VER} — diagnostic du {datetime.now():%d/%m/%Y %H:%M:%S}",
+               f"Raison : {reason or 'demandé'}", f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()} · {sys.platform}",
+               f"tinySA : {self.info_lbl.text().strip() or '—'} · port {self.port_combo.currentData() or '—'}"
+               f" · {self.baud_combo.currentData()} bauds · démo {self.demo_chk.isChecked()}",
+               f"Réglages : points {c['points']} · RBW {c['rbw'] or 'auto'} · RBW zoom {c['zrbw'] or 'auto'} · "
+               f"entrée {c['input']} · LNA {c['lna']} · atténuateur {c['att']} · segment {c['seg'] or 'auto'} · "
+               f"offset {c['offset']}", "", "Bandes :"]
+        for b in self.bands:
+            out.append(f"  [{'x' if b['enabled'] else ' '}] {b['name']} : {b['start']:g}–{b['stop']:g} MHz, "
+                       f"pas {b['step']:g} kHz, {self._npts(b)} points")
+        for k, w in enumerate(self.workers):
+            out += ["", f"Échanges avec {self.dev_name(k)} (plus récents en bas) :"] + list(w.trace)
+        try:
+            d = self.log_dir / "diagnostic"
+            d.mkdir(parents=True, exist_ok=True)
+            p_ = d / f"diagnostic_tinysa_{datetime.now():%Y%m%d_%H%M%S}.txt"
+            p_.write_text("\n".join(out) + "\n", encoding="utf-8")
+            return p_
+        except Exception as e:  # noqa: BLE001
+            if not quiet:
+                QtWidgets.QMessageBox.warning(self, APP_NAME, f"Diagnostic impossible à écrire :\n{e}")
+            return None
+
+    def open_diag(self):
+        p_ = self.dump_diag("demandé depuis le menu")
+        if p_ is not None:
+            QtWidgets.QMessageBox.information(
+                self, APP_NAME, f"Fichier de diagnostic écrit :\n{p_}\n\nEnvoie-le avec la description du problème "
+                                "(et le crash.log s'il y en a un). Un fichier est aussi écrit tout seul quand un tinySA "
+                                "décroche.")
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p_.parent)))
+
     def on_error(self, msg, dev=0):
+        self.dump_diag(f"erreur : {msg}", quiet=True)
         if dev == 0:                              # le 1er tinySA ne répond pas : on arrête tout
             for w in self.workers:
                 w.requestInterruption()
@@ -8680,6 +9046,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.log_event(w, 0.0, "APPAREIL RETROUVÉ")
             self.set_status(f"✔ {name} de nouveau en ligne : bandes réparties à nouveau.")
         else:
+            self.dump_diag(f"liaison perdue avec {self.dev_name(dev)}", quiet=True)
             other = f"{self.dev_name(1 - dev)} reprend ses bandes" if self.ndev() > 1 and any(self.dev_live) else \
                 "plus aucune mesure"
             if self.alarms.raise_(key, "APPAREIL", name, 0.0, 2, now, layer="",
@@ -11408,6 +11775,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sort_watch()
         QtCore.QTimer.singleShot(0, self.rebuild_watch_table)
         self._update_markers()
+
+    def open_scan_convert(self):
+        self._conv_dlg = ScanConvertDialog(self)
+        self._conv_dlg.show()
 
     def open_plan_check(self):
         self._plan_dlg = PlanCheckDialog(self)

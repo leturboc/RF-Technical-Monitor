@@ -439,6 +439,28 @@ check("entrée : tinySA d'origine en Auto", (ip_(False, "auto", 500e6), ip_(Fals
 check("entrée : Ultra en Auto → on ne touche à rien (pas de « mode high »)", (ip_(True, "auto", 500e6), ip_(True, "auto", 2400e6)),
       (None, None))
 check("entrée : forcée", (ip_(True, "low", 2400e6), ip_(False, "high", 100e6)), ("low", "high"))
+# ---- convertisseur de scans
+sw_, psc_, pst_ = ns["scan_write"], ns["parse_scan_custom"], ns["parse_scan_text"]
+Fc = np.array([470.0, 470.025, 470.05, 470.075, 470.1, 470.125])
+Lc = np.array([-98.0, -97.5, -60.2, -95.0, -99.9, -101.0])
+t_ = sw_(Fc, Lc, "wwb")
+ok("conv : WWB = « 470.000, -98 »", t_.splitlines()[0] == "470.000, -98", t_.splitlines()[0])
+F2_, L2_, i2_ = pst_(sw_(Fc, Lc, "wsm", title="Test"))
+ok("conv : WSM écrit → relu comme un export WSM, niveaux à 0,1 dB près", i2_["fmt"] == "wsm"
+   and np.allclose(F2_, Fc) and np.allclose(L2_, Lc, atol=0.15), str((i2_, L2_)))
+t3_ = sw_(Fc, Lc, "csv", sep="\t", dec=",", funit="kHz", lunit="dbuv", header=True)
+ok("conv : CSV kHz, dBµV, tabulation, virgule", t3_.splitlines()[1] == "470000,000\t9,0", t3_.splitlines()[:2])
+F3_, L3_, _ = psc_(t3_, sep="\t", fcol=0, lcol=1, funit="kHz", lunit="dbuv", dec=",")
+ok("conv : CSV relu avec ses réglages = d'origine", np.allclose(F3_, Fc) and np.allclose(L3_, Lc, atol=0.05), str(L3_))
+F4_, L4_, _ = psc_("Freq;Rien;Level\n470,1;x;-80\n470,2;y;-81\nPied de page\n", sep=";", fcol=0, lcol=2)
+ok("conv : colonnes au choix, en-tête et pied ignorés", list(F4_) == [470.1, 470.2] and list(L4_) == [-80.0, -81.0])
+F5_, L5_, _ = psc_("x\nx\n470000 50\n470025 25\n", sep=" ", skip=2, funit="kHz", lunit="pct")
+ok("conv : lignes sautées, %, kHz", np.allclose(F5_, [470.0, 470.025]) and np.allclose(L5_, [-60.0, -90.0]), str((F5_, L5_)))
+try:
+    psc_("rien d'utile\n", fcol=0, lcol=1)
+    ok("conv : fichier illisible → erreur claire", False)
+except ValueError as e:
+    ok("conv : fichier illisible → erreur claire", "colonnes" in str(e))
 sp = ns["strong_peaks"]
 Fs_ = np.linspace(470, 700, 2301)
 Ls_ = -100 + 0 * Fs_

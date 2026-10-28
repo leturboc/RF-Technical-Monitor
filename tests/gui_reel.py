@@ -441,6 +441,13 @@ if win.is_running():
     win.apply_points()
     wait(1500)
 
+QtGui.QDesktopServices.openUrl = staticmethod(lambda *a, **k: True)
+step("diagnostic tinySA", win.open_diag)
+_dd = win.log_dir / "diagnostic"
+_df = sorted(_dd.glob("diagnostic_tinysa_*.txt")) if _dd.exists() else []
+check("diagnostic : fichier écrit avec versions, réglages, bandes", bool(_df)
+      and m.APP_VER in _df[-1].read_text(encoding="utf-8") and "Bandes :" in _df[-1].read_text(encoding="utf-8"))
+check("vitesse série dans la config", win._collect_config()["baud"] == 115200)
 check("version affichée (barre d'état)", m.APP_VER in win.ver_lbl.text() and win.ver_lbl.isVisible())
 step("à propos", win.show_about)
 check("à propos : version et tinySA", any(m.APP_VER in t and "tinySA" in t for k, t in msgs), str(msgs[-1:]))
@@ -624,6 +631,27 @@ opened[:] = [wsm]; saved[:] = [os.path.join(tmp, "conv_wwb.csv")]
 step("convert_wsm_wwb", win.convert_wsm_wwb)
 saved[:] = [os.path.join(tmp, "export_wwb.csv")]
 step("export_scan_wwb", win.export_scan_wwb)
+
+# convertisseur de scans
+step("convertisseur de scans", win.open_scan_convert)
+_cd = win._conv_dlg
+opened[:] = [wsm]
+step("conv : ouvrir l'export WSM", _cd.open_files)
+check("conv : WSM reconnu", "export WSM" in _cd.src_lbl.text(), _cd.src_lbl.text())
+check("conv : aperçu WWB", _cd.preview.toPlainText().splitlines()[0].count(", ") == 1, _cd.preview.toPlainText()[:60])
+_cd.out_fmt.setCurrentIndex(_cd.out_fmt.findData("csv"))
+_cd.out_sep.setCurrentIndex(_cd.out_sep.findData("\t"))
+_cd.out_lunit.setCurrentIndex(_cd.out_lunit.findData("dbuv"))
+check("conv : CSV personnalisé (tabulation, dBµV)", _cd.preview.toPlainText().startswith("Fréquence (MHz)\tNiveau (dBµV)"),
+      _cd.preview.toPlainText()[:60])
+shot(_cd, "convertisseur")
+_outp = os.path.join(tmp, "conv_test.csv")
+saved[:] = [_outp]
+step("conv : enregistrer", _cd.save)
+check("conv : fichier écrit", os.path.exists(_outp) and "\t" in open(_outp, encoding="utf-8").read())
+step("conv : scan en cours", _cd.use_current)
+check("conv : scan en cours chargé", "Scan en cours" in _cd.src_lbl.text(), _cd.src_lbl.text())
+_cd.close()
 
 # dialogues non modaux
 step("open_intermod", win.open_intermod); wait(1500)
