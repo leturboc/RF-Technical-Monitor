@@ -216,14 +216,32 @@ ok("classes de produits", [ns["im_class"](3, 2), ns["im_class"](3, 3), ns["im_cl
    == ["2tx3", "3tx3", "5", "5"])
 EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}      # tolérances EazyRF complètes (2 / 3 TX + 5ᵉ)
 _P = ns["IM_TOL_PRESETS"]
-ok("règles : Standard d'abord = 2A − B seulement", _P[0][0].startswith("🟢 Standard") and _P[0][1]["3tx3"] == 0
-   and _P[0][1]["5"] == 0 and _P[0][1]["2tx3"] == 0.1)
+ok("règles : « Comme EazyRF » d'abord = 2 TX 100 / 3 TX 50 kHz", _P[0][0].startswith("🟢 Comme EazyRF")
+   and _P[0][1]["3tx3"] == 0.05 and _P[0][1]["5"] == 0 and _P[0][1]["2tx3"] == 0.1)
+ok("règles : « Simple » = 2A − B seulement", _P[1][1]["3tx3"] == 0 and _P[1][1]["5"] == 0 and _P[1][1]["2tx3"] == 0.1)
 ok("règles : chaque niveau est expliqué", all(len(w_) > 40 for _t, _d, w_ in _P))
-ok("règles : phrase « on vérifie »", ns["im_rules_text"](_P[0][1], 0.3) ==
+ok("règles : phrase « on vérifie »", ns["im_rules_text"](_P[1][1], 0.3) ==
    "On vérifie : écart d'au moins 300 kHz entre deux porteuses · 2A − B (2 émetteurs) à moins de 100 kHz d'une "
    "fréquence · A + B − C (3 émetteurs) : non vérifié · 5ᵉ ordre : non vérifié")
-ok("plan Wisycom de Clément : compatible avec la règle Standard (comme EazyRF)",
-   not any(ns["pf_check"]([558.0, 574.0, 606.0, 614.0, 646.0, 478.0])[0]))
+ok("règles : phrase avec le filtre", "à ±16 MHz de la fréquence touchée (filtre 32 MHz)"
+   in ns["im_rules_text"](_P[0][1], 0.5, 32.0))
+ok("plan Wisycom de Clément : compatible en 2A − B seul",
+   not any(ns["pf_check"]([558.0, 574.0, 606.0, 614.0, 646.0, 478.0], tol=_P[1][1])[0]))
+# le vrai plan de Clément dans EazyRF (MRK980 + MTK952) : profil 2 TX 100, 3 TX 50, séparation 500, filtre 32 → 0 IM
+WIS = [470.2, 471.3, 478.0, 558.0, 574.0, 606.0, 614.0, 646.0, 660.95, 661.45]
+_w0 = ns["pf_check"](WIS, sep=0.5, tol=_P[0][1], filt=32.0)[0]
+ok("plan Wisycom complet, profil EazyRF (filtre 32 MHz) : 0 problème, comme EazyRF", not any(_w0), str(_w0))
+_w1 = ns["pf_check"](WIS, sep=0.5, tol=_P[0][1])[0]
+ok("même plan sans filtre : des A + B − C (émetteurs loin les uns des autres)",
+   any(it["kind"] == "im" and it["ntx"] == 3 for x in _w1 for it in x), str(_w1))
+ok("même plan, écart 500 kHz pile (661.45 − 660.95) : accepté", not any(it["kind"] == "sep" for x in _w0 for it in x))
+_w2 = ns["pf_check"](WIS, sep=0.6, tol=_P[0][1], filt=32.0)[0]
+ok("écart 600 kHz : 660.95 / 661.45 trop près", _w2[8] and _w2[8][0]["kind"] == "sep")
+# filtre : 2A − B avec un émetteur à 20 MHz de la victime → coupé par un filtre de 32 MHz (±16), pas par 64
+_fx = [500.0, 520.0, 540.0]                    # 2×520 − 500 = 540 : A = 520 (20 MHz), B = 500 (40 MHz)
+ok("filtre 32 : produit coupé", not ns["pf_check"](_fx, sep=0.3, tol=_P[0][1], filt=32.0)[0][2])
+ok("filtre 100 : produit compté", ns["pf_check"](_fx, sep=0.3, tol=_P[0][1], filt=100.0)[0][2])
+ok("sans filtre : produit compté", ns["pf_check"](_fx, sep=0.3, tol=_P[0][1])[0][2])
 # 2A − B à 80 kHz d'une cible : gênant (2 TX, < 100) ; A + B − C à 80 kHz : accepté (3 TX, > 50)
 rows, _ = im_scan([500.0, 501.0], (3,), 2, targets=[499.08], guard=EZ)
 ok("2 TX à 80 kHz : gênant", len(rows) == 1 and rows[0]["ntx"] == 2, str(rows))
@@ -280,18 +298,18 @@ sg2 = pfs(1, TXc, tol=dict(EZ), n=2, busy=lambda c: abs(c - sg[0][0]) < 1e-6)
 ok("suggestion : évite une fréquence occupée sur le spectre", all(abs(c - sg[0][0]) > 1e-6 for c, _ in sg2))
 
 # suggestion rapide (pré-filtre) = recherche brute, sur des plans aléatoires avec blocs larges
-def _brute(i, F, T, B, sep, tol, lo, hi, n):
+def _brute(i, F, T, B, sep, tol, lo, hi, n, filt=0.0, step=0.025):
     Fo = [f for k, f in enumerate(F) if k != i]
     To = [t for k, t in enumerate(T) if k != i]
     Bo = [b for k, b in enumerate(B) if k != i]
-    base = sum(map(len, pfc(Fo, To, Bo, sep, tol)[0]))
+    base = sum(map(len, pfc(Fo, To, Bo, sep, tol, None, filt)[0]))
     out = []
-    g = np.arange(np.ceil(lo / 0.025) * 0.025, hi + 1e-9, 0.025)
-    for c in g[np.argsort(np.abs(g - F[i]), kind="stable")]:
+    g = np.arange(np.ceil(lo / step - 1e-9) * step, hi + 1e-9, step)
+    for c in g[np.lexsort((g, np.round(np.abs(g - F[i]), 6)))]:
         c = round(float(c), 6)
         if abs(c - F[i]) < 1e-9:
             continue
-        iss = pfc(Fo + [c], To + [T[i]], Bo + [B[i]], sep, tol)[0]
+        iss = pfc(Fo + [c], To + [T[i]], Bo + [B[i]], sep, tol, None, filt)[0]
         if not iss[-1] and sum(map(len, iss[:-1])) <= base:
             out.append(c)
             if len(out) >= n:
@@ -312,6 +330,20 @@ for _ in range(12):
     tot_ += 1
     same += fast == slow
 ok(f"suggestion rapide = recherche brute ({same}/{tot_})", same == tot_)
+same = tot_ = 0
+for _ in range(14):                            # avec filtre récepteur et pas de 5 kHz, plans plus étalés
+    nf = rgs.randint(4, 9)
+    Fr = sorted({round(rgs.uniform(490, 560), 3) for _ in range(nf)})
+    Br = [8.0 if rgs.random() < 0.1 else 0.0 for _ in Fr]
+    Tr = [rgs.random() > 0.2 for _ in Fr]
+    i_ = rgs.randrange(len(Fr))
+    fl_ = rgs.choice([8.0, 20.0, 32.0])
+    fast = [c for c, _d in pfs(i_, Fr, Tr, Br, 0.3, dict(EZ), 3, lo=Fr[i_] - 1.5, hi=Fr[i_] + 1.5, n=3, step=0.005,
+                               filt=fl_)]
+    slow = _brute(i_, Fr, Tr, Br, 0.3, dict(EZ), Fr[i_] - 1.5, Fr[i_] + 1.5, 3, filt=fl_, step=0.005)
+    tot_ += 1
+    same += fast == slow
+ok(f"suggestion rapide = brute, avec filtre et pas 5 kHz ({same}/{tot_})", same == tot_)
 rgb = np.random.default_rng(1)
 F30 = sorted(470 + rgb.uniform(0, 224, 30).round(3))
 _iss30, _inf30 = pfc(F30, tol=dict(EZ))
