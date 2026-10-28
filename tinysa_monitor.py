@@ -1710,6 +1710,58 @@ def pf_orders(tol):
     return tuple(o for o, k in ((3, "2tx3"), (5, "5")) if tol.get(k, 0) > 0 or (o == 3 and tol.get("3tx3", 0) > 0))
 
 
+# Profils d'appareil (comme les profils d'EazyRF) : écart mini, filtre d'entrée du récepteur, pas de réglage et
+# tolérances d'intermod. Wisycom = le profil EazyRF de Clément (MRK980). Les autres sont des VALEURS DE DÉPART
+# (non vérifiées) : un récepteur peu sélectif a un filtre large (ou aucun), donc plus d'émetteurs comptent.
+RX_PROFILES = [
+    ("wisycom", "Wisycom (MRK980, MTK952…) · très sélectif",
+     dict(sep=0.500, filt=32.0, step=0.005, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
+     "Profil Wisycom d'EazyRF : filtre d'entrée 32 MHz (seuls les émetteurs à ±16 MHz comptent), séparation "
+     "500 kHz, pas 5 kHz (MTK952 : 25 kHz)."),
+    ("senn_dig", "Sennheiser numérique (EW-DX, EW-D, 6000)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
+     "Valeurs de départ (non vérifiées) : pas de filtre étroit, tous les émetteurs comptent ; séparation 400 kHz."),
+    ("senn_ana", "Sennheiser analogique (EW G3 / G4, 2000, 5000)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}),
+     "Valeurs de départ (non vérifiées) : peu sélectif, tolérances plus larges (150 / 75 kHz)."),
+    ("shure_dig", "Shure numérique (ULX-D, QLX-D, Axient, SLX-D)",
+     dict(sep=0.350, filt=0.0, step=0.025, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
+     "Valeurs de départ (non vérifiées) : pas de filtre étroit, séparation 350 kHz."),
+    ("shure_ana", "Shure analogique (UR, SLX, BLX…)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}),
+     "Valeurs de départ (non vérifiées) : peu sélectif, tolérances plus larges (150 / 75 kHz)."),
+    ("iem", "Ears / IEM (PSM, EW IEM…) · émetteurs couplés",
+     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}),
+     "Valeurs de départ (non vérifiées) : émetteurs souvent couplés sur un combineur → on compte aussi le 5ᵉ "
+     "ordre ; récepteurs ceinture peu sélectifs."),
+]
+
+
+def rx_profile(key):
+    """Profil d'appareil par sa clé -> dict(sep, filt, step, tol), ou None (= réglages de la fenêtre)."""
+    for k, _n, d, _w in RX_PROFILES:
+        if k == key:
+            return dict(d, tol=dict(d["tol"]))
+    return None
+
+
+def _pf_vec(x, n):
+    """Scalaire ou liste -> tableau de n valeurs (None = 0)."""
+    if isinstance(x, (list, tuple, np.ndarray)):
+        return np.asarray([0.0 if v is None else float(v) for v in x], dtype=float)
+    return np.full(n, 0.0 if x is None else float(x))
+
+
+def _pf_tols(tol, n):
+    """tol : dict, ou liste de dicts (un par fréquence) -> (liste de n dicts, dict du max par type)."""
+    dflt = IM_TOL_PRESETS[0][1]
+    if isinstance(tol, (list, tuple)):
+        L = [dict(dflt if t is None else t) for t in tol]
+    else:
+        L = [dict(dflt if tol is None else tol)] * n
+    return L, {k: max([t.get(k, 0.0) for t in L], default=0.0) for k in ("2tx3", "3tx3", "5", "7")}
+
+
 def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, filt=0.0):
     """Compatibilité d'un plan : pour chaque fréquence, la liste de ses problèmes.
     - « sep » : une autre porteuse à moins de `sep` MHz (bord à bord pour un bloc large) ;
@@ -1717,42 +1769,43 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
       comme EazyRF : 2 TX / 3 TX / 5ᵉ ; 0 = type ignoré). Les réserves (is_tx False) sont protégées sans émettre.
     filt : largeur (MHz) du filtre d'entrée du récepteur (« Filtre » d'EazyRF) ; un produit ne gêne une fréquence
     que si tous ses émetteurs sont à ± filt / 2 d'elle (les autres sont filtrés). 0 = pas de filtre.
+    sep, filt et tol peuvent être donnés PAR FRÉQUENCE (listes : profil d'appareil de chacune) : l'écart entre deux
+    porteuses est le plus grand des deux, le filtre et les tolérances sont ceux de la fréquence touchée.
     -> (issues, info) ; issues[i] = [dict(kind, others=[indices], gap MHz, order, ntx, terms)]."""
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
     B = np.zeros(n) if bws is None else np.clip(np.asarray(list(bws), dtype=float), 0.0, None)
     tx = np.ones(n, dtype=bool) if is_tx is None else np.asarray(list(is_tx), dtype=bool)
-    tol = dict(IM_TOL_PRESETS[0][1] if tol is None else tol)
+    TL, tmax = _pf_tols(tol, n)
+    SP, FL = _pf_vec(sep, n), _pf_vec(filt, n)
     if max_tx is None:
-        max_tx = 3 if tol.get("3tx3", 0) > 0 or tol.get("5", 0) > 0 else 2
+        max_tx = 3 if tmax.get("3tx3", 0) > 0 or tmax.get("5", 0) > 0 else 2
     issues = [[] for _ in range(n)]
     info = dict(pairs=0, truncated=False, too_big=False)
     if n < 2:
         return issues, info
     D = np.abs(F[:, None] - F[None, :]) - (B[:, None] + B[None, :]) / 2.0
-    ii, jj = np.nonzero(np.triu(D < sep - 1e-9, 1))
+    ii, jj = np.nonzero(np.triu(D < np.maximum(SP[:, None], SP[None, :]) - 1e-9, 1))
     for a, b in zip(ii.tolist(), jj.tolist()):
         g = float(D[a, b])
         issues[a].append(dict(kind="sep", others=[b], gap=g))
         issues[b].append(dict(kind="sep", others=[a], gap=g))
     txi = np.nonzero(tx)[0]
-    orders = pf_orders(tol)
+    orders = pf_orders(tmax)
     if len(txi) >= 2 and orders:
-        rows, info = im_scan(F[txi], orders, max_tx, targets=F, guard=tol, bws=B[txi], tbws=B, limit=20000)
+        TV = {k: np.array([t.get(k, 0.0) for t in TL]) for k in ("2tx3", "3tx3", "5", "7")}
+        rows, info = im_scan(F[txi], orders, max_tx, targets=F, guard=tmax, bws=B[txi], tbws=B, limit=20000)
         for r in rows:
             src = [(int(txi[i]), c) for i, c in r["terms"]]
             used = {k for k, _c in src}
-            if r["hw"] > 0 or B.any():         # produit / cibles larges : toutes les fréquences recouvertes
-                g_ = np.abs(F - r["f"]) - r["hw"] - B / 2.0
-                vs = np.nonzero(g_ <= tol.get(im_class(r["order"], r["ntx"]), 0.0))[0].tolist()
-            else:
-                vs = np.nonzero(np.abs(F - r["target"]) < 1e-9)[0].tolist()
-            for v in vs:
+            tv = TV.get(im_class(r["order"], r["ntx"]), TV["5"])
+            g_ = np.abs(F - r["f"]) - r["hw"] - B / 2.0
+            for v in np.nonzero((tv > 0) & (g_ <= tv + 1e-9))[0].tolist():
                 if v in used:
                     continue
-                if filt and filt > 0 and any(abs(F[k] - F[v]) > filt / 2.0 + 1e-9 for k in used):
+                if FL[v] > 0 and any(abs(F[k] - F[v]) > FL[v] / 2.0 + 1e-9 for k in used):
                     continue                    # émetteur hors du filtre du récepteur : filtré
-                issues[v].append(dict(kind="im", others=sorted(used), gap=float(r["gap"]), order=r["order"],
+                issues[v].append(dict(kind="im", others=sorted(used), gap=float(g_[v]), order=r["order"],
                                       ntx=r["ntx"], terms=src, f=r["f"], hw=r["hw"]))
     return issues, info
 
@@ -1773,6 +1826,7 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
                n=5, busy=None, max_check=600, filt=0.0):
     """Fréquences de remplacement pour la n° i, les plus proches d'abord : aucune incompatibilité pour elle,
     et pas de NOUVEAU problème pour les autres. busy(c) -> True si le spectre mesuré y est occupé (on évite).
+    sep / tol / filt : comme pf_check (une valeur, ou une par fréquence). step : pas des fréquences proposées.
     Pré-filtre vectorisé (écart, produits des autres qui tombent sur la candidate, 3ᵉ ordre impliquant la
     candidate), puis vérification exacte (pf_check) des meilleures seulement : rapide même avec des blocs larges.
     -> [(MHz, écart à l'actuelle en MHz)]."""
@@ -1780,34 +1834,38 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
     nn = len(F)
     B = [0.0] * nn if bws is None else [float(x or 0.0) for x in bws]
     T = [True] * nn if is_tx is None else [bool(x) for x in is_tx]
-    tol = dict(IM_TOL_PRESETS[0][1] if tol is None else tol)
+    TL, tmax = _pf_tols(tol, nn)
+    SP, FL = _pf_vec(sep, nn), _pf_vec(filt, nn)
     if max_tx is None:
-        max_tx = 3 if tol.get("3tx3", 0) > 0 or tol.get("5", 0) > 0 else 2
-    f0, bi = F[i], B[i]
+        max_tx = 3 if tmax.get("3tx3", 0) > 0 or tmax.get("5", 0) > 0 else 2
+    f0, bi, ti = F[i], B[i], TL[i]
     lo = f0 - 10.0 if lo is None else lo
     hi = f0 + 10.0 if hi is None else hi
     others = [k for k in range(nn) if k != i]
     Fo, Bo, To = [F[k] for k in others], [B[k] for k in others], [T[k] for k in others]
-    base, _ = pf_check(Fo, To, Bo, sep, tol, max_tx, filt)
+    TLo, SPo, FLo = [TL[k] for k in others], [float(SP[k]) for k in others], [float(FL[k]) for k in others]
+    base, _ = pf_check(Fo, To, Bo, SPo, TLo, max_tx, FLo)
     base_n = sum(len(x) for x in base)
     grid = np.round(np.arange(math.ceil(lo / step - 1e-9) * step, hi + 1e-9, step), 6)
     grid = grid[np.abs(grid - f0) > 1e-9]
-    half = filt / 2.0 + 1e-9 if filt and filt > 0 else np.inf
+    half = FL[i] / 2.0 + 1e-9 if FL[i] > 0 else np.inf                    # filtre de la candidate
     Fa, Ba = np.asarray(Fo, dtype=float), np.asarray(Bo, dtype=float)
+    Ha = np.where(np.asarray(FLo) > 0, np.asarray(FLo) / 2.0 + 1e-9, np.inf) if len(Fo) else np.zeros(0)
     ok = np.ones(len(grid), dtype=bool)
-    if len(Fa):                                                  # écart entre porteuses
+    if len(Fa):                                                  # écart entre porteuses (le plus grand des deux)
+        sp_ = np.maximum(SP[i], np.asarray(SPo))
         for k0 in range(0, len(grid), 4000):
             g = grid[k0:k0 + 4000]
-            ok[k0:k0 + 4000] &= ~np.any(np.abs(g[:, None] - Fa[None, :]) - (Ba[None, :] + bi) / 2.0 < sep - 1e-9, axis=1)
-    t2, t3 = tol.get("2tx3", 0.0), tol.get("3tx3", 0.0)
+            ok[k0:k0 + 4000] &= ~np.any(np.abs(g[:, None] - Fa[None, :]) - (Ba[None, :] + bi) / 2.0
+                                        < sp_[None, :] - 1e-9, axis=1)
     txo = np.asarray([k for k, t in enumerate(To) if t], dtype=int)
-    orders = pf_orders(tol)
+    orders = pf_orders(tmax)
     if len(txo) >= 2 and orders:                                 # produits des autres qui tombent sur la candidate
         rows, _ = im_scan(Fa[txo], orders, max_tx, fmin=lo - 1.0, fmax=hi + 1.0, limit=400000, bws=Ba[txo])
         if rows:
             pv = np.array([r["f"] for r in rows])
             ph = np.array([r["hw"] for r in rows])
-            pt = np.array([tol.get(im_class(r["order"], r["ntx"]), 0.0) for r in rows])
+            pt = np.array([ti.get(im_class(r["order"], r["ntx"]), 0.0) for r in rows])
             pmin = np.array([min(Fa[txo][i_] for i_, _c in r["terms"]) for r in rows])
             pmax = np.array([max(Fa[txo][i_] for i_, _c in r["terms"]) for r in rows])
             keep = pt > 0
@@ -1815,33 +1873,36 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
             for k0 in range(0, len(grid), 2000):
                 g = grid[k0:k0 + 2000]
                 if len(pv):
-                    hit = np.abs(g[:, None] - pv[None, :]) - ph[None, :] - bi / 2.0 <= pt[None, :]
+                    hit = np.abs(g[:, None] - pv[None, :]) - ph[None, :] - bi / 2.0 <= pt[None, :] + 1e-9
                     hit &= (g[:, None] - pmin[None, :] <= half) & (pmax[None, :] - g[:, None] <= half)
                     ok[k0:k0 + 2000] &= ~np.any(hit, axis=1)
-    if T[i] and len(txo) >= 1 and len(Fa) and (t2 > 0 or t3 > 0):   # 3ᵉ ordre impliquant la candidate
-        Ft, Bt = Fa[txo], Ba[txo]
+    T2 = np.array([t.get("2tx3", 0.0) for t in TLo])[None, None, :] if len(Fo) else None
+    T3 = np.array([t.get("3tx3", 0.0) for t in TLo])[None, None, :] if len(Fo) else None
+    if T[i] and len(txo) >= 1 and len(Fa) and (tmax.get("2tx3", 0) > 0 or tmax.get("3tx3", 0) > 0):
+        Ft, Bt = Fa[txo], Ba[txo]                                 # 3ᵉ ordre impliquant la candidate
+        Hv = Ha[None, None, :]
         for k0 in range(0, len(grid), 500):
             g = grid[k0:k0 + 500][:, None, None]
             bad = np.zeros(g.shape[0], dtype=bool)
             vic, bv = Fa[None, None, :], Ba[None, None, :]
-            if t2 > 0:
+            if (T2 > 0).any():
                 for val, hw in ((2 * g - Ft[None, :, None], (2 * bi + Bt[None, :, None]) / 2.0),
                                 (2 * Ft[None, :, None] - g, (bi + 2 * Bt[None, :, None]) / 2.0)):
-                    hit = np.abs(val - vic) - hw - bv / 2.0 <= t2
+                    hit = (np.abs(val - vic) - hw - bv / 2.0 <= T2 + 1e-9) & (T2 > 0)
                     hit &= np.abs(Ft[None, :, None] - vic) > 1e-9          # pas sur un émetteur du produit
-                    hit &= (np.abs(g - vic) <= half) & (np.abs(Ft[None, :, None] - vic) <= half)   # filtre
+                    hit &= (np.abs(g - vic) <= Hv) & (np.abs(Ft[None, :, None] - vic) <= Hv)   # filtre
                     bad |= hit.any(axis=(1, 2))
-            if t3 > 0 and max_tx >= 3 and len(Ft) >= 2:
+            if (T3 > 0).any() and max_tx >= 3 and len(Ft) >= 2:
                 J, K = np.meshgrid(np.arange(len(Ft)), np.arange(len(Ft)), indexing="ij")
                 m = (J != K).ravel()
                 fj, fk = Ft[J.ravel()[m]], Ft[K.ravel()[m]]
                 bj, bk = Bt[J.ravel()[m]], Bt[K.ravel()[m]]
                 for val, hw in ((g + fj[None, :, None] - fk[None, :, None], (bi + bj + bk)[None, :, None] / 2.0),
                                 (fj[None, :, None] + fk[None, :, None] - g, (bi + bj + bk)[None, :, None] / 2.0)):
-                    hit = np.abs(val - vic) - hw - bv / 2.0 <= t3
+                    hit = (np.abs(val - vic) - hw - bv / 2.0 <= T3 + 1e-9) & (T3 > 0)
                     hit &= (np.abs(fj[None, :, None] - vic) > 1e-9) & (np.abs(fk[None, :, None] - vic) > 1e-9)
-                    hit &= ((np.abs(g - vic) <= half) & (np.abs(fj[None, :, None] - vic) <= half)
-                            & (np.abs(fk[None, :, None] - vic) <= half))
+                    hit &= ((np.abs(g - vic) <= Hv) & (np.abs(fj[None, :, None] - vic) <= Hv)
+                            & (np.abs(fk[None, :, None] - vic) <= Hv))
                     bad |= hit.any(axis=(1, 2))
             ok[k0:k0 + 500] &= ~bad
     cand = grid[ok]
@@ -1854,7 +1915,8 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
         checked += 1
         if checked > max_check:
             break
-        iss, _ = pf_check(Fo + [c], To + [T[i]], Bo + [bi], sep, tol, max_tx, filt)      # vérification exacte
+        iss, _ = pf_check(Fo + [c], To + [T[i]], Bo + [bi], SPo + [float(SP[i])], TLo + [ti], max_tx,
+                          FLo + [float(FL[i])])                                  # vérification exacte
         if iss[-1] or sum(len(x) for x in iss[:-1]) > base_n:
             continue
         out.append((c, c - f0))
@@ -5174,7 +5236,8 @@ def fill_rules_combo(combo):
         combo.addItem(txt, d)
         combo.setItemData(combo.count() - 1, why, Qt.ItemDataRole.ToolTipRole)
     combo.addItem(IM_TOL_CUSTOM, None)
-    combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+    combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(max(len(t) for t, _d, _w in IM_TOL_PRESETS) + 2)
     combo.setItemData(combo.count() - 1, "Tes tolérances à toi (0 = type ignoré).", Qt.ItemDataRole.ToolTipRole)
 
 
@@ -6060,10 +6123,28 @@ def fmt_dur(s, signed=False):
 # --------------------------------------------------------------------------
 # Dialogue : rapport de fin de show
 # --------------------------------------------------------------------------
+def rx_short(key):
+    """Nom court d'un profil d'appareil (colonne « Appareil »)."""
+    for k, n, _d, _w in RX_PROFILES:
+        if k == key:
+            return n.split(" (")[0].split(" ·")[0]
+    return "par défaut"
+
+
+def fill_rx_combo(combo, default_txt):
+    """Profils d'appareil dans une liste : 1er choix = default_txt (donnée ""), explication en bulle."""
+    combo.addItem(default_txt, "")
+    for k, n, _d, why in RX_PROFILES:
+        combo.addItem(n, k)
+        combo.setItemData(combo.count() - 1, why, Qt.ItemDataRole.ToolTipRole)
+    combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+
+
 class PlanCheckDialog(QtWidgets.QDialog):
     """Vérifie un plan de fréquences comme un logiciel de coordination (EazyRF…) : écart entre porteuses et
-    intermod selon des tolérances, un verdict par fréquence, et une fréquence de remplacement compatible."""
-    COLS = ["État", "Nom", "MHz", "Problèmes"]
+    intermod selon des tolérances, un verdict par fréquence, et une fréquence de remplacement compatible.
+    Chaque fréquence peut avoir son profil d'appareil (w["rx"] : Wisycom très sélectif, Shure, Sennheiser…)."""
+    COLS = ["État", "Nom", "MHz", "Appareil", "Problèmes"]
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -6110,6 +6191,12 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.step_spin.setValue(int(po["step"]))
         self.step_spin.setToolTip("Pas des fréquences proposées (« Incrément » dans EazyRF) : le pas réglable de tes "
                                   "appareils.\n5 kHz pour un Wisycom MRK980, 25 kHz pour un MTK952.")
+        self.prof_combo = QtWidgets.QComboBox()
+        fill_rx_combo(self.prof_combo, "✏ Réglages ci-dessous")
+        self.prof_combo.setToolTip("Appareil par défaut (comme un profil EazyRF) : remplit écart, filtre, pas et "
+                                   "tolérances.\nWisycom = très sélectif (filtre 32 MHz) ; Shure / Sennheiser / ears = "
+                                   "moins sélectifs.\nLes fréquences avec leur propre appareil (colonne « Appareil ») "
+                                   "gardent le leur.\nValeurs des profils autres que Wisycom : de départ, NON vérifiées.")
         self.tol_combo = QtWidgets.QComboBox()
         fill_rules_combo(self.tol_combo)
         self.tol_combo.setToolTip("Quelle sévérité ? Survole chaque choix pour l'explication.\n"
@@ -6128,16 +6215,23 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.rule_lbl = QtWidgets.QLabel("")
         self.rule_lbl.setWordWrap(True)
         self.rule_lbl.setMinimumHeight(self.rule_lbl.fontMetrics().height() * 3)
-        self.tol_combo.currentIndexChanged.connect(lambda *_: self._preset())
+        self.tol_combo.currentIndexChanged.connect(lambda *_: (self._prof_touched(), self._preset()))
         for sp in self.tol_spins.values():
             sp.valueChanged.connect(lambda *_: self._custom())
         self.sep_spin.valueChanged.connect(lambda *_: self._explain())
         self.filt_spin.valueChanged.connect(lambda *_: self._explain())
         self._preset()
+        ix = self.prof_combo.findData(po.get("prof", ""))
+        self.prof_combo.setCurrentIndex(max(0, ix))
+        self._prof_default()
+        self.prof_combo.currentIndexChanged.connect(lambda *_: self._prof_default())
+        for sp in (self.sep_spin, self.filt_spin, self.step_spin):
+            sp.valueChanged.connect(lambda *_: self._prof_touched())
         self.go_btn = QtWidgets.QPushButton("🧮 Vérifier")
         self.go_btn.setToolTip("Calcule la compatibilité de tout le plan.")
         self.go_btn.clicked.connect(lambda *_: self.compute())
-        lay.addLayout(R(self.src_combo, "Règles :", self.tol_combo, None, self.go_btn))
+        lay.addLayout(R(self.src_combo, "Appareil par défaut :", self.prof_combo, None, self.go_btn))
+        lay.addLayout(R("Règles :", self.tol_combo, None))
         lay.addLayout(R("Écart mini :", self.sep_spin, "Filtre récepteur :", self.filt_spin, "Pas :", self.step_spin,
                         None))
         lay.addLayout(R("2A − B :", self.tol_spins["2tx3"], "A + B − C :", self.tol_spins["3tx3"], "5ᵉ ordre :",
@@ -6155,13 +6249,22 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.horizontalHeader().setStretchLastSection(True)
-        for c, w_ in enumerate((120, 140, 80)):
+        for c, w_ in enumerate((120, 140, 80, 130)):
             self.table.setColumnWidth(c, w_)
-        self.table.setToolTip("Survole « Problèmes » pour le détail complet. Double-clic : proposer une remplaçante.")
+        self.table.setToolTip("Survole « Problèmes » pour le détail complet. Double-clic : proposer une remplaçante.\n"
+                              "Sélection multiple (Maj / Ctrl) pour donner un appareil à plusieurs fréquences.")
         self.table.cellDoubleClicked.connect(lambda r, c: self.suggest())
         lay.addWidget(self.table, 1)
+        self.rx_combo = QtWidgets.QComboBox()
+        fill_rx_combo(self.rx_combo, "par défaut (appareil ci-dessus)")
+        self.rx_combo.setToolTip("L'appareil (récepteur) des fréquences choisies dans le tableau : son filtre, son écart, "
+                                 "ses tolérances\net son pas comptent pour ELLES. Enregistré dans ta liste (et tes shows).")
+        self.rx_btn = QtWidgets.QPushButton("Appliquer aux lignes choisies")
+        self.rx_btn.setToolTip("Donne cet appareil aux fréquences sélectionnées, puis recalcule.")
+        self.rx_btn.clicked.connect(lambda *_: self.set_rx())
+        lay.addLayout(R("Appareil des lignes choisies :", self.rx_combo, self.rx_btn, None))
         self.sug_list = QtWidgets.QListWidget()
         self.sug_list.setMaximumHeight(110)
         self.sug_list.setToolTip("Fréquences compatibles avec tout le reste du plan, les plus proches d'abord.")
@@ -6185,6 +6288,49 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self._target = None
         self.compute()
 
+    def _prof_default(self):
+        """Profil par défaut choisi : remplit écart, filtre, pas et tolérances."""
+        d = rx_profile(self.prof_combo.currentData())
+        self.owner.plan_opts["prof"] = self.prof_combo.currentData() or ""
+        if d is None:
+            return
+        self._filling = True
+        self.sep_spin.setValue(int(round(d["sep"] * 1000)))
+        self.filt_spin.setValue(d["filt"])
+        self.step_spin.setValue(int(round(d["step"] * 1000)))
+        ix = next((k for k in range(self.tol_combo.count() - 1) if self.tol_combo.itemData(k) == d["tol"]),
+                  self.tol_combo.count() - 1)
+        self.tol_combo.setCurrentIndex(ix)
+        if ix == self.tol_combo.count() - 1:
+            self._applying = True
+            for k, sp in self.tol_spins.items():
+                sp.setValue(int(round(d["tol"][k] * 1000)))
+            self._applying = False
+        self._filling = False
+        self._explain()
+
+    def _prof_touched(self):
+        if not getattr(self, "_filling", False) and self.prof_combo.currentData():
+            self.prof_combo.blockSignals(True)
+            self.prof_combo.setCurrentIndex(0)                 # on a touché un réglage : « ✏ Réglages ci-dessous »
+            self.prof_combo.blockSignals(False)
+            self.owner.plan_opts["prof"] = ""
+
+    def set_rx(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes() if i.row() < len(self.ws)})
+        if not rows:
+            self.sum_lbl.setText("Choisis d'abord une ou plusieurs fréquences dans le tableau.")
+            return
+        key = self.rx_combo.currentData()
+        for r in rows:
+            if key:
+                self.ws[r]["rx"] = key
+            else:
+                self.ws[r].pop("rx", None)
+        self._explain()
+        self.compute()
+        self.owner.set_status(f"{len(rows)} fréquence(s) : appareil « {rx_short(key)} ».")
+
     def _preset(self):
         d = self.tol_combo.currentData()
         if d is not None:
@@ -6195,6 +6341,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self._explain()
 
     def _custom(self):
+        self._prof_touched()
         if not getattr(self, "_applying", False):
             self.tol_combo.blockSignals(True)
             self.tol_combo.setCurrentIndex(self.tol_combo.count() - 1)
@@ -6203,9 +6350,12 @@ class PlanCheckDialog(QtWidgets.QDialog):
 
     def _explain(self):
         why = self.tol_combo.itemData(self.tol_combo.currentIndex(), Qt.ItemDataRole.ToolTipRole) or ""
+        own = sum(1 for w in self.owner.watch if rx_profile(w.get("rx")) is not None)
         self.rule_lbl.setText(f"<b>{self.tol_combo.currentText()}</b> — {why}<br>"
                               + im_rules_text(self.tolerances(), self.sep_spin.value() / 1000.0,
-                                              self.filt_spin.value()) + ".")
+                                              self.filt_spin.value()) + "."
+                              + (f"<br>{own} fréquence(s) ont leur propre appareil (colonne « Appareil ») : ce sont "
+                                 "ses réglages qui comptent pour elles." if own else ""))
 
     def tolerances(self):
         t5 = self.tol_spins["5"].value() / 1000.0
@@ -6216,14 +6366,19 @@ class PlanCheckDialog(QtWidgets.QDialog):
         o = self.owner
         o.plan_opts.update(sep=self.sep_spin.value(), filt=self.filt_spin.value(), step=self.step_spin.value())
         ws = [w for w in o.watch if self.src_combo.currentData() == "all" or o.in_scope(w)]
+        dflt = dict(sep=self.sep_spin.value() / 1000.0, filt=self.filt_spin.value(), tol=self.tolerances(),
+                    step=self.step_spin.value() / 1000.0)
+        P = [rx_profile(w.get("rx")) or dflt for w in ws]           # profil d'appareil de chaque fréquence
+        self._steps = [q["step"] for q in P]
         return (ws, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
-                [float(w.get("bw") or 0.0) for w in ws], self.sep_spin.value() / 1000.0, self.tolerances(), None)
+                [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P], None,
+                [q["filt"] for q in P])
 
     def compute(self):
-        ws, F, T, B, sep, tol, mx = self._params()
+        ws, F, T, B, sep, tol, mx, filt = self._params()
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.issues, info = pf_check(F, T, B, sep, tol, mx, self.filt_spin.value())
+            self.issues, info = pf_check(F, T, B, sep, tol, mx, filt)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self.ws = ws
@@ -6238,7 +6393,8 @@ class PlanCheckDialog(QtWidgets.QDialog):
             state = "✔ compatible" if not iss else f"✗ {len(iss)} problème{'s' if len(iss) > 1 else ''}"
             if not T[r] and not iss:
                 state = "✔ réserve libre"
-            vals = [state, names[r], f"{w['freq']:.3f}", " · ".join(txts[:3]) + (" …" if len(txts) > 3 else "")]
+            vals = [state, names[r], f"{w['freq']:.3f}", rx_short(w.get("rx")),
+                    " · ".join(txts[:3]) + (" …" if len(txts) > 3 else "")]
             col = th["st_occ"] if iss else th["st_free"]
             for c, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
@@ -6246,7 +6402,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
                     bg = blend(col, base, 0.7)
                     it.setBackground(QtGui.QColor(bg))
                     it.setForeground(QtGui.QColor(contrast_text(bg)))
-                if c == 3 and txts:
+                if c == 4 and txts:
                     it.setToolTip("\n".join(txts))
                 t.setItem(r, c, it)
         n = len(ws)
@@ -6285,7 +6441,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         if r is None:
             self.sum_lbl.setText("Choisis d'abord une fréquence dans le tableau.")
             return
-        ws, F, T, B, sep, tol, mx = self._params()
+        ws, F, T, B, sep, tol, mx, filt = self._params()
         busy = None
         if self.avoid_chk.isChecked():
             o = self.owner
@@ -6296,7 +6452,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
                 busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            kw = dict(n=6, busy=busy, step=self.step_spin.value() / 1000.0, filt=self.filt_spin.value())
+            kw = dict(n=6, busy=busy, step=self._steps[r], filt=filt)        # pas de l'appareil de cette fréquence
             sg = pf_suggest(r, F, T, B, sep, tol, mx, **kw)
             if not sg:                                  # rien tout près : on cherche dans toutes les bandes
                 ext = self.owner._band_extent()
@@ -7440,7 +7596,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
         self.sig_labels = {}            # tes mots pour la colonne Signal (clé SIGNAL_LABELS -> texte)
         self.sig_colors = {}            # tes couleurs par situation (clé SIGNAL_LABELS -> "#rrggbb")
-        self.plan_opts = dict(sep=int(round(PF_SEP * 1000)), filt=32.0, step=25)   # 🧮 : écart kHz, filtre MHz, pas kHz
+        self.plan_opts = dict(sep=int(round(PF_SEP * 1000)), filt=32.0, step=25, prof="")   # 🧮 : kHz, MHz, kHz, profil
         self.unit = "dbm"               # unité d'affichage des niveaux (en interne : toujours dBm)
         self.show_meta = {k: "" for k in SHOW_META}   # show en cours (🎪 Shows)
         self.show_path = ""
@@ -8640,6 +8796,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.watch[-1]["bw"] = max(0.0, float(w["bw"]))
                 if w.get("hide_wall"):
                     self.watch[-1]["hide_wall"] = True
+                if rx_profile(w.get("rx")) is not None:
+                    self.watch[-1]["rx"] = w["rx"]          # profil d'appareil (🧮 Vérifier le plan)
             except Exception:
                 pass
         sp = data.get("scope")
@@ -8695,6 +8853,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sig_colors = clean_colors(data.get("sig_colors"))
         po = data.get("plan_opts")
         if isinstance(po, dict):
+            if rx_profile(po.get("prof")) is not None:
+                self.plan_opts["prof"] = po["prof"]
             for k_ in ("sep", "filt", "step"):
                 try:
                     self.plan_opts[k_] = float(po[k_]) if k_ == "filt" else int(po[k_])
@@ -8794,7 +8954,8 @@ class MainWindow(QtWidgets.QMainWindow):
             watch=[dict(name=w["name"], freq=w["freq"], status=w["status"], thr=w["thr"],
                         scene=w["scene"], group=w["group"], **({"hide_mk": True} if w.get("hide_mk") else {}),
                         **({"bw": w["bw"]} if w.get("bw") else {}),
-                        **({"hide_wall": True} if w.get("hide_wall") else {}))
+                        **({"hide_wall": True} if w.get("hide_wall") else {}),
+                        **({"rx": w["rx"]} if w.get("rx") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1))) for g in s["groups"]])

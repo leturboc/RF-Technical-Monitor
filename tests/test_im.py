@@ -344,6 +344,69 @@ for _ in range(14):                            # avec filtre récepteur et pas d
     tot_ += 1
     same += fast == slow
 ok(f"suggestion rapide = brute, avec filtre et pas 5 kHz ({same}/{tot_})", same == tot_)
+
+# ---- profils d'appareil (un par fréquence, comme EazyRF)
+rxp = ns["rx_profile"]
+ok("profils : Wisycom = profil EazyRF de Clément", rxp("wisycom")["filt"] == 32.0 and rxp("wisycom")["sep"] == 0.5
+   and rxp("wisycom")["step"] == 0.005 and rxp("inconnu") is None)
+ok("profils : chacun expliqué, clés uniques", all(len(w_) > 30 for *_x, w_ in ns["RX_PROFILES"])
+   and len({k for k, *_x in ns["RX_PROFILES"]}) == len(ns["RX_PROFILES"]))
+def _prof(keys):
+    P = [rxp(k) for k in keys]
+    return dict(sep=[q["sep"] for q in P], tol=[q["tol"] for q in P], filt=[q["filt"] for q in P])
+_pw = _prof(["wisycom"] * len(WIS))
+ok("profils : plan Wisycom tout en Wisycom → 0 problème", not any(pfc(WIS, **_pw)[0]))
+_ps = _prof(["shure_ana"] * len(WIS))
+ok("profils : même plan en Shure analogique (peu sélectif) → des problèmes", any(pfc(WIS, **_ps)[0]))
+_im = pfc(WIS, **_prof(["wisycom"] * 3 + ["shure_ana"] * 5 + ["wisycom"] * 2))[0]
+ok("profils : mélange → seuls les récepteurs peu sélectifs (Shure 558…646) sont touchés",
+   [len(x) for x in _im] == [0, 0, 0, 0, 1, 1, 1, 1, 0, 0], str([len(x) for x in _im]))
+# écart par paire = le plus grand des deux
+ok("profils : écart = le plus grand des deux", pfc([500.0, 500.45], sep=[0.3, 0.5])[0][0]
+   and not pfc([500.0, 500.45], sep=[0.3, 0.4])[0][0])
+# tolérance de la fréquence TOUCHÉE : 2×500 − 501 = 499 à 120 kHz de 499.12
+ok("profils : tolérance de la victime (150 kHz → touchée)",
+   pfc([500.0, 501.0, 499.12], tol=[None, None, {"2tx3": 0.15, "3tx3": 0, "5": 0, "7": 0}])[0][2])
+ok("profils : tolérance de la victime (100 kHz → non)",
+   not pfc([500.0, 501.0, 499.12], tol=[None, None, {"2tx3": 0.1, "3tx3": 0, "5": 0, "7": 0}])[0][2])
+# suggestion rapide = brute avec des profils mélangés
+def _brute2(i, F, T, B, pp, lo, hi, n, step):
+    ot = [k for k in range(len(F)) if k != i]
+    sub = lambda key, ks: [pp[key][k] for k in ks]
+    mt = 3
+    base = sum(map(len, pfc([F[k] for k in ot], [T[k] for k in ot], [B[k] for k in ot], sub("sep", ot),
+                            sub("tol", ot), mt, sub("filt", ot))[0]))
+    out = []
+    g = np.arange(np.ceil(lo / step - 1e-9) * step, hi + 1e-9, step)
+    for c in g[np.lexsort((g, np.round(np.abs(g - F[i]), 6)))]:
+        c = round(float(c), 6)
+        if abs(c - F[i]) < 1e-9:
+            continue
+        ks = ot + [i]
+        iss = pfc([F[k] for k in ot] + [c], [T[k] for k in ks], [B[k] for k in ks], sub("sep", ks), sub("tol", ks),
+                  mt, sub("filt", ks))[0]
+        if not iss[-1] and sum(map(len, iss[:-1])) <= base:
+            out.append(c)
+            if len(out) >= n:
+                break
+    return out
+same = tot_ = 0
+keys_ = [k for k, *_x in ns["RX_PROFILES"]]
+for _ in range(14):
+    nf = rgs.randint(4, 8)
+    Fr = sorted({round(rgs.uniform(490, 540), 3) for _ in range(nf)})
+    Br = [8.0 if rgs.random() < 0.1 else 0.0 for _ in Fr]
+    Tr = [rgs.random() > 0.2 for _ in Fr]
+    pp = _prof([rgs.choice(keys_) for _ in Fr])
+    i_ = rgs.randrange(len(Fr))
+    fast = [c for c, _d in pfs(i_, Fr, Tr, Br, pp["sep"], pp["tol"], 3, lo=Fr[i_] - 1.5, hi=Fr[i_] + 1.5, n=3,
+                               step=0.025, filt=pp["filt"])]
+    slow = _brute2(i_, Fr, Tr, Br, pp, Fr[i_] - 1.5, Fr[i_] + 1.5, 3, 0.025)
+    tot_ += 1
+    same += fast == slow
+    if fast != slow:
+        print("   diff", i_, Fr, pp, fast, slow)
+ok(f"suggestion rapide = brute, profils mélangés ({same}/{tot_})", same == tot_)
 rgb = np.random.default_rng(1)
 F30 = sorted(470 + rgb.uniform(0, 224, 30).round(3))
 _iss30, _inf30 = pfc(F30, tol=dict(EZ))
