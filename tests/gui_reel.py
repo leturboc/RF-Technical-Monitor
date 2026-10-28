@@ -429,6 +429,25 @@ if _pd is not None:
         app.processEvents()
         check("plan : fréquence remplacée dans la liste", abs(_w["freq"] - _c) < 1e-9)
         check("plan : moins de problèmes après", sum(map(len, _pd.issues)) < _n0, f"{_n0} → {sum(map(len, _pd.issues))}")
+    # profils d'appareil : défaut Wisycom (remplit les réglages), puis Shure sur 2 lignes
+    _pd.prof_combo.setCurrentIndex(_pd.prof_combo.findData("wisycom"))
+    app.processEvents()
+    check("plan : profil Wisycom → filtre 32 MHz, écart 500, pas 5", _pd.filt_spin.value() == 32
+          and _pd.sep_spin.value() == 500 and _pd.step_spin.value() == 5)
+    _pd.sep_spin.setValue(450)
+    check("plan : toucher un réglage → « Réglages ci-dessous »", _pd.prof_combo.currentData() == "")
+    _pd.table.clearSelection()
+    _pd.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.MultiSelection)
+    _pd.table.selectRow(0)
+    _pd.table.selectRow(1)
+    _pd.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+    _pd.rx_combo.setCurrentIndex(_pd.rx_combo.findData("shure_ana"))
+    _w0, _w1 = _pd.ws[0], _pd.ws[1]
+    step("plan : appareil Shure sur 2 lignes", _pd.set_rx)
+    check("plan : appareil enregistré sur les fréquences", _w0.get("rx") == "shure_ana" and _w1.get("rx") == "shure_ana")
+    check("plan : colonne Appareil", "Shure" in (_pd.table.item(_pd.ws.index(_w0), 3).text()))
+    check("plan : appareil gardé dans la config", any(x.get("rx") == "shure_ana" for x in win._collect_config()["watch"]))
+    shot(_pd, "plan_appareils")
     _pd.close()
 else:
     check("plan : fenêtre ouverte", False)

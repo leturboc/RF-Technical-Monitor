@@ -18,7 +18,8 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 - **🔁 Convertisseur de scans** : WSM, WWB ou CSV au choix (colonnes, unités, séparateur), en entrée comme en sortie
 - **🩺 Diagnostic tinySA** : fichier avec les derniers échanges avec le tinySA, à envoyer en cas de bug
 - **🧮 Vérifier le plan de fréquences** (Outils), comme EazyRF : écart entre porteuses et intermod selon tes
-  tolérances, filtre du récepteur et pas (comme un profil d'appareil EazyRF), ✔ / ✗ par fréquence avec le
+  tolérances, filtre du récepteur et pas, avec un **profil d'appareil par fréquence** (Wisycom très sélectif,
+  Shure, Sennheiser, ears… comme dans EazyRF), ✔ / ✗ par fréquence avec le
   détail, et une fréquence de remplacement compatible en un clic
 - **🎤 Appel des micros** (Ctrl+L) : allume tes émetteurs, chaque fréquence passe ✓ ; résumé au journal, pack mal
   réglé repéré (signal inconnu tout près d'une fréquence qui manque)

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.8.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.9.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -138,6 +138,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   puis « ⚪ Simple » (2A − B). `self.plan_opts = {sep kHz, filt MHz, step kHz}` dans config.json.
   Diagnostic auto (liaison perdue / erreur) : plus de `QTimer.singleShot(0, lambda)` (crash.log 7.6.2 « access
   violation » dans `dump_diag`) → `self._diag_pending`, écrit par `_alarm_tick` dans un try.
+- **Profils d'appareil (7.9.0, Clément : « après Wisycom c'est très sélectif, il faut des machines moins sélectives
+  Shure, Sennheiser… »)** : PURE `RX_PROFILES` (clé, nom, {sep, filt, step, tol}, explication) : wisycom (= profil
+  EazyRF de Clément), senn_dig, senn_ana, shure_dig, shure_ana, iem (+ 5ᵉ ordre) ; **seul Wisycom vient d'un vrai
+  profil, les autres sont des valeurs de départ NON vérifiées** (lui demander ses profils EazyRF). `rx_profile(key)`.
+  `pf_check` / `pf_suggest` acceptent sep / filt / tol PAR FRÉQUENCE (listes, `_pf_vec`, `_pf_tols`) : écart d'une
+  paire = le plus grand des deux, filtre et tolérances = ceux de la fréquence touchée (supposition raisonnable, pas
+  lue chez EazyRF) ; pas des propositions = celui de l'appareil de la fréquence. `w["rx"]` (config + shows via
+  `watch`). `PlanCheckDialog` : `prof_combo` (appareil par défaut → remplit les réglages ; toucher un réglage →
+  « ✏ Réglages ci-dessous »), colonne « Appareil » (`rx_short`), `rx_combo` + « Appliquer aux lignes choisies »
+  (`set_rx`, sélection multiple), `fill_rx_combo`. `plan_opts["prof"]`.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
@@ -249,6 +259,12 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - Spectera : faits issus de la doc / presse Sennheiser (6 / 8 MHz, 2 canaux larges par base, plages UHF / 1G4) ;
   **jamais mesuré** un vrai porteur Spectera au tinySA (niveau du plateau selon RBW, seuil à régler).
 - Idée : import d'un plan Spectera (WSM / Spectera Control).
+- **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
+  fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
+  analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non
+  publiés → on ne peut faire qu'une approximation (expanseur 2:1 générique réglable) ; les systèmes numériques
+  (ULX-D, Axient D, EW-D/DX, 6000, Spectera, Wisycom numérique) ne s'écoutent pas (codecs propriétaires, AES-256).
+  Un tinySA ne démodule pas en audio : il faut un SDR (flux IQ).
 - **Plus tard (demande de Clément, pas maintenant)** : d'autres appareils de mesure que le tinySA (SDR type RTL-SDR /
   HackRF / Airspy, autres analyseurs…) → isoler une interface « appareil » (balayage → F, L) derrière `TinySA` /
   `ScanWorker` pour en brancher plusieurs.
