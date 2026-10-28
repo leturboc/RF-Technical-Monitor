@@ -273,7 +273,20 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   amp} (config « sdr ») ; port choisi gardé (config « port », `_want_port`) ; `SdrDialog` (Outils › 📡).
   Tests : `tests/fake_sdr.py` (faux hackrf_sweep, `FAKE_SDR_CARRIERS`, `FAKE_SDR_DIE`), `test_sdr.py`,
   `test_sdr_qt.py` (vrai ScanWorker). **Jamais testé avec un vrai HackRF / RTL-SDR** ; niveaux non étalonnés.
-  Prochaine étape : écoute (démodulation, voir ci-dessous), WiNRADiO (SDK Windows propre à chaque modèle).
+  `configure()` lève une erreur si l'outil est mort entre deux cycles (avant : relancé en silence → débranchement
+  invisible, vu dans la CI Windows).
+- **V8 étape 2 (fait) : écoute 🎧** (Outils, clic droit sur la liste) : PURE `LISTEN_MODES` (wfm ±50 kHz / nfm /
+  am), `LISTEN_COMPANDERS` (none, x2 = expanseur 2:1 générique `expand2`, approximation), `sdr_iq_rate` (HackRF
+  4,8 MS/s, RTL 2,4 MS/s), `iq_from_bytes`, `lowpass_taps`, `FirDecim` (FIR + décimation en flux, sliding_window_view),
+  `ChannelDemod` (mélange NCO, 240 kHz, discriminateur, 48 kHz, désaccentuation en FIR, squelch dBFS),
+  `audio_int16`, `listen_center` (plus grande grappe dans ±0,4·fs, évite le continu), `listen_cmd`
+  (`hackrf_transfer -r -` / `rtl_sdr -`). Qt : `ListenWorker` (QThread, ≤ 4 canaux, `sel` = canal entendu, -1 =
+  mélange, `audio` deque, `levels`), `AudioOut` (QtMultimedia QAudioSink, retard jeté > 0,5 s), `ListenDialog`.
+  Le SDR ne balaye pas pendant l'écoute : `ScanWorker.paused` → `Aborted` dans `scan` → outil arrêté, statut
+  « 🎧 écoute en cours », pas de « liaison perdue » ; reprise ensuite. ~17 % d'un cœur par canal à 4,8 MS/s.
+  Tests : `tests/fake_iq.py` (IQ FM synthétique au rythme réel), test_sdr (DSP), test_sdr_qt (bout en bout, pause).
+  **Non vérifié** : vrai HackRF / RTL-SDR, `hackrf_transfer -r -` vers stdout sous Windows, son réel (QAudioSink),
+  rendu des companders. Reste : WiNRADiO (SDK Windows propre à chaque modèle).
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
   fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
   analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non

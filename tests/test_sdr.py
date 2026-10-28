@@ -90,5 +90,75 @@ ok("faux hackrf_sweep : 2 passages lus", acc.passes >= 2)
 ok("faux hackrf_sweep : porteuse 473 MHz vue", abs(np.linspace(470e6, 480e6, 401)[np.argmax(r)] - 473e6) <= 30e3
    and r.max() > -50, str(r.max()))
 
+# ---- écoute : démodulation (signaux synthétiques)
+fs = 4800000
+t = np.arange(int(fs * 0.25)) / fs
+def fm(f_off, tone, dev, amp=0.3):
+    ph = 2 * np.pi * f_off * t + dev / tone * np.sin(2 * np.pi * tone * t)
+    return amp * np.exp(1j * ph)
+rng = np.random.default_rng(3)
+iq = (fm(600e3, 1000.0, 30e3) + fm(-800e3, 3000.0, 30e3) +
+      0.01 * (rng.normal(size=len(t)) + 1j * rng.normal(size=len(t)))).astype(np.complex64)
+
+
+def tone_of(a, rate=48000):
+    a = np.asarray(a[len(a) // 4:])
+    sp = np.abs(np.fft.rfft(a * np.hanning(len(a))))
+    fr = np.fft.rfftfreq(len(a), 1 / rate)
+    k = int(np.argmax(sp[5:])) + 5
+    snr = 10 * np.log10(sp[k] ** 2 / (np.sum(sp ** 2) - np.sum(sp[max(0, k - 3):k + 4] ** 2) + 1e-12))
+    return fr[k], snr
+
+
+CD = ns["ChannelDemod"]
+outs = {}
+for off in (600e3, -800e3):
+    d = CD(fs, off, "wfm", deemph_us=0)
+    chunks = [d.process(iq[i:i + 96000])[0] for i in range(0, len(iq), 96000)]   # en blocs de 20 ms
+    outs[off] = np.concatenate(chunks)
+f1, snr1 = tone_of(outs[600e3])
+f2, snr2 = tone_of(outs[-800e3])
+ok("écoute : 48 kHz en sortie (0,25 s → ~12 000 échantillons)", 11500 <= len(outs[600e3]) <= 12100, str(len(outs[600e3])))
+ok("écoute : micro à +600 kHz → 1 kHz", abs(f1 - 1000) < 20 and snr1 > 20, f"{f1:.0f} Hz, {snr1:.1f} dB")
+ok("écoute : micro à −800 kHz → 3 kHz (2 canaux dans la même fenêtre)", abs(f2 - 3000) < 20 and snr2 > 20,
+   f"{f2:.0f} Hz, {snr2:.1f} dB")
+amp = np.sqrt(np.mean(outs[600e3][3000:] ** 2)) * np.sqrt(2)
+ok("écoute : niveau audio ≈ déviation / 50 kHz (30 → 0,6)", 0.5 < amp < 0.7, f"{amp:.3f}")
+d1 = CD(fs, 600e3, "wfm", deemph_us=0)
+whole = d1.process(iq)[0]
+ok("écoute : en blocs = d'un coup (pas de clic aux raccords)", len(whole) == len(outs[600e3])
+   and np.max(np.abs(whole - outs[600e3])) < 1e-3, f"{len(whole)} / {len(outs[600e3])}")
+dq = CD(fs, 1500e3, "wfm", squelch=-40)
+aq, lvq = dq.process(iq)
+ok("écoute : squelch ferme un canal vide", np.all(aq == 0) and lvq < -40, f"{lvq:.1f} dBFS")
+d_on = CD(fs, 600e3, "wfm", squelch=-40)
+a_on, lv_on = d_on.process(iq)
+ok("écoute : squelch ouvert sur un micro", np.any(a_on != 0) and lv_on > -40, f"{lv_on:.1f}")
+dd = CD(fs, 600e3, "wfm", deemph_us=50)
+ok("écoute : désaccentuation 50 µs (atténue les aigus)", tone_of(dd.process(iq)[0])[0] == f1)
+# expanseur 2:1 : un signal 4× plus faible (−12 dB) ressort ~16× plus faible (−24 dB)
+class S: env = 0.05
+lo_ = 0.05 * np.sin(np.arange(48000) / 48000 * 2 * np.pi * 440).astype(np.float32)
+hi_ = lo_ * 4
+st1, st2 = S(), S()
+ex_lo = ns["expand2"](lo_, st1)[24000:]
+ex_hi = ns["expand2"](hi_, st2)[24000:]
+ratio = 20 * np.log10(np.sqrt(np.mean(ex_hi ** 2)) / np.sqrt(np.mean(ex_lo ** 2)))
+ok("expanseur 2:1 : 12 dB d'écart → ~24 dB", 22 < ratio < 26, f"{ratio:.1f} dB")
+iqh = ns["iq_from_bytes"]("hackrf", bytes([127, 129, 0, 0]))
+ok("IQ HackRF (int8)", abs(iqh[0] - (127 / 128 - 127j / 128)) < 1e-6 and len(iqh) == 2, str(iqh))
+iqr = ns["iq_from_bytes"]("rtlsdr", bytes([255, 0]))
+ok("IQ RTL-SDR (uint8 centré)", abs(iqr[0].real - 127.5 / 128) < 1e-6 and abs(iqr[0].imag + 127.5 / 128) < 1e-6)
+c, use = ns["listen_center"]([606.0, 614.0, 607.5, 608.2], "hackrf")
+ok("centre d'écoute : la plus grande grappe qui tient (HackRF ±1,9 MHz)", use == [606.0, 607.5, 608.2]
+   and 606e6 < c < 608.2e6, f"{c} {use}")
+c2, use2 = ns["listen_center"]([606.0], "rtlsdr")
+ok("centre d'écoute : décalé du continu du SDR", abs(c2 - 606e6) >= 150e3, str(c2))
+lc = ns["listen_cmd"]("hackrf", "hackrf_transfer", 607e6, 4800000, 24, 20, False)
+ok("commande hackrf_transfer", lc == ["hackrf_transfer", "-r", "-", "-f", "607000000", "-s", "4800000", "-l", "24",
+                                     "-g", "20", "-a", "0"], str(lc))
+ok("commande rtl_sdr", ns["listen_cmd"]("rtlsdr", "rtl_sdr", 607e6, 2400000, 30) ==
+   ["rtl_sdr", "-f", "607000000", "-s", "2400000", "-g", "30", "-"])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -691,6 +691,27 @@ _sd.close()
 check("SDR : réglages gardés dans la config", win._collect_config()["sdr"]["lna"] == 32
       and win._collect_config()["sdr"]["amp"] is True)
 
+# V8 : écoute (faux hackrf_transfer : IQ synthétique, micros FM sur les 2 premières fréquences)
+_F0 = sorted(win.watch, key=lambda w: w["freq"])
+_pair = next(([a, b] for a, b in zip(_F0, _F0[1:]) if b["freq"] - a["freq"] < 3.0), _F0[:1])
+os.environ["FAKE_IQ_CARRIERS"] = ",".join(f"{w['freq']}:{t}" for w, t in zip(_pair, (1000, 3000)))
+os.environ["FAKE_IQ_SECONDS"] = "0"
+win._listen_tool = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_iq.py")]
+step("écouter", lambda: win.open_listen([win.watch.index(w) for w in _pair]))
+_ld = win._listen
+check("écoute : fréquences cochées", len(_ld._checked()) == len(_pair), _ld.win_lbl.text())
+step("écoute : ▶", _ld.toggle)
+wait(2500)
+check("écoute : niveaux reçus", bool(getattr(_ld, "last_levels", None)), _ld.st_lbl.text())
+check("écoute : canal entendu marqué 🔊", "🔊" in _ld.table.item(_ld.ws.index(_pair[0]), 1).text())
+shot(_ld, "ecoute_sdr")
+if len(_pair) > 1:
+    step("écoute : autre canal", lambda: _ld._pick(_ld.ws.index(_pair[1])))
+    check("écoute : bascule", _ld.worker is not None and _ld.worker.sel == 1)
+step("écoute : ■", _ld.toggle)
+check("écoute : arrêtée proprement", _ld.worker is None and _ld.go_btn.text().startswith("▶"))
+_ld.close()
+
 # dialogues non modaux
 step("open_intermod", win.open_intermod); wait(1500)
 if win._im_dlg:

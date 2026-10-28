@@ -83,12 +83,95 @@ check("SDR débranché : reconnexion automatique", True in ev["links"], str(ev["
 check("SDR débranché : la raison est notée (diagnostic)", any("débranché" in t for t in w.trace))
 check("SDR débranché : pas d'erreur bloquante", not ev["errors"], str(ev["errors"]))
 
+# outil mort ENTRE deux cycles : configure() doit le signaler (avant : relancé en silence, panne invisible)
+os.environ.update(FAKE_SDR_DIE="1")
+sd = m.SDRSweep("hackrf", tool=FAKE)
+sd.configure(cfg["bands"], None, {})
+wait_until(lambda: sd.proc.poll() is not None, 20)
+try:
+    sd.configure(cfg["bands"], None, {})
+    _raised = ""
+except RuntimeError as e:
+    _raised = str(e)
+sd.close()
+check("outil mort entre deux cycles → panne signalée", "débranché" in _raised, _raised)
+os.environ["FAKE_SDR_DIE"] = "0"
+
 _path = os.environ.get("PATH", "")
 os.environ["PATH"] = ""                          # aucun hackrf_sweep dans le PATH
 w, ev = run_worker({}, lambda e: bool(e["errors"]), 10, tool=None, addr="hackrf:inexistant")
 os.environ["PATH"] = _path
 check("outil introuvable : erreur claire", ev["errors"] and ("introuvable" in ev["errors"][0]
                                                              or "arrêté" in ev["errors"][0]), str(ev["errors"]))
+
+# ---- écoute : faux hackrf_transfer → ListenWorker → audio 48 kHz
+FIQ = [sys.executable, os.path.join(HERE, "fake_iq.py")]
+
+
+def tone_of(a, rate=48000):
+    sp = np.abs(np.fft.rfft(a * np.hanning(len(a))))
+    return float(np.fft.rfftfreq(len(a), 1 / rate)[int(np.argmax(sp[5:])) + 5])
+
+
+import numpy as np  # noqa: E402
+os.environ.update(FAKE_IQ_CARRIERS="606.0:1000,607.5:3000", FAKE_IQ_SECONDS="0")
+c, use = m.listen_center([606.0, 607.5], "hackrf")
+lw = m.ListenWorker("hackrf", c, use, "wfm", 50.0, None, "x2", dict(lna=16, vga=20), tool=FIQ)
+lev, stop = [], []
+lw.levels.connect(lambda v: lev.append(v))
+lw.stopped.connect(lambda why: stop.append(why))
+lw.start()
+wait_until(lambda: len(lw.audio) >= 40, 20)
+pcm = b"".join(list(lw.audio))
+lw.sel = 1
+lw.audio.clear()
+wait_until(lambda: len(lw.audio) >= 40, 20)
+pcm2 = b"".join(list(lw.audio))
+lw.requestInterruption()
+lw.wait(8000)
+app.processEvents()
+a1 = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32000
+a2 = np.frombuffer(pcm2, dtype="<i2").astype(np.float32) / 32000
+check("écoute : audio reçu (48 kHz, 16 bits)", len(a1) > 30000, str(len(a1)))
+check("écoute : canal 1 = micro 606,000 (1 kHz)", abs(tone_of(a1[4800:]) - 1000) < 30, str(tone_of(a1[4800:])))
+check("écoute : on bascule sur le canal 2 = 607,500 (3 kHz)", abs(tone_of(a2[4800:]) - 3000) < 30,
+      str(tone_of(a2[4800:])))
+check("écoute : niveaux des 2 canaux", lev and len(lev[-1]) == 2 and all(x[0] > -30 for x in lev[-1]), str(lev[-1:]))
+check("écoute : arrêt demandé = pas d'erreur", stop == [""], str(stop))
+check("écoute : outil arrêté", lw.proc is None)
+os.environ["FAKE_IQ_SECONDS"] = "1"
+lw = m.ListenWorker("rtlsdr", c, use, tool=FIQ)
+stop = []
+lw.stopped.connect(lambda why: stop.append(why))
+lw.start()
+wait_until(lambda: bool(stop), 15)
+lw.wait(3000)
+check("écoute : SDR débranché → arrêt expliqué", stop and "débranché" in stop[0], str(stop))
+
+# pause du balayage pendant l'écoute (le SDR ne fait pas les deux)
+os.environ.update(FAKE_SDR_CARRIERS="473.0", FAKE_SDR_DIE="0")
+ev = dict(sweeps=[], links=[], errors=[], st=[])
+w = m.ScanWorker("hackrf", False, lambda: cfg, lambda: 1)
+w.sdr_tool = FAKE
+w.sweep.connect(lambda bid, f, l: ev["sweeps"].append(time.time()))
+w.link.connect(lambda ok: ev["links"].append(ok))
+w.status.connect(lambda t: ev["st"].append(t))
+w.start()
+wait_until(lambda: len(ev["sweeps"]) >= 2, 20)
+w.paused = True
+wait_until(lambda: w.dev is None, 10)
+time.sleep(0.5)
+app.processEvents()
+n_p = len(ev["sweeps"])
+wait_until(lambda: False, 1.5)
+check("pause : l'outil de balayage est arrêté (SDR libre)", w.dev is None)
+check("pause : plus de balayage", len(ev["sweeps"]) == n_p, f"{n_p} → {len(ev['sweeps'])}")
+check("pause : message clair, pas de « liaison perdue »", any("pause" in t for t in ev["st"]) and not ev["links"],
+      str(ev["st"][-2:]) + str(ev["links"]))
+w.paused = False
+check("reprise après l'écoute", wait_until(lambda: len(ev["sweeps"]) > n_p + 1, 20))
+w.requestInterruption()
+w.wait(8000)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
