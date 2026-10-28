@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.6.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.6.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -206,8 +206,9 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - `TinySA.expect_scan(points, rbw, step_khz)` : en RBW auto, délai de silence calculé avec `auto_rbw(pas)` (avant :
   0,05 s / point fixe → tinySA déclaré « muet » à tort avec beaucoup de points). Après 3 reconnexions ratées, le
   message conseille de débrancher / rebrancher le tinySA (il peut figer au bout d'un moment, aussi avec tinySA-App).
-- **tinySA Ultra = une seule prise** : `input_plan` (PURE) → en Auto, rien n'est envoyé sur un Ultra (avant :
-  « mode high input » au-delà de 800 MHz → tinySA bancal, retour de Clément 7.5.0 sur les bandes prédéfinies) ;
+- **tinySA Ultra = une seule prise** : `input_plan` (PURE) → en Auto, toujours « mode low input » sur un Ultra
+  (7.5.0 envoyait « mode high input » au-delà de 800 MHz → tinySA bancal ; 7.5.1 n'envoyait plus RIEN → un Ultra
+  resté en « high » ne revenait jamais : plus aucune bande ne scannait, retour de Clément → corrigé 7.6.2) ;
   « ultra on » une fois au-delà de 800 MHz (`ScanWorker.ultra`, détecté par « tinysa4 » dans `version`).
   Commande « ultra on » **non vérifiée sur un vrai Ultra** (si refusée : ignorée).
 - Vue « Toutes les bandes » : `update_plot` ne trace que les bandes cochées ; `_bands_changed` oublie les données

@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.6.1"
+APP_VER = "7.6.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -259,14 +259,14 @@ def auto_rbw(step_khz):
 
 
 def input_plan(model_ultra, setting, start_hz):
-    """Entrée à demander au tinySA pour un segment qui commence à start_hz -> "low" | "high" | None (ne rien
-    envoyer). tinySA d'origine : deux prises, « haute » au-delà de ~800 MHz en Auto. tinySA Ultra : UNE seule
+    """Entrée à demander au tinySA pour un segment qui commence à start_hz -> "low" | "high". tinySA d'origine : deux prises, « haute » au-delà de ~800 MHz en Auto. tinySA Ultra : UNE seule
     prise, il monte au-dessus de 800 MHz en mode « ultra » ; lui envoyer « mode high input » en Auto le mettait
     dans un état bancal (retour de Clément : bandes prédéfinies au-dessus de 800 MHz qui plantent)."""
     if setting in ("low", "high"):
         return setting
     if model_ultra:
-        return None
+        return "low"            # entrée normale toujours (elle couvre aussi le mode ultra > 800 MHz). 7.5.1 n'envoyait
+                                # plus rien : un Ultra resté en « high » (laissé par 7.5.0) ne revenait jamais → plus de scan
     return "high" if start_hz >= 800e6 else "low"
 
 
@@ -9033,7 +9033,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p_.parent)))
 
     def on_error(self, msg, dev=0):
-        self.dump_diag(f"erreur : {msg}", quiet=True)
+        QtCore.QTimer.singleShot(0, lambda: self.dump_diag(f"erreur : {msg}", quiet=True))
         if dev == 0:                              # le 1er tinySA ne répond pas : on arrête tout
             for w in self.workers:
                 w.requestInterruption()
@@ -9056,7 +9056,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.log_event(w, 0.0, "APPAREIL RETROUVÉ")
             self.set_status(f"✔ {name} de nouveau en ligne : bandes réparties à nouveau.")
         else:
-            self.dump_diag(f"liaison perdue avec {self.dev_name(dev)}", quiet=True)
+            QtCore.QTimer.singleShot(0, lambda n=self.dev_name(dev): self.dump_diag(f"liaison perdue avec {n}", quiet=True))
             other = f"{self.dev_name(1 - dev)} reprend ses bandes" if self.ndev() > 1 and any(self.dev_live) else \
                 "plus aucune mesure"
             if self.alarms.raise_(key, "APPAREIL", name, 0.0, 2, now, layer="",
