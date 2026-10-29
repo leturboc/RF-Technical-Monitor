@@ -875,6 +875,18 @@ check("marqueur : lecture (niveau, Δ, largeur)", "M1" in win.mkr_lbl.text() and
 shot(win, "marqueurs")
 win.mkr_btn.setChecked(False)
 check("marqueurs masqués", not win.mkr_lines[0].isVisible() and not win.mkr_bar.isVisible())
+_occ = {}
+def _occ_act(d):
+    if isinstance(d, m.OccupancyDialog):
+        _occ["rows"] = d.table.rowCount()
+        _occ["cols"] = d.table.columnCount()
+        _occ["sum"] = d.sum_lbl.text()
+    return "reject"
+DLG_ACTION[0] = _occ_act
+step("📊 occupation par heure", win.open_occupancy)
+DLG_ACTION[0] = "reject"
+check("occupation par heure : une ligne par fréquence, au moins une heure, bilan des réserves",
+      _occ.get("rows") == len(win.watch) and _occ.get("cols", 0) >= 1 and _occ.get("sum"), str(_occ))
 step("❓ Courbes du spectre", win.open_spectrum_legend)
 _lg = win._legend
 if _lg is not None:

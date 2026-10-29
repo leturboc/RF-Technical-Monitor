@@ -546,5 +546,18 @@ nw_, gn_ = ns["compare_spectra"](Fc_, La_, Fc_, Lb_, -80.0)
 check("comparer : signal en plus / en moins, l'identique ignoré",
       ([round(p_["f"], 2) for p_ in nw_], [round(p_["f"], 2) for p_ in gn_]), ([605.0], [608.0]))
 
+# occupation par heure à partir d'un SweepStore
+st_ = ns["SweepStore"](seconds=1e9, max_mb=50)
+Fo_ = np.round(np.arange(600.0, 601.0, 0.01), 3)
+for k_ in range(20):                                 # 20 balayages : heure 20 (k < 10) puis 21
+    Lo_ = np.full(len(Fo_), -100.0)
+    if k_ % 2 == 0:
+        Lo_[np.abs(Fo_ - 600.5) < 0.02] = -50.0      # 600.5 occupée un balayage sur deux
+    st_.add(1, 1000.0 + k_, Fo_, Lo_)
+oc_ = ns["store_occupancy"](st_, [600.5, 600.2, 700.0], -80.0, lambda t: 20 if t < 1010 else 21, 0.05)
+check("occupation : 50 % sur 600.5, 0 % sur 600.2, rien hors bande",
+      {h: (list(n), list(k)) for h, (n, k) in oc_.items()},
+      {20: ([10.0, 10.0, 0.0], [5.0, 0.0, 0.0]), 21: ([10.0, 10.0, 0.0], [5.0, 0.0, 0.0])})
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

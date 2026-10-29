@@ -3889,6 +3889,29 @@ def compare_spectra(F1, L1, F2, L2, thr, margin=10.0):
     return scan_peaks(F1[m1], a1, thr), scan_peaks(F2[m2], a2, thr)
 
 
+def store_occupancy(store, freqs, thr, hour_of, win=0.1):
+    """Occupation de chaque fréquence (MHz) par heure, à partir des balayages d'un SweepStore : à chaque balayage,
+    occupée si le niveau à ±win MHz atteint thr. hour_of(t) -> heure (0-23). -> {heure: (n balayages par
+    fréquence np.array, n occupés np.array)}."""
+    freqs = np.asarray(freqs, dtype=float)
+    out = {}
+    for b, ts in store.t.items():
+        for t, (f, l) in zip(ts, store.d[b]):
+            if not len(f):
+                continue
+            inb = (freqs >= f[0] - win) & (freqs <= f[-1] + win)
+            if not inb.any():
+                continue
+            h = int(hour_of(t))
+            n, k = out.setdefault(h, (np.zeros(len(freqs)), np.zeros(len(freqs))))
+            for i in np.nonzero(inb)[0]:
+                m = np.abs(f - freqs[i]) <= win
+                v = float(np.max(l[m])) if m.any() else float(l[int(np.argmin(np.abs(f - freqs[i])))])
+                n[i] += 1
+                k[i] += v >= thr
+    return out
+
+
 # ------------------------------------------------------------------ parcours et niveaux d'affichage (7.13)
 UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
              ("simple", "🔵 Simple : + réglages essentiels, journal, scènes / groupes"),
@@ -3915,7 +3938,8 @@ STEPS = (
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🆘 Fréquence de secours…", "open_rescue"))),
     ("after", "⑥ Après le show", "Revoir ce qui s'est passé (relecture, session enregistrée), rapport, exports.",
-     (("⏪ Relecture : revoir le spectre / une session…", "open_replay"), ("📄 Rapport de show…", "make_report"),
+     (("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
+      ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"), ("📄 Rapport de show…", "make_report"),
       ("📤 Exporter les fréquences…", "export_by_scene"))),
 )
 STEP_DEFAULT = dict(scan="step_scan", plan="open_plan_check", im="open_intermod")
@@ -6710,9 +6734,13 @@ class ReplayDialog(QtWidgets.QDialog):
         b_cmp.setToolTip("Superpose le max hold d'une autre session (ex. la balance, ou hier) en pointillés violets,\n"
                          "et liste les signaux en plus ou en moins par rapport à elle.")
         b_cmp.clicked.connect(lambda *_: self.open_compare())
+        b_occ = QtWidgets.QPushButton("📊 Occupation par heure")
+        b_occ.setToolTip("% du temps où chaque fréquence était occupée, heure par heure, sur ce qui est relu.")
+        b_occ.clicked.connect(lambda *_: OccupancyDialog(self.owner, self.store, self.sess_watch,
+                                                          self.sess_path.name if self.sess_path else "").exec())
         self.cmp_lbl = QtWidgets.QLabel("")
         self.cmp_lbl.setWordWrap(True)
-        lay.addLayout(owner._row(b_prev, self.play_btn, b_next, self.speed_combo, self.mh_chk, b_cmp, None,
+        lay.addLayout(owner._row(b_prev, self.play_btn, b_next, self.speed_combo, self.mh_chk, b_cmp, b_occ, None,
                                  self.time_lbl))
         lay.addWidget(self.cmp_lbl)
         self.msg = QtWidgets.QLabel("")
@@ -8541,6 +8569,72 @@ class CoordDialog(QtWidgets.QDialog):
         self.res.clear()
 
 
+class OccupancyDialog(QtWidgets.QDialog):
+    """📊 Occupation par heure : pour chaque fréquence, le % du temps où elle était occupée, heure par heure (mémoire
+    ou session enregistrée). Une réserve « doit rester libre » touchée = créneau à risque."""
+
+    def __init__(self, owner, store=None, watch=None, title=""):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Occupation par heure" + (f" — {title}" if title else ""))
+        lay = QtWidgets.QVBoxLayout(self)
+        ws = list(watch if watch is not None else o.watch)
+        store = store or o.store
+        thr = o.thr_spin.value()
+        occ = store_occupancy(store, [w["freq"] for w in ws], thr,
+                              lambda t: datetime.fromtimestamp(t).hour, max(0.05, o.win_spin.value() / 1000.0))
+        hours = sorted(occ)
+        info = QtWidgets.QLabel(
+            f"% du temps où chaque fréquence dépassait le seuil « occupé » ({o.lvl(thr, suffix=True)}), heure par "
+            "heure. Pour une fréquence qui doit émettre, c'est normal ; pour une <b>réserve qui doit rester libre</b>, "
+            "c'est un créneau à risque (quelqu'un d'autre émet). Survole une case pour le détail.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        t = QtWidgets.QTableWidget(len(ws), len(hours))
+        t.setHorizontalHeaderLabels([f"{h:02d} h" for h in hours])
+        t.setVerticalHeaderLabels([f"{w['name']}  {w['freq']:.3f}" for w in ws])
+        t.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        th, base = o.theme, o.theme["ui_base"]
+        risky = []
+        for c, h in enumerate(hours):
+            n, k = occ[h]
+            for r, w in enumerate(ws):
+                if not n[r]:
+                    continue
+                pct = 100.0 * k[r] / n[r]
+                it = QtWidgets.QTableWidgetItem(f"{pct:.0f} %")
+                it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                free = o.is_keep_free(w["status"])
+                col = th["st_occ"] if free else th["st_free"]
+                if pct > 0:
+                    bg = blend(col, base, min(0.85, 0.2 + pct / 120.0))
+                    it.setBackground(QtGui.QColor(bg))
+                    it.setForeground(QtGui.QColor(contrast_text(bg)))
+                it.setToolTip(f"{w['name']} ({w['freq']:.3f} MHz) à {h:02d} h : occupée {pct:.0f} % du temps "
+                              f"({int(k[r])} balayages sur {int(n[r])})")
+                t.setItem(r, c, it)
+                if free and pct >= 5:
+                    risky.append((pct, w["name"], h))
+        t.resizeColumnsToContents()
+        lay.addWidget(t, 1)
+        risky.sort(reverse=True)
+        self.risky = risky
+        self.sum_lbl = QtWidgets.QLabel(
+            ("⚠ Réserves touchées : " + ", ".join(f"{n_} à {h:02d} h ({p:.0f} %)" for p, n_, h in risky[:8])
+             + (" …" if len(risky) > 8 else "")) if risky else
+            ("✔ Aucune réserve « doit rester libre » touchée." if hours else
+             "Pas encore de balayage à analyser (lance ▶ Démarrer, ou ouvre une session dans la relecture)."))
+        self.sum_lbl.setWordWrap(True)
+        lay.addWidget(self.sum_lbl)
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
+        self.table = t
+        self.resize(900, 600)
+
+
 class SpectrumLegendDialog(QtWidgets.QDialog):
     """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
     deux sens aux réglages de la fenêtre principale)."""
@@ -9673,6 +9767,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.is_running():
             self.toggle_run()
 
+    def open_occupancy(self):
+        OccupancyDialog(self).exec()
+
     def open_coord(self):
         CoordDialog(self).exec()
 
@@ -9835,6 +9932,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
         mm.addSection("③ Après le show")
         mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
+        mm.addAction("📊 Occupation par heure (créneaux à risque)…").triggered.connect(lambda *_: self.open_occupancy())
         submenu(mm, "📊 Scans et rapports", (
             ("📄 Rapport de show…", lambda *_: self.make_report()),
             ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
