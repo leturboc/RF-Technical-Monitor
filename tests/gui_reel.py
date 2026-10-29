@@ -532,7 +532,7 @@ check("menu 🌐 Langue : Français coché, English proposé", _lm == ["Françai
       and win.lang_menu.actions()[0].isChecked() and win.lang == "fr", str(_lm))
 check("manuel français par défaut", win.manual_path() is not None and win.manual_path().name == "manuel.html")
 check("à propos : version et tinySA", any(m.APP_VER in t and "tinySA" in t for k, t in msgs), str(msgs[-1:]))
-check("version dans l'état de la page web", m.json.loads(win.web_json())["ver"] == m.APP_VER)
+check("version dans l'état de la page web", m.json.loads(win.web_json()["fr"])["ver"] == m.APP_VER)
 
 # appel des micros (line check), en mode démo
 step("appel des micros (Ctrl+L)", win.open_linecheck)
@@ -960,7 +960,7 @@ if win.web is not None:
     win.web_cfg["pin"] = "2468"
     win._alarm_tick()
     _al = [a for a in _js.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())["state"]["alarms"] if not a["acked"]]
-    check("page web : acquittement proposé", _js.loads(win.web_json())["ack"] is True)
+    check("page web : acquittement proposé", _js.loads(win.web_json()["fr"])["ack"] is True)
     if _al:
         _rq = _ur.Request(base + "/acquitter", data=_js.dumps(dict(pin="2468", id=_al[0]["id"])).encode(),
                           headers={"Content-Type": "application/json"}, method="POST")

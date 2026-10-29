@@ -3321,7 +3321,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
 <div id="app" class="hidden">
  <header class="top"><div class="bar"><div class="logo">📡</div>
   <div class="ttl"><b id="t">TinySA Monitor</b><span id="meta" class="mut"></span></div>
-  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button></div>
+  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button><a id="lng" class="chip" href="?lang=en" title="English" style="text-decoration:none">EN</a></div>
   <nav id="nav"></nav></header>
  <section id="al"></section><main id="view"></main>
 </div>
@@ -4258,9 +4258,13 @@ class WebServer(threading.Thread):
 
     COOKIE = "tsm"
 
-    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None):
+    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
+                 get_page=None, default_lang="fr"):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
+        # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
+        self.get_page = get_page or (lambda lang: WEB_PAGE.encode("utf-8"))
+        self.default_lang = default_lang if default_lang in ("fr", "en") else "fr"
         self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
         self.get_spec = get_spec or (lambda: b'{"bands":[]}')
         self.get_cfg = get_cfg or (lambda: {})
@@ -4333,12 +4337,35 @@ class WebServer(threading.Thread):
                     raise ValueError
                 return req
 
+            def _lang(self, qs):
+                """Langue de la personne : ?lang= (retenu en cookie), cookie, sinon langue du téléphone."""
+                q = next((v for k, _, v in (p.partition("=") for p in qs.split("&")) if k == "lang"), "")
+                if q in ("fr", "en"):
+                    return q, True
+                for part in (self.headers.get("Cookie") or "").split(";"):
+                    k, _, v = part.strip().partition("=")
+                    if k == "tsm_lang" and v in ("fr", "en"):
+                        return v, False
+                al = (self.headers.get("Accept-Language") or "").strip().lower()
+                if al:
+                    return ("fr" if al.startswith("fr") else "en"), False
+                return owner.default_lang, False
+
+            def _state(self, lang):
+                try:
+                    return owner.get_json(lang)
+                except TypeError:                   # get_json sans langue (une seule langue)
+                    return owner.get_json()
+
             def do_GET(self):
                 path, _, qs = self.path.partition("?")
                 view = next((v for k, _, v in (p.partition("=") for p in qs.split("&")) if k == "v"), "")
                 view = view if view in WEB_VIEW_KEYS else ""
+                lang, chosen = self._lang(qs)
                 if path in ("/", "/index.html"):
-                    self._send(200, WEB_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                    extra = [("Set-Cookie", f"tsm_lang={lang}; Path=/; SameSite=Strict; Max-Age=31536000")] \
+                        if chosen else []
+                    self._send(200, owner.get_page(lang), "text/html; charset=utf-8", extra)
                     return
                 if path not in ("/etat.json", "/spectre.json"):
                     self.send_error(404)
@@ -4358,7 +4385,7 @@ class WebServer(threading.Thread):
                             ident=bool(me and me.get("ident", 0) > time.time()),
                             views=[k for k in WEB_VIEW_KEYS if cfg["views"][k]],
                             ack=len(str(owner.get_pin() or "").strip()) >= 4)
-                body = (json.dumps(head, ensure_ascii=False)[:-1] + ',"state":').encode("utf-8") + owner.get_json() + b"}"
+                body = (json.dumps(head, ensure_ascii=False)[:-1] + ',"state":').encode("utf-8") + self._state(lang) + b"}"
                 self._send(200, body, "application/json; charset=utf-8")
 
             def do_POST(self):
@@ -4499,6 +4526,12 @@ class AlertsDialog(QtWidgets.QDialog):
         chat_row.addWidget(self.find_chat)
         nf.addRow("Chat id :", chat_row)
         nf.addRow("Nom du site :", self.site)
+        self.n_lang = QtWidgets.QComboBox()
+        for lab_, k_ in (("comme l'appli", "app"), ("Français", "fr"), ("English", "en")):
+            self.n_lang.addItem(lab_, k_)
+        self.n_lang.setCurrentIndex(max(0, self.n_lang.findData(n.get("lang", "app"))))
+        self.n_lang.setToolTip("Langue des alertes envoyées sur les téléphones (indépendante de la langue de l'appli).")
+        nf.addRow("Langue des alertes :", self.n_lang)
         nf.addRow(test)
         nf.addRow(self.n_lbl)
         self.service.currentIndexChanged.connect(lambda *_: self._svc())
@@ -4591,12 +4624,12 @@ class AlertsDialog(QtWidgets.QDialog):
             wd.setEnabled(not ntfy)
 
     def values(self):
-        return dict(mode=self.mode.currentData(), service=self.service.currentData(),
-                    server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
-                    tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
-                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value(),
-                                                     pin=self.web_pin.text().strip(), password=self.web_pw.text(),
-                                                     views={k: c.isChecked() for k, c in self.view_chks.items()})
+        return (dict(mode=self.mode.currentData(), service=self.service.currentData(),
+                     server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
+                     tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
+                     site=self.site.text().strip(), lang=self.n_lang.currentData() or "app"),
+                dict(on=self.web_on.isChecked(), port=self.web_port.value(), pin=self.web_pin.text().strip(),
+                     password=self.web_pw.text(), views={k: c.isChecked() for k, c in self.view_chks.items()}))
 
     def show_tuto(self):
         d = QtWidgets.QDialog(self)
@@ -8632,14 +8665,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_path = ""
         self.recent_shows = []
         self.notify_cfg = dict(mode="off", service="ntfy", server="https://ntfy.sh", topic="", tg_token="",
-                               tg_chat="", site="")
+                               tg_chat="", site="", lang="app")
         self.notifier = None
         self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
         self.web_cfg = dict(on=False, port=WEB_PORT, pin="", password="", views=web_views_norm(None))
         self._web_spec = b'{"t":0,"bands":[]}'
         self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self.web = None
-        self._web_json = b"{}"
+        self._web_json = {"fr": b"{}", "en": b"{}"}
         self.view_id = -1
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
@@ -10679,7 +10712,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def send_notify(self, title, body, prio, cfg=None):
         """Met une alerte dans la file d'envoi. -> message d'erreur de réglage, ou "" si c'est parti."""
         c = cfg or self.notify_cfg
-        title, body = TR(title), TR(body)                 # langue de l'interface
+        lang = c.get("lang", "app")                       # langue des alertes : celle de l'appli, ou imposée
+        tr = TR if lang == "app" else (en_translator() if lang == "en" else (lambda x: x))
+        title, body = tr(title), tr(body)
         if c["service"] == "telegram":
             if not c["tg_token"] or not c["tg_chat"]:
                 return "Telegram : jeton du bot et chat id requis."
@@ -10714,12 +10749,14 @@ class MainWindow(QtWidgets.QMainWindow):
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
             thr=round(float(self.thr_spin.value()), 1)))
-        if TR:                                            # page en anglais : les textes d'état aussi
-            for r in st["rows"]:
-                r.update(state_txt=TR(r["state_txt"]), status=TR(r["status"]), alarm=TR(r["alarm"]))
-            for a in st["alarms"]:
-                a.update(kind=TR(a["kind"]), info=TR(a["info"]))
-        return json.dumps(st, ensure_ascii=False).encode("utf-8")
+        out = {"fr": json.dumps(st, ensure_ascii=False).encode("utf-8")}
+        tr = en_translator()                              # chaque personne choisit sa langue sur la page
+        for r in st["rows"]:
+            r.update(state_txt=tr(r["state_txt"]), status=tr(r["status"]), alarm=tr(r["alarm"]))
+        for a in st["alarms"]:
+            a.update(kind=tr(a["kind"]), info=tr(a["info"]))
+        out["en"] = json.dumps(st, ensure_ascii=False).encode("utf-8")
+        return out
 
     def web_spec_json(self):
         """Spectre allégé pour les vues Spectre / Waterfall de la page web (une entrée par bande récente)."""
@@ -10741,8 +10778,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.web = None
         if want and self.web is None:
             self._web_json = self.web_json()
-            ws = WebServer(self.web_cfg["port"], lambda: self._web_json, get_pin=lambda: self.web_cfg.get("pin", ""),
-                           on_ack=self._web_acks.put, get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg)
+            ws = WebServer(self.web_cfg["port"], lambda lang="fr": self._web_json.get(lang, self._web_json["fr"]),
+                           get_pin=lambda: self.web_cfg.get("pin", ""), on_ack=self._web_acks.put,
+                           get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
+                           default_lang=self.lang)
             ws.start()
             ws.ready.wait(3)
             if ws.error:
@@ -14391,17 +14430,15 @@ def _patch(cls, name, which="first", lists=(), kws=(), static=False):
         setattr(cls, name, f)
 
 
-def install_language(code):
-    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
-    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
-    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
-    -> True si la langue est active."""
-    if code != "en":
-        return False
+def _load_lang_en():
+    """-> (exact, modèles, morceaux de page web, vocabulaire) anglais (lang_en + lang_en_v8), ou None."""
+    here = str(Path(__file__).resolve().parent)          # à côté du programme, d'où qu'on le lance
+    if here not in sys.path:
+        sys.path.append(here)
     try:
         import lang_en                                    # fichier de traductions à côté du programme / dans l'exe
     except ImportError:
-        return False
+        return None
     exact, tpl = dict(lang_en.EXACT), dict(lang_en.TEMPLATES)
     try:
         import lang_en_v8                                 # textes propres à la V8 (SDR), dans leur propre fichier
@@ -14409,11 +14446,49 @@ def install_language(code):
         tpl.update(lang_en_v8.TEMPLATES)
     except ImportError:
         pass
+    return exact, tpl, lang_en.WEB, lang_en.VOCAB
+
+
+_EN_TR = []
+
+
+def en_translator():
+    """Traducteur anglais, même si l'appli est en français (page web / alertes au choix de chacun)."""
+    if not _EN_TR:
+        if TR:
+            _EN_TR.append(TR)
+        else:
+            d = _load_lang_en()
+            _EN_TR.append(Translator(d[0], d[1]) if d else Translator())
+    return _EN_TR[0]
+
+
+_WEB_PAGES = {}
+
+
+def web_page_bytes(lang):
+    """Page web de l'équipe dans la langue de la personne (« fr » : la page d'origine)."""
+    if lang not in _WEB_PAGES:
+        d = _load_lang_en() if lang == "en" else None
+        page = web_page_lang(WEB_PAGE, d[2], en_translator())[0] if d else WEB_PAGE
+        _WEB_PAGES[lang] = page.encode("utf-8")
+    return _WEB_PAGES[lang]
+
+
+def install_language(code):
+    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
+    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
+    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
+    -> True si la langue est active."""
+    if code != "en":
+        return False
+    d = _load_lang_en()
+    if d is None:
+        return False
+    exact, tpl, _web, vocab = d
     TR.__init__(exact, tpl)
-    global WEB_PAGE
-    WEB_PAGE = web_page_lang(WEB_PAGE, lang_en.WEB, TR)[0]
     for lst in (NAME_WORDS, SCENE_WORDS, GROUP_WORDS):    # mots proposés pour les noms : en anglais
-        lst[:] = list(dict.fromkeys(lang_en.VOCAB.get(w, w) for w in lst))
+        lst[:] = list(dict.fromkeys(vocab.get(w, w) for w in lst))
     W = QtWidgets
     for cls in (W.QLabel, W.QPushButton, W.QCheckBox, W.QRadioButton, W.QToolButton, W.QGroupBox, W.QDockWidget,
                 W.QMenu, W.QListWidgetItem, W.QTableWidgetItem, QtGui.QAction, W.QCommandLinkButton, W.QToolBar):

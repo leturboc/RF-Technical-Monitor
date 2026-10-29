@@ -362,10 +362,17 @@ tg = dict(win.notify_cfg, service="telegram", tg_token="1:A", tg_chat="9")
 check("telegram : requête", win.send_notify("t", "b", 2, cfg=tg) == "" and "api.telegram.org/bot1:A" in win.notifier.reqs[-1][0])
 
 # ------------------------------------------------------------- page web (état JSON) et config
-js = json.loads(win.web_json())
+js = json.loads(win.web_json()["fr"])
 check("état web : toutes les fréquences", len(js["rows"]) == len(win.watch), str(len(js["rows"])))
 check("état web : alarmes en cours", any(a["kind"] == "ABSENT" for a in js["alarms"]))
 check("état web : titre avec le site", js["title"] == "TinySA Monitor — Fest", js["title"])
+js_en = json.loads(win.web_json()["en"])
+check("état web en anglais (pour qui choisit EN sur son téléphone)",
+      any(a["kind"] == "MISSING" for a in js_en["alarms"]), str([a["kind"] for a in js_en["alarms"]]))
+check("alertes : langue imposée (anglais)", win.send_notify("⚠ CONFLIT", "x", 2, cfg=dict(win.notify_cfg, lang="en",
+      service="ntfy", topic="t")) == "" and "CONFLICT" in __import__("email.header", fromlist=["x"]).make_header(
+      __import__("email.header", fromlist=["x"]).decode_header(win.notifier.reqs[-1][1]["Title"])).__str__(),
+      str(win.notifier.reqs[-1])[:200])
 check("web désactivée : texte", "désactivée" in win.web_urls_text())
 win.notify_cfg["tg_token"] = "SECRET"
 win.web_cfg.update(on=True, port=8099, pin="2468")
