@@ -35,6 +35,11 @@ FR = re.compile(r"[éèêàùçôîûœÉÈÀÇ]|\b(le|la|les|des|du|une|pour|av
 OK_WORDS = re.compile(r"Sennheiser|Wisycom|Shure|EazyRF|Français|tinySA|Spectera|Sémaphore")
 import lang_en
 FRS = lang_en.EXACT                       # un texte affiché tel quel en français alors qu'il a sa traduction
+try:
+    import lang_en_v8
+    FRS = {**FRS, **lang_en_v8.EXACT}
+except ImportError:
+    pass
 found = {}
 def look(txt, where):
     if not isinstance(txt, str) or not txt.strip():
