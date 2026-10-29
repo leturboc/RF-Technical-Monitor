@@ -141,10 +141,11 @@ scan(win, "main")
 for name in ("edit_labels", "edit_statuses", "edit_colors", "edit_plan", "add_watch_dialog", "edit_vocab",
              "open_intermod", "open_rescue", "open_guide", "open_replay", "open_wall", "open_plan_check", "open_diag",
              "show_about", "open_linecheck", "open_scan_convert", "open_alerts", "edit_show_info", "open_show_dialog",
-             "make_report", "export_by_scene", "pick_wall", "open_relay", "add_block_dialog"):
+             "make_report", "export_by_scene", "pick_wall", "open_relay", "add_block_dialog",
+             "open_sdr", "open_listen", "open_realtime"):          # les 3 derniers : V8 (SDR) seulement
     fn = getattr(win, name, None)
     if fn is None:
-        print("absent :", name); continue
+        continue
     try:
         fn(); wait(600)
     except Exception:
