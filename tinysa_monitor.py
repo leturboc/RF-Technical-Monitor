@@ -3495,15 +3495,18 @@ LISTEN_MODES = {
 #       ignore les aigus extrêmes (pas de pompage sur des clés, des couverts) ;
 #   ENS (Sound) = le plus récent, compromis voix / musique (live, ears), tient aussi en bande étroite ;
 #   1.2 = dynamique réduite (entrées caméra) ; le MCR54 émule aussi SA572 / SA575 / RMS.
+#   À l'oreille (Clément) : ENS = beaucoup plus d'air (aigus relevés), ENC = plus plat, ENR = coupe le haut.
 #   Manuel Wisycom (capture de Clément) : NONE-d50 / NONE-d75 = pas de compander, désaccentuation 50 / 75 µs ;
 #   ENR-WISY = « noise optimized » ; ENC-WISY = « voice and high-fidelity optimized » ; FLAT = aucun compander,
 #   « test purposes only » (donc ici sans désaccentuation non plus).
 # Clés : ratio, attack / release (lissage par bloc de 5 ms), det « avg » (redressement moyen, SA572) ou « rms »,
 # deemph (µs, None = celle du préréglage), knee (dB sous la référence : en dessous, expansion + low), hf (Hz : le
 # détecteur ne voit pas au-delà). Valeurs AU JUGÉ, non vérifiées sur un vrai récepteur : à régler à l'oreille.
-def _cp(name, ratio=2.0, attack=0.3, release=0.05, det="rms", deemph=None, knee=None, low=0.0, hf=None):
+def _cp(name, ratio=2.0, attack=0.3, release=0.05, det="rms", deemph=None, knee=None, low=0.0, hf=None, air=0.0,
+        lp=None):
+    """air : aigus relevés (dB au-dessus de ~6 kHz) ; lp : passe-bas final (Hz) — la « couleur » du mode."""
     return dict(name=name, ratio=ratio, attack=attack, release=release, det=det, deemph=deemph, knee=knee, low=low,
-                hf=hf)
+                hf=hf, air=air, lp=lp)
 
 
 COMPANDERS = {
@@ -3513,12 +3516,13 @@ COMPANDERS = {
     "x2": _cp("Expanseur 2:1 générique"),
     "sa572": _cp("Circuit SA572 / NE570 (2:1, redressement moyen)", attack=0.25, release=0.04, det="avg"),
     "rms": _cp("Compander RMS 2:1 (type dbx)", attack=0.35, release=0.06),
-    "wisy_enc": _cp("≈ Wisycom ENC (voix, pré-accentuation réduite)", attack=0.5, release=0.12, deemph=25.0),
-    "wisy_enr": _cp("≈ Wisycom ENR (réduction de bruit)", attack=0.35, release=0.05, knee=-30.0, low=1.0, hf=8000.0),
-    "wisy_ens": _cp("≈ Wisycom ENS (son : voix et musique, live)", attack=0.4, release=0.08),
+    "wisy_enc": _cp("≈ Wisycom ENC (voix, plat, pré-accentuation réduite)", attack=0.5, release=0.12, deemph=25.0),
+    "wisy_enr": _cp("≈ Wisycom ENR (réduction de bruit, coupe le haut)", attack=0.35, release=0.05, knee=-30.0,
+                    low=1.0, hf=8000.0, lp=10000.0),
+    "wisy_ens": _cp("≈ Wisycom ENS (live, plus d'air)", attack=0.4, release=0.08, air=4.0),
     "wisy_enc12": _cp("≈ Wisycom ENC 1.2 (dynamique réduite)", ratio=1.5, attack=0.5, release=0.12, deemph=25.0),
     "wisy_enr12": _cp("≈ Wisycom ENR 1.2 (dynamique réduite)", ratio=1.5, attack=0.35, release=0.05, knee=-30.0,
-                      low=0.5, hf=8000.0),
+                      low=0.5, hf=8000.0, lp=10000.0),
     "hdx": _cp("≈ Sennheiser HDX (mode SEN / EVO)", attack=0.35, release=0.06),
     "shure": _cp("≈ Shure analogique", attack=0.3, release=0.04, det="avg"),
     "lex": _cp("≈ Lectrosonics (mode SR / LEX)", attack=0.25, release=0.03),
@@ -3664,6 +3668,18 @@ class ChannelDemod:
         self.de_tail = {0: np.zeros(63, dtype=np.float32), 1: np.zeros(63, dtype=np.float32)}
         self.env, self.dc, self.agc = 0.05, 0.0, 0.05
         self.level = -120.0
+        self.pilot, self._pbuf = None, []             # tonalité ultrasonore vue dans le FM (pilote, données)
+        cpq = COMPANDERS.get(compander) or {}
+        self.eq = None
+        if cpq.get("air") or cpq.get("lp"):           # couleur du mode : aigus relevés et / ou haut coupé
+            h = np.zeros(63, dtype=np.float32)
+            h[31] = 1.0
+            g = 10.0 ** (cpq.get("air", 0.0) / 20.0) - 1.0
+            if g:
+                h = h * (1.0 + g) - g * lowpass_taps(6000.0, LISTEN_RATE, 63)
+            if cpq.get("lp"):
+                h = np.convolve(h, lowpass_taps(cpq["lp"], LISTEN_RATE, 63)).astype(np.float32)
+            self.eq = [FirDecim(h, 1), FirDecim(h, 1)]
         if mode == "wfm_st":             # stéréo : pilote 19 kHz, sous-porteuse 38 kHz (G − D)
             k = np.arange(129) - 64
             self.fp = FirDecim(2.0 * lowpass_taps(800.0, self.fs1, 129) * np.cos(2 * np.pi * 19000.0 * k / self.fs1), 1)
@@ -3703,6 +3719,25 @@ class ChannelDemod:
         c = np.convolve(np.concatenate([t, a]), self.de)[63:63 + len(a)]
         self.de_tail[ch] = np.concatenate([t, a])[-63:]
         return c.astype(np.float32)
+
+    def _watch_pilot(self, d, n=8192):
+        """Cherche une tonalité au-dessus de l'audio (15–100 kHz) dans le FM démodulé : pilote de squelch
+        (Sennheiser, Shure…), porteuse de données (batterie, Wisycom numérique) ou pilote stéréo 19 kHz.
+        self.pilot = (fréquence Hz, dB au-dessus du bruit) si elle dépasse le bruit de 20 dB, sinon None."""
+        self._pbuf.append(np.asarray(d, dtype=np.float32))
+        if sum(len(x) for x in self._pbuf) < n:
+            return
+        x = np.concatenate(self._pbuf)[-n:]
+        self._pbuf = []
+        sp = np.abs(np.fft.rfft(x * np.hanning(n))) ** 2
+        fr = np.fft.rfftfreq(n, 1.0 / self.fs1)
+        m_ = (fr >= 15000.0) & (fr <= min(100000.0, 0.45 * self.fs1))
+        if not m_.any():
+            return
+        band, fb = sp[m_], fr[m_]
+        k = int(np.argmax(band))
+        snr = 10.0 * math.log10(band[k] / (np.median(band) + 1e-20) + 1e-20)
+        self.pilot = (float(fb[k]), snr) if snr > 20.0 else None
 
     def _agc(self, a, target=0.3):
         """Contrôle automatique de gain lent (BLU, CW, AM : le niveau audio suit le niveau du signal)."""
@@ -3749,6 +3784,7 @@ class ChannelDemod:
                 a = np.stack([mono[:nn] + diff[:nn], mono[:nn] - diff[:nn]], axis=1)
             else:
                 a = self._deemph(self.f2(d).astype(np.float32), 0)
+            self._watch_pilot(d)
         elif m == "am":
             d = np.abs(y).astype(np.float32)
             self.dc = 0.99 * self.dc + 0.01 * float(d.mean()) if self.dc else float(d.mean())
@@ -3764,6 +3800,13 @@ class ChannelDemod:
             else:
                 zz = self._nco(zz, -self.sh, LISTEN_RATE, "ph3")    # retour : audio = partie réelle
             a = self._agc(np.real(zz).astype(np.float32))
+        if self.eq is not None and len(a):
+            if a.ndim == 2:
+                l_, r_ = self.eq[0](a[:, 0]), self.eq[1](a[:, 1])
+                nn = min(len(l_), len(r_))
+                a = np.stack([l_[:nn], r_[:nn]], axis=1).astype(np.float32)
+            else:
+                a = self.eq[0](a).astype(np.float32)
         cp = COMPANDERS.get(self.compander)
         if cp is not None and cp["ratio"] > 1.0 and len(a):
             if cp["hf"] and getattr(self, "_hf", None) is None:
@@ -7579,7 +7622,8 @@ class ListenWorker(QtCore.QThread):
                 now = time.time()
                 if now - t_lv > 0.1:
                     t_lv = now
-                    self.levels.emit([(lv, float(np.max(np.abs(o))) if len(o) else 0.0) for o, lv in outs])
+                    self.levels.emit([(lv, float(np.max(np.abs(o))) if len(o) else 0.0, d_.pilot)
+                                      for (o, lv), d_ in zip(outs, demods)])
         finally:
             self._kill()
         self.stopped.emit(why)
@@ -7689,15 +7733,19 @@ class ListenDialog(QtWidgets.QDialog):
         lay.addLayout(R("Mode :", self.mode_combo, "Compander :", self.comp_combo, "Désaccentuation :", self.de_combo,
                         None))
         lay.addLayout(R("Squelch :", self.sq_spin, "Volume :", self.vol, None))
-        self.table = QtWidgets.QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["Écouter", "Nom", "MHz", "Niveau RF", "Audio"])
+        self.table = QtWidgets.QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["Écouter", "Nom", "MHz", "Niveau RF", "Audio", "Pilote / données"])
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-        for c, w_ in enumerate((70, 170, 90, 210)):
+        for c, w_ in enumerate((70, 170, 90, 210, 110)):
             self.table.setColumnWidth(c, w_)
         self.table.setWordWrap(False)
+        self.table.horizontalHeaderItem(5).setToolTip(
+            "Tonalité au-dessus de l'audio dans le signal FM : pilote de squelch (Sennheiser, Shure…), données\n"
+            "(batterie, télécommande) ou pilote stéréo 19 kHz. Sa présence dit que l'émetteur est bien là ;\n"
+            "le CONTENU (niveau de batterie) n'est pas décodé : protocoles des marques non publiés.")
         self.table.setToolTip("Coche les fréquences à démoduler ; pendant l'écoute, clique une ligne pour l'entendre.")
         self.table.cellClicked.connect(lambda r, c: self._pick(r))
         lay.addWidget(self.table, 1)
@@ -7725,7 +7773,7 @@ class ListenDialog(QtWidgets.QDialog):
             it.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             it.setCheckState(Qt.CheckState.Checked if id(w) in pre else Qt.CheckState.Unchecked)
             self.table.setItem(r, 0, it)
-            for c, v in ((1, w["name"] or "—"), (2, f"{w['freq']:.3f}"), (3, ""), (4, "")):
+            for c, v in ((1, w["name"] or "—"), (2, f"{w['freq']:.3f}"), (3, ""), (4, ""), (5, "")):
                 self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
         self.table.itemChanged.connect(lambda *_: self._window())
         self.dev_combo.currentIndexChanged.connect(lambda *_: self._window())
@@ -7805,7 +7853,8 @@ class ListenDialog(QtWidgets.QDialog):
             self.audio.feed(self.worker.audio)
 
     def _levels(self, lv):
-        for (rf, au), r in zip(lv, self._plan[1]):
+        for (rf, au, pil), r in zip(lv, self._plan[1]):
+            self.table.item(r, 5).setText("—" if pil is None else f"{pil[0] / 1000:.1f} kHz")
             n = int(max(0, min(10, (rf + 90) / 6)))
             self.table.item(r, 3).setText(f"{'█' * n}{'·' * (10 - n)}  {rf:.0f} dBFS")
             m = int(max(0, min(10, au * 10)))
@@ -8033,6 +8082,7 @@ class RealtimeWorker(QtCore.QThread):
                                      avg=decimate_max(avg, self.DISPLAY), mx=decimate_max(mx, self.DISPLAY),
                                      t=t_c, ovf=ovf, load=self.load, pos=pos / self.rate,
                                      dur=total / self.rate if fh is not None else 0.0,
+                                     pilot=None if dem is None else dem.pilot,
                                      rec=None if self.rec is None else (self.rec["n"], time.time() - self.rec["t0"])))
                 if fh is not None:                               # au rythme réel (× vitesse)
                     t_play += 0.05 / max(1, self.speed)
@@ -8363,6 +8413,11 @@ class RealtimeDialog(QtWidgets.QDialog):
         self.wf[:, 0] = mx
         self.wf_img.setImage(self.wf, autoLevels=False, levels=(float(np.median(avg)) - 5, float(np.median(avg)) + 50))
         self.wf_img.setRect(QtCore.QRectF(float(F[0]), 0.0, float(F[-1] - F[0]), float(self.WF_ROWS)))
+        if self._lis_f is not None:
+            k = self._known(self._lis_f)
+            pil = fr.get("pilot")
+            self.lis_lbl.setText(f"🎧 {self._lis_f:.3f} MHz" + (f" ({k['name']})" if k else "")
+                                 + (f" · pilote {pil[0] / 1000:.1f} kHz" if pil else ""))
         rec = fr.get("rec")
         if rec is not None:
             self.rec_lbl.setText(f"⏺ {int(rec[1]) // 60:02d}:{int(rec[1]) % 60:02d} · {rec_size_text(rec[0])}")

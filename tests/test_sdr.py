@@ -310,5 +310,26 @@ ok("détecteur moyen (SA572) : aussi 2:1", 22 < 20 * np.log10(np.sqrt(np.mean(ea
 ok("tous les modes ont un nom", all(len(v["name"]) > 5 for v in ns["LISTEN_MODES"].values())
    and {"wfm", "wfm_st", "nfm", "am", "usb", "lsb", "cw"} <= set(ns["LISTEN_MODES"]))
 
+# ---- couleur des modes Wisycom (oreille de Clément) et pilote ultrasonore
+def fm_tones(tones, dev=40e3, extra=()):
+    m_ = sum(a * np.sin(2 * np.pi * f * t3) for f, a in tones) + sum(a * np.sin(2 * np.pi * f * t3) for f, a in extra)
+    return (0.3 * np.exp(1j * (2 * np.pi * 300e3 * t3 + 2 * np.pi * dev * np.cumsum(m_) / fs3)) + noise3).astype(np.complex64)
+two = fm_tones([(1000, 0.3), (12000, 0.3)])
+def hi_lo(comp):
+    a = CD(fs3, 300e3, "wfm", 0, None, comp, dev=40e3, audio=18000).process(two)[0]
+    return 20 * np.log10(at(a, 12000) / at(a, 1000))
+enc_, ens_, enr_ = hi_lo("wisy_enc"), hi_lo("wisy_ens"), hi_lo("wisy_enr")
+ok("ENS : plus d'air que ENC (aigus +3 dB ou plus)", ens_ > enc_ + 3, f"ENS {ens_:.1f} / ENC {enc_:.1f}")
+ok("ENR : coupe le haut (12 kHz −6 dB ou plus vs ENC)", enr_ < enc_ - 6, f"ENR {enr_:.1f} / ENC {enc_:.1f}")
+dp_ = CD(fs3, 300e3, "wfm")
+for i in range(0, len(t3), 48000):
+    dp_.process(fm_tones([(1000, 0.3)], extra=[(32768, 0.08)])[i:i + 48000])
+ok("pilote 32,768 kHz détecté dans le FM", dp_.pilot is not None and abs(dp_.pilot[0] - 32768) < 100,
+   str(dp_.pilot))
+dq_ = CD(fs3, 300e3, "wfm")
+for i in range(0, len(t3), 48000):
+    dq_.process(fm_tones([(1000, 0.3)])[i:i + 48000])
+ok("pas de pilote → rien d'annoncé", dq_.pilot is None, str(dq_.pilot))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

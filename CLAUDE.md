@@ -325,6 +325,12 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   SA572, RMS, HDX, Shure, LEX. Sources : manuel Wisycom (tableau NONE-d50 / d75 / ENR-WISY / ENC-WISY / FLAT envoyé
   par Clément), fiches MCR54, docs lues par Clément ; courbes réelles inconnues → valeurs AU JUGÉ.
   `ChannelDemod(compander=None)` par défaut (sinon « none » = FLAT couperait la désaccentuation).
+  Couleur à l'oreille (Clément) : `_cp(air=dB, lp=Hz)` → EQ FIR 63/125 points après démodulation (`self.eq`, une
+  par voie) : ENS +4 dB d'aigus (« beaucoup plus d'air »), ENC plat, ENR / ENR 1.2 passe-bas 10 kHz (« coupe haut »).
+  Pilote : `ChannelDemod._watch_pilot` (FFT 8192 du FM démodulé, pic 15–100 kHz > 20 dB au-dessus du bruit →
+  `self.pilot` = (Hz, dB)) → colonne « Pilote / données » (écoute) et libellé du temps réel. **Batterie : non
+  décodée** (protocoles Wisycom « analogue / digital battery data », pilotes Sennheiser / Shure non publiés) ;
+  piste = rétro-ingénierie sur des enregistrements IQ à niveaux de pile connus, sans garantie.
   **HackRF Pro** (choix de Clément) : d'après Great Scott Gadgets, 8 bits jusqu'à 20 MS/s comme le One, mode 16 bits
   (ENOB 9–11) à débit plus bas ; outils `hackrf_*` a priori identiques — à vérifier à réception.
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
