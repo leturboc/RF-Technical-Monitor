@@ -118,18 +118,47 @@ THEME_KEYS = [
     ("maxhold", "Max hold", "Graphique"),
     ("thr", "Ligne de seuil « occupé »", "Graphique"),
     ("thr_weak", "Ligne de seuil « faible »", "Graphique"),
-    ("st_free", "Signal : libre", "Etats du signal"),
+    ("st_free", "Signal : OK (vert)", "Etats du signal"),
+    ("st_libre", "Signal : réserve libre (bleu)", "Etats du signal"),
     ("st_weak", "Signal : faible", "Etats du signal"),
     ("st_occ", "Signal : occupé", "Etats du signal"),
     ("st_unk", "Signal : inconnu (hors liste)", "Etats du signal"),
     ("st_none", "Pas encore de mesure", "Etats du signal"),
 ]
 
+# Thèmes 7.12 (Clément : « le rouge et le vert sont horribles ») : couleurs d'état désaturées, lisibles en texte
+# blanc ou noir ; « Daltonien » = palette Okabe-Ito (OK bleu, problème vermillon) ; défaut = « Sombre doux ».
+DEFAULT_THEME = "Sombre doux"
 THEMES = {
+    "Sombre doux": dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
+                        ui_accent="#528bff", plot_bg="#181a1f", plot_fg="#abb2bf", curve="#61afef",
+                        maxhold="#d19a66", thr="#e06c75", thr_weak="#e5c07b", st_free="#4f9d69",
+                        st_libre="#4d8fd6", st_weak="#d4a94e", st_occ="#c95c5c", st_unk="#d19a66",
+                        st_none="#5c6370", ref="#c678dd", wf="Viridis"),
+    "Nord": dict(ui_bg="#2e3440", ui_base="#272c36", ui_button="#3b4252", ui_text="#e5e9f0",
+                 ui_accent="#88c0d0", plot_bg="#242933", plot_fg="#d8dee9", curve="#88c0d0",
+                 maxhold="#ebcb8b", thr="#bf616a", thr_weak="#ebcb8b", st_free="#a3be8c", st_libre="#5e81ac",
+                 st_weak="#ebcb8b", st_occ="#bf616a", st_unk="#d08770", st_none="#4c566a", ref="#b48ead",
+                 wf="Viridis"),
+    "Ardoise": dict(ui_bg="#1e1f22", ui_base="#18191b", ui_button="#2b2d31", ui_text="#dcdde0",
+                    ui_accent="#6e9ecf", plot_bg="#141517", plot_fg="#a6a9ae", curve="#7cc4e8",
+                    maxhold="#e0a96d", thr="#d46a6a", thr_weak="#d8b35a", st_free="#5a9e78", st_libre="#5b8cc4",
+                    st_weak="#c9a648", st_occ="#c25b5b", st_unk="#d4875a", st_none="#5d6066", ref="#b48ad6",
+                    wf="Inferno"),
+    "Daltonien (bleu / orange)": dict(ui_bg="#1c1f24", ui_base="#15181c", ui_button="#2a2e35", ui_text="#e6e6e6",
+                                      ui_accent="#56b4e9", plot_bg="#111316", plot_fg="#c9ccd1", curve="#56b4e9",
+                                      maxhold="#e69f00", thr="#d55e00", thr_weak="#f0e442", st_free="#0072b2",
+                                      st_libre="#56b4e9", st_weak="#e6c229", st_occ="#d55e00", st_unk="#cc79a7",
+                                      st_none="#666b73", ref="#cc79a7", wf="Viridis"),
+    "Clair doux": dict(ui_bg="#f4f5f7", ui_base="#ffffff", ui_button="#e6e8eb", ui_text="#24292f",
+                       ui_accent="#0969da", plot_bg="#ffffff", plot_fg="#57606a", curve="#0969da",
+                       maxhold="#bc4c00", thr="#cf222e", thr_weak="#9a6700", st_free="#4ea56b", st_libre="#6a9fd8",
+                       st_weak="#d4a72c", st_occ="#d1453b", st_unk="#bc4c00", st_none="#8c959f", ref="#8250df",
+                       wf="Gris"),
     "Sombre": dict(ui_bg="#1b2027", ui_base="#11151a", ui_button="#262d36", ui_text="#dfe6ee",
                    ui_accent="#2f81f7", plot_bg="#0f1318", plot_fg="#c8d0d8", curve="#4fd0ff",
-                   maxhold="#ffb347", thr="#ff6666", thr_weak="#e0b43c", st_free="#2ecc71",
-                   st_weak="#f1c40f", st_occ="#ff4d4d", st_unk="#ffa94d", st_none="#7d8896",
+                   maxhold="#ffb347", thr="#ff6666", thr_weak="#e0b43c", st_free="#3fa66a",
+                   st_weak="#e0b43c", st_occ="#e05555", st_unk="#ffa94d", st_none="#7d8896",
                    wf="Inferno"),
     "Clair": dict(ui_bg="#f0f2f5", ui_base="#ffffff", ui_button="#e1e6ec", ui_text="#1d232b",
                   ui_accent="#2f81f7", plot_bg="#ffffff", plot_fg="#2b333d", curve="#0b6fb8",
@@ -164,10 +193,10 @@ WF_MAPS = {
     "Rouge (nuit)": [(0.0, (0, 0, 0)), (0.5, (140, 0, 0)), (1.0, (255, 80, 80))],
 }
 
-DEFAULT_STATUSES = [("Libre", "#2ecc71"), ("Occupé", "#e74c3c"),
-                    ("Réservé", "#3498db"), ("Hors service", "#7f8c8d"), ("En service", "#f1c40f")]
-STATUS_AUTO_COLORS = ["#9b59b6", "#1abc9c", "#f39c12", "#e91e63", "#00bcd4", "#8bc34a",
-                      "#ff7043", "#5c6bc0"]
+DEFAULT_STATUSES = [("Libre", "#4d8fd6"), ("Occupé", "#c95c5c"),            # couleurs douces (7.12)
+                    ("Réservé", "#8a7fc9"), ("Hors service", "#6b7280"), ("En service", "#4f9d69")]
+STATUS_AUTO_COLORS = ["#9b7fc4", "#4fa3a5", "#d19a66", "#c26d8f", "#5aa6c4", "#8aab5a",
+                      "#d1825f", "#7385c4"]
 
 BAND_PRESETS = [
     ("Aperçu : tout le tinySA 0,1–5300 MHz (pas 5 MHz)", 0.1, 5300.0, 5000.0),
@@ -630,6 +659,7 @@ _NIGHT_BP = dict(tv="#8a2a2a", tv_off="#3a1212", mobile="#c03030", pmse="#ff5a5a
                  ism="#b05050", amateur="#c08040", civ="#d06a3a", pro="#904040", other="#4a2020")
 for _n, _t in THEMES.items():
     _t.setdefault("ref", "#ff9a9a" if _n == "Nuit (rouge)" else "#c084fc")
+    _t.setdefault("st_libre", "#6a3a6a" if _n == "Nuit (rouge)" else "#3b82f6")
     for _k, (_lab, _col) in CATEGORIES.items():
         _t.setdefault("bp_" + _k, _NIGHT_BP[_k] if _n == "Nuit (rouge)" else _col)
 
@@ -8567,7 +8597,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.vocab_user = dict(name=[], scene=[], group=[])
         self.docks, self._state_restored = [], False
         self.statuses = [dict(name=n, color=c, free=(n == "Libre"), on=(n == "En service")) for n, c in DEFAULT_STATUSES]
-        self.theme = dict(THEMES["Sombre"])
+        self.theme = dict(THEMES[DEFAULT_THEME])
         self.country, self.plan_custom = "FR", {}
         self.plan, self.tv = [], []
         self._strip_rects, self._strip_labels = [], []
@@ -9867,7 +9897,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.focus_chk.setChecked(bool(data.get("focus", False)))
         th = data.get("theme")
         if isinstance(th, dict):
-            base = dict(THEMES["Sombre"])
+            base = dict(THEMES[DEFAULT_THEME])
             base.update({k: v for k, v in th.items() if k in base and isinstance(v, str)})
             self.theme = base
 
