@@ -3,6 +3,11 @@ Chargé par install_language en plus de lang_en.py (même format) : la V8 n'en m
 que les mises à jour de la V7 se fusionnent sans conflit."""
 
 EXACT = {
+    ": installe l'API SDRplay (sdrplay.com), puis SoapySDR avec le module SoapySDRPlay3 et les rx_tools (": ': install the SDRplay API (sdrplay.com), then SoapySDR with the SoapySDRPlay3 module and the rx_tools (',
+    'CS16': 'CS16',
+    'SDRplay RSP1B': 'SDRplay RSP1B',
+    'pour le 2ᵉ appareil. Pas encore testé avec un vrai RSP1B.': 'for the 2nd device. Not yet tested with a real RSP1B.',
+    '). Port « 📡 SDRplay RSP1B », ou adresse': '). Port “📡 SDRplay RSP1B”, or address',
     '📡 SDR': '📡 SDR',
     '📡 SDR (HackRF, RTL-SDR)': '📡 SDR (HackRF, RTL-SDR)',
     'V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.': 'V8: SDR settings, listening (demodulation) and real time with a HackRF / RTL-SDR.',

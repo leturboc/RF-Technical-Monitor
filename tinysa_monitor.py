@@ -3483,15 +3483,22 @@ SDR_KINDS = {
                    lna=(0, 40, 8), vga=(0, 62, 2), amp=True),
     "rtlsdr": dict(name="RTL-SDR", tool="rtl_power", iq_tool="rtl_sdr", fmin=24.0, fmax=1766.0, bin_min=1.0, bin_max=2.8e6,
                    lna=(0, 50, 1), vga=None, amp=False),
+    # SDRplay RSP1B (choix de Clément) : 14 bits, 1 kHz – 2 GHz, jusqu'à 10 MHz de large. Pas d'outil officiel en
+    # ligne de commande : rx_tools (rx_power = clone de rtl_power, rx_sdr = clone de rtl_sdr) au-dessus de SoapySDR
+    # + module SoapySDRPlay3 + API SDRplay (à installer depuis sdrplay.com). NON TESTÉ avec un vrai RSP1B.
+    "sdrplay": dict(name="SDRplay RSP1B", tool="rx_power", iq_tool="rx_sdr", fmin=1.0, fmax=2000.0, bin_min=1.0,
+                    bin_max=8e6, lna=(0, 60, 1), vga=None, amp=False),
 }
 
 
 def parse_sdr_addr(s):
-    """« hackrf », « hackrf:<n° de série> », « rtlsdr », « rtlsdr:1 » -> (genre, n° de série / index ou ""), sinon None."""
-    m = re.fullmatch(r"\s*(hackrf|rtlsdr|rtl-sdr|rtl)\s*(?::\s*([A-Za-z0-9]+))?\s*", str(s or ""), re.I)
+    """« hackrf », « hackrf:<n° de série> », « rtlsdr », « rtlsdr:1 », « sdrplay », « rsp1b:<série> » -> (genre, n° de
+    série / index ou ""), sinon None."""
+    m = re.fullmatch(r"\s*(hackrf|rtlsdr|rtl-sdr|rtl|sdrplay|rsp1b|rsp)\s*(?::\s*([A-Za-z0-9]+))?\s*", str(s or ""), re.I)
     if not m:
         return None
-    kind = "hackrf" if m.group(1).lower() == "hackrf" else "rtlsdr"
+    g = m.group(1).lower()
+    kind = "hackrf" if g == "hackrf" else ("sdrplay" if g.startswith(("sdrplay", "rsp")) else "rtlsdr")
     return kind, (m.group(2) or "")
 
 
@@ -3606,7 +3613,9 @@ def sdr_cmd(kind, exe, ranges, bin_hz, lna=24, vga=20, amp=False, serial=""):
         return a
     lo, hi = min(r[0] for r in ranges), max(r[1] for r in ranges)
     a = exe + ["-f", f"{lo}M:{hi}M:{int(round(bin_hz))}", "-i", "1", "-g", str(int(lna))]
-    if serial:
+    if kind == "sdrplay":                               # rx_power : appareil SoapySDR par chaîne « driver=… »
+        a += ["-d", "driver=sdrplay" + (f",serial={serial}" if serial else "")]
+    elif serial:
         a += ["-d", serial]
     return a + ["-"]
 
@@ -3725,10 +3734,10 @@ def demod_preset(key):
 
 def sdr_iq_rate(kind):
     """Fréquence d'échantillonnage IQ (multiple de 240 kHz) : HackRF 4,8 MS/s (≈ 4 MHz utiles), RTL 2,4 MS/s."""
-    return 4800000 if kind == "hackrf" else 2400000
+    return 4800000 if kind in ("hackrf", "sdrplay") else 2400000
 
 
-SDR_DTYPE = {"hackrf": "ci8", "rtlsdr": "cu8"}       # format IQ brut de chaque SDR (noms SigMF)
+SDR_DTYPE = {"hackrf": "ci8", "rtlsdr": "cu8", "sdrplay": "ci16_le"}   # format IQ brut de chaque SDR (noms SigMF)
 IQ_BYTES = {"ci8": 2, "cu8": 2, "ci16_le": 4, "cf32_le": 8}   # octets par échantillon complexe
 
 
@@ -4093,6 +4102,9 @@ def listen_cmd(kind, exe, center_hz, rate, lna=24, vga=20, amp=False, serial="")
     if kind == "hackrf":
         a = exe + ["-r", "-", "-f", str(int(round(center_hz))), "-s", str(int(rate)), "-l", str(int(lna) // 8 * 8),
                    "-g", str(int(vga) // 2 * 2), "-a", "1" if amp else "0"]
+    elif kind == "sdrplay":                             # rx_sdr : IQ 16 bits (CS16) sur la sortie standard
+        return exe + ["-d", "driver=sdrplay" + (f",serial={serial}" if serial else ""), "-f", str(int(round(center_hz))),
+                      "-s", str(int(rate)), "-g", str(int(lna)), "-F", "CS16", "-"]
     else:
         a = exe + ["-f", str(int(round(center_hz))), "-s", str(int(rate)), "-g", str(int(lna))]
     if serial:
@@ -4104,7 +4116,7 @@ def listen_cmd(kind, exe, center_hz, rate, lna=24, vga=20, amp=False, serial="")
 # Le SDR reste sur une fenêtre (jusqu'à ~15 MHz utiles sur un HackRF à 19,2 MS/s) : TOUS les échantillons passent
 # dans des FFT jointives → rien n'échappe dans la fenêtre (contrairement à un balayage). Taux multiples de 240 kHz
 # pour pouvoir démoduler directement (ChannelDemod) en cliquant sur le spectre.
-RT_RATES = {"hackrf": [19200000, 9600000, 4800000], "rtlsdr": [2400000]}
+RT_RATES = {"hackrf": [19200000, 9600000, 4800000], "rtlsdr": [2400000], "sdrplay": [9600000, 4800000, 2400000]}
 RT_FFT = [1024, 2048, 4096, 8192, 16384]
 
 
@@ -4608,7 +4620,8 @@ APP_VER = f"8.0-dev (base {APP_VER})"
 # V8 : SDR (HackRF One, RTL-SDR) vus comme un tinySA, par leur outil de balayage officiel
 # --------------------------------------------------------------------------
 SDR_TOOL_DIRS = [r"C:\Program Files\PothosSDR\bin", r"C:\Program Files (x86)\PothosSDR\bin",
-                 r"C:\Program Files\HackRF\bin", r"C:\Program Files\rtl-sdr\bin", "/usr/bin", "/usr/local/bin",
+                 r"C:\Program Files\HackRF\bin", r"C:\Program Files\rtl-sdr\bin", r"C:\Program Files\rx_tools\bin",
+                 r"C:\Program Files\SoapySDR\bin", "/usr/bin", "/usr/local/bin",
                  "/opt/homebrew/bin"]
 
 
@@ -8293,6 +8306,9 @@ class SdrDialog(QtWidgets.QDialog):
             "rtl_power et les pilotes), ou les outils HackRF de Great Scott Gadgets. Le pilote USB se met avec "
             "<b>Zadig</b> (WinUSB). Tu peux aussi copier <code>hackrf_sweep.exe</code> (et ses .dll) dans un dossier "
             "<code>outils</code> à côté de l'appli.<br><br>"
+            "<b>SDRplay RSP1B</b> : installe l'API SDRplay (sdrplay.com), puis SoapySDR avec le module SoapySDRPlay3 "
+            "et les rx_tools (<code>rx_power</code>, <code>rx_sdr</code>). Port « 📡 SDRplay RSP1B », ou adresse "
+            "<code>sdrplay</code> pour le 2ᵉ appareil. Pas encore testé avec un vrai RSP1B.<br><br>"
             "⚠ Les niveaux d'un SDR <b>ne sont pas des dBm étalonnés</b> : règle l'offset, ou fais la calibration "
             "automatique avec un tinySA (2ᵉ appareil).")
         info.setWordWrap(True)

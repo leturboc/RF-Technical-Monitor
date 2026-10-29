@@ -331,5 +331,19 @@ for i in range(0, len(t3), 48000):
     dq_.process(fm_tones([(1000, 0.3)])[i:i + 48000])
 ok("pas de pilote → rien d'annoncé", dq_.pilot is None, str(dq_.pilot))
 
+# SDRplay RSP1B (rx_tools au-dessus de SoapySDR) : commandes construites, format IQ 16 bits
+ok("adresse « sdrplay » / « rsp1b:ABC123 »", psa("sdrplay") == ("sdrplay", "") and psa("RSP1B:ABC123") == ("sdrplay", "ABC123"))
+ok("rx_power : comme rtl_power + appareil SoapySDR",
+   ns["sdr_cmd"]("sdrplay", "rx_power", [(470, 694)], 25000, 40, serial="ABC")
+   == ["rx_power", "-f", "470M:694M:25000", "-i", "1", "-g", "40", "-d", "driver=sdrplay,serial=ABC", "-"])
+ok("rx_sdr : IQ 16 bits sur la sortie standard",
+   ns["listen_cmd"]("sdrplay", "rx_sdr", 607e6, 4800000, 40)
+   == ["rx_sdr", "-d", "driver=sdrplay", "-f", "607000000", "-s", "4800000", "-g", "40", "-F", "CS16", "-"])
+ok("RSP1B : format ci16_le, 4,8 MS/s en écoute, jusqu'à 9,6 MS/s en temps réel",
+   ns["SDR_DTYPE"]["sdrplay"] == "ci16_le" and ns["sdr_iq_rate"]("sdrplay") == 4800000
+   and ns["RT_RATES"]["sdrplay"][0] == 9600000)
+_x = ns["iq_decode"]("ci16_le", np.array([16384, -16384], dtype="<i2").tobytes())
+ok("IQ 16 bits décodé (pleine échelle ≈ 1)", abs(_x[0] - (0.5 - 0.5j)) < 1e-6, str(_x))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
