@@ -14029,10 +14029,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if on:
             d = self.log_dir / "enregistrements" / f"{datetime.now():%Y%m%d_%H%M%S}"
             self.recorder = SweepRecorder(d)
-            self.rec_lbl.setText(f"Enregistrement → {d}")
+            self._set_rec_lbl(f"Enregistrement → {d}")
             self.set_status("Enregistrement des balayages en cours (relecture : 🔧 Outils › ⏪ Relecture).")
         else:
             self._rec_stop()
+
+    def _set_rec_lbl(self, txt):
+        """Texte avec un chemin : coupures possibles après \\ et / (sinon un long chemin sans espace empêche la
+        colonne de rétrécir : vu sous Windows en 7.12)."""
+        self.rec_lbl.setText(str(txt).replace("\\", "\\\u200b").replace("/", "/\u200b"))
 
     def _rec_stop(self):
         if self._session is not None:            # case décochée pendant une session : la session s'arrête
@@ -14041,7 +14046,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if r is None:
             return
         r.close()
-        self.rec_lbl.setText(f"Enregistrement terminé : {r.n_sweeps} balayages" + (f" · ⚠ {r.error}" if r.error else "")
+        self._set_rec_lbl(f"Enregistrement terminé : {r.n_sweeps} balayages" + (f" · ⚠ {r.error}" if r.error else "")
                              + f"  ({r.folder})")
 
     def open_replay(self):
@@ -14107,7 +14112,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rec_chk.blockSignals(True)
         self.rec_chk.setChecked(True)
         self.rec_chk.blockSignals(False)
-        self.rec_lbl.setText(f"💾 Session → {base}")
+        self._set_rec_lbl(f"💾 Session → {base}")
         self.set_status(f"💾 Session enregistrée dans {base}")
 
     def _session_log(self, vals, w):
@@ -14135,7 +14140,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.rec_chk.setChecked(False)
             self.rec_chk.blockSignals(False)
         self._write_session_json(path, end=datetime.now().isoformat(timespec="seconds"))
-        self.rec_lbl.setText(f"💾 Session enregistrée : {path}")
+        self._set_rec_lbl(f"💾 Session enregistrée : {path}")
         self.set_status(f"💾 Session enregistrée : {path}  (⏪ Relecture › 📂 Ouvrir une session)")
 
     # ------------------------------------------------------- rapport de show
