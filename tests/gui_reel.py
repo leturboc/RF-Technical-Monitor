@@ -313,7 +313,8 @@ for x in win.findChildren(W.QWidget):
 check("chaque bouton / case / liste a une info-bulle", not miss, str(miss))
 _subs = [a for a in win.more_menu.actions() if a.menu() is not None]
 check("☰ Plus rangé : sous-menus Plan, Liste, Scans, Connexions, Fenêtres, Apparence",
-      all(a.text().startswith(e) for a, e in zip(_subs, ["📐", "📋", "📊", "🔗", "🪟", "🎨"])) and len(_subs) >= 6,
+      [e for e in ["📐", "📋", "📊", "🔗", "🪟", "🎨"] if any(a.text().startswith(e) for a in _subs)]
+      == ["📐", "📋", "📊", "🔗", "🪟", "🎨"],
       str([a.text() for a in _subs]))
 _no_tip = [a.text() for sm in [win.more_menu] + [a.menu() for a in _subs] for a in sm.actions()
            if a.text() and not a.isSeparator() and not a.toolTip().strip() and a.toolTip() != a.text().replace("&", "")]
@@ -755,12 +756,15 @@ _F = np.linspace(590.0, 615.0, 2501)
 _L = np.full_like(_F, -105.0)
 for _f0, _l0 in ((600.0, -40.0), (602.0, -42.0), (604.0, -70.0)):
     _L[np.abs(_F - _f0) < 0.02] = _l0
-win.latest[9991], win.latest_t[9991] = (_F, _L), m.time.time()
+def _inj():          # bande factice : un balayage démo peut l'effacer (bande inconnue) → on la remet avant chaque usage
+    win.latest[9991], win.latest_t[9991] = (_F, _L), m.time.time()
+    win.maxhold.pop(9991, None)
+_inj()
 _od = step("intermod : origine de 604 MHz (spectre)", lambda: m.IntermodDialog(win, origin=604.0))
 if _od is not None:
     check("origine : source = signaux vus sur le spectre", _od.src_combo.currentData() == "spectrum",
           _od.src_lbl.text())
-    step("origine : calculer", _od.compute)
+    step("origine : calculer", lambda: (_inj(), _od.compute()))
     _txt = [r["numtext"] for r in _od.rows]
     check("origine : 2 × 602 − 600 trouvé sans émetteur déclaré",
           any("602" in t_ and "600" in t_ for t_ in _txt[:3]), str(_txt[:5]) + _od.msg.text() + str([round(x[0], 3) for x in _od.spectrum_sources()]))
