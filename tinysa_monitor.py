@@ -7834,6 +7834,135 @@ class LevelSpin(QtWidgets.QDoubleSpinBox):
         self.lineEdit().setText(self.textFromValue(self.value()))
 
 
+class SpectrumLegendDialog(QtWidgets.QDialog):
+    """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
+    deux sens aux réglages de la fenêtre principale)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Le spectre : courbes, seuils et repères")
+        th = o.theme
+        lay = QtWidgets.QVBoxLayout(self)
+        grid = QtWidgets.QGridLayout()
+        grid.setColumnStretch(2, 1)
+        lay.addLayout(grid)
+        self._links = []
+
+        def swatch(color, style="━━━"):
+            lb = QtWidgets.QLabel(style)
+            lb.setStyleSheet(f"color:{color}; font-weight:bold; font-size:16px;")
+            lb.setToolTip("Couleur à l'écran (modifiable : ☰ Plus › 🎨 Couleurs).")
+            return lb
+
+        def text(t):
+            lb = QtWidgets.QLabel(t)
+            lb.setWordWrap(True)
+            lb.setMinimumWidth(380)
+            return lb
+
+        def lspin(main):
+            sp = LevelSpin()
+            sp.setRange(main.minimum(), main.maximum())
+            sp.setSingleStep(main.singleStep())
+            sp.setValue(main.value())
+            sp.setToolTip(main.toolTip() or "Même réglage que dans la fenêtre principale.")
+            self._link(sp, main)
+            return sp
+
+        def lchk(main, txt):
+            c = QtWidgets.QCheckBox(txt)
+            c.setChecked(main.isChecked())
+            c.setToolTip(main.toolTip() or "Même case que dans la fenêtre principale.")
+            c.toggled.connect(lambda *_: main.setChecked(c.isChecked()))
+            main.toggled.connect(lambda *_: (c.blockSignals(True), c.setChecked(main.isChecked()), c.blockSignals(False)))
+            return c
+
+        def btn(txt, fn, tip):
+            b = QtWidgets.QPushButton(txt)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda *_: fn())
+            return b
+
+        def ctrls(*ws):
+            w = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            for x in ws:
+                h.addWidget(x)
+            h.addStretch(1)
+            return w
+
+        rows = [
+            (swatch(th["curve"]), "Direct",
+             "Le dernier balayage : le niveau reçu à chaque fréquence, en dBm. Le « tapis » du bas est le bruit de "
+             "fond (le tinySA + le lieu) ; une bosse qui sort du tapis = un émetteur.",
+             None),
+            (swatch(th["maxhold"]), "Max hold",
+             "Le plus haut niveau vu à chaque fréquence depuis le dernier « Reset max » : garde la trace des "
+             "signaux brefs ou intermittents (talkie, burst, brouilleur qui passe).",
+             ctrls(lchk(o.hold_chk, "Afficher"), btn("Reset max", o.reset_max, "Efface le max hold."))),
+            (swatch(th["ref"], "┅┅┅"), "Référence",
+             "Le spectre « calme » du lieu, capturé avant le show (📏 Référence › Capturer). Sert à voir ce qui a "
+             "changé, et au seuil « sur référence » (mode expert).",
+             ctrls(lchk(o.showref_chk, "Afficher"),
+                   btn("Capturer (max hold)", lambda: o.capture_ref("max"), "Enregistre le max hold comme référence."))),
+            (swatch(th["thr"], "╍╍╍"), "Seuil « occupé »",
+             "Au-dessus = la fréquence est occupée : CONFLIT si elle doit rester libre, « OK » si elle doit "
+             "émettre. Ligne déplaçable à la souris sur le spectre. Règle-le quelques dB au-dessus du tapis "
+             "(« Auto » le fait d'après le bruit mesuré).",
+             ctrls(lspin(o.thr_spin))),
+            (swatch(th["thr_weak"], "┈┈┈"), "Niveau « faible »",
+             "Entre ce niveau et le seuil occupé : signal faible (micro loin, pile faible, porteuse lointaine). "
+             "Ne déclenche pas de CONFLIT, mais s'affiche en jaune.",
+             ctrls(lchk(o.weak_chk, "Actif"), lspin(o.weak_spin))),
+            (swatch("#b06cff", "━·━"), "Trop fort",
+             "Au-dessus : alarme ⚠ TROP FORT. Un signal très fort (talkie collé à une antenne, émetteur trop "
+             "près) sature les récepteurs et fabrique de l'intermod. Le tinySA lui-même sature vers −10 dBm.",
+             ctrls(lchk(o.strong_chk, "Actif"), lspin(o.strong_spin))),
+            (swatch(th["st_free"], "┃"), "Repères",
+             "Un trait vertical par fréquence de ta liste, coloré selon l'état du signal (vert = OK, bleu = libre, "
+             "rouge = problème, jaune = faible). Pointillés = signal inconnu hors liste.",
+             ctrls(btn("📍 Repères…", lambda: o.mk_menu.exec(QtGui.QCursor.pos()), "Quels repères afficher."))),
+            (swatch("#64748b", "▬▬"), "Bandeaux du bas",
+             "Canaux TV et attributions du pays (TNT, 4G/5G, aéro…) : survole-les pour le détail. Indicatif.",
+             None),
+        ]
+        for r, (sw, name, expl, ctl) in enumerate(rows):
+            nm = QtWidgets.QLabel(f"<b>{name}</b>")
+            grid.addWidget(sw, r, 0, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(nm, r, 1, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(text(expl), r, 2)
+            if ctl is not None:
+                grid.addWidget(ctl, r, 3, Qt.AlignmentFlag.AlignTop)
+        rf = QtWidgets.QLabel(
+            "<b>Pour aller plus loin (RF)</b><br>"
+            "• <b>dBm</b> : puissance reçue, échelle logarithmique ; +3 dB = deux fois plus, +10 dB = dix fois plus. "
+            "Un micro à 10 m donne typiquement −40 à −60 dBm, le bruit de fond est vers −100.<br>"
+            "• <b>RBW</b> (largeur de résolution, mode expert) : la « finesse » du tinySA. RBW large = balayage "
+            "rapide mais tapis plus haut et signaux proches fusionnés ; RBW étroit = tapis plus bas, plus lent.<br>"
+            "• Un émetteur <b>numérique</b> ou un bloc large (Spectera) ressemble à un plateau, pas à une pointe.<br>"
+            "• Le niveau dépend de l'antenne, du câble, de la distance et de l'atténuateur : compare des mesures "
+            "faites avec le même montage.")
+        rf.setWordWrap(True)
+        rf.setMinimumHeight(rf.fontMetrics().height() * 7)
+        lay.addWidget(rf)
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre (les réglages sont déjà appliqués).")
+        close.clicked.connect(self.close)
+        lay.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
+        self.resize(900, 640)
+
+    def _link(self, sp, main):
+        sp.valueChanged.connect(lambda v: main.setValue(v))
+
+        def back(*_):
+            sp.blockSignals(True)
+            sp.setValue(main.value())
+            sp.blockSignals(False)
+        main.valueChanged.connect(back)
+
+
 class LevelAxis(pg.AxisItem):
     """Axe vertical du spectre gradué dans l'unité choisie (les courbes restent en dBm)."""
     unit = "dbm"
@@ -9159,6 +9288,10 @@ class MainWindow(QtWidgets.QMainWindow):
         reset_btn.clicked.connect(self.reset_max)
         cap_btn = QtWidgets.QPushButton("📷 Capture")
         cap_btn.clicked.connect(self.capture)
+        self.legend_btn = QtWidgets.QPushButton("❓ Courbes")
+        self.legend_btn.setToolTip("Ce que montre chaque courbe et ligne du spectre (direct, max hold, référence, "
+                                   "seuils, trop fort, repères) et leurs réglages.")
+        self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
         ref_btn = QtWidgets.QPushButton("📏 Référence")
         ref_btn.setToolTip("Courbe de référence (spectre calme / bruit de fond du lieu), affichée en pointillés.")
         rmenu = QtWidgets.QMenu(ref_btn)
@@ -9269,7 +9402,7 @@ class MainWindow(QtWidgets.QMainWindow):
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
         cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
-                                self.persist_combo, reset_btn, cap_btn, self.readout))
+                                self.persist_combo, reset_btn, cap_btn, self.legend_btn, self.readout))
         self.ref_row = QtWidgets.QWidget()
         rl = self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -12577,6 +12710,13 @@ class MainWindow(QtWidgets.QMainWindow):
         med = float(np.median(np.concatenate([v[1] for v in self.latest.values()])))
         self.thr_spin.setValue(round(med + 10.0))
         self.weak_spin.setValue(round(med + 4.0))
+
+    def open_spectrum_legend(self):
+        d = getattr(self, "_legend", None)
+        if d is None:
+            d = self._legend = SpectrumLegendDialog(self)        # gardée (cachée à la fermeture) : ses liens
+        d.show()
+        d.raise_()
 
     def reset_max(self):
         self.maxhold.clear()

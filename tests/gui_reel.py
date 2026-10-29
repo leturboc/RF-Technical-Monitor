@@ -770,6 +770,19 @@ check("journal : « Signaux inconnus » décoché → pas noté", win.log_table.
 win._logwhat_acts["unknown"].trigger()
 win.log_event({"name": "Signal inconnu", "freq": 600.0, "note": ""}, -50.0, "INCONNU")
 check("journal : recoché → noté", win.log_table.rowCount() == _n0 + 1 and win._collect_config()["log_kinds"]["unknown"])
+step("❓ Courbes du spectre", win.open_spectrum_legend)
+_lg = win._legend
+if _lg is not None:
+    _sps = _lg.findChildren(m.LevelSpin)
+    _old = win.thr_spin.value()
+    _sps[0].setValue(-77.0)
+    check("légende : le seuil réglé dans la légende change le vrai seuil (et la ligne)",
+          abs(win.thr_spin.value() + 77.0) < 0.01 and abs(win.thr_line.value() + 77.0) < 0.01)
+    win.thr_spin.setValue(-75.0)
+    check("légende : et inversement", abs(_sps[0].value() + 75.0) < 0.01)
+    shot(_lg, "legende_spectre")
+    _lg.close()
+    win.thr_spin.setValue(_old)
 step("open_rescue", win.open_rescue); wait(1500)
 if win._rescue_dlg: shot(win._rescue_dlg, "rescue")
 step("open_guide", win.open_guide); wait(800)
