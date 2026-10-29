@@ -158,6 +158,11 @@ DLG_ACTION[0] = "reject"
 check("session : enregistrement lancé dans le dossier choisi", win._session is not None
       and str(win._session).startswith(_sess_dir) and win.recorder is not None, str(win._session))
 win.session_cfg["ask"] = False           # les démarrages suivants du test : sans question (même choix)
+_dj = [x for x in win.findChildren(W.QDockWidget) if x.objectName() == "dock_journal"][0]
+win._set_rec_lbl("💾 Session → C:\\Users\\runneradmin\\AppData\\Local\\Temp\\tsm_real_abcdefgh\\sessions\\2026-10-29_1045")
+app.processEvents()
+check("journal : un long chemin de session n'élargit pas la colonne (vu sous Windows)",
+      _dj.minimumSizeHint().width() <= 300, str(_dj.minimumSizeHint().width()))
 wait(8000)
 shot(win, "demo_tout_spectre")
 
