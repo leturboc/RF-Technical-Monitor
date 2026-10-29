@@ -148,6 +148,27 @@ allf = ex + [r["f"] for r in res]
 rows, _ = im_scan(allf, (3,), 3, targets=allf, guard=0.2)
 ok("find_free : aucun IM3 sur l'ensemble final (pour les nouveaux)", not [r for r in rows if any(i >= len(ex) for i, _c in r["terms"]) or r["target"] in allf[len(ex):]], str(rows[:3]))
 ok("find_free : diagnostic", diag["grille"] > 100 and diag["bruyantes"] > 100, str(diag))
+# cas de Clément (7.14) : bande FM pleine, 30 stations déclarées « en service »
+fm = [87.9, 88.6, 89.1, 89.9, 90.6, 91.3, 91.8, 92.5, 93.2, 93.7, 94.3, 95.0, 95.6, 96.4, 96.9, 97.975, 98.425,
+      98.9, 99.825, 100.275, 101.5, 102.2, 102.625, 103.075, 103.4, 104.125, 104.6, 104.95, 105.4, 106.7]
+Ff = np.linspace(87.5, 108.0, 1401)
+Lf = -100 + rng.normal(0, 1.0, Ff.shape)
+for f0 in fm:
+    Lf[np.abs(Ff - f0) < 0.09] = -70
+rf, df = find_free(Ff, Lf, 87.5, 108.0, fm, n=2, width=0.2, min_sep=0.3, thr=-85, guard=0.2, guard3=0.1)
+ok("secours FM (30 émetteurs, 3 TX) : des « moins mauvaises » proposées au lieu de rien",
+   len(rf) == 2 and df["intermod"] > 0, str((rf, df)))
+ok("secours : les moins mauvaises disent ce qui cloche", all(r.get("warn") for r in rf[len(rf) - df["alternatives"]:]), str(rf))
+ok("secours FM : avec 30 émetteurs même le 2 TX recouvre tout -> moins mauvaises",
+   find_free(Ff, Lf, 87.5, 108.0, fm, n=2, width=0.2, min_sep=0.3, thr=-85, guard=0.1, im3=False)[1]["alternatives"] == 2)
+rf2, df2 = find_free(Ff, Lf, 87.5, 108.0, fm, n=2, width=0.2, min_sep=0.3, thr=-85, guard=0.1, emitters=fm[::4])
+ok("secours FM, 8 émetteurs (plan réaliste) : de vraies fréquences libres", len(rf2) == 2 and df2["alternatives"] == 0,
+   str((rf2, df2)))
+rf3, df3 = find_free(Ff, Lf, 87.5, 108.0, fm, n=2, width=0.2, min_sep=0.3, thr=-85, guard=0.2, emitters=[])
+ok("secours : réserves libres = pas des émetteurs (aucun IM compté)", df3["intermod"] == 0 and len(rf3) == 2
+   and df3["alternatives"] == 0, str(df3))
+for r in rf2:
+    ok(f"secours FM {r['f']:.3f} : à ≥ 300 kHz des stations", min(abs(r["f"] - e) for e in fm) >= 0.3 - 1e-9)
 res0, diag0 = find_free(None, None, 470, 530, ex)
 check("find_free sans mesure", res0, [])
 
