@@ -145,6 +145,15 @@ ex_lo = ns["expand2"](lo_, st1)[24000:]
 ex_hi = ns["expand2"](hi_, st2)[24000:]
 ratio = 20 * np.log10(np.sqrt(np.mean(ex_hi ** 2)) / np.sqrt(np.mean(ex_lo ** 2)))
 ok("expanseur 2:1 : 12 dB d'écart → ~24 dB", 22 < ratio < 26, f"{ratio:.1f} dB")
+st3, st4 = S(), S()
+r15 = 20 * np.log10(np.sqrt(np.mean(ns["expand2"](hi_, st3, ratio=1.5)[24000:] ** 2)) /
+                    np.sqrt(np.mean(ns["expand2"](lo_, st4, ratio=1.5)[24000:] ** 2)))
+ok("expanseur 1,5:1 (ENR 1.2) : 12 dB → ~18 dB", 16 < r15 < 20, f"{r15:.1f} dB")
+CP = ns["COMPANDERS"]
+ok("companders : modes Wisycom FLAT, ENC, ENR, ENS, ENC / ENR 1.2, SEN / EVO, LEX", {"none", "wisy_enc", "wisy_enr",
+   "wisy_ens", "wisy_enc12", "wisy_enr12", "hdx", "lex"} <= set(CP) and CP["none"][1] == 1.0
+   and CP["none"][0].startswith("FLAT"))
+ok("préréglages : chaque compander existe", all(d["comp"] in CP for _k, _n, d, _w in ns["DEMOD_PRESETS"]))
 iqh = ns["iq_from_bytes"]("hackrf", bytes([127, 129, 0, 0]))
 ok("IQ HackRF (int8)", abs(iqh[0] - (127 / 128 - 127j / 128)) < 1e-6 and len(iqh) == 2, str(iqh))
 iqr = ns["iq_from_bytes"]("rtlsdr", bytes([255, 0]))
@@ -203,6 +212,41 @@ ok("détecteur : fréquence au pic, durée, niveau", abs(e.get("f", 0) - 602.1) 
 ok("détecteur : la porteuse garde son début et son pic", bd.active[0]["t0"] == 0.0 and bd.active[0]["peak"] == -38)
 evs = bd.feed(0.4, Fb, quiet, -70)
 ok("détecteur : porteuse coupée → événement de 0,3 s", len(evs) == 1 and abs(evs[0]["t1"] - evs[0]["t0"] - 0.3) < 1e-9)
+
+# ---- formats IQ, préréglages de démodulation, SigMF
+dec = ns["iq_decode"]
+ok("IQ ci16_le", abs(dec("ci16_le", np.array([16384, -16384], dtype="<i2").tobytes())[0] - (0.5 - 0.5j)) < 1e-6)
+ok("IQ cf32_le", dec("cf32_le", np.array([0.25, -0.75], dtype="<f4").tobytes())[0] == np.complex64(0.25 - 0.75j))
+ok("IQ : octets en trop ignorés", len(dec("ci16_le", b"\x00" * 9)) == 2)
+P = ns["DEMOD_PRESETS"]
+ok("préréglages : chacun expliqué, clés uniques, modes connus", len({k for k, *_ in P}) == len(P)
+   and all(len(w) > 20 and d["mode"] in ns["LISTEN_MODES"] for _k, _n, d, w in P))
+ok("préréglage inconnu → None", ns["demod_preset"]("zzz") is None and ns["demod_preset"]("pmr446")["dev"] == 2500)
+pr = ns["demod_preset"]("senn_ana")
+d48 = CD(fs, 600e3, pr["mode"], 0, None, "none", dev=pr["dev"], cut=pr["cut"], audio=pr["audio"])
+a48 = d48.process(iq)[0]
+amp48 = np.sqrt(np.mean(a48[3000:] ** 2)) * np.sqrt(2)
+ok("préréglage Sennheiser : 30 kHz de déviation → 30/48 du plein volume", 0.55 < amp48 < 0.7, f"{amp48:.3f}")
+ok("préréglage : la tonalité reste juste", abs(tone_of(a48)[0] - 1000) < 20)
+nb = ns["demod_preset"]("pmr446")
+dn = CD(fs, 600e3, nb["mode"], 0, None, "none", dev=nb["dev"], cut=nb["cut"], audio=nb["audio"])
+ok("préréglage étroit : filtre de canal serré (le micro FM large est coupé)", dn.f1 is not None
+   and len(dn.process(iq)[0]) > 0)
+meta = ns["sigmf_meta"]("ci8", 9600000, 606.2e6, 1793282592.25, "HackRF One",
+                        [ns["sigmf_annot"](dict(t0=1793282593.25, t1=1793282593.75, f=605.4, peak=-30.0, width=0.0),
+                                           1793282592.25, 9600000)])
+inf = ns["sigmf_info"](meta)
+ok("SigMF : aller-retour (format, débit, centre, heure)", inf["dtype"] == "ci8" and inf["rate"] == 9600000
+   and inf["center"] == 606.2e6 and abs(inf["t0"] - 1793282592.25) < 1e-3, str(inf))
+an = meta["annotations"][0]
+ok("SigMF : signal noté en annotation (début, durée, bande)", an["core:sample_start"] == 9600000
+   and an["core:sample_count"] == 4800000 and an["core:freq_lower_edge"] < 605.4e6 < an["core:freq_upper_edge"], str(an))
+try:
+    ns["sigmf_info"]({"global": {"core:datatype": "ri16_le", "core:sample_rate": 1}})
+    ok("SigMF : format inconnu refusé", False)
+except ValueError:
+    ok("SigMF : format inconnu refusé", True)
+ok("taille lisible", ns["rec_size_text"](1.44e9) == "1,4 Go" and ns["rec_size_text"](3.5e8) == "350 Mo")
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

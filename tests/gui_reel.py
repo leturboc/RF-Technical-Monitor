@@ -730,8 +730,33 @@ check("temps réel : écoute en cours", _rt.worker is not None and _rt.worker.li
       and "🎧" in _rt.lis_lbl.text())
 check("temps réel : repères de mes fréquences", len(_rt.marks) >= 1)
 shot(_rt, "temps_reel")
+_rt.pre_combo.setCurrentIndex(_rt.pre_combo.findData("pmr446"))
+check("préréglage PMR446 → FM étroite", _rt.mode_combo.currentData() == "nfm" and _rt.dp.params()["dev"] == 2500)
+_rt.mode_combo.setCurrentIndex(_rt.mode_combo.findData("am"))
+check("toucher le mode → « réglages à la main »", _rt.pre_combo.currentData() == "")
+_rt.pre_combo.setCurrentIndex(_rt.pre_combo.findData("senn_ana"))
+step("enregistrer l'IQ", _rt.toggle_rec)
+wait(2500)
+check("enregistrement : compteur affiché", "⏺" in _rt.rec_lbl.text() and "Mo" in _rt.rec_lbl.text(), _rt.rec_lbl.text())
+_rbase = _rt.worker.rec["base"] if _rt.worker is not None and _rt.worker.rec else None
+step("arrêter l'enregistrement", _rt.toggle_rec)
+wait(800)
 step("temps réel : ■", _rt.toggle)
 check("temps réel : arrêté proprement", _rt.worker is None)
+check("enregistrement : fichiers SigMF écrits", _rbase is not None and os.path.exists(_rbase + ".sigmf-meta")
+      and os.path.getsize(_rbase + ".sigmf-data") > 1e6)
+if _rbase:
+    step("relire l'enregistrement + pause", lambda: (_rt.open_file(_rbase + ".sigmf-meta"), _rt._pause()))
+    check("relecture : en pause", _rt.worker is not None and not _rt.worker.playing and _rt.pause_btn.text() == "▶",
+          _rt.st_lbl.text() + f" {_rt.worker} {os.path.getsize(_rbase + '.sigmf-data')}")
+    wait(600)
+    check("relecture : barre de lecture et position", _rt.play_bar.isVisible() and "/" in _rt.pos_lbl.text(),
+          _rt.pos_lbl.text())
+    check("relecture : pas d'enregistrement possible", not _rt.rec_btn.isEnabled())
+    shot(_rt, "temps_reel_relecture")
+    step("relecture : reprise", _rt._pause)
+    step("revenir au direct", _rt.leave_file)
+    check("relecture : quittée", _rt.worker is None and not _rt.play_bar.isVisible() and _rt.go_btn.text() == "▶ Démarrer")
 _rt.close()
 os.environ["FAKE_IQ_BURSTS"] = ""
 

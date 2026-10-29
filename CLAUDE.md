@@ -299,6 +299,20 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   oscillateur par table × phase par bloc (exp() par échantillon = 60 % d'un cœur), IQ lu directement en complex64.
   Mesuré ici : 19,2 MS/s ≈ 50 % d'un cœur (+ 12 % pour l'écoute). `fake_iq.py` : `FAKE_IQ_BURSTS`.
   **Clément n'a pas encore de SDR** : rien sur main tant qu'il n'a pas testé.
+- **V8 étape 4 (fait) : enregistrement IQ + relecture, préréglages de démodulation, companders** :
+  PURE `SDR_DTYPE`, `IQ_BYTES`, `iq_decode` (ci8 / cu8 / ci16_le / cf32_le), `sigmf_meta` / `sigmf_info` /
+  `sigmf_annot` (signaux détectés en annotations SigMF), `datetime_utc_iso` / `iso_to_epoch`, `rec_size_text` ;
+  `DEMOD_PRESETS` (+ `demod_preset`, `DEMOD_CUSTOM`) : Sennheiser / Shure / Wisycom / Lectrosonics analogiques, ears,
+  guide, PMR446, radio FM, aviation = mode, déviation, largeur, bande audio, désaccentuation, compander (valeurs
+  de départ NON vérifiées) ; `ChannelDemod(..., dev, cut, audio)`. `COMPANDERS` = (nom, taux, montée, descente) :
+  FLAT, ENC, ENR, ENS, ENC / ENR 1.2, SEN / EVO (HDX), Shure, LEX — noms des modes de compatibilité des récepteurs
+  Wisycom (capture Google de Clément) ; courbes réelles non publiées → `expand2(..., ratio)` approché, différences
+  ENC / ENR / ENS **inventées au jugé** (temps de réponse). Qt : `DemodPick` (préréglage + mode + compander +
+  désaccentuation liés), utilisé par `ListenDialog` et `RealtimeDialog`. `RealtimeWorker` : `src` = relecture
+  SigMF (rythme réel, `speed` ×1/×2/×4, `playing`, `seek_to`, heure d'origine), `start_rec` / `stop_rec` (fichiers
+  `<journaux>/enregistrements_iq/<date>/iq_HHMMSS_<MHz>.sigmf-data/-meta`, méta réécrite toutes les 10 s, arrêt
+  sous 2 Go libres ou à `sdr_cfg["rec_max_gb"]`). `RealtimeDialog` : ⏺ / 📂 / 📁, barre de lecture (pause,
+  curseur, vitesse, « Revenir au direct »), pas d'enregistrement d'une relecture.
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
   fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
   analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non

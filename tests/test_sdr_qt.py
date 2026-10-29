@@ -205,5 +205,69 @@ check("temps réel : charge mesurée", frames and 0 < fr["load"] < 5, str(fr.get
 check("temps réel : arrêt propre", rstop == [""] and rw.proc is None, str(rstop))
 os.environ["FAKE_IQ_BURSTS"] = ""
 
+# ---- enregistrement IQ (SigMF) puis relecture
+import json  # noqa: E402
+os.environ.update(FAKE_IQ_CARRIERS="606.0:1000", FAKE_IQ_BURSTS="605.4:0.3:1.0", FAKE_IQ_SECONDS="0")
+rw = m.RealtimeWorker("hackrf", 606.2e6, 2400000, 2048, tool=FIQ)
+rw.thr = -40.0
+st_r, fr_r = [], []
+rw.status.connect(lambda t: st_r.append(t))
+rw.frame.connect(lambda fr: fr_r.append(fr))
+rw.start()
+wait_until(lambda: len(fr_r) > 5, 15)
+base = os.path.join(tmp, "iq_test")
+rw.start_rec(base)
+t_rec = time.time()
+wait_until(lambda: time.time() - t_rec > 3.5, 10)
+rw.stop_rec()
+wait_until(lambda: any("arrêté" in t for t in st_r), 5)
+rw.requestInterruption()
+rw.wait(8000)
+app.processEvents()
+data_sz = os.path.getsize(base + ".sigmf-data") if os.path.exists(base + ".sigmf-data") else 0
+check("enregistrement : fichier IQ écrit (~3,5 s à 2,4 MS/s ci8 ≈ 17 Mo)", 12e6 < data_sz < 22e6, str(data_sz))
+meta = json.load(open(base + ".sigmf-meta", encoding="utf-8"))
+info = m.sigmf_info(meta)
+check("enregistrement : métadonnées SigMF (ci8, 2,4 MS/s, 606,2 MHz)", info["dtype"] == "ci8" and info["rate"] == 2400000
+      and info["center"] == 606.2e6 and info["t0"] is not None, str(info))
+check("enregistrement : signaux brefs notés en annotations", any("605.4" in a["core:label"] for a in meta["annotations"]),
+      str(meta["annotations"][:2]))
+check("enregistrement : indicateur de taille pendant l'enregistrement", any(f.get("rec") for f in fr_r))
+info["path"] = base + ".sigmf-data"
+pw = m.RealtimeWorker("hackrf", 0, 0, 2048, src=info)
+pw.thr = -40.0
+pf, pe, ps = [], [], []
+pw.frame.connect(lambda fr: pf.append(fr))
+pw.events.connect(lambda e: pe.extend(e))
+pw.stopped.connect(lambda why: ps.append(why))
+pw.listen = dict(f=606.0, volume=1.0, **{k: v for k, v in dict(mode="wfm", compander="x2", deemph=50.0, dev=48000,
+                                                                     cut=90000, audio=18000).items()})
+pw.start()
+t_pl = time.time()
+wait_until(lambda: bool(ps), 20)
+dt_pl = time.time() - t_pl
+app.processEvents()
+pcm = b"".join(list(pw.audio))
+a4 = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32000
+check("relecture : au rythme réel (≈ durée de l'enregistrement)", 2.5 < dt_pl < 8, f"{dt_pl:.1f} s")
+check("relecture : position et durée", pf and pf[-1]["dur"] > 3 and pf[-1]["pos"] > 3, str(pf[-1:] and (pf[-1]['pos'], pf[-1]['dur'])))
+check("relecture : heure d'origine (pas l'heure actuelle)", pf and abs(pf[0]["t"] - info["t0"]) < 1.0)
+check("relecture : signal intermittent retrouvé", any(abs(e["f"] - 605.4) < 0.01 for e in pe), str(pe[:2]))
+check("relecture : on réécoute le micro (1 kHz)", len(a4) > 48000 and abs(tone_of(a4[4800:]) - 1000) < 30, str(len(a4)))
+check("relecture : fin propre", ps == [""], str(ps))
+pw = m.RealtimeWorker("hackrf", 0, 0, 2048, src=info)
+pw.speed, pw.seek_to = 4, 2.0
+pf, ps = [], []
+pw.frame.connect(lambda fr: pf.append(fr))
+pw.stopped.connect(lambda why: ps.append(why))
+t_pl = time.time()
+pw.start()
+wait_until(lambda: bool(ps), 20)
+dt4 = time.time() - t_pl
+app.processEvents()
+check("relecture : déplacement (commence à 2 s)", pf and 1.9 <= pf[0]["pos"] <= 2.3, str(pf[0]["pos"] if pf else None))
+check("relecture : ×4 plus rapide", dt4 < 1.5, f"{dt4:.2f} s")
+os.environ["FAKE_IQ_BURSTS"] = ""
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
