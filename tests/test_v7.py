@@ -521,5 +521,18 @@ L2_ = np.where(F2_ < 478.0, -64.0, -100.0)
 check("scan : pas grossier, plateau = UN signal large", [(p_["wide"], round(p_["f"])) for p_ in sp_(F2_, L2_, -80.0)],
       [(True, 474)])
 
+# marqueurs : niveau à une fréquence, pic voisin, largeur occupée
+Fm_ = np.round(np.arange(600.0, 601.0, 0.01), 3)
+Lm_ = np.full(len(Fm_), -100.0)
+Lm_[(Fm_ >= 600.45) & (Fm_ <= 600.55)] = -60.0
+Lm_[np.abs(Fm_ - 600.5) < 1e-6] = -50.0
+check("marqueur : niveau au point le plus proche", ns["trace_at"](Fm_, Lm_, 600.452), (600.45, -60.0))
+check("marqueur : pic voisin", ns["peak_near"](Fm_, Lm_, 600.3), (600.5, -50.0))
+check("marqueur : largeur occupée à −20 dB (pic − 20 = −70)", ns["occupied_width"](Fm_, Lm_, 600.4, 20.0),
+      (600.45, 600.55, 600.5, -50.0))
+check("marqueur : NaN (trous entre bandes) ignorés", ns["trace_at"]([600.0, np.nan, 601.0], [-80, np.nan, -70], 600.6),
+      (601.0, -70.0))
+check("marqueur : rien", ns["peak_near"]([], [], 600.0), None)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

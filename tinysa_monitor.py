@@ -3825,6 +3825,52 @@ def scan_peaks(F, L, thr, merge_khz=150.0, wide_mhz=1.5, exclude=(), excl_khz=10
     return out
 
 
+# ------------------------------------------------------------------ marqueurs du spectre (7.14, demande de Clément :
+# « un marqueur déplaçable, affichable ou non, plus précis qu'à la souris »)
+def _valid(F, L):
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    ok = np.isfinite(F) & np.isfinite(L)
+    return F[ok], L[ok]
+
+
+def trace_at(F, L, f):
+    """Point de la courbe le plus proche de f -> (MHz, dBm) ou None."""
+    F, L = _valid(F, L)
+    if not len(F):
+        return None
+    k = int(np.argmin(np.abs(F - f)))
+    return float(F[k]), float(L[k])
+
+
+def peak_near(F, L, f, span=0.5):
+    """Le plus haut point à ±span MHz de f -> (MHz, dBm) ou None."""
+    F, L = _valid(F, L)
+    m = np.abs(F - f) <= span
+    if not m.any():
+        return None
+    k = int(np.argmax(np.where(m, L, -np.inf)))
+    return float(F[k]), float(L[k])
+
+
+def occupied_width(F, L, f, drop_db=20.0, span=0.5):
+    """Bande occupée par le signal le plus fort près de f : de part et d'autre du pic, tant que le niveau reste au-dessus
+    de (pic − drop_db). -> (MHz bas, MHz haut, MHz du pic, dBm du pic) ou None."""
+    F, L = _valid(F, L)
+    o = np.argsort(F)
+    F, L = F[o], L[o]
+    pk = peak_near(F, L, f, span)
+    if pk is None:
+        return None
+    k = int(np.argmin(np.abs(F - pk[0])))
+    lim = pk[1] - drop_db
+    a = z = k
+    while a > 0 and L[a - 1] >= lim:
+        a -= 1
+    while z < len(L) - 1 and L[z + 1] >= lim:
+        z += 1
+    return float(F[a]), float(F[z]), pk[0], pk[1]
+
+
 # ------------------------------------------------------------------ parcours et niveaux d'affichage (7.13)
 UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
              ("simple", "🔵 Simple : + réglages essentiels, journal, scènes / groupes"),
@@ -10048,6 +10094,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.legend_btn.setToolTip("Ce que montre chaque courbe et ligne du spectre (direct, max hold, référence, "
                                    "seuils, trop fort, repères) et leurs réglages.")
         self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
+        self.mkr_btn = QtWidgets.QPushButton("🎯 Marqueurs")
+        self.mkr_btn.setCheckable(True)
+        self.mkr_btn.setToolTip("Marqueurs déplaçables M1 / M2 : fréquence au kHz près (saisie, molette, flèches),\n"
+                                "niveau, « ⤒ Pic », écart M1 → M2, largeur occupée.")
+        self.mkr_btn.toggled.connect(lambda on: self.show_markers_bar(on))
         ref_btn = QtWidgets.QPushButton("📏 Référence")
         ref_btn.setToolTip("Courbe de référence (spectre calme / bruit de fond du lieu), affichée en pointillés.")
         rmenu = QtWidgets.QMenu(ref_btn)
@@ -10158,7 +10209,8 @@ class MainWindow(QtWidgets.QMainWindow):
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
         cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
-                                self.persist_combo, reset_btn, cap_btn, self.legend_btn, self.readout))
+                                self.persist_combo, reset_btn, cap_btn, self.mkr_btn, self.legend_btn, self.readout))
+        cl.addWidget(self._build_markers_bar())
         self.ref_row = QtWidgets.QWidget()
         rl = self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -13157,6 +13209,12 @@ class MainWindow(QtWidgets.QMainWindow):
         return min(b["start"] for b in bs), max(b["stop"] for b in bs)
 
     def update_plot(self, hist=True):
+        try:
+            self._update_plot(hist)
+        finally:
+            self.marker_refresh()
+
+    def _update_plot(self, hist=True):
         nan = np.array([np.nan])
         if self.view_id == -1:
             live = {b["id"] for b in self.scan_bands() if b["enabled"]}
@@ -13485,6 +13543,120 @@ class MainWindow(QtWidgets.QMainWindow):
         med = float(np.median(np.concatenate([v[1] for v in self.latest.values()])))
         self.thr_spin.setValue(round(med + 10.0))
         self.weak_spin.setValue(round(med + 4.0))
+
+    # ------------------------------------------------------- marqueurs M1 / M2
+    def _build_markers_bar(self):
+        bar = QtWidgets.QWidget()
+        self.mkr_bar = bar
+        self.mkr_spins, self.mkr_lines = [], []
+        cols = ("#ffd166", "#06d6a0")
+        pi = self.spec.getPlotItem()
+        for i, col in enumerate(cols):
+            sp_ = QtWidgets.QDoubleSpinBox()
+            sp_.setDecimals(3)
+            sp_.setRange(0.0, 6000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setKeyboardTracking(False)
+            sp_.setToolTip(f"Fréquence du marqueur M{i + 1} : tape-la, ou molette / flèches (pas choisi à droite).")
+            ln = pg.InfiniteLine(pos=0.0, angle=90, movable=True, pen=pg.mkPen(col, width=1.4, style=Qt.PenStyle.DashLine),
+                                 label=f"M{i + 1}", labelOpts=dict(position=0.96, color=col, fill=(0, 0, 0, 160)))
+            ln.setVisible(False)
+            pi.addItem(ln, ignoreBounds=True)
+            ln.sigPositionChanged.connect(lambda *_, i=i: self._mkr_from_line(i))
+            sp_.valueChanged.connect(lambda v, i=i: self._mkr_from_spin(i, v))
+            self.mkr_spins.append(sp_)
+            self.mkr_lines.append(ln)
+        self.mkr_step = self._combo([("pas 1 kHz", 0.001), ("pas 5 kHz", 0.005), ("pas 25 kHz", 0.025),
+                                     ("pas 100 kHz", 0.1), ("pas 1 MHz", 1.0)], 0.025)
+        self.mkr_step.setToolTip("De combien bougent les marqueurs à chaque cran de molette / flèche.")
+        self.mkr_step.currentIndexChanged.connect(lambda *_: [s_.setSingleStep(self.mkr_step.currentData())
+                                                              for s_ in self.mkr_spins])
+        for s_ in self.mkr_spins:
+            s_.setSingleStep(0.025)
+        pk = QtWidgets.QPushButton("⤒ Pic")
+        pk.setToolTip("Place M1 sur le plus haut signal à ±0,5 MHz.")
+        pk.clicked.connect(lambda *_: self.marker_to_peak(0))
+        self.mkr2_chk = QtWidgets.QCheckBox("M2")
+        self.mkr2_chk.setToolTip("Deuxième marqueur : écart en fréquence et en niveau entre M1 et M2.")
+        self.mkr2_chk.toggled.connect(lambda *_: self._mkr_visible())
+        self.mkr_drop = QtWidgets.QSpinBox()
+        self.mkr_drop.setRange(3, 60)
+        self.mkr_drop.setValue(20)
+        self.mkr_drop.setPrefix("largeur à −")
+        self.mkr_drop.setSuffix(" dB")
+        self.mkr_drop.setToolTip("Bande occupée autour du pic près de M1 : là où le niveau reste au-dessus du pic moins "
+                                 "cette valeur.")
+        self.mkr_drop.valueChanged.connect(lambda *_: self.marker_refresh())
+        self.mkr_lbl = QtWidgets.QLabel("")
+        self._elastic(self.mkr_lbl)
+        self.mkr_lbl.setStyleSheet("font-family:Consolas,monospace;")
+        self.mkr_lbl.setMinimumWidth(260)
+        self.mkr_lbl.setToolTip("M1 : fréquence et niveau · Δ : écart M1 → M2 · largeur occupée autour du pic.")
+        lay = self._flow(("M1 :", self.mkr_spins[0], pk), (self.mkr2_chk, self.mkr_spins[1]), self.mkr_step,
+                         self.mkr_drop, self.mkr_lbl)
+        lay.setContentsMargins(0, 0, 0, 0)
+        bar.setLayout(lay)
+        bar.setVisible(False)
+        return bar
+
+    def show_markers_bar(self, on):
+        self.mkr_bar.setVisible(bool(on))
+        if on and not any(s_.value() for s_ in self.mkr_spins):
+            x0, x1 = self.spec.getPlotItem().vb.viewRange()[0]
+            self.mkr_spins[0].setValue((x0 + x1) / 2.0)
+            self.mkr_spins[1].setValue(x0 + (x1 - x0) * 0.6)
+        self._mkr_visible()
+        self.marker_refresh()
+
+    def _mkr_visible(self):
+        on = self.mkr_btn.isChecked()
+        self.mkr_lines[0].setVisible(on)
+        self.mkr_lines[1].setVisible(on and self.mkr2_chk.isChecked())
+        self.mkr_spins[1].setEnabled(self.mkr2_chk.isChecked())
+        self.marker_refresh()
+
+    def _mkr_from_line(self, i):
+        sp_ = self.mkr_spins[i]
+        sp_.blockSignals(True)
+        sp_.setValue(self.mkr_lines[i].value())
+        sp_.blockSignals(False)
+        self.marker_refresh()
+
+    def _mkr_from_spin(self, i, v):
+        ln = self.mkr_lines[i]
+        ln.blockSignals(True)
+        ln.setValue(float(v))
+        ln.blockSignals(False)
+        self.marker_refresh()
+
+    def _mkr_trace(self):
+        x, y = self.curve.getData()
+        return (None, None) if x is None else (x, y)
+
+    def marker_to_peak(self, i=0):
+        F, L = self._mkr_trace()
+        pk = None if F is None else peak_near(F, L, self.mkr_spins[i].value())
+        if pk is not None:
+            self.mkr_spins[i].setValue(pk[0])
+
+    def marker_refresh(self):
+        if not getattr(self, "mkr_btn", None) or not self.mkr_btn.isChecked():
+            return
+        F, L = self._mkr_trace()
+        f1 = self.mkr_spins[0].value()
+        p1 = None if F is None else trace_at(F, L, f1)
+        txt = f"M1 {f1:.3f} MHz " + (self.lvl(p1[1], suffix=True) if p1 else "—")
+        if self.mkr2_chk.isChecked():
+            f2 = self.mkr_spins[1].value()
+            p2 = None if F is None else trace_at(F, L, f2)
+            txt += f" · M2 {f2:.3f} · Δ {(f2 - f1) * 1000:+.0f} kHz"
+            if p1 and p2:
+                txt += f" / {p2[1] - p1[1]:+.1f} dB"
+        ow = None if F is None else occupied_width(F, L, f1, self.mkr_drop.value())
+        if ow:
+            txt += f" · largeur {(ow[1] - ow[0]) * 1000:.0f} kHz"
+        self.mkr_lbl.setText(txt)
+        self.mkr_lbl.setToolTip(txt)
 
     def open_spectrum_legend(self):
         d = getattr(self, "_legend", None)

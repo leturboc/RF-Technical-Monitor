@@ -860,6 +860,21 @@ check("journal : « Signaux inconnus » décoché → pas noté", win.log_table.
 win._logwhat_acts["unknown"].trigger()
 win.log_event({"name": "Signal inconnu", "freq": 600.0, "note": ""}, -50.0, "INCONNU")
 check("journal : recoché → noté", win.log_table.rowCount() == _n0 + 1 and win._collect_config()["log_kinds"]["unknown"])
+# 🎯 marqueurs M1 / M2 (demande de Clément : précis, déplaçables, affichables ou non)
+step("🎯 marqueurs", lambda: win.mkr_btn.setChecked(True))
+win.mkr2_chk.setChecked(True)
+win.mkr_spins[0].setValue(503.512)
+check("marqueur : la ligne M1 suit la saisie au kHz", abs(win.mkr_lines[0].value() - 503.512) < 1e-6
+      and win.mkr_lines[0].isVisible())
+win.mkr_lines[1].setValue(504.0)
+check("marqueur : déplacer M2 à la souris met la case à jour", abs(win.mkr_spins[1].value() - 504.0) < 1e-6)
+step("marqueur : ⤒ pic", lambda: win.marker_to_peak(0))
+wait(300)
+check("marqueur : lecture (niveau, Δ, largeur)", "M1" in win.mkr_lbl.text() and "Δ" in win.mkr_lbl.text(),
+      win.mkr_lbl.text())
+shot(win, "marqueurs")
+win.mkr_btn.setChecked(False)
+check("marqueurs masqués", not win.mkr_lines[0].isVisible() and not win.mkr_bar.isVisible())
 step("❓ Courbes du spectre", win.open_spectrum_legend)
 _lg = win._legend
 if _lg is not None:
