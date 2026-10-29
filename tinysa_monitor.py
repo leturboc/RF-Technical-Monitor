@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.13.0"
+APP_VER = "7.14.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -90,6 +90,8 @@ CALIB_IDS = (-3, -4)         # bandes internes de la calibration entre deux tiny
 CALIB_SWEEPS = 3             # balayages par appareil pour calibrer
 CALIB_TIMEOUT = 180.0
 MAX_LABELS = 30              # nb max de noms affichés sur le graphe
+SEL_COLOR = "#ffb300"        # fréquence(s) choisie(s) dans la liste, sur le spectre (ambre : lisible clair / sombre)
+SEL_MAX = 12                 # nb max de fréquences choisies surlignées
 HYST = 3.0                   # hystérésis (dB) pour repasser en "libre"
 TINYSA_VID, TINYSA_PID = 0x0483, 0x5740
 CFG_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "TinySAMonitor" / "config.json"
@@ -2657,7 +2659,7 @@ def safe_filename(s, default="export"):
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
-             "points", "rbw", "zrbw", "input", "lna", "att", "seg", "offset",
+             "points", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
@@ -3959,6 +3961,16 @@ STATUS_HELP = ("Chaque fréquence de ta liste a un STATUT, qui dit ce que tu att
                "  → alarme ⚠ CONFLIT (quelqu'un d'autre émet là).\n\n"
                "• Sans statut : simple surveillance (occupé / libre), pas d'alarme.\n\n"
                "Pour changer : double-clic sur la colonne « Statut », ou sélectionne des lignes puis Ctrl+1…9.")
+
+def zoom_points(span_mhz, want=None, most=1000, step_khz=10.0, cap=290):
+    """Points du zoom live. want = nombre fixe choisi (None = auto). Auto : un pas d'environ step_khz (assez
+    fin pour voir la porteuse d'un micro), jamais plus de cap points (une seule commande tinySA = rapide) ni
+    plus que most (points choisis pour les bandes), au moins MIN_PTS. Zoomer = moins de points, pas plus."""
+    if want:
+        return max(2, int(want))
+    n = int(math.ceil(max(0.0, float(span_mhz)) * 1000.0 / float(step_khz) - 1e-9)) + 1
+    return max(MIN_PTS, min(int(cap), max(MIN_PTS, int(most)), n))
+
 
 # ===== PURE-END
 
@@ -9419,13 +9431,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_xy = None
         self.last_cycle = 10.0
         self.labels = []
+        self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
+        self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
         self._mk_items = {}
         self.mk = mk_default()          # repères du spectre : filtres (état, couche, statut), style
         self.expert = False             # mode simple par défaut (☰ Plus › Mode expert)
         self.sections_open = dict(self.SECTIONS_OPEN)
         self._zoom = None
         self._zoom_view = None
-        self._cfg = dict(rbw=100, zrbw=None, input="auto", lna=None, att="auto", offset=0.0,
+        self._cfg = dict(rbw=100, zrbw=None, zpts=None, input="auto", lna=None, att="auto", offset=0.0,
                          seg=None, points=1000)
         self._build_ui()
         self._load_config()
@@ -9537,6 +9551,8 @@ class MainWindow(QtWidgets.QMainWindow):
         offset_spin="Correction ajoutée à toutes les mesures (câble, antenne, splitter…).",
         seg_combo="Taille des morceaux envoyés au tinySA à chaque commande. « Auto » selon le modèle.",
         points_combo="Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.",
+        zpts_combo="Points du zoom live. « Auto » en met moins quand on zoome (un point tous les ~10 kHz,\n"
+                   "290 au plus) : assez fin pour une porteuse de micro, et le balayage reste rapide.",
         country_combo="Pays : canaux TV et attributions affichés sous le spectre, canaux proposés pour les blocs\n"
                       "Spectera. « Éditer le plan » pour l'adapter.",
         alloc_chk="Affiche sous le spectre à qui appartient chaque bande (TNT + micros, 4G/5G, militaire…).",
@@ -10000,6 +10016,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.points_combo.activated.connect(self.apply_points)
         self.rbw_combo = self._combo([("Auto", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST], 100)
         self.zrbw_combo = self._combo([("Auto (selon zoom)", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])
+        self.zpts_combo = self._combo([("Auto (selon zoom)", None)]
+                                      + [(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES])
         self.input_combo = self._combo([("Auto", "auto"), ("Basse (≤ 800 MHz)", "low"),
                                         ("Haute (> 800 MHz)", "high")])
         self.input_combo.setToolTip("Auto : tinySA d'origine → prise « haute » au-delà de 800 MHz ; tinySA Ultra (une\n"
@@ -10020,7 +10038,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                   "Auto = 450 sur tinySA Ultra, 290 sinon.")
         self.est_lbl = QtWidgets.QLabel("")
         self.est_lbl.setWordWrap(True)
-        for c in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo, self.att_combo,
+        for c in (self.rbw_combo, self.zrbw_combo, self.zpts_combo, self.input_combo, self.lna_combo, self.att_combo,
                   self.seg_combo):
             c.currentIndexChanged.connect(self._sync_cfg)
         self.offset_spin.valueChanged.connect(self._sync_cfg)
@@ -10030,6 +10048,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mform.addRow("Points / balayage :", self.points_combo)
         mform.addRow("RBW :", self.rbw_combo)
         mform.addRow("RBW en zoom :", self.zrbw_combo)
+        mform.addRow("Points en zoom :", self.zpts_combo)
         mform.addRow("Entrée :", self.input_combo)
         mform.addRow("LNA :", self.lna_combo)
         mform.addRow("Atténuateur :", self.att_combo)
@@ -10204,7 +10223,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                   ("dev2", dev2_box, 0), ("country", pbox, 0)):
             lv.addWidget(self._section(key, box), stretch)
         lv.addStretch(0)
-        self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo,
+        self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.zpts_combo, self.input_combo, self.lna_combo,
                                                    self.att_combo, self.offset_spin, self.seg_combo, self.baud_combo)]
         self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo)]
         self._expert_rows += [(aform, self.unk_chk)]
@@ -10219,6 +10238,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view_combo = QtWidgets.QComboBox()
         self.view_combo.setMinimumWidth(170)
         self.view_combo.currentIndexChanged.connect(self.on_view_changed)
+        self.bands_btn = QtWidgets.QToolButton()
+        self.bands_btn.setText("📶 Bandes")
+        self.bands_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.bands_btn.setToolTip("Quelles bandes le tinySA balaye : toutes, seulement certaines (cocher / décocher),\n"
+                                  "ou seulement celle affichée dans « Vue ». Moins de bandes = cycle plus rapide.")
+        self.bands_menu = QtWidgets.QMenu(self.bands_btn)
+        self.bands_menu.aboutToShow.connect(self._build_bands_menu)
+        self.bands_btn.setMenu(self.bands_menu)
         self.zoom_btn = QtWidgets.QPushButton("🔍 Zoom live")
         self.zoom_btn.setCheckable(True)
         self.zoom_btn.setToolTip("Le tinySA ne scanne plus que la zone visible, avec le nombre de points choisi.\n"
@@ -10367,7 +10394,7 @@ class MainWindow(QtWidgets.QMainWindow):
         center = QtWidgets.QWidget()
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
-        cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
+        cl.addLayout(self._flow(("Vue :", self.view_combo), self.bands_btn, self.zoom_btn, self.mk_btn, self.hold_chk,
                                 self.persist_combo, reset_btn, cap_btn, self.mkr_btn, self.legend_btn, self.readout))
         cl.addWidget(self._build_markers_bar())
         self.ref_row = QtWidgets.QWidget()
@@ -10508,6 +10535,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.watch_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.watch_table.itemChanged.connect(self.on_watch_edit)
         self.watch_table.cellDoubleClicked.connect(self.on_watch_dbl)
+        self.watch_table.itemSelectionChanged.connect(self._on_watch_sel)
         self.watch_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.watch_table.customContextMenuRequested.connect(self.watch_menu)
         self.watch_table.setItemDelegateForColumn(C_NAME, NameDelegate(self))
@@ -10655,6 +10683,7 @@ class MainWindow(QtWidgets.QMainWindow):
         c = self._cfg
         c["rbw"] = self.rbw_combo.currentData()
         c["zrbw"] = self.zrbw_combo.currentData()
+        c["zpts"] = self.zpts_combo.currentData()
         c["input"] = self.input_combo.currentData()
         c["lna"] = self.lna_combo.currentData()
         c["att"] = self.att_combo.currentData()
@@ -10671,7 +10700,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_estimate(self):
         seg = self._cfg["seg"] or getattr(self, "seg_known", None) or 290
-        act = [b for b in self.scan_bands() if b["enabled"]]
+        act = [b for b in self.scan_bands() if self._scan_now(b)]
         tot = sum(self._npts(b) for b in act)
         nseg = sum(len(segment_plan(self._npts(b), seg)) for b in act)
         pre = f"🎯 Scan ciblé ({len(act)} zone(s)) · " if self._focus_bands else ""
@@ -10685,7 +10714,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def band_devices(self):
         """{id bande: n° du tinySA qui la balaye} (tout sur le 1er quand il n'y en a qu'un)."""
-        bs = [b for b in self.scan_bands() if b["enabled"]]
+        bs = [b for b in self.scan_bands() if self._scan_now(b)]
         if self.ndev() == 1:
             return {b["id"]: 0 for b in bs}
         return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
@@ -10704,7 +10733,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             seg=c["seg"], demo_freqs=[w["freq"] for w in self.watch], ver=self._ver)
             if self._zoom:
                 a, b = self._zoom
-                n = max(2, int(c["points"]))
+                n = zoom_points(b - a, c.get("zpts"), c["points"])
                 step_khz = (b - a) * 1000.0 / (n - 1)
                 bands = [dict(id=ZOOM_ID, name="Zoom", start_hz=a * 1e6, stop_hz=b * 1e6, n=n, enabled=True)]
                 rbw = c["zrbw"] if c["zrbw"] is not None else auto_rbw(step_khz)
@@ -10717,7 +10746,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 asg = self.band_devices()
                 bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
-                              n=self._npts(b), enabled=b["enabled"]) for b in self.scan_bands()
+                              n=self._npts(b), enabled=self._scan_now(b)) for b in self.scan_bands()
                          if asg.get(b["id"], 0) == dev]
                 rbw = c["rbw"]
             freqs = [w["freq"] for w in self.watch if not w.get("bw")]
@@ -10850,12 +10879,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 if i >= 0:
                     combo.setCurrentIndex(i)
 
-        for combo, key in [(self.points_combo, "points"), (self.rbw_combo, "rbw"), (self.zrbw_combo, "zrbw"),
+        for combo, key in [(self.points_combo, "points"), (self.rbw_combo, "rbw"), (self.zrbw_combo, "zrbw"), (self.zpts_combo, "zpts"),
                            (self.input_combo, "input"), (self.lna_combo, "lna"), (self.att_combo, "att"),
                            (self.seg_combo, "seg"), (self.mark_combo, "mark"), (self.persist_combo, "persist"),
                            (self.occ_combo, "occ_minutes"), (self.country_combo, "country"),
                            (self.baud_combo, "baud")]:
             setc(combo, key)
+        self.scan_follow = bool(data.get("scan_follow", False))
         pc = data.get("plan_custom")
         self.plan_custom = {k: v for k, v in pc.items() if isinstance(v, str)} if isinstance(pc, dict) else {}
         self.offset_spin.setValue(data.get("offset", 0.0))
@@ -11006,7 +11036,8 @@ class MainWindow(QtWidgets.QMainWindow):
             statuses=[dict(name=s["name"], color=s["color"], free=bool(s.get("free")), on=bool(s.get("on")))
                       for s in self.statuses],
             theme=self.theme,
-            points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], input=c["input"], lna=c["lna"],
+            scan_follow=self.scan_follow,
+            points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
             baud=self.baud_combo.currentData(),
             persist=self.persist_combo.currentData(),
@@ -11342,7 +11373,7 @@ class MainWindow(QtWidgets.QMainWindow):
                f"Raison : {reason or 'demandé'}", f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()} · {sys.platform}",
                f"tinySA : {self.info_lbl.text().strip() or '—'} · port {self.port_combo.currentData() or '—'}"
                f" · {self.baud_combo.currentData()} bauds · démo {self.demo_chk.isChecked()}",
-               f"Réglages : points {c['points']} · RBW {c['rbw'] or 'auto'} · RBW zoom {c['zrbw'] or 'auto'} · "
+               f"Réglages : points {c['points']} · RBW {c['rbw'] or 'auto'} · RBW zoom {c['zrbw'] or 'auto'} · points zoom {c.get('zpts') or 'auto'} · "
                f"entrée {c['input']} · LNA {c['lna']} · atténuateur {c['att']} · segment {c['seg'] or 'auto'} · "
                f"offset {c['offset']}", "", "Bandes :"]
         for b in self.bands:
@@ -11840,6 +11871,71 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fit_x = True
         QtCore.QTimer.singleShot(0, self._bands_changed)
 
+    def _build_bands_menu(self):
+        m = self.bands_menu
+        m.clear()
+        a = m.addAction("📶 Balayer toutes les bandes")
+        a.triggered.connect(lambda *_: self.scan_all_bands())
+        m.addSeparator()
+        hd = m.addAction("Bandes balayées (cocher / décocher) :")
+        hd.setEnabled(False)
+        for b in self.bands:
+            a = m.addAction(b["name"] + f"   {b['start']:g}–{b['stop']:g} MHz")
+            a.setCheckable(True)
+            a.setChecked(bool(b["enabled"]))
+            a.toggled.connect(lambda *_, a=a, bid=b["id"]: self.set_band_enabled(bid, a.isChecked()))
+        m.addSeparator()
+        a = m.addAction("🎯 Ne balayer que la bande affichée dans « Vue »")
+        a.setCheckable(True)
+        a.setChecked(self.scan_follow)
+        a.setToolTip("Choisis une bande dans « Vue » : seule celle-ci est balayée (beaucoup plus rapide).\n"
+                     "« Toutes les bandes » dans « Vue » = toutes les bandes cochées.")
+        a.toggled.connect(lambda *_, a=a: self.set_scan_follow(a.isChecked()))
+
+    def set_band_enabled(self, bid, on):
+        b = next((x for x in self.bands if x["id"] == bid), None)
+        if b is None or bool(b["enabled"]) == bool(on):
+            return
+        if not on and sum(1 for x in self.bands if x["enabled"]) <= 1:
+            self.set_status("Il faut garder au moins une bande à balayer.")
+            return
+        with self.lock:
+            b["enabled"] = bool(on)
+        self._bands_changed()
+        n = sum(1 for x in self.bands if x["enabled"])
+        self.set_status(f"{n} bande(s) balayée(s) sur {len(self.bands)}. Les fréquences des bandes non balayées "
+                        f"ne sont plus surveillées.")
+
+    def scan_all_bands(self):
+        with self.lock:
+            for b in self.bands:
+                b["enabled"] = True
+        self.scan_follow = False
+        self._bands_changed()
+        self.set_status("Toutes les bandes sont balayées.")
+
+    def set_scan_follow(self, on):
+        self.scan_follow = bool(on)
+        self._bump()
+        self.update_estimate()
+        if on and self._follow_id() is None:
+            self.set_status("Choisis maintenant une bande dans « Vue » : seule celle-ci sera balayée.")
+        elif on:
+            self.set_status("Seule la bande affichée est balayée. Les autres fréquences ne sont plus surveillées.")
+        else:
+            self.set_status("Toutes les bandes cochées sont de nouveau balayées.")
+
+    def _follow_id(self):
+        """Bande seule à balayer (mode « bande affichée »), sinon None."""
+        if not self.scan_follow or self._zoom is not None:
+            return None
+        vid = getattr(self, "view_id", -1)
+        return vid if any(b["id"] == vid and b["enabled"] for b in self.scan_bands()) else None
+
+    def _scan_now(self, b):
+        fid = self._follow_id()
+        return bool(b["enabled"]) and (fid is None or b["id"] == fid)
+
     def refresh_view_combo(self):
         cur = self.view_combo.currentData()
         self.view_combo.blockSignals(True)
@@ -11857,6 +11953,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         v = self.view_combo.currentData()
         self.view_id = -1 if v is None else v
+        if self.scan_follow:
+            self._bump()
+            self.update_estimate()
         self._wf_show(self.view_id != -1)
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
@@ -11877,8 +11976,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.view_combo.setEnabled(False)
             self._wf_show(True)
             self.zoom_timer.start()
-            self.set_status("Zoom live : le tinySA scanne uniquement la zone visible avec le nombre de points "
-                            "choisi. Zoome / déplace-toi, le scan suit (les autres fréquences sont suspendues).")
+            self.set_status("Zoom live : le tinySA scanne uniquement la zone visible. Zoome / déplace-toi, le "
+                            "scan suit (les autres fréquences sont suspendues). " + self.zoom_info())
         else:
             if self._zoom is None:
                 return
@@ -11923,6 +12022,17 @@ class MainWindow(QtWidgets.QMainWindow):
         tol = 0.02 * (b - a)
         if abs(vr[0] - a) > tol or abs(vr[1] - b) > tol:
             self._set_zoom(vr[0], vr[1])
+            self.set_status(self.zoom_info())
+
+    def zoom_info(self):
+        """« 2.000 MHz · 201 points (pas 10.0 kHz) » : ce que scanne le zoom live."""
+        z = self._zoom
+        if not z:
+            return ""
+        c = self._cfg
+        n = zoom_points(z[1] - z[0], c.get("zpts"), c["points"])
+        step = (z[1] - z[0]) * 1000.0 / (n - 1)
+        return f"Zoom : {z[1] - z[0]:.3f} MHz · {n} points (pas {step:.1f} kHz)"
 
     def zoom_on(self, row, half=1.0):
         if row >= len(self.watch):
@@ -13185,7 +13295,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_cycle[dev] = dt
         live = [v for k, v in self.dev_cycle.items() if k >= len(self.dev_live) or self.dev_live[k]]
         dt = max(live) if live else dt          # le plus lent des tinySA fixe le rythme de rafraîchissement
-        nb = len([b for b in self.scan_bands() if b["enabled"]]) if self.ndev() > 1 and self._zoom is None else nb
+        nb = len([b for b in self.scan_bands() if self._scan_now(b)]) if self.ndev() > 1 and self._zoom is None else nb
         self.last_cycle = dt
         ids = {b["id"] for b in self.scan_bands() if b["enabled"]}
         if self._zoom is not None:
@@ -13636,6 +13746,67 @@ class MainWindow(QtWidgets.QMainWindow):
                 lab.setVisible(True)
             else:
                 lab.setVisible(False)
+        self._update_selection()
+
+    def _on_watch_sel(self):
+        self._update_selection()
+        rows = self._sel_rows()
+        if len(rows) == 1 and self._last_xy is not None:
+            w = self.watch[rows[0]]
+            (x0, x1), _ = self.spec.getPlotItem().vb.viewRange()
+            if not x0 <= w["freq"] <= x1:
+                self.set_status(f"« {w['name']} » ({w['freq']:.3f} MHz) est hors de la vue du spectre : "
+                                f"double-clic sur son niveau pour zoomer dessus.")
+
+    def _update_selection(self):
+        """Fréquence(s) choisie(s) dans la liste : ressortent sur le spectre (bande ambrée, trait épais, nom)."""
+        pi = self.spec.getPlotItem()
+        if self._sel_items is None:
+            c = QtGui.QColor(SEL_COLOR)
+            c.setAlpha(80)
+            regs = []
+            for _i in range(SEL_MAX):
+                r = pg.LinearRegionItem(values=(0, 0), movable=False, brush=pg.mkBrush(c),
+                                        pen=pg.mkPen(SEL_COLOR, width=1))
+                r.setZValue(-5)
+                r.setVisible(False)
+                pi.addItem(r, ignoreBounds=True)
+                regs.append(r)
+            line = pg.PlotCurveItem(pen=pg.mkPen(SEL_COLOR, width=3.5), connect="pairs")
+            line.setZValue(40)
+            pi.addItem(line, ignoreBounds=True)
+            lab = pg.TextItem("", color=SEL_COLOR, anchor=(0.5, 1), fill=pg.mkBrush(0, 0, 0, 170),
+                              border=pg.mkPen(SEL_COLOR))
+            lab.setZValue(50)
+            lab.setVisible(False)
+            pi.addItem(lab, ignoreBounds=True)
+            self._sel_items = (regs, line, lab)
+        regs, line, lab = self._sel_items
+        rows = self._sel_rows()[:SEL_MAX]
+        (x0, x1), (y0, y1) = pi.vb.viewRange()
+        xs, ys = [], []
+        for i, r in enumerate(regs):
+            if i < len(rows):
+                w = self.watch[rows[i]]
+                half = max((w.get("bw") or 0.0) / 2, (x1 - x0) * 0.006)
+                r.setRegion((w["freq"] - half, w["freq"] + half))
+                r.setVisible(True)
+                if not w.get("bw"):
+                    xs += [w["freq"], w["freq"]]
+                    ys += [y0, y1]
+            else:
+                r.setVisible(False)
+        line.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        if len(rows) == 1:
+            w = self.watch[rows[0]]
+            lvl = "" if w.get("level") is None else "  " + self.lvl(w["level"], suffix=True)
+            lab.setText(f"{w['name']}  {w['freq']:.3f}" + lvl)
+            rel = (w["freq"] - x0) / max(1e-9, x1 - x0)          # près d'un bord : texte du côté intérieur
+            lab.setAnchor((0.0, 1) if rel < 0.2 else (1.0, 1) if rel > 0.8 else (0.5, 1))
+            lab.setPos(w["freq"], y0 + (y1 - y0) * 0.16)
+            lab.setVisible(True)
+        else:
+            lab.setVisible(False)
 
     def update_waterfall(self, bid, f, l):
         lr = decimate_max(l, WF_MAX_COLS)
@@ -13789,8 +13960,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.marker_refresh()
 
     def _mkr_trace(self):
-        x, y = self.curve.getData()
-        return (None, None) if x is None else (x, y)
+        try:
+            x, y = self.curve.getData()
+        except (TypeError, ValueError):            # pas encore de courbe
+            return None, None
+        return (None, None) if x is None or not isinstance(x, np.ndarray) else (x, y)
 
     def marker_to_peak(self, i=0):
         F, L = self._mkr_trace()

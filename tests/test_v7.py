@@ -559,5 +559,13 @@ check("occupation : 50 % sur 600.5, 0 % sur 600.2, rien hors bande",
       {h: (list(n), list(k)) for h, (n, k) in oc_.items()},
       {20: ([10.0, 10.0, 0.0], [5.0, 0.0, 0.0]), 21: ([10.0, 10.0, 0.0], [5.0, 0.0, 0.0])})
 
+# --- zoom live : points automatiques
+zoom_points, MIN_PTS = ns["zoom_points"], ns["MIN_PTS"]
+check("zoom 2 MHz -> 201 pts (10 kHz)", zoom_points(2.0), 201)
+check("zoom 20 MHz -> plafond 290", zoom_points(20.0), 290)
+check("zoom 0.1 MHz -> minimum MIN_PTS", zoom_points(0.1), MIN_PTS)
+check("zoom auto jamais plus que les points des bandes", zoom_points(20.0, None, 101), 101)
+check("zoom : nombre fixe respecté", zoom_points(2.0, 1000), 1000)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

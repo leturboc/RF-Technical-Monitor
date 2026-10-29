@@ -280,7 +280,54 @@ win._fit_x = True
 wait(800)
 
 step("zoom sur ligne 0", lambda: win.zoom_on(0)); wait(4000); shot(win, "zoom_live")
+zb_ = [b for b in win.get_cfg(0)["bands"] if b["id"] == m.ZOOM_ID]
+zsp_ = zb_ and (zb_[0]["stop_hz"] - zb_[0]["start_hz"]) / 1e3 / max(1, zb_[0]["n"] - 1)
+check("zoom live : points auto réduits (pas ≈ 10 kHz, ≤ 290 pts)", zb_ and zb_[0]["n"] <= 290 and 5 <= zsp_ <= 12,
+      str(zb_ and zb_[0]["n"]) + " · " + win.zoom_info())
+win.zpts_combo.setCurrentIndex(win.zpts_combo.findData(1000))
+zb_ = [b for b in win.get_cfg(0)["bands"] if b["id"] == m.ZOOM_ID]
+check("zoom live : nombre fixe choisi respecté", zb_ and zb_[0]["n"] == 1000, str(zb_ and zb_[0]["n"]))
+win.zpts_combo.setCurrentIndex(0)
 step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
+
+# clic sur une fréquence de la liste -> surlignée sur le spectre
+win.view_combo.setCurrentIndex(0); win._fit_x = True; wait(800)
+win.watch_table.clearSelection()
+win.watch_table.selectRow(0); wait(300)
+regs_, line_, lab_ = win._sel_items
+check("sélection dans la liste : surlignée sur le spectre", regs_[0].isVisible() and lab_.isVisible()
+      and win.watch[0]["name"] in lab_.toPlainText(), lab_.toPlainText())
+shot(win, "selection_spectre")
+win.watch_table.clearSelection(); wait(200)
+check("sélection effacée : plus de surbrillance", not regs_[0].isVisible() and not lab_.isVisible())
+
+# bandes à balayer : toutes / certaines / seulement celle affichée
+win._build_bands_menu()
+check("menu 📶 Bandes : une case par bande", sum(1 for a in win.bands_menu.actions() if a.isCheckable())
+      == len(win.bands) + 1, str(len(win.bands)))
+tmpb_ = None
+if len(win.bands) < 2:                      # la démo n'a qu'une bande : on en ajoute une le temps du test
+    win.add_band("Test 2", 600.0, 620.0, 0.1)
+    tmpb_ = win.bands[-1]
+if len(win.bands) >= 2:
+    b0_, b1_ = win.bands[0], win.bands[1]
+    win.set_band_enabled(b1_["id"], False)
+    en_ = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+    check("décocher une bande : plus balayée", b1_["id"] not in en_ and b0_["id"] in en_, str(en_))
+    win.view_combo.setCurrentIndex(win.view_combo.findData(b0_["id"])); wait(300)
+    win.set_scan_follow(True)
+    en_ = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+    check("« bande affichée » : seule celle de Vue est balayée", en_ == {b0_["id"]}, str(en_))
+    wait(3000)
+    shot(win, "bande_affichee_seule")
+    win.scan_all_bands()
+    en_ = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+    check("« Balayer toutes les bandes » : tout revient", len(en_) == len(win.bands) and not win.scan_follow, str(en_))
+    win.view_combo.setCurrentIndex(0); win._fit_x = True; wait(1500)
+if tmpb_ is not None:
+    with win.lock:
+        win.bands.remove(tmpb_)
+    win._bands_changed(); wait(1000)
 
 # dispositions
 for name in ("layout_analyzer", "layout_monitor", "layout_dual", "layout_standard"):

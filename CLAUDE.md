@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.13.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.14.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -251,6 +251,23 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   TNT en pas de 224 kHz donnait 41 « signaux » ; plateau ≥ 1,5 MHz = `wide`, centre ; déjà dans la liste →
   écarté), `ScanAddDialog` (max hold / direct, seuil, réunir à, nom « Scan n », scène / groupe / statut), menus
   ② Mes fréquences et ☰ Plus › 📋 Liste, `open_scan_add`.
+- **7.14.0 (Clément : « j'adore tout » sur 8 idées, + retours)** :
+  - **Coordination auto** : PURE `pf_fill` (glouton, la plus basse compatible d'abord, via `pf_suggest`),
+    `CoordDialog` (appareil, combien, plage, évite le max hold ≥ seuil « occupé »), `open_coord` ; parcours ③
+    renommé « Coordonner le plan » (menu).
+  - **Marqueurs M1 / M2** : PURE `trace_at`, `peak_near`, `occupied_width` ; `_build_markers_bar`, `mkr_btn`,
+    `marker_refresh` (appelé par `update_plot` en finally), `_mkr_trace` (robuste sans courbe : faux Qt).
+  - **Comparer deux sessions** : PURE `compare_spectra` ; ReplayDialog « ⚖ » (`cmpcurve`, violet pointillé).
+  - **Occupation par heure** : PURE `store_occupancy` ; `OccupancyDialog` (Relecture 📊, ⑥, ☰ Plus).
+  - **Zoom live : points auto** (Clément : « ça sert à rien d'en avoir énormément ») : PURE `zoom_points`
+    (~10 kHz de pas, ≤ 290, ≤ points des bandes, ≥ MIN_PTS) ; `zpts_combo` « Points en zoom » (expert, `zpts`
+    dans `_cfg`, config, SHOW_KEYS) ; `zoom_info()` dans la barre d'état.
+  - **Sélection dans la liste → surbrillance sur le spectre** : `_update_selection` (fin de `_update_markers`),
+    `_on_watch_sel`, `SEL_COLOR` ambre, `SEL_MAX`, régions + trait + étiquette (côté intérieur près d'un bord).
+  - **📶 Bandes** (à côté de « Vue », `bands_btn`, `_build_bands_menu`) : toutes / cocher-décocher
+    (`set_band_enabled`, garde au moins une) / « ne balayer que la bande affichée » (`scan_follow`, config ;
+    `_follow_id`, `_scan_now` utilisé par `get_cfg`, `band_devices`, `update_estimate`, `on_cycle`). Fréquences hors
+    bandes balayées : données périmées → état None, pas d'alarme (pas surveillées, dit dans la barre d'état).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
