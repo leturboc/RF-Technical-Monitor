@@ -826,6 +826,32 @@ for _w in _new:                                  # on les retire (la suite du te
     win.watch.remove(_w)
 win.rebuild_watch_table(); win.rebuild_tree()
 win.latest.pop(9991, None); win.latest_t.pop(9991, None)
+# 🪄 coordination automatique : 4 fréquences compatibles ajoutées (sur un plan réaliste : celui de Clément)
+_saved = list(win.watch)
+win.watch.clear()
+for _i, _f in enumerate((470.2, 471.3, 478.0, 558.0, 574.0, 606.0, 614.0, 646.0)):
+    win._append_watch(f"W{_i}", _f, status="En service")
+    win.watch[-1]["rx"] = "wisycom"
+def _coord_act(d):
+    if isinstance(d, m.CoordDialog):
+        d.n_spin.setValue(4)
+        d.lo.setValue(520.0)
+        d.hi.setValue(556.0)
+        d.prefix.setText("COORD")
+        d.compute()
+        shot(d, "coordination_auto")
+        d.add()
+    return "reject"
+DLG_ACTION[0] = _coord_act
+step("🪄 coordination auto", win.open_coord)
+DLG_ACTION[0] = "reject"
+_cw = [w for w in win.watch if w["name"].startswith("COORD")]
+_iss, _ = m.pf_check([w["freq"] for w in win.watch], None, None, 0.5, m.rx_profile("wisycom")["tol"], None, 32.0)
+check("coordination : 4 ajoutées (Wisycom, en service), plan complet sans aucun problème",
+      len(_cw) == 4 and all(w.get("rx") == "wisycom" and win.is_keep_on(w["status"]) for w in _cw)
+      and sum(len(x) for x in _iss) == 0, str([(w["name"], w["freq"]) for w in _cw]) + str(_iss))
+win.watch[:] = _saved
+win.rebuild_watch_table(); win.rebuild_tree()
 # 📝 Quoi noter : un type décoché n'arrive plus au journal (les alarmes, elles, restent)
 _n0 = win.log_table.rowCount()
 win._logwhat_acts["unknown"].trigger()

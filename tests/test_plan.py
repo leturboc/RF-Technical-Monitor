@@ -185,5 +185,23 @@ r0 = ns["pf_check"]([470.0, 486.0, 502.0], tol=ns["rx_profile"]("senn_evo")["tol
 check("filtre 16 MHz : 470 / 486 / 502 → plus de 2A − B (émetteurs hors filtre)",
       (sum(len(x) for x in r16[0]) == 0, sum(len(x) for x in r0[0]) > 0), (True, True))
 
+# coordination automatique : N fréquences compatibles avec la liste ET entre elles
+pf_fill = ns["pf_fill"]
+tolW = ns["rx_profile"]("wisycom")["tol"]
+plan0 = [470.2, 471.3, 478.0, 558.0, 574.0, 606.0, 614.0, 646.0]
+got = pf_fill(6, plan0, sep=0.5, tol=tolW, filt=32.0, new_sep=0.5, new_tol=tolW, new_filt=32.0,
+              lo=470.0, hi=520.0, step=0.025)
+check("coordination : 6 trouvées dans la plage", (len(got), all(470.0 <= c <= 520.0 for c in got)), (6, True))
+allf = plan0 + got
+iss, _ = ns["pf_check"](allf, sep=0.5, tol=tolW, filt=32.0)
+check("coordination : plan complet sans aucun problème", sum(len(x) for x in iss), 0)
+check("coordination : sur le pas de 25 kHz", all(abs(c * 40 - round(c * 40)) < 1e-6 for c in got), True)
+busy_ = lambda c: 480.0 <= c <= 490.0
+got2 = pf_fill(4, plan0, sep=0.5, tol=tolW, filt=32.0, new_sep=0.5, new_tol=tolW, new_filt=32.0,
+               lo=478.5, hi=495.0, busy=busy_)
+check("coordination : évite l'occupé", (len(got2), any(busy_(c) for c in got2)), (4, False))
+got3 = pf_fill(50, [], new_sep=0.5, new_tol=tolW, new_filt=0.0, lo=600.0, hi=602.0, step=0.025)
+check("coordination : plage pleine → moins que demandé", 0 < len(got3) < 50, True)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

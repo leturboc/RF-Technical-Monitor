@@ -2064,6 +2064,39 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
     return out
 
 
+def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, new_sep=PF_SEP, new_tol=None,
+            new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800):
+    """Coordination automatique : n_new fréquences compatibles avec le plan existant (freqs, réglages par fréquence
+    comme pf_check) ET entre elles, pour un appareil (new_sep / new_tol / new_filt, pas `step`), dans [lo, hi],
+    en évitant ce que busy(c) dit occupé. Ajout une par une (la plus basse compatible à chaque fois, comme un
+    logiciel de coordination qui remplit la bande), chaque ajout vérifié par pf_suggest (aucun problème pour elle,
+    aucun nouveau pour les autres). -> liste des MHz trouvés (peut être plus courte que n_new : bande pleine)."""
+    F = [float(x) for x in freqs]
+    m = len(F)
+    T = [True] * m if is_tx is None else [bool(x) for x in is_tx]
+    B = [0.0] * m if bws is None else [float(x or 0.0) for x in bws]
+
+    def per(x, d):
+        return list(x) if isinstance(x, (list, tuple)) else [x] * m
+    SP, TL, FL = per(sep, PF_SEP), per(tol, None), per(filt, 0.0)
+    out = []
+    for _k in range(int(n_new)):
+        seed = lo - step                                   # graine juste sous la plage : la plus basse d'abord
+        sg = pf_suggest(len(F), F + [seed], T + [True], B + [0.0], SP + [new_sep], TL + [new_tol], None,
+                        lo=lo, hi=hi, step=step, n=1, busy=busy, max_check=max_check, filt=FL + [new_filt])
+        if not sg:
+            break
+        c = sg[0][0]
+        out.append(c)
+        F.append(c)
+        T.append(True)
+        B.append(0.0)
+        SP.append(new_sep)
+        TL.append(new_tol)
+        FL.append(new_filt)
+    return out
+
+
 def im3_clash(c, F, guard, guard3=None):
     """Collisions d'intermodulation 3e ordre mettant en jeu la fréquence candidate c (MHz) avec les émetteurs F.
     guard : tolérance des produits 2 TX (2A − B) ; guard3 : celle des 3 TX (A + B − C), = guard si absente.
@@ -3806,8 +3839,10 @@ STEPS = (
       ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"), (None, None),
       ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
-    ("plan", "③ Vérifier le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
-     "une remplaçante proposée pour chaque fréquence à problème.", ()),
+    ("plan", "③ Coordonner le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
+     "une remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.",
+     (("🪄 Trouver N fréquences compatibles…", "open_coord"), ("🧮 Vérifier le plan…", "open_plan_check"),
+      ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"))),
     ("im", "④ Intermod", "Produits d'intermodulation de tes émetteurs, ou d'où vient un signal gênant\n"
      "(d'après le spectre mesuré).", ()),
     ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
@@ -3824,7 +3859,7 @@ STEP_HINTS = {
     "scan": "① Laisse tourner quelques minutes : le max hold (orange) montre ce qui occupe déjà le lieu.",
     "list": "② Ajoute depuis le scan, importe ou saisis tes fréquences ; puis Ctrl+E = doit émettre, "
             "statut « Libre » = doit rester libre.",
-    "plan": "③ Corrige les ✗ avec « Proposer » puis « Remplacer ».",
+    "plan": "③ 🪄 Trouve N fréquences compatibles, ou vérifie ton plan et corrige les ✗ (« Proposer », « Remplacer »).",
     "im": "④ Un signal bizarre ? « Chercher l'origine » à partir du spectre mesuré.",
     "show": "⑤ Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.",
     "after": "⑥ Relecture : revois n'importe quel moment de la session enregistrée.",
@@ -8259,6 +8294,146 @@ class ScanAddDialog(QtWidgets.QDialog):
         self.refresh()
 
 
+class CoordDialog(QtWidgets.QDialog):
+    """🪄 Coordination automatique : « trouve-moi N fréquences compatibles » pour un appareil, compatibles avec ta
+    liste et entre elles, en évitant ce que le tinySA voit occupé, puis ajoutées à la liste."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.found = []
+        self.setWindowTitle("Trouver des fréquences compatibles")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Comme un logiciel de coordination : choisis l'appareil et combien de fréquences il te faut. L'appli "
+            "cherche, de bas en haut de la plage, des fréquences <b>compatibles avec toute ta liste et entre elles</b> "
+            "(écart, intermod, filtre de l'appareil), sur le pas de l'appareil, en évitant ce que le tinySA voit "
+            "occupé (max hold). Lance d'abord ① Scanner le lieu quelques minutes.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 4)
+        lay.addWidget(info)
+        f = QtWidgets.QFormLayout()
+        self.prof = QtWidgets.QComboBox()
+        fill_rx_combo(self.prof, "✏ réglages de « Vérifier le plan »")
+        ix = self.prof.findData("wisycom")
+        self.prof.setCurrentIndex(max(0, ix))
+        self.prof.setToolTip("Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.")
+        self.n_spin = QtWidgets.QSpinBox()
+        self.n_spin.setRange(1, 64)
+        self.n_spin.setValue(8)
+        self.n_spin.setToolTip("Combien de fréquences chercher.")
+        ext = o._band_extent() or (470.0, 694.0)
+        self.lo = QtWidgets.QDoubleSpinBox()
+        self.hi = QtWidgets.QDoubleSpinBox()
+        for sp_, v in ((self.lo, ext[0]), (self.hi, ext[1])):
+            sp_.setDecimals(3)
+            sp_.setRange(0.1, 6000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setValue(v)
+            sp_.setToolTip("Plage où chercher (la bande de tes appareils : ex. 470–608 pour un modèle G4 « A »).")
+        self.avoid = QtWidgets.QCheckBox("Éviter ce que le tinySA voit occupé (max hold)")
+        self.avoid.setChecked(True)
+        self.avoid.setToolTip("Écarte les fréquences où le max hold dépasse ton seuil « occupé ».")
+        self.prefix = QtWidgets.QLineEdit("HF")
+        self.prefix.setToolTip("Nom des nouvelles fréquences, numéroté : HF 1, HF 2…")
+        self.scene = QtWidgets.QComboBox()
+        self.scene.setEditable(True)
+        self.scene.addItem("")
+        for sc in o.scenes:
+            self.scene.addItem(sc["name"])
+        self.scene.setEditText("")
+        self.scene.setToolTip("Scène où les ranger (facultatif).")
+        self.group = QtWidgets.QLineEdit("")
+        self.group.setToolTip("Groupe où les ranger (facultatif).")
+        f.addRow("Appareil :", self.prof)
+        f.addRow("Combien :", self.n_spin)
+        f.addRow("De :", o._row(self.lo, "à", self.hi, None))
+        f.addRow(self.avoid)
+        f.addRow("Nom :", self.prefix)
+        f.addRow("Scène :", self.scene)
+        f.addRow("Groupe :", self.group)
+        lay.addLayout(f)
+        go = QtWidgets.QPushButton("🪄 Chercher")
+        go.setToolTip("Cherche les fréquences (quelques secondes avec beaucoup d'émetteurs).")
+        go.clicked.connect(lambda *_: self.compute())
+        lay.addWidget(go)
+        self.res = QtWidgets.QListWidget()
+        self.res.setToolTip("Fréquences trouvées, compatibles avec ta liste et entre elles.")
+        lay.addWidget(self.res, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        add = QtWidgets.QPushButton("＋ Ajouter à ma liste (statut En service)")
+        add.setToolTip("Ajoute les fréquences trouvées, avec cet appareil, au statut « doit émettre ».")
+        add.clicked.connect(lambda *_: self.add())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(add, None, close))
+        self.resize(620, 640)
+
+    def _new_profile(self):
+        d = rx_profile(self.prof.currentData())
+        if d is None:
+            po = self.owner.plan_opts
+            d = dict(sep=po["sep"] / 1000.0, filt=po["filt"], step=po["step"] / 1000.0, tol=IM_TOL_PRESETS[0][1])
+        return d
+
+    def compute(self):
+        o = self.owner
+        ws = list(o.watch)
+        P = [rx_profile(w.get("rx")) or self._new_profile() for w in ws]
+        d = self._new_profile()
+        busy = None
+        if self.avoid.isChecked():
+            Fm, Lm = o.fresh_FL(use_max=True, any_age=True)
+            if Fm is not None:                     # seuil « occupé » : le max hold du bruit dépasse souvent « faible »
+                lim = o.thr_spin.value()
+                win = max(0.05, o.win_spin.value() / 1000.0)
+                busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.found = pf_fill(self.n_spin.value(), [w["freq"] for w in ws],
+                                 [not o.is_keep_free(w["status"]) for w in ws], [float(w.get("bw") or 0.0) for w in ws],
+                                 [q["sep"] for q in P], [q["tol"] for q in P], [q["filt"] for q in P],
+                                 d["sep"], d["tol"], d["filt"], self.lo.value(), self.hi.value(), d["step"], busy)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        self.res.clear()
+        for k, c in enumerate(self.found, 1):
+            self.res.addItem(f"{self.prefix.text().strip() or 'HF'} {k}   {c:.3f} MHz")
+        n = self.n_spin.value()
+        self.msg.setText(f"✔ {len(self.found)} fréquence(s) trouvée(s)." if len(self.found) >= n else
+                         f"⚠ Seulement {len(self.found)} / {n} : la plage est pleine pour ces règles. Élargis la plage, "
+                         "choisis un appareil plus sélectif (filtre plus étroit) ou des tolérances plus souples.")
+
+    def add(self):
+        o = self.owner
+        if not self.found:
+            self.msg.setText("Lance d'abord « 🪄 Chercher ».")
+            return
+        pre = self.prefix.text().strip() or "HF"
+        taken = {w["name"] for w in o.watch}
+        st = next((s_["name"] for s_ in o.statuses if s_.get("on")), "")
+        k = 1
+        for c in self.found:
+            while f"{pre} {k}" in taken:
+                k += 1
+            taken.add(f"{pre} {k}")
+            o._append_watch(f"{pre} {k}", c, status=st, scene=self.scene.currentText().strip(),
+                            group=self.group.text().strip())
+            if self.prof.currentData():
+                o.watch[-1]["rx"] = self.prof.currentData()
+        o.sort_watch()
+        o.rebuild_tree()
+        o.rebuild_watch_table()
+        o._update_markers()
+        o.set_status(f"🪄 {len(self.found)} fréquence(s) coordonnée(s) ajoutée(s) à ta liste.")
+        self.msg.setText(f"✔ {len(self.found)} fréquence(s) ajoutée(s). Vérifie avec ③ Vérifier le plan.")
+        self.found = []
+        self.res.clear()
+
+
 class SpectrumLegendDialog(QtWidgets.QDialog):
     """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
     deux sens aux réglages de la fenêtre principale)."""
@@ -9391,6 +9566,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.is_running():
             self.toggle_run()
 
+    def open_coord(self):
+        CoordDialog(self).exec()
+
     def open_scan_add(self):
         ScanAddDialog(self).exec()
 
@@ -9538,6 +9716,7 @@ class MainWindow(QtWidgets.QMainWindow):
             (None, None),
             ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene())))
         tmenu = submenu(mm, "📐 Plan de fréquences", (
+            ("🪄 Trouver N fréquences compatibles (coordination auto)…", lambda *_: self.open_coord()),
             ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
             ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
             (None, None),
