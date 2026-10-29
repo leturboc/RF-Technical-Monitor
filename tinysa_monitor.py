@@ -3758,6 +3758,40 @@ def rec_mb_per_hour(points, cycle_s):
 
 
 
+# ------------------------------------------------------------------ ajouter depuis le scan (7.13, idée de Clément)
+def scan_peaks(F, L, thr, merge_khz=150.0, wide_mhz=1.5, exclude=(), excl_khz=100.0):
+    """Signaux d'un spectre au-dessus de thr (dBm), pour les ajouter à la liste sans les taper :
+    zones contiguës au-dessus du seuil, réunies si moins de merge_khz les séparent ; une zone plus large que
+    wide_mhz = plateau (TNT, Spectera, bloc numérique). Les fréquences déjà connues (exclude, MHz) à moins de
+    excl_khz sont écartées. -> [dict(f MHz (pic, ou centre d'un plateau), level dBm, width kHz, wide bool)],
+    triés par fréquence."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    if not len(F):
+        return []
+    above = np.nonzero(L >= thr)[0]
+    if not len(above):
+        return []
+    zones, start, prev = [], above[0], above[0]
+    for k in above[1:]:
+        gap = (F[k] - F[prev]) * 1000.0             # points voisins du balayage = même signal (pas grossier),
+        if (k != prev + 1 and gap > merge_khz) or gap > 5000.0:    # sauf saut de bande
+            zones.append((start, prev))
+            start = k
+        prev = k
+    zones.append((start, prev))
+    ex = np.asarray(sorted(float(x) for x in exclude), dtype=float)
+    out = []
+    for a, z in zones:
+        seg = L[a:z + 1]
+        width = (F[z] - F[a]) * 1000.0
+        wide = width >= wide_mhz * 1000.0
+        f = float((F[a] + F[z]) / 2.0) if wide else float(F[a + int(np.argmax(seg))])
+        if len(ex) and np.min(np.abs(ex - f)) * 1000.0 <= max(excl_khz, width / 2.0 if wide else 0.0):
+            continue
+        out.append(dict(f=round(f, 4), level=round(float(seg.max()), 1), width=round(width, 1), wide=bool(wide)))
+    return out
+
+
 # ------------------------------------------------------------------ parcours et niveaux d'affichage (7.13)
 UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
              ("simple", "🔵 Simple : + réglages essentiels, journal, scènes / groupes"),
@@ -3768,7 +3802,8 @@ STEPS = (
      "équipes, brouilleurs). Démarre le balayage, max hold remis à zéro.", ()),
     ("list", "② Mes fréquences", "Ta liste de fréquences : importer ton plan (EazyRF, WWB, WSM, Excel…), en ajouter,\n"
      "et dire pour chacune si elle doit émettre ou rester libre.",
-     (("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
+     (("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
+      ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"), (None, None),
       ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
     ("plan", "③ Vérifier le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
@@ -3787,7 +3822,8 @@ STEPS = (
 STEP_DEFAULT = dict(scan="step_scan", plan="open_plan_check", im="open_intermod")
 STEP_HINTS = {
     "scan": "① Laisse tourner quelques minutes : le max hold (orange) montre ce qui occupe déjà le lieu.",
-    "list": "② Importe ou saisis tes fréquences, puis Ctrl+E = doit émettre, statut « Libre » = doit rester libre.",
+    "list": "② Ajoute depuis le scan, importe ou saisis tes fréquences ; puis Ctrl+E = doit émettre, "
+            "statut « Libre » = doit rester libre.",
     "plan": "③ Corrige les ✗ avec « Proposer » puis « Remplacer ».",
     "im": "④ Un signal bizarre ? « Chercher l'origine » à partir du spectre mesuré.",
     "show": "⑤ Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.",
@@ -8051,6 +8087,178 @@ class TourDialog(QtWidgets.QDialog):
         super().closeEvent(e)
 
 
+class ScanAddDialog(QtWidgets.QDialog):
+    """📡 Ajouter depuis le scan : les signaux vus au-dessus d'un seuil deviennent des fréquences de la liste
+    (à renommer, ranger, supprimer ensuite comme les autres)."""
+    COLS = ["", "MHz", "Niveau", "Largeur", "Où (plan du pays)"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.peaks = []
+        self.setWindowTitle("Ajouter des fréquences depuis le scan")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Les signaux que le tinySA voit au-dessus du seuil deviennent des fréquences de ta liste, sans les "
+            "taper. Laisse tourner le balayage un moment avant : le <b>max hold</b> garde aussi les émetteurs "
+            "intermittents. Ensuite, renomme-les, range-les ou supprime le bruit comme n'importe quelle fréquence.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        self.src_combo = QtWidgets.QComboBox()
+        self.src_combo.addItem("Max hold (tout ce qui est passé)", "max")
+        self.src_combo.addItem("Balayage en direct", "live")
+        self.src_combo.setToolTip("Max hold : garde les signaux brefs ou intermittents. Direct : seulement ce qui "
+                                  "émet maintenant.")
+        self.thr = LevelSpin()
+        self.thr.setRange(-120.0, 0.0)
+        self.thr.setValue(o.thr_spin.value())
+        self.thr.setToolTip("Seuls les signaux au-dessus de ce niveau sont proposés (par défaut : ton seuil "
+                            "« occupé »).")
+        self.merge = QtWidgets.QSpinBox()
+        self.merge.setRange(10, 2000)
+        self.merge.setSingleStep(25)
+        self.merge.setValue(150)
+        self.merge.setSuffix(" kHz")
+        self.merge.setToolTip("Deux morceaux de signal plus proches que ça = un seul signal.")
+        self.excl_chk = QtWidgets.QCheckBox("Sans celles déjà dans ma liste")
+        self.excl_chk.setChecked(True)
+        self.excl_chk.setToolTip("N'affiche pas les signaux à moins de 100 kHz d'une fréquence déjà dans ta liste.")
+        self.wide_chk = QtWidgets.QCheckBox("Sans les plateaux larges (TNT…)")
+        self.wide_chk.setChecked(True)
+        self.wide_chk.setToolTip("Écarte les signaux de plus de 1,5 MHz de large (TNT, Spectera, bloc numérique) :\n"
+                                 "décoche pour les ajouter comme blocs larges.")
+        go = QtWidgets.QPushButton("🔄 Chercher")
+        go.setToolTip("Relance la recherche avec ces réglages.")
+        go.clicked.connect(lambda *_: self.refresh())
+        for w_ in (self.src_combo,):
+            w_.currentIndexChanged.connect(lambda *_: self.refresh())
+        for w_ in (self.excl_chk, self.wide_chk):
+            w_.toggled.connect(lambda *_: self.refresh())
+        lay.addLayout(o._row(self.src_combo, "Seuil :", self.thr, "Réunir à :", self.merge, None, go))
+        lay.addLayout(o._row(self.excl_chk, self.wide_chk, None))
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Coche les signaux à ajouter. Double-clic : voir ce signal sur le spectre (zoom).")
+        self.table.cellDoubleClicked.connect(lambda r, c: self.zoom(r))
+        lay.addWidget(self.table, 1)
+        b_all = QtWidgets.QPushButton("Tout cocher")
+        b_all.setToolTip("Coche toutes les lignes.")
+        b_all.clicked.connect(lambda *_: self.check_all(True))
+        b_none = QtWidgets.QPushButton("Tout décocher")
+        b_none.setToolTip("Décoche toutes les lignes.")
+        b_none.clicked.connect(lambda *_: self.check_all(False))
+        self.count_lbl = QtWidgets.QLabel("")
+        lay.addLayout(o._row(b_all, b_none, None, self.count_lbl))
+        f = QtWidgets.QFormLayout()
+        self.prefix = QtWidgets.QLineEdit("Scan")
+        self.prefix.setToolTip("Nom donné aux nouvelles fréquences, numéroté : Scan 1, Scan 2… (à renommer ensuite).")
+        self.scene = QtWidgets.QComboBox()
+        self.scene.setEditable(True)
+        self.scene.addItem("")
+        for sc in o.scenes:
+            self.scene.addItem(sc["name"])
+        self.scene.setEditText("")
+        self.scene.setToolTip("Scène où les ranger (facultatif ; on peut les ranger plus tard).")
+        self.group = QtWidgets.QLineEdit("")
+        self.group.setPlaceholderText(f"ex. Scan {datetime.now():%d/%m %H:%M}")
+        self.group.setToolTip("Groupe où les ranger (facultatif).")
+        self.status = QtWidgets.QComboBox()
+        self.status.addItem("aucun statut (simple surveillance)", "")
+        for st in o.statuses:
+            self.status.addItem(st["name"], st["name"])
+        self.status.setToolTip("Statut des nouvelles fréquences : « aucun » = on surveille sans alarme ; « En "
+                               "service » = elles doivent émettre (alarme si elles se taisent).")
+        f.addRow("Nom :", self.prefix)
+        f.addRow("Scène :", self.scene)
+        f.addRow("Groupe :", self.group)
+        f.addRow("Statut :", self.status)
+        lay.addLayout(f)
+        add = QtWidgets.QPushButton("＋ Ajouter les cochées à ma liste")
+        add.setToolTip("Ajoute les signaux cochés comme fréquences surveillées.")
+        add.clicked.connect(lambda *_: self.add())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        lay.addLayout(o._row(add, None, close))
+        self.resize(760, 640)
+        self.refresh()
+
+    def refresh(self):
+        o = self.owner
+        F, L = o.fresh_FL(use_max=self.src_combo.currentData() == "max", any_age=True)
+        ex = [w["freq"] for w in o.watch] if self.excl_chk.isChecked() else []
+        pk = [] if F is None else scan_peaks(F, L, self.thr.value(), self.merge.value(), exclude=ex)
+        if self.wide_chk.isChecked():
+            pk = [p_ for p_ in pk if not p_["wide"]]
+        self.peaks = pk
+        t = self.table
+        t.setRowCount(len(pk))
+        for r, p_ in enumerate(pk):
+            it = QtWidgets.QTableWidgetItem("")
+            it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Checked)
+            t.setItem(r, 0, it)
+            where = spectrum_info(p_["f"], o.plan, o.tv)[0]
+            vals = (f"{p_['f']:.3f}", o.lvl(p_["level"]),
+                    (f"{p_['width'] / 1000:.1f} MHz (plateau)" if p_["wide"] else f"{p_['width']:.0f} kHz"), where)
+            for c, v in enumerate(vals, start=1):
+                it2 = QtWidgets.QTableWidgetItem(v)
+                if c in (1, 2, 3):
+                    it2.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                t.setItem(r, c, it2)
+        t.resizeColumnsToContents()
+        t.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        if F is None:
+            self.count_lbl.setText("Pas encore de balayage : lance ▶ Démarrer (ou ① Scanner le lieu).")
+        else:
+            self.count_lbl.setText(f"{len(pk)} signal(aux) au-dessus du seuil")
+
+    def check_all(self, on):
+        for r in range(self.table.rowCount()):
+            self.table.item(r, 0).setCheckState(Qt.CheckState.Checked if on else Qt.CheckState.Unchecked)
+
+    def zoom(self, r):
+        if 0 <= r < len(self.peaks):
+            p_ = self.peaks[r]
+            half = max(1.0, p_["width"] / 1000.0)
+            self.owner.spec.getPlotItem().setXRange(p_["f"] - half, p_["f"] + half, padding=0)
+
+    def add(self):
+        o = self.owner
+        rows = [r for r in range(self.table.rowCount()) if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
+        if not rows:
+            self.msg.setText("Coche au moins un signal.")
+            return
+        pre = self.prefix.text().strip() or "Scan"
+        taken = {w["name"] for w in o.watch}
+        scene, group, status = self.scene.currentText().strip(), self.group.text().strip(), self.status.currentData()
+        k, n = 1, 0
+        for r in rows:
+            p_ = self.peaks[r]
+            while f"{pre} {k}" in taken:
+                k += 1
+            name = f"{pre} {k}"
+            taken.add(name)
+            o._append_watch(name, p_["f"], status=status or "", scene=scene, group=group,
+                            bw=round(p_["width"] / 1000.0, 1) if p_["wide"] else 0.0)
+            n += 1
+        o.sort_watch()
+        o.rebuild_tree()
+        o.rebuild_watch_table()
+        o._update_markers()
+        o.set_status(f"📡 {n} fréquence(s) ajoutée(s) depuis le scan : renomme-les, range-les, ou supprime le bruit "
+                     f"(clic droit sur la liste).")
+        self.msg.setText(f"✔ {n} fréquence(s) ajoutée(s) à ta liste.")
+        self.refresh()
+
+
 class SpectrumLegendDialog(QtWidgets.QDialog):
     """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
     deux sens aux réglages de la fenêtre principale)."""
@@ -9183,6 +9391,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.is_running():
             self.toggle_run()
 
+    def open_scan_add(self):
+        ScanAddDialog(self).exec()
+
     def step_monitor(self):
         if not self.is_running():
             self.toggle_run()
@@ -9318,6 +9529,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm = self.more_menu
         mm.addSection("① Préparer : liste, plan, intermod")
         submenu(mm, "📋 Liste de fréquences", (
+            ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", lambda *_: self.open_scan_add()),
             ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", lambda *_: self.import_watch()),
             ("＋ Ajouter une fréquence…", lambda *_: self.add_watch_dialog()),
             ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),

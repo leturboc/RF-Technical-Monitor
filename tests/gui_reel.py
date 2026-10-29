@@ -799,6 +799,32 @@ if _od is not None:
           any("602" in t_ and "600" in t_ for t_ in _txt[:3]), str(_txt[:5]) + _od.msg.text() + str([round(x[0], 3) for x in _od.spectrum_sources()]))
     shot(_od, "intermod_origine_spectre")
     _od.close()
+# 📡 ajouter depuis le scan (idée de Clément) : les 3 signaux du faux spectre (600, 602, 604) deviennent des fréquences
+_n_w = len(win.watch)
+def _scan_act(d):
+    if isinstance(d, m.ScanAddDialog):
+        _inj()
+        d.refresh()
+        d.group.setText("Trouvées")
+        shot(d, "ajout_depuis_scan")
+        d.add()
+    return "reject"
+_inj()
+DLG_ACTION[0] = _scan_act
+step("📡 ajouter depuis le scan", win.open_scan_add)
+DLG_ACTION[0] = "reject"
+_new = [w for w in win.watch if w["name"].startswith("Scan ")]
+check("depuis le scan : 600 / 602 / 604 ajoutées (nommées Scan n, groupe choisi)",
+      {round(w["freq"]) for w in _new} >= {600, 602, 604} and all(w["group"] == "Trouvées" for w in _new),
+      str([(w["name"], w["freq"], w["group"]) for w in _new]))
+_inj()
+_d2 = m.ScanAddDialog(win)
+check("depuis le scan : déjà dans la liste → plus proposées",
+      not any(abs(p_["f"] - 602.0) < 0.05 for p_ in _d2.peaks), str([p_["f"] for p_ in _d2.peaks]))
+_d2.close()
+for _w in _new:                                  # on les retire (la suite du test compte les fréquences)
+    win.watch.remove(_w)
+win.rebuild_watch_table(); win.rebuild_tree()
 win.latest.pop(9991, None); win.latest_t.pop(9991, None)
 # 📝 Quoi noter : un type décoché n'arrive plus au journal (les alarmes, elles, restent)
 _n0 = win.log_table.rowCount()

@@ -496,5 +496,30 @@ check("journal : types d'événements", [lk(e) for e in ("CONFLIT", "INTERMOD", 
 check("journal : tout coché par défaut", all(ns["log_kinds_norm"](None).values()), True)
 check("journal : choix relus", ns["log_kinds_norm"]({"busy": False, "x": 1})["busy"], False)
 
+# ajouter depuis le scan : signaux au-dessus d'un seuil
+sp_ = ns["scan_peaks"]
+F_ = np.round(np.arange(600.0, 620.0, 0.025), 4)
+L_ = np.full(len(F_), -100.0)
+L_[(F_ >= 602.0) & (F_ <= 602.1)] = -50.0          # micro (100 kHz)
+L_[(F_ >= 602.2) & (F_ <= 602.25)] = -60.0         # à 100 kHz : réuni au précédent (réunir à 150)
+L_[(F_ >= 605.0) & (F_ <= 605.05)] = -70.0
+L_[np.abs(F_ - 605.0) < 1e-6] = -65.0
+L_[(F_ >= 610.0) & (F_ <= 617.9)] = -75.0          # plateau 8 MHz (TNT)
+pk_ = sp_(F_, L_, -80.0)
+check("scan : 3 signaux (réunis à 150 kHz)", [(p_["f"], p_["wide"]) for p_ in pk_],
+      [(602.0, False), (605.0, False), (613.95, True)])
+check("scan : niveau max et largeur", (pk_[0]["level"], pk_[0]["width"]), (-50.0, 250.0))
+check("scan : déjà dans la liste → écarté", [p_["f"] for p_ in sp_(F_, L_, -80.0, exclude=[605.05])],
+      [602.0, 613.95])
+check("scan : plateau écarté si une fréquence de la liste est dedans",
+      [p_["f"] for p_ in sp_(F_, L_, -80.0, exclude=[612.0])], [602.0, 605.0])
+check("scan : seuil plus haut", [p_["f"] for p_ in sp_(F_, L_, -55.0)], [602.0])
+check("scan : rien au-dessus", sp_(F_, L_, -10.0), [])
+check("scan : spectre vide", sp_([], [], -80.0), [])
+F2_ = np.round(np.arange(470.0, 480.0, 0.224), 3)  # balayage grossier (pas 224 kHz) : plateau TNT 470–478
+L2_ = np.where(F2_ < 478.0, -64.0, -100.0)
+check("scan : pas grossier, plateau = UN signal large", [(p_["wide"], round(p_["f"])) for p_ in sp_(F2_, L2_, -80.0)],
+      [(True, 474)])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

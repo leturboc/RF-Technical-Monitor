@@ -246,6 +246,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (était « Fréquences et couches »), encadré « Classer par scène › groupe (facultatif) » avec bulle explicative.
   ☰ Plus dans l'ordre du travail : ① Préparer / ② Pendant le show / ③ Après le show / Réglages et connexions /
   Aide (👁 Affichage, 🎓 Tuto). `self.more_btn`.
+  **📡 Ajouter depuis le scan** (idée de Clément : « ajoute les fréquences à monitorer seul ») : PURE `scan_peaks`
+  (zones au-dessus du seuil ; points VOISINS du balayage = même signal même si le pas est grossier, sinon un plateau
+  TNT en pas de 224 kHz donnait 41 « signaux » ; plateau ≥ 1,5 MHz = `wide`, centre ; déjà dans la liste →
+  écarté), `ScanAddDialog` (max hold / direct, seuil, réunir à, nom « Scan n », scène / groupe / statut), menus
+  ② Mes fréquences et ☰ Plus › 📋 Liste, `open_scan_add`.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
