@@ -1042,6 +1042,32 @@ if win._rescue_dlg:
     _rd.im_combo.setCurrentIndex(_rd.im_combo.findData("2tx")); _rd.search(); wait(200)
     check("secours : « 2 TX seulement » cherche aussi", _rd.table.rowCount() >= 1, _rd.msg.text())
     shot(_rd, "rescue")
+# 🌙 mode festival : réglages, bilan du jour (rapport + message + journal), une seule fois par jour
+def _fest_act(d):
+    d.on_chk.setChecked(True)
+    d.hour_spin.setValue(0)
+    return "accept"
+DLG_ACTION[0] = _fest_act
+step("mode festival", win.open_festival)
+DLG_ACTION[0] = "reject"
+check("festival : réglages gardés", win.festival["on"] and win.festival["hour"] == 0, str(win.festival))
+check("festival : « tourne » enregistré dans la config", win._collect_config()["festival"]["was_running"] == win.is_running())
+win.festival["last"] = ""
+win._fest_next = 0
+_rd_ = win.log_dir / "rapports"
+_n0 = len(list(_rd_.glob("bilan_*.html"))) if _rd_.exists() else 0
+step("bilan du jour (dû)", lambda: win._festival_tick(time.time()))
+_bl = sorted(_rd_.glob("bilan_*.html")) if _rd_.exists() else []
+check("bilan : fait une fois aujourd'hui", win.festival["last"] == time.strftime("%Y-%m-%d"), str(win.festival))
+check("bilan : rapport du jour écrit", len(_bl) == _n0 + 1 and "<html" in _bl[-1].read_text(encoding="utf-8")[:600].lower(),
+      str(_bl[-1:]))
+check("bilan : noté au journal", win.log_table.item(0, 4) is not None and win.log_table.item(0, 4).text() == "BILAN DU JOUR")
+win._fest_next = 0
+win._festival_tick(time.time())
+check("bilan : pas deux fois le même jour", len(list(_rd_.glob("bilan_*.html"))) == len(_bl))
+_bt = step("bilan test", lambda: win.festival_bilan(test=True)) or ""
+check("bilan test : compte rendu (rapport + message)", "Rapport" in _bt and "Message" in _bt, _bt)
+win.festival["on"] = False
 step("open_guide", win.open_guide); wait(800)
 if win._guide: shot(win._guide, "guide_bandes")
 step("open_replay", win.open_replay); wait(1500)
@@ -1287,6 +1313,33 @@ if win2:
     wait(300)
     check("fermeture : plus aucune vraie fenêtre ouverte", not [w_ for w_ in app.topLevelWidgets()
                                                               if isinstance(w_, m.PanelWindow) and w_.isVisible()])
+
+# 🌙 mode festival : reprise automatique après une coupure (la config dit « ça tournait »)
+_cf = _json.load(open(m.CFG_PATH, encoding="utf-8"))
+check("fermeture volontaire : pas de reprise prévue", not _cf.get("festival", {}).get("was_running"), str(_cf.get("festival")))
+_cf["festival"] = dict(_cf.get("festival", {}), on=True, autostart=True, was_running=True)
+_cf["session"] = dict(_cf.get("session", {}), ask=True, rec=False)
+_cf["demo"] = True
+with open(m.CFG_PATH, "w", encoding="utf-8") as _fh:
+    _json.dump(_cf, _fh)
+win3 = step("MainWindow() #3 (après coupure)", m.MainWindow)
+if win3:
+    if not win3.demo_chk.isChecked():
+        win3.demo_chk.setChecked(True)
+    win3.show()
+    _t0 = time.time()
+    while not win3.is_running() and time.time() - _t0 < 15:
+        wait(300)
+    check("mode festival : surveillance reprise toute seule (sans question)", win3.is_running())
+    check("reprise : notée au journal", any(win3.log_table.item(r, 4) is not None and
+                                            win3.log_table.item(r, 4).text() == "REPRISE AUTO"
+                                            for r in range(win3.log_table.rowCount())))
+    win3.toggle_run()
+    _t0 = time.time()
+    while win3.is_running() and time.time() - _t0 < 15:
+        wait(300)
+    win3.close()
+    wait(300)
 
 check("aucune exception Qt", not errors, f"{len(errors)} exception(s)")
 check("aucun message d'erreur", not [k for k, _ in msgs if k in ("warning", "critical")], str(msgs))

@@ -352,6 +352,24 @@ alerts, language…).</p>
   <li><b>📏 Reference › Capture</b>: the venue's noise floor, to be done before the audience arrives.</li>
 </ul>
 
+<h3>🌙 Festival mode (all night)</h3>
+<p>☰ More › ② During the show, or ⑤ Monitor the show › 🌙 Festival mode. To let the PC monitor on its own at
+night or all week:</p>
+<ul>
+  <li><b>Automatic resume</b>: if the app stops <b>while</b> monitoring (power cut, crash, Windows restart), it
+    restarts monitoring by itself the next time it starts, without asking (session recording follows your last
+    choice). Closed on purpose: it restarts nothing.</li>
+  <li><b>Start with Windows</b>: the app starts when the session opens. For a real recovery after a power cut,
+    the PC must also power back on by itself (BIOS setting « Restore on AC power loss ») and log in without a
+    password.</li>
+  <li><b>No sleep</b> while monitoring (the screen may still turn off).</li>
+  <li><b>Daily summary</b> at the chosen time: an <b>HTML report</b> of the events since the previous summary
+    (logs folder › rapports) and a <b>message on the phone</b> (ntfy / Telegram, set in 📣 Alerts): « ✔ All good »
+    or « ⚠ 2 active alarm(s) », with the alarms of the last 24 h, how long it has been running and the tinySAs
+    online. If the PC was asleep at that time, the summary is done as soon as it wakes up. « 📨 Run the summary
+    now » to test.</li>
+</ul>
+
 <h2 id="signal">9. Reading the states</h2>
 <table>
   <tr><th>Status</th><th>Signal present</th><th>No signal</th></tr>
@@ -495,7 +513,11 @@ missing frequency points to a pack set to the wrong channel.</p>
 <h3>🌐 Web page for the team</h3>
 <ul>
   <li>Same window: enable the web page; the team opens the address shown (<code>http://192.168.x.x:8080</code>).</li>
-  <li>Views to choose from: list, wall, live spectrum, waterfall, alarms. Optional password.</li>
+  <li>Views to choose from: list, wall, live spectrum, waterfall, alarms, <b>🎛 Control room</b>. Optional password.</li>
+  <li><b>🎛 Control room</b>: the screen for the RF desk (tablet, TV). At the top, alarms in very large blinking
+    text (or « ✔ All good »); below, <b>one big status light per group</b> (stage › group): green = all OK,
+    orange = a weak signal or something to watch, red = an alarm, with the names involved. ⛶ Full screen, and the
+    filter to show a single stage.</li>
   <li><b>Everyone picks their own language</b> (FR / EN button at the top of the page); by default, their phone's
     language.</li>
   <li>List of <b>connected people</b>: rename, 👋 identify, disconnect everyone. Acknowledge from the phone with a

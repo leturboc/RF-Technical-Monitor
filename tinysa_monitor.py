@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.14.1"
+APP_VER = "7.15.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3054,7 +3054,8 @@ def ntfy_request(server, topic, title, body, prio=2):
     """Requête ntfy (appli gratuite iOS / Android, sans compte) -> (url, en-têtes, données)."""
     url = (server or "https://ntfy.sh").rstrip("/") + "/" + topic.strip().strip("/")
     hdr = {"Title": _hdr_safe(title),
-           "Priority": "urgent" if prio >= 2 else "high", "Tags": "rotating_light" if prio >= 2 else "warning"}
+           "Priority": "urgent" if prio >= 2 else ("high" if prio >= 0 else "default"),
+           "Tags": "rotating_light" if prio >= 2 else ("warning" if prio >= 0 else "white_check_mark")}
     return url, hdr, body.encode("utf-8")
 
 
@@ -3176,7 +3177,8 @@ WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par 
              ("mur", "🧱", "Mur", "Grandes tuiles lisibles de loin, plein écran"),
              ("spectre", "📈", "Spectre", "Le spectre en direct, avec tes fréquences"),
              ("waterfall", "🌊", "Waterfall", "L'historique du spectre qui défile"),
-             ("alarmes", "🔔", "Alarmes", "Conflits et émetteurs absents, à acquitter")]
+             ("alarmes", "🔔", "Alarmes", "Conflits et émetteurs absents, à acquitter"),
+             ("regie", "🎛", "Régie", "Gros voyants par groupe, alarmes en haut : pour l'écran de la régie")]
 WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
 
 
@@ -3293,6 +3295,17 @@ body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,
 -webkit-tap-highlight-color:transparent}
 button,input,select{font:inherit;color:inherit}
 .hidden{display:none!important}.mut{color:var(--mut)}
+.rg-al{margin:10px 16px;border-radius:18px;padding:16px 22px;font-weight:800;font-size:clamp(22px,3.6vw,46px);line-height:1.15}
+.rg-al.ok{background:#14532d;color:#dcfce7}.rg-al.bad{background:var(--bad);color:#fff;animation:rgp .8s ease-in-out infinite alternate}
+.rg-al small{display:block;font-size:.45em;font-weight:600;opacity:.9;margin-top:4px}
+@keyframes rgp{from{filter:brightness(1)}to{filter:brightness(1.3)}}
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--rw,280px),1fr));gap:12px;padding:6px 16px 20px}
+.rg .g{border-radius:18px;padding:16px 18px;border:3px solid var(--line);background:var(--panel)}
+.rg .g b{display:block;font-size:var(--rf,26px);line-height:1.15}
+.rg .g .k{font-size:calc(var(--rf,26px)*.7);font-weight:800;margin-top:6px}
+.rg .g .p{font-size:calc(var(--rf,26px)*.5);margin-top:6px;opacity:.95}
+.rg .g.ok{background:#14532d;border-color:#22c55e}.rg .g.warn{background:#713f12;border-color:#eab308}
+.rg .g.bad{background:#7f1d1d;border-color:#ef4444}.rg .g.none{opacity:.7}
 #stale{display:none;position:sticky;top:0;z-index:9;background:var(--bad);color:#fff;padding:8px 16px;font-weight:700;text-align:center}
 #ident{position:fixed;inset:0;z-index:50;display:grid;place-items:center;text-align:center;animation:blink .5s steps(1) infinite}
 #ident div{font-size:72px}#ident b{display:block;font-size:42px;margin:8px 16px}#ident span{font-size:20px;opacity:.85}
@@ -3446,7 +3459,7 @@ function render(){if(!D)return;const st=D.state,v0=route(),v=(v0===""||D.views.i
  p.onclick=()=>{if(D.views.includes("alarmes"))location.hash="#/alarmes"};
  $("#me").textContent="👤 "+(D.me||"Invité");
  $("#nav").innerHTML=`<a href="#/" class="${v===""?"on":""}">🏠 Accueil</a>`+D.views.map(k=>`<a href="#/${k}" class="${v===k?"on":""}">${VIEWS[k][0]} ${VIEWS[k][1]}</a>`).join("");
- $("#al").innerHTML=v==="alarmes"?"":st.alarms.filter(a=>!a.acked).slice(0,3).map(alHtml).join("");
+ $("#al").innerHTML=(v==="alarmes"||v==="regie")?"":st.alarms.filter(a=>!a.acked).slice(0,3).map(alHtml).join("");
  if(mounted!==v){mounted=v;wf=null;mount(v)}update(v)}
 function alHtml(a){return `<div class="al${a.acked?" ack":""}"><div class="x">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}</small></div>${D.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}</div>`}
 document.addEventListener("click",e=>{const b=e.target.closest("button[data-id]");if(b)ack(b.dataset.id==="all"?"all":+b.dataset.id)});
@@ -3468,6 +3481,8 @@ function mount(v){const el=$("#view");
  if(v==="spectre"||v==="waterfall"){el.innerHTML=`<div class="tools"><select class="in" id="band"></select>${v==="spectre"?'<label class="sw"><input type="checkbox" id="mh" checked> Max hold</label>':""}<label class="sw"><input type="checkbox" id="mk" checked> Mes fréquences</label></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div>`;
   $("#band").onchange=()=>{LS.set("band",$("#band").value);wf=null;draw()};["mh","mk"].forEach(i=>{const c=$("#"+i);if(c)c.onchange=()=>draw()});
   const cv=$("#cv");cv.onpointermove=cv.onpointerdown=e=>readout(e);cv.onpointerleave=()=>{$("#rd").textContent=""};return}
+ if(v==="regie"){el.innerHTML=`<div class="tools">${layerSel("flt")}<button class="btn" id="fs">⛶ Plein écran</button></div><div id="ra"></div><div class="rg" id="g"></div>`;
+  keepLayer("flt");$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
  if(v==="alarmes"){el.innerHTML=`<div class="tools"><b style="flex:1">Alarmes en cours</b><span id="aa"></span></div><div class="alist" id="g"></div>`;return}}
 function update(v){const st=D.state;
  if(v===""){const rs=st.rows,occ=rs.filter(r=>r.state==="occ").length,ab=rs.filter(r=>r.alarm).length,k=$("#kpi");
@@ -3479,6 +3494,16 @@ function update(v){const st=D.state;
   let cols=Math.max(1,Math.min(n,Math.round(Math.sqrt(n*W/H/1.4))));const tw=Math.max(140,W/cols-10),th=Math.max(90,Math.min(H/Math.ceil(n/cols)-10,tw*.8));
   g.style.setProperty("--tw",tw+"px");g.style.setProperty("--th",th+"px");g.style.setProperty("--fs",Math.max(13,Math.min(40,th*.17,tw/9))+"px");
   g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm&&r.tone!=="none"?` style="background:${r.color}${r.tone==="bad"?"aa":"55"};border-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
+ if(v==="regie"){const rs=st.rows.filter(inLayer),un=st.alarms.filter(a=>!a.acked);
+  $("#ra").innerHTML=un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:"")
+   :`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)${st.running?"":" · ⚠ surveillance arrêtée"}</small></div>`;
+  const G={};rs.forEach(r=>{const k=lay(r)||"Sans scène";(G[k]=G[k]||[]).push(r)});
+  const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
+  g.style.setProperty("--rw",Math.max(220,W/cols-16)+"px");g.style.setProperty("--rf",Math.max(18,Math.min(44,(W/cols)/11))+"px");
+  const h=ks.map(k=>{const a=G[k],bad=a.filter(r=>r.alarm),wn=a.filter(r=>!r.alarm&&(r.tone==="warn"||r.tone==="bad")),ok=a.filter(r=>r.tone==="ok"||r.tone==="free").length;
+   const c=bad.length?"bad":(wn.length?"warn":(ok?"ok":"none")),pb=[...bad,...wn].slice(0,6).map(r=>esc(r.name)+(r.alarm?" ("+esc(r.alarm)+")":"")).join(" · ");
+   const kt=bad.length?`⚠ ${bad.length} alarme(s)`:(wn.length?`◐ ${wn.length} à surveiller`:`✔ ${ok} / ${a.length} OK`);
+   return `<div class="g ${c}"><b>${esc(k)}</b><div class="k">${kt}</div>${pb?`<div class="p">${pb}</div>`:""}</div>`}).join("");g.innerHTML=h||`<div class="who">Aucune fréquence surveillée.</div>`;return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
   $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
   if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
@@ -4710,7 +4735,8 @@ STEPS = (
      "alertes sur téléphone.",
      (("▶ Démarrer la surveillance", "step_monitor"), ("🎤 Appel des micros (line check)…", "open_linecheck"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
-      ("🆘 Fréquence de secours…", "open_rescue"))),
+      ("🆘 Fréquence de secours…", "open_rescue"),
+      ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "open_festival"))),
     ("after", "⑥ Après le show", "Revoir ce qui s'est passé (relecture, session enregistrée), rapport, exports.",
      (("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
       ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"), ("📄 Rapport de show…", "make_report"),
@@ -4742,6 +4768,69 @@ def zoom_points(span_mhz, want=None, most=1000, step_khz=10.0, cap=290):
         return max(2, int(want))
     n = int(math.ceil(max(0.0, float(span_mhz)) * 1000.0 / float(step_khz) - 1e-9)) + 1
     return max(MIN_PTS, min(int(cap), max(MIN_PTS, int(most)), n))
+
+
+# ------------------------------------------------------------------ mode festival (nuit complète)
+FESTIVAL_DEFAULT = dict(on=False, autostart=True, nosleep=True, daily=True, hour=9, last="", was_running=False)
+
+
+def festival_cfg_norm(d):
+    """Réglages du mode festival lus de la config (valeurs manquantes ou bancales -> défaut)."""
+    d = d if isinstance(d, dict) else {}
+    out = dict(FESTIVAL_DEFAULT)
+    for k in ("on", "autostart", "nosleep", "daily", "was_running"):
+        if k in d:
+            out[k] = bool(d[k])
+    try:
+        out["hour"] = min(23, max(0, int(d.get("hour", out["hour"]))))
+    except (TypeError, ValueError):
+        pass
+    out["last"] = str(d.get("last", "") or "")[:10]
+    return out
+
+
+def festival_due(ymd, hour_now, cfg):
+    """Le bilan quotidien est-il à faire ? ymd = « AAAA-MM-JJ » d'aujourd'hui, hour_now = heure locale.
+    Une fois par jour, dès l'heure choisie (rattrapé plus tard si le PC dormait à l'heure pile)."""
+    return (bool(cfg.get("on") and cfg.get("daily")) and int(hour_now) >= int(cfg.get("hour", 9))
+            and cfg.get("last", "") != ymd)
+
+
+def alarm_stats(alarms, since):
+    """Alarmes commencées depuis `since` (horodatage, s) -> {type: nombre}."""
+    out = {}
+    for a in alarms:
+        if float(a.get("t0") or 0) >= since:
+            out[a["kind"]] = out.get(a["kind"], 0) + 1
+    return out
+
+
+def festival_text(site, stats, open_n, unacked, nfreq, running, run_h, devs_ok, devs, report=""):
+    """Message du bilan quotidien (téléphone) -> (titre, corps, tout va bien ?)."""
+    ok = bool(running) and not open_n and devs_ok >= devs
+    if not running:
+        head = "⚠ Surveillance arrêtée"
+    elif devs_ok < devs:
+        head = "⚠ tinySA hors ligne"
+    elif open_n:
+        head = f"⚠ {open_n} alarme(s) en cours"
+    else:
+        head = "✔ Tout va bien"
+    title = f"{head} — {site}" if site else head
+    lines = []
+    if stats:
+        lines.append("Dernières 24 h : " + " · ".join(f"{k} : {n}" for k, n in sorted(stats.items())))
+    else:
+        lines.append("Dernières 24 h : aucune alarme.")
+    if unacked:
+        lines.append(f"Non acquittée(s) : {unacked}")
+    if running:
+        lines.append(f"{nfreq} fréquence(s) surveillée(s) · depuis {run_h:.0f} h")
+    if devs > 1 or devs_ok < devs:
+        lines.append(f"tinySA en ligne : {devs_ok} / {devs}")
+    if report:
+        lines.append(f"Rapport : {report}")
+    return title, "\n".join(lines), ok
 
 
 # ===== PURE-END
@@ -10243,6 +10332,89 @@ class LineCheckDialog(QtWidgets.QDialog):
         super().done(r)
 
 
+class FestivalDialog(QtWidgets.QDialog):
+    """🌙 Mode festival : faire tourner la surveillance toute la nuit, toute la semaine, sans y penser."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        c = o.festival
+        self.setWindowTitle("Mode festival (nuit complète)")
+        self.resize(560, 470)
+        lay = QtWidgets.QVBoxLayout(self)
+        intro = QtWidgets.QLabel(
+            "Pour laisser le PC surveiller seul toute la nuit (ou toute la semaine) : il reprend tout seul après une "
+            "coupure, ne se met pas en veille, et chaque jour il écrit un rapport et t'envoie un bilan sur le "
+            "téléphone (« tout va bien », ou ce qui s'est passé).")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        self.on_chk = QtWidgets.QCheckBox("🌙 Activer le mode festival")
+        self.on_chk.setChecked(c["on"])
+        self.on_chk.setStyleSheet("font-weight:bold")
+        lay.addWidget(self.on_chk)
+        self.box = QtWidgets.QGroupBox("")
+        f = QtWidgets.QVBoxLayout(self.box)
+        self.auto_chk = QtWidgets.QCheckBox("Reprendre la surveillance tout seul au lancement de l'appli\n"
+                                            "(après une coupure de courant, un plantage, un redémarrage de Windows)")
+        self.auto_chk.setChecked(c["autostart"])
+        self.boot_chk = QtWidgets.QCheckBox("Lancer TinySA Monitor au démarrage de Windows")
+        self.boot_chk.setChecked(o.windows_startup_on())
+        self.boot_chk.setEnabled(sys.platform == "win32")
+        self.boot_chk.setToolTip("Ajoute l'appli aux programmes lancés à l'ouverture de ta session Windows.\n"
+                                 "Avec la case du dessus : après une coupure, le PC redémarre et la surveillance reprend.\n"
+                                 "(Le PC doit ouvrir la session tout seul, et le BIOS se rallumer après une coupure.)")
+        self.sleep_chk = QtWidgets.QCheckBox("Empêcher Windows de se mettre en veille pendant la surveillance")
+        self.sleep_chk.setChecked(c["nosleep"])
+        self.daily_chk = QtWidgets.QCheckBox("Bilan chaque jour à")
+        self.daily_chk.setChecked(c["daily"])
+        self.hour_spin = QtWidgets.QSpinBox()
+        self.hour_spin.setRange(0, 23)
+        self.hour_spin.setValue(c["hour"])
+        self.hour_spin.setSuffix(" h")
+        hl = QtWidgets.QHBoxLayout()
+        hl.addWidget(self.daily_chk)
+        hl.addWidget(self.hour_spin)
+        hl.addStretch(1)
+        dl = QtWidgets.QLabel("Le bilan = un rapport HTML du jour (dossier des journaux › rapports) + un message sur le "
+                              "téléphone (réglé dans 📣 Alertes : ntfy ou Telegram) : « ✔ Tout va bien » ou les alarmes "
+                              "des dernières 24 h.")
+        dl.setWordWrap(True)
+        dl.setStyleSheet("color:gray")
+        for w_ in (self.auto_chk, self.boot_chk, self.sleep_chk):
+            f.addWidget(w_)
+        f.addLayout(hl)
+        f.addWidget(dl)
+        lay.addWidget(self.box)
+        self.on_chk.toggled.connect(lambda *_: self.box.setEnabled(self.on_chk.isChecked()))
+        self.box.setEnabled(c["on"])
+        self.on_chk.setToolTip("Tout ce qu'il faut pour laisser tourner la surveillance seule, nuit et jour.")
+        self.auto_chk.setToolTip("Si l'appli s'arrête PENDANT la surveillance (coupure, plantage), elle la relance\n"
+                                 "toute seule à son prochain lancement. Fermée exprès : elle ne relance rien.")
+        self.sleep_chk.setToolTip("Le PC reste éveillé tant que la surveillance tourne (l'écran peut s'éteindre).")
+        self.daily_chk.setToolTip("Une fois par jour, à cette heure : rapport du jour + message sur le téléphone.")
+        self.hour_spin.setToolTip("Heure du bilan quotidien (rattrapé plus tard si le PC dormait à cette heure).")
+        self.test_btn = QtWidgets.QPushButton("📨 Faire le bilan maintenant (test)")
+        self.test_btn.setToolTip("Écrit le rapport et envoie le message tout de suite, pour vérifier que tout marche.")
+        self.test_btn.clicked.connect(lambda *_: self.test())
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.test_btn)
+        lay.addWidget(self.msg)
+        lay.addStretch(1)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def values(self):
+        return dict(self.owner.festival, on=self.on_chk.isChecked(), autostart=self.auto_chk.isChecked(),
+                    nosleep=self.sleep_chk.isChecked(), daily=self.daily_chk.isChecked(), hour=self.hour_spin.value())
+
+    def test(self):
+        self.msg.setText(self.owner.festival_bilan(test=True))
+
+
 class ReportDialog(QtWidgets.QDialog):
     def __init__(self, owner, prefs, has_im):
         super().__init__(owner)
@@ -11635,6 +11807,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.labels = []
         self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
+        self.festival = festival_cfg_norm(None)  # 🌙 mode festival
+        self._fest_next = 0.0
+        self._log_n = 0                        # événements notés depuis le lancement (bilan : depuis le précédent)
+        self._fest_log_mark = 0
+        self._closing = False
+        self._awake = False
         self._mk_items = {}
         self.mk = mk_default()          # repères du spectre : filtres (état, couche, statut), style
         self.expert = False             # mode simple par défaut (☰ Plus › Mode expert)
@@ -11680,6 +11858,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(120, self._late_layout)    # la fenêtre a alors sa vraie taille
 
     def _late_layout(self):
+        if self.festival["on"] and self.festival["autostart"] and self.festival["was_running"]:
+            QtCore.QTimer.singleShot(4000, self._festival_autostart)
         self.panel_restore(getattr(self, "_panel_cfg", None))
         self.set_level(self.ui_level)
         if not self.tour_done:
@@ -12148,6 +12328,8 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
         mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
+        mm.addAction("🌙 Mode festival (nuit complète, bilan chaque jour)…").triggered.connect(
+            lambda *_: self.open_festival())
         mm.addSection("③ Après le show")
         mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
         mm.addAction("📊 Occupation par heure (créneaux à risque)…").triggered.connect(lambda *_: self.open_occupancy())
@@ -12863,6 +13045,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().addPermanentWidget(self.ver_lbl)
 
     def _style_start(self, running):
+        self._keep_awake(running)
         t = self.theme
         col = t["st_occ"] if running else t["st_free"]
         hov = blend("#ffffff", col, 0.18)
@@ -13088,6 +13271,8 @@ class MainWindow(QtWidgets.QMainWindow):
                            (self.baud_combo, "baud")]:
             setc(combo, key)
         self.scan_follow = bool(data.get("scan_follow", False))
+        if "festival" in data:
+            self.festival = festival_cfg_norm(data.get("festival"))
         pc = data.get("plan_custom")
         self.plan_custom = {k: v for k, v in pc.items() if isinstance(v, str)} if isinstance(pc, dict) else {}
         self.offset_spin.setValue(data.get("offset", 0.0))
@@ -13252,6 +13437,7 @@ class MainWindow(QtWidgets.QMainWindow):
                       for s in self.statuses],
             theme=self.theme,
             scan_follow=self.scan_follow,
+            festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
             points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
             baud=self.baud_combo.currentData(),
@@ -13502,7 +13688,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def is_running(self):
         return any(w.isRunning() for w in self.workers)
 
-    def toggle_run(self):
+    def toggle_run(self, auto=False):
         if self.is_running():
             for w in self.workers:
                 w.requestInterruption()
@@ -13520,7 +13706,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not any(b["enabled"] for b in self.bands):
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Coche au moins une bande à balayer.")
             return
-        if not self._session_prompt():
+        if not self._session_prompt(auto):
             return
         self._read_dev2()
         targets = [(port, "")]
@@ -15426,6 +15612,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def log_event(self, w, level, event):
         if not self.log_kinds.get(log_kind(event), True):
             return                                # type d'événement décoché dans « 📝 Quoi noter »
+        self._log_n += 1
         t = self.log_table
         t.insertRow(0)
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
@@ -16793,6 +16980,126 @@ class MainWindow(QtWidgets.QMainWindow):
         self._rescue_dlg = RescueDialog(self)
         self._rescue_dlg.show()
 
+    # ---------------------------------------------------------------- 🌙 mode festival
+    def open_festival(self):
+        d = FestivalDialog(self)
+        if not d.exec():
+            return
+        self.festival = festival_cfg_norm(d.values())
+        if sys.platform == "win32" and d.boot_chk.isChecked() != self.windows_startup_on():
+            err = self.set_windows_startup(d.boot_chk.isChecked())
+            if err:
+                QtWidgets.QMessageBox.warning(self, APP_NAME, f"Lancement avec Windows impossible :\n{err}")
+        self._keep_awake(self.is_running())
+        self._save_config()
+        self.set_status("🌙 Mode festival activé." if self.festival["on"] else "Mode festival désactivé.")
+
+    def _festival_autostart(self):
+        """Reprise après une coupure : la surveillance tournait quand l'appli s'est arrêtée (sans être fermée)."""
+        if self.is_running():
+            return
+        if not self.demo_chk.isChecked() and not self.port_combo.currentData():
+            self.set_status("🌙 Mode festival : reprise impossible, aucun tinySA trouvé (nouvel essai dans 30 s).")
+            QtCore.QTimer.singleShot(30000, self._festival_autostart)
+            return
+        self.log_event(dict(name="Mode festival", freq=0.0, note="la surveillance tournait avant l'arrêt de l'appli"),
+                       0.0, "REPRISE AUTO")
+        self.toggle_run(auto=True)
+        self.set_status("🌙 Mode festival : surveillance reprise automatiquement.")
+
+    def _keep_awake(self, on):
+        """Windows : pas de veille pendant la surveillance (mode festival). L'écran peut s'éteindre."""
+        want = bool(on and self.festival.get("on") and self.festival.get("nosleep"))
+        if want == self._awake or sys.platform != "win32":
+            self._awake = want if sys.platform == "win32" else False
+            return
+        try:
+            import ctypes
+            es_continuous, es_system = 0x80000000, 0x00000001
+            ctypes.windll.kernel32.SetThreadExecutionState(es_continuous | (es_system if want else 0))
+            self._awake = want
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _startup_cmd(self):
+        if getattr(sys, "frozen", False):
+            return f'"{sys.executable}"'
+        return f'"{sys.executable}" "{Path(__file__).resolve()}"'
+
+    def windows_startup_on(self):
+        if sys.platform != "win32":
+            return False
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as k:
+                return bool(winreg.QueryValueEx(k, "TinySAMonitor")[0])
+        except OSError:
+            return False
+
+    def set_windows_startup(self, on):
+        """Programme lancé à l'ouverture de la session Windows (clé Run de l'utilisateur). -> "" ou l'erreur."""
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                                winreg.KEY_SET_VALUE) as k:
+                if on:
+                    winreg.SetValueEx(k, "TinySAMonitor", 0, winreg.REG_SZ, self._startup_cmd())
+                else:
+                    try:
+                        winreg.DeleteValue(k, "TinySAMonitor")
+                    except FileNotFoundError:
+                        pass
+            return ""
+        except Exception as e:  # noqa: BLE001
+            return str(e)
+
+    def _festival_tick(self, now):
+        if not self.festival["on"] or now < self._fest_next:
+            return
+        self._fest_next = now + 30.0
+        dt = datetime.now()
+        ymd = dt.strftime("%Y-%m-%d")
+        if festival_due(ymd, dt.hour, self.festival):
+            self.festival["last"] = ymd
+            try:
+                self.festival_bilan()
+                self._save_config()
+            except Exception as e:  # noqa: BLE001 — le bilan ne doit jamais faire tomber la surveillance
+                self.set_status(f"⚠ Bilan du jour impossible : {e}")
+
+    def festival_bilan(self, test=False):
+        """Bilan du jour : rapport HTML (événements depuis le bilan précédent) + message sur le téléphone.
+        -> texte de compte rendu."""
+        now = datetime.now()
+        site = self.notify_cfg.get("site", "") or self.show_meta.get("name", "")
+        path = self.log_dir / "rapports" / f"bilan_{now:%Y-%m-%d_%H%M}.html"
+        v = dict(title=f"Bilan du {now:%d/%m/%Y}", venue=site, operator="", im=False, open=False,
+                 notes="Rapport automatique du mode festival : événements depuis le bilan précédent.")
+        rep_txt = ""
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(TR.html(build_report_html(self.collect_report(v, self._log_n - self._fest_log_mark))),
+                            encoding="utf-8")
+            rep_txt = path.name
+        except Exception as e:  # noqa: BLE001
+            rep_txt = ""
+            self.set_status(f"⚠ Rapport du jour impossible : {e}")
+        self._fest_log_mark = self._log_n
+        running = self.is_running()
+        devs = self.ndev()
+        devs_ok = sum(1 for d in range(devs) if d < len(self.dev_live) and self.dev_live[d]) if running else 0
+        run_h = (time.time() - self._t_start) / 3600.0 if running and self._t_start else 0.0
+        stats = alarm_stats(self.alarms.listing(), time.time() - 86400.0)
+        title, body, ok = festival_text(site, stats, len(self.alarms.active), len(self.alarms.unacked()),
+                                        len(self.watch), running, run_h, devs_ok, devs, rep_txt)
+        if test:
+            title = "[TEST] " + title
+        err = self.send_notify(title, body, -1 if ok else 1)
+        self.log_event(dict(name="Mode festival", freq=0.0, note=title), 0.0, "BILAN DU JOUR")
+        out = f"Rapport : {path}" if rep_txt else "Pas de rapport."
+        out += "\n" + (f"Message pas envoyé : {err}" if err else f"Message envoyé : {title}")
+        return out
+
     def im_cause(self, w, f_at=None):
         """Le signal apparu sur w (doit rester libre), mesuré à f_at MHz (son pic), est-il un produit d'intermod de
         tes émetteurs qui émettent ? -> formule (« IM3 : 2×HF 1 − HF 3 ») ou ""."""
@@ -17231,6 +17538,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])
         self._notify_new_alarms()
+        self._festival_tick(now)
         reason = getattr(self, "_diag_pending", None)
         if reason:
             self._diag_pending = None
@@ -17504,13 +17812,14 @@ class MainWindow(QtWidgets.QMainWindow):
         mb = rec_mb_per_hour(pts, self.last_cycle if self.last_cycle else max(1.0, pts / 2000.0))
         return f"≈ {mb:.0f} Mo par heure" if mb else ""
 
-    def _session_prompt(self):
-        """Avant ▶ Démarrer. -> False si l'utilisateur annule."""
+    def _session_prompt(self, auto=False):
+        """Avant ▶ Démarrer. -> False si l'utilisateur annule. auto (reprise du mode festival) : sans question,
+        selon le dernier choix « enregistrer ou pas »."""
         if self.recorder is not None:
             return True                          # « 💾 Enregistrer les balayages » déjà coché à la main
         c = self.session_cfg
         name = self.session_default_name()
-        if c.get("ask", True):
+        if c.get("ask", True) and not auto:
             d = SessionDialog(self)
             if not d.exec():
                 return False
@@ -17586,11 +17895,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.set_status(f"💾 Session enregistrée : {path}  (⏪ Relecture › 📂 Ouvrir une session)")
 
     # ------------------------------------------------------- rapport de show
-    def collect_report(self, v):
+    def collect_report(self, v, last_n=None):
+        """last_n : seulement les last_n derniers événements du journal (bilan du mode festival)."""
         now = datetime.now()
         t = self.log_table
+        top = t.rowCount() if last_n is None else max(0, min(t.rowCount(), int(last_n)))
         events = [tuple(t.item(r, c).text() if t.item(r, c) is not None else "" for c in range(7))
-                  for r in range(t.rowCount() - 1, -1, -1)]
+                  for r in range(top - 1, -1, -1)]
         per = {}
         for e in events:
             d = per.setdefault(e[2], dict(events=0, conflicts=0, absents=0, occ=0))
@@ -17758,6 +18069,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- close
     def closeEvent(self, e):
+        self._closing = True                       # fermé exprès : pas de reprise automatique au prochain lancement
+        self._keep_awake(False)
         for w in self.workers:
             if w.isRunning():
                 w.requestInterruption()

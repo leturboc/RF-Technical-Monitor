@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.14.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.15.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -273,6 +273,20 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   2 TX seulement possible, guard None = sans intermod ; s'il en manque → « moins mauvaises » (`warn`, orange,
   colonne Remarque). `RescueDialog` : `im_combo`, `filt_spin`, message qui dit ce qui bloque. 30 émetteurs sur 20 MHz =
   bande vraiment pleine même en 2A − B (≈ 870 produits) : c'est physique.
+- **7.15.0 (Clément : « go régie et festival »)** :
+  - **🌙 Mode festival** : PURE `FESTIVAL_DEFAULT`, `festival_cfg_norm`, `festival_due` (1×/jour dès l'heure,
+    rattrapé), `alarm_stats`, `festival_text` ; `ntfy_request` prio −1 = « default » + ✅. `FestivalDialog`,
+    `open_festival` (☰ Plus ② et ⑤), config `festival` (`was_running` = tourne au moment de la sauvegarde ET pas
+    `_closing` : fermeture volontaire = pas de reprise). `_late_layout` → `_festival_autostart` (4 s, réessaie
+    toutes les 30 s sans tinySA ; `toggle_run(auto=True)` → `_session_prompt(auto)` sans question ; journal
+    « REPRISE AUTO »). `_keep_awake` (SetThreadExecutionState, via `_style_start`), `windows_startup_on` /
+    `set_windows_startup` (clé HKCU Run « TinySAMonitor ») **non testés sur Windows**. `_festival_tick` (dans
+    `_alarm_tick`, toutes les 30 s) → `festival_bilan` : rapport `rapports/bilan_*.html` (`collect_report(v,
+    last_n)` = événements depuis le bilan précédent, `_log_n` / `_fest_log_mark`) + message + journal « BILAN DU
+    JOUR ».
+  - **🎛 Vue Régie** de la page web (`WEB_VIEWS` « regie ») : alarmes en très gros en haut (sinon « ✔ Tout va
+    bien »), un voyant par scène › groupe (rouge = alarme, orange = faible / occupé sans alarme, vert = OK),
+    filtre de couche, plein écran. Testée dans Chromium (test_alertes, captures `CAPTURES=dossier`).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

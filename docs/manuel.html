@@ -358,6 +358,24 @@ préférences (couleurs, fenêtres, alertes, langue…).</p>
   <li><b>📏 Référence › Capturer</b> : le bruit de fond du lieu, à faire avant l'arrivée du public.</li>
 </ul>
 
+<h3>🌙 Mode festival (nuit complète)</h3>
+<p>☰ Plus › ② Pendant le show, ou ⑤ Surveiller le show › 🌙 Mode festival. Pour laisser le PC surveiller seul la
+nuit ou toute la semaine :</p>
+<ul>
+  <li><b>Reprise automatique</b> : si l'appli s'arrête <b>pendant</b> la surveillance (coupure de courant,
+    plantage, redémarrage de Windows), elle la relance toute seule à son prochain lancement, sans poser de
+    question (l'enregistrement de session suit ton dernier choix). Fermée exprès : elle ne relance rien.</li>
+  <li><b>Lancer avec Windows</b> : l'appli démarre à l'ouverture de la session. Pour une vraie reprise après
+    coupure, il faut aussi que le PC se rallume tout seul (réglage du BIOS « Restore on AC power loss ») et
+    ouvre la session sans mot de passe.</li>
+  <li><b>Pas de veille</b> pendant la surveillance (l'écran, lui, peut s'éteindre).</li>
+  <li><b>Bilan chaque jour</b> à l'heure choisie : un <b>rapport HTML</b> des événements depuis le bilan
+    précédent (dossier des journaux › rapports) et un <b>message sur le téléphone</b> (ntfy / Telegram, réglé dans
+    📣 Alertes) : « ✔ Tout va bien » ou « ⚠ 2 alarme(s) en cours », avec les alarmes des dernières 24 h, depuis
+    combien de temps ça tourne et les tinySA en ligne. Si le PC dormait à l'heure pile, le bilan est fait dès
+    qu'il se réveille. « 📨 Faire le bilan maintenant » pour tester.</li>
+</ul>
+
 <h2 id="signal">9. Lire les états</h2>
 <table>
   <tr><th>Statut</th><th>Signal présent</th><th>Pas de signal</th></tr>
@@ -504,7 +522,11 @@ fréquence qui manque signale un pack mal réglé.</p>
 <h3>🌐 Page web pour l'équipe</h3>
 <ul>
   <li>Même fenêtre : active la page web ; l'équipe ouvre l'adresse affichée (<code>http://192.168.x.x:8080</code>).</li>
-  <li>Vues au choix : liste, mur, spectre en direct, waterfall, alarmes. Mot de passe possible.</li>
+  <li>Vues au choix : liste, mur, spectre en direct, waterfall, alarmes, <b>🎛 Régie</b>. Mot de passe possible.</li>
+  <li><b>🎛 Régie</b> : l'écran à poser en régie (tablette, télé). En haut, les alarmes en très gros, qui clignotent
+    (ou « ✔ Tout va bien ») ; dessous, <b>un gros voyant par groupe</b> (scène › groupe) : vert = tout est OK,
+    orange = un signal faible ou à surveiller, rouge = une alarme, avec les noms en cause. ⛶ Plein écran, et le
+    filtre pour n'afficher qu'une scène.</li>
   <li><b>Chaque personne choisit sa langue</b> (bouton FR / EN en haut de la page) ; par défaut, la langue de son
     téléphone.</li>
   <li>Liste des <b>connectés</b> : renommer, 👋 identifier, déconnecter tout le monde. Acquitter depuis le
