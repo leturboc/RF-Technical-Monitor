@@ -3,6 +3,9 @@ Chargé par install_language en plus de lang_en.py (même format) : la V8 n'en m
 que les mises à jour de la V7 se fusionnent sans conflit."""
 
 EXACT = {
+    '📡 SDR': '📡 SDR',
+    '📡 SDR (HackRF, RTL-SDR)': '📡 SDR (HackRF, RTL-SDR)',
+    'V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.': 'V8: SDR settings, listening (demodulation) and real time with a HackRF / RTL-SDR.',
     ') et lit ses mesures.': ') and reads its measurements.',
     ' (appliqués au prochain cycle).': ' (applied at the next cycle).',
     ' Go': ' GB',

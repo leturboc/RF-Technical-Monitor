@@ -6,10 +6,10 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 > Les attributions de bandes (police, aéro, 4G/5G, TNT, micros HF…) sont **indicatives** : vérifie toujours la
 > réglementation locale avant d'émettre.
 
-📖 **Manuel d'utilisation complet** : [`docs/manuel.html`](docs/manuel.html) (aussi dans l'appli : ☰ Plus › 📖 Manuel).
+📖 **Manuel d'utilisation complet** : [`docs/manuel.pdf`](docs/manuel.pdf) (PDF, lisible ici sur GitHub) · [`docs/manuel.html`](docs/manuel.html) (aussi dans l'appli : ☰ Plus › 📖 Manuel).
 
 🌐 **English** : the whole app is available in English (☰ Plus › 🌐 Langue / Language, or automatically on an
-English Windows). User manual: [`docs/manual_en.html`](docs/manual_en.html).
+English Windows). User manual: [`docs/manual_en.pdf`](docs/manual_en.pdf) (PDF) · [`docs/manual_en.html`](docs/manual_en.html).
 
 ## Ce que ça fait
 

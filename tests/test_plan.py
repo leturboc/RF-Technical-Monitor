@@ -154,5 +154,36 @@ an4 = ns["analyze_csv"]("Nom;Fréquence;Groupe\nA;518,125;7\nB;518,4;7\n")
 ok("csv: 'Groupe' numérique (groupe de fréquences) ignoré", an4["group_col"] is None, str(an4["group_col"]))
 ok("préréglages: aperçu tout le spectre", any(p[1] == 0.1 and p[2] == 5300.0 for p in ns["BAND_PRESETS"]))
 
+# profils d'appareil : valeurs de filtre données par Clément (EazyRF), profils perso
+rp = ns["rx_profile"]
+check("filtre Sennheiser evolution 16 MHz", rp("senn_evo")["filt"], 16.0)
+check("filtre Shure PSM 16 MHz", rp("shure_psm")["filt"], 16.0)
+check("filtre Shure SLX 16 MHz", rp("shure_slx")["filt"], 16.0)
+check("filtre Shure AD 32 MHz", rp("shure_ad")["filt"], 32.0)
+check("filtre Shure QLX-D 32 MHz", rp("shure_dig")["filt"], 32.0)
+check("filtre Wisycom 32 MHz (profil EazyRF)", (rp("wisycom")["filt"], rp("wisycom")["sep"]), (32.0, 0.5))
+check("anciennes clés toujours là (listes / shows)", all(rp(k) for k in ("wisycom", "senn_dig", "senn_ana",
+                                                                        "shure_dig", "shure_ana", "iem")), True)
+check("ADT : filtre inconnu → aucun (prudent)", (rp("shure_adt")["filt"], rp("shure_adt")["src"]), (0.0, "guess"))
+ns["rx_set_custom"]([dict(name="EW G4 bande A", filt=16, sep=0.4, step=0.025, tol={"2tx3": 0.1, "3tx3": 0.05}),
+                     dict(name="", filt=8), "bancal", dict(name="Mon IEM", key="perso_x", filt="abc", sep=99)])
+cu = ns["rx_custom_dump"]()
+check("profils perso : lus et nettoyés", [(p_["key"], p_["name"], p_["filt"], p_["sep"]) for p_ in cu],
+      [("perso_1", "EW G4 bande A", 16.0, 0.4), ("perso_x", "Mon IEM", 0.0, 3.0)])
+check("profil perso utilisable comme les autres", (rp("perso_1")["filt"], rp("perso_1")["src"]), (16.0, "perso"))
+check("profil perso : relu tel quel", ns["rx_custom_dump"]() == cu or None, True)
+ns["rx_set_custom"](cu)
+check("profil perso : relecture stable", ns["rx_custom_dump"](), cu)
+check("clé perso ne remplace pas un profil intégré", ns["rx_custom_norm"]([dict(name="x", key="wisycom")])[0][0],
+      "perso_1")
+h = ns["rx_help_html"]()
+check("aide filtre : chaque profil dans le tableau", all(n in h for _k, n, _d, _w in ns["rx_all"]()), True)
+check("aide filtre : explique la règle « tous les émetteurs dans le filtre »", "TOUS ses émetteurs" in h, True)
+ns["rx_set_custom"]([])
+r16 = ns["pf_check"]([470.0, 486.0, 502.0], tol=ns["rx_profile"]("senn_evo")["tol"], sep=0.4, filt=16.0)
+r0 = ns["pf_check"]([470.0, 486.0, 502.0], tol=ns["rx_profile"]("senn_evo")["tol"], sep=0.4, filt=0.0)
+check("filtre 16 MHz : 470 / 486 / 502 → plus de 2A − B (émetteurs hors filtre)",
+      (sum(len(x) for x in r16[0]) == 0, sum(len(x) for x in r0[0]) > 0), (True, True))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

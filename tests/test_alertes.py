@@ -299,6 +299,31 @@ pin_["v"] = "4321"
 check("état : acquittement proposé si code", json.loads(get(oa, "/etat.json".replace("/", "/", 1))[1] if False else
       urllib.request.urlopen(f"http://127.0.0.1:{wa.port}/etat.json", timeout=5).read())["ack"] is True)
 
+# ------------------------------------------------------------- langue de chaque personne
+wl = ns["WebServer"](0, lambda lang="fr": json.dumps(dict(rows=[], alarms=[], lang=lang)).encode(), host="127.0.0.1",
+                     get_cfg=lambda: dict(password="", views=vn(None)), get_page=lambda l: f"PAGE-{l}".encode(),
+                     default_lang="fr")
+wl.start()
+wl.ready.wait(3)
+
+
+def page_(path, headers=None, opener_=None):
+    rq = urllib.request.Request(f"http://127.0.0.1:{wl.port}{path}", headers=headers or {})
+    with (opener_ or urllib.request.build_opener()).open(rq, timeout=5) as r_:
+        return r_.read().decode(), r_.headers.get("Set-Cookie") or ""
+
+
+check("langue : téléphone en anglais → page anglaise", page_("/", {"Accept-Language": "en-GB,en;q=0.9"})[0] == "PAGE-en")
+check("langue : téléphone en français → page française", page_("/", {"Accept-Language": "fr-FR"})[0] == "PAGE-fr")
+check("langue : sans indication → langue de l'appli", page_("/")[0] == "PAGE-fr")
+b_, ck = page_("/?lang=en", {"Accept-Language": "fr-FR"})
+check("langue : choix EN sur la page → retenu (cookie)", b_ == "PAGE-en" and "tsm_lang=en" in ck, ck)
+check("langue : choix retenu même si le téléphone est en français",
+      page_("/", {"Accept-Language": "fr-FR", "Cookie": "tsm_lang=en"})[0] == "PAGE-en")
+check("langue : état dans la langue choisie", json.loads(page_("/etat.json", {"Cookie": "tsm_lang=en"})[0])["state"]["lang"]
+      == "en")
+wl.stop()
+
 # ------------------------------------------------------------- la page dans un vrai navigateur
 try:
     from playwright.sync_api import sync_playwright

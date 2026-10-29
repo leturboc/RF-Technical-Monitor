@@ -147,7 +147,17 @@ win.sort_watch(); win.rebuild_tree(); win.rebuild_watch_table()
 win.absent_spin.setValue(5) if hasattr(win, "absent_spin") else None
 
 win.demo_chk.setChecked(True)
+_sess_dir = os.path.join(tmp, "sessions")
+win.session_cfg.update(dir=_sess_dir, ask=True, rec=True)
+DLG_ACTION[0] = "reject"
+step("Démarrer → « Enregistrer la session ? » › Annuler", win.toggle_run)
+check("session : Annuler ne démarre pas", not win.is_running() and win._session is None)
+DLG_ACTION[0] = "accept"                 # « 💾 Enregistrer et démarrer » (bouton par défaut)
 step("Démarrer", win.toggle_run)
+DLG_ACTION[0] = "reject"
+check("session : enregistrement lancé dans le dossier choisi", win._session is not None
+      and str(win._session).startswith(_sess_dir) and win.recorder is not None, str(win._session))
+win.session_cfg["ask"] = False           # les démarrages suivants du test : sans question (même choix)
 wait(8000)
 shot(win, "demo_tout_spectre")
 
@@ -301,8 +311,13 @@ for x in win.findChildren(W.QWidget):
     if not x.toolTip().strip():
         miss.append((type(x).__name__, getattr(x, "text", lambda: "")() if not isinstance(x, W.QComboBox) else x.currentText()))
 check("chaque bouton / case / liste a une info-bulle", not miss, str(miss))
-tools_tips = [a.toolTip() for a in win.more_menu.actions()[0].menu().actions() if a.text()]
-check("menu Outils : bulles d'aide", all(t and not t.startswith(("⚡", "🆘")) for t in tools_tips[:2]), str(tools_tips[:2]))
+_subs = [a for a in win.more_menu.actions() if a.menu() is not None]
+check("☰ Plus rangé : sous-menus Plan, Liste, Scans, Connexions, Fenêtres, Apparence",
+      all(a.text().startswith(e) for a, e in zip(_subs, ["📐", "📋", "📊", "🔗", "🪟", "🎨"])) and len(_subs) >= 6,
+      str([a.text() for a in _subs]))
+_no_tip = [a.text() for sm in [win.more_menu] + [a.menu() for a in _subs] for a in sm.actions()
+           if a.text() and not a.isSeparator() and not a.toolTip().strip() and a.toolTip() != a.text().replace("&", "")]
+check("☰ Plus : chaque entrée a une bulle d'aide", not _no_tip, str(_no_tip))
 win.set_expert(False)
 
 # mur de fréquences = panneau
@@ -470,6 +485,24 @@ if _pd is not None:
     check("plan : colonne Appareil", "Shure" in (_pd.table.item(_pd.ws.index(_w0), 3).text()))
     check("plan : appareil gardé dans la config", any(x.get("rx") == "shure_ana" for x in win._collect_config()["watch"]))
     shot(_pd, "plan_appareils")
+    # profils perso : « ＋ Depuis les réglages actuels » → OK → la liste des appareils le propose
+    def _prof_act(d):
+        if isinstance(d, m.RxProfilesDialog):
+            d.new(d.current)
+            return "reject"
+        if isinstance(d, m.RxProfileEdit):
+            d.name.setText("EW G4 bande A")
+            d.filt.setValue(16)
+        return "accept"
+    DLG_ACTION[0] = _prof_act
+    step("plan : ✏ Mes profils › nouveau profil perso", _pd.edit_profiles)
+    DLG_ACTION[0] = "reject"
+    check("profil perso créé et proposé dans la liste", _pd.rx_combo.findText("✏ EW G4 bande A") >= 0
+          and m.rx_profile("perso_1") is not None and m.rx_profile("perso_1")["filt"] == 16.0,
+          str([_pd.rx_combo.itemText(i) for i in range(_pd.rx_combo.count())]))
+    check("profil perso gardé dans la config et les shows", win._collect_config()["rx_custom"][0]["name"] == "EW G4 bande A"
+          and "rx_custom" in m.SHOW_KEYS)
+    step("plan : ❓ le filtre", lambda: m.show_filter_help(_pd))
     _pd.close()
 else:
     check("plan : fenêtre ouverte", False)
@@ -499,7 +532,7 @@ check("menu 🌐 Langue : Français coché, English proposé", _lm == ["Françai
       and win.lang_menu.actions()[0].isChecked() and win.lang == "fr", str(_lm))
 check("manuel français par défaut", win.manual_path() is not None and win.manual_path().name == "manuel.html")
 check("à propos : version et tinySA", any(m.APP_VER in t and "tinySA" in t for k, t in msgs), str(msgs[-1:]))
-check("version dans l'état de la page web", m.json.loads(win.web_json())["ver"] == m.APP_VER)
+check("version dans l'état de la page web", m.json.loads(win.web_json()["fr"])["ver"] == m.APP_VER)
 
 # appel des micros (line check), en mode démo
 step("appel des micros (Ctrl+L)", win.open_linecheck)
@@ -802,6 +835,44 @@ if win._im_dlg:
         shot(_d, "intermod_bloc")
     else:
         print("(pas de bloc large dans la liste : IM des blocs non testée en vrai Qt)")
+# origine d'un signal à partir du SPECTRE (émetteurs non déclarés) : 2 × 602 − 600 = 604
+_F = np.linspace(590.0, 615.0, 2501)
+_L = np.full_like(_F, -105.0)
+for _f0, _l0 in ((600.0, -40.0), (602.0, -42.0), (604.0, -70.0)):
+    _L[np.abs(_F - _f0) < 0.02] = _l0
+win.latest[9991], win.latest_t[9991] = (_F, _L), m.time.time()
+_od = step("intermod : origine de 604 MHz (spectre)", lambda: m.IntermodDialog(win, origin=604.0))
+if _od is not None:
+    check("origine : source = signaux vus sur le spectre", _od.src_combo.currentData() == "spectrum",
+          _od.src_lbl.text())
+    step("origine : calculer", _od.compute)
+    _txt = [r["numtext"] for r in _od.rows]
+    check("origine : 2 × 602 − 600 trouvé sans émetteur déclaré",
+          any("602" in t_ and "600" in t_ for t_ in _txt[:3]), str(_txt[:5]) + _od.msg.text() + str([round(x[0], 3) for x in _od.spectrum_sources()]))
+    shot(_od, "intermod_origine_spectre")
+    _od.close()
+win.latest.pop(9991, None); win.latest_t.pop(9991, None)
+# 📝 Quoi noter : un type décoché n'arrive plus au journal (les alarmes, elles, restent)
+_n0 = win.log_table.rowCount()
+win._logwhat_acts["unknown"].trigger()
+win.log_event({"name": "Signal inconnu", "freq": 600.0, "note": ""}, -50.0, "INCONNU")
+check("journal : « Signaux inconnus » décoché → pas noté", win.log_table.rowCount() == _n0 and not win.log_kinds["unknown"])
+win._logwhat_acts["unknown"].trigger()
+win.log_event({"name": "Signal inconnu", "freq": 600.0, "note": ""}, -50.0, "INCONNU")
+check("journal : recoché → noté", win.log_table.rowCount() == _n0 + 1 and win._collect_config()["log_kinds"]["unknown"])
+step("❓ Courbes du spectre", win.open_spectrum_legend)
+_lg = win._legend
+if _lg is not None:
+    _sps = _lg.findChildren(m.LevelSpin)
+    _old = win.thr_spin.value()
+    _sps[0].setValue(-77.0)
+    check("légende : le seuil réglé dans la légende change le vrai seuil (et la ligne)",
+          abs(win.thr_spin.value() + 77.0) < 0.01 and abs(win.thr_line.value() + 77.0) < 0.01)
+    win.thr_spin.setValue(-75.0)
+    check("légende : et inversement", abs(_sps[0].value() + 75.0) < 0.01)
+    shot(_lg, "legende_spectre")
+    _lg.close()
+    win.thr_spin.setValue(_old)
 step("open_rescue", win.open_rescue); wait(1500)
 if win._rescue_dlg: shot(win._rescue_dlg, "rescue")
 step("open_guide", win.open_guide); wait(800)
@@ -845,6 +916,28 @@ check("show rouvert", len(win.watch) == n_w and win.show_meta["name"] == "Festiv
 
 step("Arrêter", win.toggle_run); wait(2500)
 check("arrêt : plus aucun worker", not win.is_running())
+_sp = win._last_session
+check("session : close à l'arrêt (spectre + session.json + journal.csv)", _sp is not None and win._session is None
+      and any(_sp.glob("chunk_*.npz")) and (_sp / "session.json").exists() and (_sp / "journal.csv").exists(),
+      str(_sp) + " " + str(sorted(p_.name for p_ in _sp.iterdir())) if _sp else "")
+_meta = m.json.loads((_sp / "session.json").read_text(encoding="utf-8")) if _sp else {}
+check("session : liste de fréquences + fin notées", len(_meta.get("watch", [])) == len(win.watch) and _meta.get("end"))
+_rp = step("relecture : ouvrir la dernière session", lambda: (win.open_replay(), win._replay)[1])
+if _rp is not None:
+    step("relecture : session", lambda: _rp.open_rec(_sp))
+    check("relecture : session rechargée avec sa liste et son journal", _rp.sess_watch is not None
+          and len(_rp.times) > 0 and _rp.ev_combo.count() > 1, _rp.msg.text())
+    shot(_rp, "relecture_session")
+    _exp = os.path.join(tmp, "export_sess")
+    os.makedirs(_exp, exist_ok=True)
+    _orig_dir = W.QFileDialog.getExistingDirectory
+    W.QFileDialog.getExistingDirectory = staticmethod(lambda *a, **k: _exp)
+    step("relecture : mémoire → exporter", lambda: (_rp.use_memory(), _rp.export_session()))
+    W.QFileDialog.getExistingDirectory = _orig_dir
+    _ed = [p_ for p_ in m.Path(_exp).iterdir()]
+    check("export de la mémoire : une session complète", len(_ed) == 1 and any(_ed[0].glob("chunk_*.npz"))
+          and (_ed[0] / "session.json").exists(), _rp.msg.text())
+    _rp.close()
 shot(win, "arrete")
 
 # ---- deux tinySA (démo) : chacun ses bandes, coupure du 2e, retour, fenêtre relais
@@ -952,7 +1045,7 @@ if win.web is not None:
     win.web_cfg["pin"] = "2468"
     win._alarm_tick()
     _al = [a for a in _js.loads(_ur.urlopen(base + "/etat.json", timeout=5).read())["state"]["alarms"] if not a["acked"]]
-    check("page web : acquittement proposé", _js.loads(win.web_json())["ack"] is True)
+    check("page web : acquittement proposé", _js.loads(win.web_json()["fr"])["ack"] is True)
     if _al:
         _rq = _ur.Request(base + "/acquitter", data=_js.dumps(dict(pin="2468", id=_al[0]["id"])).encode(),
                           headers={"Content-Type": "application/json"}, method="POST")

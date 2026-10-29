@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.11.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.12.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -196,6 +196,44 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `tests/gui_en.py` lance l'appli en anglais et relève tout texte français visible). V8 : ses textes à elle dans
   un fichier à part (`lang_en_v8.py`, fusionné au chargement), pour ne pas toucher aux lignes de `lang_en.py`.
   Manuel anglais `docs/manual_en.html` (`manual_path` suit la langue) : le tenir à jour avec le français.
+- **7.12.0 (retours de Clément après 7.11)** :
+  - Redémarrage après changement de langue : `restart_app()` (QProcess + `PYINSTALLER_RESET_ENVIRONMENT=1`, variables
+    `_PYI_*` / `_MEIPASS2` retirées). Avant : l'exe relancé réutilisait le dossier `_MEI…` de l'ancien, effacé à sa
+    fermeture → « No module named numpy._core._multiarray_umath » (capture de Clément).
+  - **Sessions** : à ▶ Démarrer, `SessionDialog` (« Enregistrer cette session ? », dossier au choix, nom, « ne plus
+    demander ») ; `session_cfg = {ask, rec, dir}` (config `session`, PURE `SESSION_DEFAULT`, `session_cfg_norm`,
+    `session_name`) ; `_session_begin` / `_session_end` (à ▶ Arrêter, `on_finished`) / `_session_log` : dossier =
+    chunks `SweepRecorder` + `session.json` (watch, bandes, show, début / fin) + `journal.csv` (`SESSION_JOURNAL_HEAD`).
+    Relecture : « 📂 Ouvrir une session » (`open_rec` lit session.json → `sess_watch`, journal.csv →
+    `sess_events`, PURE `session_journal_rows`), « 🕘 Dernière session », « 💾 Exporter… » (`export_store`).
+    Case « Demander à chaque démarrage » (`sess_ask_chk`, onglet Journal). `rec_mb_per_hour` (place estimée).
+  - **Profils d'appareil** : filtres donnés par Clément (EazyRF) : evolution 16, SLX 16, PSM 16, AD 32, QLX-D 32
+    (ULX-D supposé idem) ; ADT inconnu (0 = prudent) ; `d["src"]` (eazyrf | guess | perso). Profils perso :
+    `RX_CUSTOM`, `rx_all`, `rx_custom_norm` / `rx_set_custom` / `rx_custom_dump` (config ET shows : `rx_custom` dans
+    SHOW_KEYS, appliqué en tête de `_apply_config`), `RxProfilesDialog` / `RxProfileEdit`, `rx_profiles_changed`.
+    Aide : `rx_help_html` (PURE), `show_filter_help`, `filter_help_btn` (PlanCheck + Intermod).
+  - **Intermod d'après le spectre** (Clément : « il faut partir du spectre, pas des appareils déclarés ») :
+    source « spectrum » de `IntermodDialog` = `spectrum_sources()` (pics max hold au-dessus du seuil faible,
+    centrés, voisins ±50 MHz d'abord, 24 max), choisie d'office en recherche d'origine ; tri par ordre puis écart.
+  - **❓ Courbes** (`SpectrumLegendDialog`, `open_spectrum_legend`, gardée en mémoire : ses liens restent valides) :
+    chaque trait du spectre expliqué + réglages reliés dans les deux sens (`_link`), encart « bases RF ».
+  - **Réglages** : « Détection » coupée en « Seuils : quand est-ce occupé ? » (`dform`, clé `detect`) et « Alarmes »
+    (`aform`, clé `alarms`). **Journal** : PURE `LOG_KINDS` / `log_kind` / `log_kinds_norm`, `self.log_kinds`
+    (config `log_kinds`), filtre en tête de `log_event`, menu « 📝 Quoi noter… » (`logwhat_menu`, `_logwhat_acts`).
+  - **Thèmes doux** : `DEFAULT_THEME = "Sombre doux"`, + Nord, Ardoise, Daltonien (Okabe-Ito), Clair doux ; clé
+    `st_libre` (bleu « réserve libre ») dans THEME_KEYS ; statuts par défaut adoucis.
+  - **☰ Plus rangé** par moment du travail (sections Pendant le show / Préparer et analyser / Affichage / Aide ;
+    sous-menus 📐 Plan, 📋 Liste, 📊 Scans et rapports, 🔗 Connexions, 🪟 Fenêtres, 🎨 Apparence et langue) +
+    boutons rapides dans la barre (`quick_btns` : 🎤 🧱 ⏪ 🧮 ⚡ 📣). `MainWindow.EXTRA_MENUS` = sous-menus ajoutés
+    par une autre version (V8 : SDR) **sans toucher au code du menu** (anti-conflit).
+  - **Langue par personne** : page web FR / EN au choix de chacun (bouton en haut, cookie `tsm_lang`, sinon
+    `Accept-Language`, sinon langue de l'appli) : `WebServer(get_page, default_lang)`, `get_json(lang)` ;
+    `web_json()` → `{"fr": bytes, "en": bytes}` ; `en_translator()` (anglais même si l'appli est en français),
+    `web_page_bytes(lang)`, `_load_lang_en()`. Alertes : `notify_cfg["lang"]` (app | fr | en), `n_lang`.
+    `QDialogButtonBox.addButton` traduit aussi.
+  - **Manuel** réécrit (25 chapitres, bases RF, lire le spectre, seuils, filtre, sessions, menus) FR + EN, et **PDF**
+    `docs/manuel.pdf` / `docs/manual_en.pdf` (GitHub n'affiche pas le HTML) : `python tests/make_pdf.py`
+    (Playwright / Chromium) **à relancer après chaque modif du manuel**.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

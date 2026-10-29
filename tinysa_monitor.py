@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.11.0"
+APP_VER = "7.12.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -120,18 +120,47 @@ THEME_KEYS = [
     ("maxhold", "Max hold", "Graphique"),
     ("thr", "Ligne de seuil « occupé »", "Graphique"),
     ("thr_weak", "Ligne de seuil « faible »", "Graphique"),
-    ("st_free", "Signal : libre", "Etats du signal"),
+    ("st_free", "Signal : OK (vert)", "Etats du signal"),
+    ("st_libre", "Signal : réserve libre (bleu)", "Etats du signal"),
     ("st_weak", "Signal : faible", "Etats du signal"),
     ("st_occ", "Signal : occupé", "Etats du signal"),
     ("st_unk", "Signal : inconnu (hors liste)", "Etats du signal"),
     ("st_none", "Pas encore de mesure", "Etats du signal"),
 ]
 
+# Thèmes 7.12 (Clément : « le rouge et le vert sont horribles ») : couleurs d'état désaturées, lisibles en texte
+# blanc ou noir ; « Daltonien » = palette Okabe-Ito (OK bleu, problème vermillon) ; défaut = « Sombre doux ».
+DEFAULT_THEME = "Sombre doux"
 THEMES = {
+    "Sombre doux": dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
+                        ui_accent="#528bff", plot_bg="#181a1f", plot_fg="#abb2bf", curve="#61afef",
+                        maxhold="#d19a66", thr="#e06c75", thr_weak="#e5c07b", st_free="#4f9d69",
+                        st_libre="#4d8fd6", st_weak="#d4a94e", st_occ="#c95c5c", st_unk="#d19a66",
+                        st_none="#5c6370", ref="#c678dd", wf="Viridis"),
+    "Nord": dict(ui_bg="#2e3440", ui_base="#272c36", ui_button="#3b4252", ui_text="#e5e9f0",
+                 ui_accent="#88c0d0", plot_bg="#242933", plot_fg="#d8dee9", curve="#88c0d0",
+                 maxhold="#ebcb8b", thr="#bf616a", thr_weak="#ebcb8b", st_free="#a3be8c", st_libre="#5e81ac",
+                 st_weak="#ebcb8b", st_occ="#bf616a", st_unk="#d08770", st_none="#4c566a", ref="#b48ead",
+                 wf="Viridis"),
+    "Ardoise": dict(ui_bg="#1e1f22", ui_base="#18191b", ui_button="#2b2d31", ui_text="#dcdde0",
+                    ui_accent="#6e9ecf", plot_bg="#141517", plot_fg="#a6a9ae", curve="#7cc4e8",
+                    maxhold="#e0a96d", thr="#d46a6a", thr_weak="#d8b35a", st_free="#5a9e78", st_libre="#5b8cc4",
+                    st_weak="#c9a648", st_occ="#c25b5b", st_unk="#d4875a", st_none="#5d6066", ref="#b48ad6",
+                    wf="Inferno"),
+    "Daltonien (bleu / orange)": dict(ui_bg="#1c1f24", ui_base="#15181c", ui_button="#2a2e35", ui_text="#e6e6e6",
+                                      ui_accent="#56b4e9", plot_bg="#111316", plot_fg="#c9ccd1", curve="#56b4e9",
+                                      maxhold="#e69f00", thr="#d55e00", thr_weak="#f0e442", st_free="#0072b2",
+                                      st_libre="#56b4e9", st_weak="#e6c229", st_occ="#d55e00", st_unk="#cc79a7",
+                                      st_none="#666b73", ref="#cc79a7", wf="Viridis"),
+    "Clair doux": dict(ui_bg="#f4f5f7", ui_base="#ffffff", ui_button="#e6e8eb", ui_text="#24292f",
+                       ui_accent="#0969da", plot_bg="#ffffff", plot_fg="#57606a", curve="#0969da",
+                       maxhold="#bc4c00", thr="#cf222e", thr_weak="#9a6700", st_free="#4ea56b", st_libre="#6a9fd8",
+                       st_weak="#d4a72c", st_occ="#d1453b", st_unk="#bc4c00", st_none="#8c959f", ref="#8250df",
+                       wf="Gris"),
     "Sombre": dict(ui_bg="#1b2027", ui_base="#11151a", ui_button="#262d36", ui_text="#dfe6ee",
                    ui_accent="#2f81f7", plot_bg="#0f1318", plot_fg="#c8d0d8", curve="#4fd0ff",
-                   maxhold="#ffb347", thr="#ff6666", thr_weak="#e0b43c", st_free="#2ecc71",
-                   st_weak="#f1c40f", st_occ="#ff4d4d", st_unk="#ffa94d", st_none="#7d8896",
+                   maxhold="#ffb347", thr="#ff6666", thr_weak="#e0b43c", st_free="#3fa66a",
+                   st_weak="#e0b43c", st_occ="#e05555", st_unk="#ffa94d", st_none="#7d8896",
                    wf="Inferno"),
     "Clair": dict(ui_bg="#f0f2f5", ui_base="#ffffff", ui_button="#e1e6ec", ui_text="#1d232b",
                   ui_accent="#2f81f7", plot_bg="#ffffff", plot_fg="#2b333d", curve="#0b6fb8",
@@ -166,10 +195,10 @@ WF_MAPS = {
     "Rouge (nuit)": [(0.0, (0, 0, 0)), (0.5, (140, 0, 0)), (1.0, (255, 80, 80))],
 }
 
-DEFAULT_STATUSES = [("Libre", "#2ecc71"), ("Occupé", "#e74c3c"),
-                    ("Réservé", "#3498db"), ("Hors service", "#7f8c8d"), ("En service", "#f1c40f")]
-STATUS_AUTO_COLORS = ["#9b59b6", "#1abc9c", "#f39c12", "#e91e63", "#00bcd4", "#8bc34a",
-                      "#ff7043", "#5c6bc0"]
+DEFAULT_STATUSES = [("Libre", "#4d8fd6"), ("Occupé", "#c95c5c"),            # couleurs douces (7.12)
+                    ("Réservé", "#8a7fc9"), ("Hors service", "#6b7280"), ("En service", "#4f9d69")]
+STATUS_AUTO_COLORS = ["#9b7fc4", "#4fa3a5", "#d19a66", "#c26d8f", "#5aa6c4", "#8aab5a",
+                      "#d1825f", "#7385c4"]
 
 BAND_PRESETS = [
     ("Aperçu : tout le tinySA 0,1–5300 MHz (pas 5 MHz)", 0.1, 5300.0, 5000.0),
@@ -632,6 +661,7 @@ _NIGHT_BP = dict(tv="#8a2a2a", tv_off="#3a1212", mobile="#c03030", pmse="#ff5a5a
                  ism="#b05050", amateur="#c08040", civ="#d06a3a", pro="#904040", other="#4a2020")
 for _n, _t in THEMES.items():
     _t.setdefault("ref", "#ff9a9a" if _n == "Nuit (rouge)" else "#c084fc")
+    _t.setdefault("st_libre", "#6a3a6a" if _n == "Nuit (rouge)" else "#3b82f6")
     for _k, (_lab, _col) in CATEGORIES.items():
         _t.setdefault("bp_" + _k, _NIGHT_BP[_k] if _n == "Nuit (rouge)" else _col)
 
@@ -1713,38 +1743,147 @@ def pf_orders(tol):
 
 
 # Profils d'appareil (comme les profils d'EazyRF) : écart mini, filtre d'entrée du récepteur, pas de réglage et
-# tolérances d'intermod. Wisycom = le profil EazyRF de Clément (MRK980). Les autres sont des VALEURS DE DÉPART
-# (non vérifiées) : un récepteur peu sélectif a un filtre large (ou aucun), donc plus d'émetteurs comptent.
+# tolérances d'intermod. src = d'où vient le FILTRE : "eazyrf" = valeur des profils EazyRF de Clément (Wisycom
+# MRK980 : profil complet ; Sennheiser evolution, Shure SLX / PSM : 16 MHz ; Shure AD / QLX-D : 32 MHz, d'après lui),
+# "guess" = valeur de départ NON vérifiée. Écart, pas et tolérances des profils autres que Wisycom : de départ aussi.
+# Les clés restent stables (enregistrées dans les listes et les shows : w["rx"]).
+_TOL_EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}
+_TOL_LARGE = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}
+_TOL_IEM = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}
 RX_PROFILES = [
-    ("wisycom", "Wisycom (MRK980, MTK952…) · très sélectif",
-     dict(sep=0.500, filt=32.0, step=0.005, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
+    ("wisycom", "Wisycom (MRK980, MTK952…) · filtre 32 MHz",
+     dict(sep=0.500, filt=32.0, step=0.005, tol=_TOL_EZ, src="eazyrf"),
      "Profil Wisycom d'EazyRF : filtre d'entrée 32 MHz (seuls les émetteurs à ±16 MHz comptent), séparation "
      "500 kHz, pas 5 kHz (MTK952 : 25 kHz)."),
+    ("senn_evo", "Sennheiser evolution (EW G3 / G4) · filtre 16 MHz",
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_LARGE, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément, ex. une banque du groupe A). Écart, pas et tolérances : "
+     "valeurs de départ."),
+    ("senn_ana", "Sennheiser analogique (2000, 3000, 5000)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
+     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz. "
+     "Mets la valeur de ton profil EazyRF dans un profil perso."),
     ("senn_dig", "Sennheiser numérique (EW-DX, EW-D, 6000)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : pas de filtre étroit, tous les émetteurs comptent ; séparation 400 kHz."),
-    ("senn_ana", "Sennheiser analogique (EW G3 / G4, 2000, 5000)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : peu sélectif, tolérances plus larges (150 / 75 kHz)."),
-    ("shure_dig", "Shure numérique (ULX-D, QLX-D, Axient, SLX-D)",
-     dict(sep=0.350, filt=0.0, step=0.025, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : pas de filtre étroit, séparation 350 kHz."),
-    ("shure_ana", "Shure analogique (UR, SLX, BLX…)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : peu sélectif, tolérances plus larges (150 / 75 kHz)."),
-    ("iem", "Ears / IEM (PSM, EW IEM…) · émetteurs couplés",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}),
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_EZ, src="guess"),
+     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; séparation 400 kHz."),
+    ("shure_ad", "Shure Axient Digital (AD) · filtre 32 MHz",
+     dict(sep=0.350, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     "Filtre 32 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ."),
+    ("shure_dig", "Shure QLX-D / ULX-D · filtre 32 MHz",
+     dict(sep=0.350, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     "Filtre 32 MHz comme dans EazyRF (valeur de Clément pour QLX-D ; ULX-D supposé pareil). Écart, pas et "
+     "tolérances : valeurs de départ."),
+    ("shure_slx", "Shure SLX / SLX-D · filtre 16 MHz",
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ."),
+    ("shure_ana", "Shure analogique (UR, BLX…)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
+     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz."),
+    ("shure_psm", "Shure PSM (300 / 900 / 1000) · filtre 16 MHz",
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_IEM, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Émetteurs souvent couplés sur un combineur → on compte "
+     "aussi le 5ᵉ ordre. Écart, pas et tolérances : valeurs de départ."),
+    ("shure_adt", "Shure Axient Digital PSM (ADTQ / ADTD) · à renseigner",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
+     "Filtre pas encore connu → tous les émetteurs comptent (le plus prudent). Dès que tu as la valeur de ton "
+     "profil EazyRF, crée un profil perso (✏ Mes profils)."),
+    ("iem", "Autres ears / IEM (EW IEM…)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
      "Valeurs de départ (non vérifiées) : émetteurs souvent couplés sur un combineur → on compte aussi le 5ᵉ "
-     "ordre ; récepteurs ceinture peu sélectifs."),
+     "ordre ; filtre inconnu."),
 ]
+RX_CUSTOM = []          # profils perso (config et shows : « rx_custom »), même forme que RX_PROFILES
+
+
+def rx_all():
+    """Profils intégrés puis profils perso."""
+    return RX_PROFILES + RX_CUSTOM
 
 
 def rx_profile(key):
-    """Profil d'appareil par sa clé -> dict(sep, filt, step, tol), ou None (= réglages de la fenêtre)."""
-    for k, _n, d, _w in RX_PROFILES:
+    """Profil d'appareil par sa clé -> dict(sep, filt, step, tol, src), ou None (= réglages de la fenêtre)."""
+    for k, _n, d, _w in rx_all():
         if k == key:
             return dict(d, tol=dict(d["tol"]))
     return None
+
+
+def _rx_num(x, lo, hi, dflt):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return dflt
+    return dflt if v != v else min(hi, max(lo, v))
+
+
+def rx_custom_norm(lst):
+    """Profils perso lus (config / show) -> liste propre de (clé, nom, réglages, note). Clés « perso_… » uniques."""
+    out, seen = [], {k for k, *_ in RX_PROFILES}
+    for i, p in enumerate(lst if isinstance(lst, list) else []):
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name") or "").strip()[:60]
+        if not name:
+            continue
+        key = str(p.get("key") or "")
+        if not re.fullmatch(r"perso_[A-Za-z0-9_]{1,40}", key) or key in seen:
+            key = f"perso_{len(out) + 1}"
+            while key in seen:
+                key += "_"
+        seen.add(key)
+        t = p.get("tol") if isinstance(p.get("tol"), dict) else {}
+        tol = {k: _rx_num(t.get(k), 0.0, 2.0, d) for k, d in _TOL_EZ.items()}
+        tol["7"] = 0.0
+        out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 3.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
+                                    step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol, src="perso"),
+                    str(p.get("note") or "Profil perso.")[:300]))
+    return out
+
+
+def rx_set_custom(lst):
+    RX_CUSTOM[:] = rx_custom_norm(lst)
+
+
+def rx_custom_dump():
+    """Profils perso -> liste JSON (config, shows)."""
+    return [dict(key=k, name=n, sep=d["sep"], filt=d["filt"], step=d["step"], tol=dict(d["tol"]), note=w)
+            for k, n, d, w in RX_CUSTOM]
+
+
+RX_SRC_TXT = {"eazyrf": "EazyRF (Clément)", "guess": "valeur de départ", "perso": "ton profil"}
+
+
+def rx_help_html():
+    """Explication du filtre récepteur + tableau des profils (fenêtre « ❓ Le filtre, c'est quoi ? »)."""
+    rows = "".join(
+        f"<tr><td>{n}</td><td align=right>{('%g MHz' % d['filt']) if d['filt'] else 'aucun'}</td>"
+        f"<td align=right>{d['sep'] * 1000:.0f} kHz</td><td align=right>{d['step'] * 1000:g} kHz</td>"
+        f"<td>{RX_SRC_TXT.get(d.get('src'), '')}</td></tr>" for _k, n, d, _w in rx_all())
+    return (
+        "<h3>Le filtre récepteur, c'est quoi ?</h3>"
+        "<p>Chaque récepteur a, juste après l'antenne, un <b>filtre d'entrée</b> (présélection) : il ne laisse passer "
+        "qu'une tranche du spectre autour de la fréquence réglée. Un Wisycom MRK980 a un filtre de <b>32 MHz</b> : "
+        "il « voit » ±16 MHz autour de sa fréquence, le reste est fortement atténué.</p>"
+        "<p><b>Pourquoi ça compte pour l'intermod ?</b> Un produit d'intermodulation (ex. 2A − B) est fabriqué "
+        "dans l'<b>étage d'entrée du récepteur</b> à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à "
+        "40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. "
+        "Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
+        "filtre de son récepteur</b> (à ± la moitié du filtre).</p>"
+        "<ul><li><b>Filtre étroit</b> (16 MHz) = récepteur sélectif : peu d'émetteurs comptent, plan plus facile.</li>"
+        "<li><b>Filtre large</b> (32 MHz) = plus d'émetteurs comptent.</li>"
+        "<li><b>Aucun</b> (0) = tous les émetteurs comptent : le plus prudent, à utiliser quand on ne connaît pas "
+        "l'appareil.</li></ul>"
+        "<p>Les produits fabriqués ailleurs (dans les <b>émetteurs</b> eux-mêmes, ex. des ears couplés sur un "
+        "combineur, ou dans un ampli d'antenne) ne sont pas filtrés par le récepteur : c'est pour ça qu'on "
+        "compte aussi le 5ᵉ ordre sur les profils d'ears.</p>"
+        "<p><b>Écart mini</b> = distance minimale entre deux porteuses (sinon le récepteur entend la voisine). "
+        "<b>Pas</b> = le pas de réglage de l'appareil (les fréquences proposées tombent dessus).</p>"
+        "<h3>Profils disponibles</h3>"
+        "<table border=1 cellspacing=0 cellpadding=4><tr><th>Appareil</th><th>Filtre</th><th>Écart mini</th>"
+        "<th>Pas</th><th>Source du filtre</th></tr>" + rows + "</table>"
+        "<p>« Valeur de départ » = pas vérifiée : si tu connais la valeur (profil EazyRF, doc du fabricant), crée un "
+        "<b>profil perso</b> avec « ✏ Mes profils ». Le filtre d'un même appareil peut dépendre de sa bande "
+        "(ex. groupe / banque A d'un evolution) : un profil perso par bande si besoin.</p>")
 
 
 def _pf_vec(x, n):
@@ -2489,7 +2628,7 @@ SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
              "points", "rbw", "zrbw", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
-             "country", "plan_custom", "dev_names")
+             "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -3186,7 +3325,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
 <div id="app" class="hidden">
  <header class="top"><div class="bar"><div class="logo">📡</div>
   <div class="ttl"><b id="t">TinySA Monitor</b><span id="meta" class="mut"></span></div>
-  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button></div>
+  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button><a id="lng" class="chip" href="?lang=en" title="English" style="text-decoration:none">EN</a></div>
   <nav id="nav"></nav></header>
  <section id="al"></section><main id="view"></main>
 </div>
@@ -4268,6 +4407,86 @@ def web_page_lang(page, pairs, tr):
     return page, missing
 LANGS = [("fr", "Français"), ("en", "English")]
 
+
+# ------------------------------------------------------------------ sessions enregistrées (proposées à ▶ Démarrer)
+# Un dossier par session : tranches .npz du spectre (SweepRecorder), session.json (liste de fréquences, bandes,
+# show, début / fin) et journal.csv (mêmes colonnes que le journal automatique). ⏪ Relecture › Ouvrir une session.
+SESSION_DEFAULT = dict(ask=True, rec=True, dir="")
+SESSION_JOURNAL_HEAD = ["Date", "Heure", "Nom", "MHz", "dBm", "Événement", "Statut", "Scène", "Groupe", "Spectre",
+                        "Note"]
+
+
+def session_name(stamp, show=""):
+    """Nom de dossier d'une session : « 2026-10-29_2015 Mon festival » (caractères interdits sous Windows ôtés)."""
+    s = f"{stamp} {show}".strip()
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", unicodedata.normalize("NFKC", s)).strip(" ._")
+    return s[:80] or stamp
+
+
+def session_cfg_norm(c):
+    """Réglages « enregistrer la session » lus de la config (valeurs manquantes ou bancales -> défaut)."""
+    out = dict(SESSION_DEFAULT)
+    if isinstance(c, dict):
+        out["ask"] = bool(c.get("ask", True))
+        out["rec"] = bool(c.get("rec", True))
+        out["dir"] = str(c.get("dir") or "")
+    return out
+
+
+def session_journal_rows(text):
+    """journal.csv d'une session -> [(date « AAAA-MM-JJ », heure « HH:MM:SS », texte de l'événement)]."""
+    out = []
+    for row in csv.reader(io.StringIO(text.lstrip("\ufeff")), delimiter=";"):
+        if len(row) < 6 or not re.fullmatch(r"\d{4}-\d\d-\d\d", row[0]) or not re.fullmatch(r"\d\d:\d\d:\d\d", row[1]):
+            continue
+        mhz = f"  {row[3].replace(',', '.')} MHz" if row[3] not in ("", "—") else ""
+        out.append((row[0], row[1], f"{row[1]}  {row[5]}  {row[2]}{mhz}"))
+    return out
+
+
+# Ce qu'on note au journal (demande de Clément : « choisir quoi mettre dans les logs ») : les alarmes se
+# déclenchent quand même, seul le journal (tableau, CSV du jour, journal de la session) est filtré.
+LOG_KINDS = (
+    ("alarm", "⚠ Alarmes : CONFLIT, INTERMOD, ABSENT"),
+    ("strong", "⚠ TROP FORT"),
+    ("busy", "Fréquence qui s'allume (OCCUPÉ)"),
+    ("back", "Retours à la normale (Libre, Retour)"),
+    ("unknown", "Signaux inconnus (hors liste)"),
+    ("device", "tinySA perdu / retrouvé"),
+    ("ops", "Opérations : appel des micros, nouvelle fréquence"),
+)
+
+
+def log_kind(event):
+    """Événement du journal -> type (clé de LOG_KINDS)."""
+    e = str(event)
+    if e in ("CONFLIT", "INTERMOD", "ABSENT"):
+        return "alarm"
+    if e == "TROP FORT":
+        return "strong"
+    if e == "OCCUPÉ":
+        return "busy"
+    if e.startswith(("Libre", "Retour")):
+        return "back"
+    if e == "INCONNU":
+        return "unknown"
+    if e.startswith("APPAREIL"):
+        return "device"
+    return "ops"
+
+
+def log_kinds_norm(d):
+    """Choix lus de la config -> {clé: bool} complet (tout coché par défaut)."""
+    d = d if isinstance(d, dict) else {}
+    return {k: bool(d.get(k, True)) for k, _t in LOG_KINDS}
+
+
+def rec_mb_per_hour(points, cycle_s):
+    """Place disque estimée d'un enregistrement (Mo / heure) : float16 compressé ≈ 1,3 octet par point."""
+    if not points or not cycle_s or cycle_s <= 0:
+        return None
+    return points * 1.3 * 3600.0 / cycle_s / 1e6
+
 # ===== PURE-END
 
 
@@ -4954,9 +5173,13 @@ class WebServer(threading.Thread):
 
     COOKIE = "tsm"
 
-    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None):
+    def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
+                 get_page=None, default_lang="fr"):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
+        # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
+        self.get_page = get_page or (lambda lang: WEB_PAGE.encode("utf-8"))
+        self.default_lang = default_lang if default_lang in ("fr", "en") else "fr"
         self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
         self.get_spec = get_spec or (lambda: b'{"bands":[]}')
         self.get_cfg = get_cfg or (lambda: {})
@@ -5029,12 +5252,35 @@ class WebServer(threading.Thread):
                     raise ValueError
                 return req
 
+            def _lang(self, qs):
+                """Langue de la personne : ?lang= (retenu en cookie), cookie, sinon langue du téléphone."""
+                q = next((v for k, _, v in (p.partition("=") for p in qs.split("&")) if k == "lang"), "")
+                if q in ("fr", "en"):
+                    return q, True
+                for part in (self.headers.get("Cookie") or "").split(";"):
+                    k, _, v = part.strip().partition("=")
+                    if k == "tsm_lang" and v in ("fr", "en"):
+                        return v, False
+                al = (self.headers.get("Accept-Language") or "").strip().lower()
+                if al:
+                    return ("fr" if al.startswith("fr") else "en"), False
+                return owner.default_lang, False
+
+            def _state(self, lang):
+                try:
+                    return owner.get_json(lang)
+                except TypeError:                   # get_json sans langue (une seule langue)
+                    return owner.get_json()
+
             def do_GET(self):
                 path, _, qs = self.path.partition("?")
                 view = next((v for k, _, v in (p.partition("=") for p in qs.split("&")) if k == "v"), "")
                 view = view if view in WEB_VIEW_KEYS else ""
+                lang, chosen = self._lang(qs)
                 if path in ("/", "/index.html"):
-                    self._send(200, WEB_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                    extra = [("Set-Cookie", f"tsm_lang={lang}; Path=/; SameSite=Strict; Max-Age=31536000")] \
+                        if chosen else []
+                    self._send(200, owner.get_page(lang), "text/html; charset=utf-8", extra)
                     return
                 if path not in ("/etat.json", "/spectre.json"):
                     self.send_error(404)
@@ -5054,7 +5300,7 @@ class WebServer(threading.Thread):
                             ident=bool(me and me.get("ident", 0) > time.time()),
                             views=[k for k in WEB_VIEW_KEYS if cfg["views"][k]],
                             ack=len(str(owner.get_pin() or "").strip()) >= 4)
-                body = (json.dumps(head, ensure_ascii=False)[:-1] + ',"state":').encode("utf-8") + owner.get_json() + b"}"
+                body = (json.dumps(head, ensure_ascii=False)[:-1] + ',"state":').encode("utf-8") + self._state(lang) + b"}"
                 self._send(200, body, "application/json; charset=utf-8")
 
             def do_POST(self):
@@ -5195,6 +5441,12 @@ class AlertsDialog(QtWidgets.QDialog):
         chat_row.addWidget(self.find_chat)
         nf.addRow("Chat id :", chat_row)
         nf.addRow("Nom du site :", self.site)
+        self.n_lang = QtWidgets.QComboBox()
+        for lab_, k_ in (("comme l'appli", "app"), ("Français", "fr"), ("English", "en")):
+            self.n_lang.addItem(lab_, k_)
+        self.n_lang.setCurrentIndex(max(0, self.n_lang.findData(n.get("lang", "app"))))
+        self.n_lang.setToolTip("Langue des alertes envoyées sur les téléphones (indépendante de la langue de l'appli).")
+        nf.addRow("Langue des alertes :", self.n_lang)
         nf.addRow(test)
         nf.addRow(self.n_lbl)
         self.service.currentIndexChanged.connect(lambda *_: self._svc())
@@ -5287,12 +5539,12 @@ class AlertsDialog(QtWidgets.QDialog):
             wd.setEnabled(not ntfy)
 
     def values(self):
-        return dict(mode=self.mode.currentData(), service=self.service.currentData(),
-                    server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
-                    tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
-                    site=self.site.text().strip()), dict(on=self.web_on.isChecked(), port=self.web_port.value(),
-                                                     pin=self.web_pin.text().strip(), password=self.web_pw.text(),
-                                                     views={k: c.isChecked() for k, c in self.view_chks.items()})
+        return (dict(mode=self.mode.currentData(), service=self.service.currentData(),
+                     server=self.server.text().strip() or "https://ntfy.sh", topic=self.topic.text().strip(),
+                     tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
+                     site=self.site.text().strip(), lang=self.n_lang.currentData() or "app"),
+                dict(on=self.web_on.isChecked(), port=self.web_port.value(), pin=self.web_pin.text().strip(),
+                     password=self.web_pw.text(), views={k: c.isChecked() for k, c in self.view_chks.items()}))
 
     def show_tuto(self):
         d = QtWidgets.QDialog(self)
@@ -6391,6 +6643,10 @@ class IntermodDialog(QtWidgets.QDialog):
         self.src_combo.addItem("Émetteurs : toute la liste (sauf « doit rester libre »)", "all")
         self.src_combo.addItem("Émetteurs : la couche active", "scope")
         self.src_combo.addItem("Émetteurs : les lignes sélectionnées", "sel")
+        self.src_combo.addItem("Émetteurs : les signaux VUS sur le spectre (pics mesurés)", "spectrum")
+        self.src_combo.setItemData(3, "Pas besoin que les émetteurs soient déclarés : on prend les pics réellement "
+                                      "mesurés\n(max hold, au-dessus du seuil « faible »), y compris ceux qui ne sont "
+                                      "pas dans ta liste.", Qt.ItemDataRole.ToolTipRole)
         self.active_chk = QtWidgets.QCheckBox("Seulement ceux qui émettent (vus sur le spectre)")
         self.active_chk.setToolTip("Un produit n'existe que si les émetteurs sont allumés : on ne garde que ceux "
                                    "dont l'état est « occupé » ou « faible ».")
@@ -6458,7 +6714,7 @@ class IntermodDialog(QtWidgets.QDialog):
         lay.addLayout(R("Combinaisons :", self.maxtx_combo, self.o3_chk, self.o5_chk, self.o7_chk, None))
         lay.addLayout(R(self.tgt_combo, "Règles :", self.tol_combo, None))
         lay.addLayout(R("2 TX :", self.tol_spins["2tx3"], "3 TX :", self.tol_spins["3tx3"],
-                        "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], "Filtre :", self.filt_spin, None))
+                        "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], "Filtre :", self.filt_spin, filter_help_btn(self), None))
         lay.addLayout(R("Plage (liste complète) :", self.fmin_spin, "à", self.fmax_spin, None, self.go_btn))
         lay.addWidget(self.msg)
         self.table = QtWidgets.QTableWidget(0, 7)
@@ -6513,10 +6769,40 @@ class IntermodDialog(QtWidgets.QDialog):
             self.maxtx_combo.setCurrentIndex(2)
             n_act = sum(1 for w in self.owner.watch if w["state"] in ("occ", "weak"))
             self.active_chk.setChecked(n_act >= 2)
+            if len(self.spectrum_sources()) >= 2:   # chercher dans ce qui est VRAIMENT là, déclaré ou pas
+                self.src_combo.setCurrentIndex(self.src_combo.findData("spectrum"))
+        self.update_src()
+
+    def spectrum_sources(self):
+        """Pics réellement mesurés (max hold, au-dessus du seuil « faible » ou « occupé ») -> [(MHz, dBm, nom)].
+        Un pic à ±100 kHz d'une fréquence de la liste prend son nom ; en recherche d'origine, le signal cherché
+        lui-même est écarté."""
+        o = self.owner
+        F, L = o.fresh_FL(use_max=True, any_age=True)
+        if F is None:
+            return []
+        thr = o.weak_spin.value() if o.weak_chk.isChecked() else o.thr_spin.value()
+        pk = strong_peaks(F, L, thr, merge=0.2, limit=80)
+        if self.mode_combo.currentData() == "origin":
+            f0 = self.freq_spin.value()
+            pk = [(f, l) for f, l in pk if abs(f - f0) > 0.1]
+            pk.sort(key=lambda p_: (abs(p_[0] - f0) > 50.0, -p_[1]))     # d'abord les voisins (±50 MHz)
+        pk = pk[:24]                                # les plus forts : ce sont eux qui intermodulent
+        out = []
+        for f, l in sorted(pk):
+            near_ = (np.abs(F - f) <= 0.1) & (L >= l - 3.0)     # centre du pic (plateau de quelques points)
+            if near_.any():
+                f = float(np.mean(F[near_]))
+            near = min(o.watch, key=lambda w: abs(w["freq"] - f), default=None)
+            nm = near["name"] if near is not None and abs(near["freq"] - f) <= 0.1 else f"pic {f:.3f}"
+            out.append((f, l, nm))
+        return out
 
     def source_indices(self):
         o = self.owner
         kind = self.src_combo.currentData()
+        if kind == "spectrum":
+            return []
         if kind == "sel":
             idx = o._sel_rows()
         elif kind == "scope":
@@ -6530,7 +6816,10 @@ class IntermodDialog(QtWidgets.QDialog):
         return idx
 
     def update_src(self, *_):
-        self.src_lbl.setText(f"→ {len(self.source_indices())} émetteur(s)")
+        sp = self.src_combo.currentData() == "spectrum"
+        self.active_chk.setEnabled(not sp)
+        n = len(self.spectrum_sources()) if sp else len(self.source_indices())
+        self.src_lbl.setText(f"→ {n} " + ("signal(aux) mesuré(s)" if sp else "émetteur(s)"))
 
     def _tol_preset(self):
         d = self.tol_combo.currentData()
@@ -6560,10 +6849,18 @@ class IntermodDialog(QtWidgets.QDialog):
 
     def compute(self):
         o = self.owner
-        idx = self.source_indices()
-        freqs = [o.watch[i]["freq"] for i in idx]
-        names = [o.watch[i]["name"] for i in idx]
-        bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]        # blocs Spectera / WMAS : produits en bandes
+        if self.src_combo.currentData() == "spectrum":
+            src = self.spectrum_sources()
+            freqs, names, bws = [x[0] for x in src], [x[2] for x in src], [0.0] * len(src)
+            if len(freqs) < 2:
+                self.msg.setText("Moins de 2 signaux mesurés au-dessus du seuil « faible » : lance un balayage et "
+                                 "laisse tourner un moment (le max hold garde les signaux intermittents).")
+                return
+        else:
+            idx = self.source_indices()
+            freqs = [o.watch[i]["freq"] for i in idx]
+            names = [o.watch[i]["name"] for i in idx]
+            bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]    # blocs Spectera / WMAS : produits en bandes
         orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.tolerances()
         if len(freqs) < 2:
             self.msg.setText("Il faut au moins 2 émetteurs (change la source ou décoche « seulement ceux qui émettent »).")
@@ -6637,6 +6934,8 @@ class IntermodDialog(QtWidgets.QDialog):
             r["level"] = 2 if r["sev"] == 3 else (1 if r["sev"] else 0)
         if targets is not None and not origin:
             rows.sort(key=lambda r: -r["sev"])                # le plus grave en haut
+        if origin:                                        # le plus probable en haut : ordre bas, pile dessus
+            rows.sort(key=lambda r: (r["order"], r["ntx"], abs(r["delta"] or 0.0)))
         self.rows = rows
         self.cur_freqs, self.cur_names = freqs, names
         self.fill()
@@ -6962,6 +7261,23 @@ class SweepRecorder:
         self.flush()
 
 
+def export_store(store, folder):
+    """Écrit tout le contenu d'un SweepStore comme un enregistrement (tranches .npz). -> nombre de balayages."""
+    rec = SweepRecorder(folder, max_mb=1e9)
+    evs = sorted((t, b, k) for b, ts in store.t.items() for k, t in enumerate(ts))
+    n = 0
+    for t, b, k in evs:
+        f, l = store.d[b][k]
+        rec.add(b, t, f, l)
+        n += 1
+        if len(rec.pending) >= 2000:
+            rec.flush()
+    rec.flush()
+    if rec.error:
+        raise OSError(rec.error)
+    return n
+
+
 def load_recording(folder, store):
     """Relit un dossier d'enregistrement dans un SweepStore. -> (nombre de balayages, nombre de tranches)."""
     files = sorted(Path(folder).glob("chunk_*.npz"))
@@ -6979,6 +7295,66 @@ def load_recording(folder, store):
     return n, len(files)
 
 
+class SessionDialog(QtWidgets.QDialog):
+    """Avant ▶ Démarrer : enregistrer toute la session (spectre + journal) pour revenir dessus après le show ?"""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Enregistrer cette session ?")
+        c = owner.session_cfg
+        lay = QtWidgets.QVBoxLayout(self)
+        est = owner.rec_estimate_txt()
+        info = QtWidgets.QLabel(
+            "<b>💾 Garder tout le scan sur disque</b> : le spectre de chaque balayage et le journal, pour revenir à "
+            "n'importe quel moment après le show (⏪ Relecture › 📂 Ouvrir une session), même si l'appli est "
+            "fermée entre-temps." + (f"<br>Place estimée : {est}." if est else ""))
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 4)
+        lay.addWidget(info)
+        f = QtWidgets.QFormLayout()
+        self.dir_edit = QtWidgets.QLineEdit(c.get("dir") or str(owner.log_dir / "enregistrements"))
+        self.dir_edit.setToolTip("Dossier où ranger les sessions (un sous-dossier par session).")
+        b_dir = QtWidgets.QPushButton("Choisir…")
+        b_dir.setToolTip("Dossier où ranger les sessions (disque externe, clé USB, dossier partagé…).")
+        b_dir.clicked.connect(lambda *_: self.pick_dir())
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.dir_edit, 1)
+        row.addWidget(b_dir)
+        f.addRow("Dossier :", row)
+        self.name_edit = QtWidgets.QLineEdit(owner.session_default_name())
+        self.name_edit.setToolTip("Nom du sous-dossier de cette session (date + nom du show par défaut).")
+        f.addRow("Nom de la session :", self.name_edit)
+        lay.addLayout(f)
+        self.never = QtWidgets.QCheckBox("Ne plus demander : toujours faire ce choix (réglable dans Journal)")
+        self.never.setToolTip("La question ne revient plus ; la case « Demander à chaque démarrage » de "
+                              "l'onglet Journal la fait revenir.")
+        self.never.setChecked(not c.get("ask", True))
+        lay.addWidget(self.never)
+        bb = QtWidgets.QDialogButtonBox()
+        self.b_rec = bb.addButton("💾 Enregistrer et démarrer", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+        self.b_no = bb.addButton("▶ Démarrer sans enregistrer", QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        self.b_rec.setToolTip("Démarre le scan et enregistre tout dans le dossier ci-dessus.")
+        self.b_no.setToolTip("Démarre le scan sans rien garder sur disque (les 30 dernières minutes restent en mémoire).")
+        bb.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        self.b_rec.setDefault(True)
+        self.rec = True
+        self.b_rec.clicked.connect(lambda *_: self._done(True))
+        self.b_no.clicked.connect(lambda *_: self._done(False))
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self.resize(640, 270)
+
+    def pick_dir(self):
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier des sessions", self.dir_edit.text())
+        if d:
+            self.dir_edit.setText(d)
+
+    def _done(self, rec):
+        self.rec = rec
+        self.accept()
+
+
 class ReplayDialog(QtWidgets.QDialog):
     """Revoir le spectre à un instant passé : curseur de temps, lecture accélérée, qui était allumé à ce moment-là."""
 
@@ -6989,21 +7365,33 @@ class ReplayDialog(QtWidgets.QDialog):
         self.times = np.array([])
         self.idx = 0
         self.speed = 1
+        self.sess_watch = None                   # session ouverte : sa liste de fréquences et son journal
+        self.sess_events = None
+        self.sess_path = None
         self.setWindowTitle("Relecture : revoir le spectre")
         self.resize(1320, 780)
         th = owner.theme
         lay = QtWidgets.QVBoxLayout(self)
         self.src_lbl = QtWidgets.QLabel("")
-        b_open = QtWidgets.QPushButton("📂 Ouvrir un enregistrement…")
-        b_open.setToolTip("Relit un dossier créé par « 💾 Enregistrer les balayages » (un dossier par session).")
+        b_open = QtWidgets.QPushButton("📂 Ouvrir une session…")
+        b_open.setToolTip("Relit une session enregistrée (proposé à ▶ Démarrer, ou « 💾 Enregistrer les balayages ») :\n"
+                          "spectre, journal et liste de fréquences de ce moment-là.")
         b_open.clicked.connect(lambda *_: self.open_rec())
+        b_last = QtWidgets.QPushButton("🕘 Dernière session")
+        b_last.setToolTip("Rouvre la dernière session enregistrée par cette appli.")
+        b_last.clicked.connect(lambda *_: self.open_rec(owner._last_session or owner._session))
+        b_last.setEnabled(bool(owner._last_session or owner._session))
+        b_exp = QtWidgets.QPushButton("💾 Exporter…")
+        b_exp.setToolTip("Enregistre ce qui est relu (par ex. les 30 dernières minutes en mémoire) comme une session,\n"
+                         "dans le dossier de ton choix : à garder, envoyer, ou rouvrir plus tard.")
+        b_exp.clicked.connect(lambda *_: self.export_session())
         b_mem = QtWidgets.QPushButton("↩ Mémoire en cours")
         b_mem.setToolTip("Les 30 dernières minutes gardées en mémoire par le logiciel.")
         b_mem.clicked.connect(lambda *_: self.use_memory())
         self.ev_combo = QtWidgets.QComboBox()
         self.ev_combo.setMinimumWidth(380)
         self.ev_combo.currentIndexChanged.connect(self.on_event_pick)
-        lay.addLayout(owner._row(self.src_lbl, None, "Aller à :", self.ev_combo, b_open, b_mem))
+        lay.addLayout(owner._row(self.src_lbl, None, "Aller à :", self.ev_combo, b_open, b_last, b_mem, b_exp))
         self.plot = pg.PlotWidget()
         pi = self.plot.getPlotItem()
         pi.showGrid(x=True, y=True, alpha=0.25)
@@ -7082,11 +7470,14 @@ class ReplayDialog(QtWidgets.QDialog):
 
     def use_memory(self):
         self.store = self.owner.store
+        self.sess_watch = self.sess_events = self.sess_path = None
         self.reload()
 
-    def open_rec(self):
-        start = self.owner.log_dir / "enregistrements"
-        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier d'un enregistrement", str(start))
+    def open_rec(self, d=None):
+        if not d:
+            o = self.owner
+            start = o.session_cfg.get("dir") or str(o.log_dir / "enregistrements")
+            d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier d'une session", str(start))
         if not d:
             return
         st = SweepStore(seconds=1e12, max_mb=2500)
@@ -7095,8 +7486,67 @@ class ReplayDialog(QtWidgets.QDialog):
             self.msg.setText(f"Aucun balayage lisible dans « {d} » ({nf} fichier(s) trouvé(s)).")
             return
         self.store = st
-        self.msg.setText(f"Enregistrement chargé : {n} balayages ({nf} tranche(s)).")
+        self.sess_path, self.sess_watch, self.sess_events = Path(d), None, None
+        extra = ""
+        try:
+            meta = json.loads((Path(d) / "session.json").read_text(encoding="utf-8"))
+            if isinstance(meta.get("watch"), list) and meta["watch"]:
+                self.sess_watch = [dict(name=str(w.get("name", "")), freq=float(w["freq"]), thr=w.get("thr"),
+                                        status=w.get("status", "")) for w in meta["watch"] if "freq" in w]
+            show = (meta.get("show") or {}).get("name") or ""
+            extra = f" · {show}" if show else ""
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            rows = session_journal_rows((Path(d) / "journal.csv").read_text(encoding="utf-8-sig"))
+            self.sess_events = [(datetime.strptime(f"{a} {b}", "%Y-%m-%d %H:%M:%S").timestamp(), lab)
+                                for a, b, lab in rows]
+        except Exception:  # noqa: BLE001
+            pass
+        self.msg.setText(f"Session chargée{extra} : {n} balayages ({nf} tranche(s))"
+                         + (f", {len(self.sess_watch)} fréquences" if self.sess_watch else "")
+                         + (f", {len(self.sess_events)} événements du journal" if self.sess_events else "") + ".")
         self.reload()
+
+    def export_session(self):
+        """Enregistre le contenu relu (mémoire ou session ouverte) comme une session, dans le dossier choisi."""
+        sp = self.store.span()
+        if sp is None:
+            self.msg.setText("Rien à exporter : aucun balayage.")
+            return
+        o = self.owner
+        start = o.session_cfg.get("dir") or str(o.log_dir / "enregistrements")
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Exporter la session dans…", str(start))
+        if not d:
+            return
+        name = session_name(datetime.fromtimestamp(sp[0]).strftime("%Y-%m-%d_%H%M") + "_export",
+                            o.show_meta.get("name", ""))
+        try:
+            n = export_store(self.store, Path(d) / name)
+            dst = Path(d) / name
+            if self.sess_path is not None:          # session déjà sur disque : on garde aussi son journal / sa liste
+                import shutil                       # (import local : la V8 l'importe aussi en tête)
+                for fn in ("session.json", "journal.csv"):
+                    if (self.sess_path / fn).exists():
+                        shutil.copy2(self.sess_path / fn, dst / fn)
+            else:
+                o._write_session_json(dst)
+                self._export_journal(dst, sp)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Export impossible :\n{e}")
+            return
+        self.msg.setText(f"💾 {n} balayages exportés dans {dst}")
+
+    def _export_journal(self, dst, sp):
+        t = self.owner.log_table
+        day = datetime.fromtimestamp(sp[0]).strftime("%Y-%m-%d")
+        with open(dst / "journal.csv", "w", newline="", encoding="utf-8-sig") as fh:
+            wr = csv.writer(fh, delimiter=";")
+            wr.writerow(SESSION_JOURNAL_HEAD)
+            for r in range(t.rowCount() - 1, -1, -1):
+                v = [(t.item(r, c).text() if t.item(r, c) else "") for c in range(7)]
+                wr.writerow([day, v[0], v[1], v[2].replace(".", ","), v[3].replace(".", ","), v[4], "", "", "", "",
+                             v[6]])
 
     def fill_events(self):
         """Événements du journal qui tombent dans la période relue (le journal ne garde que l'heure du jour)."""
@@ -7104,6 +7554,12 @@ class ReplayDialog(QtWidgets.QDialog):
         self.ev_combo.clear()
         self.ev_combo.addItem("— événement du journal —", None)
         sp = self.store.span()
+        if self.sess_events is not None:
+            for ep, lab in self.sess_events:
+                if sp[0] - 60 <= ep <= sp[1] + 60:
+                    self.ev_combo.addItem(lab, ep)
+            self.ev_combo.blockSignals(False)
+            return
         t = self.owner.log_table
         day = datetime.fromtimestamp(sp[0]).replace(hour=0, minute=0, second=0, microsecond=0)
         for r in range(t.rowCount() - 1, -1, -1):
@@ -7191,12 +7647,11 @@ class ReplayDialog(QtWidgets.QDialog):
         win = max(0.05, o.win_spin.value() / 1000.0)
         gthr, gweak, weak_on = o.thr_spin.value(), o.weak_spin.value(), o.weak_chk.isChecked()
         rows = []
-        for w in o.watch:
-            if not o.in_scope(w):
-                continue
+        src = self.sess_watch if self.sess_watch is not None else [w for w in o.watch if o.in_scope(w)]
+        for w in src:
             lv = level_at(F, L, w["freq"], win)
             mx = level_at(Fm, Lm, w["freq"], win) if Fm is not None else None
-            thr = w["thr"] if w["thr"] is not None else gthr
+            thr = w["thr"] if w.get("thr") is not None else gthr
             if lv is None:
                 st = "—"
             elif lv >= thr:
@@ -7246,19 +7701,215 @@ def fmt_dur(s, signed=False):
 # --------------------------------------------------------------------------
 def rx_short(key):
     """Nom court d'un profil d'appareil (colonne « Appareil »)."""
-    for k, n, _d, _w in RX_PROFILES:
+    for k, n, _d, _w in rx_all():
         if k == key:
             return n.split(" (")[0].split(" ·")[0]
     return "par défaut"
 
 
 def fill_rx_combo(combo, default_txt):
-    """Profils d'appareil dans une liste : 1er choix = default_txt (donnée ""), explication en bulle."""
+    """Profils d'appareil dans une liste : 1er choix = default_txt (donnée ""), explication en bulle, puis les
+    profils perso (« ✏ … »)."""
+    cur = combo.currentData()
+    combo.blockSignals(True)
+    combo.clear()
     combo.addItem(default_txt, "")
-    for k, n, _d, why in RX_PROFILES:
-        combo.addItem(n, k)
+    for k, n, _d, why in rx_all():
+        combo.addItem(("✏ " + n) if k.startswith("perso_") else n, k)
         combo.setItemData(combo.count() - 1, why, Qt.ItemDataRole.ToolTipRole)
+    ix = combo.findData(cur) if cur else -1
+    combo.setCurrentIndex(max(0, ix))
+    combo.blockSignals(False)
     combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+
+
+def show_filter_help(parent):
+    """Fenêtre « ❓ Le filtre récepteur, c'est quoi ? » (texte + tableau des profils)."""
+    d = QtWidgets.QDialog(parent)
+    d.setWindowTitle("Filtre récepteur et profils d'appareil")
+    v = QtWidgets.QVBoxLayout(d)
+    tb = QtWidgets.QTextBrowser()
+    tb.setHtml(rx_help_html())
+    v.addWidget(tb)
+    b = QtWidgets.QPushButton("Fermer")
+    b.setToolTip("Ferme l'explication.")
+    b.clicked.connect(d.accept)
+    v.addWidget(b, 0, Qt.AlignmentFlag.AlignRight)
+    d.resize(760, 640)
+    d.exec()
+
+
+def filter_help_btn(parent):
+    b = QtWidgets.QPushButton("❓")
+    b.setToolTip("Le filtre récepteur, c'est quoi ? (explication et profils)")
+    b.setMaximumWidth(36)
+    b.clicked.connect(lambda *_: show_filter_help(parent))
+    return b
+
+
+class RxProfileEdit(QtWidgets.QDialog):
+    """Un profil perso : nom, filtre, écart, pas, tolérances, note."""
+
+    def __init__(self, parent, prof):
+        super().__init__(parent)
+        self.setWindowTitle("Profil d'appareil perso")
+        f = QtWidgets.QFormLayout(self)
+        self.name = QtWidgets.QLineEdit(prof.get("name", ""))
+        self.name.setPlaceholderText("ex. Sennheiser EW G4 groupe A")
+        self.name.setToolTip("Nom affiché dans les listes d'appareils.")
+        f.addRow("Nom :", self.name)
+
+        def spin(v, lo, hi, step, suffix, tip, special=None, dec=0):
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(lo, hi)
+            sp.setDecimals(dec)
+            sp.setSingleStep(step)
+            sp.setSuffix(suffix)
+            if special:
+                sp.setSpecialValueText(special)
+            sp.setValue(v)
+            sp.setToolTip(tip)
+            return sp
+        self.filt = spin(prof.get("filt", 16.0), 0, 400, 4, " MHz", "Filtre d'entrée du récepteur (« Filtre » d'EazyRF). "
+                         "0 = aucun : tous les émetteurs comptent.", "aucun")
+        self.sep = spin(prof.get("sep", 0.4) * 1000, 0, 3000, 25, " kHz", "Écart minimal entre deux porteuses "
+                        "(« Séparation » d'EazyRF).")
+        self.step = spin(prof.get("step", 0.025) * 1000, 1, 1000, 5, " kHz", "Pas de réglage de l'appareil "
+                         "(« Incrément » d'EazyRF).")
+        t = prof.get("tol") or _TOL_EZ
+        self.tol = {k: spin(t.get(k, 0.0) * 1000, 0, 2000, 10, " kHz", tip, "ignoré")
+                    for k, tip in (("2tx3", "Tolérance 2 TX (2A − B). 0 = ignoré."),
+                                   ("3tx3", "Tolérance 3 TX (A + B − C). 0 = ignoré."),
+                                   ("5", "Tolérance 5ᵉ ordre. 0 = ignoré."))}
+        f.addRow("Filtre récepteur :", self.filt)
+        f.addRow("Écart mini :", self.sep)
+        f.addRow("Pas :", self.step)
+        f.addRow("2A − B :", self.tol["2tx3"])
+        f.addRow("A + B − C :", self.tol["3tx3"])
+        f.addRow("5ᵉ ordre :", self.tol["5"])
+        self.note = QtWidgets.QLineEdit(prof.get("note", ""))
+        self.note.setPlaceholderText("ex. valeurs de mon profil EazyRF")
+        self.note.setToolTip("Note affichée en bulle dans les listes.")
+        f.addRow("Note :", self.note)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        f.addRow(bb)
+
+    def value(self, key=""):
+        return dict(key=key, name=self.name.text().strip() or "Mon appareil", filt=self.filt.value(),
+                    sep=self.sep.value() / 1000.0, step=self.step.value() / 1000.0,
+                    tol={k: sp.value() / 1000.0 for k, sp in self.tol.items()},
+                    note=self.note.text().strip() or "Profil perso.")
+
+
+class RxProfilesDialog(QtWidgets.QDialog):
+    """Tous les profils d'appareil : intégrés (lecture seule) et perso (créer, copier, modifier, supprimer)."""
+    COLS = ["Appareil", "Filtre", "Écart", "Pas", "2A − B", "A + B − C", "5ᵉ", "Source"]
+
+    def __init__(self, owner, current=None):
+        super().__init__(owner)
+        self.owner, self.current = owner, current
+        self.setWindowTitle("Profils d'appareil (filtre, écart, pas, tolérances)")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Profils intégrés en lecture seule ; « ＋ Nouveau » copie la ligne choisie (ou tes "
+                                "réglages actuels) dans un profil perso modifiable. Les profils perso sont gardés "
+                                "dans ta config et dans tes shows.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 2)
+        lay.addWidget(info)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Double-clic sur un profil perso : le modifier.")
+        self.table.cellDoubleClicked.connect(lambda *_: self.edit())
+        lay.addWidget(self.table, 1)
+        b_new = QtWidgets.QPushButton("＋ Nouveau (copie de la ligne)")
+        b_new.setToolTip("Crée un profil perso à partir du profil choisi (ou d'une base 16 MHz si rien n'est choisi).")
+        b_new.clicked.connect(lambda *_: self.new())
+        b_cur = QtWidgets.QPushButton("＋ Depuis les réglages actuels")
+        b_cur.setToolTip("Crée un profil perso avec l'écart, le filtre, le pas et les tolérances de la fenêtre "
+                         "« Vérifier le plan ».")
+        b_cur.clicked.connect(lambda *_: self.new(self.current))
+        b_cur.setEnabled(current is not None)
+        b_edit = QtWidgets.QPushButton("✏ Modifier")
+        b_edit.setToolTip("Modifie le profil perso choisi.")
+        b_edit.clicked.connect(lambda *_: self.edit())
+        b_del = QtWidgets.QPushButton("🗑 Supprimer")
+        b_del.setToolTip("Supprime le profil perso choisi (les fréquences qui l'utilisaient repassent « par défaut »).")
+        b_del.clicked.connect(lambda *_: self.delete())
+        b_help = QtWidgets.QPushButton("❓ Le filtre, c'est quoi ?")
+        b_help.setToolTip("Explication du filtre récepteur et de chaque réglage.")
+        b_help.clicked.connect(lambda *_: show_filter_help(self))
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.accept)
+        lay.addLayout(owner._row(b_new, b_cur, b_edit, b_del, None, b_help, close))
+        self.resize(900, 520)
+        self.refresh()
+
+    def refresh(self):
+        allp = rx_all()
+        self.table.setRowCount(len(allp))
+        for r, (k, n, d, why) in enumerate(allp):
+            vals = (("✏ " + n) if k.startswith("perso_") else n, f"{d['filt']:g} MHz" if d["filt"] else "aucun",
+                    f"{d['sep'] * 1000:.0f} kHz", f"{d['step'] * 1000:g} kHz",
+                    *[(f"±{d['tol'][t] * 1000:.0f}" if d["tol"].get(t) else "ignoré") for t in ("2tx3", "3tx3", "5")],
+                    RX_SRC_TXT.get(d.get("src"), ""))
+            for c, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                it.setToolTip(why)
+                it.setData(Qt.ItemDataRole.UserRole, k)
+                self.table.setItem(r, c, it)
+        self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+
+    def _key(self):
+        r = self.table.currentRow()
+        it = self.table.item(r, 0) if r >= 0 else None
+        return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+
+    def _save(self, lst):
+        rx_set_custom(lst)
+        self.refresh()
+        self.owner.rx_profiles_changed()
+
+    def new(self, base=None):
+        if base is None:
+            d = rx_profile(self._key()) or dict(filt=16.0, sep=0.4, step=0.025, tol=dict(_TOL_EZ))
+            name = rx_short(self._key()) + " (perso)" if self._key() else ""
+            base = dict(d, name=name)
+        dlg = RxProfileEdit(self, base)
+        if dlg.exec():
+            lst = rx_custom_dump()
+            lst.append(dlg.value(""))
+            self._save(lst)
+
+    def edit(self):
+        k = self._key()
+        lst = rx_custom_dump()
+        i = next((i for i, p in enumerate(lst) if p["key"] == k), None)
+        if i is None:
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Les profils intégrés ne se modifient pas : "
+                                              "« ＋ Nouveau » en fait une copie perso modifiable.")
+            return
+        dlg = RxProfileEdit(self, lst[i])
+        if dlg.exec():
+            lst[i] = dlg.value(k)
+            self._save(lst)
+
+    def delete(self):
+        k = self._key()
+        lst = rx_custom_dump()
+        if not any(p["key"] == k for p in lst):
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Seuls les profils perso se suppriment.")
+            return
+        self._save([p for p in lst if p["key"] != k])
 
 
 class PlanCheckDialog(QtWidgets.QDialog):
@@ -7351,7 +8002,13 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.go_btn = QtWidgets.QPushButton("🧮 Vérifier")
         self.go_btn.setToolTip("Calcule la compatibilité de tout le plan.")
         self.go_btn.clicked.connect(lambda *_: self.compute())
-        lay.addLayout(R(self.src_combo, "Appareil par défaut :", self.prof_combo, None, self.go_btn))
+        b_prof = QtWidgets.QPushButton("✏ Mes profils…")
+        b_prof.setToolTip("Tous les profils d'appareil, et tes profils perso (ton filtre, ton écart, tes tolérances).")
+        b_prof.clicked.connect(lambda *_: self.edit_profiles())
+        b_help = QtWidgets.QPushButton("❓ Le filtre ?")
+        b_help.setToolTip("Le filtre récepteur, c'est quoi, et pourquoi il change le calcul d'intermod.")
+        b_help.clicked.connect(lambda *_: show_filter_help(self))
+        lay.addLayout(R(self.src_combo, "Appareil par défaut :", self.prof_combo, b_prof, b_help, None, self.go_btn))
         lay.addLayout(R("Règles :", self.tol_combo, None))
         lay.addLayout(R("Écart mini :", self.sep_spin, "Filtre récepteur :", self.filt_spin, "Pas :", self.step_spin,
                         None))
@@ -7429,6 +8086,16 @@ class PlanCheckDialog(QtWidgets.QDialog):
             self._applying = False
         self._filling = False
         self._explain()
+
+    def edit_profiles(self):
+        cur = dict(name="", sep=self.sep_spin.value() / 1000.0, filt=self.filt_spin.value(),
+                   step=self.step_spin.value() / 1000.0, tol=self.tolerances())
+        RxProfilesDialog(self.owner, cur).exec()
+
+    def refill_profiles(self):
+        fill_rx_combo(self.prof_combo, "✏ Réglages ci-dessous")
+        fill_rx_combo(self.rx_combo, "par défaut (appareil ci-dessus)")
+        self.compute()
 
     def _prof_touched(self):
         if not getattr(self, "_filling", False) and self.prof_combo.currentData():
@@ -9356,6 +10023,135 @@ class LevelSpin(QtWidgets.QDoubleSpinBox):
         self.lineEdit().setText(self.textFromValue(self.value()))
 
 
+class SpectrumLegendDialog(QtWidgets.QDialog):
+    """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
+    deux sens aux réglages de la fenêtre principale)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Le spectre : courbes, seuils et repères")
+        th = o.theme
+        lay = QtWidgets.QVBoxLayout(self)
+        grid = QtWidgets.QGridLayout()
+        grid.setColumnStretch(2, 1)
+        lay.addLayout(grid)
+        self._links = []
+
+        def swatch(color, style="━━━"):
+            lb = QtWidgets.QLabel(style)
+            lb.setStyleSheet(f"color:{color}; font-weight:bold; font-size:16px;")
+            lb.setToolTip("Couleur à l'écran (modifiable : ☰ Plus › 🎨 Couleurs).")
+            return lb
+
+        def text(t):
+            lb = QtWidgets.QLabel(t)
+            lb.setWordWrap(True)
+            lb.setMinimumWidth(380)
+            return lb
+
+        def lspin(main):
+            sp = LevelSpin()
+            sp.setRange(main.minimum(), main.maximum())
+            sp.setSingleStep(main.singleStep())
+            sp.setValue(main.value())
+            sp.setToolTip(main.toolTip() or "Même réglage que dans la fenêtre principale.")
+            self._link(sp, main)
+            return sp
+
+        def lchk(main, txt):
+            c = QtWidgets.QCheckBox(txt)
+            c.setChecked(main.isChecked())
+            c.setToolTip(main.toolTip() or "Même case que dans la fenêtre principale.")
+            c.toggled.connect(lambda *_: main.setChecked(c.isChecked()))
+            main.toggled.connect(lambda *_: (c.blockSignals(True), c.setChecked(main.isChecked()), c.blockSignals(False)))
+            return c
+
+        def btn(txt, fn, tip):
+            b = QtWidgets.QPushButton(txt)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda *_: fn())
+            return b
+
+        def ctrls(*ws):
+            w = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            for x in ws:
+                h.addWidget(x)
+            h.addStretch(1)
+            return w
+
+        rows = [
+            (swatch(th["curve"]), "Direct",
+             "Le dernier balayage : le niveau reçu à chaque fréquence, en dBm. Le « tapis » du bas est le bruit de "
+             "fond (le tinySA + le lieu) ; une bosse qui sort du tapis = un émetteur.",
+             None),
+            (swatch(th["maxhold"]), "Max hold",
+             "Le plus haut niveau vu à chaque fréquence depuis le dernier « Reset max » : garde la trace des "
+             "signaux brefs ou intermittents (talkie, burst, brouilleur qui passe).",
+             ctrls(lchk(o.hold_chk, "Afficher"), btn("Reset max", o.reset_max, "Efface le max hold."))),
+            (swatch(th["ref"], "┅┅┅"), "Référence",
+             "Le spectre « calme » du lieu, capturé avant le show (📏 Référence › Capturer). Sert à voir ce qui a "
+             "changé, et au seuil « sur référence » (mode expert).",
+             ctrls(lchk(o.showref_chk, "Afficher"),
+                   btn("Capturer (max hold)", lambda: o.capture_ref("max"), "Enregistre le max hold comme référence."))),
+            (swatch(th["thr"], "╍╍╍"), "Seuil « occupé »",
+             "Au-dessus = la fréquence est occupée : CONFLIT si elle doit rester libre, « OK » si elle doit "
+             "émettre. Ligne déplaçable à la souris sur le spectre. Règle-le quelques dB au-dessus du tapis "
+             "(« Auto » le fait d'après le bruit mesuré).",
+             ctrls(lspin(o.thr_spin))),
+            (swatch(th["thr_weak"], "┈┈┈"), "Niveau « faible »",
+             "Entre ce niveau et le seuil occupé : signal faible (micro loin, pile faible, porteuse lointaine). "
+             "Ne déclenche pas de CONFLIT, mais s'affiche en jaune.",
+             ctrls(lchk(o.weak_chk, "Actif"), lspin(o.weak_spin))),
+            (swatch("#b06cff", "━·━"), "Trop fort",
+             "Au-dessus : alarme ⚠ TROP FORT. Un signal très fort (talkie collé à une antenne, émetteur trop "
+             "près) sature les récepteurs et fabrique de l'intermod. Le tinySA lui-même sature vers −10 dBm.",
+             ctrls(lchk(o.strong_chk, "Actif"), lspin(o.strong_spin))),
+            (swatch(th["st_free"], "┃"), "Repères",
+             "Un trait vertical par fréquence de ta liste, coloré selon l'état du signal (vert = OK, bleu = libre, "
+             "rouge = problème, jaune = faible). Pointillés = signal inconnu hors liste.",
+             ctrls(btn("📍 Repères…", lambda: o.mk_menu.exec(QtGui.QCursor.pos()), "Quels repères afficher."))),
+            (swatch("#64748b", "▬▬"), "Bandeaux du bas",
+             "Canaux TV et attributions du pays (TNT, 4G/5G, aéro…) : survole-les pour le détail. Indicatif.",
+             None),
+        ]
+        for r, (sw, name, expl, ctl) in enumerate(rows):
+            nm = QtWidgets.QLabel(f"<b>{name}</b>")
+            grid.addWidget(sw, r, 0, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(nm, r, 1, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(text(expl), r, 2)
+            if ctl is not None:
+                grid.addWidget(ctl, r, 3, Qt.AlignmentFlag.AlignTop)
+        rf = QtWidgets.QLabel(
+            "<b>Pour aller plus loin (RF)</b><br>"
+            "• <b>dBm</b> : puissance reçue, échelle logarithmique ; +3 dB = deux fois plus, +10 dB = dix fois plus. "
+            "Un micro à 10 m donne typiquement −40 à −60 dBm, le bruit de fond est vers −100.<br>"
+            "• <b>RBW</b> (largeur de résolution, mode expert) : la « finesse » du tinySA. RBW large = balayage "
+            "rapide mais tapis plus haut et signaux proches fusionnés ; RBW étroit = tapis plus bas, plus lent.<br>"
+            "• Un émetteur <b>numérique</b> ou un bloc large (Spectera) ressemble à un plateau, pas à une pointe.<br>"
+            "• Le niveau dépend de l'antenne, du câble, de la distance et de l'atténuateur : compare des mesures "
+            "faites avec le même montage.")
+        rf.setWordWrap(True)
+        rf.setMinimumHeight(rf.fontMetrics().height() * 7)
+        lay.addWidget(rf)
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre (les réglages sont déjà appliqués).")
+        close.clicked.connect(self.close)
+        lay.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
+        self.resize(900, 640)
+
+    def _link(self, sp, main):
+        sp.valueChanged.connect(lambda v: main.setValue(v))
+
+        def back(*_):
+            sp.blockSignals(True)
+            sp.setValue(main.value())
+            sp.blockSignals(False)
+        main.valueChanged.connect(back)
+
+
 class LevelAxis(pg.AxisItem):
     """Axe vertical du spectre gradué dans l'unité choisie (les courbes restent en dBm)."""
     unit = "dbm"
@@ -9951,12 +10747,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarms = AlarmBook()
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
+        self.session_cfg = dict(SESSION_DEFAULT)
+        self.log_kinds = log_kinds_norm(None)
+        self._session = None                     # dossier de la session enregistrée en cours
+        self._last_session = None
         self._t_start = None
         self.report_prefs, self.export_list_prefs = {}, {}
         self.vocab_user = dict(name=[], scene=[], group=[])
         self.docks, self._state_restored = [], False
         self.statuses = [dict(name=n, color=c, free=(n == "Libre"), on=(n == "En service")) for n, c in DEFAULT_STATUSES]
-        self.theme = dict(THEMES["Sombre"])
+        self.theme = dict(THEMES[DEFAULT_THEME])
         self.country, self.plan_custom = "FR", {}
         self.plan, self.tv = [], []
         self._strip_rects, self._strip_labels = [], []
@@ -9990,14 +10790,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_path = ""
         self.recent_shows = []
         self.notify_cfg = dict(mode="off", service="ntfy", server="https://ntfy.sh", topic="", tg_token="",
-                               tg_chat="", site="")
+                               tg_chat="", site="", lang="app")
         self.notifier = None
         self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
         self.web_cfg = dict(on=False, port=WEB_PORT, pin="", password="", views=web_views_norm(None))
         self._web_spec = b'{"t":0,"bands":[]}'
         self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self.web = None
-        self._web_json = b"{}"
+        self._web_json = {"fr": b"{}", "en": b"{}"}
         self.view_id = -1
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
@@ -10156,12 +10956,16 @@ class MainWindow(QtWidgets.QMainWindow):
         "🗑 Effacer les terminées": "Retire de la liste les alarmes terminées (le journal les garde).",
     }
 
+    EXTRA_MENUS = []          # [(titre, [(texte, nom de méthode)])] : sous-menus ajoutés au ☰ Plus (V8 : SDR)
+
     TIPS_MENU = {
         "📖 Manuel": "Le manuel complet (s'ouvre dans ton navigateur, marche hors ligne).",
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
         "🧮 Vérifier le plan": "Comme EazyRF : écart entre porteuses et intermod selon des tolérances, un verdict\n"
                                "par fréquence, et une fréquence de remplacement compatible.",
+        "🎛 Profils d'appareil": "Filtre récepteur, écart, pas et tolérances par appareil (Wisycom, Shure, Sennheiser…),\n"
+                                "et tes profils perso. ❓ explique ce que change le filtre.",
         "⚡ Intermodulation": "Produits d'intermodulation de tes émetteurs (2 / 3 / 5 TX) : ce qui retombe sur tes\n"
                              "fréquences, ou d'où peut venir un signal inconnu.",
         "🆘 Fréquence de secours": "Propose des fréquences libres d'après le spectre mesuré, sans intermod avec ta liste.",
@@ -10185,6 +10989,16 @@ class MainWindow(QtWidgets.QMainWindow):
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
+        "📐 Plan de fréquences": "Préparer : vérifier le plan (comme EazyRF), intermodulation, profils d'appareil,\n"
+                                "blocs Spectera / WMAS.",
+        "📋 Liste de fréquences": "Nommer, numéroter, vocabulaire, exporter la liste par scène / groupe.",
+        "📊 Scans et rapports": "Rapport de show, scans WSM / WWB (référence, conversion, export).",
+        "🔗 Connexions": "Alertes téléphone et page web, relais réseau (2ᵉ tinySA), diagnostic.",
+        "🎨 Apparence": "Couleurs et thèmes, statuts, mots de la colonne Signal, langue.",
+        "🎨 Couleurs": "Thèmes (Sombre doux, Nord, Daltonien…) et chaque couleur à la main.",
+        "🏷 Statuts": "Tes statuts (Libre, En service…) : couleur, « doit rester libre » / « doit émettre ».",
+        "🌐 Langue": "Français / English (appliqué au redémarrage).",
+        "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
 
     def _install_tips(self):
@@ -10217,7 +11031,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     a_.setToolTip(tip)
                     a_.setStatusTip(tip.split("\n")[0])
 
-    SECTIONS_OPEN = dict(detect=True, bands=True, measure=False, dev2=False, country=False)
+    SECTIONS_OPEN = dict(detect=True, alarms=True, bands=True, measure=False, dev2=False, country=False)
 
     def _section(self, key, box):
         """Groupe de réglages repliable : un bouton-titre (▾ / ▸) au-dessus du contenu."""
@@ -10332,37 +11146,15 @@ class MainWindow(QtWidgets.QMainWindow):
         tools_btn = QtWidgets.QPushButton("🔧 Outils")
         tools_btn.setToolTip("Intermodulation, fréquence de secours, relecture, rapport, scans WSM/WWB, export par scène, "
                              "nommage rapide, vocabulaire.")
-        tmenu = QtWidgets.QMenu(tools_btn)
-        for txt, fn in (("🎤 Appel des micros (line check)…  Ctrl+L", lambda *_: self.open_linecheck()),
-                        (None, None),
-                        ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
-                        ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
-                        ("🆘 Fréquence de secours…", lambda *_: self.open_rescue()),
-                        (None, None),
-                        ("⏪ Relecture : revoir le spectre…", lambda *_: self.open_replay()),
-                        ("📄 Rapport de show…", lambda *_: self.make_report()),
-                        ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene()),
-                        (None, None),
-                        ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
-                        ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert()),
-                        (None, None),
-                        ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
-                        ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
-                        ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
-                        (None, None),
-                        ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
-                        ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag()),
-                        ("📡 Réglages SDR (HackRF, RTL-SDR)…", lambda *_: self.open_sdr()),
-                        ("🎧 Écouter avec le SDR…", lambda *_: self.open_listen()),
-                        ("⏱ Temps réel avec le SDR…", lambda *_: self.open_realtime()),
-                        ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
-                        (None, None),
-                        ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())):
-            if txt is None:
-                tmenu.addSeparator()
-            else:
-                tmenu.addAction(txt).triggered.connect(fn)
-        tools_btn.setMenu(tmenu)
+        def submenu(parent, title, items):
+            sm = parent.addMenu(title)
+            for txt, fn in items:
+                if txt is None:
+                    sm.addSeparator()
+                else:
+                    sm.addAction(txt).triggered.connect(fn)
+            return sm
+
         win_btn = QtWidgets.QPushButton("🪟 Fenêtres")
         win_btn.setToolTip("Affiche / cache / détache les panneaux, dispositions prêtes à l'emploi (double écran…).\n"
                            "Tu peux aussi attraper un panneau par sa barre de titre et le poser où tu veux.")
@@ -10372,26 +11164,51 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_btn.setToolTip("Alarmes : conflits (signal sur une fréquence « doit rester libre ») et émetteurs "
                                   "absents (« doit émettre »).\nRouge = à acquitter · orange = acquittées, toujours là.")
         self.alarm_btn.clicked.connect(lambda *_: self.toggle_alarm_dock())
-        # barre du haut épurée : l'essentiel visible, le reste dans « ☰ Plus »
+        # barre du haut épurée : l'essentiel visible, le reste dans « ☰ Plus », rangé par moment du travail
+        # (7.12, Clément : « ranger de façon logique, intuitive et efficace ») : pendant le show en haut,
+        # préparer / après le show / connexions / apparence en sous-menus, aide en bas.
         more_btn = QtWidgets.QPushButton("☰ Plus")
-        more_btn.setToolTip("Outils (intermodulation, secours, relecture, rapport, scans WSM/WWB…), fenêtres et\n"
-                            "dispositions, mur de fréquences, couleurs, statuts, mode simple / expert.")
+        more_btn.setToolTip("Pendant le show (appel des micros, mur, relecture), préparer le plan, après le show,\n"
+                            "connexions (alertes, relais), fenêtres, apparence, mode expert, manuel.")
         self.more_menu = QtWidgets.QMenu(more_btn)
         more_btn.setMenu(self.more_menu)
-        tmenu.setTitle("🔧 Outils")
+        mm = self.more_menu
+        mm.addSection("Pendant le show")
+        mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
+        mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
+        mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
+        mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
+        mm.addSection("Préparer et analyser")
+        tmenu = submenu(mm, "📐 Plan de fréquences", (
+            ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
+            ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
+            ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
+            (None, None),
+            ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
+        submenu(mm, "📋 Liste de fréquences", (
+            ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
+            ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
+            ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
+            (None, None),
+            ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene())))
+        submenu(mm, "📊 Scans et rapports", (
+            ("📄 Rapport de show…", lambda *_: self.make_report()),
+            ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
+            ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert())))
+        submenu(mm, "🔗 Connexions", (
+            ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
+            ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
+            ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag())))
+        for title, items in self.EXTRA_MENUS:      # sous-menus ajoutés par une autre version (V8 : SDR)
+            submenu(mm, title, [(t, (lambda *_, n=n: getattr(self, n)())) for t, n in items])
+        mm.addSection("Affichage")
         self.win_menu.setTitle("🪟 Fenêtres et dispositions")
-        self.more_menu.addMenu(tmenu)
-        self.more_menu.addMenu(self.win_menu)
-        self.more_menu.addSeparator()
-        self.more_menu.addAction("🎤 Appel des micros (line check)…").triggered.connect(lambda *_: self.open_linecheck())
-        self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
-        self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
-        self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
-        self.more_menu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(
-            lambda *_: self.edit_labels())
-        self.more_menu.addSeparator()
-        self.more_menu.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
-        self.lang_menu = self.more_menu.addMenu("🌐 Langue / Language")
+        mm.addMenu(self.win_menu)
+        amenu = mm.addMenu("🎨 Apparence et langue")
+        amenu.addAction("🎨 Couleurs et thèmes…").triggered.connect(lambda *_: self.edit_colors())
+        amenu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
+        amenu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(lambda *_: self.edit_labels())
+        self.lang_menu = amenu.addMenu("🌐 Langue / Language")
         grp_l = QtGui.QActionGroup(self.lang_menu)
         for code, lname in LANGS:
             a_ = self.lang_menu.addAction(lname)
@@ -10399,7 +11216,11 @@ class MainWindow(QtWidgets.QMainWindow):
             a_.setChecked(code == self.lang)
             grp_l.addAction(a_)
             a_.triggered.connect(lambda *_, c=code: self.set_language(c))
-        self.more_menu.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
+        tools_btn.setMenu(tmenu)
+        mm.addSection("Aide")
+        mm.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
+        mm.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
+        mm.addSeparator()
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
         self.expert_act.setCheckable(True)
         self.expert_act.triggered.connect(lambda *_: self.set_expert(self.expert_act.isChecked()))
@@ -10419,6 +11240,21 @@ class MainWindow(QtWidgets.QMainWindow):
         for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn):
             tb.addWidget(wd)
             tb.addSeparator()
+        # accès direct (7.12, Clément : « tout sous la main, rapide ») : les outils du show en un clic
+        self.quick_btns = []
+        for icon, tip, fn in (("🎤", "Appel des micros (line check) — Ctrl+L", self.open_linecheck),
+                              ("🧱", "Mur de fréquences (2ᵉ écran)", self.open_wall),
+                              ("⏪", "Relecture : revoir le spectre ou une session enregistrée", self.open_replay),
+                              ("🧮", "Vérifier le plan de fréquences (comme EazyRF)", self.open_plan_check),
+                              ("⚡", "Intermodulation : qui tombe sur quoi, d'où vient un signal", self.open_intermod),
+                              ("📣", "Alertes téléphone et page web de l'équipe", self.open_alerts)):
+            qb = QtWidgets.QToolButton()
+            qb.setText(icon)
+            qb.setToolTip(tip)
+            qb.setAutoRaise(True)
+            qb.clicked.connect(lambda *_, fn=fn: fn())
+            tb.addWidget(qb)
+            self.quick_btns.append(qb)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
         self.cmd_bar = tb
 
@@ -10518,7 +11354,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.absent_spin.setSuffix(" s")
         self.absent_spin.setToolTip("Une fréquence au statut « Doit émettre » sans signal pendant ce délai déclenche\n"
                                     "⚠ ABSENT (micro éteint, pile vide, TX coupé…). Jamais moins de 2 cycles de balayage.")
-        dbox = QtWidgets.QGroupBox("Détection")
+        dbox = QtWidgets.QGroupBox("Seuils : quand est-ce occupé ?")
         dform = QtWidgets.QFormLayout(dbox)
         self.unit_combo = self._combo([(t, k) for k, t in LEVEL_UNITS], "dbm")
         self.unit_combo.setToolTip("Unité des niveaux partout (seuils, liste, mur, spectre, alarmes, page web).\n"
@@ -10533,7 +11369,9 @@ class MainWindow(QtWidgets.QMainWindow):
         dform.addRow("", self.ref_margin)
         dform.addRow("Fenêtre :", self.win_spin)
         dform.addRow("Occupation sur :", self.occ_combo)
-        dform.addRow("TX absent après :", self.absent_spin)
+        abox = QtWidgets.QGroupBox("Alarmes")
+        aform = QtWidgets.QFormLayout(abox)
+        aform.addRow("TX absent après :", self.absent_spin)
         self.strong_chk = QtWidgets.QCheckBox("Alerte « trop fort » au-dessus de")
         self.strong_chk.setChecked(True)
         self.strong_chk.setToolTip(
@@ -10546,10 +11384,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strong_spin.setToolTip(self.strong_chk.toolTip())
         for w_ in (self.strong_chk, self.strong_spin):
             (w_.toggled if w_ is self.strong_chk else w_.valueChanged).connect(lambda *_: self._strong_changed())
-        dform.addRow(self.strong_chk)
-        dform.addRow("", self.strong_spin)
-        dform.addRow(self.alert_chk)
-        dform.addRow(self.unk_chk)
+        aform.addRow(self.strong_chk)
+        aform.addRow("", self.strong_spin)
+        aform.addRow(self.alert_chk)
+        aform.addRow(self.unk_chk)
+        b_logwhat = QtWidgets.QPushButton("📝 Quoi noter au journal…")
+        b_logwhat.setToolTip("Les types d'événements notés au journal (onglet Journal).")
+        b_logwhat.clicked.connect(lambda *_: self.logwhat_menu.exec(QtGui.QCursor.pos()))
+        aform.addRow(b_logwhat)
 
         self.country_combo = self._combo([(name, code) for code, name in COUNTRIES], "FR")
         self.country_combo.currentIndexChanged.connect(self.on_country)
@@ -10623,14 +11465,14 @@ class MainWindow(QtWidgets.QMainWindow):
         lv.addWidget(self.expert_hint)
         self.sections = {}
         dev2_box = self._build_dev2_box()
-        for key, box, stretch in (("detect", dbox, 0), ("bands", bbox, 1), ("measure", mbox, 0),
+        for key, box, stretch in (("detect", dbox, 0), ("alarms", abox, 0), ("bands", bbox, 1), ("measure", mbox, 0),
                                   ("dev2", dev2_box, 0), ("country", pbox, 0)):
             lv.addWidget(self._section(key, box), stretch)
         lv.addStretch(0)
         self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo,
                                                    self.att_combo, self.offset_spin, self.seg_combo, self.baud_combo)]
-        self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo,
-                                                   self.unk_chk)]
+        self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo)]
+        self._expert_rows += [(aform, self.unk_chk)]
         self._expert_rows += [(self._dev2_form, w_) for w_ in (self.dev2_off, self.calib_btn, self.relay_btn)]
         self._expert_rows += [(pform, plan_btn)]
         left = QtWidgets.QScrollArea()
@@ -10672,6 +11514,10 @@ class MainWindow(QtWidgets.QMainWindow):
         reset_btn.clicked.connect(self.reset_max)
         cap_btn = QtWidgets.QPushButton("📷 Capture")
         cap_btn.clicked.connect(self.capture)
+        self.legend_btn = QtWidgets.QPushButton("❓ Courbes")
+        self.legend_btn.setToolTip("Ce que montre chaque courbe et ligne du spectre (direct, max hold, référence, "
+                                   "seuils, trop fort, repères) et leurs réglages.")
+        self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
         ref_btn = QtWidgets.QPushButton("📏 Référence")
         ref_btn.setToolTip("Courbe de référence (spectre calme / bruit de fond du lieu), affichée en pointillés.")
         rmenu = QtWidgets.QMenu(ref_btn)
@@ -10782,7 +11628,7 @@ class MainWindow(QtWidgets.QMainWindow):
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
         cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
-                                self.persist_combo, reset_btn, cap_btn, self.readout))
+                                self.persist_combo, reset_btn, cap_btn, self.legend_btn, self.readout))
         self.ref_row = QtWidgets.QWidget()
         rl = self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -10960,7 +11806,23 @@ class MainWindow(QtWidgets.QMainWindow):
         b_pick.clicked.connect(self.pick_log_dir)
         self.logdir_lbl = QtWidgets.QLabel(str(self.log_dir))
         self.logdir_lbl.setWordWrap(True)
+        self.logwhat_btn = QtWidgets.QToolButton()
+        self.logwhat_btn.setText("📝 Quoi noter…")
+        self.logwhat_btn.setToolTip("Choisis ce qui est noté au journal (tableau, CSV du jour, session enregistrée).\n"
+                                    "Les alarmes sonnent quand même : seul le journal est filtré.")
+        self.logwhat_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.logwhat_menu = QtWidgets.QMenu(self.logwhat_btn)
+        self.logwhat_menu.setToolTipsVisible(True)
+        self._logwhat_acts = {}
+        for k, txt in LOG_KINDS:
+            a_ = self.logwhat_menu.addAction(txt)
+            a_.setCheckable(True)
+            a_.setChecked(True)
+            a_.toggled.connect(lambda *_, k=k, a_=a_: self.log_kinds.__setitem__(k, a_.isChecked()))
+            self._logwhat_acts[k] = a_
+        self.logwhat_btn.setMenu(self.logwhat_menu)
         lg.addWidget(self.autolog_chk)
+        lg.addWidget(self.logwhat_btn)
         lg.addLayout(self._row(b_dir, b_pick, None))
         lg.addWidget(self.logdir_lbl)
         self.rec_chk = QtWidgets.QCheckBox("💾 Enregistrer les balayages")
@@ -10970,7 +11832,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rec_chk.toggled.connect(self.toggle_rec)
         self.rec_lbl = QtWidgets.QLabel("")
         self.rec_lbl.setWordWrap(True)
+        self.sess_ask_chk = QtWidgets.QCheckBox("Demander à chaque démarrage")
+        self.sess_ask_chk.setChecked(True)
+        self.sess_ask_chk.setToolTip("À chaque démarrage : enregistrer tout le scan (spectre + journal) dans le dossier\n"
+                                     "de ton choix, pour le revoir après le show (⏪ Relecture › 📂 Ouvrir une session).")
+        self.sess_ask_chk.toggled.connect(lambda *_: self.session_cfg.__setitem__("ask", self.sess_ask_chk.isChecked()))
         lg.addWidget(self.rec_chk)
+        lg.addWidget(self.sess_ask_chk)
         lg.addWidget(self.rec_lbl)
         self.log_table = QtWidgets.QTableWidget(0, 7)
         self.log_table.setHorizontalHeaderLabels(["Heure", "Nom", "MHz", "dBm", "Événement", "Scène › Groupe", "Note"])
@@ -11145,6 +12013,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_config(self, data, startup=False):
         """Applique un dictionnaire de réglages (config au démarrage, ou profil d'événement)."""
+        if "rx_custom" in data:                  # profils d'appareil perso (avant la liste : w["rx"] y renvoie)
+            rx_set_custom(data.get("rx_custom"))
         if not startup:
             with self.lock:
                 self.bands.clear()
@@ -11223,7 +12093,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.focus_chk.setChecked(bool(data.get("focus", False)))
         th = data.get("theme")
         if isinstance(th, dict):
-            base = dict(THEMES["Sombre"])
+            base = dict(THEMES[DEFAULT_THEME])
             base.update({k: v for k, v in th.items() if k in base and isinstance(v, str)})
             self.theme = base
 
@@ -11352,6 +12222,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_path = str(data.get("show_path") or "")
             rs = data.get("recent_shows")
             self.recent_shows = [str(x) for x in rs if isinstance(x, str)][:8] if isinstance(rs, list) else []
+            self.session_cfg = session_cfg_norm(data.get("session"))
+            self.log_kinds = log_kinds_norm(data.get("log_kinds"))
+            self._sync_log_menu()
+            if hasattr(self, "sess_ask_chk"):
+                self.sess_ask_chk.blockSignals(True)
+                self.sess_ask_chk.setChecked(self.session_cfg["ask"])
+                self.sess_ask_chk.blockSignals(False)
             self.update_title()
             vu = data.get("vocab")
             if isinstance(vu, dict):
@@ -11386,6 +12263,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     for s in self.scenes],
             scope=[list(k) for k in self.scope] if self.scope else None,
             focus=self.focus_chk.isChecked(),
+            rx_custom=rx_custom_dump(),
             statuses=[dict(name=s["name"], color=s["color"], free=bool(s.get("free")), on=bool(s.get("on")))
                       for s in self.statuses],
             theme=self.theme,
@@ -11421,6 +12299,8 @@ class MainWindow(QtWidgets.QMainWindow):
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
+            data["session"] = dict(self.session_cfg)
+            data["log_kinds"] = dict(self.log_kinds)
             data["lang"] = self.lang
         return data
 
@@ -11653,6 +12533,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if not any(b["enabled"] for b in self.bands):
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Coche au moins une bande à balayer.")
             return
+        if not self._session_prompt():
+            return
         self._read_dev2()
         targets = [(port, "")]
         if self.dev2["on"]:
@@ -11810,6 +12692,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_live = [True, True]
         self.update_dev2_label()
         self.set_status("Arrêté.")
+        if self._session is not None:
+            self._session_end()
 
     # ------------------------------------------------------------ 2ᵉ tinySA
     def _build_dev2_box(self):
@@ -11977,7 +12861,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def send_notify(self, title, body, prio, cfg=None):
         """Met une alerte dans la file d'envoi. -> message d'erreur de réglage, ou "" si c'est parti."""
         c = cfg or self.notify_cfg
-        title, body = TR(title), TR(body)                 # langue de l'interface
+        lang = c.get("lang", "app")                       # langue des alertes : celle de l'appli, ou imposée
+        tr = TR if lang == "app" else (en_translator() if lang == "en" else (lambda x: x))
+        title, body = tr(title), tr(body)
         if c["service"] == "telegram":
             if not c["tg_token"] or not c["tg_chat"]:
                 return "Telegram : jeton du bot et chat id requis."
@@ -12012,12 +12898,14 @@ class MainWindow(QtWidgets.QMainWindow):
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
             thr=round(float(self.thr_spin.value()), 1)))
-        if TR:                                            # page en anglais : les textes d'état aussi
-            for r in st["rows"]:
-                r.update(state_txt=TR(r["state_txt"]), status=TR(r["status"]), alarm=TR(r["alarm"]))
-            for a in st["alarms"]:
-                a.update(kind=TR(a["kind"]), info=TR(a["info"]))
-        return json.dumps(st, ensure_ascii=False).encode("utf-8")
+        out = {"fr": json.dumps(st, ensure_ascii=False).encode("utf-8")}
+        tr = en_translator()                              # chaque personne choisit sa langue sur la page
+        for r in st["rows"]:
+            r.update(state_txt=tr(r["state_txt"]), status=tr(r["status"]), alarm=tr(r["alarm"]))
+        for a in st["alarms"]:
+            a.update(kind=tr(a["kind"]), info=tr(a["info"]))
+        out["en"] = json.dumps(st, ensure_ascii=False).encode("utf-8")
+        return out
 
     def web_spec_json(self):
         """Spectre allégé pour les vues Spectre / Waterfall de la page web (une entrée par bande récente)."""
@@ -12039,8 +12927,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.web = None
         if want and self.web is None:
             self._web_json = self.web_json()
-            ws = WebServer(self.web_cfg["port"], lambda: self._web_json, get_pin=lambda: self.web_cfg.get("pin", ""),
-                           on_ack=self._web_acks.put, get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg)
+            ws = WebServer(self.web_cfg["port"], lambda lang="fr": self._web_json.get(lang, self._web_json["fr"]),
+                           get_pin=lambda: self.web_cfg.get("pin", ""), on_ack=self._web_acks.put,
+                           get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
+                           default_lang=self.lang)
             ws.start()
             ws.ready.wait(3)
             if ws.error:
@@ -13468,6 +14358,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -------------------------------------------------------------- journal
     def log_event(self, w, level, event):
+        if not self.log_kinds.get(log_kind(event), True):
+            return                                # type d'événement décoché dans « 📝 Quoi noter »
         t = self.log_table
         t.insertRow(0)
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
@@ -13478,6 +14370,8 @@ class MainWindow(QtWidgets.QMainWindow):
                else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)                      # fichier : toujours en dBm
+        if self._session is not None:
+            self._session_log(vals, w)
         if w["freq"]:
             vals = list(vals)
             vals[3] = self.lvl(level)
@@ -13488,6 +14382,12 @@ class MainWindow(QtWidgets.QMainWindow):
             t.setItem(0, c, it)
         while t.rowCount() > 2000:
             t.removeRow(t.rowCount() - 1)
+
+    def _sync_log_menu(self):
+        for k, a_ in getattr(self, "_logwhat_acts", {}).items():
+            a_.blockSignals(True)
+            a_.setChecked(self.log_kinds.get(k, True))
+            a_.blockSignals(False)
 
     def on_log_dbl(self, row, col):
         it = self.log_table.item(row, 4)
@@ -14073,6 +14973,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.thr_spin.setValue(round(med + 10.0))
         self.weak_spin.setValue(round(med + 4.0))
 
+    def open_spectrum_legend(self):
+        d = getattr(self, "_legend", None)
+        if d is None:
+            d = self._legend = SpectrumLegendDialog(self)        # gardée (cachée à la fermeture) : ses liens
+        d.show()
+        d.raise_()
+
     def reset_max(self):
         self.maxhold.clear()
         for w in self.watch:
@@ -14535,9 +15442,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 "The language will change at the next start. Restart now?") \
                 != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-        args = sys.argv[1:] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())] + sys.argv[1:]
-        if self.close():
-            QtCore.QProcess.startDetached(sys.executable, args)
+        if self.close() and not restart_app():
+            QtWidgets.QMessageBox.information(None, APP_NAME, "Relance l'appli à la main pour changer de langue.\n"
+                                              "Restart the app by hand to change the language.")
 
     def open_manual(self):
         p_ = self.manual_path()
@@ -14610,6 +15517,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_plan_check(self):
         self._plan_dlg = PlanCheckDialog(self)
         self._plan_dlg.show()
+
+    def rx_profiles_changed(self):
+        """Profils perso modifiés : listes d'appareils rafraîchies, config enregistrée."""
+        d = getattr(self, "_plan_dlg", None)
+        if d is not None:
+            try:
+                d.refill_profiles()
+            except RuntimeError:                 # fenêtre déjà détruite
+                self._plan_dlg = None
+        self._save_config()
+
+    def open_rx_profiles(self):
+        RxProfilesDialog(self).exec()
 
     def open_linecheck(self):
         if self._linecheck is not None:
@@ -15307,6 +16227,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._rec_stop()
 
     def _rec_stop(self):
+        if self._session is not None:            # case décochée pendant une session : la session s'arrête
+            self._session_end(stop_rec=False)
         r, self.recorder = self.recorder, None
         if r is None:
             return
@@ -15317,6 +16239,96 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_replay(self):
         self._replay = ReplayDialog(self)
         self._replay.show()
+
+    # ------------------------------------------------------- sessions enregistrées
+    def session_default_name(self):
+        return session_name(datetime.now().strftime("%Y-%m-%d_%H%M"), self.show_meta.get("name", ""))
+
+    def rec_estimate_txt(self):
+        pts = sum(self._npts(b) for b in self.bands if b.get("enabled"))
+        mb = rec_mb_per_hour(pts, self.last_cycle if self.last_cycle else max(1.0, pts / 2000.0))
+        return f"≈ {mb:.0f} Mo par heure" if mb else ""
+
+    def _session_prompt(self):
+        """Avant ▶ Démarrer. -> False si l'utilisateur annule."""
+        if self.recorder is not None:
+            return True                          # « 💾 Enregistrer les balayages » déjà coché à la main
+        c = self.session_cfg
+        name = self.session_default_name()
+        if c.get("ask", True):
+            d = SessionDialog(self)
+            if not d.exec():
+                return False
+            c.update(rec=d.rec, dir=d.dir_edit.text().strip(), ask=not d.never.isChecked())
+            name = session_name(d.name_edit.text().strip() or name)
+            self.sess_ask_chk.blockSignals(True)
+            self.sess_ask_chk.setChecked(c["ask"])
+            self.sess_ask_chk.blockSignals(False)
+        if c.get("rec"):
+            self._session_begin(Path(c.get("dir") or (self.log_dir / "enregistrements")) / name)
+        return True
+
+    def _session_meta(self, end=None):
+        cfg = self._collect_config(full=False)
+        return dict(app=APP_NAME, version=APP_VER, start=self._session_t0, end=end,
+                    show=dict(self.show_meta), watch=cfg.get("watch", []), bands=cfg.get("bands", []),
+                    statuses=cfg.get("statuses", []), scenes=cfg.get("scenes", []),
+                    thr=round(float(self.thr_spin.value()), 1))
+
+    def _write_session_json(self, path, end=None):
+        try:
+            (Path(path) / "session.json").write_text(
+                json.dumps(self._session_meta(end), ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"⚠ Session : {e}")
+
+    def _session_begin(self, path):
+        base, k = Path(path), 2
+        while base.exists() and any(base.iterdir()):
+            base = Path(f"{path}_{k}")
+            k += 1
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Dossier de session impossible à créer :\n{e}\n\n"
+                                          "Le scan démarre sans enregistrement.")
+            return
+        self._session, self._session_t0 = base, datetime.now().isoformat(timespec="seconds")
+        self._write_session_json(base)
+        self.recorder = SweepRecorder(base)
+        self.rec_chk.blockSignals(True)
+        self.rec_chk.setChecked(True)
+        self.rec_chk.blockSignals(False)
+        self.rec_lbl.setText(f"💾 Session → {base}")
+        self.set_status(f"💾 Session enregistrée dans {base}")
+
+    def _session_log(self, vals, w):
+        p = self._session / "journal.csv"
+        try:
+            new = not p.exists()
+            with open(p, "a", newline="", encoding="utf-8-sig" if new else "utf-8") as fh:
+                wr = csv.writer(fh, delimiter=";")
+                if new:
+                    wr.writerow(SESSION_JOURNAL_HEAD)
+                wr.writerow([datetime.now().strftime("%Y-%m-%d"), vals[0], vals[1], vals[2].replace(".", ","),
+                             vals[3].replace(".", ","), vals[4], w.get("status", ""), w.get("scene", ""),
+                             w.get("group", ""), w.get("band", ""), vals[6] if len(vals) > 6 else ""])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _session_end(self, stop_rec=True):
+        path, self._session = self._session, None
+        if path is None:
+            return
+        self._last_session = path
+        if stop_rec and self.recorder is not None:
+            self._rec_stop()
+            self.rec_chk.blockSignals(True)
+            self.rec_chk.setChecked(False)
+            self.rec_chk.blockSignals(False)
+        self._write_session_json(path, end=datetime.now().isoformat(timespec="seconds"))
+        self.rec_lbl.setText(f"💾 Session enregistrée : {path}")
+        self.set_status(f"💾 Session enregistrée : {path}  (⏪ Relecture › 📂 Ouvrir une session)")
 
     # ------------------------------------------------------- rapport de show
     def collect_report(self, v):
@@ -15510,6 +16522,8 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
             self.recorder = None
+        if self._session is not None:
+            self._session_end(stop_rec=False)
         if self._replay is not None:
             try:
                 self._replay.close()
@@ -15608,17 +16622,15 @@ def _patch(cls, name, which="first", lists=(), kws=(), static=False):
         setattr(cls, name, f)
 
 
-def install_language(code):
-    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
-    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
-    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
-    -> True si la langue est active."""
-    if code != "en":
-        return False
+def _load_lang_en():
+    """-> (exact, modèles, morceaux de page web, vocabulaire) anglais (lang_en + lang_en_v8), ou None."""
+    here = str(Path(__file__).resolve().parent)          # à côté du programme, d'où qu'on le lance
+    if here not in sys.path:
+        sys.path.append(here)
     try:
         import lang_en                                    # fichier de traductions à côté du programme / dans l'exe
     except ImportError:
-        return False
+        return None
     exact, tpl = dict(lang_en.EXACT), dict(lang_en.TEMPLATES)
     try:
         import lang_en_v8                                 # textes propres à la V8 (SDR), dans leur propre fichier
@@ -15626,11 +16638,49 @@ def install_language(code):
         tpl.update(lang_en_v8.TEMPLATES)
     except ImportError:
         pass
+    return exact, tpl, lang_en.WEB, lang_en.VOCAB
+
+
+_EN_TR = []
+
+
+def en_translator():
+    """Traducteur anglais, même si l'appli est en français (page web / alertes au choix de chacun)."""
+    if not _EN_TR:
+        if TR:
+            _EN_TR.append(TR)
+        else:
+            d = _load_lang_en()
+            _EN_TR.append(Translator(d[0], d[1]) if d else Translator())
+    return _EN_TR[0]
+
+
+_WEB_PAGES = {}
+
+
+def web_page_bytes(lang):
+    """Page web de l'équipe dans la langue de la personne (« fr » : la page d'origine)."""
+    if lang not in _WEB_PAGES:
+        d = _load_lang_en() if lang == "en" else None
+        page = web_page_lang(WEB_PAGE, d[2], en_translator())[0] if d else WEB_PAGE
+        _WEB_PAGES[lang] = page.encode("utf-8")
+    return _WEB_PAGES[lang]
+
+
+def install_language(code):
+    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
+    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
+    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
+    -> True si la langue est active."""
+    if code != "en":
+        return False
+    d = _load_lang_en()
+    if d is None:
+        return False
+    exact, tpl, _web, vocab = d
     TR.__init__(exact, tpl)
-    global WEB_PAGE
-    WEB_PAGE = web_page_lang(WEB_PAGE, lang_en.WEB, TR)[0]
     for lst in (NAME_WORDS, SCENE_WORDS, GROUP_WORDS):    # mots proposés pour les noms : en anglais
-        lst[:] = list(dict.fromkeys(lang_en.VOCAB.get(w, w) for w in lst))
+        lst[:] = list(dict.fromkeys(vocab.get(w, w) for w in lst))
     W = QtWidgets
     for cls in (W.QLabel, W.QPushButton, W.QCheckBox, W.QRadioButton, W.QToolButton, W.QGroupBox, W.QDockWidget,
                 W.QMenu, W.QListWidgetItem, W.QTableWidgetItem, QtGui.QAction, W.QCommandLinkButton, W.QToolBar):
@@ -15654,6 +16704,7 @@ def install_language(code):
                        (W.QListWidget, ("addItem",)), (W.QFormLayout, ("addRow", "insertRow")),
                        (W.QStatusBar, ("showMessage",)),
                        (W.QMessageBox, ("setText", "setInformativeText", "setDetailedText", "addButton")),
+                       (W.QDialogButtonBox, ("addButton",)),
                        (W.QProgressDialog, ("setLabelText", "setCancelButtonText"))):
         for n in names:
             _patch(cls, n)
@@ -15710,6 +16761,28 @@ def install_language(code):
     _patch(pg.PlotItem, "setTitle")
     _patch(pg.LabelItem, "setText")
     return True
+
+
+def restart_app():
+    """Relance l'appli dans un NOUVEAU processus indépendant. Exe PyInstaller « un seul fichier » : sans précaution,
+    le nouveau processus hérite des variables d'environnement de l'ancien et réutilise son dossier temporaire
+    (_MEI…), que l'ancien efface en se fermant → « No module named numpy._core._multiarray_umath » (bug 7.11.0
+    vu par Clément). PYINSTALLER_RESET_ENVIRONMENT=1 (PyInstaller ≥ 6.9) + variables _PYI_* / _MEIPASS2 retirées
+    = il repart de zéro avec son propre dossier. -> True si le processus a démarré."""
+    frozen = getattr(sys, "frozen", False)
+    args = sys.argv[1:] if frozen else [str(Path(__file__).resolve())] + sys.argv[1:]
+    env = QtCore.QProcessEnvironment.systemEnvironment()
+    for k in list(env.keys()):
+        if k.startswith("_PYI_") or k in ("_MEIPASS2", "_MEIPASS"):
+            env.remove(k)
+    env.insert("PYINSTALLER_RESET_ENVIRONMENT", "1")
+    pr = QtCore.QProcess()
+    pr.setProgram(sys.executable)
+    pr.setArguments(args)
+    pr.setProcessEnvironment(env)
+    pr.setWorkingDirectory(str(Path(sys.executable).parent if frozen else Path.cwd()))
+    ok = pr.startDetached()
+    return bool(ok[0] if isinstance(ok, tuple) else ok)
 
 
 def read_language():
@@ -15769,6 +16842,10 @@ def install_gc_main_thread(app, interval_ms=500):
 
 # Branche V8 : bulles des menus SDR, ajoutées ici (et pas dans MainWindow.TIPS_MENU, partagé avec la V7 : sinon
 # chaque ajout de bulle côté V7 au même endroit provoquait un conflit de fusion).
+MainWindow.EXTRA_MENUS.append(("📡 SDR (HackRF, RTL-SDR)", [      # V8 : sous-menu du ☰ Plus (sans toucher au menu V7)
+    ("📡 Réglages SDR (HackRF, RTL-SDR)…", "open_sdr"),
+    ("🎧 Écouter avec le SDR…", "open_listen"),
+    ("⏱ Temps réel avec le SDR…", "open_realtime")]))
 MainWindow.TIPS_MENU.update({
         "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
                          "persistance, waterfall, journal des signaux brefs, clic = écouter.",
@@ -15776,6 +16853,7 @@ MainWindow.TIPS_MENU.update({
                      "niveau de chaque canal, expanseur 2:1 (approximation des companders).",
         "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
                           "(hackrf_sweep, rtl_power), gains, et comment les installer.",
+        "📡 SDR": "V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.",
 })
 
 

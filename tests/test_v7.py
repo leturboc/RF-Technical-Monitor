@@ -473,5 +473,28 @@ check("trop fort : rien sous le seuil", sp(Fs_, Ls_, -10.0), [])
 check("trop fort : balayage vide", sp(np.array([]), np.array([]), -25.0), [])
 check("couper une bande", spl(470.0, 694.0, 200.0), ((470.0, 582.0, 200.0), (582.0, 694.0, 200.0)))
 
+# sessions enregistrées (proposées à ▶ Démarrer)
+check("session : nom de dossier sans caractère interdit", ns["session_name"]("2026-10-29_2015", 'Fest: A/B "x"'),
+      "2026-10-29_2015 Fest_ A_B _x")
+check("session : nom sans show", ns["session_name"]("2026-10-29_2015"), "2026-10-29_2015")
+check("session : réglages par défaut", ns["session_cfg_norm"](None), dict(ask=True, rec=True, dir=""))
+check("session : réglages lus", ns["session_cfg_norm"](dict(ask=0, rec=False, dir="D:/Shows")),
+      dict(ask=False, rec=False, dir="D:/Shows"))
+check("session : journal relu", ns["session_journal_rows"](
+    "\ufeffDate;Heure;Nom;MHz;dBm;Événement;Statut\n2026-10-29;20:15:02;HF 1;470,200;-50,0;CONFLIT;Libre\n"
+    "bancal;;\n2026-10-29;21:00:00;tinySA;—;—;APPAREIL PERDU;\n"),
+      [("2026-10-29", "20:15:02", "20:15:02  CONFLIT  HF 1  470.200 MHz"),
+       ("2026-10-29", "21:00:00", "21:00:00  APPAREIL PERDU  tinySA")])
+check("session : place estimée", round(ns["rec_mb_per_hour"](3000, 1.0), 2), 14.04)
+check("session : place inconnue", ns["rec_mb_per_hour"](0, 1.0), None)
+
+lk = ns["log_kind"]
+check("journal : types d'événements", [lk(e) for e in ("CONFLIT", "INTERMOD", "ABSENT", "TROP FORT", "OCCUPÉ",
+                                                        "Libre (12 s)", "Retour (3 s)", "Retour", "INCONNU",
+                                                        "APPAREIL PERDU", "APPEL OK", "NOUVELLE FRÉQUENCE")],
+      ["alarm", "alarm", "alarm", "strong", "busy", "back", "back", "back", "unknown", "device", "ops", "ops"])
+check("journal : tout coché par défaut", all(ns["log_kinds_norm"](None).values()), True)
+check("journal : choix relus", ns["log_kinds_norm"]({"busy": False, "x": 1})["busy"], False)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
