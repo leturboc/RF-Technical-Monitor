@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.16.0"
+APP_VER = "7.16.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2707,7 +2707,7 @@ def safe_filename(s, default="export"):
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
-             "points", "points_auto", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
+             "points", "points_auto", "points_sel", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
@@ -4852,6 +4852,9 @@ def festival_text(site, stats, open_n, unacked, nfreq, running, run_h, devs_ok, 
 
 # ------------------------------------------------------------------ points par balayage « Auto »
 AUTO_STEPS_KHZ = (10, 12.5, 20, 25, 40, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 1000)
+# choix « Auto » de « Points / balayage » : (donnée du menu, texte, points visés par cycle). Les nombres fixes sont > 0.
+AUTO_POINTS = ((-1, "⚡ Auto rapide", 2000), (0, "⚡ Auto équilibré", 4500), (-2, "⚡ Auto détaillé", 9000))
+AUTO_BUDGET = {k: b for k, _t, b in AUTO_POINTS}
 
 
 def auto_scan_step(total_mhz, rbw_khz=None, budget=4500, step_min=10.0):
@@ -12433,12 +12436,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_steps_bar()
 
         # --- panneau de gauche : réglages
-        self.points_combo = self._combo([("⚡ Auto (rapide et lisible)", 0)]
+        self.points_combo = self._combo([(t, k) for k, t, _b in AUTO_POINTS]
                                         + [(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES], 1000)
         self.points_combo.setToolTip("Nombre de points par balayage et par bande (appliqué à toutes les bandes).\n"
                                      "Plus il y en a, plus c'est précis… et plus c'est long.\n"
                                      "⚡ Auto : l'appli choisit le pas d'après la largeur totale balayée (10 kHz sur une\n"
-                                     "petite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.")
+                                     "petite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.\n"
+                                     "Rapide ≈ 2 000 points par cycle · équilibré ≈ 4 500 · détaillé ≈ 9 000.")
         self.points_combo.activated.connect(self.apply_points)
         self.rbw_combo = self._combo([("Auto", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST], 100)
         self.zrbw_combo = self._combo([("Auto (selon zoom)", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])
@@ -12664,6 +12668,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view_combo = QtWidgets.QComboBox()
         self.view_combo.setMinimumWidth(170)
         self.view_combo.currentIndexChanged.connect(self.on_view_changed)
+        self.pts_btn = QtWidgets.QToolButton()
+        self.pts_btn.setText("⚡ Points")
+        self.pts_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.pts_btn.setToolTip("Points par balayage : ⚡ Auto (le pas suit la largeur totale des bandes : rapide,\n"
+                                "équilibré ou détaillé) ou un nombre fixe. Plus de points = plus fin, mais plus lent.")
+        self.pts_menu = QtWidgets.QMenu(self.pts_btn)
+        self.pts_menu.aboutToShow.connect(self._build_pts_menu)
+        self.pts_btn.setMenu(self.pts_menu)
         self.bands_btn = QtWidgets.QToolButton()
         self.bands_btn.setText("📶 Bandes")
         self.bands_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -12820,7 +12832,7 @@ class MainWindow(QtWidgets.QMainWindow):
         center = QtWidgets.QWidget()
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
-        cl.addLayout(self._flow(("Vue :", self.view_combo), self.bands_btn, self.zoom_btn, self.mk_btn, self.hold_chk,
+        cl.addLayout(self._flow(("Vue :", self.view_combo), self.bands_btn, self.pts_btn, self.zoom_btn, self.mk_btn, self.hold_chk,
                                 self.persist_combo, reset_btn, cap_btn, self.mkr_btn, self.legend_btn, self.readout))
         cl.addWidget(self._build_markers_bar())
         self.ref_row = QtWidgets.QWidget()
@@ -13116,8 +13128,10 @@ class MainWindow(QtWidgets.QMainWindow):
         c["att"] = self.att_combo.currentData()
         c["offset"] = self.offset_spin.value()
         c["seg"] = self.seg_combo.currentData()
-        c["points"] = int(self.points_combo.currentData() or 1000)
-        c["points_auto"] = self.points_combo.currentData() == 0
+        pd_ = self.points_combo.currentData()
+        c["points"] = int(pd_) if pd_ and pd_ > 0 else 1000
+        c["points_auto"] = pd_ in AUTO_BUDGET
+        c["points_sel"] = pd_
         if c["points_auto"] and getattr(self, "bands", None) and self._auto_steps() is not None and self._auto_changed:
             self.rebuild_band_table()
             self.update_estimate()
@@ -13136,8 +13150,9 @@ class MainWindow(QtWidgets.QMainWindow):
         nseg = sum(len(segment_plan(self._npts(b), seg)) for b in act)
         pre = f"🎯 Scan ciblé ({len(act)} zone(s)) · " if self._focus_bands else ""
         txt = pre + f"{tot:,} points au total · {nseg} commande(s) de ≤ {seg} pts par cycle".replace(",", " ")
-        if self.points_combo.currentData() == 0 and act:
+        if self.points_auto() is not None and act:
             txt += f" · ⚡ Auto : pas de {act[0]['step']:g} kHz"
+        self._update_pts_btn()
         if nseg > 40:
             txt += "\n⚠ Cycle long : réduis les points ou la largeur des bandes."
         self.est_lbl.setText(txt)
@@ -13318,8 +13333,9 @@ class MainWindow(QtWidgets.QMainWindow):
                            (self.occ_combo, "occ_minutes"), (self.country_combo, "country"),
                            (self.baud_combo, "baud")]:
             setc(combo, key)
-        if data.get("points_auto", "points" not in data):   # nouvelle installation : ⚡ Auto
-            self.points_combo.setCurrentIndex(0)
+        sel_ = data.get("points_sel", 0)               # pas encore de choix enregistré : ⚡ Auto équilibré
+        if sel_ in AUTO_BUDGET:
+            self.points_combo.setCurrentIndex(self.points_combo.findData(sel_))
             self._cfg["points_auto"] = True
         self.scan_follow = bool(data.get("scan_follow", False))
         if "festival" in data:
@@ -13489,7 +13505,8 @@ class MainWindow(QtWidgets.QMainWindow):
             theme=self.theme,
             scan_follow=self.scan_follow,
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
-            points=c["points"], points_auto=bool(c.get("points_auto")), rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
+            points=c["points"], points_auto=bool(c.get("points_auto")),
+            points_sel=self.points_combo.currentData(), rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
             baud=self.baud_combo.currentData(),
             persist=self.persist_combo.currentData(),
@@ -14284,15 +14301,20 @@ class MainWindow(QtWidgets.QMainWindow):
             d.pop(b["id"], None)
         self._bands_changed()
 
+    def points_auto(self):
+        """Points par cycle visés en ⚡ Auto, ou None si un nombre fixe est choisi."""
+        return AUTO_BUDGET.get(self.points_combo.currentData())
+
     def _auto_steps(self):
         """⚡ Auto : un même pas pour toutes les bandes, d'après leur largeur totale (et la RBW si elle est imposée).
         -> pas en kHz (None si pas en Auto). Les données des bandes dont le pas change sont oubliées."""
         self._auto_changed = False
-        if self.points_combo.currentData() != 0:
+        budget = self.points_auto()
+        if budget is None:
             return None
         act = [b for b in self.bands if b["enabled"]] or self.bands
         total = sum(max(0.0, b["stop"] - b["start"]) for b in act)
-        step = auto_scan_step(total, self.rbw_combo.currentData())
+        step = auto_scan_step(total, self.rbw_combo.currentData(), budget)
         with self.lock:
             for b in self.bands:
                 if abs(b["step"] - step) > 1e-9:
@@ -14305,7 +14327,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return step
 
     def apply_points(self, _=None):
-        if self.points_combo.currentData() == 0:
+        if self.points_auto() is not None:
             step = self._auto_steps()
             self._sync_cfg()
             self.rebuild_band_table()
@@ -14317,6 +14339,7 @@ class MainWindow(QtWidgets.QMainWindow):
         with self.lock:
             for b in self.bands:
                 b["step"] = round((b["stop"] - b["start"]) * 1000.0 / (pts - 1), 6)
+        self._update_pts_btn()
         self.latest.clear()
         self.maxhold.clear()
         self.partial_data.clear()
@@ -14354,7 +14377,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if col == 3:
             step = (stop - start) * 1000.0 / (int(pts) - 1)
-        if col in (3, 4) and self.points_combo.currentData() == 0:
+        if col in (3, 4) and self.points_auto() is not None:
             self.points_combo.blockSignals(True)               # réglé à la main : plus d'Auto
             self.points_combo.setCurrentIndex(self.points_combo.findData(1000))
             self.points_combo.blockSignals(False)
@@ -14368,6 +14391,37 @@ class MainWindow(QtWidgets.QMainWindow):
                 d.pop(b["id"], None)
         self._fit_x = True
         QtCore.QTimer.singleShot(0, self._bands_changed)
+
+    def _build_pts_menu(self):
+        m = self.pts_menu
+        m.clear()
+        cur = self.points_combo.currentData()
+        grp = QtGui.QActionGroup(m)
+        for i in range(self.points_combo.count()):
+            k = self.points_combo.itemData(i)
+            if i == len(AUTO_POINTS):
+                m.addSeparator()
+                hd = m.addAction("Nombre fixe par bande :")
+                hd.setEnabled(False)
+            a = m.addAction(self.points_combo.itemText(i) if k in AUTO_BUDGET else self.points_combo.itemText(i) + " pts")
+            a.setCheckable(True)
+            a.setChecked(k == cur)
+            grp.addAction(a)
+            a.triggered.connect(lambda *_, i=i: self.set_points_choice(i))
+
+    def set_points_choice(self, i):
+        self.points_combo.setCurrentIndex(i)
+        self.apply_points()
+
+    def _update_pts_btn(self):
+        b = getattr(self, "pts_btn", None)
+        if b is None:
+            return
+        if self.points_auto() is not None:
+            st = next((x["step"] for x in self.bands if x["enabled"]), None)
+            b.setText("⚡ Auto" + (f" · {st:g} kHz" if st else ""))
+        else:
+            b.setText(f"⚡ {self.points_combo.currentText()} pts")
 
     def _build_bands_menu(self):
         m = self.bands_menu

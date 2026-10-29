@@ -611,5 +611,9 @@ check("auto : RBW large imposée ne change rien", ast_(224.0, 300), 50)
 check("auto : très large -> plafond 1 MHz", ast_(6000.0), 1000)
 ok("auto : cycle UHF ≤ 4 500 points", 224000 / ast_(224.0) + 1 <= 4501)
 
+check("auto rapide (2 000 pts) : UHF 224 MHz -> 125 kHz", ast_(224.0, None, ns["AUTO_BUDGET"][-1]), 125)
+check("auto détaillé (9 000 pts) : UHF 224 MHz -> 25 kHz", ast_(224.0, None, ns["AUTO_BUDGET"][-2]), 25)
+check("auto équilibré = donnée 0 du menu", ns["AUTO_BUDGET"][0], 4500)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

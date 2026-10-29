@@ -9,6 +9,15 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    '⚡ Auto rapide': '⚡ Auto fast',
+    '⚡ Auto équilibré': '⚡ Auto balanced',
+    '⚡ Auto détaillé': '⚡ Auto detailed',
+    '⚡ Points': '⚡ Points',
+    '⚡ Auto': '⚡ Auto',
+    ' pts': ' pts',
+    'Nombre fixe par bande :': 'Fixed number per band:',
+    'Points par balayage : ⚡ Auto (le pas suit la largeur totale des bandes : rapide,\néquilibré ou détaillé) ou un nombre fixe. Plus de points = plus fin, mais plus lent.': 'Points per sweep: ⚡ Auto (the step follows the total width of the bands: fast,\nbalanced or detailed) or a fixed number. More points = finer, but slower.',
+    "Nombre de points par balayage et par bande (appliqué à toutes les bandes).\nPlus il y en a, plus c'est précis… et plus c'est long.\n⚡ Auto : l'appli choisit le pas d'après la largeur totale balayée (10 kHz sur une\npetite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.\nRapide ≈ 2 000 points par cycle · équilibré ≈ 4 500 · détaillé ≈ 9 000.": 'Number of points per sweep and per band (applied to all bands).\nThe more there are, the more precise… and the longer it takes.\n⚡ Auto: the app picks the step from the total swept width (10 kHz on a\nsmall area, wider over the whole UHF) to keep a cycle of a few seconds.\nFast ≈ 2,000 points per cycle · balanced ≈ 4,500 · detailed ≈ 9,000.',
     '⚡ Auto (rapide et lisible)': '⚡ Auto (fast and readable)',
     "Nombre de points par balayage et par bande (appliqué à toutes les bandes).\nPlus il y en a, plus c'est précis… et plus c'est long.\n⚡ Auto : l'appli choisit le pas d'après la largeur totale balayée (10 kHz sur une\npetite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.": 'Number of points per sweep and per band (applied to all bands).\nThe more there are, the more precise… and the longer it takes.\n⚡ Auto: the app picks the step from the total swept width (10 kHz on a\nsmall area, wider over the whole UHF) to keep a cycle of a few seconds.',
     "Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.\n⚡ Auto : le meilleur compromis vitesse / lisibilité d'après la largeur totale balayée.": 'Points per sweep and per band: the more there are, the finer… and the longer it takes.\n⚡ Auto: the best speed / readability trade-off based on the total swept width.',
@@ -2084,6 +2093,8 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '⚡ {} pts': '⚡ {} pts',
+    ' · {} kHz': ' · {} kHz',
     '⚡ Points Auto : pas de {} kHz sur toutes les bandes ({} points par cycle).': '⚡ Auto points: {} kHz step on all bands ({} points per cycle).',
     ' · ⚡ Auto : pas de {} kHz': ' · ⚡ Auto: {} kHz step',
     'Rapport : {}': 'Report: {}',
