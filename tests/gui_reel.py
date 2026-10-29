@@ -494,6 +494,10 @@ check("diagnostic : fichier écrit avec versions, réglages, bandes", bool(_df)
 check("vitesse série dans la config", win._collect_config()["baud"] == 115200)
 check("version affichée (barre d'état)", m.APP_VER in win.ver_lbl.text() and win.ver_lbl.isVisible())
 step("à propos", win.show_about)
+_lm = [a_.text() for a_ in win.lang_menu.actions()]
+check("menu 🌐 Langue : Français coché, English proposé", _lm == ["Français", "English"]
+      and win.lang_menu.actions()[0].isChecked() and win.lang == "fr", str(_lm))
+check("manuel français par défaut", win.manual_path() is not None and win.manual_path().name == "manuel.html")
 check("à propos : version et tinySA", any(m.APP_VER in t and "tinySA" in t for k, t in msgs), str(msgs[-1:]))
 check("version dans l'état de la page web", m.json.loads(win.web_json())["ver"] == m.APP_VER)
 

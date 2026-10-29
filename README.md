@@ -8,6 +8,9 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 
 📖 **Manuel d'utilisation complet** : [`docs/manuel.html`](docs/manuel.html) (aussi dans l'appli : ☰ Plus › 📖 Manuel).
 
+🌐 **English** : the whole app is available in English (☰ Plus › 🌐 Langue / Language, or automatically on an
+English Windows). User manual: [`docs/manual_en.html`](docs/manual_en.html).
+
 ## Ce que ça fait
 
 - **Spectre en direct** multi-bandes, max hold, waterfall, zoom, courbe de référence (bruit de fond du lieu)

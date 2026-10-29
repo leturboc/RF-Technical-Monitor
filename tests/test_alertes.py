@@ -474,6 +474,29 @@ else:
         check("mot de passe : bon → entré", pp.locator("#app").is_visible())
         wcfg["password"] = ""
         check("navigateur : aucune erreur JavaScript", not errs, str(errs))
+        # page en anglais (☰ Plus › 🌐 Language) : mêmes fonctions, textes traduits
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        import lang_en
+        fr_page = ns["WEB_PAGE"]
+        ns["TR"].__init__(lang_en.EXACT, lang_en.TEMPLATES)
+        ns["WEB_PAGE"] = ns["web_page_lang"](fr_page, lang_en.WEB, ns["TR"])[0]
+        errs_en = []
+        pe = br.new_context(viewport=dict(width=390, height=800)).new_page()
+        pe.on("pageerror", lambda e: errs_en.append(str(e)))
+        pe.goto(f"http://127.0.0.1:{wa.port}/")          # le 1er serveur a été coupé plus haut
+        pe.wait_for_selector("#login:not(.hidden)", timeout=5000)
+        check("page anglaise : bouton « Enter »", pe.locator("#lgo").inner_text() == "Enter")
+        pe.fill("#ln", "Alex")
+        pe.click("button[type=submit]")
+        pe.wait_for_selector("#app:not(.hidden)", timeout=5000)
+        pe.wait_for_timeout(1200)
+        nav = pe.locator("#nav").inner_text()
+        check("page anglaise : menu « Home », « List »", "Home" in nav and "List" in nav, nav)
+        if CAP:
+            pe.screenshot(path=os.path.join(CAP, "web_anglais.png"))
+        check("page anglaise : aucune erreur JavaScript", not errs_en, str(errs_en))
+        ns["WEB_PAGE"] = fr_page
+        ns["TR"].__init__()
         br.close()
 w.stop()
 wa.stop()
