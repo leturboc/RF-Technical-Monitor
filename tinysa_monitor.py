@@ -4094,8 +4094,8 @@ class Translator:
             a, b = self.SEP.split(fr), self.SEP.split(en)  # « Cycle {} s · … · {} fréq. »), « ⚠ {} alarme(s) »
             if len(a) > 1 and len(a) == len(b):
                 for x, y in zip(a[::2], b[::2]):
-                    if x.count("{}") and x.count("{}") == y.count("{}"):
-                        tpl.setdefault(x.strip(), y.strip())
+                    if x.count("{}") and x.count("{}") == y.count("{}") and x.strip() != y.strip():
+                        tpl.setdefault(x.strip(), y.strip())      # (« {} MHz » → « {} MHz » : inutile, trop large)
             elif fr.strip(" ·|—") != fr and fr.strip(" ·|—"):
                 tpl.setdefault(fr.strip(" ·|—"), en.strip(" ·|—"))
         for fr, en in tpl.items():
@@ -4106,7 +4106,7 @@ class Translator:
             rx = "".join("(.*?)" if x == "{}" else re.escape(x.replace("\x01", "{").replace("\x02", "}"))
                          for x in parts)
             item = (re.compile(rx + r"\Z", re.S), en, sum(len(x) for x in lits),
-                    [x.replace("\x01", "{").replace("\x02", "}") for x in parts[::2]])
+                    [x.replace("\x01", "{").replace("\x02", "}") for x in parts[::2]], "\n" in fr)
             head = parts[0].replace("\x01", "{").replace("\x02", "}")
             if parts[0] and parts[0] != "{}" and len(head) >= 2:
                 self.by_head.setdefault(head[:2], []).append(item)
@@ -4138,7 +4138,7 @@ class Translator:
         if depth > 4 or not self.LETTER.search(s):
             return s
         if "\n" in s:                                     # plusieurs lignes : chacune pour elle
-            whole = self._tpl(s, depth)
+            whole = self._tpl(s, depth, multiline=True)
             if whole is not None:
                 return whole
             lines = s.split("\n")
@@ -4213,8 +4213,10 @@ class Translator:
                 if tuple(g) != tuple(first):
                     yield g
 
-    def _tpl(self, s, depth):
+    def _tpl(self, s, depth, multiline=False):
         for it in self.by_head.get(s[:2], []) + self.loose:
+            if multiline and not it[4]:
+                continue                                  # texte sur plusieurs lignes : modèles sur plusieurs lignes
             m = it[0].match(s)
             if m:
                 best = None                               # plusieurs découpages possibles (« {} : {} » avec

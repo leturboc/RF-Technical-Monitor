@@ -69,6 +69,9 @@ cases = [
 for fr, en in cases:
     got = T(fr)
     check(f"traduit {fr[:40]!r}", got == en, f"-> {got!r}")
+T2 = ns["Translator"](dict(L.EXACT), {**L.TEMPLATES, "📂 Lecture : {} · {} MHz · {} s": "📂 Play: {} · {} MHz · {} s"})
+tip = "9.9 – 10.1 MHz\nHF fixe / mobile\nÉtalon de fréquence 10 MHz"
+check("bulle sur 3 lignes : pas avalée par un morceau « {} MHz »", T2(tip) == T(tip) and "standard" in T(tip), T2(tip))
 r = T(ns["im_rules_text"]({"2tx3": 0.1, "3tx3": 0.05, "5": 0.0}, 0.3, 32.0))
 check("phrase des règles d'intermod en anglais", r.startswith("We check:") and not re.search(r"[éè]|ordre", r), r)
 for k in ("CONFLIT", "ABSENT", "INCONNU"):
