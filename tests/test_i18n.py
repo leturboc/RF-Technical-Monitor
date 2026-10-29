@@ -11,6 +11,13 @@ from collections import deque
 import numpy as np
 import i18n_extract as X
 import lang_en as L
+try:                                   # V8 : ses textes à elle (SDR), dans leur propre fichier
+    import lang_en_v8 as L8
+    L.EXACT = {**L.EXACT, **L8.EXACT}
+    L.TEMPLATES = {**L.TEMPLATES, **L8.TEMPLATES}
+    L.SAME_TEMPLATES = list(L.SAME_TEMPLATES) + list(L8.SAME_TEMPLATES)
+except ImportError:
+    pass
 
 src = open(os.path.join(ROOT, "tinysa_monitor.py"), encoding="utf-8").read()
 pure = src[src.index("# ===== PURE-BEGIN"):src.index("# ===== PURE-END")]
