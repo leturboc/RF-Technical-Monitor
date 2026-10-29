@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.15.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.16.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -294,6 +294,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   mode « disque USB » / mise à jour SD qui refusent tout → PURE `TINYSA_REFUSALS` / `tinysa_refusal(lines)`, message
   clair levé par `TinySA.scan`. **Retour de Clément avec le firmware à jour : « ça balaye bien plus vite »**
   (pas encore de 🩺 diagnostic ni de nuit complète avec ce firmware).
+- **7.16.0 (Clément : « un bouton auto sur les points par scan, le plus opti entre rapidité et visibilité en fonction
+  du fenêtrage total »)** : `points_combo` 1re entrée « ⚡ Auto (rapide et lisible) » (donnée 0 ; défaut d'une
+  nouvelle installation : `points_auto` absent ET `points` absent). PURE `AUTO_STEPS_KHZ`, `auto_scan_step(total_mhz,
+  rbw, budget=4500, step_min=10)` (pas rond ; ≤ RBW imposée). `_auto_steps()` (même pas pour toutes les bandes,
+  oublie les données des bandes changées, `_auto_changed`) appelé par `apply_points`, `_bands_changed`, `_sync_cfg`
+  (RBW). Saisie à la main des points / du pas d'une bande (`on_band_edit` col 3 / 4) → sort de l'Auto. `est_lbl` :
+  « ⚡ Auto : pas de X kHz ». `c["points"]` reste 1000 en Auto (zoom, scan ciblé). Config / shows : `points_auto`.
+  Budget 4 500 = **choix de Claude, pas mesuré** sur le vrai tinySA (à ajuster selon le retour de Clément).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

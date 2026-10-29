@@ -9,6 +9,10 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    '⚡ Auto (rapide et lisible)': '⚡ Auto (fast and readable)',
+    "Nombre de points par balayage et par bande (appliqué à toutes les bandes).\nPlus il y en a, plus c'est précis… et plus c'est long.\n⚡ Auto : l'appli choisit le pas d'après la largeur totale balayée (10 kHz sur une\npetite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.": 'Number of points per sweep and per band (applied to all bands).\nThe more there are, the more precise… and the longer it takes.\n⚡ Auto: the app picks the step from the total swept width (10 kHz on a\nsmall area, wider over the whole UHF) to keep a cycle of a few seconds.',
+    "Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.\n⚡ Auto : le meilleur compromis vitesse / lisibilité d'après la largeur totale balayée.": 'Points per sweep and per band: the more there are, the finer… and the longer it takes.\n⚡ Auto: the best speed / readability trade-off based on the total swept width.',
+    'Points réglés à la main : ⚡ Auto désactivé.': 'Points set by hand: ⚡ Auto turned off.',
     # réponses du tinySA cherchées dans ses refus (pas du texte de l'appli)
     'exceeds range': 'exceeds range',
     'firmware update active': 'firmware update active',
@@ -2080,6 +2084,8 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '⚡ Points Auto : pas de {} kHz sur toutes les bandes ({} points par cycle).': '⚡ Auto points: {} kHz step on all bands ({} points per cycle).',
+    ' · ⚡ Auto : pas de {} kHz': ' · ⚡ Auto: {} kHz step',
     'Rapport : {}': 'Report: {}',
     'Bilan du {}': 'Summary of {}',
     'bilan_{}.html': 'bilan_{}.html',
