@@ -3818,7 +3818,8 @@ def scan_peaks(F, L, thr, merge_khz=150.0, wide_mhz=1.5, exclude=(), excl_khz=10
         seg = L[a:z + 1]
         width = (F[z] - F[a]) * 1000.0
         wide = width >= wide_mhz * 1000.0
-        f = float((F[a] + F[z]) / 2.0) if wide else float(F[a + int(np.argmax(seg))])
+        top = a + np.nonzero(seg >= seg.max() - 1e-9)[0]     # sommet plat (plusieurs points au max) : son milieu
+        f = float((F[a] + F[z]) / 2.0) if wide else float(np.mean(F[top]))
         if len(ex) and np.min(np.abs(ex - f)) * 1000.0 <= max(excl_khz, width / 2.0 if wide else 0.0):
             continue
         out.append(dict(f=round(f, 4), level=round(float(seg.max()), 1), width=round(width, 1), wide=bool(wide)))
@@ -3869,6 +3870,23 @@ def occupied_width(F, L, f, drop_db=20.0, span=0.5):
     while z < len(L) - 1 and L[z + 1] >= lim:
         z += 1
     return float(F[a]), float(F[z]), pk[0], pk[1]
+
+
+def compare_spectra(F1, L1, F2, L2, thr, margin=10.0):
+    """Comparer deux spectres (ex. max hold de la balance et du show) : signaux au-dessus de thr présents dans l'un
+    et pas dans l'autre (au moins margin dB de plus). -> (nouveaux dans 1, disparus = présents dans 2), listes de
+    scan_peaks."""
+    F1, L1 = _valid(F1, L1)
+    F2, L2 = _valid(F2, L2)
+    if not len(F1) or not len(F2):
+        return [], []
+    o1, o2 = np.argsort(F1), np.argsort(F2)
+    F1, L1, F2, L2 = F1[o1], L1[o1], F2[o2], L2[o2]
+    lo, hi = max(F1[0], F2[0]), min(F1[-1], F2[-1])
+    m1, m2 = (F1 >= lo) & (F1 <= hi), (F2 >= lo) & (F2 <= hi)
+    a1 = np.where(L1[m1] - np.interp(F1[m1], F2, L2) >= margin, L1[m1], -999.0)
+    a2 = np.where(L2[m2] - np.interp(F2[m2], F1, L1) >= margin, L2[m2], -999.0)
+    return scan_peaks(F1[m1], a1, thr), scan_peaks(F2[m2], a2, thr)
 
 
 # ------------------------------------------------------------------ parcours et niveaux d'affichage (7.13)
@@ -6646,6 +6664,8 @@ class ReplayDialog(QtWidgets.QDialog):
         pi.setLabel("left", "Niveau", units="dBm")
         pi.setYRange(-120, -10, padding=0)
         pi.getAxis("bottom").enableAutoSIPrefix(False)
+        self.cmpcurve = pi.plot(pen=pg.mkPen("#c678dd", width=1.3, style=Qt.PenStyle.DashLine), connect="finite")
+        self.cmp = None                          # session de comparaison : (nom, F, L max hold)
         self.maxcurve = pi.plot(pen=pg.mkPen(th["maxhold"], width=1), connect="finite")
         self.curve = pi.plot(pen=pg.mkPen(th["curve"], width=1.6), connect="finite")
         self.thr_line = pg.InfiniteLine(pos=owner.thr_spin.value(), angle=0,
@@ -6686,7 +6706,15 @@ class ReplayDialog(QtWidgets.QDialog):
         self.mh_chk.setChecked(True)
         self.mh_chk.toggled.connect(lambda *_: self.seek(self.idx))
         lay.addWidget(self.slider)
-        lay.addLayout(owner._row(b_prev, self.play_btn, b_next, self.speed_combo, self.mh_chk, None, self.time_lbl))
+        b_cmp = QtWidgets.QPushButton("⚖ Comparer avec une session…")
+        b_cmp.setToolTip("Superpose le max hold d'une autre session (ex. la balance, ou hier) en pointillés violets,\n"
+                         "et liste les signaux en plus ou en moins par rapport à elle.")
+        b_cmp.clicked.connect(lambda *_: self.open_compare())
+        self.cmp_lbl = QtWidgets.QLabel("")
+        self.cmp_lbl.setWordWrap(True)
+        lay.addLayout(owner._row(b_prev, self.play_btn, b_next, self.speed_combo, self.mh_chk, b_cmp, None,
+                                 self.time_lbl))
+        lay.addWidget(self.cmp_lbl)
         self.msg = QtWidgets.QLabel("")
         self.msg.setWordWrap(True)
         lay.addWidget(self.msg)
@@ -6754,6 +6782,37 @@ class ReplayDialog(QtWidgets.QDialog):
                          + (f", {len(self.sess_watch)} fréquences" if self.sess_watch else "")
                          + (f", {len(self.sess_events)} événements du journal" if self.sess_events else "") + ".")
         self.reload()
+
+    def open_compare(self, d=None):
+        """Charge une autre session : son max hold (toute sa durée) est superposé et comparé."""
+        if not d:
+            o = self.owner
+            start = o.session_cfg.get("dir") or str(o.log_dir / "enregistrements")
+            d = QtWidgets.QFileDialog.getExistingDirectory(self, "Session à comparer", str(start))
+        if not d:
+            return
+        st = SweepStore(seconds=1e12, max_mb=2500)
+        n, _nf = load_recording(d, st)
+        sp = st.span()
+        if not n or sp is None:
+            self.cmp_lbl.setText(f"Aucun balayage lisible dans « {d} ».")
+            return
+        F2, L2 = st.maxhold(sp[0], sp[1])
+        self.cmp = (Path(d).name, F2, L2)
+        self.cmpcurve.setData(F2, L2)
+        self.seek(self.idx)
+
+    def _compare_text(self, F1, L1):
+        if self.cmp is None or F1 is None:
+            return
+        name, F2, L2 = self.cmp
+        new, gone = compare_spectra(F1, L1, F2, L2, self.owner.thr_spin.value())
+
+        def fl(p_):
+            return ", ".join(f"{x['f']:.3f}" for x in p_[:8]) + (" …" if len(p_) > 8 else "")
+        self.cmp_lbl.setText(f"⚖ Comparé à « {name} » (pointillés violets) : {len(new)} signal(aux) en plus ici"
+                             + (f" ({fl(new)} MHz)" if new else "") + f" · {len(gone)} en moins"
+                             + (f" ({fl(gone)} MHz)" if gone else "") + ".")
 
     def export_session(self):
         """Enregistre le contenu relu (mémoire ou session ouverte) comme une session, dans le dossier choisi."""
@@ -6886,6 +6945,8 @@ class ReplayDialog(QtWidgets.QDialog):
             self.maxcurve.setData(Fm, Lm)
         else:
             self.maxcurve.setData([], [])
+        if self.cmp is not None:                     # comparaison : max hold jusqu'à cet instant vs l'autre session
+            self._compare_text(*((Fm, Lm) if Fm is not None else self.store.maxhold(t0, t)))
         if self._fit:
             self._fit = False
             self.plot.getPlotItem().setXRange(float(F[0]), float(F[-1]), padding=0.01)

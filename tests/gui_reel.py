@@ -952,6 +952,11 @@ if _rp is not None:
     _ed = [p_ for p_ in m.Path(_exp).iterdir()]
     check("export de la mémoire : une session complète", len(_ed) == 1 and any(_ed[0].glob("chunk_*.npz"))
           and (_ed[0] / "session.json").exists(), _rp.msg.text())
+    if _ed:
+        step("relecture : ⚖ comparer avec la session exportée", lambda: _rp.open_compare(str(_ed[0])))
+        check("comparer : max hold de l'autre session superposé, bilan affiché", _rp.cmp is not None
+              and _rp.cmp_lbl.text().startswith("⚖") and _rp.cmpcurve.getData()[0] is not None, _rp.cmp_lbl.text())
+        shot(_rp, "relecture_comparaison")
     _rp.close()
 shot(win, "arrete")
 
