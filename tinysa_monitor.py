@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.15.0"
+APP_VER = "7.15.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -344,6 +344,23 @@ def decimate_max(a, target):
     if m < n:
         out = np.append(out, a[m:].max())
     return out
+
+
+TINYSA_REFUSALS = (
+    ("usb disk mode active", "Le tinySA est en mode « disque USB » : il refuse les mesures. Sur le tinySA : "
+                             "STORAGE › MORE › USB DISK pour en sortir (ou redémarre-le)."),
+    ("firmware update active", "Le tinySA est en train de mettre à jour son firmware : attends la fin et son "
+                               "redémarrage."),
+    ("frequency range is invalid", "Le tinySA refuse cette plage de fréquences (hors de ses limites ?)."),
+    ("exceeds range", "Le tinySA refuse ce nombre de points par commande : choisis un segment plus petit "
+                      "(mode expert › Segment)."),
+)
+
+
+def tinysa_refusal(lines):
+    """Réponse du tinySA qui refuse la commande (firmware 2026 : disque USB, mise à jour…) -> message clair, ou ""."""
+    low = " ".join(str(x) for x in lines).lower()
+    return next((msg for key, msg in TINYSA_REFUSALS if key in low), "")
 
 
 def parse_scan_lines(lines):
@@ -4940,6 +4957,9 @@ class TinySA:
     def scan(self, start_hz, stop_hz, points):
         """Renvoie (freqs Hz ou None, niveaux dBm)."""
         lines = self.cmd(f"scan {int(start_hz)} {int(stop_hz)} {int(points)} 3", timeout=900)
+        why = tinysa_refusal(lines)
+        if why:
+            raise RuntimeError(why)
         freqs, levels = parse_scan_lines(lines)
         if not len(levels):
             raise RuntimeError("Le tinySA n'a renvoyé aucune mesure (scan).")

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.15.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.15.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -287,6 +287,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **🎛 Vue Régie** de la page web (`WEB_VIEWS` « regie ») : alarmes en très gros en haut (sinon « ✔ Tout va
     bien »), un voyant par scène › groupe (rouge = alarme, orange = faible / occupé sans alarme, vert = OK),
     filtre de couche, plein écran. Testée dans Chromium (test_alertes, captures `CAPTURES=dossier`).
+- **7.15.1 (Clément a mis à jour son tinySA : v1.4-49 de 02/2023 → firmware 2026)** : lu dans le source officiel
+  (github.com/erikkaashoek/tinySA, v1.4-255 du 23/10/2026) : invite « ch> », format de `scan … 3` et commandes
+  `rbw` / `mode` / `lna` / `attenuate` / **`ultra on|off|auto`** inchangés (« ultra on » existe bien). Nouveautés qui
+  nous concernent : verrou des commandes (CMD_WAIT_MUTEX, corrige des blocages USB), `scan` refuse < 2 points,
+  mode « disque USB » / mise à jour SD qui refusent tout → PURE `TINYSA_REFUSALS` / `tinysa_refusal(lines)`, message
+  clair levé par `TinySA.scan`. **Pas encore testé avec son tinySA à jour** : lui demander un 🩺 diagnostic.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
