@@ -154,6 +154,17 @@ _r0 = win.rbw_combo.currentIndex()
 win.rbw_combo.setCurrentIndex(win.rbw_combo.findData(10))
 check("Auto : RBW 10 kHz imposée -> pas ≤ 10 kHz", all(b["step"] <= 10 for b in win.bands), str([b["step"] for b in win.bands]))
 win.rbw_combo.setCurrentIndex(_r0)
+# ⚡ Points dans la barre du spectre (tous les modes) : rapide / équilibré / détaillé / fixe
+check("⚡ Points visible même en ultra simple", win.pts_btn.isVisible() and "Auto" in win.pts_btn.text(), win.pts_btn.text())
+win._build_pts_menu()
+_pa = [a_ for a_ in win.pts_menu.actions() if a_.isCheckable()]
+check("⚡ Points : 3 Auto + les nombres fixes", len(_pa) == 3 + len(m.POINTS_CHOICES) and _pa[1].isChecked(), str(len(_pa)))
+_st0 = win.bands[0]["step"]
+_pa[2].trigger()
+check("⚡ Auto détaillé : pas plus fin", win.bands[0]["step"] < _st0 and win.points_auto() == 9000, str(win.bands[0]["step"]))
+win._build_pts_menu()
+[a_ for a_ in win.pts_menu.actions() if a_.isCheckable()][1].trigger()
+check("⚡ Auto équilibré : retour au pas d'avant", abs(win.bands[0]["step"] - _st0) < 1e-9, win.pts_btn.text())
 
 step("🎓 tuto", win.start_tour)
 _tr = win._tour
