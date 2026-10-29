@@ -5834,9 +5834,11 @@ class IntermodDialog(QtWidgets.QDialog):
         if F is None:
             return []
         thr = o.weak_spin.value() if o.weak_chk.isChecked() else o.thr_spin.value()
-        pk = strong_peaks(F, L, thr, merge=0.2, limit=40)
+        pk = strong_peaks(F, L, thr, merge=0.2, limit=80)
         if self.mode_combo.currentData() == "origin":
-            pk = [(f, l) for f, l in pk if abs(f - self.freq_spin.value()) > 0.1]
+            f0 = self.freq_spin.value()
+            pk = [(f, l) for f, l in pk if abs(f - f0) > 0.1]
+            pk.sort(key=lambda p_: (abs(p_[0] - f0) > 50.0, -p_[1]))     # d'abord les voisins (±50 MHz)
         pk = pk[:24]                                # les plus forts : ce sont eux qui intermodulent
         out = []
         for f, l in sorted(pk):
@@ -8796,6 +8798,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🗑 Effacer les terminées": "Retire de la liste les alarmes terminées (le journal les garde).",
     }
 
+    EXTRA_MENUS = []          # [(titre, [(texte, nom de méthode)])] : sous-menus ajoutés au ☰ Plus (V8 : SDR)
+
     TIPS_MENU = {
         "📖 Manuel": "Le manuel complet (s'ouvre dans ton navigateur, marche hors ligne).",
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
@@ -8827,6 +8831,16 @@ class MainWindow(QtWidgets.QMainWindow):
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
+        "📐 Plan de fréquences": "Préparer : vérifier le plan (comme EazyRF), intermodulation, profils d'appareil,\n"
+                                "blocs Spectera / WMAS.",
+        "📋 Liste de fréquences": "Nommer, numéroter, vocabulaire, exporter la liste par scène / groupe.",
+        "📊 Scans et rapports": "Rapport de show, scans WSM / WWB (référence, conversion, export).",
+        "🔗 Connexions": "Alertes téléphone et page web, relais réseau (2ᵉ tinySA), diagnostic.",
+        "🎨 Apparence": "Couleurs et thèmes, statuts, mots de la colonne Signal, langue.",
+        "🎨 Couleurs": "Thèmes (Sombre doux, Nord, Daltonien…) et chaque couleur à la main.",
+        "🏷 Statuts": "Tes statuts (Libre, En service…) : couleur, « doit rester libre » / « doit émettre ».",
+        "🌐 Langue": "Français / English (appliqué au redémarrage).",
+        "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
 
     def _install_tips(self):
@@ -8974,35 +8988,15 @@ class MainWindow(QtWidgets.QMainWindow):
         tools_btn = QtWidgets.QPushButton("🔧 Outils")
         tools_btn.setToolTip("Intermodulation, fréquence de secours, relecture, rapport, scans WSM/WWB, export par scène, "
                              "nommage rapide, vocabulaire.")
-        tmenu = QtWidgets.QMenu(tools_btn)
-        for txt, fn in (("🎤 Appel des micros (line check)…  Ctrl+L", lambda *_: self.open_linecheck()),
-                        (None, None),
-                        ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
-                        ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
-                        ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
-                        ("🆘 Fréquence de secours…", lambda *_: self.open_rescue()),
-                        (None, None),
-                        ("⏪ Relecture : revoir le spectre…", lambda *_: self.open_replay()),
-                        ("📄 Rapport de show…", lambda *_: self.make_report()),
-                        ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene()),
-                        (None, None),
-                        ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
-                        ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert()),
-                        (None, None),
-                        ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
-                        ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
-                        ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
-                        (None, None),
-                        ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
-                        ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag()),
-                        ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
-                        (None, None),
-                        ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())):
-            if txt is None:
-                tmenu.addSeparator()
-            else:
-                tmenu.addAction(txt).triggered.connect(fn)
-        tools_btn.setMenu(tmenu)
+        def submenu(parent, title, items):
+            sm = parent.addMenu(title)
+            for txt, fn in items:
+                if txt is None:
+                    sm.addSeparator()
+                else:
+                    sm.addAction(txt).triggered.connect(fn)
+            return sm
+
         win_btn = QtWidgets.QPushButton("🪟 Fenêtres")
         win_btn.setToolTip("Affiche / cache / détache les panneaux, dispositions prêtes à l'emploi (double écran…).\n"
                            "Tu peux aussi attraper un panneau par sa barre de titre et le poser où tu veux.")
@@ -9012,26 +9006,51 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_btn.setToolTip("Alarmes : conflits (signal sur une fréquence « doit rester libre ») et émetteurs "
                                   "absents (« doit émettre »).\nRouge = à acquitter · orange = acquittées, toujours là.")
         self.alarm_btn.clicked.connect(lambda *_: self.toggle_alarm_dock())
-        # barre du haut épurée : l'essentiel visible, le reste dans « ☰ Plus »
+        # barre du haut épurée : l'essentiel visible, le reste dans « ☰ Plus », rangé par moment du travail
+        # (7.12, Clément : « ranger de façon logique, intuitive et efficace ») : pendant le show en haut,
+        # préparer / après le show / connexions / apparence en sous-menus, aide en bas.
         more_btn = QtWidgets.QPushButton("☰ Plus")
-        more_btn.setToolTip("Outils (intermodulation, secours, relecture, rapport, scans WSM/WWB…), fenêtres et\n"
-                            "dispositions, mur de fréquences, couleurs, statuts, mode simple / expert.")
+        more_btn.setToolTip("Pendant le show (appel des micros, mur, relecture), préparer le plan, après le show,\n"
+                            "connexions (alertes, relais), fenêtres, apparence, mode expert, manuel.")
         self.more_menu = QtWidgets.QMenu(more_btn)
         more_btn.setMenu(self.more_menu)
-        tmenu.setTitle("🔧 Outils")
+        mm = self.more_menu
+        mm.addSection("Pendant le show")
+        mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
+        mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
+        mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
+        mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
+        mm.addSection("Préparer et analyser")
+        tmenu = submenu(mm, "📐 Plan de fréquences", (
+            ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
+            ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
+            ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
+            (None, None),
+            ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
+        submenu(mm, "📋 Liste de fréquences", (
+            ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
+            ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
+            ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
+            (None, None),
+            ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene())))
+        submenu(mm, "📊 Scans et rapports", (
+            ("📄 Rapport de show…", lambda *_: self.make_report()),
+            ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
+            ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert())))
+        submenu(mm, "🔗 Connexions", (
+            ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
+            ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
+            ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag())))
+        for title, items in self.EXTRA_MENUS:      # sous-menus ajoutés par une autre version (V8 : SDR)
+            submenu(mm, title, [(t, (lambda *_, n=n: getattr(self, n)())) for t, n in items])
+        mm.addSection("Affichage")
         self.win_menu.setTitle("🪟 Fenêtres et dispositions")
-        self.more_menu.addMenu(tmenu)
-        self.more_menu.addMenu(self.win_menu)
-        self.more_menu.addSeparator()
-        self.more_menu.addAction("🎤 Appel des micros (line check)…").triggered.connect(lambda *_: self.open_linecheck())
-        self.more_menu.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
-        self.more_menu.addAction("🎨 Couleurs…").triggered.connect(lambda *_: self.edit_colors())
-        self.more_menu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
-        self.more_menu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(
-            lambda *_: self.edit_labels())
-        self.more_menu.addSeparator()
-        self.more_menu.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
-        self.lang_menu = self.more_menu.addMenu("🌐 Langue / Language")
+        mm.addMenu(self.win_menu)
+        amenu = mm.addMenu("🎨 Apparence et langue")
+        amenu.addAction("🎨 Couleurs et thèmes…").triggered.connect(lambda *_: self.edit_colors())
+        amenu.addAction("🏷 Statuts…").triggered.connect(lambda *_: self.edit_statuses())
+        amenu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(lambda *_: self.edit_labels())
+        self.lang_menu = amenu.addMenu("🌐 Langue / Language")
         grp_l = QtGui.QActionGroup(self.lang_menu)
         for code, lname in LANGS:
             a_ = self.lang_menu.addAction(lname)
@@ -9039,7 +9058,11 @@ class MainWindow(QtWidgets.QMainWindow):
             a_.setChecked(code == self.lang)
             grp_l.addAction(a_)
             a_.triggered.connect(lambda *_, c=code: self.set_language(c))
-        self.more_menu.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
+        tools_btn.setMenu(tmenu)
+        mm.addSection("Aide")
+        mm.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
+        mm.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
+        mm.addSeparator()
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
         self.expert_act.setCheckable(True)
         self.expert_act.triggered.connect(lambda *_: self.set_expert(self.expert_act.isChecked()))
@@ -9059,6 +9082,21 @@ class MainWindow(QtWidgets.QMainWindow):
         for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn):
             tb.addWidget(wd)
             tb.addSeparator()
+        # accès direct (7.12, Clément : « tout sous la main, rapide ») : les outils du show en un clic
+        self.quick_btns = []
+        for icon, tip, fn in (("🎤", "Appel des micros (line check) — Ctrl+L", self.open_linecheck),
+                              ("🧱", "Mur de fréquences (2ᵉ écran)", self.open_wall),
+                              ("⏪", "Relecture : revoir le spectre ou une session enregistrée", self.open_replay),
+                              ("🧮", "Vérifier le plan de fréquences (comme EazyRF)", self.open_plan_check),
+                              ("⚡", "Intermodulation : qui tombe sur quoi, d'où vient un signal", self.open_intermod),
+                              ("📣", "Alertes téléphone et page web de l'équipe", self.open_alerts)):
+            qb = QtWidgets.QToolButton()
+            qb.setText(icon)
+            qb.setToolTip(tip)
+            qb.setAutoRaise(True)
+            qb.clicked.connect(lambda *_, fn=fn: fn())
+            tb.addWidget(qb)
+            self.quick_btns.append(qb)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
         self.cmd_bar = tb
 

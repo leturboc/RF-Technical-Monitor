@@ -311,8 +311,13 @@ for x in win.findChildren(W.QWidget):
     if not x.toolTip().strip():
         miss.append((type(x).__name__, getattr(x, "text", lambda: "")() if not isinstance(x, W.QComboBox) else x.currentText()))
 check("chaque bouton / case / liste a une info-bulle", not miss, str(miss))
-tools_tips = [a.toolTip() for a in win.more_menu.actions()[0].menu().actions() if a.text()]
-check("menu Outils : bulles d'aide", all(t and not t.startswith(("⚡", "🆘")) for t in tools_tips[:2]), str(tools_tips[:2]))
+_subs = [a for a in win.more_menu.actions() if a.menu() is not None]
+check("☰ Plus rangé : sous-menus Plan, Liste, Scans, Connexions, Fenêtres, Apparence",
+      all(a.text().startswith(e) for a, e in zip(_subs, ["📐", "📋", "📊", "🔗", "🪟", "🎨"])) and len(_subs) >= 6,
+      str([a.text() for a in _subs]))
+_no_tip = [a.text() for sm in [win.more_menu] + [a.menu() for a in _subs] for a in sm.actions()
+           if a.text() and not a.isSeparator() and not a.toolTip().strip() and a.toolTip() != a.text().replace("&", "")]
+check("☰ Plus : chaque entrée a une bulle d'aide", not _no_tip, str(_no_tip))
 win.set_expert(False)
 
 # mur de fréquences = panneau
