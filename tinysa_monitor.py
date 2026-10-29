@@ -4149,7 +4149,10 @@ class Translator:
             t = self._tr(st, depth + 1)
             if t != st:
                 i = s.index(st)
-                return s[:i] + t + s[i + len(st):]
+                pre = s[:i]
+                if st[0] == ":" and t[0] == ":" and pre.endswith(" "):
+                    pre = pre[:-1]                        # « … » : suite → « … »: suite (typographie anglaise)
+                return pre + t + s[i + len(st):]
         parts = self.SEP.split(s)                         # « 6 fréquences · 2 occupée(s) · … », « … | … »
         split = None
         if len(parts) > 1:
