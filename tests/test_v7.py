@@ -593,5 +593,12 @@ ok("bilan : surveillance arrêtée", not ok_ and "arrêtée" in t_, t_)
 req_ = ns["ntfy_request"]("https://ntfy.sh", "t", "x", "y", -1)
 check("ntfy : message « tout va bien » en priorité normale", req_[1]["Priority"], "default")
 
+# --- firmware 2026 : refus du tinySA expliqué
+trf = ns["tinysa_refusal"]
+ok("tinySA en disque USB : message clair", "disque USB" in trf(["usb disk mode active"]))
+ok("tinySA en mise à jour : message clair", "firmware" in trf(["firmware update active"]))
+ok("trop de points par commande : message clair", "Segment" in trf(["sweep points exceeds range 450"]))
+check("réponse normale : pas de refus", trf(["470000000 -9.8e+01 0.0"]), "")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

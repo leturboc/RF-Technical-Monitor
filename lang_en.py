@@ -9,6 +9,15 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    # réponses du tinySA cherchées dans ses refus (pas du texte de l'appli)
+    'exceeds range': 'exceeds range',
+    'firmware update active': 'firmware update active',
+    'frequency range is invalid': 'frequency range is invalid',
+    'usb disk mode active': 'usb disk mode active',
+    'Le tinySA est en mode « disque USB » : il refuse les mesures. Sur le tinySA : STORAGE › MORE › USB DISK pour en sortir (ou redémarre-le).': 'The tinySA is in « USB disk » mode: it refuses measurements. On the tinySA: STORAGE › MORE › USB DISK to leave it (or restart it).',
+    'Le tinySA est en train de mettre à jour son firmware : attends la fin et son redémarrage.': 'The tinySA is updating its firmware: wait until it has finished and restarted.',
+    'Le tinySA refuse cette plage de fréquences (hors de ses limites ?).': 'The tinySA refuses this frequency range (outside its limits?).',
+    'Le tinySA refuse ce nombre de points par commande : choisis un segment plus petit (mode expert › Segment).': 'The tinySA refuses this number of points per command: choose a smaller segment (expert mode › Segment).',
     '🎛 Régie': '🎛 Control room',
     'Aucune fréquence surveillée.': 'No monitored frequency.',
     "Ajoute l'appli aux programmes lancés à l'ouverture de ta session Windows.\nAvec la case du dessus : après une coupure, le PC redémarre et la surveillance reprend.\n(Le PC doit ouvrir la session tout seul, et le BIOS se rallumer après une coupure.)": 'Adds the app to the programs started when your Windows session opens.\nWith the box above: after a power cut, the PC restarts and monitoring resumes.\n(The PC must log in by itself, and the BIOS must power back on after a cut.)',
