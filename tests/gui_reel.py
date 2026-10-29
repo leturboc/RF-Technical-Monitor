@@ -131,6 +131,30 @@ win.resize(1700, 980)
 win.show()
 wait(600)
 shot(win, "demarrage")
+# 1er lancement : mode ULTRA SIMPLE (spectre + liste + alarmes), parcours dans l'ordre, tuto proposé
+check("1er lancement : ultra simple (réglages et classement cachés)", win.ui_level == "ultra"
+      and not win.dock_set.isVisible() and not win.layer_box.isVisible(), win.ui_level)
+check("parcours : ① scan › ② liste › ③ plan › ④ intermod › ⑤ show › ⑥ après",
+      [b.text()[:1] for b in win.step_btns.values()] == ["①", "②", "③", "④", "⑤", "⑥"],
+      str([b.text() for b in win.step_btns.values()]))
+check("1er lancement : tuto proposé", "Tuto" in win.tour_btn.text() and not win.tour_done)
+step("🎓 tuto", win.start_tour)
+_tr = win._tour
+if _tr is not None:
+    _n = len(_tr.steps)
+    shot(_tr, "tuto_1")
+    for _k in range(_n - 1):
+        _tr.next_btn.click()
+        app.processEvents()
+    check("tuto : toutes les étapes, dernière = Terminer", _tr.i == _n - 1 and "✔" in _tr.next_btn.text()
+          and _n >= 10, f"{_tr.i}/{_n}")
+    _w_last = _tr.steps[-1][0]
+    _tr.next_btn.click()
+    app.processEvents()
+    check("tuto terminé : retenu, surlignage retiré", win.tour_done and "f5a623" not in _w_last.styleSheet())
+shot(win, "ultra_simple")
+step("passer en simple", lambda: win.set_level("simple"))
+check("simple : réglages et classement visibles", win.dock_set.isVisible() and win.layer_box.isVisible())
 
 # fréquences + couches
 win.ensure_group("Grande scène", "Micros HF")
@@ -317,9 +341,9 @@ for x in win.findChildren(W.QWidget):
         miss.append((type(x).__name__, getattr(x, "text", lambda: "")() if not isinstance(x, W.QComboBox) else x.currentText()))
 check("chaque bouton / case / liste a une info-bulle", not miss, str(miss))
 _subs = [a for a in win.more_menu.actions() if a.menu() is not None]
-check("☰ Plus rangé : sous-menus Plan, Liste, Scans, Connexions, Fenêtres, Apparence",
-      [e for e in ["📐", "📋", "📊", "🔗", "🪟", "🎨"] if any(a.text().startswith(e) for a in _subs)]
-      == ["📐", "📋", "📊", "🔗", "🪟", "🎨"],
+check("☰ Plus dans l'ordre du travail : liste, plan, scans / rapports, connexions, fenêtres, apparence",
+      [e for e in ["📋", "📐", "📊", "🔗", "🪟", "🎨"] if any(a.text().startswith(e) for a in _subs)]
+      == ["📋", "📐", "📊", "🔗", "🪟", "🎨"],
       str([a.text() for a in _subs]))
 _no_tip = [a.text() for sm in [win.more_menu] + [a.menu() for a in _subs] for a in sm.actions()
            if a.text() and not a.isSeparator() and not a.toolTip().strip() and a.toolTip() != a.text().replace("&", "")]

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.12.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.13.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -234,6 +234,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **Manuel** réécrit (25 chapitres, bases RF, lire le spectre, seuils, filtre, sessions, menus) FR + EN, et **PDF**
     `docs/manuel.pdf` / `docs/manual_en.pdf` (GitHub n'affiche pas le HTML) : `python tests/make_pdf.py`
     (Playwright / Chromium) **à relancer après chaque modif du manuel**.
+- **7.13.0 (un utilisateur de Clément : « j'ai rien compris », Clément : « ordre logique scan → PF → intermod →
+  monitoring », « mode ultra simple », « mode tuto »)** : barre **Parcours** (2ᵉ rangée, `_build_steps_bar`, PURE
+  `STEPS` / `STEP_DEFAULT` / `STEP_HINTS` / `STATUS_HELP`, `do_step`, `step_scan`, `step_monitor`, `step_lbl` =
+  quoi faire) : ① Scanner le lieu › ② Mes fréquences (menu) › ③ Vérifier le plan › ④ Intermod › ⑤ Surveiller
+  (menu) › ⑥ Après le show (menu) ; remplace les boutons rapides 7.12. **Niveaux** `UI_LEVELS` (ultra | simple |
+  expert), `self.ui_level` (config `ui_level` ; 1er lancement sans config = ultra), `set_level` (ultra : réglages,
+  journal, waterfall et classement `layer_box` cachés ; `set_expert` reste et suit). **Tuto** `TourDialog`
+  (non modal, bulle posée à côté du widget entouré en orange, `tour_steps(o)`), `start_tour`, `tour_finished`,
+  `tour_done` (config ; bouton « 🎓 Première fois ? Tuto » tant que pas fait). Noms : panneau « Mes fréquences »
+  (était « Fréquences et couches »), encadré « Classer par scène › groupe (facultatif) » avec bulle explicative.
+  ☰ Plus dans l'ordre du travail : ① Préparer / ② Pendant le show / ③ Après le show / Réglages et connexions /
+  Aide (👁 Affichage, 🎓 Tuto). `self.more_btn`.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
