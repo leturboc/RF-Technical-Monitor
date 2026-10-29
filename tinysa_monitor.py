@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.12.0"
+APP_VER = "7.13.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4498,6 +4498,87 @@ def rec_mb_per_hour(points, cycle_s):
     if not points or not cycle_s or cycle_s <= 0:
         return None
     return points * 1.3 * 3600.0 / cycle_s / 1e6
+
+
+
+# ------------------------------------------------------------------ ajouter depuis le scan (7.13, idée de Clément)
+def scan_peaks(F, L, thr, merge_khz=150.0, wide_mhz=1.5, exclude=(), excl_khz=100.0):
+    """Signaux d'un spectre au-dessus de thr (dBm), pour les ajouter à la liste sans les taper :
+    zones contiguës au-dessus du seuil, réunies si moins de merge_khz les séparent ; une zone plus large que
+    wide_mhz = plateau (TNT, Spectera, bloc numérique). Les fréquences déjà connues (exclude, MHz) à moins de
+    excl_khz sont écartées. -> [dict(f MHz (pic, ou centre d'un plateau), level dBm, width kHz, wide bool)],
+    triés par fréquence."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    if not len(F):
+        return []
+    above = np.nonzero(L >= thr)[0]
+    if not len(above):
+        return []
+    zones, start, prev = [], above[0], above[0]
+    for k in above[1:]:
+        gap = (F[k] - F[prev]) * 1000.0             # points voisins du balayage = même signal (pas grossier),
+        if (k != prev + 1 and gap > merge_khz) or gap > 5000.0:    # sauf saut de bande
+            zones.append((start, prev))
+            start = k
+        prev = k
+    zones.append((start, prev))
+    ex = np.asarray(sorted(float(x) for x in exclude), dtype=float)
+    out = []
+    for a, z in zones:
+        seg = L[a:z + 1]
+        width = (F[z] - F[a]) * 1000.0
+        wide = width >= wide_mhz * 1000.0
+        f = float((F[a] + F[z]) / 2.0) if wide else float(F[a + int(np.argmax(seg))])
+        if len(ex) and np.min(np.abs(ex - f)) * 1000.0 <= max(excl_khz, width / 2.0 if wide else 0.0):
+            continue
+        out.append(dict(f=round(f, 4), level=round(float(seg.max()), 1), width=round(width, 1), wide=bool(wide)))
+    return out
+
+
+# ------------------------------------------------------------------ parcours et niveaux d'affichage (7.13)
+UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
+             ("simple", "🔵 Simple : + réglages essentiels, journal, scènes / groupes"),
+             ("expert", "🎛 Expert : tous les réglages"))
+# étape, texte du bouton, bulle, menu [(texte, méthode)] (vide = clic direct sur STEP_DEFAULT)
+STEPS = (
+    ("scan", "① Scanner le lieu", "Avant tout : balayer le lieu pour voir ce qui est déjà occupé (TNT, autres\n"
+     "équipes, brouilleurs). Démarre le balayage, max hold remis à zéro.", ()),
+    ("list", "② Mes fréquences", "Ta liste de fréquences : importer ton plan (EazyRF, WWB, WSM, Excel…), en ajouter,\n"
+     "et dire pour chacune si elle doit émettre ou rester libre.",
+     (("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
+      ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
+      ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"), (None, None),
+      ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
+    ("plan", "③ Vérifier le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
+     "une remplaçante proposée pour chaque fréquence à problème.", ()),
+    ("im", "④ Intermod", "Produits d'intermodulation de tes émetteurs, ou d'où vient un signal gênant\n"
+     "(d'après le spectre mesuré).", ()),
+    ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
+     "alertes sur téléphone.",
+     (("▶ Démarrer la surveillance", "step_monitor"), ("🎤 Appel des micros (line check)…", "open_linecheck"),
+      ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
+      ("🆘 Fréquence de secours…", "open_rescue"))),
+    ("after", "⑥ Après le show", "Revoir ce qui s'est passé (relecture, session enregistrée), rapport, exports.",
+     (("⏪ Relecture : revoir le spectre / une session…", "open_replay"), ("📄 Rapport de show…", "make_report"),
+      ("📤 Exporter les fréquences…", "export_by_scene"))),
+)
+STEP_DEFAULT = dict(scan="step_scan", plan="open_plan_check", im="open_intermod")
+STEP_HINTS = {
+    "scan": "① Laisse tourner quelques minutes : le max hold (orange) montre ce qui occupe déjà le lieu.",
+    "list": "② Ajoute depuis le scan, importe ou saisis tes fréquences ; puis Ctrl+E = doit émettre, "
+            "statut « Libre » = doit rester libre.",
+    "plan": "③ Corrige les ✗ avec « Proposer » puis « Remplacer ».",
+    "im": "④ Un signal bizarre ? « Chercher l'origine » à partir du spectre mesuré.",
+    "show": "⑤ Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.",
+    "after": "⑥ Relecture : revois n'importe quel moment de la session enregistrée.",
+}
+STATUS_HELP = ("Chaque fréquence de ta liste a un STATUT, qui dit ce que tu attends d'elle :\n\n"
+               "• « En service » = DOIT ÉMETTRE : un de tes micros / ears est censé être là. S'il se tait trop\n"
+               "  longtemps → alarme ⚠ ABSENT (pile vide, micro éteint…). Raccourci : Ctrl+E.\n\n"
+               "• « Libre » = DOIT RESTER LIBRE : une réserve, une fréquence de secours. Au moindre signal dessus\n"
+               "  → alarme ⚠ CONFLIT (quelqu'un d'autre émet là).\n\n"
+               "• Sans statut : simple surveillance (occupé / libre), pas d'alarme.\n\n"
+               "Pour changer : double-clic sur la colonne « Statut », ou sélectionne des lignes puis Ctrl+1…9.")
 
 # ===== PURE-END
 
@@ -10039,6 +10120,285 @@ class LevelSpin(QtWidgets.QDoubleSpinBox):
         self.lineEdit().setText(self.textFromValue(self.value()))
 
 
+def tour_steps(o):
+    """Étapes du tuto : (widget à montrer, titre, texte), dans l'ordre du parcours."""
+    sb = getattr(o, "step_btns", {})
+    return [
+        (o.port_combo, "Bienvenue 👋", "TinySA Monitor surveille tes fréquences HF en continu avec un tinySA et "
+         "t'alerte si un micro se tait ou si un signal arrive où il ne faut pas. Commence par choisir le port du "
+         "tinySA (marqué ✔ tinySA), ou coche « Mode démo » pour essayer sans appareil."),
+        (o.steps_bar, "Le parcours", "Cette barre suit l'ordre logique du travail, de gauche à droite : scanner le "
+         "lieu → ta liste → vérifier le plan → intermod → surveiller le show → après le show. Chaque bouton lance "
+         "l'étape et explique quoi faire à droite."),
+        (sb.get("scan"), "① Scanner le lieu", "Avant de choisir tes fréquences, regarde ce qui occupe déjà le lieu "
+         "(TNT, autres équipes, brouilleurs). Ce bouton démarre le balayage."),
+        (o.dock_spec.widget(), "Le spectre", "Horizontalement les fréquences (MHz), verticalement le niveau (dBm). "
+         "Bleu = en direct, orange = le plus haut vu (max hold), ligne rouge = seuil « occupé ». ❓ Courbes "
+         "explique chaque trait."),
+        (sb.get("list"), "② Mes fréquences", "Importe ton plan (EazyRF, WWB, WSM, Excel…) ou ajoute tes fréquences "
+         "à la main."),
+        (o.watch_table, "Ta liste", "Une ligne par fréquence. Colonne « Signal » : vert = OK, bleu = libre, rouge = "
+         "problème. Colonne « Statut » : « En service » = doit émettre, « Libre » = doit rester libre (double-clic "
+         "pour changer, Ctrl+E = en service)."),
+        (sb.get("plan"), "③ Vérifier le plan", "Comme EazyRF : chaque fréquence est-elle assez loin des autres et à "
+         "l'abri de l'intermod ? Pour celles en ✗, l'appli propose une remplaçante."),
+        (sb.get("im"), "④ Intermod", "Les produits d'intermodulation de tes émetteurs, ou d'où vient un signal "
+         "gênant (à partir du spectre mesuré)."),
+        (sb.get("show"), "⑤ Surveiller le show", "Démarre la surveillance. À chaque démarrage, l'appli propose "
+         "d'enregistrer toute la session pour la revoir après."),
+        (o.alarm_btn, "Les alarmes 🔔", "Rouge = une alarme à acquitter (micro absent, conflit…). « Acquitter » coupe "
+         "le son ; l'alarme reste orange tant que le problème est là."),
+        (sb.get("after"), "⑥ Après le show", "Relecture : revois n'importe quel moment ; rapport de show."),
+        (o.more_btn, "☰ Plus", "Tout le reste, rangé dans le même ordre ; « 👁 Affichage » passe en ultra simple / "
+         "simple / expert ; 📖 Manuel pour tout comprendre en détail. Bon show ! 🎤"),
+    ]
+
+
+class TourDialog(QtWidgets.QDialog):
+    """Tuto : une bulle par étape, posée à côté de la partie de l'écran concernée (entourée en orange)."""
+
+    def __init__(self, owner, steps):
+        super().__init__(owner)
+        self.owner = owner
+        self.steps = [s_ for s_ in steps if s_[0] is not None]
+        self.i, self._hl = 0, None
+        self.setWindowTitle("Tuto")
+        self.setModal(False)
+        lay = QtWidgets.QVBoxLayout(self)
+        self.title = QtWidgets.QLabel("")
+        f_ = self.title.font()
+        f_.setPointSize(f_.pointSize() + 3)
+        f_.setBold(True)
+        self.title.setFont(f_)
+        self.text = QtWidgets.QLabel("")
+        self.text.setWordWrap(True)
+        self.text.setMinimumWidth(380)
+        self.text.setMinimumHeight(self.text.fontMetrics().height() * 5)
+        self.count = QtWidgets.QLabel("")
+        self.prev_btn = QtWidgets.QPushButton("◀ Précédent")
+        self.prev_btn.setToolTip("Étape précédente.")
+        self.next_btn = QtWidgets.QPushButton("Suivant ▶")
+        self.next_btn.setToolTip("Étape suivante.")
+        quit_btn = QtWidgets.QPushButton("Quitter le tuto")
+        quit_btn.setToolTip("Ferme le tuto (relançable : ☰ Plus › 🎓 Tuto, ou le bouton 🎓).")
+        self.prev_btn.clicked.connect(lambda *_: self.go(self.i - 1))
+        self.next_btn.clicked.connect(lambda *_: self.go(self.i + 1) if self.i + 1 < len(self.steps) else self.close())
+        quit_btn.clicked.connect(self.close)
+        lay.addWidget(self.title)
+        lay.addWidget(self.text)
+        lay.addLayout(owner._row(self.count, None, quit_btn, self.prev_btn, self.next_btn))
+        self.resize(460, 220)
+
+    def _mark(self, w):
+        if self._hl is not None:
+            try:
+                self._hl[0].setStyleSheet(self._hl[1])
+            except RuntimeError:
+                pass
+        self._hl = None
+        if w is not None:
+            self._hl = (w, w.styleSheet())
+            w.setStyleSheet(w.styleSheet() + "; border: 3px solid #f5a623; border-radius: 4px;")
+
+    def go(self, i):
+        i = max(0, min(len(self.steps) - 1, i))
+        self.i = i
+        w, t, txt = self.steps[i]
+        self.title.setText(t)
+        self.text.setText(txt)
+        self.count.setText(f"{i + 1} / {len(self.steps)}")
+        self.prev_btn.setEnabled(i > 0)
+        self.next_btn.setText("Terminer ✔" if i == len(self.steps) - 1 else "Suivant ▶")
+        self._mark(w)
+        try:                                       # la bulle à côté de la partie montrée, sans sortir de l'écran
+            g = w.mapToGlobal(w.rect().bottomLeft())
+            scr = (w.screen() or QtWidgets.QApplication.primaryScreen()).availableGeometry()
+            x = min(max(scr.left(), g.x()), scr.right() - self.width())
+            y = g.y() + 8
+            if y + self.height() > scr.bottom():
+                y = max(scr.top(), w.mapToGlobal(w.rect().topLeft()).y() - self.height() - 8)
+            self.move(x, y)
+        except Exception:  # noqa: BLE001 — position seulement
+            pass
+
+    def closeEvent(self, e):
+        self._mark(None)
+        self.owner.tour_finished()
+        super().closeEvent(e)
+
+
+class ScanAddDialog(QtWidgets.QDialog):
+    """📡 Ajouter depuis le scan : les signaux vus au-dessus d'un seuil deviennent des fréquences de la liste
+    (à renommer, ranger, supprimer ensuite comme les autres)."""
+    COLS = ["", "MHz", "Niveau", "Largeur", "Où (plan du pays)"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.peaks = []
+        self.setWindowTitle("Ajouter des fréquences depuis le scan")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Les signaux que le tinySA voit au-dessus du seuil deviennent des fréquences de ta liste, sans les "
+            "taper. Laisse tourner le balayage un moment avant : le <b>max hold</b> garde aussi les émetteurs "
+            "intermittents. Ensuite, renomme-les, range-les ou supprime le bruit comme n'importe quelle fréquence.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        self.src_combo = QtWidgets.QComboBox()
+        self.src_combo.addItem("Max hold (tout ce qui est passé)", "max")
+        self.src_combo.addItem("Balayage en direct", "live")
+        self.src_combo.setToolTip("Max hold : garde les signaux brefs ou intermittents. Direct : seulement ce qui "
+                                  "émet maintenant.")
+        self.thr = LevelSpin()
+        self.thr.setRange(-120.0, 0.0)
+        self.thr.setValue(o.thr_spin.value())
+        self.thr.setToolTip("Seuls les signaux au-dessus de ce niveau sont proposés (par défaut : ton seuil "
+                            "« occupé »).")
+        self.merge = QtWidgets.QSpinBox()
+        self.merge.setRange(10, 2000)
+        self.merge.setSingleStep(25)
+        self.merge.setValue(150)
+        self.merge.setSuffix(" kHz")
+        self.merge.setToolTip("Deux morceaux de signal plus proches que ça = un seul signal.")
+        self.excl_chk = QtWidgets.QCheckBox("Sans celles déjà dans ma liste")
+        self.excl_chk.setChecked(True)
+        self.excl_chk.setToolTip("N'affiche pas les signaux à moins de 100 kHz d'une fréquence déjà dans ta liste.")
+        self.wide_chk = QtWidgets.QCheckBox("Sans les plateaux larges (TNT…)")
+        self.wide_chk.setChecked(True)
+        self.wide_chk.setToolTip("Écarte les signaux de plus de 1,5 MHz de large (TNT, Spectera, bloc numérique) :\n"
+                                 "décoche pour les ajouter comme blocs larges.")
+        go = QtWidgets.QPushButton("🔄 Chercher")
+        go.setToolTip("Relance la recherche avec ces réglages.")
+        go.clicked.connect(lambda *_: self.refresh())
+        for w_ in (self.src_combo,):
+            w_.currentIndexChanged.connect(lambda *_: self.refresh())
+        for w_ in (self.excl_chk, self.wide_chk):
+            w_.toggled.connect(lambda *_: self.refresh())
+        lay.addLayout(o._row(self.src_combo, "Seuil :", self.thr, "Réunir à :", self.merge, None, go))
+        lay.addLayout(o._row(self.excl_chk, self.wide_chk, None))
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Coche les signaux à ajouter. Double-clic : voir ce signal sur le spectre (zoom).")
+        self.table.cellDoubleClicked.connect(lambda r, c: self.zoom(r))
+        lay.addWidget(self.table, 1)
+        b_all = QtWidgets.QPushButton("Tout cocher")
+        b_all.setToolTip("Coche toutes les lignes.")
+        b_all.clicked.connect(lambda *_: self.check_all(True))
+        b_none = QtWidgets.QPushButton("Tout décocher")
+        b_none.setToolTip("Décoche toutes les lignes.")
+        b_none.clicked.connect(lambda *_: self.check_all(False))
+        self.count_lbl = QtWidgets.QLabel("")
+        lay.addLayout(o._row(b_all, b_none, None, self.count_lbl))
+        f = QtWidgets.QFormLayout()
+        self.prefix = QtWidgets.QLineEdit("Scan")
+        self.prefix.setToolTip("Nom donné aux nouvelles fréquences, numéroté : Scan 1, Scan 2… (à renommer ensuite).")
+        self.scene = QtWidgets.QComboBox()
+        self.scene.setEditable(True)
+        self.scene.addItem("")
+        for sc in o.scenes:
+            self.scene.addItem(sc["name"])
+        self.scene.setEditText("")
+        self.scene.setToolTip("Scène où les ranger (facultatif ; on peut les ranger plus tard).")
+        self.group = QtWidgets.QLineEdit("")
+        self.group.setPlaceholderText(f"ex. Scan {datetime.now():%d/%m %H:%M}")
+        self.group.setToolTip("Groupe où les ranger (facultatif).")
+        self.status = QtWidgets.QComboBox()
+        self.status.addItem("aucun statut (simple surveillance)", "")
+        for st in o.statuses:
+            self.status.addItem(st["name"], st["name"])
+        self.status.setToolTip("Statut des nouvelles fréquences : « aucun » = on surveille sans alarme ; « En "
+                               "service » = elles doivent émettre (alarme si elles se taisent).")
+        f.addRow("Nom :", self.prefix)
+        f.addRow("Scène :", self.scene)
+        f.addRow("Groupe :", self.group)
+        f.addRow("Statut :", self.status)
+        lay.addLayout(f)
+        add = QtWidgets.QPushButton("＋ Ajouter les cochées à ma liste")
+        add.setToolTip("Ajoute les signaux cochés comme fréquences surveillées.")
+        add.clicked.connect(lambda *_: self.add())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        lay.addLayout(o._row(add, None, close))
+        self.resize(760, 640)
+        self.refresh()
+
+    def refresh(self):
+        o = self.owner
+        F, L = o.fresh_FL(use_max=self.src_combo.currentData() == "max", any_age=True)
+        ex = [w["freq"] for w in o.watch] if self.excl_chk.isChecked() else []
+        pk = [] if F is None else scan_peaks(F, L, self.thr.value(), self.merge.value(), exclude=ex)
+        if self.wide_chk.isChecked():
+            pk = [p_ for p_ in pk if not p_["wide"]]
+        self.peaks = pk
+        t = self.table
+        t.setRowCount(len(pk))
+        for r, p_ in enumerate(pk):
+            it = QtWidgets.QTableWidgetItem("")
+            it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Checked)
+            t.setItem(r, 0, it)
+            where = spectrum_info(p_["f"], o.plan, o.tv)[0]
+            vals = (f"{p_['f']:.3f}", o.lvl(p_["level"]),
+                    (f"{p_['width'] / 1000:.1f} MHz (plateau)" if p_["wide"] else f"{p_['width']:.0f} kHz"), where)
+            for c, v in enumerate(vals, start=1):
+                it2 = QtWidgets.QTableWidgetItem(v)
+                if c in (1, 2, 3):
+                    it2.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                t.setItem(r, c, it2)
+        t.resizeColumnsToContents()
+        t.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        if F is None:
+            self.count_lbl.setText("Pas encore de balayage : lance ▶ Démarrer (ou ① Scanner le lieu).")
+        else:
+            self.count_lbl.setText(f"{len(pk)} signal(aux) au-dessus du seuil")
+
+    def check_all(self, on):
+        for r in range(self.table.rowCount()):
+            self.table.item(r, 0).setCheckState(Qt.CheckState.Checked if on else Qt.CheckState.Unchecked)
+
+    def zoom(self, r):
+        if 0 <= r < len(self.peaks):
+            p_ = self.peaks[r]
+            half = max(1.0, p_["width"] / 1000.0)
+            self.owner.spec.getPlotItem().setXRange(p_["f"] - half, p_["f"] + half, padding=0)
+
+    def add(self):
+        o = self.owner
+        rows = [r for r in range(self.table.rowCount()) if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
+        if not rows:
+            self.msg.setText("Coche au moins un signal.")
+            return
+        pre = self.prefix.text().strip() or "Scan"
+        taken = {w["name"] for w in o.watch}
+        scene, group, status = self.scene.currentText().strip(), self.group.text().strip(), self.status.currentData()
+        k, n = 1, 0
+        for r in rows:
+            p_ = self.peaks[r]
+            while f"{pre} {k}" in taken:
+                k += 1
+            name = f"{pre} {k}"
+            taken.add(name)
+            o._append_watch(name, p_["f"], status=status or "", scene=scene, group=group,
+                            bw=round(p_["width"] / 1000.0, 1) if p_["wide"] else 0.0)
+            n += 1
+        o.sort_watch()
+        o.rebuild_tree()
+        o.rebuild_watch_table()
+        o._update_markers()
+        o.set_status(f"📡 {n} fréquence(s) ajoutée(s) depuis le scan : renomme-les, range-les, ou supprime le bruit "
+                     f"(clic droit sur la liste).")
+        self.msg.setText(f"✔ {n} fréquence(s) ajoutée(s) à ta liste.")
+        self.refresh()
+
+
 class SpectrumLegendDialog(QtWidgets.QDialog):
     """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
     deux sens aux réglages de la fenêtre principale)."""
@@ -10764,6 +11124,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
         self.session_cfg = dict(SESSION_DEFAULT)
+        self.ui_level = "simple" if CFG_PATH.exists() else "ultra"     # 1er lancement : ultra simple
+        self.tour_done = CFG_PATH.exists()
+        self._tour = None
         self.log_kinds = log_kinds_norm(None)
         self._session = None                     # dossier de la session enregistrée en cours
         self._last_session = None
@@ -10867,6 +11230,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _late_layout(self):
         self.panel_restore(getattr(self, "_panel_cfg", None))
+        self.set_level(self.ui_level)
+        if not self.tour_done:
+            self.tour_btn.setText("🎓 Première fois ? Tuto")
+            self.step_lbl.setText("👋 Suis les étapes de gauche à droite, ou lance le tuto.")
         if not self._state_restored:
             if self.view_id == -1:
                 self.dock_wf.hide()      # pas de waterfall en vue « tout le spectre » : le spectre prend la place
@@ -11082,16 +11449,127 @@ class MainWindow(QtWidgets.QMainWindow):
     def set_expert(self, on):
         """Mode simple : seulement l'essentiel (seuils, bandes, 2ᵉ tinySA, pays). Expert : tous les réglages."""
         self.expert = bool(on)
+        if self.expert:
+            self.ui_level = "expert"
+        elif getattr(self, "ui_level", "simple") == "expert":
+            self.ui_level = "simple"
+        for k_, a_ in getattr(self, "level_acts", {}).items():
+            a_.setChecked(k_ == getattr(self, "ui_level", "simple"))
         for form, w_ in getattr(self, "_expert_rows", []):
             form.setRowVisible(w_, self.expert)
         for w_ in (getattr(self, "ref_row", None), getattr(self, "persist_combo", None)):
             if w_ is not None:
                 w_.setVisible(self.expert)
-        if hasattr(self, "expert_act"):
-            self.expert_act.setChecked(self.expert)
         if hasattr(self, "expert_hint"):
             self.expert_hint.setText("🎛 Mode expert : revenir au mode simple" if self.expert
                                      else "🎛 Mode simple : afficher tous les réglages")
+
+    # ------------------------------------------------------- parcours (7.13, Clément : « dans l'ordre logique :
+    # scan → plan → intermod → monitoring ») et niveaux d'affichage (« un mode ultra simple »)
+    def _build_steps_bar(self):
+        bar = QtWidgets.QToolBar("Parcours")
+        bar.setObjectName("barre_parcours")
+        bar.setMovable(False)
+        bar.setFloatable(False)
+        bar.toggleViewAction().setEnabled(False)
+        self.step_btns = {}
+        for key, txt, tip, items in STEPS:
+            b = QtWidgets.QToolButton()
+            b.setText(txt)
+            b.setToolTip(tip)
+            b.setAutoRaise(True)
+            if items:
+                m_ = QtWidgets.QMenu(b)
+                m_.setToolTipsVisible(True)
+                for it_txt, meth in items:
+                    if it_txt is None:
+                        m_.addSeparator()
+                    else:
+                        m_.addAction(it_txt).triggered.connect(lambda *_, k=key, n=meth: self.do_step(k, n))
+                b.setMenu(m_)
+                b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+            else:
+                b.clicked.connect(lambda *_, k=key: self.do_step(k))
+            bar.addWidget(b)
+            if key != STEPS[-1][0]:
+                arrow = QtWidgets.QLabel("›")
+                arrow.setStyleSheet("color: gray;")
+                bar.addWidget(arrow)
+            self.step_btns[key] = b
+        bar.addSeparator()
+        self.tour_btn = QtWidgets.QToolButton()
+        self.tour_btn.setText("🎓 Tuto")
+        self.tour_btn.setToolTip("Visite guidée : ce que fait chaque partie de l'écran, dans l'ordre (2 minutes).")
+        self.tour_btn.setAutoRaise(True)
+        self.tour_btn.clicked.connect(lambda *_: self.start_tour())
+        bar.addWidget(self.tour_btn)
+        self.step_lbl = QtWidgets.QLabel("")
+        self._elastic(self.step_lbl)
+        self.step_lbl.setMinimumWidth(240)                 # dans une barre d'outils : sinon largeur nulle
+        self.step_lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+        self.step_lbl.setToolTip("Ce qu'il faut faire à cette étape.")
+        bar.addWidget(self.step_lbl)
+        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, bar)
+        self.steps_bar = bar
+
+    def do_step(self, key, meth=None):
+        """Une étape du parcours : met l'étape en avant, explique, et lance l'action (ou celle du menu)."""
+        for k_, b in self.step_btns.items():
+            f_ = b.font()
+            f_.setBold(k_ == key)
+            b.setFont(f_)
+        self.step_lbl.setText(STEP_HINTS.get(key, ""))
+        self.step_lbl.setToolTip(STEP_HINTS.get(key, ""))
+        fn = getattr(self, meth or STEP_DEFAULT.get(key, ""), None)
+        if fn is not None:
+            fn()
+
+    def step_scan(self):
+        """① Scanner le lieu : démarre le balayage (max hold remis à zéro) pour voir ce qui occupe déjà le lieu."""
+        self.hold_chk.setChecked(True)
+        self.reset_max()
+        if not self.is_running():
+            self.toggle_run()
+
+    def open_scan_add(self):
+        ScanAddDialog(self).exec()
+
+    def step_monitor(self):
+        if not self.is_running():
+            self.toggle_run()
+
+    def status_help(self):
+        QtWidgets.QMessageBox.information(self, APP_NAME, STATUS_HELP)
+
+    def set_level(self, level):
+        """Ultra simple : spectre + liste + alarmes, rien d'autre. Simple : + réglages essentiels, journal,
+        classement par scène / groupe. Expert : tous les réglages."""
+        level = level if level in dict(UI_LEVELS) else "simple"
+        self.ui_level = level
+        self.set_expert(level == "expert")
+        ultra = level == "ultra"
+        for d in (getattr(self, "dock_set", None), getattr(self, "dock_log", None)):
+            if d is not None and d.objectName() not in getattr(self, "panel_wins", {}):
+                d.setVisible(not ultra)
+        if ultra and getattr(self, "dock_wf", None) is not None:
+            self.dock_wf.setVisible(False)
+        if getattr(self, "layer_box", None) is not None:
+            self.layer_box.setVisible(not ultra)
+        for k_, a_ in getattr(self, "level_acts", {}).items():
+            a_.setChecked(k_ == level)
+
+    def start_tour(self):
+        if getattr(self, "_tour", None) is not None:
+            self._tour.close()
+        self._tour = TourDialog(self, tour_steps(self))
+        self._tour.show()
+        self._tour.go(0)
+
+    def tour_finished(self):
+        self.tour_done = True
+        self._tour = None
+        self.step_lbl.setText("")
 
     def open_section(self, key, on=True):
         if key in self.sections:
@@ -11184,40 +11662,45 @@ class MainWindow(QtWidgets.QMainWindow):
         # (7.12, Clément : « ranger de façon logique, intuitive et efficace ») : pendant le show en haut,
         # préparer / après le show / connexions / apparence en sous-menus, aide en bas.
         more_btn = QtWidgets.QPushButton("☰ Plus")
+        self.more_btn = more_btn
         more_btn.setToolTip("Pendant le show (appel des micros, mur, relecture), préparer le plan, après le show,\n"
                             "connexions (alertes, relais), fenêtres, apparence, mode expert, manuel.")
         self.more_menu = QtWidgets.QMenu(more_btn)
         more_btn.setMenu(self.more_menu)
         mm = self.more_menu
-        mm.addSection("Pendant le show")
-        mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
-        mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
-        mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
-        mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
-        mm.addSection("Préparer et analyser")
-        tmenu = submenu(mm, "📐 Plan de fréquences", (
-            ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
-            ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
-            ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
-            (None, None),
-            ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
+        mm.addSection("① Préparer : liste, plan, intermod")
         submenu(mm, "📋 Liste de fréquences", (
+            ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", lambda *_: self.open_scan_add()),
+            ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", lambda *_: self.import_watch()),
+            ("＋ Ajouter une fréquence…", lambda *_: self.add_watch_dialog()),
             ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
             ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
             ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
             (None, None),
             ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene())))
+        tmenu = submenu(mm, "📐 Plan de fréquences", (
+            ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
+            ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
+            (None, None),
+            ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
+        mm.addAction("⚡ Intermodulation (2 / 3 / 5 TX)…").triggered.connect(lambda *_: self.open_intermod())
+        mm.addSection("② Pendant le show")
+        mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
+        mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
+        mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
+        mm.addSection("③ Après le show")
+        mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
         submenu(mm, "📊 Scans et rapports", (
             ("📄 Rapport de show…", lambda *_: self.make_report()),
             ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
             ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert())))
+        mm.addSection("Réglages et connexions")
         submenu(mm, "🔗 Connexions", (
             ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
             ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
             ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag())))
         for title, items in self.EXTRA_MENUS:      # sous-menus ajoutés par une autre version (V8 : SDR)
             submenu(mm, title, [(t, (lambda *_, n=n: getattr(self, n)())) for t, n in items])
-        mm.addSection("Affichage")
         self.win_menu.setTitle("🪟 Fenêtres et dispositions")
         mm.addMenu(self.win_menu)
         amenu = mm.addMenu("🎨 Apparence et langue")
@@ -11233,13 +11716,20 @@ class MainWindow(QtWidgets.QMainWindow):
             grp_l.addAction(a_)
             a_.triggered.connect(lambda *_, c=code: self.set_language(c))
         tools_btn.setMenu(tmenu)
+        lvl_menu = mm.addMenu("👁 Affichage : ultra simple / simple / expert")
+        grp_v = QtGui.QActionGroup(lvl_menu)
+        self.level_acts = {}
+        for key_, txt_ in UI_LEVELS:
+            a_ = lvl_menu.addAction(txt_)
+            a_.setCheckable(True)
+            grp_v.addAction(a_)
+            a_.triggered.connect(lambda *_, k=key_: self.set_level(k))
+            self.level_acts[key_] = a_
+        self.expert_act = self.level_acts["expert"]
         mm.addSection("Aide")
+        mm.addAction("🎓 Tuto : visite guidée (2 min)").triggered.connect(lambda *_: self.start_tour())
         mm.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
         mm.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
-        mm.addSeparator()
-        self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
-        self.expert_act.setCheckable(True)
-        self.expert_act.triggered.connect(lambda *_: self.set_expert(self.expert_act.isChecked()))
         self._spare_btns = [tools_btn, win_btn, wall_btn, colors_btn, status_btn]   # gardés pour leurs menus
         # barre d'outils sur toute la largeur (au-dessus des panneaux) : jamais coupée par les colonnes
         tb = QtWidgets.QToolBar("Commandes")
@@ -11256,23 +11746,9 @@ class MainWindow(QtWidgets.QMainWindow):
         for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn):
             tb.addWidget(wd)
             tb.addSeparator()
-        # accès direct (7.12, Clément : « tout sous la main, rapide ») : les outils du show en un clic
-        self.quick_btns = []
-        for icon, tip, fn in (("🎤", "Appel des micros (line check) — Ctrl+L", self.open_linecheck),
-                              ("🧱", "Mur de fréquences (2ᵉ écran)", self.open_wall),
-                              ("⏪", "Relecture : revoir le spectre ou une session enregistrée", self.open_replay),
-                              ("🧮", "Vérifier le plan de fréquences (comme EazyRF)", self.open_plan_check),
-                              ("⚡", "Intermodulation : qui tombe sur quoi, d'où vient un signal", self.open_intermod),
-                              ("📣", "Alertes téléphone et page web de l'équipe", self.open_alerts)):
-            qb = QtWidgets.QToolButton()
-            qb.setText(icon)
-            qb.setToolTip(tip)
-            qb.setAutoRaise(True)
-            qb.clicked.connect(lambda *_, fn=fn: fn())
-            tb.addWidget(qb)
-            self.quick_btns.append(qb)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
         self.cmd_bar = tb
+        self._build_steps_bar()
 
         # --- panneau de gauche : réglages
         self.points_combo = self._combo([(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES], 1000)
@@ -11477,7 +11953,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.expert_hint.setFlat(True)
         self.expert_hint.setToolTip("Le mode expert montre aussi RBW, entrée, LNA, atténuateur, offset, segments,\n"
                                     "fenêtre, seuil sur référence, calibration, relais… (☰ Plus › Mode expert).")
-        self.expert_hint.clicked.connect(lambda *_: self.set_expert(not self.expert))
+        self.expert_hint.clicked.connect(lambda *_: self.set_level("simple" if self.expert else "expert"))
         lv.addWidget(self.expert_hint)
         self.sections = {}
         dev2_box = self._build_dev2_box()
@@ -11686,7 +12162,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                   "active (au lieu de toutes tes bandes) : cycles beaucoup plus rapides, donc\n"
                                   "détection plus réactive. Inactif en mode Global.")
         self.focus_chk.toggled.connect(self._on_focus_toggled)
-        lbox = QtWidgets.QGroupBox("Couches de monitoring : scènes › groupes")
+        lbox = QtWidgets.QGroupBox("Classer par scène › groupe (facultatif)")
+        lbox.setToolTip("Comme des dossiers, pour s'y retrouver avec beaucoup de fréquences :\n"
+                        "• une SCÈNE = un lieu ou un plateau (Grande scène, Club, Plateau TV…)\n"
+                        "• un GROUPE = un artiste ou un type de matériel (HF chant, Ears batterie…)\n"
+                        "Clic sur un groupe = on ne surveille que lui ; 🌐 Global = tout.\n"
+                        "Pas obligatoire : tout marche sans (mode ultra simple : caché).")
+        self.layer_box = lbox
         lv2 = QtWidgets.QVBoxLayout(lbox)
         lv2.setContentsMargins(6, 4, 6, 4)
         for b_ in (self.global_btn, lb_sc, lb_gr, lb_rn, lb_dl):      # rétrécissables : le spectre d'abord
@@ -12177,6 +12659,11 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self._strong_changed()
         self.set_expert(bool(data.get("expert", False)))
+        lv_ = data.get("ui_level")
+        if lv_ in dict(UI_LEVELS):
+            self.ui_level = lv_
+        if "tour_done" in data:
+            self.tour_done = bool(data.get("tour_done"))
         ix = self.wall.size_combo.findData(data.get("wall_size", "auto"))
         self.wall.size_combo.setCurrentIndex(max(0, ix))
         so = data.get("sections")
@@ -12316,6 +12803,8 @@ class MainWindow(QtWidgets.QMainWindow):
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
             data["session"] = dict(self.session_cfg)
+            data["ui_level"] = self.ui_level
+            data["tour_done"] = bool(self.tour_done)
             data["log_kinds"] = dict(self.log_kinds)
             data["lang"] = self.lang
         return data
@@ -15658,7 +16147,7 @@ class MainWindow(QtWidgets.QMainWindow):
         L, R, B = (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea,
                    Qt.DockWidgetArea.BottomDockWidgetArea)
         self.dock_set = self._make_dock("Réglages", "dock_reglages", left, L)
-        self.dock_freq = self._make_dock("Fréquences et couches", "dock_freq", ftab, R)
+        self.dock_freq = self._make_dock("Mes fréquences", "dock_freq", ftab, R)
         self.dock_log = self._make_dock("Journal", "dock_journal", ltab, R)
         self.dock_spec = self._make_dock("Spectre", "dock_spectre", center, B)
         self.dock_wf = self._make_dock("Waterfall", "dock_wf", wf_box, B)

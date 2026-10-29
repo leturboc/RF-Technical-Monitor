@@ -99,7 +99,7 @@ code { overflow-wrap: anywhere; }
 </nav>
 <main>
 <h1>TinySA Monitor — user manual</h1>
-<p class="sub">Version 7.12 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.
+<p class="sub">Version 7.13 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.
 PDF version: <code>docs/manual_en.pdf</code>.</p>
 
 <div class="box"><b>In one sentence:</b> the app keeps sweeping your bands with a tinySA, compares what it sees
@@ -139,23 +139,29 @@ check the local regulations (Ofcom, ANFR, BNetzA…) before transmitting.</div>
   <li>Click <b>▶ Start</b>. The app offers to <b>record the session</b> (chapter 18); then the spectrum fills up
     and the tinySA version is shown next to the port.</li>
 </ol>
-<div class="box"><b>Simple</b> mode (default): only what matters during the show. <b>☰ More › 🎛 Expert mode</b>
-shows every setting (RBW, LNA, attenuator, segments, measurement window, calibration…).</div>
+<div class="box"><b>Three display levels</b> (☰ More › 👁 Display): <b>🟢 Ultra simple</b> (on the very first
+start) = the spectrum, your list and the alarms, nothing else; <b>🔵 Simple</b> = + essential settings, the log and
+sorting by scene / group; <b>🎛 Expert</b> = every setting (RBW, LNA, attenuator, segments, measurement window,
+calibration…).</div>
+<div class="box ok"><b>🎓 Tutorial</b> (button on the workflow bar, or ☰ More › 🎓): a 2-minute guided tour showing
+each part of the screen in order, with a bubble next to it.</div>
 
 <h2 id="ecran">3. The main window</h2>
 <table>
   <tr><th>Area</th><th>What you do there</th></tr>
-  <tr><td><b>Top bar</b></td><td>Port, ▶ Start, 🎪 Shows, 🔔 alarms, ☰ More, then the <b>quick buttons</b>:
-    🎤 line check, 🧱 wall, ⏪ playback, 🧮 check the plan, ⚡ intermodulation, 📣 alerts. The version is shown
-    at the bottom right.</td></tr>
+  <tr><td><b>Top bar</b></td><td>Port, ▶ Start, 🎪 Shows, 🔔 alarms, ☰ More. The version is shown at the bottom
+    right.</td></tr>
+  <tr><td><b>Workflow bar</b></td><td>The work in order, from left to right: <b>① Scan the venue › ② My
+    frequencies › ③ Check the plan › ④ Intermod › ⑤ Monitor the show › ⑥ After the show</b>, then 🎓 Tutorial.
+    Each button starts the step and says what to do right next to it.</td></tr>
   <tr><td><b>Settings</b> (left)</td><td>Collapsible sections: <b>Thresholds</b> (when is it busy?),
     <b>Alarms</b> (TX missing, too strong, sound, what to log), <b>Bands to sweep</b>, Measurement, 2nd tinySA,
     Country and plan.</td></tr>
   <tr><td><b>Spectrum</b> (middle)</td><td>Traces, thresholds (draggable lines), markers for your frequencies,
     strip with TV channels and allocations. <b>❓ Traces</b> explains every line and sets the thresholds.</td></tr>
   <tr><td><b>Waterfall</b> and <b>Alarms</b></td><td>Strips under the spectrum.</td></tr>
-  <tr><td><b>Frequencies and layers</b> (right)</td><td>Your list (name, MHz, signal, status, level, max,
-    threshold…) and the <b>Scenes › Groups</b> tree. <b>Log</b> tab next to it.</td></tr>
+  <tr><td><b>My frequencies</b> (right)</td><td>Your list (name, MHz, signal, status, level, max, threshold…) and,
+    in simple mode, the optional <b>sorting by scene › group</b>. <b>Log</b> tab next to it.</td></tr>
   <tr><td><b>Frequency wall</b></td><td>As a tab next to the spectrum: one tile per frequency, readable from a
     distance.</td></tr>
 </table>
@@ -252,6 +258,10 @@ my list, where could it come from, zoom).</p>
 </ul>
 <h3>Your frequencies</h3>
 <ul>
+  <li><b>📡 Add from the scan</b> (② My frequencies, or ☰ More › 📋 List): the signals the tinySA sees above a
+    threshold (max hold, or live) become frequencies in your list, named Scan 1, Scan 2…, in the scene / group and
+    with the status of your choice. Then rename them, sort them, or delete the noise like any other frequency. Wide
+    plateaus (DTT…) and what is already in your list are left out (can be unticked).</li>
   <li><b>📥 Import</b>: plan from EazyRF, WWB, WSM, Excel… The import recognises the columns and suggests names.
     You can also drag and drop a CSV onto the window.</li>
   <li>Or by hand: <b>＋ Add</b> above the list, or right-click on the spectrum › “Add to my list”.</li>
@@ -270,10 +280,13 @@ my list, where could it come from, zoom).</p>
 <p>With the keyboard: select rows, then <kbd>Ctrl</kbd>+<kbd>E</kbd> = In use, <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd>
 = status no. 1 to 9, <kbd>Ctrl</kbd>+<kbd>0</kbd> = none. Your own statuses: ☰ More › 🎨 Appearance and language ›
 🏷 Statuses.</p>
-<h3>Scenes and groups</h3>
+<h3>Scenes and groups (optional)</h3>
+<p>Like folders, to find your way with lots of frequencies: a <b>scene</b> = a venue or a stage (Main stage, Club,
+TV studio…), a <b>group</b> = an artist or a type of equipment (Vocal mics, Drum in-ears…). Not required:
+everything works without it (hidden in ultra simple mode).</p>
 <ul>
-  <li>Sort your frequencies into <b>Scenes › Groups</b> (e.g. Main stage › Vocal mics). Clicking a scene or a
-    group = only that is monitored and scanned; <b>Global</b> brings everything back.</li>
+  <li><b>Sort by scene › group</b> box above the list. Clicking a scene or a group = only that is monitored and
+    scanned; <b>Global</b> brings everything back.</li>
   <li>Right-click a group: alarm <b>priority</b>. <b>Critical ❗</b> = sound repeated every 10 s until
     acknowledged; Normal; Info (no sound).</li>
 </ul>
@@ -503,17 +516,16 @@ app was closed in between. The estimated disk space is shown (often a few dozen 
 </ul>
 
 <h2 id="menus">21. Where is what (menus)</h2>
+<p>☰ More follows the same order as the workflow bar.</p>
 <table>
   <tr><th>☰ More menu</th><th>Contents</th></tr>
-  <tr><td>During the show</td><td>🎤 Line check, 🧱 Wall, ⏪ Playback, 🆘 Backup frequency</td></tr>
-  <tr><td>📐 Frequency plan</td><td>🧮 Check the plan, ⚡ Intermodulation, 🎛 Device profiles, 📶 Spectera / WMAS
-    block</td></tr>
-  <tr><td>📋 Frequency list</td><td>✏ Name, ⇣ Number, My vocabulary, 📤 Export</td></tr>
-  <tr><td>📊 Scans and reports</td><td>📄 Report, 📏 Scan as reference, 🔁 Convert a scan</td></tr>
-  <tr><td>🔗 Connections</td><td>📣 Alerts and web page, 📡 Network relay, 🩺 Diagnostics</td></tr>
-  <tr><td>🪟 Windows and layouts</td><td>panels, real windows, dual screen</td></tr>
-  <tr><td>🎨 Appearance and language</td><td>colours, statuses, words, language</td></tr>
-  <tr><td>Help</td><td>📖 Manual, ℹ About, 🎛 Expert mode</td></tr>
+  <tr><td>① Prepare</td><td>📋 Frequency list (import, add, name, number, export), 📐 Frequency plan (🧮 check,
+    🎛 device profiles, 📶 Spectera block), ⚡ Intermodulation</td></tr>
+  <tr><td>② During the show</td><td>🎤 Line check, 🧱 Wall, 🆘 Backup frequency</td></tr>
+  <tr><td>③ After the show</td><td>⏪ Playback, 📊 Scans and reports (📄 report, 📏 reference, 🔁 convert)</td></tr>
+  <tr><td>Settings and connections</td><td>🔗 Connections (📣 alerts, 📡 relay, 🩺 diagnostics), 🪟 Windows,
+    🎨 Appearance and language, 👁 Display (ultra simple / simple / expert)</td></tr>
+  <tr><td>Help</td><td>🎓 Tutorial, 📖 Manual, ℹ About</td></tr>
 </table>
 
 <h2 id="clavier">22. Keyboard shortcuts</h2>

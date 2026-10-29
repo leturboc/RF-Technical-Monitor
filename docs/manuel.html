@@ -99,7 +99,7 @@ code { overflow-wrap: anywhere; }
 </nav>
 <main>
 <h1>TinySA Monitor — manuel d'utilisation</h1>
-<p class="sub">Version 7.12 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.
+<p class="sub">Version 7.13 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.
 Version PDF : <code>docs/manuel.pdf</code>.</p>
 
 <div class="box"><b>En une phrase :</b> l'appli balaye en continu tes bandes avec un tinySA, compare ce qu'elle
@@ -140,23 +140,29 @@ vérifie toujours la réglementation locale (ANFR, Ofcom, BNetzA…) avant d'ém
   <li>Clique <b>▶ Démarrer</b>. L'appli te propose d'<b>enregistrer la session</b> (voir chapitre 18) ; ensuite le
     spectre se remplit et la version du tinySA s'affiche à côté du port.</li>
 </ol>
-<div class="box">Mode <b>simple</b> (par défaut) : seulement l'essentiel pour le show. <b>☰ Plus › 🎛 Mode expert</b>
-affiche tous les réglages (RBW, LNA, atténuateur, segments, fenêtre de mesure, calibration…).</div>
+<div class="box"><b>Trois niveaux d'affichage</b> (☰ Plus › 👁 Affichage) : <b>🟢 Ultra simple</b> (au tout
+premier lancement) = le spectre, ta liste et les alarmes, rien d'autre ; <b>🔵 Simple</b> = + les réglages
+essentiels, le journal et le classement par scène / groupe ; <b>🎛 Expert</b> = tous les réglages (RBW, LNA,
+atténuateur, segments, fenêtre de mesure, calibration…).</div>
+<div class="box ok"><b>🎓 Tuto</b> (bouton de la barre du parcours, ou ☰ Plus › 🎓) : une visite guidée de
+2 minutes qui montre chaque partie de l'écran dans l'ordre, avec une bulle à côté.</div>
 
 <h2 id="ecran">3. L'écran principal</h2>
 <table>
   <tr><th>Zone</th><th>Ce qu'on y fait</th></tr>
-  <tr><td><b>Barre du haut</b></td><td>Port, ▶ Démarrer, 🎪 Shows, 🔔 alarmes, ☰ Plus, puis les <b>boutons
-    rapides</b> : 🎤 appel des micros, 🧱 mur, ⏪ relecture, 🧮 vérifier le plan, ⚡ intermodulation, 📣 alertes.
-    La version est affichée en bas à droite.</td></tr>
+  <tr><td><b>Barre du haut</b></td><td>Port, ▶ Démarrer, 🎪 Shows, 🔔 alarmes, ☰ Plus. La version est affichée en
+    bas à droite.</td></tr>
+  <tr><td><b>Barre du parcours</b></td><td>Le travail dans l'ordre, de gauche à droite : <b>① Scanner le lieu ›
+    ② Mes fréquences › ③ Vérifier le plan › ④ Intermod › ⑤ Surveiller le show › ⑥ Après le show</b>, puis
+    🎓 Tuto. Chaque bouton lance l'étape et dit quoi faire juste à droite.</td></tr>
   <tr><td><b>Réglages</b> (à gauche)</td><td>Sections repliables : <b>Seuils</b> (quand est-ce occupé ?),
     <b>Alarmes</b> (TX absent, trop fort, son, quoi noter au journal), <b>Bandes à balayer</b>, Mesure,
     2ᵉ tinySA, Pays et plan.</td></tr>
   <tr><td><b>Spectre</b> (au milieu)</td><td>Courbes, seuils (lignes déplaçables), repères de tes fréquences,
     bandeau des canaux TV et attributions. <b>❓ Courbes</b> explique chaque trait et règle les seuils.</td></tr>
   <tr><td><b>Waterfall</b> et <b>Alarmes</b></td><td>Bandeaux sous le spectre.</td></tr>
-  <tr><td><b>Fréquences et couches</b> (à droite)</td><td>Ta liste (nom, MHz, signal, statut, niveau, max,
-    seuil…) et l'arbre <b>Scènes › Groupes</b>. Onglet <b>Journal</b> à côté.</td></tr>
+  <tr><td><b>Mes fréquences</b> (à droite)</td><td>Ta liste (nom, MHz, signal, statut, niveau, max, seuil…) et,
+    en mode simple, le classement facultatif <b>par scène › groupe</b>. Onglet <b>Journal</b> à côté.</td></tr>
   <tr><td><b>Mur de fréquences</b></td><td>En onglet à côté du spectre : une tuile par fréquence, lisible de
     loin.</td></tr>
 </table>
@@ -254,6 +260,11 @@ clic droit sur le spectre (ajouter à ma liste, d'où ça peut venir, zoom).</p>
 </ul>
 <h3>Tes fréquences</h3>
 <ul>
+  <li><b>📡 Ajouter depuis le scan</b> (② Mes fréquences, ou ☰ Plus › 📋 Liste) : les signaux que le tinySA voit
+    au-dessus d'un seuil (max hold, ou direct) deviennent des fréquences de ta liste, nommées Scan 1, Scan 2…,
+    dans la scène / le groupe et avec le statut de ton choix. Ensuite, renomme-les, range-les, ou supprime le bruit
+    comme n'importe quelle fréquence. Les plateaux larges (TNT…) et ce qui est déjà dans ta liste sont écartés
+    (décochable).</li>
   <li><b>📥 Importer</b> : plan EazyRF, WWB, WSM, Excel… L'import reconnaît les colonnes et propose des noms.
     Tu peux aussi glisser-déposer un CSV sur la fenêtre.</li>
   <li>Ou à la main : <b>＋ Ajouter</b> au-dessus de la liste, ou clic droit sur le spectre › « Ajouter à ma
@@ -273,10 +284,13 @@ clic droit sur le spectre (ajouter à ma liste, d'où ça peut venir, zoom).</p>
 <p>Au clavier : sélectionne des lignes puis <kbd>Ctrl</kbd>+<kbd>E</kbd> = En service,
 <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> = statut n° 1 à 9, <kbd>Ctrl</kbd>+<kbd>0</kbd> = aucun.
 Tes propres statuts : ☰ Plus › 🎨 Apparence et langue › 🏷 Statuts.</p>
-<h3>Scènes et groupes</h3>
+<h3>Scènes et groupes (facultatif)</h3>
+<p>Comme des dossiers, pour s'y retrouver avec beaucoup de fréquences : une <b>scène</b> = un lieu ou un plateau
+(Grande scène, Club, Plateau TV…), un <b>groupe</b> = un artiste ou un type de matériel (HF chant, Ears batterie…).
+Pas obligatoire : tout marche sans (caché en mode ultra simple).</p>
 <ul>
-  <li>Range tes fréquences en <b>Scènes › Groupes</b> (ex. Grande scène › HF chant). Clic sur une scène ou un
-    groupe = on ne surveille et ne scanne que ça ; <b>Global</b> remet tout.</li>
+  <li>Encadré <b>Classer par scène › groupe</b> au-dessus de la liste. Clic sur une scène ou un groupe = on ne
+    surveille et ne scanne que ça ; <b>Global</b> remet tout.</li>
   <li>Clic droit sur un groupe : <b>priorité</b> des alarmes. <b>Critique ❗</b> = son répété toutes les 10 s
     jusqu'à acquittement ; Normale ; Info (sans son).</li>
 </ul>
@@ -511,17 +525,16 @@ après, même si l'appli a été fermée. La place estimée est affichée (souve
 </ul>
 
 <h2 id="menus">21. Où est quoi (menus)</h2>
+<p>☰ Plus suit le même ordre que la barre du parcours.</p>
 <table>
   <tr><th>Menu ☰ Plus</th><th>Contenu</th></tr>
-  <tr><td>Pendant le show</td><td>🎤 Appel des micros, 🧱 Mur, ⏪ Relecture, 🆘 Fréquence de secours</td></tr>
-  <tr><td>📐 Plan de fréquences</td><td>🧮 Vérifier le plan, ⚡ Intermodulation, 🎛 Profils d'appareil,
-    📶 Bloc Spectera / WMAS</td></tr>
-  <tr><td>📋 Liste de fréquences</td><td>✏ Nommer, ⇣ Numéroter, Mon vocabulaire, 📤 Exporter</td></tr>
-  <tr><td>📊 Scans et rapports</td><td>📄 Rapport, 📏 Scan comme référence, 🔁 Convertir un scan</td></tr>
-  <tr><td>🔗 Connexions</td><td>📣 Alertes et page web, 📡 Relais réseau, 🩺 Diagnostic</td></tr>
-  <tr><td>🪟 Fenêtres et dispositions</td><td>panneaux, vraies fenêtres, double écran</td></tr>
-  <tr><td>🎨 Apparence et langue</td><td>couleurs, statuts, mots, langue</td></tr>
-  <tr><td>Aide</td><td>📖 Manuel, ℹ À propos, 🎛 Mode expert</td></tr>
+  <tr><td>① Préparer</td><td>📋 Liste de fréquences (importer, ajouter, nommer, numéroter, exporter),
+    📐 Plan de fréquences (🧮 vérifier, 🎛 profils d'appareil, 📶 bloc Spectera), ⚡ Intermodulation</td></tr>
+  <tr><td>② Pendant le show</td><td>🎤 Appel des micros, 🧱 Mur, 🆘 Fréquence de secours</td></tr>
+  <tr><td>③ Après le show</td><td>⏪ Relecture, 📊 Scans et rapports (📄 rapport, 📏 référence, 🔁 convertir)</td></tr>
+  <tr><td>Réglages et connexions</td><td>🔗 Connexions (📣 alertes, 📡 relais, 🩺 diagnostic), 🪟 Fenêtres,
+    🎨 Apparence et langue, 👁 Affichage (ultra simple / simple / expert)</td></tr>
+  <tr><td>Aide</td><td>🎓 Tuto, 📖 Manuel, ℹ À propos</td></tr>
 </table>
 
 <h2 id="clavier">22. Raccourcis clavier</h2>
