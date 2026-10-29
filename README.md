@@ -6,6 +6,8 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 > Les attributions de bandes (police, aéro, 4G/5G, TNT, micros HF…) sont **indicatives** : vérifie toujours la
 > réglementation locale avant d'émettre.
 
+📖 **Manuel d'utilisation complet** : [`docs/manuel.html`](docs/manuel.html) (aussi dans l'appli : ☰ Plus › 📖 Manuel).
+
 ## Ce que ça fait
 
 - **Spectre en direct** multi-bandes, max hold, waterfall, zoom, courbe de référence (bruit de fond du lieu)
@@ -171,6 +173,9 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
   fenêtre, tu choisis sa taille à la souris (les tuiles suivent) ; **📌 Raccrocher** le remet à côté du spectre.
 - **Tous les panneaux sont détachables**, y compris le **spectre** : attrape un panneau par sa barre de titre pour
   le déplacer, le mettre sur l'autre écran ou le ré-accrocher ; ☰ Plus › Fenêtres pour les réafficher.
+- **Vraies fenêtres / double écran** (☰ Plus › 🪟 Fenêtres › 🗗) : chaque panneau (spectre, waterfall, liste,
+  alarmes…) dans une vraie fenêtre Windows, agrandie ou plein écran sur l'écran choisi, rouverte au même endroit au
+  prochain lancement ; fermer la fenêtre la raccroche.
 
 ## Démarrage rapide
 

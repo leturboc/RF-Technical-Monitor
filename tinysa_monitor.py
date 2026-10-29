@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.9.0"
+APP_VER = "7.10.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -9174,6 +9174,60 @@ class WallFullWindow(QtWidgets.QWidget):
         super().closeEvent(e)
 
 
+class PanelWindow(QtWidgets.QWidget):
+    """Un panneau (Spectre, Liste, Waterfall…) sorti dans une VRAIE fenêtre Windows : barre de titre normale
+    (agrandir, réduire), plein écran (F11), placée sur l'écran voulu. Un panneau « flottant » de Qt reste une fenêtre
+    outil (pas d'agrandir, toujours au-dessus, se ré-accroche quand on le frôle). Fermer = raccrocher le panneau."""
+
+    def __init__(self, owner, dock):
+        super().__init__(None, Qt.WindowType.Window)
+        self.owner, self.dock, self.closing = owner, dock, False
+        self.setWindowTitle(f"{APP_NAME} – {dock.windowTitle()}")
+        self.setWindowIcon(owner.windowIcon())
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self.bar = QtWidgets.QWidget()
+        hb = QtWidgets.QHBoxLayout(self.bar)
+        hb.setContentsMargins(6, 2, 6, 2)
+        hint = QtWidgets.QLabel("F11 : plein écran")
+        hint.setStyleSheet("color: gray")
+        nxt = QtWidgets.QPushButton("🖥 Écran suivant")
+        nxt.setToolTip("Envoie cette fenêtre sur l'écran suivant (agrandie).")
+        nxt.clicked.connect(lambda *_: self.owner.panel_next_screen(self.dock))
+        full = QtWidgets.QPushButton("⛶ Plein écran")
+        full.setToolTip("Plein écran sur cet écran (F11 ; Échap pour sortir).")
+        full.clicked.connect(lambda *_: self.toggle_full())
+        back = QtWidgets.QPushButton("📌 Raccrocher")
+        back.setToolTip("Remet ce panneau dans la fenêtre principale (comme fermer cette fenêtre).")
+        back.clicked.connect(lambda *_: self.owner.panel_window(self.dock, False))
+        for w_ in (hint, None, nxt, full, back):
+            hb.addStretch(1) if w_ is None else hb.addWidget(w_)
+        lay.addWidget(self.bar)
+        self.body = QtWidgets.QVBoxLayout()
+        self.body.setContentsMargins(0, 0, 0, 0)
+        lay.addLayout(self.body, 1)
+        QtGui.QShortcut(QtGui.QKeySequence("F11"), self, activated=self.toggle_full)
+        QtGui.QShortcut(QtGui.QKeySequence("Escape"), self,
+                        activated=lambda: self.isFullScreen() and self.toggle_full())
+
+    def toggle_full(self):
+        if self.isFullScreen():
+            self.showNormal()
+            self.bar.show()
+        else:
+            self.bar.hide()                       # tout l'écran pour le contenu ; F11 / Échap pour sortir
+            self.showFullScreen()
+
+    def mode(self):
+        return "full" if self.isFullScreen() else ("max" if self.isMaximized() else "normal")
+
+    def closeEvent(self, e):
+        if not self.closing:
+            QtCore.QTimer.singleShot(0, lambda d=self.dock: self.owner.panel_window(d, False))
+        super().closeEvent(e)
+
+
 class WallPickDialog(QtWidgets.QDialog):
     """Cases à cocher : quelles fréquences ont une tuile sur le mur (rangées par scène › groupe)."""
 
@@ -9702,6 +9756,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ref_curves = []            # courbe de référence : liste de (freq, niveau)
         self._ref_F = self._ref_L = None
         self.wall = None                # mur de fréquences (panneau dock_wall, créé avec les panneaux)
+        self.panel_wins = {}            # panneaux sortis en vraie fenêtre : nom du dock -> PanelWindow
         self._log_err_shown = False
         self.log_dir = LOG_DIR
         self.export_prefs = {}
@@ -9787,6 +9842,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(120, self._late_layout)    # la fenêtre a alors sa vraie taille
 
     def _late_layout(self):
+        self.panel_restore(getattr(self, "_panel_cfg", None))
         if not self._state_restored:
             if self.view_id == -1:
                 self.dock_wf.hide()      # pas de waterfall en vue « tout le spectre » : le spectre prend la place
@@ -9893,12 +9949,7 @@ class MainWindow(QtWidgets.QMainWindow):
     }
 
     TIPS_MENU = {
-        "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
-                         "persistance, waterfall, journal des signaux brefs, clic = écouter.",
-        "🎧 Écouter": "V8 : démodule une ou plusieurs fréquences proches avec un HackRF / RTL-SDR (FM, AM),\n"
-                     "niveau de chaque canal, expanseur 2:1 (approximation des companders).",
-        "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
-                          "(hackrf_sweep, rtl_power), gains, et comment les installer.",
+        "📖 Manuel": "Le manuel complet (s'ouvre dans ton navigateur, marche hors ligne).",
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
         "🧮 Vérifier le plan": "Comme EazyRF : écart entre porteuses et intermod selon des tolérances, un verdict\n"
@@ -10129,6 +10180,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu.addAction("🔤 Mots et couleurs (OK, libre, ABSENT…)…").triggered.connect(
             lambda *_: self.edit_labels())
         self.more_menu.addSeparator()
+        self.more_menu.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
         self.more_menu.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
         self.expert_act.setCheckable(True)
@@ -10443,6 +10495,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                 connect="finite")
         self.maxcurve = pi.plot(pen=pg.mkPen(self.theme["maxhold"], width=1), connect="finite")
         self.curve = pi.plot(pen=pg.mkPen(self.theme["curve"], width=1.6), connect="finite")
+        for c_ in (self.refcurve, self.maxcurve, self.curve):
+            # fluidité : on ne dessine que la partie visible, réduite à ~1 point par pixel en gardant les pics
+            # (sans ça : des milliers de points anti-crénelés redessinés à chaque déplacement de fenêtre)
+            c_.setClipToView(True)
+            c_.setDownsampling(auto=True, method="peak")
         self.thr_line = pg.InfiniteLine(pos=-80, angle=0, movable=True,
                                         pen=pg.mkPen(self.theme["thr"], width=1.5, style=Qt.PenStyle.DashLine))
         self.thr_line.sigPositionChanged.connect(self._thr_from_line)
@@ -10720,6 +10777,7 @@ class MainWindow(QtWidgets.QMainWindow):
         root.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setCentralWidget(root)
         self.setDockNestingEnabled(True)
+        self.setAnimated(False)         # panneaux : pas d'animation en les déplaçant (plus réactif, moins saccadé)
         # colonnes Réglages / Fréquences sur toute la hauteur ; spectre, waterfall, alarmes au milieu
         self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
@@ -10857,6 +10915,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.restoreGeometry(QtCore.QByteArray.fromBase64(g.encode()))
             except Exception:
                 pass
+        self._panel_cfg = data.get("panel_windows")         # vraies fenêtres : rouvertes après le 1er affichage
         st = data.get("docks")
         if int(data.get("layout_ver", 0) or 0) < LAYOUT_VER:
             st = None                    # ancienne disposition (spectre minuscule…) : on repart de la base
@@ -11135,6 +11194,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
             data["docks"] = bytes(self.saveState().toBase64()).decode()
+            data["panel_windows"] = self.panel_state()
             data["layout_ver"] = LAYOUT_VER
             data["vocab"] = self.vocab_user
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
@@ -14226,6 +14286,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self._im_dlg = IntermodDialog(self, origin=f)
         self._im_dlg.show()
 
+    def manual_path(self):
+        """Le manuel (docs/manuel.html) : embarqué dans l'exe, ou à côté du script. None s'il manque."""
+        for base in (getattr(sys, "_MEIPASS", None), Path(__file__).resolve().parent):
+            if base:
+                p_ = Path(base) / "docs" / "manuel.html"
+                if p_.is_file():
+                    return p_
+        return None
+
+    def open_manual(self):
+        p_ = self.manual_path()
+        if p_ is None:
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Manuel introuvable à côté de l'appli : il est aussi "
+                                              "dans le dépôt GitHub, fichier docs/manuel.html.")
+            return
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p_)))
+        self.set_status("Manuel ouvert dans le navigateur.")
+
     def show_about(self):
         fw = self.info_lbl.text().strip() or "pas encore connecté"
         fw2 = f"<br>2ᵉ tinySA : {getattr(self, 'dev2_info', '') or '—'}" if self.dev2.get("on") else ""
@@ -14428,6 +14506,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         ("Double écran : panneaux sur l'autre écran", self.layout_dual)):
             self.win_menu.addAction(txt).triggered.connect(fn)
         self.win_menu.addSeparator()
+        self.panel_menu = self.win_menu.addMenu("🗗 Vraies fenêtres / double écran")
+        self.panel_menu.aboutToShow.connect(self._fill_panel_menu)
+        self._fill_panel_menu()
+        self.win_menu.addSeparator()
         self.win_menu.addAction("🧱 Ouvrir le mur de fréquences").triggered.connect(self.open_wall)
         self.win_menu.addAction("🧱 Mur sur l'autre écran (fenêtre)").triggered.connect(
             lambda *_: self.wall_window_other_screen())
@@ -14462,6 +14544,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def layout_standard(self):
         L, R, B = (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea,
                    Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.panel_attach_all()
         for d in self.docks:
             d.setFloating(False)
             d.show()
@@ -14508,15 +14591,137 @@ class MainWindow(QtWidgets.QMainWindow):
                             "titre : ils deviennent des fenêtres libres.")
             return
         self.layout_standard()
-        g = scr.availableGeometry()
-        half = g.width() // 2
-        for d in (self.dock_freq, self.dock_log, self.dock_wf):
-            d.setFloating(True)
-        self.dock_freq.setGeometry(QtCore.QRect(g.x(), g.y(), half, g.height()))
-        self.dock_log.setGeometry(QtCore.QRect(g.x() + half, g.y(), g.width() - half, g.height() // 2))
-        self.dock_wf.setGeometry(QtCore.QRect(g.x() + half, g.y() + g.height() // 2, g.width() - half,
-                                              g.height() - g.height() // 2))
-        self.set_status("Panneaux placés sur l'autre écran (tu peux les déplacer / les ré-accrocher à la souris).")
+        self.panel_window(self.dock_freq, True, scr, "max")
+        self.set_status("Liste des fréquences en vraie fenêtre sur l'autre écran. Menu 🪟 › 🗗 Vraies fenêtres pour "
+                        "y envoyer d'autres panneaux (spectre, waterfall, alarmes…).")
+
+    # ------------------------------------------------------- vraies fenêtres (double écran)
+    def panel_docks(self):
+        """Panneaux qu'on peut sortir en vraie fenêtre (le mur a son propre mécanisme)."""
+        return [self.dock_spec, self.dock_wf, self.dock_freq, self.dock_log, self.dock_alarm, self.dock_set]
+
+    def panel_window(self, d, on, screen=None, mode=None):
+        """Sort le panneau d dans une vraie fenêtre (on) ou le raccroche (off). screen : écran où la placer
+        (agrandie par défaut) ; mode : normal | max | full."""
+        key = d.objectName()
+        win = self.panel_wins.get(key)
+        if not on:
+            if win is None:
+                return
+            self.panel_wins.pop(key, None)
+            w = win.body.takeAt(0).widget() if win.body.count() else None
+            if w is not None:
+                old = d.widget()
+                d.setWidget(w)
+                if old is not None:
+                    old.deleteLater()
+            win.closing = True
+            win.close()
+            win.deleteLater()
+            d.show()
+            d.raise_()
+            QtCore.QTimer.singleShot(0, self._middle_sizes)
+            self.set_status(f"« {d.windowTitle()} » raccroché à la fenêtre principale.")
+            return
+        if win is None:
+            w = d.widget()
+            if d.isFloating():
+                d.setFloating(False)
+            ph = QtWidgets.QPushButton(f"📌 « {d.windowTitle()} » est dans sa propre fenêtre — cliquer pour le raccrocher")
+            ph.setToolTip("Remet ce panneau ici.")
+            ph.clicked.connect(lambda *_, d=d: self.panel_window(d, False))
+            d.setWidget(ph)
+            win = PanelWindow(self, d)
+            win.body.addWidget(w)
+            w.show()
+            self.panel_wins[key] = win
+            d.hide()
+            win.resize(max(640, w.width()), max(420, w.height()))
+            g = self.frameGeometry()
+            win.move(g.x() + 60, g.y() + 60)
+        if screen is not None:
+            if win.isFullScreen():
+                win.showNormal()
+                win.bar.show()
+            ag = screen.availableGeometry()
+            win.setGeometry(ag.adjusted(40, 40, -40, -40))
+            mode = mode or "max"
+        if mode == "full":
+            win.show()
+            win.toggle_full() if not win.isFullScreen() else None
+        elif mode == "max":
+            win.showMaximized()
+        else:
+            win.show()
+        win.raise_()
+        win.activateWindow()
+        self.set_status(f"« {d.windowTitle()} » dans sa propre fenêtre : déplace-la où tu veux (F11 = plein écran, "
+                        "fermer = raccrocher).")
+
+    def panel_next_screen(self, d):
+        win = self.panel_wins.get(d.objectName())
+        scrs = QtGui.QGuiApplication.screens()
+        if win is None or not scrs:
+            return
+        cur = win.screen()
+        i = next((k for k, s_ in enumerate(scrs) if s_ == cur), -1)
+        self.panel_window(d, True, scrs[(i + 1) % len(scrs)], "max")
+
+    def _fill_panel_menu(self):
+        """Sous-menu « Vraies fenêtres » reconstruit à chaque ouverture (les écrans peuvent changer)."""
+        m = self.panel_menu
+        m.clear()
+        scrs = QtGui.QGuiApplication.screens()
+        for d in self.panel_docks():
+            sub = m.addMenu(("🗗 " if d.objectName() in self.panel_wins else "") + d.windowTitle())
+            a = sub.addAction("Dans la fenêtre principale")
+            a.setCheckable(True)
+            a.setChecked(d.objectName() not in self.panel_wins)
+            a.triggered.connect(lambda *_, d=d: self.panel_window(d, False))
+            sub.addAction("Fenêtre libre (à placer à la souris)").triggered.connect(
+                lambda *_, d=d: self.panel_window(d, True, None, "normal"))
+            for k, sc in enumerate(scrs):
+                nm = f"Écran {k + 1} ({sc.name()}, {sc.size().width()}×{sc.size().height()})"
+                sub.addAction(f"{nm} : agrandie").triggered.connect(
+                    lambda *_, d=d, sc=sc: self.panel_window(d, True, sc, "max"))
+                sub.addAction(f"{nm} : plein écran").triggered.connect(
+                    lambda *_, d=d, sc=sc: self.panel_window(d, True, sc, "full"))
+        m.addSeparator()
+        m.addAction("📌 Tout raccrocher").triggered.connect(lambda *_: self.panel_attach_all())
+
+    def panel_attach_all(self):
+        for d in self.panel_docks():
+            self.panel_window(d, False)
+
+    def panel_state(self):
+        """Pour config.json : {nom du panneau: {geo, mode, screen}}."""
+        out = {}
+        for key, win in self.panel_wins.items():
+            scr = win.screen()
+            out[key] = dict(geo=bytes(win.saveGeometry().toBase64()).decode(), mode=win.mode(),
+                            screen=scr.name() if scr is not None else "")
+        return out
+
+    def panel_restore(self, st):
+        if not isinstance(st, dict):
+            return
+        byname = {d.objectName(): d for d in self.panel_docks()}
+        for key, v in st.items():
+            d = byname.get(key)
+            if d is None or not isinstance(v, dict):
+                continue
+            try:
+                self.panel_window(d, True, None, "normal")
+                win = self.panel_wins[key]
+                win.restoreGeometry(QtCore.QByteArray.fromBase64(str(v.get("geo", "")).encode()))
+                scr = next((s_ for s_ in QtGui.QGuiApplication.screens() if s_.name() == v.get("screen")), None)
+                if v.get("mode") == "full" and scr is not None:
+                    win.setGeometry(scr.availableGeometry())
+                    win.toggle_full()
+                elif v.get("mode") == "max":
+                    win.showMaximized()
+            except Exception:  # noqa: BLE001 — écran débranché, géométrie illisible : on laisse le panneau ici
+                self.panel_window(d, False)
 
     def wall_window_other_screen(self):
         """Le mur dans une fenêtre normale qui occupe l'autre écran (la barre des tâches reste visible)."""
@@ -15054,6 +15259,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.web = None
         if self.wall is not None and self.wall_is_fullscreen():
             self.wall_fullscreen(False)
+        self._panel_cfg = self.panel_state()             # gardé pour la config (les fenêtres vont se fermer)
         if self.recorder is not None:
             try:
                 self.recorder.close()
@@ -15066,6 +15272,9 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
         self._save_config()
+        for win in list(self.panel_wins.values()):        # sinon l'appli resterait ouverte derrière ces fenêtres
+            win.closing = True
+            win.close()
         e.accept()
 
 
@@ -15150,6 +15359,18 @@ def install_gc_main_thread(app, interval_ms=500):
     t.timeout.connect(tick)
     t.start(interval_ms)
     return t
+
+
+# Branche V8 : bulles des menus SDR, ajoutées ici (et pas dans MainWindow.TIPS_MENU, partagé avec la V7 : sinon
+# chaque ajout de bulle côté V7 au même endroit provoquait un conflit de fusion).
+MainWindow.TIPS_MENU.update({
+        "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
+                         "persistance, waterfall, journal des signaux brefs, clic = écouter.",
+        "🎧 Écouter": "V8 : démodule une ou plusieurs fréquences proches avec un HackRF / RTL-SDR (FM, AM),\n"
+                     "niveau de chaque canal, expanseur 2:1 (approximation des companders).",
+        "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
+                          "(hackrf_sweep, rtl_power), gains, et comment les installer.",
+})
 
 
 def main():

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.9.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.10.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -36,6 +36,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (base {APP_VER})"`, juste avant le bloc Qt « V8 : SDR ») — le workflow lit la 1re ligne `APP_VER`. L'en-tête de ce
   fichier (« Version courante ») est le même dans les deux branches ; les notes V8 vont dans « Reste à faire ».
   Le code V8 est surtout AJOUTÉ (nouvelles fonctions / classes en fin de sections) : garder ce style.
+  Vu en 7.10.0 : V7 et V8 avaient chacune inséré une bulle juste après `TIPS_MENU = {` → conflit (le robot l'a
+  signalé, fusion à la main). Règle : la V8 n'insère RIEN aux mêmes points d'ancrage que la V7 (début d'un dict,
+  d'une liste de menu…) ; ses bulles sont dans `MainWindow.TIPS_MENU.update({...})` juste avant `def main()`.
 
 ## Organisation du fichier
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
@@ -163,6 +166,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `watch`). `PlanCheckDialog` : `prof_combo` (appareil par défaut → remplit les réglages ; toucher un réglage →
   « ✏ Réglages ci-dessous »), colonne « Appareil » (`rx_short`), `rx_combo` + « Appliquer aux lignes choisies »
   (`set_rx`, sélection multiple), `fill_rx_combo`. `plan_opts["prof"]`.
+- **Vraies fenêtres (7.10.0, Clément : « on pouvait pas placer les fenêtres comme on veut », « pas hyper fluide »)** :
+  `PanelWindow` (QWidget `Qt.Window`, pas « outil » : agrandir, barre des tâches ; barre 🖥 Écran suivant / ⛶ Plein
+  écran / 📌 Raccrocher ; F11 / Échap ; fermer = raccrocher) ; `MainWindow.panel_window(dock, on, screen, mode)`
+  déplace le widget du dock dans la fenêtre (le dock garde un bouton « cliquer pour raccrocher » et se cache),
+  `panel_wins` {objectName: fenêtre}, `panel_docks()` (tous sauf le mur, qui a son mécanisme), `panel_next_screen`,
+  sous-menu « 🗗 Vraies fenêtres / double écran » reconstruit à l'ouverture (`_fill_panel_menu` : par panneau,
+  fenêtre libre / écran N agrandie / plein écran), `panel_attach_all` (aussi dans `layout_standard`),
+  `layout_dual` = liste agrandie sur l'autre écran. Config `panel_windows` (`panel_state` : geo, mode, nom d'écran)
+  rouverte par `_late_layout` → `panel_restore` ; `closeEvent` ferme ces fenêtres (sinon l'appli resterait ouverte).
+  Fluidité : courbes du spectre `setClipToView` + `setDownsampling(auto, "peak")` (pics gardés), `setAnimated(False)`.
+- **Manuel** : `docs/manuel.html` (HTML autonome, clair / sombre, sommaire, téléphone), embarqué dans l'exe
+  (`--add-data "docs/manuel.html;docs"`, workflow + build.bat), ☰ Plus › 📖 Manuel (`manual_path` / `open_manual`).
+  **Le tenir à jour à chaque nouveauté visible** (V8 : ajouter les chapitres SDR quand elle partira sur main).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

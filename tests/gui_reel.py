@@ -247,6 +247,28 @@ step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
 for name in ("layout_analyzer", "layout_monitor", "layout_dual", "layout_standard"):
     step(name, getattr(win, name)); wait(1200); shot(win, name)
 
+# vraies fenêtres (double écran) : un panneau sort dans une fenêtre Windows normale, plein écran, raccroché
+_scr = QtGui.QGuiApplication.primaryScreen()
+step("spectre en vraie fenêtre (écran 1, agrandie)", lambda: win.panel_window(win.dock_spec, True, _scr, "max"))
+wait(800)
+_pw = win.panel_wins.get("dock_spectre")
+check("vraie fenêtre : ouverte, vrai type Window (pas « outil »)", _pw is not None and _pw.isVisible()
+      and (_pw.windowFlags() & Qt.WindowType.WindowType_Mask) == Qt.WindowType.Window)
+check("vraie fenêtre : le spectre est dedans", _pw is not None and win.spec.window() is _pw)
+check("vraie fenêtre : le panneau d'origine est caché", not win.dock_spec.isVisible())
+shot(_pw, "spectre_vraie_fenetre")
+step("plein écran", _pw.toggle_full)
+wait(400)
+check("plein écran : barre masquée", _pw.isFullScreen() and not _pw.bar.isVisible())
+step("sortir du plein écran", _pw.toggle_full)
+wait(300)
+step("fermer la fenêtre = raccrocher", _pw.close)
+wait(600)
+check("raccroché : le spectre est revenu", "dock_spectre" not in win.panel_wins and win.spec.window() is win
+      and win.dock_spec.isVisible())
+step("menu 🗗 Vraies fenêtres", win._fill_panel_menu)
+check("menu : un sous-menu par panneau", len([a for a in win.panel_menu.actions() if a.menu()]) == len(win.panel_docks()))
+
 # unités : saisie d'un seuil en % / dBµV dans la vraie case Qt, axe du spectre
 win.thr_spin.setValue(-80.0)
 win.set_unit("dbuv")
@@ -977,6 +999,10 @@ step("open_relay", win.open_relay)
 wait(600)
 shot(win._relay_win, "relais")
 win._relay_win.close()
+_mp = win.manual_path()
+check("manuel : fichier trouvé", _mp is not None and "Raccourcis clavier" in _mp.read_text(encoding="utf-8"), str(_mp))
+step("waterfall en fenêtre libre (gardée pour la relance)", lambda: win.panel_window(win.dock_wf, True, None, "normal"))
+wait(400)
 step("close", win.close); wait(500)
 print("config écrite:", os.path.exists(m.CFG_PATH), flush=True)
 
@@ -985,7 +1011,13 @@ win2 = step("MainWindow() #2", m.MainWindow)
 if win2:
     win2.show(); wait(800); shot(win2, "relance")
     print("relance: fréquences", len(win2.watch), "scènes", len(win2.scenes), flush=True)
+    check("relance : la fenêtre du waterfall est rouverte", "dock_wf" in win2.panel_wins
+          and win2.panel_wins["dock_wf"].isVisible() and win2.wf.window() is win2.panel_wins["dock_wf"],
+          str(list(win2.panel_wins)))
     win2.close()
+    wait(300)
+    check("fermeture : plus aucune vraie fenêtre ouverte", not [w_ for w_ in app.topLevelWidgets()
+                                                              if isinstance(w_, m.PanelWindow) and w_.isVisible()])
 
 check("aucune exception Qt", not errors, f"{len(errors)} exception(s)")
 check("aucun message d'erreur", not [k for k, _ in msgs if k in ("warning", "critical")], str(msgs))
