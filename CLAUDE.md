@@ -420,6 +420,10 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   piste = rétro-ingénierie sur des enregistrements IQ à niveaux de pile connus, sans garantie.
   **HackRF Pro** (choix de Clément) : d'après Great Scott Gadgets, 8 bits jusqu'à 20 MS/s comme le One, mode 16 bits
   (ENOB 9–11) à débit plus bas ; outils `hackrf_*` a priori identiques — à vérifier à réception.
+- **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
+  `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
+  SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
+  `-g` global supposé, débits 4,8 / 9,6 MS/s supposés acceptés) : demander à Clément son diagnostic au 1er essai.
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
   fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
   analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non
