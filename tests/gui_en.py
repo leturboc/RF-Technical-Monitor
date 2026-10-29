@@ -45,7 +45,7 @@ def look(txt, where):
     if not isinstance(txt, str) or not txt.strip():
         return
     for line in txt.split("\n"):
-        t = re.sub(r"<[^>]+>", " ", line)
+        t = re.sub(r"<[^>]+>", " ", line).replace("Clément", "").replace("Français", "")
         st = t.strip()
         if (FR.search(t) and not OK_WORDS.fullmatch(st)) or (FRS.get(st, st) != st):
             found.setdefault(line.strip()[:400], where)

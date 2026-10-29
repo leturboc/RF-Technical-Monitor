@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.11.0"
+APP_VER = "7.12.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -14512,6 +14512,7 @@ def install_language(code):
                        (W.QListWidget, ("addItem",)), (W.QFormLayout, ("addRow", "insertRow")),
                        (W.QStatusBar, ("showMessage",)),
                        (W.QMessageBox, ("setText", "setInformativeText", "setDetailedText", "addButton")),
+                       (W.QDialogButtonBox, ("addButton",)),
                        (W.QProgressDialog, ("setLabelText", "setCancelButtonText"))):
         for n in names:
             _patch(cls, n)
