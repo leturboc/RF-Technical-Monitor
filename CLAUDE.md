@@ -22,6 +22,21 @@ aux comptes qui y ont accès.
 Depuis le conteneur Claude, `gh run view <id>` montre les annotations, mais les journaux et artefacts (stockage Azure)
 sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : il n'y a aucune police (mesures ×2).
 
+## Deux branches : V7 (stable) et V8 (SDR)
+- **V7** = `ui-validation` → `main` (releases `v7.x`). **V8** = `v8-sdr` (SDR : HackRF, RTL-SDR ; pré-release
+  `test-v8-sdr` seulement). Ne PAS fusionner la V8 dans main avant le feu vert de Clément (quand il aura testé avec
+  son HackRF Pro) : ce jour-là, retirer la surcharge `APP_VER` de la V8, monter la version (8.0.0), fusionner.
+- **Toute modif de la V7 doit aller dans la V8** (demande de Clément, sinon conflits). Automatique : le workflow
+  `.github/workflows/sync-v8.yml` fusionne `ui-validation` dans `v8-sdr` à chaque push sur `ui-validation`, puis
+  relance la compilation de la V8 ; en cas de conflit il échoue (annotation « Conflit V7 → V8 dans : … ») sans rien
+  pousser. Par sécurité, après chaque version V7, vérifier : `git fetch origin && git log origin/v8-sdr..origin/ui-validation`
+  (doit être vide), sinon fusionner à la main.
+- **Pour éviter les conflits** : la V8 ne modifie JAMAIS les lignes communes qui bougent à chaque version V7. La ligne
+  `APP_VER = "7.x"` reste identique dans les deux branches ; la V8 la surcharge plus bas (`APP_VER = f"8.0-dev
+  (base {APP_VER})"`, juste avant le bloc Qt « V8 : SDR ») — le workflow lit la 1re ligne `APP_VER`. L'en-tête de ce
+  fichier (« Version courante ») est le même dans les deux branches ; les notes V8 vont dans « Reste à faire ».
+  Le code V8 est surtout AJOUTÉ (nouvelles fonctions / classes en fin de sections) : garder ce style.
+
 ## Organisation du fichier
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
   sans interface (formats de scan WSM/WWB, `AlarmBook`, `SweepStore`, intermodulation `im_scan`/`im_pairs`,
