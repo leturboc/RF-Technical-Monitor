@@ -322,7 +322,7 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   ratio, attack, release, det avg|rms, deemph forcée, knee + low = expansion plus forte sous le genou, hf =
   détecteur sans les aigus) : FLAT (ni compander ni désaccentuation, « test purposes only »), NONE-d50, NONE-d75,
   ENC (désaccentuation 25 µs, voix), ENR (genou −30 dB, détecteur < 8 kHz, bruit), ENS (live), ENC / ENR 1.2,
-  SA572, RMS, HDX, Shure, LEX. Sources : manuel Wisycom (tableau NONE-d50 / d75 / ENR-WISY / ENC-WISY / FLAT envoyé
+  SA572, RMS, SEN (Sennheiser 3000 / 5000), EVO (evolution, HDX), Shure, LEX. Sources : manuel Wisycom (tableau NONE-d50 / d75 / ENR-WISY / ENC-WISY / FLAT envoyé
   par Clément), fiches MCR54, docs lues par Clément ; courbes réelles inconnues → valeurs AU JUGÉ.
   `ChannelDemod(compander=None)` par défaut (sinon « none » = FLAT couperait la désaccentuation).
   Couleur à l'oreille (Clément) : `_cp(air=dB, lp=Hz)` → EQ FIR 63/125 points après démodulation (`self.eq`, une

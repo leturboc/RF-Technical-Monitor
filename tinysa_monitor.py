@@ -3523,7 +3523,8 @@ COMPANDERS = {
     "wisy_enc12": _cp("≈ Wisycom ENC 1.2 (dynamique réduite)", ratio=1.5, attack=0.5, release=0.12, deemph=25.0),
     "wisy_enr12": _cp("≈ Wisycom ENR 1.2 (dynamique réduite)", ratio=1.5, attack=0.35, release=0.05, knee=-30.0,
                       low=0.5, hf=8000.0, lp=10000.0),
-    "hdx": _cp("≈ Sennheiser HDX (mode SEN / EVO)", attack=0.35, release=0.06),
+    "sen": _cp("≈ SEN : Sennheiser 3000 / 5000 (HiDyn plus)", attack=0.35, release=0.06),
+    "evo": _cp("≈ EVO : Sennheiser evolution (ew G2 / G3 / G4, HDX)", attack=0.35, release=0.06, det="avg"),
     "shure": _cp("≈ Shure analogique", attack=0.3, release=0.04, det="avg"),
     "lex": _cp("≈ Lectrosonics (mode SR / LEX)", attack=0.25, release=0.03),
 }
@@ -3532,9 +3533,12 @@ LISTEN_COMPANDERS = {k: v["name"] for k, v in COMPANDERS.items()}
 # (filtre, demi-largeur Hz), bande audio (Hz), désaccentuation (µs), compander. Valeurs de départ d'après les
 # fiches techniques publiques / l'usage courant, NON vérifiées sur les vrais appareils (à ajuster à l'oreille).
 DEMOD_PRESETS = [
-    ("senn_ana", "Micro Sennheiser analogique (EW G3 / G4, 2000, 5000)",
-     dict(mode="wfm", dev=48000, cut=90000, audio=18000, deemph=50.0, comp="hdx"),
-     "FM ±48 kHz crête, compander HDX (approché, comme le mode SEN / EVO d'un récepteur Wisycom)."),
+    ("senn_ana", "Micro Sennheiser evolution (ew G2 / G3 / G4)",
+     dict(mode="wfm", dev=48000, cut=90000, audio=18000, deemph=50.0, comp="evo"),
+     "FM ±48 kHz crête, compander HDX (approché, comme le mode EVO d'un récepteur Wisycom)."),
+    ("senn_pro", "Micro Sennheiser 3000 / 5000 (SK 5212, SK 50…)",
+     dict(mode="wfm", dev=48000, cut=90000, audio=18000, deemph=50.0, comp="sen"),
+     "FM ±48 kHz crête, compander HiDyn plus (approché, comme le mode SEN d'un récepteur Wisycom)."),
     ("shure_ana", "Micro Shure analogique (UR, ULX, SLX, BLX)",
      dict(mode="wfm", dev=45000, cut=85000, audio=15000, deemph=50.0, comp="shure"),
      "FM ±45 kHz environ, compander Shure (approché)."),

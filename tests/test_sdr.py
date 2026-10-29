@@ -151,7 +151,7 @@ r15 = 20 * np.log10(np.sqrt(np.mean(ns["expand2"](hi_, st3, ratio=1.5)[24000:] *
 ok("expanseur 1,5:1 (ENR 1.2) : 12 dB → ~18 dB", 16 < r15 < 20, f"{r15:.1f} dB")
 CP = ns["COMPANDERS"]
 ok("companders : modes Wisycom FLAT, ENC, ENR, ENS, ENC / ENR 1.2, SEN / EVO, LEX", {"none", "wisy_enc", "wisy_enr",
-   "wisy_ens", "wisy_enc12", "wisy_enr12", "hdx", "lex"} <= set(CP) and CP["none"]["ratio"] == 1.0
+   "wisy_ens", "wisy_enc12", "wisy_enr12", "sen", "evo", "lex"} <= set(CP) and CP["none"]["ratio"] == 1.0
    and CP["none"]["name"].startswith("FLAT"))
 ok("FLAT : ni compander ni désaccentuation ; NONE-d75 : 75 µs", CD(fs, 600e3, "wfm", 50.0, None, "none").de is None
    and CD(fs, 600e3, "wfm", 50.0, None, "none_d75").de[0] < CD(fs, 600e3, "wfm", 50.0, None, "none_d50").de[0])
