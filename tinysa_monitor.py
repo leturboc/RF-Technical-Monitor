@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.14.0"
+APP_VER = "7.14.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2143,13 +2143,17 @@ def im3_clash(c, F, guard, guard3=None):
 
 
 def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guard=0.2, grid=0.025,
-              max_check=600, guard3=None):
+              max_check=600, guard3=None, emitters=None, filt=0.0, im3=True, alt=True):
     """Cherche n fréquences libres entre a et b (MHz) d'après un spectre mesuré (F trié, L en dBm) :
     niveau max sur ± width/2 sous thr, à plus de min_sep de toute fréquence existante ou déjà choisie,
-    et sans intermodulation 3e ordre à ± guard sur l'ensemble.
-    -> (liste de dict(f, level, dist), diag)"""
+    et sans intermodulation 3e ordre à ± guard avec les ÉMETTEURS (emitters, défaut = existing ; une réserve
+    « doit rester libre » n'émet pas). filt (MHz) : filtre du récepteur, seuls les émetteurs à ± filt / 2 de la
+    candidate comptent (0 = tous). im3=False : 2A − B seulement (A + B − C ignoré), guard=None : pas d'intermod.
+    alt : s'il en manque, des « moins mauvaises » sont proposées (clé warn : ce qui cloche).
+    -> (liste de dict(f, level, dist[, warn]), diag)"""
     ex = sorted(float(x) for x in existing)
-    diag = dict(grille=0, sans_mesure=0, bruyantes=0, trop_proches=0, intermod=0)
+    em = sorted(float(x) for x in (existing if emitters is None else emitters))
+    diag = dict(grille=0, sans_mesure=0, bruyantes=0, trop_proches=0, intermod=0, alternatives=0)
     res = []
     if F is None or len(F) == 0 or b <= a:
         return res, diag
@@ -2166,26 +2170,51 @@ def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guar
     quiet = good & (lv <= thr)
     diag["bruyantes"] = int((good & ~quiet).sum())
     exa = np.array(ex)
+    ema = np.array(em)
+    g3 = (guard if guard3 is None else guard3) if im3 else -1.0
 
     def dist_to(c, arr):
         return float(np.min(np.abs(arr - c))) if len(arr) else 1e9
 
+    def clashes(c, chosen):
+        if guard is None:
+            return []
+        e = np.concatenate([ema, np.array(chosen, dtype=float)])
+        if filt and filt > 0:
+            e = e[np.abs(e - c) <= filt / 2.0]
+        return im3_clash(c, e, guard, g3)
+
     order = [i for i in np.nonzero(quiet)[0]]
     order.sort(key=lambda i: (round(float(lv[i])), -dist_to(float(cand[i]), exa)))
-    chosen = []
+    chosen, rej_im = [], []
     for i in order[:max_check]:
         c = float(cand[i])
         allf = np.array(ex + chosen)
         if dist_to(c, allf) < min_sep:
             diag["trop_proches"] += 1
             continue
-        if im3_clash(c, allf, guard, guard3):
+        cl = clashes(c, chosen)
+        if cl:
             diag["intermod"] += 1
+            rej_im.append((len(cl), float(lv[i]), c, cl[0][0]))
             continue
         chosen.append(c)
         res.append(dict(f=c, level=float(lv[i]), dist=dist_to(c, exa)))
         if len(res) >= n:
             break
+    if alt and len(res) < n:
+        # pas assez de parfaites : les moins mauvaises, d'abord le moins d'intermod, puis le moins de niveau
+        noisy = [(0, float(lv[i]), float(cand[i]), None) for i in np.nonzero(good & ~quiet)[0]]
+        pool = sorted(rej_im) + sorted(noisy, key=lambda x: x[1])
+        for k, lvl, c, why in pool:
+            if len(res) >= n:
+                break
+            if dist_to(c, np.array(ex + chosen)) < min_sep:
+                continue
+            w = (f"intermod ×{k} : {why}" if why else f"niveau {lvl:.1f} dBm > {thr:.1f}")
+            chosen.append(c)
+            res.append(dict(f=c, level=lvl, dist=dist_to(c, exa), warn=w))
+            diag["alternatives"] += 1
     return res, diag
 
 
@@ -6395,25 +6424,40 @@ class RescueDialog(QtWidgets.QDialog):
         self.thr_spin.setValue(owner.weak_spin.value() if owner.weak_chk.isChecked() else owner.thr_spin.value() - 10)
         self.thr_spin.setSuffix(" dBm")
         self.thr_spin.setToolTip("Niveau maximum mesuré toléré sur le canal (max hold).")
+        self.im_combo = QtWidgets.QComboBox()
+        self.im_combo.addItem("Intermod : 2 TX + 3 TX", "full")
+        self.im_combo.addItem("Intermod : 2 TX seulement (2A − B)", "2tx")
+        self.im_combo.addItem("Intermod : ignorée", "none")
+        self.im_combo.setToolTip("Quels produits d'intermodulation compter. Avec beaucoup d'émetteurs, les 3 TX\n"
+                                 "(A + B − C) recouvrent vite toute la bande : « 2 TX seulement » = règle « Simple ».")
+        self.filt_spin = QtWidgets.QDoubleSpinBox()
+        self.filt_spin.setDecimals(0)
+        self.filt_spin.setRange(0, 200)
+        self.filt_spin.setValue(float(owner.plan_opts.get("filt", 32.0)))
+        self.filt_spin.setSuffix(" MHz")
+        self.filt_spin.setSpecialValueText("aucun")
+        self.filt_spin.setToolTip("Filtre du récepteur (comme EazyRF) : seuls les émetteurs à ± filtre / 2 de la\n"
+                                  "fréquence comptent pour l'intermod. 0 = aucun filtre (tous comptent).")
         self.src_combo = QtWidgets.QComboBox()
         self.src_combo.addItem("Éviter : toute la liste", "all")
         self.src_combo.addItem("Éviter : la couche active seulement", "scope")
         self.go_btn = QtWidgets.QPushButton("🔎 Chercher")
         self.go_btn.clicked.connect(lambda *_: self.search())
         lay.addLayout(R("De", self.a_spin, "à", self.b_spin, "Nombre :", self.n_spin, None))
-        lay.addLayout(R("Canal :", self.width_spin, "Écart mini :", self.sep_spin, "Intermod :", self.guard_spin, None))
+        lay.addLayout(R("Canal :", self.width_spin, "Écart mini :", self.sep_spin, "Tolérance :", self.guard_spin,
+                        self.im_combo, "Filtre :", self.filt_spin, None))
         lay.addLayout(R("Niveau max toléré :", self.thr_spin, self.src_combo, None, self.go_btn))
         self.msg = QtWidgets.QLabel("")
         self.msg.setWordWrap(True)
         lay.addWidget(self.msg)
-        self.table = QtWidgets.QTableWidget(0, 5)
+        self.table = QtWidgets.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["Fréquence MHz", "Niveau max dBm", "Voisine la plus proche", "Écart kHz",
-                                              "Spectre"])
-        self.table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+                                              "Spectre", "Remarque"])
+        self.table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        for c, w in ((0, 110), (1, 110), (2, 200), (3, 76)):
+        for c, w in ((0, 110), (1, 110), (2, 200), (3, 76), (4, 160)):
             self.table.setColumnWidth(c, w)
         self.table.cellDoubleClicked.connect(lambda r, c: self.on_view())
         lay.addWidget(self.table, 1)
@@ -6443,12 +6487,14 @@ class RescueDialog(QtWidgets.QDialog):
         if b <= a:
             self.msg.setText("La plage est à l'envers.")
             return
-        if self.src_combo.currentData() == "scope":
-            ex = [w["freq"] for w in o.scope_ws()]
-        else:
-            ex = [w["freq"] for w in o.watch]
+        ws = o.scope_ws() if self.src_combo.currentData() == "scope" else o.watch
+        ex = [w["freq"] for w in ws]
+        em = [w["freq"] for w in ws if not o.is_keep_free(w["status"])]      # une réserve libre n'émet pas
+        im = self.im_combo.currentData()
         res, d = find_free(F, L, a, b, ex, self.n_spin.value(), self.width_spin.value(), self.sep_spin.value(),
-                           self.thr_spin.value(), self.guard_spin.value(), guard3=self.guard_spin.value() / 2.0)
+                           self.thr_spin.value(), None if im == "none" else self.guard_spin.value(),
+                           guard3=self.guard_spin.value() / 2.0, emitters=em, filt=self.filt_spin.value(),
+                           im3=im == "full")
         self.found = res
         exa = sorted(w["freq"] for w in o.watch)
         t = self.table
@@ -6457,18 +6503,33 @@ class RescueDialog(QtWidgets.QDialog):
             near = min(o.watch, key=lambda w: abs(w["freq"] - x["f"]), default=None)
             nn = "—" if near is None else f'{near["name"]} ({near["freq"]:.3f})'
             dk = "" if near is None else f'{abs(near["freq"] - x["f"]) * 1000:.0f}'
-            vals = (f'{x["f"]:.3f}', f'{x["level"]:.1f}', nn, dk, spectrum_info(x["f"], o.plan, o.tv)[0] or "—")
+            warn = x.get("warn")
+            vals = (f'{x["f"]:.3f}', f'{x["level"]:.1f}', nn, dk, spectrum_info(x["f"], o.plan, o.tv)[0] or "—",
+                    "⚠ " + warn if warn else "✔ libre, sans intermod")
             for c, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
                 if c in (0, 1, 3):
                     it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if warn:
+                    it.setForeground(QtGui.QColor("#e0a040"))
                 t.setItem(r, c, it)
         cover = f"{F.min():.1f}–{F.max():.1f} MHz"
-        txt = (f"{len(res)} fréquence(s) trouvée(s) sur {self.n_spin.value()} demandée(s). "
+        n_ok = len(res) - d["alternatives"]
+        txt = (f"{n_ok} fréquence(s) trouvée(s) sur {self.n_spin.value()} demandée(s). "
                f"Grille : {d['grille']} points · trop bruyants : {d['bruyantes']} · hors mesure : {d['sans_mesure']} · "
                f"trop proches : {d['trop_proches']} · rejetés pour intermod : {d['intermod']}. Mesures disponibles : {cover}.")
-        if len(res) < self.n_spin.value():
-            txt += "\nPas assez de place avec ces réglages : élargis la plage, baisse l'écart ou la marge, ou accepte un niveau plus haut."
+        if n_ok < self.n_spin.value():
+            if d["intermod"] >= max(d["trop_proches"], 1) and im == "full":
+                txt += ("\nC'est surtout l'intermod qui bloque : avec beaucoup d'émetteurs, les produits 3 TX (A + B − C) "
+                        "recouvrent toute la bande. Essaie « 2 TX seulement », un filtre récepteur, ou « la couche "
+                        "active seulement ».")
+            elif d["bruyantes"] > d["grille"] // 2:
+                txt += "\nLa zone est très chargée : accepte un niveau plus haut ou élargis la plage."
+            else:
+                txt += "\nPas assez de place avec ces réglages : élargis la plage, baisse l'écart ou la tolérance."
+            if d["alternatives"]:
+                txt += (f"\n⚠ {d['alternatives']} « moins mauvaise(s) » proposée(s) en orange : regarde la "
+                        "remarque avant de t'en servir.")
         self.msg.setText(txt)
 
     def _sel(self):

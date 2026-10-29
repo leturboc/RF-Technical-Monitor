@@ -948,7 +948,15 @@ if _lg is not None:
     _lg.close()
     win.thr_spin.setValue(_old)
 step("open_rescue", win.open_rescue); wait(1500)
-if win._rescue_dlg: shot(win._rescue_dlg, "rescue")
+if win._rescue_dlg:
+    _rd = win._rescue_dlg
+    _rd.a_spin.setValue(470.0); _rd.b_spin.setValue(560.0); _rd.n_spin.setValue(3)
+    _rd.search(); wait(300)
+    check("secours : des fréquences proposées, avec une remarque", _rd.table.rowCount() >= 1 and
+          _rd.table.item(0, 5) is not None and _rd.table.item(0, 5).text(), _rd.msg.text())
+    _rd.im_combo.setCurrentIndex(_rd.im_combo.findData("2tx")); _rd.search(); wait(200)
+    check("secours : « 2 TX seulement » cherche aussi", _rd.table.rowCount() >= 1, _rd.msg.text())
+    shot(_rd, "rescue")
 step("open_guide", win.open_guide); wait(800)
 if win._guide: shot(win._guide, "guide_bandes")
 step("open_replay", win.open_replay); wait(1500)

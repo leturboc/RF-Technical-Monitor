@@ -9,6 +9,20 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    "\nC'est surtout l'intermod qui bloque : avec beaucoup d'émetteurs, les produits 3 TX (A + B − C) recouvrent toute la bande. Essaie « 2 TX seulement », un filtre récepteur, ou « la couche active seulement ».": "\nIt's mostly intermod that blocks: with many transmitters, the 3 TX products (A + B − C) cover the whole band. Try « 2 TX only », a receiver filter, or « the active layer only ».",
+    '\nLa zone est très chargée : accepte un niveau plus haut ou élargis la plage.': '\nThe area is very busy: accept a higher level or widen the range.',
+    "\nPas assez de place avec ces réglages : élargis la plage, baisse l'écart ou la tolérance.": '\nNot enough room with these settings: widen the range, lower the spacing or the tolerance.',
+    "Filtre du récepteur (comme EazyRF) : seuls les émetteurs à ± filtre / 2 de la\nfréquence comptent pour l'intermod. 0 = aucun filtre (tous comptent).": 'Receiver filter (like EazyRF): only transmitters within ± filter / 2 of the\nfrequency count for intermod. 0 = no filter (all count).',
+    'Intermod : 2 TX + 3 TX': 'Intermod: 2 TX + 3 TX',
+    'Intermod : 2 TX seulement (2A − B)': 'Intermod: 2 TX only (2A − B)',
+    'Intermod : ignorée': 'Intermod: ignored',
+    "Quels produits d'intermodulation compter. Avec beaucoup d'émetteurs, les 3 TX\n(A + B − C) recouvrent vite toute la bande : « 2 TX seulement » = règle « Simple ».": 'Which intermodulation products to count. With many transmitters, the 3 TX\n(A + B − C) quickly cover the whole band: « 2 TX only » = « Simple » rule.',
+    'Remarque': 'Note',
+    'Tolérance :': 'Tolerance:',
+    '✔ libre, sans intermod': '✔ free, no intermod',
+    "C'est surtout l'intermod qui bloque : avec beaucoup d'émetteurs, les produits 3 TX (A + B − C) recouvrent toute la bande. Essaie « 2 TX seulement », un filtre récepteur, ou « la couche active seulement ».": "It's mostly intermod that blocks: with many transmitters, the 3 TX products (A + B − C) cover the whole band. Try « 2 TX only », a receiver filter, or « the active layer only ».",
+    'La zone est très chargée : accepte un niveau plus haut ou élargis la plage.': 'The area is very busy: accept a higher level or widen the range.',
+    "Pas assez de place avec ces réglages : élargis la plage, baisse l'écart ou la tolérance.": 'Not enough room with these settings: widen the range, lower the spacing or the tolerance.',
     '% du temps où chaque fréquence était occupée, heure par heure, sur ce qui est relu.': '% of the time each frequency was busy, hour by hour, over what is being replayed.',
     "(écart, intermod, filtre de l'appareil), sur le pas de l'appareil, en évitant ce que le tinySA voit occupé (max hold). Lance d'abord ① Scanner le lieu quelques minutes.": "(spacing, intermod, device filter), on the device's step, avoiding what the tinySA sees as busy (max hold). First run ① Scan the venue for a few minutes.",
     'Ajoute les fréquences trouvées, avec cet appareil, au statut « doit émettre ».': 'Adds the frequencies found, with this device, with a « must transmit » status.',
@@ -2020,6 +2034,10 @@ EXACT = {
 }
 
 TEMPLATES = {
+    'intermod ×{} : {}': 'intermod ×{}: {}',
+    "\n⚠ {} « moins mauvaise(s) » proposée(s) en orange : regarde la remarque avant de t'en servir.": '\n⚠ {} « least bad » option(s) offered in orange: read the note before using them.',
+    "⚠ {} « moins mauvaise(s) » proposée(s) en orange : regarde la remarque avant de t'en servir.": '⚠ {} « least bad » option(s) offered in orange: read the note before using them.',
+    'niveau {} dBm > {}': 'level {} dBm > {}',
     ' · largeur {} kHz': ' · width {} kHz',
     '⚠ Seulement {} / {} : la plage est pleine pour ces règles. Élargis la plage, choisis un appareil plus sélectif (filtre plus étroit) ou des tolérances plus souples.': '⚠ Only {} / {}: the range is full for these rules. Widen the range, pick a more selective device (narrower filter) or looser tolerances.',
     'M1 {} MHz ': 'M1 {} MHz ',

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.14.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.14.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -268,6 +268,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     (`set_band_enabled`, garde au moins une) / « ne balayer que la bande affichée » (`scan_follow`, config ;
     `_follow_id`, `_scan_now` utilisé par `get_cfg`, `band_devices`, `update_estimate`, `on_cycle`). Fréquences hors
     bandes balayées : données périmées → état None, pas d'alarme (pas surveillées, dit dans la barre d'état).
+- **7.14.1 (Clément : « la fréq de secours ne trouve rien », 30 radios FM déclarées)** : `find_free(...,
+  emitters, filt, im3, alt)` : intermod seulement avec les émetteurs (pas les « doit rester libre »), filtre récepteur,
+  2 TX seulement possible, guard None = sans intermod ; s'il en manque → « moins mauvaises » (`warn`, orange,
+  colonne Remarque). `RescueDialog` : `im_combo`, `filt_spin`, message qui dit ce qui bloque. 30 émetteurs sur 20 MHz =
+  bande vraiment pleine même en 2A − B (≈ 870 produits) : c'est physique.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
