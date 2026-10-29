@@ -1711,38 +1711,147 @@ def pf_orders(tol):
 
 
 # Profils d'appareil (comme les profils d'EazyRF) : écart mini, filtre d'entrée du récepteur, pas de réglage et
-# tolérances d'intermod. Wisycom = le profil EazyRF de Clément (MRK980). Les autres sont des VALEURS DE DÉPART
-# (non vérifiées) : un récepteur peu sélectif a un filtre large (ou aucun), donc plus d'émetteurs comptent.
+# tolérances d'intermod. src = d'où vient le FILTRE : "eazyrf" = valeur des profils EazyRF de Clément (Wisycom
+# MRK980 : profil complet ; Sennheiser evolution, Shure SLX / PSM : 16 MHz ; Shure AD / QLX-D : 32 MHz, d'après lui),
+# "guess" = valeur de départ NON vérifiée. Écart, pas et tolérances des profils autres que Wisycom : de départ aussi.
+# Les clés restent stables (enregistrées dans les listes et les shows : w["rx"]).
+_TOL_EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}
+_TOL_LARGE = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}
+_TOL_IEM = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}
 RX_PROFILES = [
-    ("wisycom", "Wisycom (MRK980, MTK952…) · très sélectif",
-     dict(sep=0.500, filt=32.0, step=0.005, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
+    ("wisycom", "Wisycom (MRK980, MTK952…) · filtre 32 MHz",
+     dict(sep=0.500, filt=32.0, step=0.005, tol=_TOL_EZ, src="eazyrf"),
      "Profil Wisycom d'EazyRF : filtre d'entrée 32 MHz (seuls les émetteurs à ±16 MHz comptent), séparation "
      "500 kHz, pas 5 kHz (MTK952 : 25 kHz)."),
+    ("senn_evo", "Sennheiser evolution (EW G3 / G4) · filtre 16 MHz",
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_LARGE, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément, ex. une banque du groupe A). Écart, pas et tolérances : "
+     "valeurs de départ."),
+    ("senn_ana", "Sennheiser analogique (2000, 3000, 5000)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
+     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz. "
+     "Mets la valeur de ton profil EazyRF dans un profil perso."),
     ("senn_dig", "Sennheiser numérique (EW-DX, EW-D, 6000)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : pas de filtre étroit, tous les émetteurs comptent ; séparation 400 kHz."),
-    ("senn_ana", "Sennheiser analogique (EW G3 / G4, 2000, 5000)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : peu sélectif, tolérances plus larges (150 / 75 kHz)."),
-    ("shure_dig", "Shure numérique (ULX-D, QLX-D, Axient, SLX-D)",
-     dict(sep=0.350, filt=0.0, step=0.025, tol={"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : pas de filtre étroit, séparation 350 kHz."),
-    ("shure_ana", "Shure analogique (UR, SLX, BLX…)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}),
-     "Valeurs de départ (non vérifiées) : peu sélectif, tolérances plus larges (150 / 75 kHz)."),
-    ("iem", "Ears / IEM (PSM, EW IEM…) · émetteurs couplés",
-     dict(sep=0.400, filt=0.0, step=0.025, tol={"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}),
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_EZ, src="guess"),
+     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; séparation 400 kHz."),
+    ("shure_ad", "Shure Axient Digital (AD) · filtre 32 MHz",
+     dict(sep=0.350, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     "Filtre 32 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ."),
+    ("shure_dig", "Shure QLX-D / ULX-D · filtre 32 MHz",
+     dict(sep=0.350, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     "Filtre 32 MHz comme dans EazyRF (valeur de Clément pour QLX-D ; ULX-D supposé pareil). Écart, pas et "
+     "tolérances : valeurs de départ."),
+    ("shure_slx", "Shure SLX / SLX-D · filtre 16 MHz",
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ."),
+    ("shure_ana", "Shure analogique (UR, BLX…)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
+     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz."),
+    ("shure_psm", "Shure PSM (300 / 900 / 1000) · filtre 16 MHz",
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_IEM, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Émetteurs souvent couplés sur un combineur → on compte "
+     "aussi le 5ᵉ ordre. Écart, pas et tolérances : valeurs de départ."),
+    ("shure_adt", "Shure Axient Digital PSM (ADTQ / ADTD) · à renseigner",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
+     "Filtre pas encore connu → tous les émetteurs comptent (le plus prudent). Dès que tu as la valeur de ton "
+     "profil EazyRF, crée un profil perso (✏ Mes profils)."),
+    ("iem", "Autres ears / IEM (EW IEM…)",
+     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
      "Valeurs de départ (non vérifiées) : émetteurs souvent couplés sur un combineur → on compte aussi le 5ᵉ "
-     "ordre ; récepteurs ceinture peu sélectifs."),
+     "ordre ; filtre inconnu."),
 ]
+RX_CUSTOM = []          # profils perso (config et shows : « rx_custom »), même forme que RX_PROFILES
+
+
+def rx_all():
+    """Profils intégrés puis profils perso."""
+    return RX_PROFILES + RX_CUSTOM
 
 
 def rx_profile(key):
-    """Profil d'appareil par sa clé -> dict(sep, filt, step, tol), ou None (= réglages de la fenêtre)."""
-    for k, _n, d, _w in RX_PROFILES:
+    """Profil d'appareil par sa clé -> dict(sep, filt, step, tol, src), ou None (= réglages de la fenêtre)."""
+    for k, _n, d, _w in rx_all():
         if k == key:
             return dict(d, tol=dict(d["tol"]))
     return None
+
+
+def _rx_num(x, lo, hi, dflt):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return dflt
+    return dflt if v != v else min(hi, max(lo, v))
+
+
+def rx_custom_norm(lst):
+    """Profils perso lus (config / show) -> liste propre de (clé, nom, réglages, note). Clés « perso_… » uniques."""
+    out, seen = [], {k for k, *_ in RX_PROFILES}
+    for i, p in enumerate(lst if isinstance(lst, list) else []):
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name") or "").strip()[:60]
+        if not name:
+            continue
+        key = str(p.get("key") or "")
+        if not re.fullmatch(r"perso_[A-Za-z0-9_]{1,40}", key) or key in seen:
+            key = f"perso_{len(out) + 1}"
+            while key in seen:
+                key += "_"
+        seen.add(key)
+        t = p.get("tol") if isinstance(p.get("tol"), dict) else {}
+        tol = {k: _rx_num(t.get(k), 0.0, 2.0, d) for k, d in _TOL_EZ.items()}
+        tol["7"] = 0.0
+        out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 3.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
+                                    step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol, src="perso"),
+                    str(p.get("note") or "Profil perso.")[:300]))
+    return out
+
+
+def rx_set_custom(lst):
+    RX_CUSTOM[:] = rx_custom_norm(lst)
+
+
+def rx_custom_dump():
+    """Profils perso -> liste JSON (config, shows)."""
+    return [dict(key=k, name=n, sep=d["sep"], filt=d["filt"], step=d["step"], tol=dict(d["tol"]), note=w)
+            for k, n, d, w in RX_CUSTOM]
+
+
+RX_SRC_TXT = {"eazyrf": "EazyRF (Clément)", "guess": "valeur de départ", "perso": "ton profil"}
+
+
+def rx_help_html():
+    """Explication du filtre récepteur + tableau des profils (fenêtre « ❓ Le filtre, c'est quoi ? »)."""
+    rows = "".join(
+        f"<tr><td>{n}</td><td align=right>{('%g MHz' % d['filt']) if d['filt'] else 'aucun'}</td>"
+        f"<td align=right>{d['sep'] * 1000:.0f} kHz</td><td align=right>{d['step'] * 1000:g} kHz</td>"
+        f"<td>{RX_SRC_TXT.get(d.get('src'), '')}</td></tr>" for _k, n, d, _w in rx_all())
+    return (
+        "<h3>Le filtre récepteur, c'est quoi ?</h3>"
+        "<p>Chaque récepteur a, juste après l'antenne, un <b>filtre d'entrée</b> (présélection) : il ne laisse passer "
+        "qu'une tranche du spectre autour de la fréquence réglée. Un Wisycom MRK980 a un filtre de <b>32 MHz</b> : "
+        "il « voit » ±16 MHz autour de sa fréquence, le reste est fortement atténué.</p>"
+        "<p><b>Pourquoi ça compte pour l'intermod ?</b> Un produit d'intermodulation (ex. 2A − B) est fabriqué "
+        "dans l'<b>étage d'entrée du récepteur</b> à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à "
+        "40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. "
+        "Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
+        "filtre de son récepteur</b> (à ± la moitié du filtre).</p>"
+        "<ul><li><b>Filtre étroit</b> (16 MHz) = récepteur sélectif : peu d'émetteurs comptent, plan plus facile.</li>"
+        "<li><b>Filtre large</b> (32 MHz) = plus d'émetteurs comptent.</li>"
+        "<li><b>Aucun</b> (0) = tous les émetteurs comptent : le plus prudent, à utiliser quand on ne connaît pas "
+        "l'appareil.</li></ul>"
+        "<p>Les produits fabriqués ailleurs (dans les <b>émetteurs</b> eux-mêmes, ex. des ears couplés sur un "
+        "combineur, ou dans un ampli d'antenne) ne sont pas filtrés par le récepteur : c'est pour ça qu'on "
+        "compte aussi le 5ᵉ ordre sur les profils d'ears.</p>"
+        "<p><b>Écart mini</b> = distance minimale entre deux porteuses (sinon le récepteur entend la voisine). "
+        "<b>Pas</b> = le pas de réglage de l'appareil (les fréquences proposées tombent dessus).</p>"
+        "<h3>Profils disponibles</h3>"
+        "<table border=1 cellspacing=0 cellpadding=4><tr><th>Appareil</th><th>Filtre</th><th>Écart mini</th>"
+        "<th>Pas</th><th>Source du filtre</th></tr>" + rows + "</table>"
+        "<p>« Valeur de départ » = pas vérifiée : si tu connais la valeur (profil EazyRF, doc du fabricant), crée un "
+        "<b>profil perso</b> avec « ✏ Mes profils ». Le filtre d'un même appareil peut dépendre de sa bande "
+        "(ex. groupe / banque A d'un evolution) : un profil perso par bande si besoin.</p>")
 
 
 def _pf_vec(x, n):
@@ -2487,7 +2596,7 @@ SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
              "points", "rbw", "zrbw", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
-             "country", "plan_custom", "dev_names")
+             "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -3536,6 +3645,49 @@ def web_page_lang(page, pairs, tr):
         page = page.replace(f'"{k}":["{i}","{t}","{d}"]', f'"{k}":["{i}","{tr(t)}","{tr(d)}"]')
     return page, missing
 LANGS = [("fr", "Français"), ("en", "English")]
+
+
+# ------------------------------------------------------------------ sessions enregistrées (proposées à ▶ Démarrer)
+# Un dossier par session : tranches .npz du spectre (SweepRecorder), session.json (liste de fréquences, bandes,
+# show, début / fin) et journal.csv (mêmes colonnes que le journal automatique). ⏪ Relecture › Ouvrir une session.
+SESSION_DEFAULT = dict(ask=True, rec=True, dir="")
+SESSION_JOURNAL_HEAD = ["Date", "Heure", "Nom", "MHz", "dBm", "Événement", "Statut", "Scène", "Groupe", "Spectre",
+                        "Note"]
+
+
+def session_name(stamp, show=""):
+    """Nom de dossier d'une session : « 2026-10-29_2015 Mon festival » (caractères interdits sous Windows ôtés)."""
+    s = f"{stamp} {show}".strip()
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", unicodedata.normalize("NFKC", s)).strip(" ._")
+    return s[:80] or stamp
+
+
+def session_cfg_norm(c):
+    """Réglages « enregistrer la session » lus de la config (valeurs manquantes ou bancales -> défaut)."""
+    out = dict(SESSION_DEFAULT)
+    if isinstance(c, dict):
+        out["ask"] = bool(c.get("ask", True))
+        out["rec"] = bool(c.get("rec", True))
+        out["dir"] = str(c.get("dir") or "")
+    return out
+
+
+def session_journal_rows(text):
+    """journal.csv d'une session -> [(date « AAAA-MM-JJ », heure « HH:MM:SS », texte de l'événement)]."""
+    out = []
+    for row in csv.reader(io.StringIO(text.lstrip("\ufeff")), delimiter=";"):
+        if len(row) < 6 or not re.fullmatch(r"\d{4}-\d\d-\d\d", row[0]) or not re.fullmatch(r"\d\d:\d\d:\d\d", row[1]):
+            continue
+        mhz = f"  {row[3].replace(',', '.')} MHz" if row[3] not in ("", "—") else ""
+        out.append((row[0], row[1], f"{row[1]}  {row[5]}  {row[2]}{mhz}"))
+    return out
+
+
+def rec_mb_per_hour(points, cycle_s):
+    """Place disque estimée d'un enregistrement (Mo / heure) : float16 compressé ≈ 1,3 octet par point."""
+    if not points or not cycle_s or cycle_s <= 0:
+        return None
+    return points * 1.3 * 3600.0 / cycle_s / 1e6
 
 # ===== PURE-END
 
@@ -5543,7 +5695,7 @@ class IntermodDialog(QtWidgets.QDialog):
         lay.addLayout(R("Combinaisons :", self.maxtx_combo, self.o3_chk, self.o5_chk, self.o7_chk, None))
         lay.addLayout(R(self.tgt_combo, "Règles :", self.tol_combo, None))
         lay.addLayout(R("2 TX :", self.tol_spins["2tx3"], "3 TX :", self.tol_spins["3tx3"],
-                        "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], "Filtre :", self.filt_spin, None))
+                        "5ᵉ / 7ᵉ ordre :", self.tol_spins["5"], "Filtre :", self.filt_spin, filter_help_btn(self), None))
         lay.addLayout(R("Plage (liste complète) :", self.fmin_spin, "à", self.fmax_spin, None, self.go_btn))
         lay.addWidget(self.msg)
         self.table = QtWidgets.QTableWidget(0, 7)
@@ -6047,6 +6199,23 @@ class SweepRecorder:
         self.flush()
 
 
+def export_store(store, folder):
+    """Écrit tout le contenu d'un SweepStore comme un enregistrement (tranches .npz). -> nombre de balayages."""
+    rec = SweepRecorder(folder, max_mb=1e9)
+    evs = sorted((t, b, k) for b, ts in store.t.items() for k, t in enumerate(ts))
+    n = 0
+    for t, b, k in evs:
+        f, l = store.d[b][k]
+        rec.add(b, t, f, l)
+        n += 1
+        if len(rec.pending) >= 2000:
+            rec.flush()
+    rec.flush()
+    if rec.error:
+        raise OSError(rec.error)
+    return n
+
+
 def load_recording(folder, store):
     """Relit un dossier d'enregistrement dans un SweepStore. -> (nombre de balayages, nombre de tranches)."""
     files = sorted(Path(folder).glob("chunk_*.npz"))
@@ -6064,6 +6233,66 @@ def load_recording(folder, store):
     return n, len(files)
 
 
+class SessionDialog(QtWidgets.QDialog):
+    """Avant ▶ Démarrer : enregistrer toute la session (spectre + journal) pour revenir dessus après le show ?"""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Enregistrer cette session ?")
+        c = owner.session_cfg
+        lay = QtWidgets.QVBoxLayout(self)
+        est = owner.rec_estimate_txt()
+        info = QtWidgets.QLabel(
+            "<b>💾 Garder tout le scan sur disque</b> : le spectre de chaque balayage et le journal, pour revenir à "
+            "n'importe quel moment après le show (⏪ Relecture › 📂 Ouvrir une session), même si l'appli est "
+            "fermée entre-temps." + (f"<br>Place estimée : {est}." if est else ""))
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 4)
+        lay.addWidget(info)
+        f = QtWidgets.QFormLayout()
+        self.dir_edit = QtWidgets.QLineEdit(c.get("dir") or str(owner.log_dir / "enregistrements"))
+        self.dir_edit.setToolTip("Dossier où ranger les sessions (un sous-dossier par session).")
+        b_dir = QtWidgets.QPushButton("Choisir…")
+        b_dir.setToolTip("Dossier où ranger les sessions (disque externe, clé USB, dossier partagé…).")
+        b_dir.clicked.connect(lambda *_: self.pick_dir())
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.dir_edit, 1)
+        row.addWidget(b_dir)
+        f.addRow("Dossier :", row)
+        self.name_edit = QtWidgets.QLineEdit(owner.session_default_name())
+        self.name_edit.setToolTip("Nom du sous-dossier de cette session (date + nom du show par défaut).")
+        f.addRow("Nom de la session :", self.name_edit)
+        lay.addLayout(f)
+        self.never = QtWidgets.QCheckBox("Ne plus demander : toujours faire ce choix (réglable dans Journal)")
+        self.never.setToolTip("La question ne revient plus ; la case « Demander à chaque démarrage » de "
+                              "l'onglet Journal la fait revenir.")
+        self.never.setChecked(not c.get("ask", True))
+        lay.addWidget(self.never)
+        bb = QtWidgets.QDialogButtonBox()
+        self.b_rec = bb.addButton("💾 Enregistrer et démarrer", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+        self.b_no = bb.addButton("▶ Démarrer sans enregistrer", QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        self.b_rec.setToolTip("Démarre le scan et enregistre tout dans le dossier ci-dessus.")
+        self.b_no.setToolTip("Démarre le scan sans rien garder sur disque (les 30 dernières minutes restent en mémoire).")
+        bb.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        self.b_rec.setDefault(True)
+        self.rec = True
+        self.b_rec.clicked.connect(lambda *_: self._done(True))
+        self.b_no.clicked.connect(lambda *_: self._done(False))
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self.resize(640, 270)
+
+    def pick_dir(self):
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier des sessions", self.dir_edit.text())
+        if d:
+            self.dir_edit.setText(d)
+
+    def _done(self, rec):
+        self.rec = rec
+        self.accept()
+
+
 class ReplayDialog(QtWidgets.QDialog):
     """Revoir le spectre à un instant passé : curseur de temps, lecture accélérée, qui était allumé à ce moment-là."""
 
@@ -6074,21 +6303,33 @@ class ReplayDialog(QtWidgets.QDialog):
         self.times = np.array([])
         self.idx = 0
         self.speed = 1
+        self.sess_watch = None                   # session ouverte : sa liste de fréquences et son journal
+        self.sess_events = None
+        self.sess_path = None
         self.setWindowTitle("Relecture : revoir le spectre")
         self.resize(1320, 780)
         th = owner.theme
         lay = QtWidgets.QVBoxLayout(self)
         self.src_lbl = QtWidgets.QLabel("")
-        b_open = QtWidgets.QPushButton("📂 Ouvrir un enregistrement…")
-        b_open.setToolTip("Relit un dossier créé par « 💾 Enregistrer les balayages » (un dossier par session).")
+        b_open = QtWidgets.QPushButton("📂 Ouvrir une session…")
+        b_open.setToolTip("Relit une session enregistrée (proposé à ▶ Démarrer, ou « 💾 Enregistrer les balayages ») :\n"
+                          "spectre, journal et liste de fréquences de ce moment-là.")
         b_open.clicked.connect(lambda *_: self.open_rec())
+        b_last = QtWidgets.QPushButton("🕘 Dernière session")
+        b_last.setToolTip("Rouvre la dernière session enregistrée par cette appli.")
+        b_last.clicked.connect(lambda *_: self.open_rec(owner._last_session or owner._session))
+        b_last.setEnabled(bool(owner._last_session or owner._session))
+        b_exp = QtWidgets.QPushButton("💾 Exporter…")
+        b_exp.setToolTip("Enregistre ce qui est relu (par ex. les 30 dernières minutes en mémoire) comme une session,\n"
+                         "dans le dossier de ton choix : à garder, envoyer, ou rouvrir plus tard.")
+        b_exp.clicked.connect(lambda *_: self.export_session())
         b_mem = QtWidgets.QPushButton("↩ Mémoire en cours")
         b_mem.setToolTip("Les 30 dernières minutes gardées en mémoire par le logiciel.")
         b_mem.clicked.connect(lambda *_: self.use_memory())
         self.ev_combo = QtWidgets.QComboBox()
         self.ev_combo.setMinimumWidth(380)
         self.ev_combo.currentIndexChanged.connect(self.on_event_pick)
-        lay.addLayout(owner._row(self.src_lbl, None, "Aller à :", self.ev_combo, b_open, b_mem))
+        lay.addLayout(owner._row(self.src_lbl, None, "Aller à :", self.ev_combo, b_open, b_last, b_mem, b_exp))
         self.plot = pg.PlotWidget()
         pi = self.plot.getPlotItem()
         pi.showGrid(x=True, y=True, alpha=0.25)
@@ -6167,11 +6408,14 @@ class ReplayDialog(QtWidgets.QDialog):
 
     def use_memory(self):
         self.store = self.owner.store
+        self.sess_watch = self.sess_events = self.sess_path = None
         self.reload()
 
-    def open_rec(self):
-        start = self.owner.log_dir / "enregistrements"
-        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier d'un enregistrement", str(start))
+    def open_rec(self, d=None):
+        if not d:
+            o = self.owner
+            start = o.session_cfg.get("dir") or str(o.log_dir / "enregistrements")
+            d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier d'une session", str(start))
         if not d:
             return
         st = SweepStore(seconds=1e12, max_mb=2500)
@@ -6180,8 +6424,67 @@ class ReplayDialog(QtWidgets.QDialog):
             self.msg.setText(f"Aucun balayage lisible dans « {d} » ({nf} fichier(s) trouvé(s)).")
             return
         self.store = st
-        self.msg.setText(f"Enregistrement chargé : {n} balayages ({nf} tranche(s)).")
+        self.sess_path, self.sess_watch, self.sess_events = Path(d), None, None
+        extra = ""
+        try:
+            meta = json.loads((Path(d) / "session.json").read_text(encoding="utf-8"))
+            if isinstance(meta.get("watch"), list) and meta["watch"]:
+                self.sess_watch = [dict(name=str(w.get("name", "")), freq=float(w["freq"]), thr=w.get("thr"),
+                                        status=w.get("status", "")) for w in meta["watch"] if "freq" in w]
+            show = (meta.get("show") or {}).get("name") or ""
+            extra = f" · {show}" if show else ""
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            rows = session_journal_rows((Path(d) / "journal.csv").read_text(encoding="utf-8-sig"))
+            self.sess_events = [(datetime.strptime(f"{a} {b}", "%Y-%m-%d %H:%M:%S").timestamp(), lab)
+                                for a, b, lab in rows]
+        except Exception:  # noqa: BLE001
+            pass
+        self.msg.setText(f"Session chargée{extra} : {n} balayages ({nf} tranche(s))"
+                         + (f", {len(self.sess_watch)} fréquences" if self.sess_watch else "")
+                         + (f", {len(self.sess_events)} événements du journal" if self.sess_events else "") + ".")
         self.reload()
+
+    def export_session(self):
+        """Enregistre le contenu relu (mémoire ou session ouverte) comme une session, dans le dossier choisi."""
+        sp = self.store.span()
+        if sp is None:
+            self.msg.setText("Rien à exporter : aucun balayage.")
+            return
+        o = self.owner
+        start = o.session_cfg.get("dir") or str(o.log_dir / "enregistrements")
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Exporter la session dans…", str(start))
+        if not d:
+            return
+        name = session_name(datetime.fromtimestamp(sp[0]).strftime("%Y-%m-%d_%H%M") + "_export",
+                            o.show_meta.get("name", ""))
+        try:
+            n = export_store(self.store, Path(d) / name)
+            dst = Path(d) / name
+            if self.sess_path is not None:          # session déjà sur disque : on garde aussi son journal / sa liste
+                import shutil                       # (import local : la V8 l'importe aussi en tête)
+                for fn in ("session.json", "journal.csv"):
+                    if (self.sess_path / fn).exists():
+                        shutil.copy2(self.sess_path / fn, dst / fn)
+            else:
+                o._write_session_json(dst)
+                self._export_journal(dst, sp)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Export impossible :\n{e}")
+            return
+        self.msg.setText(f"💾 {n} balayages exportés dans {dst}")
+
+    def _export_journal(self, dst, sp):
+        t = self.owner.log_table
+        day = datetime.fromtimestamp(sp[0]).strftime("%Y-%m-%d")
+        with open(dst / "journal.csv", "w", newline="", encoding="utf-8-sig") as fh:
+            wr = csv.writer(fh, delimiter=";")
+            wr.writerow(SESSION_JOURNAL_HEAD)
+            for r in range(t.rowCount() - 1, -1, -1):
+                v = [(t.item(r, c).text() if t.item(r, c) else "") for c in range(7)]
+                wr.writerow([day, v[0], v[1], v[2].replace(".", ","), v[3].replace(".", ","), v[4], "", "", "", "",
+                             v[6]])
 
     def fill_events(self):
         """Événements du journal qui tombent dans la période relue (le journal ne garde que l'heure du jour)."""
@@ -6189,6 +6492,12 @@ class ReplayDialog(QtWidgets.QDialog):
         self.ev_combo.clear()
         self.ev_combo.addItem("— événement du journal —", None)
         sp = self.store.span()
+        if self.sess_events is not None:
+            for ep, lab in self.sess_events:
+                if sp[0] - 60 <= ep <= sp[1] + 60:
+                    self.ev_combo.addItem(lab, ep)
+            self.ev_combo.blockSignals(False)
+            return
         t = self.owner.log_table
         day = datetime.fromtimestamp(sp[0]).replace(hour=0, minute=0, second=0, microsecond=0)
         for r in range(t.rowCount() - 1, -1, -1):
@@ -6276,12 +6585,11 @@ class ReplayDialog(QtWidgets.QDialog):
         win = max(0.05, o.win_spin.value() / 1000.0)
         gthr, gweak, weak_on = o.thr_spin.value(), o.weak_spin.value(), o.weak_chk.isChecked()
         rows = []
-        for w in o.watch:
-            if not o.in_scope(w):
-                continue
+        src = self.sess_watch if self.sess_watch is not None else [w for w in o.watch if o.in_scope(w)]
+        for w in src:
             lv = level_at(F, L, w["freq"], win)
             mx = level_at(Fm, Lm, w["freq"], win) if Fm is not None else None
-            thr = w["thr"] if w["thr"] is not None else gthr
+            thr = w["thr"] if w.get("thr") is not None else gthr
             if lv is None:
                 st = "—"
             elif lv >= thr:
@@ -6331,19 +6639,215 @@ def fmt_dur(s, signed=False):
 # --------------------------------------------------------------------------
 def rx_short(key):
     """Nom court d'un profil d'appareil (colonne « Appareil »)."""
-    for k, n, _d, _w in RX_PROFILES:
+    for k, n, _d, _w in rx_all():
         if k == key:
             return n.split(" (")[0].split(" ·")[0]
     return "par défaut"
 
 
 def fill_rx_combo(combo, default_txt):
-    """Profils d'appareil dans une liste : 1er choix = default_txt (donnée ""), explication en bulle."""
+    """Profils d'appareil dans une liste : 1er choix = default_txt (donnée ""), explication en bulle, puis les
+    profils perso (« ✏ … »)."""
+    cur = combo.currentData()
+    combo.blockSignals(True)
+    combo.clear()
     combo.addItem(default_txt, "")
-    for k, n, _d, why in RX_PROFILES:
-        combo.addItem(n, k)
+    for k, n, _d, why in rx_all():
+        combo.addItem(("✏ " + n) if k.startswith("perso_") else n, k)
         combo.setItemData(combo.count() - 1, why, Qt.ItemDataRole.ToolTipRole)
+    ix = combo.findData(cur) if cur else -1
+    combo.setCurrentIndex(max(0, ix))
+    combo.blockSignals(False)
     combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+
+
+def show_filter_help(parent):
+    """Fenêtre « ❓ Le filtre récepteur, c'est quoi ? » (texte + tableau des profils)."""
+    d = QtWidgets.QDialog(parent)
+    d.setWindowTitle("Filtre récepteur et profils d'appareil")
+    v = QtWidgets.QVBoxLayout(d)
+    tb = QtWidgets.QTextBrowser()
+    tb.setHtml(rx_help_html())
+    v.addWidget(tb)
+    b = QtWidgets.QPushButton("Fermer")
+    b.setToolTip("Ferme l'explication.")
+    b.clicked.connect(d.accept)
+    v.addWidget(b, 0, Qt.AlignmentFlag.AlignRight)
+    d.resize(760, 640)
+    d.exec()
+
+
+def filter_help_btn(parent):
+    b = QtWidgets.QPushButton("❓")
+    b.setToolTip("Le filtre récepteur, c'est quoi ? (explication et profils)")
+    b.setMaximumWidth(36)
+    b.clicked.connect(lambda *_: show_filter_help(parent))
+    return b
+
+
+class RxProfileEdit(QtWidgets.QDialog):
+    """Un profil perso : nom, filtre, écart, pas, tolérances, note."""
+
+    def __init__(self, parent, prof):
+        super().__init__(parent)
+        self.setWindowTitle("Profil d'appareil perso")
+        f = QtWidgets.QFormLayout(self)
+        self.name = QtWidgets.QLineEdit(prof.get("name", ""))
+        self.name.setPlaceholderText("ex. Sennheiser EW G4 groupe A")
+        self.name.setToolTip("Nom affiché dans les listes d'appareils.")
+        f.addRow("Nom :", self.name)
+
+        def spin(v, lo, hi, step, suffix, tip, special=None, dec=0):
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(lo, hi)
+            sp.setDecimals(dec)
+            sp.setSingleStep(step)
+            sp.setSuffix(suffix)
+            if special:
+                sp.setSpecialValueText(special)
+            sp.setValue(v)
+            sp.setToolTip(tip)
+            return sp
+        self.filt = spin(prof.get("filt", 16.0), 0, 400, 4, " MHz", "Filtre d'entrée du récepteur (« Filtre » d'EazyRF). "
+                         "0 = aucun : tous les émetteurs comptent.", "aucun")
+        self.sep = spin(prof.get("sep", 0.4) * 1000, 0, 3000, 25, " kHz", "Écart minimal entre deux porteuses "
+                        "(« Séparation » d'EazyRF).")
+        self.step = spin(prof.get("step", 0.025) * 1000, 1, 1000, 5, " kHz", "Pas de réglage de l'appareil "
+                         "(« Incrément » d'EazyRF).")
+        t = prof.get("tol") or _TOL_EZ
+        self.tol = {k: spin(t.get(k, 0.0) * 1000, 0, 2000, 10, " kHz", tip, "ignoré")
+                    for k, tip in (("2tx3", "Tolérance 2 TX (2A − B). 0 = ignoré."),
+                                   ("3tx3", "Tolérance 3 TX (A + B − C). 0 = ignoré."),
+                                   ("5", "Tolérance 5ᵉ ordre. 0 = ignoré."))}
+        f.addRow("Filtre récepteur :", self.filt)
+        f.addRow("Écart mini :", self.sep)
+        f.addRow("Pas :", self.step)
+        f.addRow("2A − B :", self.tol["2tx3"])
+        f.addRow("A + B − C :", self.tol["3tx3"])
+        f.addRow("5ᵉ ordre :", self.tol["5"])
+        self.note = QtWidgets.QLineEdit(prof.get("note", ""))
+        self.note.setPlaceholderText("ex. valeurs de mon profil EazyRF")
+        self.note.setToolTip("Note affichée en bulle dans les listes.")
+        f.addRow("Note :", self.note)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        f.addRow(bb)
+
+    def value(self, key=""):
+        return dict(key=key, name=self.name.text().strip() or "Mon appareil", filt=self.filt.value(),
+                    sep=self.sep.value() / 1000.0, step=self.step.value() / 1000.0,
+                    tol={k: sp.value() / 1000.0 for k, sp in self.tol.items()},
+                    note=self.note.text().strip() or "Profil perso.")
+
+
+class RxProfilesDialog(QtWidgets.QDialog):
+    """Tous les profils d'appareil : intégrés (lecture seule) et perso (créer, copier, modifier, supprimer)."""
+    COLS = ["Appareil", "Filtre", "Écart", "Pas", "2A − B", "A + B − C", "5ᵉ", "Source"]
+
+    def __init__(self, owner, current=None):
+        super().__init__(owner)
+        self.owner, self.current = owner, current
+        self.setWindowTitle("Profils d'appareil (filtre, écart, pas, tolérances)")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Profils intégrés en lecture seule ; « ＋ Nouveau » copie la ligne choisie (ou tes "
+                                "réglages actuels) dans un profil perso modifiable. Les profils perso sont gardés "
+                                "dans ta config et dans tes shows.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 2)
+        lay.addWidget(info)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Double-clic sur un profil perso : le modifier.")
+        self.table.cellDoubleClicked.connect(lambda *_: self.edit())
+        lay.addWidget(self.table, 1)
+        b_new = QtWidgets.QPushButton("＋ Nouveau (copie de la ligne)")
+        b_new.setToolTip("Crée un profil perso à partir du profil choisi (ou d'une base 16 MHz si rien n'est choisi).")
+        b_new.clicked.connect(lambda *_: self.new())
+        b_cur = QtWidgets.QPushButton("＋ Depuis les réglages actuels")
+        b_cur.setToolTip("Crée un profil perso avec l'écart, le filtre, le pas et les tolérances de la fenêtre "
+                         "« Vérifier le plan ».")
+        b_cur.clicked.connect(lambda *_: self.new(self.current))
+        b_cur.setEnabled(current is not None)
+        b_edit = QtWidgets.QPushButton("✏ Modifier")
+        b_edit.setToolTip("Modifie le profil perso choisi.")
+        b_edit.clicked.connect(lambda *_: self.edit())
+        b_del = QtWidgets.QPushButton("🗑 Supprimer")
+        b_del.setToolTip("Supprime le profil perso choisi (les fréquences qui l'utilisaient repassent « par défaut »).")
+        b_del.clicked.connect(lambda *_: self.delete())
+        b_help = QtWidgets.QPushButton("❓ Le filtre, c'est quoi ?")
+        b_help.setToolTip("Explication du filtre récepteur et de chaque réglage.")
+        b_help.clicked.connect(lambda *_: show_filter_help(self))
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.accept)
+        lay.addLayout(owner._row(b_new, b_cur, b_edit, b_del, None, b_help, close))
+        self.resize(900, 520)
+        self.refresh()
+
+    def refresh(self):
+        allp = rx_all()
+        self.table.setRowCount(len(allp))
+        for r, (k, n, d, why) in enumerate(allp):
+            vals = (("✏ " + n) if k.startswith("perso_") else n, f"{d['filt']:g} MHz" if d["filt"] else "aucun",
+                    f"{d['sep'] * 1000:.0f} kHz", f"{d['step'] * 1000:g} kHz",
+                    *[(f"±{d['tol'][t] * 1000:.0f}" if d["tol"].get(t) else "ignoré") for t in ("2tx3", "3tx3", "5")],
+                    RX_SRC_TXT.get(d.get("src"), ""))
+            for c, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                it.setToolTip(why)
+                it.setData(Qt.ItemDataRole.UserRole, k)
+                self.table.setItem(r, c, it)
+        self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+
+    def _key(self):
+        r = self.table.currentRow()
+        it = self.table.item(r, 0) if r >= 0 else None
+        return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+
+    def _save(self, lst):
+        rx_set_custom(lst)
+        self.refresh()
+        self.owner.rx_profiles_changed()
+
+    def new(self, base=None):
+        if base is None:
+            d = rx_profile(self._key()) or dict(filt=16.0, sep=0.4, step=0.025, tol=dict(_TOL_EZ))
+            name = rx_short(self._key()) + " (perso)" if self._key() else ""
+            base = dict(d, name=name)
+        dlg = RxProfileEdit(self, base)
+        if dlg.exec():
+            lst = rx_custom_dump()
+            lst.append(dlg.value(""))
+            self._save(lst)
+
+    def edit(self):
+        k = self._key()
+        lst = rx_custom_dump()
+        i = next((i for i, p in enumerate(lst) if p["key"] == k), None)
+        if i is None:
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Les profils intégrés ne se modifient pas : "
+                                              "« ＋ Nouveau » en fait une copie perso modifiable.")
+            return
+        dlg = RxProfileEdit(self, lst[i])
+        if dlg.exec():
+            lst[i] = dlg.value(k)
+            self._save(lst)
+
+    def delete(self):
+        k = self._key()
+        lst = rx_custom_dump()
+        if not any(p["key"] == k for p in lst):
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Seuls les profils perso se suppriment.")
+            return
+        self._save([p for p in lst if p["key"] != k])
 
 
 class PlanCheckDialog(QtWidgets.QDialog):
@@ -6436,7 +6940,13 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.go_btn = QtWidgets.QPushButton("🧮 Vérifier")
         self.go_btn.setToolTip("Calcule la compatibilité de tout le plan.")
         self.go_btn.clicked.connect(lambda *_: self.compute())
-        lay.addLayout(R(self.src_combo, "Appareil par défaut :", self.prof_combo, None, self.go_btn))
+        b_prof = QtWidgets.QPushButton("✏ Mes profils…")
+        b_prof.setToolTip("Tous les profils d'appareil, et tes profils perso (ton filtre, ton écart, tes tolérances).")
+        b_prof.clicked.connect(lambda *_: self.edit_profiles())
+        b_help = QtWidgets.QPushButton("❓ Le filtre ?")
+        b_help.setToolTip("Le filtre récepteur, c'est quoi, et pourquoi il change le calcul d'intermod.")
+        b_help.clicked.connect(lambda *_: show_filter_help(self))
+        lay.addLayout(R(self.src_combo, "Appareil par défaut :", self.prof_combo, b_prof, b_help, None, self.go_btn))
         lay.addLayout(R("Règles :", self.tol_combo, None))
         lay.addLayout(R("Écart mini :", self.sep_spin, "Filtre récepteur :", self.filt_spin, "Pas :", self.step_spin,
                         None))
@@ -6514,6 +7024,16 @@ class PlanCheckDialog(QtWidgets.QDialog):
             self._applying = False
         self._filling = False
         self._explain()
+
+    def edit_profiles(self):
+        cur = dict(name="", sep=self.sep_spin.value() / 1000.0, filt=self.filt_spin.value(),
+                   step=self.step_spin.value() / 1000.0, tol=self.tolerances())
+        RxProfilesDialog(self.owner, cur).exec()
+
+    def refill_profiles(self):
+        fill_rx_combo(self.prof_combo, "✏ Réglages ci-dessous")
+        fill_rx_combo(self.rx_combo, "par défaut (appareil ci-dessus)")
+        self.compute()
 
     def _prof_touched(self):
         if not getattr(self, "_filling", False) and self.prof_combo.currentData():
@@ -7827,6 +8347,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarms = AlarmBook()
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
+        self.session_cfg = dict(SESSION_DEFAULT)
+        self._session = None                     # dossier de la session enregistrée en cours
+        self._last_session = None
         self._t_start = None
         self.report_prefs, self.export_list_prefs = {}, {}
         self.vocab_user = dict(name=[], scene=[], group=[])
@@ -8037,6 +8560,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
         "🧮 Vérifier le plan": "Comme EazyRF : écart entre porteuses et intermod selon des tolérances, un verdict\n"
                                "par fréquence, et une fréquence de remplacement compatible.",
+        "🎛 Profils d'appareil": "Filtre récepteur, écart, pas et tolérances par appareil (Wisycom, Shure, Sennheiser…),\n"
+                                "et tes profils perso. ❓ explique ce que change le filtre.",
         "⚡ Intermodulation": "Produits d'intermodulation de tes émetteurs (2 / 3 / 5 TX) : ce qui retombe sur tes\n"
                              "fréquences, ou d'où peut venir un signal inconnu.",
         "🆘 Fréquence de secours": "Propose des fréquences libres d'après le spectre mesuré, sans intermod avec ta liste.",
@@ -8211,6 +8736,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for txt, fn in (("🎤 Appel des micros (line check)…  Ctrl+L", lambda *_: self.open_linecheck()),
                         (None, None),
                         ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
+                        ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
                         ("⚡ Intermodulation (2 / 3 / 5 TX)…", lambda *_: self.open_intermod()),
                         ("🆘 Fréquence de secours…", lambda *_: self.open_rescue()),
                         (None, None),
@@ -8842,7 +9368,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rec_chk.toggled.connect(self.toggle_rec)
         self.rec_lbl = QtWidgets.QLabel("")
         self.rec_lbl.setWordWrap(True)
+        self.sess_ask_chk = QtWidgets.QCheckBox("Demander à chaque démarrage")
+        self.sess_ask_chk.setChecked(True)
+        self.sess_ask_chk.setToolTip("À chaque démarrage : enregistrer tout le scan (spectre + journal) dans le dossier\n"
+                                     "de ton choix, pour le revoir après le show (⏪ Relecture › 📂 Ouvrir une session).")
+        self.sess_ask_chk.toggled.connect(lambda *_: self.session_cfg.__setitem__("ask", self.sess_ask_chk.isChecked()))
         lg.addWidget(self.rec_chk)
+        lg.addWidget(self.sess_ask_chk)
         lg.addWidget(self.rec_lbl)
         self.log_table = QtWidgets.QTableWidget(0, 7)
         self.log_table.setHorizontalHeaderLabels(["Heure", "Nom", "MHz", "dBm", "Événement", "Scène › Groupe", "Note"])
@@ -9017,6 +9549,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_config(self, data, startup=False):
         """Applique un dictionnaire de réglages (config au démarrage, ou profil d'événement)."""
+        if "rx_custom" in data:                  # profils d'appareil perso (avant la liste : w["rx"] y renvoie)
+            rx_set_custom(data.get("rx_custom"))
         if not startup:
             with self.lock:
                 self.bands.clear()
@@ -9211,6 +9745,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show_path = str(data.get("show_path") or "")
             rs = data.get("recent_shows")
             self.recent_shows = [str(x) for x in rs if isinstance(x, str)][:8] if isinstance(rs, list) else []
+            self.session_cfg = session_cfg_norm(data.get("session"))
+            if hasattr(self, "sess_ask_chk"):
+                self.sess_ask_chk.blockSignals(True)
+                self.sess_ask_chk.setChecked(self.session_cfg["ask"])
+                self.sess_ask_chk.blockSignals(False)
             self.update_title()
             vu = data.get("vocab")
             if isinstance(vu, dict):
@@ -9245,6 +9784,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     for s in self.scenes],
             scope=[list(k) for k in self.scope] if self.scope else None,
             focus=self.focus_chk.isChecked(),
+            rx_custom=rx_custom_dump(),
             statuses=[dict(name=s["name"], color=s["color"], free=bool(s.get("free")), on=bool(s.get("on")))
                       for s in self.statuses],
             theme=self.theme,
@@ -9279,6 +9819,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
+            data["session"] = dict(self.session_cfg)
             data["lang"] = self.lang
         return data
 
@@ -9505,6 +10046,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if not any(b["enabled"] for b in self.bands):
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Coche au moins une bande à balayer.")
             return
+        if not self._session_prompt():
+            return
         self._read_dev2()
         targets = [(port, "")]
         if self.dev2["on"]:
@@ -9660,6 +10203,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_live = [True, True]
         self.update_dev2_label()
         self.set_status("Arrêté.")
+        if self._session is not None:
+            self._session_end()
 
     # ------------------------------------------------------------ 2ᵉ tinySA
     def _build_dev2_box(self):
@@ -11320,6 +11865,8 @@ class MainWindow(QtWidgets.QMainWindow):
                else self.theme["st_unk"]
                if event == "INCONNU" else self.theme["st_free"])
         self._auto_log(vals, w)                      # fichier : toujours en dBm
+        if self._session is not None:
+            self._session_log(vals, w)
         if w["freq"]:
             vals = list(vals)
             vals[3] = self.lvl(level)
@@ -12416,6 +12963,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plan_dlg = PlanCheckDialog(self)
         self._plan_dlg.show()
 
+    def rx_profiles_changed(self):
+        """Profils perso modifiés : listes d'appareils rafraîchies, config enregistrée."""
+        d = getattr(self, "_plan_dlg", None)
+        if d is not None:
+            try:
+                d.refill_profiles()
+            except RuntimeError:                 # fenêtre déjà détruite
+                self._plan_dlg = None
+        self._save_config()
+
+    def open_rx_profiles(self):
+        RxProfilesDialog(self).exec()
+
     def open_linecheck(self):
         if self._linecheck is not None:
             self._linecheck.raise_()
@@ -13112,6 +13672,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._rec_stop()
 
     def _rec_stop(self):
+        if self._session is not None:            # case décochée pendant une session : la session s'arrête
+            self._session_end(stop_rec=False)
         r, self.recorder = self.recorder, None
         if r is None:
             return
@@ -13122,6 +13684,96 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_replay(self):
         self._replay = ReplayDialog(self)
         self._replay.show()
+
+    # ------------------------------------------------------- sessions enregistrées
+    def session_default_name(self):
+        return session_name(datetime.now().strftime("%Y-%m-%d_%H%M"), self.show_meta.get("name", ""))
+
+    def rec_estimate_txt(self):
+        pts = sum(self._npts(b) for b in self.bands if b.get("enabled"))
+        mb = rec_mb_per_hour(pts, self.last_cycle if self.last_cycle else max(1.0, pts / 2000.0))
+        return f"≈ {mb:.0f} Mo par heure" if mb else ""
+
+    def _session_prompt(self):
+        """Avant ▶ Démarrer. -> False si l'utilisateur annule."""
+        if self.recorder is not None:
+            return True                          # « 💾 Enregistrer les balayages » déjà coché à la main
+        c = self.session_cfg
+        name = self.session_default_name()
+        if c.get("ask", True):
+            d = SessionDialog(self)
+            if not d.exec():
+                return False
+            c.update(rec=d.rec, dir=d.dir_edit.text().strip(), ask=not d.never.isChecked())
+            name = session_name(d.name_edit.text().strip() or name)
+            self.sess_ask_chk.blockSignals(True)
+            self.sess_ask_chk.setChecked(c["ask"])
+            self.sess_ask_chk.blockSignals(False)
+        if c.get("rec"):
+            self._session_begin(Path(c.get("dir") or (self.log_dir / "enregistrements")) / name)
+        return True
+
+    def _session_meta(self, end=None):
+        cfg = self._collect_config(full=False)
+        return dict(app=APP_NAME, version=APP_VER, start=self._session_t0, end=end,
+                    show=dict(self.show_meta), watch=cfg.get("watch", []), bands=cfg.get("bands", []),
+                    statuses=cfg.get("statuses", []), scenes=cfg.get("scenes", []),
+                    thr=round(float(self.thr_spin.value()), 1))
+
+    def _write_session_json(self, path, end=None):
+        try:
+            (Path(path) / "session.json").write_text(
+                json.dumps(self._session_meta(end), ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"⚠ Session : {e}")
+
+    def _session_begin(self, path):
+        base, k = Path(path), 2
+        while base.exists() and any(base.iterdir()):
+            base = Path(f"{path}_{k}")
+            k += 1
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Dossier de session impossible à créer :\n{e}\n\n"
+                                          "Le scan démarre sans enregistrement.")
+            return
+        self._session, self._session_t0 = base, datetime.now().isoformat(timespec="seconds")
+        self._write_session_json(base)
+        self.recorder = SweepRecorder(base)
+        self.rec_chk.blockSignals(True)
+        self.rec_chk.setChecked(True)
+        self.rec_chk.blockSignals(False)
+        self.rec_lbl.setText(f"💾 Session → {base}")
+        self.set_status(f"💾 Session enregistrée dans {base}")
+
+    def _session_log(self, vals, w):
+        p = self._session / "journal.csv"
+        try:
+            new = not p.exists()
+            with open(p, "a", newline="", encoding="utf-8-sig" if new else "utf-8") as fh:
+                wr = csv.writer(fh, delimiter=";")
+                if new:
+                    wr.writerow(SESSION_JOURNAL_HEAD)
+                wr.writerow([datetime.now().strftime("%Y-%m-%d"), vals[0], vals[1], vals[2].replace(".", ","),
+                             vals[3].replace(".", ","), vals[4], w.get("status", ""), w.get("scene", ""),
+                             w.get("group", ""), w.get("band", ""), vals[6] if len(vals) > 6 else ""])
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _session_end(self, stop_rec=True):
+        path, self._session = self._session, None
+        if path is None:
+            return
+        self._last_session = path
+        if stop_rec and self.recorder is not None:
+            self._rec_stop()
+            self.rec_chk.blockSignals(True)
+            self.rec_chk.setChecked(False)
+            self.rec_chk.blockSignals(False)
+        self._write_session_json(path, end=datetime.now().isoformat(timespec="seconds"))
+        self.rec_lbl.setText(f"💾 Session enregistrée : {path}")
+        self.set_status(f"💾 Session enregistrée : {path}  (⏪ Relecture › 📂 Ouvrir une session)")
 
     # ------------------------------------------------------- rapport de show
     def collect_report(self, v):
@@ -13315,6 +13967,8 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
             self.recorder = None
+        if self._session is not None:
+            self._session_end(stop_rec=False)
         if self._replay is not None:
             try:
                 self._replay.close()

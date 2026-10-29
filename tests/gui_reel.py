@@ -147,7 +147,17 @@ win.sort_watch(); win.rebuild_tree(); win.rebuild_watch_table()
 win.absent_spin.setValue(5) if hasattr(win, "absent_spin") else None
 
 win.demo_chk.setChecked(True)
+_sess_dir = os.path.join(tmp, "sessions")
+win.session_cfg.update(dir=_sess_dir, ask=True, rec=True)
+DLG_ACTION[0] = "reject"
+step("Démarrer → « Enregistrer la session ? » › Annuler", win.toggle_run)
+check("session : Annuler ne démarre pas", not win.is_running() and win._session is None)
+DLG_ACTION[0] = "accept"                 # « 💾 Enregistrer et démarrer » (bouton par défaut)
 step("Démarrer", win.toggle_run)
+DLG_ACTION[0] = "reject"
+check("session : enregistrement lancé dans le dossier choisi", win._session is not None
+      and str(win._session).startswith(_sess_dir) and win.recorder is not None, str(win._session))
+win.session_cfg["ask"] = False           # les démarrages suivants du test : sans question (même choix)
 wait(8000)
 shot(win, "demo_tout_spectre")
 
@@ -470,6 +480,24 @@ if _pd is not None:
     check("plan : colonne Appareil", "Shure" in (_pd.table.item(_pd.ws.index(_w0), 3).text()))
     check("plan : appareil gardé dans la config", any(x.get("rx") == "shure_ana" for x in win._collect_config()["watch"]))
     shot(_pd, "plan_appareils")
+    # profils perso : « ＋ Depuis les réglages actuels » → OK → la liste des appareils le propose
+    def _prof_act(d):
+        if isinstance(d, m.RxProfilesDialog):
+            d.new(d.current)
+            return "reject"
+        if isinstance(d, m.RxProfileEdit):
+            d.name.setText("EW G4 bande A")
+            d.filt.setValue(16)
+        return "accept"
+    DLG_ACTION[0] = _prof_act
+    step("plan : ✏ Mes profils › nouveau profil perso", _pd.edit_profiles)
+    DLG_ACTION[0] = "reject"
+    check("profil perso créé et proposé dans la liste", _pd.rx_combo.findText("✏ EW G4 bande A") >= 0
+          and m.rx_profile("perso_1") is not None and m.rx_profile("perso_1")["filt"] == 16.0,
+          str([_pd.rx_combo.itemText(i) for i in range(_pd.rx_combo.count())]))
+    check("profil perso gardé dans la config et les shows", win._collect_config()["rx_custom"][0]["name"] == "EW G4 bande A"
+          and "rx_custom" in m.SHOW_KEYS)
+    step("plan : ❓ le filtre", lambda: m.show_filter_help(_pd))
     _pd.close()
 else:
     check("plan : fenêtre ouverte", False)
@@ -760,6 +788,28 @@ check("show rouvert", len(win.watch) == n_w and win.show_meta["name"] == "Festiv
 
 step("Arrêter", win.toggle_run); wait(2500)
 check("arrêt : plus aucun worker", not win.is_running())
+_sp = win._last_session
+check("session : close à l'arrêt (spectre + session.json + journal.csv)", _sp is not None and win._session is None
+      and any(_sp.glob("chunk_*.npz")) and (_sp / "session.json").exists() and (_sp / "journal.csv").exists(),
+      str(_sp) + " " + str(sorted(p_.name for p_ in _sp.iterdir())) if _sp else "")
+_meta = m.json.loads((_sp / "session.json").read_text(encoding="utf-8")) if _sp else {}
+check("session : liste de fréquences + fin notées", len(_meta.get("watch", [])) == len(win.watch) and _meta.get("end"))
+_rp = step("relecture : ouvrir la dernière session", lambda: (win.open_replay(), win._replay)[1])
+if _rp is not None:
+    step("relecture : session", lambda: _rp.open_rec(_sp))
+    check("relecture : session rechargée avec sa liste et son journal", _rp.sess_watch is not None
+          and len(_rp.times) > 0 and _rp.ev_combo.count() > 1, _rp.msg.text())
+    shot(_rp, "relecture_session")
+    _exp = os.path.join(tmp, "export_sess")
+    os.makedirs(_exp, exist_ok=True)
+    _orig_dir = W.QFileDialog.getExistingDirectory
+    W.QFileDialog.getExistingDirectory = staticmethod(lambda *a, **k: _exp)
+    step("relecture : mémoire → exporter", lambda: (_rp.use_memory(), _rp.export_session()))
+    W.QFileDialog.getExistingDirectory = _orig_dir
+    _ed = [p_ for p_ in m.Path(_exp).iterdir()]
+    check("export de la mémoire : une session complète", len(_ed) == 1 and any(_ed[0].glob("chunk_*.npz"))
+          and (_ed[0] / "session.json").exists(), _rp.msg.text())
+    _rp.close()
 shot(win, "arrete")
 
 # ---- deux tinySA (démo) : chacun ses bandes, coupure du 2e, retour, fenêtre relais
