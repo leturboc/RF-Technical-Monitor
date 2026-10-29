@@ -287,6 +287,18 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   Tests : `tests/fake_iq.py` (IQ FM synthétique au rythme réel), test_sdr (DSP), test_sdr_qt (bout en bout, pause).
   **Non vérifié** : vrai HackRF / RTL-SDR, `hackrf_transfer -r -` vers stdout sous Windows, son réel (QAudioSink),
   rendu des companders. Reste : WiNRADiO (SDK Windows propre à chaque modèle).
+- **V8 étape 3 (fait) : ⏱ temps réel** (Outils, clic droit sur la liste « autour de cette fréquence ») : fenêtre
+  fixe vue SANS TROU (FFT jointives de tous les échantillons). PURE : `RT_RATES` (HackRF 19,2 / 9,6 / 4,8 MS/s,
+  RTL 2,4 ; multiples de 240 kHz pour démoduler), `RT_FFT`, `rt_frames` (moyenne + max dBFS par bloc de 50 ms),
+  `rt_freqs`, `rt_useful` (80 %), `decimate_max`, `Persist` (histogramme fréquence × niveau qui s'efface),
+  `BurstDetector` (signaux au-dessus d'un seuil : groupes de cases, suivis, événement {t0, t1, f, peak, width} à la
+  disparition). Qt : `RealtimeWorker` (frame / events / stopped, `thr`, `listen` = démodulation sur le même flux,
+  `load` = charge, saturation = échantillons à pleine échelle), `RealtimeDialog` (spectre + max-hold + persistance
+  + waterfall + journal des signaux, « ignorer mes fréquences », « aussi dans le journal », clic = écouter en
+  accrochant le pic à ±100 kHz). Écoute 🎧 et temps réel s'excluent (un seul flux par SDR). Optimisations :
+  oscillateur par table × phase par bloc (exp() par échantillon = 60 % d'un cœur), IQ lu directement en complex64.
+  Mesuré ici : 19,2 MS/s ≈ 50 % d'un cœur (+ 12 % pour l'écoute). `fake_iq.py` : `FAKE_IQ_BURSTS`.
+  **Clément n'a pas encore de SDR** : rien sur main tant qu'il n'a pas testé.
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
   fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
   analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non

@@ -173,5 +173,37 @@ check("reprise après l'écoute", wait_until(lambda: len(ev["sweeps"]) > n_p + 1
 w.requestInterruption()
 w.wait(8000)
 
+# ---- temps réel : faux hackrf_transfer avec un micro fixe et un signal intermittent (0,3 s toutes les 1,2 s)
+os.environ.update(FAKE_IQ_CARRIERS="606.0:1000", FAKE_IQ_BURSTS="605.4:0.3:1.2", FAKE_IQ_SECONDS="0")
+rw = m.RealtimeWorker("hackrf", 606.2e6, 2400000, 2048, tool=FIQ)
+rw.thr = -40.0
+frames, evs, rstop = [], [], []
+rw.frame.connect(lambda fr: frames.append(fr))
+rw.events.connect(lambda e: evs.extend(e))
+rw.stopped.connect(lambda why: rstop.append(why))
+rw.start()
+wait_until(lambda: len(evs) >= 2 and len(frames) > 20, 25)
+rw.listen = dict(f=606.0, mode="wfm", compander="x2", deemph=50.0, volume=1.0)
+wait_until(lambda: len(rw.audio) >= 30, 15)
+pcm = b"".join(list(rw.audio))
+rw.requestInterruption()
+rw.wait(8000)
+app.processEvents()
+fr = frames[-1] if frames else {}
+Fm = np.asarray(fr.get("F", [0]))
+check("temps réel : spectre reçu, 20 images / s", len(frames) > 20 and len(Fm) == 2048, str(len(frames)))
+check("temps réel : micro fixe à 606,000 vu (FM ±30 kHz)", frames and abs(Fm[int(np.argmax(fr["avg"]))] - 606.0) < 0.05,
+      str(Fm[int(np.argmax(fr["avg"]))] if frames else None))
+b = [e for e in evs if abs(e["f"] - 605.4) < 0.01]
+check("temps réel : signal intermittent noté au journal (fréquence, durée ≈ 0,3 s)", len(b) >= 2
+      and all(0.15 <= e["t1"] - e["t0"] <= 0.5 for e in b), str(evs[:3]))
+check("temps réel : le micro fixe n'est pas un « événement »", not [e for e in evs if abs(e["f"] - 606.0) < 0.05])
+a3 = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32000
+check("temps réel : clic = écoute (1 kHz du micro)", len(a3) > 20000 and abs(tone_of(a3[4800:]) - 1000) < 30,
+      str(len(a3)))
+check("temps réel : charge mesurée", frames and 0 < fr["load"] < 5, str(fr.get("load")))
+check("temps réel : arrêt propre", rstop == [""] and rw.proc is None, str(rstop))
+os.environ["FAKE_IQ_BURSTS"] = ""
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

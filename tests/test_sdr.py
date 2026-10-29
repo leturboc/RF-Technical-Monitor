@@ -160,5 +160,49 @@ ok("commande hackrf_transfer", lc == ["hackrf_transfer", "-r", "-", "-f", "60700
 ok("commande rtl_sdr", ns["listen_cmd"]("rtlsdr", "rtl_sdr", 607e6, 2400000, 30) ==
    ["rtl_sdr", "-f", "607000000", "-s", "2400000", "-g", "30", "-"])
 
+# ---- temps réel : FFT jointives, persistance, détecteur de signaux brefs
+fs2 = 2400000
+tt = np.arange(fs2 // 10) / fs2
+x = (0.5 * np.exp(2j * np.pi * 300e3 * tt) + 0.001 * (rng.normal(size=len(tt)) + 1j * rng.normal(size=len(tt))))
+burst = np.zeros(len(tt), dtype=complex)
+burst[1000:3000] = 0.5 * np.exp(2j * np.pi * -500e3 * tt[1000:3000])      # 0,8 ms seulement
+avg, mx = ns["rt_frames"]((x + burst).astype(np.complex64), 1024)
+Fr = ns["rt_freqs"](606e6, fs2, 1024)
+ok("temps réel : porteuse à +300 kHz au bon endroit", abs(Fr[int(np.argmax(avg))] - 606.3) < 0.003, str(Fr[int(np.argmax(avg))]))
+ok("temps réel : niveau en dBFS (porteuse 0,5 → ≈ −6 dB)", -8 < avg.max() < -4, f"{avg.max():.1f}")
+kb = int(np.argmin(np.abs(Fr - 605.5)))
+ok("temps réel : signal de 0,8 ms vu dans le max (rien n'échappe)", mx[kb] > -20 and avg[kb] < mx[kb] - 10,
+   f"max {mx[kb]:.1f} / moy {avg[kb]:.1f}")
+ok("temps réel : bruit bas", np.median(avg) < -70, f"{np.median(avg):.1f}")
+ok("temps réel : partie utile 80 %", ns["rt_useful"](606e6, 2400000) == (605.04, 606.96))
+ok("réduction max : pic gardé", ns["decimate_max"](np.r_[np.zeros(9999), 5.0], 1000).max() == 5.0
+   and len(ns["decimate_max"](np.zeros(10000), 1000)) == 1000)
+pe = ns["Persist"](4, decay=0.5)
+pe.add([-120, -60, -60, 0])
+img = pe.add([-120, -60, -30, 0])
+ok("persistance : trace forte (fixe) et pâle (brève)", img[1].max() == 1.5 and img[2].max() == 1.0
+   and img[2].sum() == 1.5, str(img[2][img[2] > 0]))
+bd = ns["BurstDetector"](gap=2)
+Fb = np.linspace(600, 610, 101)
+quiet = np.full(101, -100.0)
+def with_sig(*idx):
+    L = quiet.copy()
+    for i, v in idx:
+        L[i] = v
+    return L
+evs = []
+evs += bd.feed(0.0, Fb, with_sig((50, -40)), -70)            # porteuse fixe à 605
+evs += bd.feed(0.1, Fb, with_sig((50, -40), (20, -50), (21, -45)), -70)   # brève à 602,1 (2 cases)
+evs += bd.feed(0.2, Fb, with_sig((50, -40), (20, -50)), -70)
+evs += bd.feed(0.3, Fb, with_sig((50, -38)), -70)            # la brève s'arrête
+ok("détecteur : 1 événement (le signal bref), 1 signal en cours (la porteuse)", len(evs) == 1 and len(bd.active) == 1,
+   str(evs) + str(bd.active))
+e = evs[0] if evs else {}
+ok("détecteur : fréquence au pic, durée, niveau", abs(e.get("f", 0) - 602.1) < 1e-6 and abs(e["t1"] - e["t0"] - 0.1) < 1e-9
+   and e["peak"] == -45, str(e))
+ok("détecteur : la porteuse garde son début et son pic", bd.active[0]["t0"] == 0.0 and bd.active[0]["peak"] == -38)
+evs = bd.feed(0.4, Fb, quiet, -70)
+ok("détecteur : porteuse coupée → événement de 0,3 s", len(evs) == 1 and abs(evs[0]["t1"] - evs[0]["t0"] - 0.3) < 1e-9)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

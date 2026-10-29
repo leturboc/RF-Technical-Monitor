@@ -3500,8 +3500,8 @@ def iq_from_bytes(kind, buf):
     a = a.astype(np.float32)
     if kind != "hackrf":
         a -= 127.5
-    a /= 128.0
-    return (a[0::2] + 1j * a[1::2]).astype(np.complex64)
+    a *= np.float32(1.0 / 128.0)
+    return a.view(np.complex64)                        # I, Q entrelacés en float32 = complex64, sans recopie
 
 
 def lowpass_taps(cut, fs, n=129):
@@ -3557,7 +3557,12 @@ class ChannelDemod:
     def process(self, iq):
         n = len(iq)
         w = -2.0 * math.pi * self.f_off / self.fs
-        x = iq * np.exp(1j * (self.ph + w * np.arange(n))).astype(np.complex64)
+        B = 8192                                          # oscillateur : table × une phase par bloc (exp() par
+        if getattr(self, "_nco", None) is None:           # échantillon coûtait ~60 % d'un cœur à 19,2 MS/s)
+            self._nco = np.exp(1j * w * np.arange(B)).astype(np.complex64)
+        nb = -(-n // B)
+        steps = np.exp(1j * (self.ph + w * B * np.arange(nb))).astype(np.complex64)
+        x = iq * (steps[:, None] * self._nco[None, :]).ravel()[:n]
         self.ph = (self.ph + w * n) % (2.0 * math.pi)
         y = self.f1(x)
         if not len(y):
@@ -3635,6 +3640,108 @@ def listen_cmd(kind, exe, center_hz, rate, lna=24, vga=20, amp=False, serial="")
     if serial:
         a += ["-d", serial]
     return a + ([] if kind == "hackrf" else ["-"])
+
+
+# ------------------------------------------------------------------ V8 : mode temps réel (fenêtre fixe, sans trou)
+# Le SDR reste sur une fenêtre (jusqu'à ~15 MHz utiles sur un HackRF à 19,2 MS/s) : TOUS les échantillons passent
+# dans des FFT jointives → rien n'échappe dans la fenêtre (contrairement à un balayage). Taux multiples de 240 kHz
+# pour pouvoir démoduler directement (ChannelDemod) en cliquant sur le spectre.
+RT_RATES = {"hackrf": [19200000, 9600000, 4800000], "rtlsdr": [2400000]}
+RT_FFT = [1024, 2048, 4096, 8192, 16384]
+
+
+def rt_frames(iq, nfft):
+    """IQ -> FFT jointives (fenêtre de Blackman-Harris approchée par Blackman) : (moyenne dB, max dB) par case,
+    centrées (fftshift), en dBFS (porteuse pleine échelle ≈ 0 dB). Les échantillons en trop (< nfft) sont ignorés."""
+    m = len(iq) // nfft
+    if m == 0:
+        return None, None
+    w = np.blackman(nfft).astype(np.float32)
+    X = np.fft.fft(np.asarray(iq[:m * nfft]).reshape(m, nfft) * w, axis=1)
+    P = (np.abs(X) ** 2) / (w.sum() ** 2)
+    P = np.fft.fftshift(P, axes=1)
+    return 10.0 * np.log10(P.mean(axis=0) + 1e-20), 10.0 * np.log10(P.max(axis=0) + 1e-20)
+
+
+def rt_freqs(center_hz, rate, nfft):
+    """Fréquences (MHz) des cases d'une FFT centrée."""
+    return (center_hz + (np.arange(nfft) - nfft // 2) * (rate / nfft)) / 1e6
+
+
+def rt_useful(center_hz, rate):
+    """Partie utile de la fenêtre (MHz) : 80 % de l'échantillonnage (les bords sont filtrés par le SDR)."""
+    return (center_hz - 0.4 * rate) / 1e6, (center_hz + 0.4 * rate) / 1e6
+
+
+def decimate_max(y, n):
+    """Réduit un tableau à ≤ n points en gardant le max de chaque paquet (affichage sans perdre de pic)."""
+    y = np.asarray(y)
+    if len(y) <= n:
+        return y
+    k = int(math.ceil(len(y) / n))
+    m = len(y) // k * k
+    out = y[:m].reshape(-1, k).max(axis=1)
+    return np.append(out, y[m:].max()) if m < len(y) else out
+
+
+class Persist:
+    """Persistance : histogramme (fréquence × niveau) qui s'efface doucement. Montre la « densité » des signaux :
+    une porteuse fixe fait un trait fort, un signal bref une trace pâle qui reste visible quelques secondes."""
+
+    def __init__(self, nx, lo=-120.0, hi=0.0, ny=120, decay=0.92):
+        self.nx, self.ny, self.lo, self.hi, self.decay = nx, ny, lo, hi, decay
+        self.img = np.zeros((nx, ny), dtype=np.float32)
+
+    def add(self, L):
+        L = np.asarray(L, dtype=float)
+        if len(L) != self.nx:
+            self.__init__(len(L), self.lo, self.hi, self.ny, self.decay)
+        self.img *= self.decay
+        j = np.clip(((L - self.lo) / (self.hi - self.lo) * self.ny).astype(int), 0, self.ny - 1)
+        self.img[np.arange(self.nx), j] += 1.0
+        return self.img
+
+
+class BurstDetector:
+    """Repère les signaux qui apparaissent au-dessus d'un seuil (dBFS) dans la fenêtre, les suit tant qu'ils sont là,
+    et rend un événement à leur disparition : {t0, t1, f (MHz, au pic), peak (dB), width (MHz)}. Les cases au-dessus
+    du seuil séparées de moins de `gap` cases font un seul signal. `active` = signaux en cours."""
+
+    def __init__(self, gap=3, min_dur=0.0):
+        self.gap, self.min_dur = gap, min_dur
+        self.active = []                 # [{i0, i1, t0, t_last, f, peak}]
+
+    def feed(self, t, F, L, thr):
+        L = np.asarray(L, dtype=float)
+        on = np.nonzero(L >= thr)[0]
+        groups = []
+        if len(on):
+            cut = np.nonzero(np.diff(on) > self.gap)[0]
+            for a, b in zip(np.r_[0, cut + 1], np.r_[cut, len(on) - 1]):
+                i0, i1 = int(on[a]), int(on[b])
+                k = i0 + int(np.argmax(L[i0:i1 + 1]))
+                groups.append((i0, i1, float(F[k]), float(L[k])))
+        done, keep, used = [], [], set()
+        for ev in self.active:
+            m = next((g for g in range(len(groups)) if g not in used
+                      and groups[g][0] <= ev["i1"] + self.gap and groups[g][1] >= ev["i0"] - self.gap), None)
+            if m is None:
+                if ev["t_last"] - ev["t0"] >= self.min_dur:
+                    done.append(dict(t0=ev["t0"], t1=ev["t_last"], f=ev["f"], peak=ev["peak"],
+                                     width=ev["width"]))
+                continue
+            used.add(m)
+            i0, i1, f, pk = groups[m]
+            ev.update(i0=i0, i1=i1, t_last=t)
+            if pk > ev["peak"]:
+                ev.update(peak=pk, f=f)
+            ev["width"] = max(ev["width"], abs(F[i1] - F[i0]))
+            keep.append(ev)
+        for g, (i0, i1, f, pk) in enumerate(groups):
+            if g not in used:
+                keep.append(dict(i0=i0, i1=i1, t0=t, t_last=t, f=f, peak=pk, width=abs(F[i1] - F[i0])))
+        self.active = keep
+        return done
 
 # ===== PURE-END
 
@@ -7334,6 +7441,10 @@ class ListenDialog(QtWidgets.QDialog):
             return
         kind = self.dev_combo.currentData()
         o = self.owner
+        rt = getattr(o, "_rt", None)
+        if rt is not None and rt.worker is not None:
+            self.st_lbl.setText("⚠ Le temps réel ⏱ utilise déjà le SDR : clique sur son spectre pour écouter.")
+            return
         self.paused = [w for w in o.workers if w.isRunning() and w.sdr and parse_sdr_addr(w.port)[0] == kind]
         for w in self.paused:
             w.paused = True                       # le SDR ne peut pas balayer et écouter en même temps
@@ -7390,6 +7501,465 @@ class ListenDialog(QtWidgets.QDialog):
         self.paused = []
         self.go_btn.setText("▶ Écouter")
         for wd in (self.dev_combo, self.mode_combo, self.comp_combo, self.de_combo, self.sq_spin, self.table):
+            wd.setEnabled(True)
+
+    def closeEvent(self, ev):
+        self.stop()
+        super().closeEvent(ev)
+
+
+class RealtimeWorker(QtCore.QThread):
+    """V8 : mode temps réel. L'outil d'IQ tourne sur une fenêtre fixe ; tous les échantillons passent dans des FFT
+    jointives (rt_frames) → spectre moyen + max de chaque bloc de 50 ms (rien n'échappe), détecteur de signaux
+    brefs (BurstDetector sur le max), et démodulation à la demande (clic : ChannelDemod sur le même flux)."""
+    frame = Signal(object)           # dict(F MHz, avg, mx (≤ 4096 pts), t, ovf)
+    events = Signal(object)          # [événement BurstDetector] (signaux disparus)
+    stopped = Signal(str)
+    status = Signal(str)
+    DISPLAY = 4096
+
+    def __init__(self, kind, center_hz, rate, nfft=4096, gains=None, serial="", tool=None, tool_dir=""):
+        super().__init__()
+        self.kind, self.center, self.rate, self.nfft, self.serial = kind, float(center_hz), int(rate), int(nfft), serial
+        self.gains = dict(lna=24, vga=20, amp=False)
+        self.gains.update(gains or {})
+        self.tool, self.tool_dir = tool, tool_dir
+        self.thr = -60.0                 # seuil du détecteur (dBFS)
+        self.listen = None               # dict(f MHz, mode, compander, deemph, volume) ou None
+        self.audio = deque(maxlen=200)
+        self.proc = None
+        self.err = deque(maxlen=20)
+        self.det = BurstDetector(gap=3)
+        self.load = 0.0                  # part du temps passée à calculer (1 = le PC ne suit plus)
+
+    def run(self):
+        sp = SDR_KINDS[self.kind]
+        exe = self.tool if self.tool is not None else find_sdr_tool(sp["iq_tool"], self.tool_dir)
+        if exe is None:
+            self.stopped.emit(f"{sp['iq_tool']} introuvable (outils {sp['name']} : PothosSDR, ou Outils › 📡 Réglages SDR).")
+            return
+        argv = listen_cmd(self.kind, exe, self.center, self.rate, self.gains["lna"], self.gains["vga"],
+                          self.gains["amp"], self.serial)
+        try:
+            self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         stdin=subprocess.DEVNULL, bufsize=0,
+                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except OSError as e:
+            self.stopped.emit(f"Impossible de lancer {sp['iq_tool']} : {e}")
+            return
+        threading.Thread(target=self._read_err, daemon=True).start()
+        self.status.emit(f"⏱ {sp['name']} : temps réel {self.center / 1e6:.3f} MHz ± {0.4 * self.rate / 1e6:.1f} MHz")
+        Fb = rt_freqs(self.center, self.rate, self.nfft)
+        chunk = int(self.rate * 0.05) * 2
+        buf, why, dem, dem_key = b"", "", None, None
+        try:
+            while not self.isInterruptionRequested():
+                data = self.proc.stdout.read(chunk - len(buf))
+                if not data:
+                    time.sleep(0.1)
+                    why = (self.err[-1] if self.err else "flux coupé") + f" — {sp['name']} débranché ou occupé ?"
+                    break
+                buf += data
+                if len(buf) < chunk:
+                    continue
+                t_c = time.time()
+                iq, buf = iq_from_bytes(self.kind, buf), b""
+                avg, mx = rt_frames(iq, self.nfft)
+                if avg is None:
+                    continue
+                for ev in self.det.feed(t_c, Fb, mx, self.thr):
+                    self.events.emit([ev])
+                L = self.listen
+                if L is not None:
+                    key = (L["f"], L["mode"], L["compander"], L["deemph"])
+                    if key != dem_key:
+                        dem = ChannelDemod(self.rate, L["f"] * 1e6 - self.center, L["mode"], L["deemph"], None,
+                                           L["compander"])
+                        dem_key = key
+                    a, _lv = dem.process(iq)
+                    if len(a):
+                        self.audio.append(audio_int16(a, L.get("volume", 1.0)))
+                else:
+                    dem = dem_key = None
+                ovf = float(np.mean(np.abs(iq.real) > 0.98))         # échantillons à pleine échelle : saturation
+                self.load = 0.8 * self.load + 0.2 * (time.time() - t_c) / 0.05
+                self.frame.emit(dict(F=decimate_max(Fb, self.DISPLAY) if len(Fb) > self.DISPLAY else Fb,
+                                     avg=decimate_max(avg, self.DISPLAY), mx=decimate_max(mx, self.DISPLAY),
+                                     t=t_c, ovf=ovf, load=self.load))
+        finally:
+            p_, self.proc = self.proc, None
+            if p_ is not None and p_.poll() is None:
+                try:
+                    p_.kill()
+                    p_.wait(timeout=3)
+                except Exception:  # noqa: BLE001
+                    pass
+        self.stopped.emit(why)
+
+    def _read_err(self):
+        try:
+            for line in self.proc.stderr:
+                t = line.decode(errors="ignore").strip()
+                if t:
+                    self.err.append(t)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+class RealtimeDialog(QtWidgets.QDialog):
+    """V8 : ⏱ Temps réel — une fenêtre fixe vue SANS TROU par le SDR : spectre, max-hold, persistance, waterfall,
+    journal des signaux qui apparaissent / disparaissent (avec leur durée), clic sur le spectre = écouter."""
+    WF_ROWS = 200
+
+    def __init__(self, owner, center_mhz=None):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("⏱ Temps réel (SDR)")
+        self.resize(1240, 800)
+        th = owner.theme
+        self.worker, self.audio, self.paused = None, None, []
+        self.maxh, self.wf, self.pers = None, None, None
+        self.n_ev = 0
+        lay = QtWidgets.QVBoxLayout(self)
+        R = owner._row
+        self.dev_combo = QtWidgets.QComboBox()
+        for k, sp in SDR_KINDS.items():
+            self.dev_combo.addItem(f"📡 {sp['name']}", k)
+        pk = parse_sdr_addr(owner.port_combo.currentData() or "") or parse_sdr_addr(owner.dev2.get("addr", ""))
+        if pk:
+            self.dev_combo.setCurrentIndex(max(0, self.dev_combo.findData(pk[0])))
+        self.dev_combo.setToolTip("Le SDR utilisé (outil d'IQ : hackrf_transfer / rtl_sdr).")
+        self.center_spin = QtWidgets.QDoubleSpinBox()
+        self.center_spin.setDecimals(3)
+        self.center_spin.setRange(1.0, 6000.0)
+        self.center_spin.setSuffix(" MHz")
+        self.center_spin.setValue(center_mhz or 600.0)
+        self.center_spin.setToolTip("Centre de la fenêtre. Astuce : clic droit sur le spectre principal ou sur une "
+                                    "fréquence de la liste.")
+        self.rate_combo = QtWidgets.QComboBox()
+        self.rate_combo.setToolTip("Largeur de la fenêtre vue en permanence. Plus large = plus de calcul : 19,2 MS/s "
+                                   "demande un PC costaud\n(regarde la charge en bas : au-delà de 100 %, des "
+                                   "échantillons sont perdus).")
+        self.nfft_combo = QtWidgets.QComboBox()
+        self.nfft_combo.setToolTip("Résolution (taille de FFT) : plus fin = sépare mieux deux porteuses proches, "
+                                   "mais moins de mises à jour par seconde dans chaque FFT.")
+        self.go_btn = QtWidgets.QPushButton("▶ Démarrer")
+        self.go_btn.setToolTip("Lance / arrête le temps réel (le balayage de ce SDR est mis en pause).")
+        self.go_btn.clicked.connect(lambda *_: self.toggle())
+        lay.addLayout(R("SDR :", self.dev_combo, "Centre :", self.center_spin, "Largeur :", self.rate_combo,
+                        "Résolution :", self.nfft_combo, None, self.go_btn))
+        self.thr_spin = QtWidgets.QSpinBox()
+        self.thr_spin.setRange(-120, 0)
+        self.thr_spin.setValue(-60)
+        self.thr_spin.setSuffix(" dBFS")
+        self.thr_spin.setToolTip("Seuil du journal : tout signal qui passe au-dessus est noté (début, fin, durée, "
+                                 "niveau max).\nLes niveaux d'un SDR sont relatifs (dBFS), pas des dBm.")
+        self.thr_spin.valueChanged.connect(lambda v: self._thr(v))
+        self.max_chk = QtWidgets.QCheckBox("Max-hold")
+        self.max_chk.setChecked(True)
+        self.max_chk.setToolTip("Garde le plus haut niveau vu à chaque fréquence depuis le début (ou « Effacer »).")
+        clr = QtWidgets.QPushButton("Effacer")
+        clr.setToolTip("Remet à zéro le max-hold, la persistance et le waterfall.")
+        clr.clicked.connect(lambda *_: self.clear())
+        self.pers_chk = QtWidgets.QCheckBox("Persistance")
+        self.pers_chk.setChecked(True)
+        self.pers_chk.setToolTip("Densité des signaux sur quelques secondes : un signal bref laisse une trace pâle.")
+        self.known_chk = QtWidgets.QCheckBox("Journal : ignorer mes fréquences")
+        self.known_chk.setChecked(True)
+        self.known_chk.setToolTip("Ne note pas les signaux à moins de 100 kHz d'une fréquence de ta liste "
+                                  "(tes propres émetteurs).")
+        self.log_chk = QtWidgets.QCheckBox("Aussi dans le journal")
+        self.log_chk.setToolTip("Note aussi chaque signal détecté dans le journal principal (et son export CSV).")
+        lay.addLayout(R("Seuil du journal :", self.thr_spin, self.max_chk, self.pers_chk, clr, self.known_chk,
+                        self.log_chk, None))
+        self.plot = pg.PlotWidget()
+        pi = self.plot.getPlotItem()
+        pi.showGrid(x=True, y=True, alpha=0.25)
+        pi.setLabel("bottom", "Fréquence", units="MHz")
+        pi.setLabel("left", "Niveau", units="dBFS")
+        pi.getAxis("bottom").enableAutoSIPrefix(False)
+        pi.setYRange(-120, 0, padding=0)
+        pi.setMouseEnabled(x=True, y=False)
+        self.pers_img = pg.ImageItem()
+        self.pers_img.setLookupTable(make_lut(th.get("wf", "Inferno")))
+        self.pers_img.setOpacity(0.75)
+        pi.addItem(self.pers_img)
+        self.maxcurve = pi.plot(pen=pg.mkPen(th["maxhold"], width=1))
+        self.curve = pi.plot(pen=pg.mkPen(th["curve"], width=1.4))
+        self.thr_line = pg.InfiniteLine(pos=-60, angle=0, pen=pg.mkPen(th["thr"], width=1.2, style=Qt.PenStyle.DashLine))
+        pi.addItem(self.thr_line)
+        self.lis_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("#22d3ee", width=2))
+        self.lis_line.setVisible(False)
+        pi.addItem(self.lis_line)
+        self.marks = []
+        self.plot.scene().sigMouseClicked.connect(self._click)
+        self.plot.setToolTip("Clic sur une porteuse : l'écouter (FM / AM ci-dessous). Molette : zoom horizontal.")
+        self.wfw = pg.PlotWidget()
+        wi = self.wfw.getPlotItem()
+        wi.hideAxis("left")
+        wi.getAxis("bottom").enableAutoSIPrefix(False)
+        wi.setXLink(pi)
+        wi.setMouseEnabled(x=True, y=False)
+        self.wf_img = pg.ImageItem()
+        self.wf_img.setLookupTable(make_lut(th.get("wf", "Inferno")))
+        wi.addItem(self.wf_img)
+        self.wfw.setToolTip("Waterfall : le temps descend (≈ 20 lignes par seconde).")
+        self.ev_table = QtWidgets.QTableWidget(0, 5)
+        self.ev_table.setHorizontalHeaderLabels(["Heure", "MHz", "Max dBFS", "Durée", "Près de"])
+        self.ev_table.verticalHeader().setVisible(False)
+        self.ev_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.ev_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.ev_table.horizontalHeader().setStretchLastSection(True)
+        self.ev_table.setWordWrap(False)
+        for c, w_ in enumerate((70, 80, 70, 70)):
+            self.ev_table.setColumnWidth(c, w_)
+        self.ev_table.setMinimumWidth(380)
+        self.ev_table.setToolTip("Journal des signaux apparus puis disparus (les plus récents en haut).\n"
+                                 "Double-clic : écouter cette fréquence.")
+        self.ev_table.cellDoubleClicked.connect(lambda r, c: self._listen_row(r))
+        sp_ = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        sp_.addWidget(self.plot)
+        sp_.addWidget(self.wfw)
+        sp_.setSizes([480, 220])
+        h_ = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        h_.addWidget(sp_)
+        h_.addWidget(self.ev_table)
+        h_.setSizes([860, 380])
+        lay.addWidget(h_, 1)
+        self.mode_combo = QtWidgets.QComboBox()
+        for k, md in LISTEN_MODES.items():
+            self.mode_combo.addItem(md["name"], k)
+        self.mode_combo.setToolTip("FM large = micros HF / ears analogiques ; FM étroite = talkies ; AM = aviation.")
+        self.comp_combo = QtWidgets.QComboBox()
+        for k, t in LISTEN_COMPANDERS.items():
+            self.comp_combo.addItem(t, k)
+        self.comp_combo.setCurrentIndex(1)
+        self.comp_combo.setToolTip("Expanseur 2:1 générique : approximation des companders des marques (non publiés).")
+        self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        self.vol.setRange(0, 200)
+        self.vol.setValue(100)
+        self.vol.setMaximumWidth(160)
+        self.vol.setToolTip("Volume.")
+        self.mute_btn = QtWidgets.QPushButton("🔇 Couper l'écoute")
+        self.mute_btn.setToolTip("Arrête la démodulation (le temps réel continue).")
+        self.mute_btn.clicked.connect(lambda *_: self._listen(None))
+        self.lis_lbl = QtWidgets.QLabel("🎧 Clic sur le spectre pour écouter")
+        for wd in (self.mode_combo, self.comp_combo):
+            wd.currentIndexChanged.connect(lambda *_: self._listen(self._lis_f))
+        self.vol.valueChanged.connect(lambda *_: self._listen(self._lis_f))
+        lay.addLayout(R(self.lis_lbl, "Mode :", self.mode_combo, "Compander :", self.comp_combo, "Volume :", self.vol,
+                        self.mute_btn, None))
+        self.st_lbl = QtWidgets.QLabel("Pas encore testé avec un vrai SDR : dis-moi ce que ça donne !")
+        self.st_lbl.setWordWrap(True)
+        lay.addWidget(self.st_lbl)
+        self._lis_f = None
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._feed)
+        self.dev_combo.currentIndexChanged.connect(lambda *_: self._fill_rates())
+        self._fill_rates()
+        for n in RT_FFT:
+            self.nfft_combo.addItem(str(n), n)
+        self.nfft_combo.setCurrentIndex(RT_FFT.index(4096))
+        self.nfft_combo.currentIndexChanged.connect(lambda *_: self._res_text())
+        self.rate_combo.currentIndexChanged.connect(lambda *_: self._res_text())
+        self._res_text()
+
+    def _fill_rates(self):
+        self.rate_combo.clear()
+        for r in RT_RATES[self.dev_combo.currentData()]:
+            self.rate_combo.addItem(f"≈ {0.8 * r / 1e6:.1f} MHz ({r / 1e6:g} MS/s)", r)
+        if self.rate_combo.count() > 1:
+            self.rate_combo.setCurrentIndex(1)                # 9,6 MS/s par défaut sur un HackRF
+
+    def _res_text(self):
+        r, n = self.rate_combo.currentData(), self.nfft_combo.currentData()
+        if r and n:
+            for i in range(self.nfft_combo.count()):
+                k = self.nfft_combo.itemData(i)
+                self.nfft_combo.setItemText(i, f"{r / k / 1e3:.1f} kHz")
+
+    def _thr(self, v):
+        self.thr_line.setValue(v)
+        if self.worker is not None:
+            self.worker.thr = float(v)
+
+    def clear(self):
+        self.maxh, self.wf, self.pers = None, None, None
+
+    def _marks(self, lo, hi):
+        pi = self.plot.getPlotItem()
+        for m_ in self.marks:
+            pi.removeItem(m_)
+        self.marks = []
+        for w in self.owner.watch:
+            if lo <= w["freq"] <= hi:
+                ln = pg.InfiniteLine(pos=w["freq"], angle=90, label=w["name"] or f"{w['freq']:.3f}",
+                                     labelOpts=dict(position=0.95, color="#cbd5e1"),
+                                     pen=pg.mkPen("#64748b", width=1, style=Qt.PenStyle.DotLine))
+                pi.addItem(ln)
+                self.marks.append(ln)
+
+    def toggle(self):
+        if self.worker is not None:
+            self.stop()
+            return
+        o = self.owner
+        kind = self.dev_combo.currentData()
+        other = getattr(o, "_listen", None)
+        if other is not None and other.worker is not None:
+            self.st_lbl.setText("⚠ L'écoute 🎧 utilise déjà le SDR : arrête-la d'abord.")
+            return
+        rate, nfft = self.rate_combo.currentData(), self.nfft_combo.currentData()
+        c = self.center_spin.value() * 1e6
+        self.paused = [w for w in o.workers if w.isRunning() and w.sdr and parse_sdr_addr(w.port)[0] == kind]
+        for w in self.paused:
+            w.paused = True
+        self.worker = RealtimeWorker(kind, c, rate, nfft, dict(o.sdr_cfg), tool=getattr(o, "_listen_tool", None),
+                                     tool_dir=o.sdr_cfg.get("dir", ""))
+        self.worker.thr = float(self.thr_spin.value())
+        self.worker.frame.connect(self._frame)
+        self.worker.events.connect(self._events)
+        self.worker.status.connect(self.st_lbl.setText)
+        self.worker.stopped.connect(self._stopped)
+        self.clear()
+        lo, hi = rt_useful(c, rate)
+        self.plot.getPlotItem().setXRange(lo, hi, padding=0)
+        self._marks(lo, hi)
+        QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)
+        self.timer.start(20)
+        self.go_btn.setText("■ Arrêter")
+        for wd in (self.dev_combo, self.center_spin, self.rate_combo, self.nfft_combo):
+            wd.setEnabled(False)
+        if self._lis_f is not None:
+            self._listen(self._lis_f)
+
+    def _frame(self, fr):
+        F, avg, mx = fr["F"], fr["avg"], fr["mx"]
+        self.last = fr
+        if len(F) != len(avg):
+            F = np.linspace(F[0], F[-1], len(avg))
+        self.curve.setData(F, avg)
+        if self.maxh is None or len(self.maxh) != len(mx):
+            self.maxh = mx.copy()
+        else:
+            np.maximum(self.maxh, mx, out=self.maxh)
+        self.maxcurve.setData(F, self.maxh) if self.max_chk.isChecked() else self.maxcurve.setData([], [])
+        if self.pers is None or self.pers.nx != len(mx):
+            self.pers = Persist(len(mx), -120.0, 0.0, 120, 0.97)
+        img = self.pers.add(mx)
+        if self.pers_chk.isChecked():
+            self.pers_img.setImage(img, autoLevels=False, levels=(0.0, 6.0))
+            self.pers_img.setRect(QtCore.QRectF(float(F[0]), -120.0, float(F[-1] - F[0]), 120.0))
+            self.pers_img.setVisible(True)
+        else:
+            self.pers_img.setVisible(False)
+        if self.wf is None or self.wf.shape[0] != len(mx):
+            self.wf = np.full((len(mx), self.WF_ROWS), -120.0, dtype=np.float32)
+        self.wf = np.roll(self.wf, 1, axis=1)
+        self.wf[:, 0] = mx
+        self.wf_img.setImage(self.wf, autoLevels=False, levels=(float(np.median(avg)) - 5, float(np.median(avg)) + 50))
+        self.wf_img.setRect(QtCore.QRectF(float(F[0]), 0.0, float(F[-1] - F[0]), float(self.WF_ROWS)))
+        warn = []
+        if fr.get("ovf", 0) > 0.001:
+            warn.append("⚠ SATURATION : baisse le gain (Outils › 📡) ou retire l'ampli")
+        if fr.get("load", 0) > 1.0:
+            warn.append(f"⚠ le PC ne suit pas ({fr['load'] * 100:.0f} %) : réduis la largeur")
+        self.st_lbl.setText(" · ".join(warn) if warn else f"Temps réel · charge {fr.get('load', 0) * 100:.0f} % · "
+                            f"crête {float(mx.max()):.0f} dBFS")
+
+    def _known(self, f):
+        w = min(self.owner.watch, key=lambda w: abs(w["freq"] - f), default=None)
+        return w if w is not None and abs(w["freq"] - f) <= 0.1 else None
+
+    def _events(self, evs):
+        for ev in evs:
+            k = self._known(ev["f"])
+            if k is not None and self.known_chk.isChecked():
+                continue
+            self.n_ev += 1
+            self.ev_table.insertRow(0)
+            dur = ev["t1"] - ev["t0"]
+            vals = [datetime.fromtimestamp(ev["t0"]).strftime("%H:%M:%S"), f"{ev['f']:.3f}", f"{ev['peak']:.0f}",
+                    f"{dur:.1f} s" if dur >= 0.1 else "< 0,1 s", (k["name"] if k else "—")]
+            for c, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                if c == 1:
+                    it.setData(Qt.ItemDataRole.UserRole, ev["f"])
+                self.ev_table.setItem(0, c, it)
+            if self.ev_table.rowCount() > 500:
+                self.ev_table.removeRow(self.ev_table.rowCount() - 1)
+            if self.log_chk.isChecked():
+                self.owner.log_event(dict(name="Temps réel", freq=0.0,
+                                          note=f"signal {ev['f']:.3f} MHz, {ev['peak']:.0f} dBFS, {dur:.1f} s"),
+                                     0.0, "SIGNAL (TEMPS RÉEL)")
+
+    def _listen_row(self, r):
+        it = self.ev_table.item(r, 1)
+        if it is not None:
+            self._listen(float(it.data(Qt.ItemDataRole.UserRole)))
+
+    def _click(self, ev):
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        pt = self.plot.getPlotItem().vb.mapSceneToView(ev.scenePos())
+        if not self.plot.sceneBoundingRect().contains(ev.scenePos()):
+            return
+        f = float(pt.x())
+        fr = getattr(self, "last", None)
+        if fr is not None:                                    # accroche le pic le plus proche (± 100 kHz)
+            F, mx = np.asarray(fr["F"]), np.asarray(fr["mx"])
+            if len(F) == len(mx):
+                m = np.abs(F - f) <= 0.1
+                if m.any():
+                    f = float(F[m][int(np.argmax(mx[m]))])
+        self._listen(round(f, 4))
+
+    def _listen(self, f):
+        self._lis_f = f
+        if f is None:
+            self.lis_line.setVisible(False)
+            self.lis_lbl.setText("🎧 Clic sur le spectre pour écouter")
+            if self.worker is not None:
+                self.worker.listen = None
+            if self.audio is not None:
+                self.audio.close()
+                self.audio = None
+            return
+        self.lis_line.setValue(f)
+        self.lis_line.setVisible(True)
+        k = self._known(f)
+        self.lis_lbl.setText(f"🎧 {f:.3f} MHz" + (f" ({k['name']})" if k else ""))
+        if self.worker is not None:
+            self.worker.listen = dict(f=f, mode=self.mode_combo.currentData(), compander=self.comp_combo.currentData(),
+                                      deemph=50.0, volume=self.vol.value() / 100.0)
+            if self.audio is None:
+                self.audio = AudioOut(self)
+                if self.audio.error:
+                    self.st_lbl.setText(f"⚠ {self.audio.error}")
+
+    def _feed(self):
+        if self.worker is not None and self.audio is not None:
+            self.audio.feed(self.worker.audio)
+
+    def _stopped(self, why):
+        if why:
+            self.st_lbl.setText(f"⚠ Temps réel arrêté : {why}")
+        self.stop()
+
+    def stop(self):
+        self.timer.stop()
+        w, self.worker = self.worker, None
+        if w is not None:
+            w.requestInterruption()
+            w.wait(5000)
+        if self.audio is not None:
+            self.audio.close()
+            self.audio = None
+        for w in self.paused:
+            w.paused = False
+        self.paused = []
+        self.go_btn.setText("▶ Démarrer")
+        for wd in (self.dev_combo, self.center_spin, self.rate_combo, self.nfft_combo):
             wd.setEnabled(True)
 
     def closeEvent(self, ev):
@@ -8679,6 +9249,8 @@ class MainWindow(QtWidgets.QMainWindow):
     }
 
     TIPS_MENU = {
+        "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
+                         "persistance, waterfall, journal des signaux brefs, clic = écouter.",
         "🎧 Écouter": "V8 : démodule une ou plusieurs fréquences proches avec un HackRF / RTL-SDR (FM, AM),\n"
                      "niveau de chaque canal, expanseur 2:1 (approximation des companders).",
         "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
@@ -8877,6 +9449,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag()),
                         ("📡 Réglages SDR (HackRF, RTL-SDR)…", lambda *_: self.open_sdr()),
                         ("🎧 Écouter avec le SDR…", lambda *_: self.open_listen()),
+                        ("⏱ Temps réel avec le SDR…", lambda *_: self.open_realtime()),
                         ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
                         (None, None),
                         ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())):
@@ -11681,6 +12254,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addMenu(lay_sub)
         a_zoom = m.addAction("🔍 Zoom live sur cette fréquence")
         a_lis = m.addAction("🎧 Écouter avec le SDR…")
+        a_rt = m.addAction("⏱ Temps réel autour de cette fréquence…")
         a_ren = m.addAction("Renommer…")
         a_qn = m.addAction("✏ Nommer la sélection (HF 1, HF 2…)…")
         a_fd = m.addAction("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne")
@@ -11701,6 +12275,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.zoom_on(rows[0])
         elif act is a_lis:
             self.open_listen(rows)
+        elif act is a_rt:
+            self.open_realtime(self.watch[rows[0]]["freq"])
         elif act is a_thr:
             w0 = self.watch[rows[0]]
             cur = w0["thr"] if w0["thr"] is not None else self.thr_spin.value()
@@ -13031,6 +13607,26 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._listen = ListenDialog(self, rows if rows is not None else self._sel_rows())
         self._listen.show()
+
+    def open_realtime(self, center=None):
+        rt = getattr(self, "_rt", None)
+        if rt is not None and rt.isVisible():
+            if center is not None and rt.worker is None:
+                rt.center_spin.setValue(center)
+            rt.raise_()
+            rt.activateWindow()
+            return
+        if center is None:
+            rows = self._sel_rows()
+            if rows:
+                center = self.watch[rows[0]]["freq"]
+            elif self._zoom:
+                center = (self._zoom[0] + self._zoom[1]) / 2.0
+            else:
+                b = next((b for b in self.bands if b["enabled"]), None)
+                center = (b["start"] + b["stop"]) / 2.0 if b else 600.0
+        self._rt = RealtimeDialog(self, center)
+        self._rt.show()
 
     def open_sdr(self):
         d = SdrDialog(self)

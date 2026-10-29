@@ -712,6 +712,29 @@ step("écoute : ■", _ld.toggle)
 check("écoute : arrêtée proprement", _ld.worker is None and _ld.go_btn.text().startswith("▶"))
 _ld.close()
 
+# V8 : temps réel (faux rtl_sdr à 2,4 MS/s : micro fixe + signal intermittent)
+os.environ["FAKE_IQ_CARRIERS"] = f"{_pair[0]['freq']}:1000"
+os.environ["FAKE_IQ_BURSTS"] = f"{_pair[0]['freq'] + 0.5:.3f}:0.3:1.0"
+step("temps réel", lambda: win.open_realtime(_pair[0]["freq"] + 0.2))
+_rt = win._rt
+_rt.dev_combo.setCurrentIndex(_rt.dev_combo.findData("rtlsdr"))
+_rt.thr_spin.setValue(-40)
+step("temps réel : ▶", _rt.toggle)
+wait(4000)
+_cx = _rt.curve.getData()[0]
+check("temps réel : spectre affiché", getattr(_rt, "last", None) is not None and _cx is not None and len(_cx) > 100)
+check("temps réel : signal intermittent au journal", _rt.ev_table.rowCount() >= 1, str(_rt.ev_table.rowCount()))
+step("temps réel : écouter le micro", lambda: _rt._listen(_pair[0]["freq"]))
+wait(1200)
+check("temps réel : écoute en cours", _rt.worker is not None and _rt.worker.listen is not None
+      and "🎧" in _rt.lis_lbl.text())
+check("temps réel : repères de mes fréquences", len(_rt.marks) >= 1)
+shot(_rt, "temps_reel")
+step("temps réel : ■", _rt.toggle)
+check("temps réel : arrêté proprement", _rt.worker is None)
+_rt.close()
+os.environ["FAKE_IQ_BURSTS"] = ""
+
 # dialogues non modaux
 step("open_intermod", win.open_intermod); wait(1500)
 if win._im_dlg:
