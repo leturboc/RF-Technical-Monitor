@@ -745,6 +745,23 @@ if win._im_dlg:
         shot(_d, "intermod_bloc")
     else:
         print("(pas de bloc large dans la liste : IM des blocs non testée en vrai Qt)")
+# origine d'un signal à partir du SPECTRE (émetteurs non déclarés) : 2 × 602 − 600 = 604
+_F = np.linspace(590.0, 615.0, 2501)
+_L = np.full_like(_F, -105.0)
+for _f0, _l0 in ((600.0, -40.0), (602.0, -42.0), (604.0, -70.0)):
+    _L[np.abs(_F - _f0) < 0.02] = _l0
+win.latest[9991], win.latest_t[9991] = (_F, _L), m.time.time()
+_od = step("intermod : origine de 604 MHz (spectre)", lambda: m.IntermodDialog(win, origin=604.0))
+if _od is not None:
+    check("origine : source = signaux vus sur le spectre", _od.src_combo.currentData() == "spectrum",
+          _od.src_lbl.text())
+    step("origine : calculer", _od.compute)
+    _txt = [r["numtext"] for r in _od.rows]
+    check("origine : 2 × 602 − 600 trouvé sans émetteur déclaré",
+          any("602" in t_ and "600" in t_ for t_ in _txt[:3]), str(_txt[:5]) + _od.msg.text() + str([round(x[0], 3) for x in _od.spectrum_sources()]))
+    shot(_od, "intermod_origine_spectre")
+    _od.close()
+win.latest.pop(9991, None); win.latest_t.pop(9991, None)
 step("open_rescue", win.open_rescue); wait(1500)
 if win._rescue_dlg: shot(win._rescue_dlg, "rescue")
 step("open_guide", win.open_guide); wait(800)

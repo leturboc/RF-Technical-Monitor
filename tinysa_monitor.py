@@ -5628,6 +5628,10 @@ class IntermodDialog(QtWidgets.QDialog):
         self.src_combo.addItem("Émetteurs : toute la liste (sauf « doit rester libre »)", "all")
         self.src_combo.addItem("Émetteurs : la couche active", "scope")
         self.src_combo.addItem("Émetteurs : les lignes sélectionnées", "sel")
+        self.src_combo.addItem("Émetteurs : les signaux VUS sur le spectre (pics mesurés)", "spectrum")
+        self.src_combo.setItemData(3, "Pas besoin que les émetteurs soient déclarés : on prend les pics réellement "
+                                      "mesurés\n(max hold, au-dessus du seuil « faible »), y compris ceux qui ne sont "
+                                      "pas dans ta liste.", Qt.ItemDataRole.ToolTipRole)
         self.active_chk = QtWidgets.QCheckBox("Seulement ceux qui émettent (vus sur le spectre)")
         self.active_chk.setToolTip("Un produit n'existe que si les émetteurs sont allumés : on ne garde que ceux "
                                    "dont l'état est « occupé » ou « faible ».")
@@ -5750,10 +5754,38 @@ class IntermodDialog(QtWidgets.QDialog):
             self.maxtx_combo.setCurrentIndex(2)
             n_act = sum(1 for w in self.owner.watch if w["state"] in ("occ", "weak"))
             self.active_chk.setChecked(n_act >= 2)
+            if len(self.spectrum_sources()) >= 2:   # chercher dans ce qui est VRAIMENT là, déclaré ou pas
+                self.src_combo.setCurrentIndex(self.src_combo.findData("spectrum"))
+        self.update_src()
+
+    def spectrum_sources(self):
+        """Pics réellement mesurés (max hold, au-dessus du seuil « faible » ou « occupé ») -> [(MHz, dBm, nom)].
+        Un pic à ±100 kHz d'une fréquence de la liste prend son nom ; en recherche d'origine, le signal cherché
+        lui-même est écarté."""
+        o = self.owner
+        F, L = o.fresh_FL(use_max=True, any_age=True)
+        if F is None:
+            return []
+        thr = o.weak_spin.value() if o.weak_chk.isChecked() else o.thr_spin.value()
+        pk = strong_peaks(F, L, thr, merge=0.2, limit=40)
+        if self.mode_combo.currentData() == "origin":
+            pk = [(f, l) for f, l in pk if abs(f - self.freq_spin.value()) > 0.1]
+        pk = pk[:24]                                # les plus forts : ce sont eux qui intermodulent
+        out = []
+        for f, l in sorted(pk):
+            near_ = (np.abs(F - f) <= 0.1) & (L >= l - 3.0)     # centre du pic (plateau de quelques points)
+            if near_.any():
+                f = float(np.mean(F[near_]))
+            near = min(o.watch, key=lambda w: abs(w["freq"] - f), default=None)
+            nm = near["name"] if near is not None and abs(near["freq"] - f) <= 0.1 else f"pic {f:.3f}"
+            out.append((f, l, f"{nm} ({l:.0f} dBm)"))
+        return out
 
     def source_indices(self):
         o = self.owner
         kind = self.src_combo.currentData()
+        if kind == "spectrum":
+            return []
         if kind == "sel":
             idx = o._sel_rows()
         elif kind == "scope":
@@ -5767,7 +5799,10 @@ class IntermodDialog(QtWidgets.QDialog):
         return idx
 
     def update_src(self, *_):
-        self.src_lbl.setText(f"→ {len(self.source_indices())} émetteur(s)")
+        sp = self.src_combo.currentData() == "spectrum"
+        self.active_chk.setEnabled(not sp)
+        n = len(self.spectrum_sources()) if sp else len(self.source_indices())
+        self.src_lbl.setText(f"→ {n} " + ("signal(aux) mesuré(s)" if sp else "émetteur(s)"))
 
     def _tol_preset(self):
         d = self.tol_combo.currentData()
@@ -5797,10 +5832,18 @@ class IntermodDialog(QtWidgets.QDialog):
 
     def compute(self):
         o = self.owner
-        idx = self.source_indices()
-        freqs = [o.watch[i]["freq"] for i in idx]
-        names = [o.watch[i]["name"] for i in idx]
-        bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]        # blocs Spectera / WMAS : produits en bandes
+        if self.src_combo.currentData() == "spectrum":
+            src = self.spectrum_sources()
+            freqs, names, bws = [x[0] for x in src], [x[2] for x in src], [0.0] * len(src)
+            if len(freqs) < 2:
+                self.msg.setText("Moins de 2 signaux mesurés au-dessus du seuil « faible » : lance un balayage et "
+                                 "laisse tourner un moment (le max hold garde les signaux intermittents).")
+                return
+        else:
+            idx = self.source_indices()
+            freqs = [o.watch[i]["freq"] for i in idx]
+            names = [o.watch[i]["name"] for i in idx]
+            bws = [float(o.watch[i].get("bw") or 0.0) for i in idx]    # blocs Spectera / WMAS : produits en bandes
         orders, max_tx, guard = self.orders(), self.maxtx_combo.currentData(), self.tolerances()
         if len(freqs) < 2:
             self.msg.setText("Il faut au moins 2 émetteurs (change la source ou décoche « seulement ceux qui émettent »).")
@@ -5874,6 +5917,8 @@ class IntermodDialog(QtWidgets.QDialog):
             r["level"] = 2 if r["sev"] == 3 else (1 if r["sev"] else 0)
         if targets is not None and not origin:
             rows.sort(key=lambda r: -r["sev"])                # le plus grave en haut
+        if origin:                                        # le plus probable en haut : ordre bas, pile dessus
+            rows.sort(key=lambda r: (r["order"], r["ntx"], abs(r["delta"] or 0.0)))
         self.rows = rows
         self.cur_freqs, self.cur_names = freqs, names
         self.fill()
@@ -12924,9 +12969,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 "The language will change at the next start. Restart now?") \
                 != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-        args = sys.argv[1:] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())] + sys.argv[1:]
-        if self.close():
-            QtCore.QProcess.startDetached(sys.executable, args)
+        if self.close() and not restart_app():
+            QtWidgets.QMessageBox.information(None, APP_NAME, "Relance l'appli à la main pour changer de langue.\n"
+                                              "Restart the app by hand to change the language.")
 
     def open_manual(self):
         p_ = self.manual_path()
@@ -14169,6 +14214,28 @@ def install_language(code):
     _patch(pg.PlotItem, "setTitle")
     _patch(pg.LabelItem, "setText")
     return True
+
+
+def restart_app():
+    """Relance l'appli dans un NOUVEAU processus indépendant. Exe PyInstaller « un seul fichier » : sans précaution,
+    le nouveau processus hérite des variables d'environnement de l'ancien et réutilise son dossier temporaire
+    (_MEI…), que l'ancien efface en se fermant → « No module named numpy._core._multiarray_umath » (bug 7.11.0
+    vu par Clément). PYINSTALLER_RESET_ENVIRONMENT=1 (PyInstaller ≥ 6.9) + variables _PYI_* / _MEIPASS2 retirées
+    = il repart de zéro avec son propre dossier. -> True si le processus a démarré."""
+    frozen = getattr(sys, "frozen", False)
+    args = sys.argv[1:] if frozen else [str(Path(__file__).resolve())] + sys.argv[1:]
+    env = QtCore.QProcessEnvironment.systemEnvironment()
+    for k in list(env.keys()):
+        if k.startswith("_PYI_") or k in ("_MEIPASS2", "_MEIPASS"):
+            env.remove(k)
+    env.insert("PYINSTALLER_RESET_ENVIRONMENT", "1")
+    pr = QtCore.QProcess()
+    pr.setProgram(sys.executable)
+    pr.setArguments(args)
+    pr.setProcessEnvironment(env)
+    pr.setWorkingDirectory(str(Path(sys.executable).parent if frozen else Path.cwd()))
+    ok = pr.startDetached()
+    return bool(ok[0] if isinstance(ok, tuple) else ok)
 
 
 def read_language():
