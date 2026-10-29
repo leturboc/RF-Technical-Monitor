@@ -3683,6 +3683,43 @@ def session_journal_rows(text):
     return out
 
 
+# Ce qu'on note au journal (demande de Clément : « choisir quoi mettre dans les logs ») : les alarmes se
+# déclenchent quand même, seul le journal (tableau, CSV du jour, journal de la session) est filtré.
+LOG_KINDS = (
+    ("alarm", "⚠ Alarmes : CONFLIT, INTERMOD, ABSENT"),
+    ("strong", "⚠ TROP FORT"),
+    ("busy", "Fréquence qui s'allume (OCCUPÉ)"),
+    ("back", "Retours à la normale (Libre, Retour)"),
+    ("unknown", "Signaux inconnus (hors liste)"),
+    ("device", "tinySA perdu / retrouvé"),
+    ("ops", "Opérations : appel des micros, nouvelle fréquence"),
+)
+
+
+def log_kind(event):
+    """Événement du journal -> type (clé de LOG_KINDS)."""
+    e = str(event)
+    if e in ("CONFLIT", "INTERMOD", "ABSENT"):
+        return "alarm"
+    if e == "TROP FORT":
+        return "strong"
+    if e == "OCCUPÉ":
+        return "busy"
+    if e.startswith(("Libre", "Retour")):
+        return "back"
+    if e == "INCONNU":
+        return "unknown"
+    if e.startswith("APPAREIL"):
+        return "device"
+    return "ops"
+
+
+def log_kinds_norm(d):
+    """Choix lus de la config -> {clé: bool} complet (tout coché par défaut)."""
+    d = d if isinstance(d, dict) else {}
+    return {k: bool(d.get(k, True)) for k, _t in LOG_KINDS}
+
+
 def rec_mb_per_hour(points, cycle_s):
     """Place disque estimée d'un enregistrement (Mo / heure) : float16 compressé ≈ 1,3 octet par point."""
     if not points or not cycle_s or cycle_s <= 0:
@@ -5778,7 +5815,7 @@ class IntermodDialog(QtWidgets.QDialog):
                 f = float(np.mean(F[near_]))
             near = min(o.watch, key=lambda w: abs(w["freq"] - f), default=None)
             nm = near["name"] if near is not None and abs(near["freq"] - f) <= 0.1 else f"pic {f:.3f}"
-            out.append((f, l, f"{nm} ({l:.0f} dBm)"))
+            out.append((f, l, nm))
         return out
 
     def source_indices(self):
@@ -8393,6 +8430,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
         self.session_cfg = dict(SESSION_DEFAULT)
+        self.log_kinds = log_kinds_norm(None)
         self._session = None                     # dossier de la session enregistrée en cours
         self._last_session = None
         self._t_start = None
@@ -8662,7 +8700,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     a_.setToolTip(tip)
                     a_.setStatusTip(tip.split("\n")[0])
 
-    SECTIONS_OPEN = dict(detect=True, bands=True, measure=False, dev2=False, country=False)
+    SECTIONS_OPEN = dict(detect=True, alarms=True, bands=True, measure=False, dev2=False, country=False)
 
     def _section(self, key, box):
         """Groupe de réglages repliable : un bouton-titre (▾ / ▸) au-dessus du contenu."""
@@ -8961,7 +8999,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.absent_spin.setSuffix(" s")
         self.absent_spin.setToolTip("Une fréquence au statut « Doit émettre » sans signal pendant ce délai déclenche\n"
                                     "⚠ ABSENT (micro éteint, pile vide, TX coupé…). Jamais moins de 2 cycles de balayage.")
-        dbox = QtWidgets.QGroupBox("Détection")
+        dbox = QtWidgets.QGroupBox("Seuils : quand est-ce occupé ?")
         dform = QtWidgets.QFormLayout(dbox)
         self.unit_combo = self._combo([(t, k) for k, t in LEVEL_UNITS], "dbm")
         self.unit_combo.setToolTip("Unité des niveaux partout (seuils, liste, mur, spectre, alarmes, page web).\n"
@@ -8976,7 +9014,9 @@ class MainWindow(QtWidgets.QMainWindow):
         dform.addRow("", self.ref_margin)
         dform.addRow("Fenêtre :", self.win_spin)
         dform.addRow("Occupation sur :", self.occ_combo)
-        dform.addRow("TX absent après :", self.absent_spin)
+        abox = QtWidgets.QGroupBox("Alarmes")
+        aform = QtWidgets.QFormLayout(abox)
+        aform.addRow("TX absent après :", self.absent_spin)
         self.strong_chk = QtWidgets.QCheckBox("Alerte « trop fort » au-dessus de")
         self.strong_chk.setChecked(True)
         self.strong_chk.setToolTip(
@@ -8989,10 +9029,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strong_spin.setToolTip(self.strong_chk.toolTip())
         for w_ in (self.strong_chk, self.strong_spin):
             (w_.toggled if w_ is self.strong_chk else w_.valueChanged).connect(lambda *_: self._strong_changed())
-        dform.addRow(self.strong_chk)
-        dform.addRow("", self.strong_spin)
-        dform.addRow(self.alert_chk)
-        dform.addRow(self.unk_chk)
+        aform.addRow(self.strong_chk)
+        aform.addRow("", self.strong_spin)
+        aform.addRow(self.alert_chk)
+        aform.addRow(self.unk_chk)
+        b_logwhat = QtWidgets.QPushButton("📝 Quoi noter au journal…")
+        b_logwhat.setToolTip("Les types d'événements notés au journal (onglet Journal).")
+        b_logwhat.clicked.connect(lambda *_: self.logwhat_menu.exec(QtGui.QCursor.pos()))
+        aform.addRow(b_logwhat)
 
         self.country_combo = self._combo([(name, code) for code, name in COUNTRIES], "FR")
         self.country_combo.currentIndexChanged.connect(self.on_country)
@@ -9066,14 +9110,14 @@ class MainWindow(QtWidgets.QMainWindow):
         lv.addWidget(self.expert_hint)
         self.sections = {}
         dev2_box = self._build_dev2_box()
-        for key, box, stretch in (("detect", dbox, 0), ("bands", bbox, 1), ("measure", mbox, 0),
+        for key, box, stretch in (("detect", dbox, 0), ("alarms", abox, 0), ("bands", bbox, 1), ("measure", mbox, 0),
                                   ("dev2", dev2_box, 0), ("country", pbox, 0)):
             lv.addWidget(self._section(key, box), stretch)
         lv.addStretch(0)
         self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo,
                                                    self.att_combo, self.offset_spin, self.seg_combo, self.baud_combo)]
-        self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo,
-                                                   self.unk_chk)]
+        self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo)]
+        self._expert_rows += [(aform, self.unk_chk)]
         self._expert_rows += [(self._dev2_form, w_) for w_ in (self.dev2_off, self.calib_btn, self.relay_btn)]
         self._expert_rows += [(pform, plan_btn)]
         left = QtWidgets.QScrollArea()
@@ -9403,7 +9447,23 @@ class MainWindow(QtWidgets.QMainWindow):
         b_pick.clicked.connect(self.pick_log_dir)
         self.logdir_lbl = QtWidgets.QLabel(str(self.log_dir))
         self.logdir_lbl.setWordWrap(True)
+        self.logwhat_btn = QtWidgets.QToolButton()
+        self.logwhat_btn.setText("📝 Quoi noter…")
+        self.logwhat_btn.setToolTip("Choisis ce qui est noté au journal (tableau, CSV du jour, session enregistrée).\n"
+                                    "Les alarmes sonnent quand même : seul le journal est filtré.")
+        self.logwhat_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.logwhat_menu = QtWidgets.QMenu(self.logwhat_btn)
+        self.logwhat_menu.setToolTipsVisible(True)
+        self._logwhat_acts = {}
+        for k, txt in LOG_KINDS:
+            a_ = self.logwhat_menu.addAction(txt)
+            a_.setCheckable(True)
+            a_.setChecked(True)
+            a_.toggled.connect(lambda *_, k=k, a_=a_: self.log_kinds.__setitem__(k, a_.isChecked()))
+            self._logwhat_acts[k] = a_
+        self.logwhat_btn.setMenu(self.logwhat_menu)
         lg.addWidget(self.autolog_chk)
+        lg.addWidget(self.logwhat_btn)
         lg.addLayout(self._row(b_dir, b_pick, None))
         lg.addWidget(self.logdir_lbl)
         self.rec_chk = QtWidgets.QCheckBox("💾 Enregistrer les balayages")
@@ -9791,6 +9851,8 @@ class MainWindow(QtWidgets.QMainWindow):
             rs = data.get("recent_shows")
             self.recent_shows = [str(x) for x in rs if isinstance(x, str)][:8] if isinstance(rs, list) else []
             self.session_cfg = session_cfg_norm(data.get("session"))
+            self.log_kinds = log_kinds_norm(data.get("log_kinds"))
+            self._sync_log_menu()
             if hasattr(self, "sess_ask_chk"):
                 self.sess_ask_chk.blockSignals(True)
                 self.sess_ask_chk.setChecked(self.session_cfg["ask"])
@@ -9865,6 +9927,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
             data["session"] = dict(self.session_cfg)
+            data["log_kinds"] = dict(self.log_kinds)
             data["lang"] = self.lang
         return data
 
@@ -11900,6 +11963,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -------------------------------------------------------------- journal
     def log_event(self, w, level, event):
+        if not self.log_kinds.get(log_kind(event), True):
+            return                                # type d'événement décoché dans « 📝 Quoi noter »
         t = self.log_table
         t.insertRow(0)
         vals = [datetime.now().strftime("%H:%M:%S"), w["name"], f'{w["freq"]:.3f}' if w["freq"] else "—",
@@ -11922,6 +11987,12 @@ class MainWindow(QtWidgets.QMainWindow):
             t.setItem(0, c, it)
         while t.rowCount() > 2000:
             t.removeRow(t.rowCount() - 1)
+
+    def _sync_log_menu(self):
+        for k, a_ in getattr(self, "_logwhat_acts", {}).items():
+            a_.blockSignals(True)
+            a_.setChecked(self.log_kinds.get(k, True))
+            a_.blockSignals(False)
 
     def on_log_dbl(self, row, col):
         it = self.log_table.item(row, 4)

@@ -488,5 +488,13 @@ check("session : journal relu", ns["session_journal_rows"](
 check("session : place estimée", round(ns["rec_mb_per_hour"](3000, 1.0), 2), 14.04)
 check("session : place inconnue", ns["rec_mb_per_hour"](0, 1.0), None)
 
+lk = ns["log_kind"]
+check("journal : types d'événements", [lk(e) for e in ("CONFLIT", "INTERMOD", "ABSENT", "TROP FORT", "OCCUPÉ",
+                                                        "Libre (12 s)", "Retour (3 s)", "Retour", "INCONNU",
+                                                        "APPAREIL PERDU", "APPEL OK", "NOUVELLE FRÉQUENCE")],
+      ["alarm", "alarm", "alarm", "strong", "busy", "back", "back", "back", "unknown", "device", "ops", "ops"])
+check("journal : tout coché par défaut", all(ns["log_kinds_norm"](None).values()), True)
+check("journal : choix relus", ns["log_kinds_norm"]({"busy": False, "x": 1})["busy"], False)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
