@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "8.0-dev"
+APP_VER = "7.9.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4173,6 +4173,10 @@ class TinySA:
         if not len(levels):
             raise RuntimeError("Le tinySA n'a renvoyé aucune mesure (scan).")
         return freqs, levels
+
+
+# Branche V8 : la ligne APP_VER du haut reste celle de la V7 (aucun conflit à chaque version V7) ; surcharge ici.
+APP_VER = f"8.0-dev (base {APP_VER})"
 
 
 # --------------------------------------------------------------------------
