@@ -13419,7 +13419,14 @@ def install_language(code):
         import lang_en                                    # fichier de traductions à côté du programme / dans l'exe
     except ImportError:
         return False
-    TR.__init__(lang_en.EXACT, lang_en.TEMPLATES)
+    exact, tpl = dict(lang_en.EXACT), dict(lang_en.TEMPLATES)
+    try:
+        import lang_en_v8                                 # textes propres à la V8 (SDR), dans leur propre fichier
+        exact.update(lang_en_v8.EXACT)
+        tpl.update(lang_en_v8.TEMPLATES)
+    except ImportError:
+        pass
+    TR.__init__(exact, tpl)
     global WEB_PAGE
     WEB_PAGE = web_page_lang(WEB_PAGE, lang_en.WEB, TR)[0]
     for lst in (NAME_WORDS, SCENE_WORDS, GROUP_WORDS):    # mots proposés pour les noms : en anglais
