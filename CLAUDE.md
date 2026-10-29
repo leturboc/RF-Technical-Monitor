@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.10.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.11.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -179,6 +179,23 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
 - **Manuel** : `docs/manuel.html` (HTML autonome, clair / sombre, sommaire, téléphone), embarqué dans l'exe
   (`--add-data "docs/manuel.html;docs"`, workflow + build.bat), ☰ Plus › 📖 Manuel (`manual_path` / `open_manual`).
   **Le tenir à jour à chaque nouveauté visible** (V8 : ajouter les chapitres SDR quand elle partira sur main).
+- **Langues (7.11.0, Clément : « une full trad en anglais avec choix de langue »)** : le programme reste écrit en
+  français ; l'anglais passe par une couche posée sur Qt. PURE : `Translator` (`TR`, vide = français), `LANGS`,
+  `web_page_lang`. `lang_en.py` (racine, `--hidden-import lang_en`) : `EXACT` (texte → anglais), `TEMPLATES`
+  (f-strings, « {} » = trou traduit à son tour), `SAME_TEMPLATES` (volontairement non traduits), `WEB` (morceaux
+  de `WEB_PAGE`), `VOCAB` (mots proposés pour les noms : les noms de l'utilisateur ne sont JAMAIS dans `EXACT`).
+  Moteur : exact → espaces → morceaux séparés par « · » / « | » / « — » → modèles (tous les découpages essayés)
+  → « Libellé : valeur » → emoji de tête → suffixes « : », « … », « . » → minuscule → ligne à ligne ; HTML
+  (`TR.html`) : texte entre les balises. `install_language(code)` (avant les fenêtres, dans `main()`) enveloppe
+  constructeurs et setters Qt (`_patch`, `_tr_args`) ; listes modifiables (`isEditable`) jamais traduites (relues
+  par le programme). `read_language()` : `TSM_LANG`, puis config « lang », sinon langue de Windows.
+  ☰ Plus › 🌐 Langue / Language (`lang_menu`, `set_language` : enregistre, propose de redémarrer). Hors Qt :
+  `send_notify`, `web_json`, `export_log`, rapport (`TR.html`), libellés dessinés du bandeau (`update_strip_labels`).
+  **Relire un texte affiché = piège** : comparer à `TR("…")` ou passer par `itemData` (ex. thèmes de couleurs).
+  **Tout nouveau texte visible → sa traduction dans `lang_en.py`** (`tests/test_i18n.py` échoue sinon, et
+  `tests/gui_en.py` lance l'appli en anglais et relève tout texte français visible). V8 : ses textes à elle dans
+  un fichier à part (`lang_en_v8.py`, fusionné au chargement), pour ne pas toucher aux lignes de `lang_en.py`.
+  Manuel anglais `docs/manual_en.html` (`manual_path` suit la langue) : le tenir à jour avec le français.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
@@ -219,6 +236,8 @@ python tests/smoke_test6.py      # shows, config sûre / copie de secours, crash
 python tests/test_reseau.py      # faux tinySA (pty) → relais → TCP → TinySA ; test_reseau_qt.py : vrai ScanWorker,
                                  # coupure, liaison muette, reconnexion (Linux/macOS ; sautés sous Windows)
 python tests/test_alertes.py     # ntfy / Telegram / Notifier / WebServer ; page testée dans Chromium si Playwright
+python tests/test_i18n.py        # traduction anglaise complète (lang_en.py), moteur Translator, page web anglaise
+python tests/gui_en.py          # VRAI Qt en anglais : relève tout texte français visible (captures tests/captures_en/)
 python tests/check_names.py      # noms non définis (les « hérités de Qt » sont normaux)
 python tests/gui_reel.py         # VRAI PySide6 hors écran, mode démo : captures PNG dans tests/captures/
 ```

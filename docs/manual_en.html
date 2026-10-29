@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinySA Monitor manual</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d2125; --muted: #5d6670; --line: #dde1e5;
+  --accent: #1f6feb; --ok: #1a7f37; --warn: #b26b00; --bad: #c62828; --code: #eef1f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171b; --panel: #1b1f24; --text: #e6e8eb; --muted: #9aa4ae; --line: #2c333b;
+    --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --code: #232a31;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171b; --panel: #1b1f24; --text: #e6e8eb; --muted: #9aa4ae; --line: #2c333b;
+  --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --code: #232a31;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 32px; max-width: 1180px;
+  margin: 0 auto; padding: 24px 16px 80px; }
+nav { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto;
+  font-size: 14px; border-right: 1px solid var(--line); padding-right: 16px; }
+nav b { display: block; margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); }
+nav a { display: block; padding: 3px 0; color: var(--text); text-decoration: none; }
+nav a:hover { color: var(--accent); }
+main { min-width: 0; }
+h1 { font-size: 2rem; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 24px; }
+h2 { font-size: 1.4rem; margin: 48px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.08rem; margin: 24px 0 8px; }
+p, li { max-width: 74ch; }
+a { color: var(--accent); }
+code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: .9em; background: var(--code);
+  border-radius: 4px; padding: 1px 5px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; }
+table { border-collapse: collapse; width: 100%; max-width: 820px; margin: 12px 0; font-size: 15px; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+.box { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 6px; padding: 10px 14px; margin: 14px 0; max-width: 820px; }
+.box.warn { border-left-color: var(--warn); }
+.box.ok { border-left-color: var(--ok); }
+.steps { counter-reset: s; list-style: none; padding-left: 0; }
+.steps > li { counter-increment: s; position: relative; padding-left: 38px; margin: 10px 0; }
+.steps > li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+  display: grid; place-items: center; }
+.ok { color: var(--ok); font-weight: 600; } .warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+.theme { position: fixed; top: 10px; right: 12px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+code { overflow-wrap: anywhere; }
+@media (max-width: 860px) {
+  .wrap { grid-template-columns: 1fr; }
+  table { display: block; overflow-x: auto; }
+  nav { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line);
+    padding: 0 0 12px; columns: 2; }
+}
+@media print { nav, .theme { display: none; } .wrap { display: block; } h2 { break-before: page; } }
+</style>
+</head>
+<body>
+<button class="theme" onclick="toggleTheme()" title="Light / dark">◐</button>
+<div class="wrap">
+<nav>
+  <b>Contents</b>
+  <a href="#intro">1. What is it?</a>
+  <a href="#install">2. Install and start</a>
+  <a href="#ecran">3. The main window</a>
+  <a href="#show">4. Preparing a show</a>
+  <a href="#surveiller">5. Monitoring during the show</a>
+  <a href="#signal">6. Reading states and alarms</a>
+  <a href="#mur">7. The frequency wall</a>
+  <a href="#fenetres">8. Windows and dual screen</a>
+  <a href="#coordination">9. Coordination (intermod, plan, backup)</a>
+  <a href="#linecheck">10. Line check</a>
+  <a href="#spectera">11. Spectera / WMAS</a>
+  <a href="#deux">12. Two tinySAs, network relay</a>
+  <a href="#alertes">13. Phone alerts and web page</a>
+  <a href="#apres">14. After the show: playback, report</a>
+  <a href="#outils">15. Other tools</a>
+  <a href="#clavier">16. Keyboard shortcuts</a>
+  <a href="#depannage">17. Troubleshooting</a>
+  <a href="#donnees">18. Where are my files?</a>
+  <a href="#langue">19. Language</a>
+  <a href="#limites">20. What is not verified</a>
+</nav>
+<main>
+<h1>TinySA Monitor — user manual</h1>
+<p class="sub">Version 7.11 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.</p>
+
+<div class="box"><b>In one sentence:</b> the app keeps sweeping your bands with a tinySA, compares what it sees
+with your frequency list, and warns you as soon as a transmitter goes quiet or a signal shows up where it
+should not.</div>
+
+<h2 id="intro">1. What is it?</h2>
+<p>TinySA Monitor does two jobs at once:</p>
+<ul>
+  <li><b>Spectrum analyser</b>: live spectrum over several bands, max hold, waterfall, live zoom, venue
+    reference curve, TV channel guide and allocations per country.</li>
+  <li><b>Frequency monitor</b>: 100+ frequencies, each with a <b>status</b> (“must transmit” or “must stay
+    free”). The app works out the state of each one, raises <b>alarms</b> (sound, panel, phone), keeps a
+    <b>log</b> and can <b>record</b> the whole show so you can look at it again afterwards.</li>
+</ul>
+<p>On top of that, coordination tools: intermodulation, plan check in the style of EazyRF, backup frequency,
+line check, a web page for the team.</p>
+<div class="box warn">The band allocations shown (DTT, 4G/5G, aero…) are <b>for guidance only</b>: always
+check the local regulations before transmitting.</div>
+
+<h2 id="install">2. Install and start</h2>
+<h3>Getting the exe</h3>
+<ol class="steps">
+  <li>On the <b>Releases</b> page of the GitHub repository, download <code>TinySA-Monitor.exe</code> from the
+    latest version (or from the “Test” pre-release to try new features).</li>
+  <li>Double-click it. Windows may show “Windows protected your PC” (unsigned exe):
+    <i>More info › Run anyway</i>.</li>
+  <li>No installation: the exe runs as it is. Your settings are kept in
+    <code>%APPDATA%\TinySAMonitor\</code>.</li>
+</ol>
+<h3>First start</h3>
+<ol class="steps">
+  <li>Plug the tinySA Ultra in over USB and <b>close tinySA-App</b> if it is open (only one program at a time
+    on the port).</li>
+  <li>At the top, pick the <b>Port</b>: the one marked <b>✔ tinySA</b> is detected automatically.
+    No tinySA at hand? Tick <b>Demo mode</b>: simulated signals so you can try everything.</li>
+  <li>Click <b>▶ Start</b>. The spectrum fills up and the tinySA version is shown next to the port.</li>
+</ol>
+<div class="box">Tip: <b>☰ More › Expert mode</b> shows every setting (RBW, LNA, attenuator, segments…). In
+simple mode you only get what matters during the show.</div>
+
+<h2 id="ecran">3. The main window</h2>
+<table>
+  <tr><th>Area</th><th>What you do there</th></tr>
+  <tr><td><b>Top bar</b></td><td>Port, ▶ Start, 🎪 Shows, 🔔 alarms, ☰ More (tools, windows, wall, colours,
+    statuses, expert mode, manual, language, about). The version is shown on the right.</td></tr>
+  <tr><td><b>Settings</b> (left)</td><td>Collapsible sections: Detection (thresholds, unit, too-strong alert),
+    Bands, Measurement, 2nd tinySA, Country and plan.</td></tr>
+  <tr><td><b>Spectrum</b> (middle)</td><td>Live trace, max hold, thresholds (horizontal lines you can drag with
+    the mouse), markers for your frequencies, strip with TV channels and allocations.</td></tr>
+  <tr><td><b>Waterfall</b> and <b>Alarms</b></td><td>Strips under the spectrum. The waterfall appears when
+    viewing a single band or in zoom.</td></tr>
+  <tr><td><b>Frequencies and layers</b> (right)</td><td>Your list (name, MHz, status, signal, level,
+    occupancy…) and the <b>Scenes › Groups</b> tree. <b>Log</b> tab next to it.</td></tr>
+  <tr><td><b>Frequency wall</b></td><td>As a tab next to the spectrum: one tile per frequency, readable from a
+    distance.</td></tr>
+</table>
+<p>Every button, checkbox and list has a <b>tooltip</b> on hover, also copied to the bottom of the window.</p>
+
+<h2 id="show">4. Preparing a show</h2>
+<h3>Bands to sweep</h3>
+<ul>
+  <li><b>Settings › Bands to sweep</b>: tick the bands to monitor, or add some (start, stop, step). Presets
+    exist (UHF mics, Spectera, 1G4…).</li>
+  <li>More points means finer detail but a longer cycle. The app estimates how long a cycle takes.</li>
+  <li><b>Country and frequency plan</b>: pick your country to get the right TV channels and allocations on the
+    spectrum.</li>
+</ul>
+<h3>Your frequencies</h3>
+<ul>
+  <li><b>📥 Import</b>: frequency plan from EazyRF, WWB, WSM, Excel… The import recognises the columns and
+    suggests names. You can also drag and drop a CSV onto the window.</li>
+  <li>Or type them in by hand (<b>＋ Add</b> above the list, or right-click on the spectrum › “Add to my
+    list”).</li>
+  <li><b>Quick naming</b>: 🔧 Tools › ✏ Name the selection (HF 1, HF 2…, numbered automatically), or
+    <kbd>Ctrl</kbd>+<kbd>D</kbd> to number downwards from the first selected row.</li>
+</ul>
+<h3>Statuses: the key to everything</h3>
+<table>
+  <tr><th>Status</th><th>Meaning</th><th>Alarm</th></tr>
+  <tr><td><b>In use</b> (must transmit)</td><td>one of your transmitters should be there</td>
+    <td><span class="bad">⚠ MISSING</span> if it stays silent longer than “TX missing after”</td></tr>
+  <tr><td><b>Free</b> (must stay free)</td><td>spare, backup frequency, area to protect</td>
+    <td><span class="bad">⚠ CONFLICT</span> at the slightest signal</td></tr>
+  <tr><td>No status</td><td>plain monitoring</td><td>none (shows busy / free)</td></tr>
+</table>
+<p>With the keyboard, in the list: select rows, then <kbd>Ctrl</kbd>+<kbd>E</kbd> = In use,
+<kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> = status no. 1 to 9, <kbd>Ctrl</kbd>+<kbd>0</kbd> = none.
+Your own statuses: ☰ More › 🏷 Statuses.</p>
+<h3>Scenes and groups</h3>
+<ul>
+  <li>Sort your frequencies into <b>Scenes › Groups</b> (e.g. Main stage › Vocal mics). Clicking a scene or a
+    group = only that is monitored and scanned; the <b>Global</b> button brings everything back.</li>
+  <li>Right-click a group: alarm <b>priority</b>. <b>Critical ❗</b> = sound repeated every 10 s until
+    acknowledged; Normal; Info (no sound).</li>
+</ul>
+<h3>Thresholds</h3>
+<ul>
+  <li><b>Busy</b>: above it, the frequency is busy. <b>Weak</b>: in between, weak signal.</li>
+  <li><b>TX missing after</b>: how many seconds without a signal before ⚠ MISSING.</li>
+  <li><b>“Too strong” alert</b> (−25 dBm by default, purple line): ⚠ TOO STRONG, risk of receiver overload
+    (walkie-talkie right next to the antenna…).</li>
+  <li>A threshold for one frequency only: right-click › “Frequency's own threshold”.</li>
+  <li><b>Unit</b>: dBm, dBµV or % like WSM (Settings › Detection). Files stay in dBm.</li>
+  <li>Expert: <b>threshold over reference</b> = busy when the level exceeds the measured noise floor of the
+    venue by X dB.</li>
+</ul>
+<h3>Saving the show (🎪)</h3>
+<p><b>🎪 Shows › Save</b> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) keeps frequencies, scenes, statuses, bands,
+thresholds, country, position names, venue reference and the details (name, venue, dates, notes). Next year:
+<b>Open a show</b>, then <b>Save as…</b> for the new edition. A show does not touch your preferences (colours,
+windows, alerts, language…).</p>
+
+<h2 id="surveiller">5. Monitoring during the show</h2>
+<ol class="steps">
+  <li><b>▶ Start</b>. Every sweep updates the list, the wall, the markers and the alarms.</li>
+  <li>Watch the <b>Signal</b> column (or the wall): everything should be green.</li>
+  <li>An alarm? The <b>🔔</b> turns red and the Alarms panel opens. <b>Acknowledge</b> silences the sound but
+    keeps the alarm (orange) as long as the problem is there.</li>
+  <li>A strange signal on the spectrum? Right-click it: <b>⚡ Where could it come from?</b> (intermod),
+    🔍 view in zoom, ＋ add to my list.</li>
+</ol>
+<ul>
+  <li><b>Live zoom</b>: double-click a frequency's level or signal, or right-click › 🔍 Live zoom. A tight,
+    fast sweep around it; “Live zoom” again to go back.</li>
+  <li><b>📍 Markers</b> (above the spectrum): which markers to show (by state, scene, status, alarms always
+    visible, full line or small discreet marker). <kbd>Ctrl</kbd>+<kbd>M</kbd> hides / shows them all.</li>
+  <li><b>📏 Reference</b> (above the spectrum) › Capture: the venue's noise floor, to be done before the audience
+    arrives. It is drawn dotted and used by the “over reference” threshold.</li>
+  <li>The <b>log</b> records everything (alarms, back to normal, changes), automatically saved as CSV.</li>
+</ul>
+
+<h2 id="signal">6. Reading states and alarms</h2>
+<table>
+  <tr><th>Status</th><th>Signal present</th><th>No signal</th></tr>
+  <tr><td>Must transmit</td><td><span class="ok">OK</span> · “OK (weak)”</td>
+    <td>“silent”, then <span class="bad">⚠ MISSING</span></td></tr>
+  <tr><td>Must stay free</td><td><span class="bad">⚠ CONFLICT</span> (or INTERMOD)</td>
+    <td><span class="ok">✔ free</span></td></tr>
+  <tr><td>No status</td><td><span class="bad">BUSY</span> (no room here)</td>
+    <td>free</td></tr>
+</table>
+<ul>
+  <li><b>INTERMOD</b>: a signal on a “must stay free” frequency that matches an intermodulation product of
+    your transmitters. The formula is in the alarm (e.g. “2×HF 1 − HF 3”).</li>
+  <li><b>⚠ DEVICE</b>: a tinySA dropped out (cable, frozen). The app retries on its own every 5 s.</li>
+  <li><b>⚠ TOO STRONG</b>: signal above the alert level, risk of overload.</li>
+  <li>The words and colours can be changed: ☰ More › 🔤 Words and colours.</li>
+</ul>
+
+<h2 id="mur">7. The frequency wall</h2>
+<ul>
+  <li>☰ More › 🧱 Wall (or the tab next to the spectrum): one tile per frequency, colour = signal state.</li>
+  <li><b>📋 Choose</b>: which frequencies get a tile. “Alarms always visible” brings back a removed frequency
+    while it is in alarm.</li>
+  <li><b>Tile size</b>: Auto (fills the space), or Small / Medium / Large (scrolls).</li>
+  <li><b>🗗 Detach</b>: the wall in its own window, at the size you want; <b>📌 Dock</b> to put it back.</li>
+  <li><b>🖥 Other screen</b> (with 2 screens); <kbd>F11</kbd> = full screen, <kbd>Esc</kbd> to go back.</li>
+</ul>
+
+<h2 id="fenetres">8. Windows and dual screen</h2>
+<h3>Ready-made layouts</h3>
+<p>☰ More › 🪟 Windows and layouts: <b>Standard</b>, <b>Analyser only</b>, <b>Monitoring</b>, <b>Dual
+screen</b> (the list goes to the other screen). Each panel can also be shown / hidden.</p>
+<h3>Real windows</h3>
+<p>☰ More › 🪟 Windows and layouts › <b>🗗 Real windows / dual screen</b>, then for each panel (Spectrum,
+Waterfall, List, Log, Alarms, Settings):</p>
+<ul>
+  <li><b>Free window</b>: a real Windows window (maximise, minimise, taskbar) that you place wherever you like
+    with the mouse.</li>
+  <li><b>Screen N: maximised</b> or <b>full screen</b>: sent straight to the chosen screen.</li>
+  <li>In the window: <b>🖥 Next screen</b>, <b>⛶ Full screen</b> (<kbd>F11</kbd>, <kbd>Esc</kbd>),
+    <b>📌 Dock</b>. Closing the window = docking the panel back.</li>
+  <li>Windows <b>reopen in the same place</b> at the next start. “📌 Dock all” or the Standard layout puts
+    everything back into the main window.</li>
+</ul>
+<div class="box">Why not just “detach” a panel? A panel detached the old way stays a Qt “tool” window: no
+maximise button, always on top, and it re-docks when you brush past an edge. Real windows don't have those
+problems.</div>
+
+<h2 id="coordination">9. Coordination: intermod, plan, backup</h2>
+<h3>🧮 Check the plan (like EazyRF)</h3>
+<ul>
+  <li>🔧 Tools › 🧮 Check the plan. For each frequency: ✔ compatible or ✗ with the details (spacing too small,
+    2A − B, A + B − C, 5th order).</li>
+  <li><b>Default device</b> and <b>Device</b> column: a profile per frequency (Wisycom very selective,
+    Sennheiser, Shure, IEMs…) with its minimum spacing, <b>receiver filter</b>, tolerances and step. Select
+    rows › “Apply to selected rows”.</li>
+  <li><b>Rules</b>: “Like EazyRF” (2 TX ±100 kHz, 3 TX ±50 kHz) by default, Simple, Careful, Very careful or by
+    hand. The sentence “We check: …” says exactly what is counted.</li>
+  <li>On a ✗ row: <b>🔍 Suggest</b> a compatible frequency (on the device's step, avoiding what the tinySA sees
+    as busy), then <b>✔ Replace</b>.</li>
+</ul>
+<h3>⚡ Intermodulation</h3>
+<p>Products of your transmitters (2, 3, 5 TX; orders 3, 5, 7): what lands on what, with the measured level
+and a verdict 🔴 🟠 🟡 ⚪. Or the other way round: “where could this signal come from?”. <b>👁 Monitor</b> adds
+products to your list as “Free”.</p>
+<h3>🆘 Backup frequency</h3>
+<p>Free channels according to the measured spectrum, with no intermod against your list, one click away when
+a mic gets interference.</p>
+
+<h2 id="linecheck">10. Line check</h2>
+<p><kbd>Ctrl</kbd>+<kbd>L</kbd> or 🔧 Tools › 🎤: switch your transmitters on one by one; each frequency turns ✓
+as soon as its signal arrives. A summary “14 / 16 OK, missing: …” goes into the log. An unknown signal right
+next to a missing frequency points to a pack set to the wrong channel.</p>
+
+<h2 id="spectera">11. Spectera / WMAS (wideband carriers)</h2>
+<ul>
+  <li>🔧 Tools › 📶 Add a Spectera / WMAS block: pick the TV channel or a centre frequency + width (6 or
+    8 MHz). Or right-click a frequency › “Wide block”.</li>
+  <li>“Must transmit”: the <b>median</b> level of the block is used; “must stay free”: the <b>peak</b>.</li>
+  <li>Intermod and the plan check take the width of the blocks into account.</li>
+</ul>
+
+<h2 id="deux">12. Two tinySAs, network relay</h2>
+<ol class="steps">
+  <li>Settings › 2nd tinySA: tick “Use a 2nd tinySA” and give its port (<code>COM4</code>) or network
+    address.</li>
+  <li>On another PC: run <code>TinySA-Monitor.exe --relais</code> (or 🔧 Tools › 📡 Network relay), choose the
+    port, “Share”, then type the address shown (e.g. <code>192.168.1.20:5025</code>) on the main PC.</li>
+  <li>Bands table, “tinySA” column: Auto, 1 or 2. ✂ Split cuts a large band in two.</li>
+  <li><b>Position names</b> (Stage, FOH…): shown in the alarms (“seen by FOH”).</li>
+  <li><b>⚖ Calibrate the 2nd against the 1st</b>: same signal into both (splitter), ~20 s, the offset is set
+    automatically.</li>
+</ol>
+<p>If one tinySA drops out, the other takes over all the bands (⚠ DEVICE). On a network, prefer a cable to
+Wi-Fi.</p>
+
+<h2 id="alertes">13. Phone alerts and web page</h2>
+<h3>📣 Push alerts</h3>
+<ul>
+  <li>🔧 Tools › 📣 Alerts: <b>ntfy</b> (free app, no account: subscribe to the channel name shown) or
+    <b>Telegram</b> (bot from @BotFather; “🔎 Find my chat id” does it for you).</li>
+  <li>A step-by-step <b>📖 guide</b> button, and “Send a test alert”. Internet is needed (4G, venue Wi-Fi).</li>
+  <li>Wi-Fi with a login portal (hotel, festival) often blocks ntfy: switch the phone to 4G.</li>
+  <li>Alerts are sent in the language of the interface.</li>
+</ul>
+<h3>🌐 Web page for the team</h3>
+<ul>
+  <li>Same window: enable the web page; the team opens the address shown (<code>http://192.168.x.x:8080</code>)
+    on their phones.</li>
+  <li>Views to choose from: list, wall, live spectrum, waterfall, alarms. Optional password. The page follows
+    the language of the interface.</li>
+  <li>List of <b>connected people</b>: rename, 👋 identify (that client's screen flashes), disconnect
+    everyone.</li>
+  <li>Acknowledge from the phone with a <b>PIN code</b>.</li>
+</ul>
+
+<h2 id="apres">14. After the show: playback, report</h2>
+<ul>
+  <li><b>⏪ Playback</b>: look at the spectrum at any moment (last 30 minutes in memory, or the recordings on
+    disk), time slider, fast playback, jump to an event.</li>
+  <li><b>📄 Show report</b>: standalone HTML (alarms, occupancy, log), printable to PDF.</li>
+  <li><b>📤 Export frequencies</b> by scene / group.</li>
+</ul>
+
+<h2 id="outils">15. Other tools</h2>
+<ul>
+  <li><b>🔁 Convert a scan</b>: WSM, WWB or CSV of your choice (columns, units, separator), as input and as
+    output; or the current scan.</li>
+  <li><b>📏 Import a scan as reference</b> (WSM / WWB).</li>
+  <li><b>🩺 tinySA diagnostics</b>: a file with the latest exchanges with the tinySA, to send along with a bug
+    report (also written automatically when a tinySA drops out).</li>
+  <li><b>🎨 Colours</b> (themes, red night mode), <b>🏷 Statuses</b>, <b>My vocabulary</b> (quick names).</li>
+</ul>
+
+<h2 id="clavier">16. Keyboard shortcuts</h2>
+<table>
+  <tr><th>Keys</th><th>Action</th></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save the show</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Line check</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Hide / show the spectrum markers</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Selection → In use (must transmit)</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>9</kbd></td><td>Selection → status no. 1 to 9</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Selection → no status</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Number downwards from the first selected row</td></tr>
+  <tr><td><kbd>F11</kbd> / <kbd>Esc</kbd></td><td>Full screen for the wall or a real window / leave it</td></tr>
+  <tr><td>Double-click (list)</td><td>Status: change the status · Layer: change group · Level / Signal: live
+    zoom</td></tr>
+  <tr><td>Right-click</td><td>Context menus: list, spectrum, layers, wall tiles, log</td></tr>
+</table>
+
+<h2 id="depannage">17. Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>What to do</th></tr>
+  <tr><td>Port not found / “access denied”</td><td>Close tinySA-App (one program at a time), replug the USB,
+    ⟳ button next to the port.</td></tr>
+  <tr><td>The tinySA stops answering after a while</td><td>The app retries on its own. After 3 failed attempts:
+    unplug / replug the tinySA (it can freeze, also with tinySA-App).</td></tr>
+  <tr><td>A band does not fill up</td><td>🔧 Tools › 🩺 Diagnostics, and send the file.</td></tr>
+  <tr><td>Window lost off-screen (screen unplugged)</td><td>☰ More › 🪟 Windows and layouts › Standard layout
+    (docks everything).</td></tr>
+  <tr><td>The app crashed</td><td>Send <code>%APPDATA%\TinySAMonitor\crash.log</code>. The configuration is
+    saved every minute, with a backup copy.</td></tr>
+</table>
+
+<h2 id="donnees">18. Where are my files?</h2>
+<ul>
+  <li>Settings: <code>%APPDATA%\TinySAMonitor\</code> (<code>config.json</code> + <code>config.json.bak</code>,
+    <code>reference.json</code>, <code>crash.log</code>).</li>
+  <li>Shows: <code>Documents\TinySA Monitor\Shows\</code> (<code>.tsashow</code> files).</li>
+  <li>Logs, recordings, reports, diagnostics: <code>Documents\TinySA Monitor\Journaux\</code> (can be changed
+    in the app).</li>
+</ul>
+
+<h2 id="langue">19. Language</h2>
+<p><b>☰ More › 🌐 Language / Langue</b>: Français or English. The choice is saved straight away and applied at
+the next start (the app offers to restart). On the very first start, the app follows the Windows language:
+French if Windows is in French, English otherwise. Frequency names, scenes and groups are yours and are
+never translated (the suggested names are in English). Files written automatically during the show (log CSV,
+recordings, shows) keep the same format whatever the language, so a show saved in French opens in English and
+the other way round.</p>
+
+<h2 id="limites">20. What is not verified</h2>
+<div class="box warn">
+<p>The app is tested automatically (logic, real interface on Windows, fake tinySA), and has run for 2 hours in
+the field with a real tinySA Ultra. Not yet proven in real conditions:</p>
+<ul>
+  <li>two real tinySAs at the same time, the relay on a real festival network, a full night;</li>
+  <li>real sending of ntfy / Telegram alerts, the alarm sounds, a real dual-screen setup;</li>
+  <li>device profiles other than Wisycom in the plan check (starting values);</li>
+  <li>the level of a real Spectera carrier on the tinySA;</li>
+  <li>the EazyRF / WWB / WSM list export formats (generic guesses);</li>
+  <li>the English interface has been checked automatically (every text has a translation), not yet by an
+    English-speaking user in the field.</li>
+</ul>
+</div>
+<p class="sub">TinySA Monitor is not affiliated with tinySA, Sennheiser, Shure, Wisycom or EazyRF; their names are
+trademarks of their respective owners.</p>
+</main>
+</div>
+<script>
+function toggleTheme() {
+  var r = document.documentElement;
+  var dark = r.dataset.theme ? r.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  r.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("tsm-theme", r.dataset.theme); } catch (e) {}
+}
+try { var t = localStorage.getItem("tsm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</body>
+</html>

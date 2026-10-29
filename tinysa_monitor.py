@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.10.0"
+APP_VER = "7.11.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3331,6 +3331,207 @@ def split_band(start, stop, step):
     return (start, mid, step), (mid, stop, step)
 
 
+
+# ------------------------------------------------------------------ langues (français par défaut, anglais)
+# Les textes du programme sont écrits en français. Pour l'anglais, une couche posée sur Qt (install_language) fait
+# passer chaque texte affiché par Translator : dictionnaire exact (lang_en.EXACT) + modèles à trous pour les textes
+# construits avec des f-strings (lang_en.TEMPLATES : « {} fréquences » → « {} frequencies »). tests/test_i18n.py
+# vérifie que tout texte du programme a sa traduction (sinon un nouveau texte resterait en français).
+class Translator:
+    """tr(texte français) -> texte traduit (inchangé si inconnu). Cache des résultats (textes répétés à chaque
+    balayage). Les morceaux variables d'un modèle sont traduits à leur tour (« « Spectre » raccroché » → les
+    guillemets, puis « Spectre »)."""
+
+    LETTER = re.compile(r"[A-Za-zÀ-ÿ]")
+    SEP = re.compile(r"(\s+[·|—]\s+)")
+    LEAD = re.compile(r"([^\w\s«“(\[<{-]+\s+)(\S.*)\Z", re.S)
+
+    def __init__(self, exact=None, templates=None):
+        self.exact = dict(exact or {})
+        for fr, en in list(self.exact.items()):           # morceaux collés au programme (« \nDécoché : … ») :
+            if fr.strip() != fr and fr.strip():           # aussi sans les espaces / retours autour, et ligne à ligne
+                self.exact.setdefault(fr.strip(), en.strip())
+            a, b = fr.strip().split("\n"), en.strip().split("\n")
+            if len(a) > 1 and len(a) == len(b):
+                for x, y in zip(a, b):
+                    if x.strip() and self.LETTER.search(x):
+                        self.exact.setdefault(x.strip(), y.strip())
+        self.cache = {}
+        self.by_head, self.loose = {}, []
+        tpl = dict(templates or {})
+        for fr, en in list(tpl.items()):                  # morceaux de phrases : « {} fréq. » (pris dans
+            a, b = self.SEP.split(fr), self.SEP.split(en)  # « Cycle {} s · … · {} fréq. »), « ⚠ {} alarme(s) »
+            if len(a) > 1 and len(a) == len(b):
+                for x, y in zip(a[::2], b[::2]):
+                    if x.count("{}") and x.count("{}") == y.count("{}"):
+                        tpl.setdefault(x.strip(), y.strip())
+            elif fr.strip(" ·|—") != fr and fr.strip(" ·|—"):
+                tpl.setdefault(fr.strip(" ·|—"), en.strip(" ·|—"))
+        for fr, en in tpl.items():
+            parts = re.split(r"(\{\})", fr.replace("{{", "\x01").replace("}}", "\x02"))
+            lits = [x.replace("\x01", "{").replace("\x02", "}") for x in parts if x != "{}"]
+            if sum(len(self.LETTER.findall(x)) for x in lits) < 3:
+                continue                                  # « {} ({}) » : trop vague, on ne le traduit pas
+            rx = "".join("(.*?)" if x == "{}" else re.escape(x.replace("\x01", "{").replace("\x02", "}"))
+                         for x in parts)
+            item = (re.compile(rx + r"\Z", re.S), en, sum(len(x) for x in lits),
+                    [x.replace("\x01", "{").replace("\x02", "}") for x in parts[::2]])
+            head = parts[0].replace("\x01", "{").replace("\x02", "}")
+            if parts[0] and parts[0] != "{}" and len(head) >= 2:
+                self.by_head.setdefault(head[:2], []).append(item)
+            else:
+                self.loose.append(item)
+        for lst in list(self.by_head.values()) + [self.loose]:
+            lst.sort(key=lambda it: -it[2])           # le plus précis d'abord
+
+    def __bool__(self):
+        return bool(self.exact)
+
+    def __call__(self, s):
+        if not isinstance(s, str) or not s or not self.exact:
+            return s
+        r = self.cache.get(s)
+        if r is None:
+            r = self._tr(s, 0)
+            if "<" in s and re.search(r"</?[a-zA-Z][^<>]*>", s) and r not in self.exact.values():
+                r = self.html(">" + s + "<")[1:-1]       # texte riche : on traduit le texte entre les balises
+            if len(self.cache) > 60000:
+                self.cache.clear()
+            self.cache[s] = r
+        return r
+
+    def _tr(self, s, depth):
+        e = self.exact.get(s)
+        if e is not None:
+            return e
+        if depth > 4 or not self.LETTER.search(s):
+            return s
+        if "\n" in s:                                     # plusieurs lignes : chacune pour elle
+            whole = self._tpl(s, depth)
+            if whole is not None:
+                return whole
+            lines = s.split("\n")
+            out = [self._tr(x, depth + 1) for x in lines]
+            return "\n".join(out) if out != lines else s
+        st = s.strip()
+        if st != s and st:                                # espaces autour : on garde les espaces
+            t = self._tr(st, depth + 1)
+            if t != st:
+                i = s.index(st)
+                return s[:i] + t + s[i + len(st):]
+        parts = self.SEP.split(s)                         # « 6 fréquences · 2 occupée(s) · … », « … | … »
+        split = None
+        if len(parts) > 1:
+            out = [x if i % 2 else self._tr(x, depth + 1) for i, x in enumerate(parts)]
+            if all(o != x or not self.LETTER.search(x) for o, x in zip(out[::2], parts[::2])):
+                return "".join(out)                       # chaque morceau traduit
+            if out != parts:
+                split = "".join(out)
+        t = self._tpl(s, depth)
+        if t is not None:
+            return t
+        if split is not None:
+            return split
+        i = s.find(" : ")                                 # « Libellé : valeur » (typographie française)
+        if 0 < i:
+            head, tail = s[:i], s[i + 3:]
+            h = self.exact.get(head + " :")
+            h = h.rstrip() if h else self._tr(head, depth + 1) + ":"
+            if h.rstrip(":") != head:
+                return h + " " + self._tr(tail, depth + 1)
+        m = self.LEAD.match(s)                            # « 📋 Liste » : emoji / symbole devant
+        if m:
+            t = self._tr(m.group(2), depth + 1)
+            if t != m.group(2):
+                return m.group(1) + t
+        for suf, en_suf in ((" :", ":"), (":", ":"), (" …", " …"), ("…", "…"), (".", "."), (" ?", "?")):
+            if s.endswith(suf) and len(s) > len(suf) + 1:  # « Fond des tableaux : » → « Table background: »
+                t = self._tr(s[:-len(suf)], depth + 1)
+                if t != s[:-len(suf)] or suf == " :":     # « 2A − B : » → « 2A − B: »
+                    return t.rstrip(" :") + en_suf
+        if s[0].islower():                                # « libre » → comme « Libre », en minuscule
+            t = self.exact.get(s[0].upper() + s[1:])
+            if t:
+                return t[0].lower() + t[1:]
+        return s
+
+    @staticmethod
+    def _splits(s, lits, first, cap=40):
+        """Découpages de s selon les morceaux fixes lits (s = lits[0] {} lits[1] {} … lits[-1]) : d'abord celui
+        de la regex (first), puis les autres."""
+        yield first
+        n = [0]
+
+        def rec(pos, k, acc):
+            if n[0] > cap:
+                return
+            if k == len(lits) - 1:
+                if s.endswith(lits[k]) and len(s) - len(lits[k]) >= pos:
+                    n[0] += 1
+                    yield acc + [s[pos:len(s) - len(lits[k])]]
+                return
+            j = s.find(lits[k], pos) if lits[k] else pos
+            while j >= 0 and n[0] <= cap:
+                yield from rec(j + len(lits[k]), k + 1, acc + [s[pos:j]])
+                if not lits[k]:
+                    return
+                j = s.find(lits[k], j + 1)
+
+        if len(lits) > 2 and s.startswith(lits[0]):
+            for g in rec(len(lits[0]), 1, []):
+                if tuple(g) != tuple(first):
+                    yield g
+
+    def _tpl(self, s, depth):
+        for it in self.by_head.get(s[:2], []) + self.loose:
+            m = it[0].match(s)
+            if m:
+                best = None                               # plusieurs découpages possibles (« {} : {} » avec
+                for gs in self._splits(s, it[3], m.groups()):   # deux « : ») : celui qui se traduit le mieux
+                    tg = [self._tr(g, depth + 1) for g in gs]
+                    miss = sum(1 for g, t in zip(gs, tg) if g == t and self.LETTER.search(g))
+                    if best is None or miss < best[0]:
+                        best = (miss, tg)
+                    if not miss:
+                        break
+                try:
+                    return it[1].format(*best[1])
+                except (IndexError, KeyError, ValueError):
+                    return None
+        return None
+
+    def deep(self, obj):
+        """Traduit toutes les chaînes d'une structure (dict / list) : page web, notifications."""
+        if isinstance(obj, str):
+            return self(obj)
+        if isinstance(obj, list):
+            return [self.deep(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: self.deep(v) for k, v in obj.items()}
+        return obj
+
+    def html(self, h):
+        """Traduit les textes d'un document HTML (entre les balises, et les title="…")."""
+        h = re.sub(r">([^<>]+)<", lambda m: ">" + self._tr(m.group(1), 0) + "<", h)
+        return re.sub(r'title="([^"]*)"', lambda m: 'title="' + self(m.group(1)) + '"', h)
+
+
+TR = Translator()                                     # langue active (vide = français : rien à traduire)
+
+
+def web_page_lang(page, pairs, tr):
+    """Page web dans une autre langue : remplacements exacts (lang_en.WEB), puis noms et descriptions des vues.
+    -> (page, morceaux introuvables) : un morceau introuvable = la page a changé, la traduction est à revoir."""
+    missing = []
+    for fr, en in pairs:
+        if fr not in page:
+            missing.append(fr)
+        page = page.replace(fr, en)
+    for k, i, t, d in WEB_VIEWS:
+        page = page.replace(f'"{k}":["{i}","{t}","{d}"]', f'"{k}":["{i}","{tr(t)}","{tr(d)}"]')
+    return page, missing
+LANGS = [("fr", "Français"), ("en", "English")]
+
 # ===== PURE-END
 
 
@@ -4519,12 +4720,12 @@ class ColorsDialog(QtWidgets.QDialog):
         self.preset = QtWidgets.QComboBox()
         self.preset.addItem("Personnalisé")
         for n in THEMES:
-            self.preset.addItem(n)
+            self.preset.addItem(n, n)                    # nom affiché (traduit) / clé (data)
         self.preset.activated.connect(self.on_preset)
         self.wf_combo = QtWidgets.QComboBox()
         for n in WF_MAPS:
-            self.wf_combo.addItem(n)
-        self.wf_combo.setCurrentText(self.theme.get("wf", "Inferno"))
+            self.wf_combo.addItem(n, n)
+        self.wf_combo.setCurrentIndex(max(0, self.wf_combo.findData(self.theme.get("wf", "Inferno"))))
         self.wf_combo.activated.connect(self.on_wf)
         top = QtWidgets.QFormLayout()
         top.addRow("Thème prédéfini :", self.preset)
@@ -4575,13 +4776,13 @@ class ColorsDialog(QtWidgets.QDialog):
     def on_preset(self, idx):
         if idx <= 0:
             return
-        self.theme = dict(THEMES[self.preset.currentText()])
-        self.wf_combo.setCurrentText(self.theme["wf"])
+        self.theme = dict(THEMES[self.preset.currentData()])
+        self.wf_combo.setCurrentIndex(max(0, self.wf_combo.findData(self.theme["wf"])))
         self.refresh_buttons()
         self.preview_cb(self.theme)
 
     def on_wf(self, _):
-        self.theme["wf"] = self.wf_combo.currentText()
+        self.theme["wf"] = self.wf_combo.currentData()
         self.preset.setCurrentIndex(0)
         self.preview_cb(self.theme)
 
@@ -7602,6 +7803,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VER}")
+        lang_ = getattr(QtWidgets.QApplication.instance(), "_lang", None)
+        self.lang = lang_ if lang_ in ("fr", "en") else ("en" if TR else "fr")
         self.resize(1700, 980)
         self._fit_to_screen()
         self.setAcceptDrops(True)
@@ -7856,13 +8059,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _install_tips(self):
         """Une explication sur chaque bouton / case / liste, aussi recopiée dans la barre d'état au survol."""
+        tips_text = {TR(k): t for k, t in self.TIPS_TEXT.items()}      # les boutons affichent le texte traduit
+        tips_menu = [(TR(k), t) for k, t in self.TIPS_MENU.items()]
         for name, tip in self.TIPS_ATTR.items():
             w_ = getattr(self, name, None)
             if w_ is not None and not w_.toolTip():
                 w_.setToolTip(tip)
         for w_ in self.findChildren(QtWidgets.QAbstractButton):
-            if not w_.toolTip() and w_.text() in self.TIPS_TEXT:
-                w_.setToolTip(self.TIPS_TEXT[w_.text()])
+            if not w_.toolTip() and w_.text() in tips_text:
+                w_.setToolTip(tips_text[w_.text()])
         for btn, _box in self.sections.values():
             btn.setToolTip("Clic : replier / déplier cette section (l'état est mémorisé).")
         for w_ in self.findChildren(QtWidgets.QWidget):
@@ -7877,7 +8082,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for m_ in menus:
             m_.setToolTipsVisible(True)
             for a_ in m_.actions():
-                tip = next((t for k, t in self.TIPS_MENU.items() if a_.text().startswith(k)), None)
+                tip = next((t for k, t in tips_menu if a_.text().startswith(k)), None)
                 if tip:
                     a_.setToolTip(tip)
                     a_.setStatusTip(tip.split("\n")[0])
@@ -8053,6 +8258,14 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda *_: self.edit_labels())
         self.more_menu.addSeparator()
         self.more_menu.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
+        self.lang_menu = self.more_menu.addMenu("🌐 Langue / Language")
+        grp_l = QtGui.QActionGroup(self.lang_menu)
+        for code, lname in LANGS:
+            a_ = self.lang_menu.addAction(lname)
+            a_.setCheckable(True)
+            a_.setChecked(code == self.lang)
+            grp_l.addAction(a_)
+            a_.triggered.connect(lambda *_, c=code: self.set_language(c))
         self.more_menu.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
         self.expert_act = self.more_menu.addAction("🎛 Mode expert (tous les réglages)")
         self.expert_act.setCheckable(True)
@@ -9061,6 +9274,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
+            data["lang"] = self.lang
         return data
 
     def _save_config(self):
@@ -9606,6 +9820,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def send_notify(self, title, body, prio, cfg=None):
         """Met une alerte dans la file d'envoi. -> message d'erreur de réglage, ou "" si c'est parti."""
         c = cfg or self.notify_cfg
+        title, body = TR(title), TR(body)                 # langue de l'interface
         if c["service"] == "telegram":
             if not c["tg_token"] or not c["tg_chat"]:
                 return "Telegram : jeton du bot et chat id requis."
@@ -9640,6 +9855,11 @@ class MainWindow(QtWidgets.QMainWindow):
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
             thr=round(float(self.thr_spin.value()), 1)))
+        if TR:                                            # page en anglais : les textes d'état aussi
+            for r in st["rows"]:
+                r.update(state_txt=TR(r["state_txt"]), status=TR(r["status"]), alarm=TR(r["alarm"]))
+            for a in st["alarms"]:
+                a.update(kind=TR(a["kind"]), info=TR(a["info"]))
         return json.dumps(st, ensure_ascii=False).encode("utf-8")
 
     def web_spec_json(self):
@@ -11108,7 +11328,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_log_dbl(self, row, col):
         it = self.log_table.item(row, 4)
-        if it is None or it.text() != "INCONNU":
+        if it is None or it.text() != TR("INCONNU"):
             return
         f = _num(self.log_table.item(row, 2).text())
         if f is None:
@@ -11127,7 +11347,7 @@ class MainWindow(QtWidgets.QMainWindow):
         t = self.log_table
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
             wr = csv.writer(f, delimiter=";")
-            wr.writerow(["Heure", "Nom", "MHz", "dBm", "Événement", "Scène › Groupe", "Note"])
+            wr.writerow([TR(x) for x in ("Heure", "Nom", "MHz", "dBm", "Événement", "Scène › Groupe", "Note")])
             for r in range(t.rowCount() - 1, -1, -1):
                 wr.writerow([t.item(r, c).text() for c in range(7)])
 
@@ -11505,7 +11725,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addSection("Couleur")
         grp2 = QtGui.QActionGroup(m)
         for i in range(self.mark_combo.count()):
-            key, txt = self.mark_combo.itemData(i), self.mark_combo.itemText(i).replace("Repères : ", "")
+            key, txt = self.mark_combo.itemData(i), self.mark_combo.itemText(i).replace(TR("Repères : "), "")
             grp2.addAction(check(m, txt, self.mark_combo.currentData() == key,
                                  lambda on, k=key: on and self.mark_combo.setCurrentIndex(self.mark_combo.findData(k))))
 
@@ -11814,6 +12034,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     continue
                 lo, hi = max(a, x0), min(b, x1)
                 nch = int((hi - lo) * px / 6.4)
+                lab = TR(lab)                             # libellé dessiné (pas un widget Qt) : traduit ici
                 if lab.startswith("CH "):
                     txt = lab if nch >= 5 else lab[3:]
                     if nch < 2 or len(txt) > nch:
@@ -12129,13 +12350,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self._im_dlg.show()
 
     def manual_path(self):
-        """Le manuel (docs/manuel.html) : embarqué dans l'exe, ou à côté du script. None s'il manque."""
-        for base in (getattr(sys, "_MEIPASS", None), Path(__file__).resolve().parent):
-            if base:
-                p_ = Path(base) / "docs" / "manuel.html"
-                if p_.is_file():
-                    return p_
+        """Le manuel (docs/manuel.html, en anglais docs/manual_en.html) : embarqué dans l'exe, ou à côté du
+        script. None s'il manque."""
+        names = (["manual_en.html"] if self.lang == "en" else []) + ["manuel.html"]
+        for name in names:
+            for base in (getattr(sys, "_MEIPASS", None), Path(__file__).resolve().parent):
+                if base:
+                    p_ = Path(base) / "docs" / name
+                    if p_.is_file():
+                        return p_
         return None
+
+    def set_language(self, code):
+        """Langue de l'interface : enregistrée tout de suite, appliquée au prochain démarrage (proposé)."""
+        if code == self.lang:
+            return
+        self.lang = code
+        self._save_config()
+        if QtWidgets.QMessageBox.question(
+                self, APP_NAME, "La langue changera au prochain démarrage. Redémarrer maintenant ?\n"
+                                "The language will change at the next start. Restart now?") \
+                != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        args = sys.argv[1:] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())] + sys.argv[1:]
+        if self.close():
+            QtCore.QProcess.startDetached(sys.executable, args)
 
     def open_manual(self):
         p_ = self.manual_path()
@@ -12945,7 +13184,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             with open(path, "w", encoding="utf-8") as fh:
-                fh.write(build_report_html(self.collect_report(v)))
+                fh.write(TR.html(build_report_html(self.collect_report(v))))
         except Exception as e:  # noqa: BLE001
             QtWidgets.QMessageBox.warning(self, APP_NAME, f"Rapport impossible :\n{e}")
             return
@@ -13128,6 +13367,161 @@ def install_crash_log(app=None):
         return None
 
 
+def _tr_args(tr, args, kw, which="first", lists=(), kws=()):
+    """Traduit des arguments : which = "first" (1re chaîne seulement : le texte, pas la donnée associée),
+    "all" (toutes les chaînes), ou une liste d'indices."""
+    a = list(args)
+    if which == "first":
+        for i, x in enumerate(a):
+            if isinstance(x, str):
+                a[i] = tr(x)
+                break
+    else:
+        for i, x in enumerate(a):
+            if isinstance(x, str) and (which == "all" or i in which):
+                a[i] = tr(x)
+    for i in lists:
+        if i < len(a) and isinstance(a[i], (list, tuple)):
+            a[i] = [tr(x) if isinstance(x, str) else x for x in a[i]]
+    for k in kws:
+        if isinstance(kw.get(k), str):
+            kw[k] = tr(kw[k])
+    return a, kw
+
+
+def _patch(cls, name, which="first", lists=(), kws=(), static=False):
+    orig = getattr(cls, name, None)
+    if orig is None or getattr(orig, "_tsm_tr", False):
+        return
+    tr = TR
+    if static:
+        def f(*args, **kw):
+            a, kw = _tr_args(tr, args, kw, which, lists, kws)
+            return orig(*a, **kw)
+        f._tsm_tr = True
+        setattr(cls, name, staticmethod(f))
+    else:
+        def f(self, *args, **kw):
+            a, kw = _tr_args(tr, args, kw, which, lists, kws)
+            return orig(self, *a, **kw)
+        f._tsm_tr = True
+        setattr(cls, name, f)
+
+
+def install_language(code):
+    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
+    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
+    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
+    -> True si la langue est active."""
+    if code != "en":
+        return False
+    try:
+        import lang_en                                    # fichier de traductions à côté du programme / dans l'exe
+    except ImportError:
+        return False
+    TR.__init__(lang_en.EXACT, lang_en.TEMPLATES)
+    global WEB_PAGE
+    WEB_PAGE = web_page_lang(WEB_PAGE, lang_en.WEB, TR)[0]
+    for lst in (NAME_WORDS, SCENE_WORDS, GROUP_WORDS):    # mots proposés pour les noms : en anglais
+        lst[:] = list(dict.fromkeys(lang_en.VOCAB.get(w, w) for w in lst))
+    W = QtWidgets
+    for cls in (W.QLabel, W.QPushButton, W.QCheckBox, W.QRadioButton, W.QToolButton, W.QGroupBox, W.QDockWidget,
+                W.QMenu, W.QListWidgetItem, W.QTableWidgetItem, QtGui.QAction, W.QCommandLinkButton, W.QToolBar):
+        _patch(cls, "__init__")
+    _patch(W.QTreeWidgetItem, "__init__", which=(), lists=(0, 1))
+    for cls, names in ((W.QAbstractButton, ("setText",)), (W.QLabel, ("setText",)), (W.QGroupBox, ("setTitle",)),
+                       (W.QWidget, ("setToolTip", "setStatusTip", "setWhatsThis", "setWindowTitle")),
+                       (W.QMenu, ("setTitle", "addAction", "addMenu", "addSection")),
+                       (W.QToolBar, ("addAction",)),
+                       (QtGui.QAction, ("setText", "setToolTip", "setStatusTip", "setIconText")),
+                       (W.QComboBox, ("setPlaceholderText",)),
+                       (W.QLineEdit, ("setPlaceholderText",)), (W.QTextEdit, ("setPlaceholderText",)),
+                       (W.QPlainTextEdit, ("setPlaceholderText",)),
+                       (W.QAbstractSpinBox, ("setSpecialValueText",)),
+                       (W.QSpinBox, ("setSuffix", "setPrefix")), (W.QDoubleSpinBox, ("setSuffix", "setPrefix")),
+                       (W.QTabWidget, ("addTab", "insertTab", "setTabText", "setTabToolTip")),
+                       (W.QTabBar, ("setTabText", "setTabToolTip")),
+                       (W.QTableWidgetItem, ("setText", "setToolTip", "setStatusTip")),
+                       (W.QListWidgetItem, ("setText", "setToolTip", "setStatusTip")),
+                       (W.QTreeWidgetItem, ("setText", "setToolTip", "setStatusTip")),
+                       (W.QListWidget, ("addItem",)), (W.QFormLayout, ("addRow", "insertRow")),
+                       (W.QStatusBar, ("showMessage",)),
+                       (W.QMessageBox, ("setText", "setInformativeText", "setDetailedText", "addButton")),
+                       (W.QProgressDialog, ("setLabelText", "setCancelButtonText"))):
+        for n in names:
+            _patch(cls, n)
+    for n, lists in (("addItem", ()), ("insertItem", ()), ("setItemText", ()), ("addItems", (0,))):
+        orig_c = getattr(W.QComboBox, n)                  # liste modifiable (noms de scène, de groupe…) : on n'y
+        if getattr(orig_c, "_tsm_tr", False):              # touche pas, son texte est relu par le programme
+            continue
+
+        def combo(self, *args, _o=orig_c, _l=lists, **kw):
+            if not self.isEditable():
+                args, kw = _tr_args(TR, args, kw, () if _l else "first", _l)
+            return _o(self, *args, **kw)
+        combo._tsm_tr = True
+        setattr(W.QComboBox, n, combo)
+    _patch(W.QListWidget, "addItems", which=(), lists=(0,))
+    for cls in (W.QTableWidget,):
+        _patch(cls, "setHorizontalHeaderLabels", which=(), lists=(0,))
+        _patch(cls, "setVerticalHeaderLabels", which=(), lists=(0,))
+    _patch(W.QTreeWidget, "setHeaderLabels", which=(), lists=(0,))
+    _patch(W.QTreeWidget, "setHeaderLabel")
+    orig_data = W.QComboBox.setItemData                   # bulle d'un choix de liste (rôle ToolTip) seulement
+    if not getattr(orig_data, "_tsm_tr", False):
+        def set_item_data(self, i, value, role=Qt.ItemDataRole.UserRole):
+            if role == Qt.ItemDataRole.ToolTipRole and isinstance(value, str):
+                value = TR(value)
+            return orig_data(self, i, value, role)
+        set_item_data._tsm_tr = True
+        W.QComboBox.setItemData = set_item_data
+    orig_html = W.QTextEdit.setHtml
+    if not getattr(orig_html, "_tsm_tr", False):
+        def set_html(self, h):
+            return orig_html(self, TR.html(h))
+        set_html._tsm_tr = True
+        W.QTextEdit.setHtml = set_html
+    _patch(W.QMessageBox, "__init__", which="all")
+    for n in ("information", "warning", "critical", "question", "about"):
+        _patch(W.QMessageBox, n, which=(1, 2), static=True)
+    for n in ("getText", "getMultiLineText", "getInt", "getDouble"):
+        _patch(W.QInputDialog, n, which=(1, 2), static=True)
+    orig_item = W.QInputDialog.getItem
+    if not getattr(orig_item, "_tsm_tr", False):
+        def get_item(parent, title, label, items, *a, **kw):
+            items = list(items)
+            shown = [TR(x) for x in items]
+            res, ok = orig_item(parent, TR(title), TR(label), shown, *a, **kw)
+            return (items[shown.index(res)] if res in shown else res), ok    # on rend le texte d'origine
+        get_item._tsm_tr = True
+        W.QInputDialog.getItem = staticmethod(get_item)
+    for n in ("getOpenFileName", "getOpenFileNames", "getSaveFileName"):
+        _patch(W.QFileDialog, n, which=(1, 3), kws=("caption", "filter"), static=True)
+    _patch(W.QFileDialog, "getExistingDirectory", which=(1,), kws=("caption",), static=True)
+    _patch(W.QColorDialog, "getColor", which=(2,), kws=("title",), static=True)
+    _patch(pg.PlotItem, "setLabel", which=(1,), kws=("text",))
+    _patch(pg.PlotItem, "setTitle")
+    _patch(pg.LabelItem, "setText")
+    return True
+
+
+def read_language():
+    """Langue choisie (config.json « lang »), sinon celle du système : français si Windows est en français,
+    anglais sinon. TSM_LANG (variable d'environnement) l'impose (tests)."""
+    env = os.environ.get("TSM_LANG")
+    if env in ("fr", "en"):
+        return env
+    for path in (CFG_PATH, CFG_BAK):
+        try:
+            v = json.loads(path.read_text(encoding="utf-8")).get("lang")
+            if v in ("fr", "en"):
+                return v
+            break
+        except Exception:  # noqa: BLE001
+            continue
+    return "fr" if QtCore.QLocale.system().language() == QtCore.QLocale.Language.French else "en"
+
+
 def install_french(app):
     """Boutons standard de Qt en français (Oui / Non, OK / Annuler, Ouvrir…). Cherche aussi dans l'exe PyInstaller."""
     dirs = [QtCore.QLibraryInfo.path(QtCore.QLibraryInfo.LibraryPath.TranslationsPath)]
@@ -13169,7 +13563,10 @@ def install_gc_main_thread(app, interval_ms=500):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     app._gc_timer = install_gc_main_thread(app)
-    install_french(app)
+    app._lang = read_language()
+    if not install_language(app._lang):
+        app._lang = "fr"
+        install_french(app)
     ico = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     for cand in (ico / "icone.png", ico / "assets" / "icone.png"):     # exe (PyInstaller) ou sources
         if cand.exists():

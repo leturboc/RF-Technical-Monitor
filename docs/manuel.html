@@ -89,11 +89,12 @@ code { overflow-wrap: anywhere; }
   <a href="#clavier">16. Raccourcis clavier</a>
   <a href="#depannage">17. Dépannage</a>
   <a href="#donnees">18. Où sont mes fichiers ?</a>
-  <a href="#limites">19. Ce qui n'est pas vérifié</a>
+  <a href="#langue">19. Langue (français / anglais)</a>
+  <a href="#limites">20. Ce qui n'est pas vérifié</a>
 </nav>
 <main>
 <h1>TinySA Monitor — manuel d'utilisation</h1>
-<p class="sub">Version 7.10 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.</p>
+<p class="sub">Version 7.11 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.</p>
 
 <div class="box"><b>En une phrase :</b> l'appli balaye en continu tes bandes avec un tinySA, compare ce qu'elle
 voit à ta liste de fréquences, et te prévient dès qu'un émetteur se tait ou qu'un signal apparaît là où il ne
@@ -139,7 +140,7 @@ segments…). En mode simple, tu n'as que l'essentiel pour le show.</div>
 <table>
   <tr><th>Zone</th><th>Ce qu'on y fait</th></tr>
   <tr><td><b>Barre du haut</b></td><td>Port, ▶ Démarrer, 🎪 Shows, 🔔 alarmes, ☰ Plus (outils, fenêtres,
-    mur, couleurs, statuts, mode expert, manuel, à propos). La version est affichée à droite.</td></tr>
+    mur, couleurs, statuts, mode expert, manuel, langue, à propos). La version est affichée à droite.</td></tr>
   <tr><td><b>Réglages</b> (à gauche)</td><td>Sections repliables : Détection (seuils, unité, alerte trop
     fort), Bandes, Mesure, 2ᵉ tinySA, Pays et plan.</td></tr>
   <tr><td><b>Spectre</b> (au milieu)</td><td>Courbe en direct, max-hold, seuils (lignes horizontales,
@@ -395,7 +396,18 @@ fréquence qui manque signale un pack mal réglé.</p>
     (modifiable dans l'appli).</li>
 </ul>
 
-<h2 id="limites">19. Ce qui n'est pas vérifié</h2>
+<h2 id="langue">19. Langue (français / anglais)</h2>
+<p><b>☰ Plus › 🌐 Langue / Language</b> : Français ou English. Le choix est enregistré tout de suite et appliqué
+au prochain démarrage (l'appli propose de redémarrer). Au tout premier lancement, l'appli suit la langue de
+Windows : français si Windows est en français, anglais sinon. En anglais, tout suit : fenêtres, bulles d'aide,
+alarmes, alertes téléphone, page web de l'équipe, rapport, manuel (<code>docs/manual_en.html</code>).</p>
+<ul>
+  <li>Les noms que tu donnes (fréquences, scènes, groupes) ne sont jamais traduits ; les noms proposés le sont.</li>
+  <li>Les fichiers écrits pendant le show (journal CSV, enregistrements, shows) gardent le même format quelle que
+    soit la langue : un show enregistré en français s'ouvre en anglais, et inversement.</li>
+</ul>
+
+<h2 id="limites">20. Ce qui n'est pas vérifié</h2>
 <div class="box warn">
 <p>L'appli est testée automatiquement (logique, interface réelle sous Windows, faux tinySA), et a tourné
 2 h sur le terrain avec un vrai tinySA Ultra. Pas encore éprouvé en conditions réelles :</p>
@@ -404,7 +416,9 @@ fréquence qui manque signale un pack mal réglé.</p>
   <li>l'envoi réel des alertes ntfy / Telegram, les sons d'alarme, un vrai double écran ;</li>
   <li>les profils d'appareil autres que Wisycom dans la vérification du plan (valeurs de départ) ;</li>
   <li>le niveau d'un vrai porteur Spectera au tinySA ;</li>
-  <li>les formats d'export de listes EazyRF / WWB / WSM (suppositions génériques).</li>
+  <li>les formats d'export de listes EazyRF / WWB / WSM (suppositions génériques) ;</li>
+  <li>l'interface anglaise : vérifiée automatiquement (chaque texte a sa traduction, aucun texte français
+    visible), pas encore relue par un anglophone sur le terrain.</li>
 </ul>
 </div>
 <p class="sub">TinySA Monitor n'est affilié ni à tinySA, ni à Sennheiser, Shure, Wisycom ou EazyRF ; leurs noms
