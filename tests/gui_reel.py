@@ -138,6 +138,23 @@ check("parcours : ① scan › ② liste › ③ plan › ④ intermod › ⑤ s
       [b.text()[:1] for b in win.step_btns.values()] == ["①", "②", "③", "④", "⑤", "⑥"],
       str([b.text() for b in win.step_btns.values()]))
 check("1er lancement : tuto proposé", "Tuto" in win.tour_btn.text() and not win.tour_done)
+# ⚡ points par balayage Auto : par défaut au 1er lancement, pas choisi d'après la largeur totale
+_tot = sum(b["stop"] - b["start"] for b in win.bands if b["enabled"])
+check("1er lancement : points ⚡ Auto, pas d'après la largeur totale", win.points_combo.currentData() == 0
+      and all(abs(b["step"] - m.auto_scan_step(_tot, win.rbw_combo.currentData())) < 1e-9 for b in win.bands)
+      and "Auto" in win.est_lbl.text(), f"{[b['step'] for b in win.bands]} · {win.est_lbl.text()}")
+win.add_band("Test FM", 87.5, 108.0, 100.0)
+_tot = sum(b["stop"] - b["start"] for b in win.bands if b["enabled"])
+check("Auto : une bande ajoutée prend le pas Auto", all(abs(b["step"] - m.auto_scan_step(_tot, win.rbw_combo.currentData())) < 1e-9
+                                                        for b in win.bands), str([b["step"] for b in win.bands]))
+with win.lock:
+    win.bands.pop()
+win._bands_changed()
+_r0 = win.rbw_combo.currentIndex()
+win.rbw_combo.setCurrentIndex(win.rbw_combo.findData(10))
+check("Auto : RBW 10 kHz imposée -> pas ≤ 10 kHz", all(b["step"] <= 10 for b in win.bands), str([b["step"] for b in win.bands]))
+win.rbw_combo.setCurrentIndex(_r0)
+
 step("🎓 tuto", win.start_tour)
 _tr = win._tour
 if _tr is not None:
@@ -586,12 +603,12 @@ else:
 
 # changer le nombre de points pendant le balayage (crash.log de Clément, 7.4.2)
 if win.is_running():
-    for _ix in (len(m.POINTS_CHOICES) - 2, 0, 4, 2):
-        win.points_combo.setCurrentIndex(_ix)
+    for _pv in (10000, 101, 0, 290):
+        win.points_combo.setCurrentIndex(win.points_combo.findData(_pv))
         step(f"points → {win.points_combo.currentText()}", win.apply_points)
         wait(700)
     check("changer les points en plein balayage : ça tourne toujours", win.is_running())
-    win.points_combo.setCurrentIndex(m.POINTS_CHOICES.index(1000))
+    win.points_combo.setCurrentIndex(win.points_combo.findData(1000))
     win.apply_points()
     wait(1500)
 

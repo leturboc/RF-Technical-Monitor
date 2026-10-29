@@ -600,5 +600,16 @@ ok("tinySA en mise à jour : message clair", "firmware" in trf(["firmware update
 ok("trop de points par commande : message clair", "Segment" in trf(["sweep points exceeds range 450"]))
 check("réponse normale : pas de refus", trf(["470000000 -9.8e+01 0.0"]), "")
 
+# --- points par balayage « Auto »
+ast_ = ns["auto_scan_step"]
+check("auto : petite zone (2 MHz) -> 10 kHz", ast_(2.0), 10)
+check("auto : bande FM (20,5 MHz) -> 10 kHz", ast_(20.5), 10)
+check("auto : UHF 470-694 (224 MHz) -> 50 kHz", ast_(224.0), 50)
+check("auto : 470-960 (490 MHz) -> 125 kHz", ast_(490.0), 125)
+check("auto : RBW 30 kHz imposée -> pas ≤ RBW", ast_(490.0, 30), 25)
+check("auto : RBW large imposée ne change rien", ast_(224.0, 300), 50)
+check("auto : très large -> plafond 1 MHz", ast_(6000.0), 1000)
+ok("auto : cycle UHF ≤ 4 500 points", 224000 / ast_(224.0) + 1 <= 4501)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

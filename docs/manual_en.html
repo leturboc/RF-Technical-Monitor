@@ -271,6 +271,12 @@ my list, where could it come from, zoom).</p>
   <li><b>Settings › Bands to sweep</b>: tick the bands, or add some (start, stop, step). Presets exist (UHF mics,
     Spectera, 1G4…).</li>
   <li>More points means finer detail but a longer cycle. The app estimates how long a cycle takes.</li>
+  <li><b>⚡ Auto</b> (Settings › Measurement › Points / sweep, the default on a new install): the app picks the
+    <b>step</b> from the <b>total width</b> of your checked bands, aiming at ~4,500 points per cycle (a few seconds):
+    10 kHz on a small area or the FM band, 50 kHz over the whole 470–694 UHF, 125 kHz over 470–960. Never finer than
+    10 kHz (a mic carrier is ~200 kHz wide: finer shows nothing more), and never wider than the RBW if you force it
+    (otherwise a narrow signal could slip between two points). The step updates by itself when you add, check or
+    uncheck a band; setting a band's points by hand turns Auto off.</li>
   <li><b>Country and plan</b>: pick your country for the right TV channels and allocations.</li>
 </ul>
 <h3>Your frequencies</h3>

@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.15.1"
+APP_VER = "7.16.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2707,7 +2707,7 @@ def safe_filename(s, default="export"):
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
-             "points", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
+             "points", "points_auto", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
@@ -4848,6 +4848,23 @@ def festival_text(site, stats, open_n, unacked, nfreq, running, run_h, devs_ok, 
     if report:
         lines.append(f"Rapport : {report}")
     return title, "\n".join(lines), ok
+
+
+# ------------------------------------------------------------------ points par balayage « Auto »
+AUTO_STEPS_KHZ = (10, 12.5, 20, 25, 40, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 1000)
+
+
+def auto_scan_step(total_mhz, rbw_khz=None, budget=4500, step_min=10.0):
+    """Pas « Auto » des bandes (kHz) : le plus fin qui garde le cycle rapide.
+    total_mhz = largeur totale balayée (toutes les bandes cochées) ; budget = points visés par cycle (≈ 10 commandes
+    de 450 points : quelques secondes sur un tinySA Ultra à jour) ; jamais plus fin que step_min (10 kHz : une porteuse
+    de micro occupe ~200 kHz, plus fin ne montre rien de plus et ralentit). RBW imposée : pas ≤ RBW, sinon un
+    signal étroit tombé entre deux points peut passer inaperçu (lisibilité avant vitesse). Arrondi à un pas « rond »."""
+    raw = max(float(step_min), float(total_mhz) * 1000.0 / max(1, int(budget)))
+    step = next((x for x in AUTO_STEPS_KHZ if x >= raw - 1e-9), AUTO_STEPS_KHZ[-1])
+    if rbw_khz and step > rbw_khz:
+        step = max([x for x in AUTO_STEPS_KHZ if x <= rbw_khz] or [AUTO_STEPS_KHZ[0]])
+    return step
 
 
 # ===== PURE-END
@@ -11827,6 +11844,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.labels = []
         self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
+        self._auto_changed = False             # ⚡ points Auto : un pas a-t-il changé au dernier calcul ?
         self.festival = festival_cfg_norm(None)  # 🌙 mode festival
         self._fest_next = 0.0
         self._log_n = 0                        # événements notés depuis le lancement (bilan : depuis le précédent)
@@ -11952,7 +11970,8 @@ class MainWindow(QtWidgets.QMainWindow):
         att_combo="Atténuateur d'entrée : à monter si des signaux forts saturent (produits parasites).",
         offset_spin="Correction ajoutée à toutes les mesures (câble, antenne, splitter…).",
         seg_combo="Taille des morceaux envoyés au tinySA à chaque commande. « Auto » selon le modèle.",
-        points_combo="Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.",
+        points_combo="Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.\n"
+                     "⚡ Auto : le meilleur compromis vitesse / lisibilité d'après la largeur totale balayée.",
         zpts_combo="Points du zoom live. « Auto » en met moins quand on zoome (un point tous les ~10 kHz,\n"
                    "290 au plus) : assez fin pour une porteuse de micro, et le balayage reste rapide.",
         country_combo="Pays : canaux TV et attributions affichés sous le spectre, canaux proposés pour les blocs\n"
@@ -12414,9 +12433,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_steps_bar()
 
         # --- panneau de gauche : réglages
-        self.points_combo = self._combo([(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES], 1000)
+        self.points_combo = self._combo([("⚡ Auto (rapide et lisible)", 0)]
+                                        + [(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES], 1000)
         self.points_combo.setToolTip("Nombre de points par balayage et par bande (appliqué à toutes les bandes).\n"
-                                     "Plus il y en a, plus c'est précis… et plus c'est long.")
+                                     "Plus il y en a, plus c'est précis… et plus c'est long.\n"
+                                     "⚡ Auto : l'appli choisit le pas d'après la largeur totale balayée (10 kHz sur une\n"
+                                     "petite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.")
         self.points_combo.activated.connect(self.apply_points)
         self.rbw_combo = self._combo([("Auto", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST], 100)
         self.zrbw_combo = self._combo([("Auto (selon zoom)", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])
@@ -13095,6 +13117,10 @@ class MainWindow(QtWidgets.QMainWindow):
         c["offset"] = self.offset_spin.value()
         c["seg"] = self.seg_combo.currentData()
         c["points"] = int(self.points_combo.currentData() or 1000)
+        c["points_auto"] = self.points_combo.currentData() == 0
+        if c["points_auto"] and getattr(self, "bands", None) and self._auto_steps() is not None and self._auto_changed:
+            self.rebuild_band_table()
+            self.update_estimate()
         self.att_combo.setEnabled(c["lna"] is not True)
         self._bump()
         self._refresh_focus()
@@ -13110,6 +13136,8 @@ class MainWindow(QtWidgets.QMainWindow):
         nseg = sum(len(segment_plan(self._npts(b), seg)) for b in act)
         pre = f"🎯 Scan ciblé ({len(act)} zone(s)) · " if self._focus_bands else ""
         txt = pre + f"{tot:,} points au total · {nseg} commande(s) de ≤ {seg} pts par cycle".replace(",", " ")
+        if self.points_combo.currentData() == 0 and act:
+            txt += f" · ⚡ Auto : pas de {act[0]['step']:g} kHz"
         if nseg > 40:
             txt += "\n⚠ Cycle long : réduis les points ou la largeur des bandes."
         self.est_lbl.setText(txt)
@@ -13290,6 +13318,9 @@ class MainWindow(QtWidgets.QMainWindow):
                            (self.occ_combo, "occ_minutes"), (self.country_combo, "country"),
                            (self.baud_combo, "baud")]:
             setc(combo, key)
+        if data.get("points_auto", "points" not in data):   # nouvelle installation : ⚡ Auto
+            self.points_combo.setCurrentIndex(0)
+            self._cfg["points_auto"] = True
         self.scan_follow = bool(data.get("scan_follow", False))
         if "festival" in data:
             self.festival = festival_cfg_norm(data.get("festival"))
@@ -13458,7 +13489,7 @@ class MainWindow(QtWidgets.QMainWindow):
             theme=self.theme,
             scan_follow=self.scan_follow,
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
-            points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
+            points=c["points"], points_auto=bool(c.get("points_auto")), rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
             baud=self.baud_combo.currentData(),
             persist=self.persist_combo.currentData(),
@@ -14223,6 +14254,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._next_id += 1
 
     def _bands_changed(self):
+        self._auto_steps()                         # ⚡ Auto : le pas suit la largeur totale des bandes
         self._bump()
         live = {b["id"] for b in self.scan_bands() if b["enabled"]} | {ZOOM_ID} | set(CALIB_IDS)
         for d in (self.latest, self.maxhold, self.partial_data, self.history):
@@ -14252,7 +14284,35 @@ class MainWindow(QtWidgets.QMainWindow):
             d.pop(b["id"], None)
         self._bands_changed()
 
+    def _auto_steps(self):
+        """⚡ Auto : un même pas pour toutes les bandes, d'après leur largeur totale (et la RBW si elle est imposée).
+        -> pas en kHz (None si pas en Auto). Les données des bandes dont le pas change sont oubliées."""
+        self._auto_changed = False
+        if self.points_combo.currentData() != 0:
+            return None
+        act = [b for b in self.bands if b["enabled"]] or self.bands
+        total = sum(max(0.0, b["stop"] - b["start"]) for b in act)
+        step = auto_scan_step(total, self.rbw_combo.currentData())
+        with self.lock:
+            for b in self.bands:
+                if abs(b["step"] - step) > 1e-9:
+                    b["step"] = float(step)
+                    self._auto_changed = True
+                    for d in (self.latest, self.maxhold, self.partial_data):
+                        d.pop(b["id"], None)
+        if self._auto_changed:
+            self._bump()
+        return step
+
     def apply_points(self, _=None):
+        if self.points_combo.currentData() == 0:
+            step = self._auto_steps()
+            self._sync_cfg()
+            self.rebuild_band_table()
+            self.update_estimate()
+            tot = sum(self._npts(b) for b in self.bands if b["enabled"])
+            self.set_status(f"⚡ Points Auto : pas de {step:g} kHz sur toutes les bandes ({tot} points par cycle).")
+            return
         pts = int(self.points_combo.currentData() or 1000)
         with self.lock:
             for b in self.bands:
@@ -14294,6 +14354,12 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if col == 3:
             step = (stop - start) * 1000.0 / (int(pts) - 1)
+        if col in (3, 4) and self.points_combo.currentData() == 0:
+            self.points_combo.blockSignals(True)               # réglé à la main : plus d'Auto
+            self.points_combo.setCurrentIndex(self.points_combo.findData(1000))
+            self.points_combo.blockSignals(False)
+            self._cfg["points_auto"] = False
+            self.set_status("Points réglés à la main : ⚡ Auto désactivé.")
         b = self.bands[r]
         with self.lock:
             b.update(name=name, start=start, stop=stop, step=round(step, 6), enabled=enabled)
