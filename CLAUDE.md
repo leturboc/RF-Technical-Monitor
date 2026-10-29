@@ -36,6 +36,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (base {APP_VER})"`, juste avant le bloc Qt « V8 : SDR ») — le workflow lit la 1re ligne `APP_VER`. L'en-tête de ce
   fichier (« Version courante ») est le même dans les deux branches ; les notes V8 vont dans « Reste à faire ».
   Le code V8 est surtout AJOUTÉ (nouvelles fonctions / classes en fin de sections) : garder ce style.
+  Vu en 7.10.0 : V7 et V8 avaient chacune inséré une bulle juste après `TIPS_MENU = {` → conflit (le robot l'a
+  signalé, fusion à la main). Règle : la V8 n'insère RIEN aux mêmes points d'ancrage que la V7 (début d'un dict,
+  d'une liste de menu…) ; ses bulles sont dans `MainWindow.TIPS_MENU.update({...})` juste avant `def main()`.
 
 ## Organisation du fichier
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
