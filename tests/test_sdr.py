@@ -151,9 +151,22 @@ r15 = 20 * np.log10(np.sqrt(np.mean(ns["expand2"](hi_, st3, ratio=1.5)[24000:] *
 ok("expanseur 1,5:1 (ENR 1.2) : 12 dB → ~18 dB", 16 < r15 < 20, f"{r15:.1f} dB")
 CP = ns["COMPANDERS"]
 ok("companders : modes Wisycom FLAT, ENC, ENR, ENS, ENC / ENR 1.2, SEN / EVO, LEX", {"none", "wisy_enc", "wisy_enr",
-   "wisy_ens", "wisy_enc12", "wisy_enr12", "hdx", "lex"} <= set(CP) and CP["none"][1] == 1.0
-   and CP["none"][0].startswith("FLAT"))
+   "wisy_ens", "wisy_enc12", "wisy_enr12", "hdx", "lex"} <= set(CP) and CP["none"]["ratio"] == 1.0
+   and CP["none"]["name"].startswith("FLAT"))
+ok("FLAT : ni compander ni désaccentuation ; NONE-d75 : 75 µs", CD(fs, 600e3, "wfm", 50.0, None, "none").de is None
+   and CD(fs, 600e3, "wfm", 50.0, None, "none_d75").de[0] < CD(fs, 600e3, "wfm", 50.0, None, "none_d50").de[0])
+ok("ENC : désaccentuation réduite (pré-accentuation réduite)", CD(fs, 600e3, "wfm", 50.0, None, "wisy_enc").de[0]
+   > CD(fs, 600e3, "wfm", 50.0, None, "wisy_enr").de[0])
+class S5: env = 0.05
+class S6: env = 0.05
+q_ = lo_ * 0.05                                     # signal très faible (−26 dB de plus) : sous le genou
+r_enr = np.sqrt(np.mean(ns["expand2"](q_, S5(), knee=-30.0, low=1.0)[24000:] ** 2))
+r_std = np.sqrt(np.mean(ns["expand2"](q_, S6())[24000:] ** 2))
+ok("ENR : sous le genou, le souffle est fermé plus fort", r_enr < r_std / 3, f"{r_enr:.2e} / {r_std:.2e}")
 ok("préréglages : chaque compander existe", all(d["comp"] in CP for _k, _n, d, _w in ns["DEMOD_PRESETS"]))
+d_enr = CD(fs, 600e3, "wfm", 50.0, None, "wisy_enr")
+ok("ENR : marche en blocs (détecteur sans aigus)", len(np.concatenate([d_enr.process(iq[i:i + 96000])[0]
+                                                                        for i in range(0, len(iq), 96000)])) > 11000)
 iqh = ns["iq_from_bytes"]("hackrf", bytes([127, 129, 0, 0]))
 ok("IQ HackRF (int8)", abs(iqh[0] - (127 / 128 - 127j / 128)) < 1e-6 and len(iqh) == 2, str(iqh))
 iqr = ns["iq_from_bytes"]("rtlsdr", bytes([255, 0]))
@@ -247,6 +260,55 @@ try:
 except ValueError:
     ok("SigMF : format inconnu refusé", True)
 ok("taille lisible", ns["rec_size_text"](1.44e9) == "1,4 Go" and ns["rec_size_text"](3.5e8) == "350 Mo")
+
+# ---- tous les modes courants : BLU (USB / LSB), CW, AM, FM stéréo
+fs3 = 2400000
+t3 = np.arange(int(fs3 * 0.3)) / fs3
+noise3 = 0.003 * (rng.normal(size=len(t3)) + 1j * rng.normal(size=len(t3)))
+def rms_(a):
+    return float(np.sqrt(np.mean(np.asarray(a)[len(a) // 3:] ** 2)))
+usb_sig = (0.3 * np.exp(2j * np.pi * (300e3 + 1000) * t3) + noise3).astype(np.complex64)   # USB : tonalité 1 kHz
+au = CD(fs3, 300e3, "usb").process(usb_sig)[0]
+al = CD(fs3, 300e3, "lsb").process(usb_sig)[0]
+ok("BLU haute : tonalité 1 kHz retrouvée", abs(tone_of(au)[0] - 1000) < 20 and tone_of(au)[1] > 15, str(tone_of(au)))
+ok("BLU basse sur un signal USB : rejeté (≥ 20 dB plus bas)", rms_(al) < rms_(au) / 10, f"{rms_(al):.4f} / {rms_(au):.4f}")
+lsb_sig = (0.3 * np.exp(2j * np.pi * (300e3 - 1500) * t3) + noise3).astype(np.complex64)
+al2 = CD(fs3, 300e3, "lsb").process(lsb_sig)[0]
+ok("BLU basse : tonalité 1,5 kHz retrouvée", abs(tone_of(al2)[0] - 1500) < 20, str(tone_of(al2)))
+cw_sig = (0.3 * np.exp(2j * np.pi * 300e3 * t3) + noise3).astype(np.complex64)
+ac = CD(fs3, 300e3, "cw").process(cw_sig)[0]
+ok("CW : porteuse → bip à 700 Hz", abs(tone_of(ac)[0] - 700) < 20, str(tone_of(ac)))
+am_sig = (0.3 * (1 + 0.6 * np.sin(2 * np.pi * 800 * t3)) * np.exp(2j * np.pi * 300e3 * t3) + noise3).astype(np.complex64)
+aa = CD(fs3, 300e3, "am").process(am_sig)[0]
+ok("AM : tonalité 800 Hz, niveau réglé par l'AGC", abs(tone_of(aa)[0] - 800) < 20 and 0.05 < rms_(aa) < 0.5,
+   f"{tone_of(aa)} {rms_(aa):.3f}")
+# FM stéréo : G = 1 kHz, D = 3 kHz, pilote 19 kHz, multiplex standard
+Lc, Rc = np.sin(2 * np.pi * 1000 * t3), np.sin(2 * np.pi * 3000 * t3)
+mpx = 0.45 * (Lc + Rc) / 2 + 0.1 * np.sin(2 * np.pi * 19000 * t3) + 0.45 * (Lc - Rc) / 2 * np.sin(2 * np.pi * 38000 * t3)
+phs = 2 * np.pi * 75000 * np.cumsum(mpx) / fs3
+st_sig = (0.3 * np.exp(1j * (2 * np.pi * 300e3 * t3 + phs)) + noise3).astype(np.complex64)
+ast = CD(fs3, 300e3, "wfm_st", deemph_us=0).process(st_sig)[0]
+ok("FM stéréo : sortie 2 voies", ast.ndim == 2 and ast.shape[1] == 2, str(ast.shape))
+def at(a, f, rate=48000):
+    a = a[len(a) // 3:]
+    sp = np.abs(np.fft.rfft(a * np.hanning(len(a))))
+    fr = np.fft.rfftfreq(len(a), 1 / rate)
+    return sp[int(np.argmin(np.abs(fr - f)))]
+sepL = 20 * np.log10(at(ast[:, 0], 1000) / at(ast[:, 0], 3000))
+sepR = 20 * np.log10(at(ast[:, 1], 3000) / at(ast[:, 1], 1000))
+ok("FM stéréo : gauche = 1 kHz, droite = 3 kHz (séparation ≥ 20 dB)", sepL > 20 and sepR > 20, f"{sepL:.1f} / {sepR:.1f} dB")
+mono_sig = (0.3 * np.exp(1j * (2 * np.pi * 300e3 * t3 + 2 * np.pi * 75000 * np.cumsum(0.45 * Lc) / fs3)) + noise3)
+amo = CD(fs3, 300e3, "wfm_st", deemph_us=0).process(mono_sig.astype(np.complex64))[0]
+ok("FM stéréo sans pilote : mono sur les 2 voies", np.allclose(amo[:, 0], amo[:, 1]))
+ok("audio : mono → stéréo entrelacé", len(ns["audio_int16"](np.zeros(10))) == 40
+   and len(ns["audio_int16"](np.zeros((10, 2)))) == 40)
+class S2: env = 0.05
+ea = ns["expand2"](hi_, S2(), detector="avg")[24000:]
+class S3: env = 0.05
+eb = ns["expand2"](lo_, S3(), detector="avg")[24000:]
+ok("détecteur moyen (SA572) : aussi 2:1", 22 < 20 * np.log10(np.sqrt(np.mean(ea ** 2)) / np.sqrt(np.mean(eb ** 2))) < 26)
+ok("tous les modes ont un nom", all(len(v["name"]) > 5 for v in ns["LISTEN_MODES"].values())
+   and {"wfm", "wfm_st", "nfm", "am", "usb", "lsb", "cw"} <= set(ns["LISTEN_MODES"]))
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

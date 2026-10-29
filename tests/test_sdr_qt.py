@@ -131,7 +131,9 @@ lw.requestInterruption()
 lw.wait(8000)
 app.processEvents()
 a1 = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32000
+a1 = a1[0::2]                     # voie gauche (sortie stéréo)
 a2 = np.frombuffer(pcm2, dtype="<i2").astype(np.float32) / 32000
+a2 = a2[0::2]                     # voie gauche (sortie stéréo)
 check("écoute : audio reçu (48 kHz, 16 bits)", len(a1) > 30000, str(len(a1)))
 check("écoute : canal 1 = micro 606,000 (1 kHz)", abs(tone_of(a1[4800:]) - 1000) < 30, str(tone_of(a1[4800:])))
 check("écoute : on bascule sur le canal 2 = 607,500 (3 kHz)", abs(tone_of(a2[4800:]) - 3000) < 30,
@@ -199,6 +201,7 @@ check("temps réel : signal intermittent noté au journal (fréquence, durée �
       and all(0.15 <= e["t1"] - e["t0"] <= 0.5 for e in b), str(evs[:3]))
 check("temps réel : le micro fixe n'est pas un « événement »", not [e for e in evs if abs(e["f"] - 606.0) < 0.05])
 a3 = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32000
+a3 = a3[0::2]                     # voie gauche (sortie stéréo)
 check("temps réel : clic = écoute (1 kHz du micro)", len(a3) > 20000 and abs(tone_of(a3[4800:]) - 1000) < 30,
       str(len(a3)))
 check("temps réel : charge mesurée", frames and 0 < fr["load"] < 5, str(fr.get("load")))
@@ -249,6 +252,7 @@ dt_pl = time.time() - t_pl
 app.processEvents()
 pcm = b"".join(list(pw.audio))
 a4 = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32000
+a4 = a4[0::2]                     # voie gauche (sortie stéréo)
 check("relecture : au rythme réel (≈ durée de l'enregistrement)", 2.5 < dt_pl < 8, f"{dt_pl:.1f} s")
 check("relecture : position et durée", pf and pf[-1]["dur"] > 3 and pf[-1]["pos"] > 3, str(pf[-1:] and (pf[-1]['pos'], pf[-1]['dur'])))
 check("relecture : heure d'origine (pas l'heure actuelle)", pf and abs(pf[0]["t"] - info["t0"]) < 1.0)

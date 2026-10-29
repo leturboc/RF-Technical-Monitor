@@ -313,6 +313,20 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `<journaux>/enregistrements_iq/<date>/iq_HHMMSS_<MHz>.sigmf-data/-meta`, méta réécrite toutes les 10 s, arrêt
   sous 2 Go libres ou à `sdr_cfg["rec_max_gb"]`). `RealtimeDialog` : ⏺ / 📂 / 📁, barre de lecture (pause,
   curseur, vitesse, « Revenir au direct »), pas d'enregistrement d'une relecture.
+- **V8 étape 5 (fait) : tous les modes courants + companders d'après le manuel Wisycom** : `LISTEN_MODES` = wfm,
+  wfm_st (stéréo : pilote 19 kHz filtré, cos θ par dérivée centrée, sous-porteuse sin 2θ ; ALIGNEMENT : `FirDecim`
+  avance sa sortie de la moitié du filtre, donc G+D et G−D sont pris sur le composite sans ses 63 premiers
+  échantillons — test de séparation ≥ 20 dB), nfm, am (AGC), usb / lsb (canal à 48 kHz, décalage ±cut/2, passe-bas
+  complexe 255 points, retour, partie réelle, AGC), cw (bip `BFO` 700 Hz). Sortie son STÉRÉO partout (`to_stereo`,
+  `audio_int16` entrelacé, `AudioOut` 2 voies ; tests : voie gauche = `[0::2]`). `COMPANDERS` = dicts (`_cp` :
+  ratio, attack, release, det avg|rms, deemph forcée, knee + low = expansion plus forte sous le genou, hf =
+  détecteur sans les aigus) : FLAT (ni compander ni désaccentuation, « test purposes only »), NONE-d50, NONE-d75,
+  ENC (désaccentuation 25 µs, voix), ENR (genou −30 dB, détecteur < 8 kHz, bruit), ENS (live), ENC / ENR 1.2,
+  SA572, RMS, HDX, Shure, LEX. Sources : manuel Wisycom (tableau NONE-d50 / d75 / ENR-WISY / ENC-WISY / FLAT envoyé
+  par Clément), fiches MCR54, docs lues par Clément ; courbes réelles inconnues → valeurs AU JUGÉ.
+  `ChannelDemod(compander=None)` par défaut (sinon « none » = FLAT couperait la désaccentuation).
+  **HackRF Pro** (choix de Clément) : d'après Great Scott Gadgets, 8 bits jusqu'à 20 MS/s comme le One, mode 16 bits
+  (ENOB 9–11) à débit plus bas ; outils `hackrf_*` a priori identiques — à vérifier à réception.
 - **V8 SDR (branche `v8-sdr`), idées de Clément** : priorité WiNRADiO et HackRF ; **démodulation** d'une ou plusieurs
   fréquences suivies (écouter un canal : FM large / étroite, AM) et **companders des marques** pour écouter un micro
   analogique proprement. À savoir : les companders (Sennheiser HDX, Shure, Wisycom…) sont propriétaires et non

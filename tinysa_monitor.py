@@ -3479,27 +3479,51 @@ def sdr_cmd(kind, exe, ranges, bin_hz, lna=24, vga=20, amp=False, serial=""):
 LISTEN_RATE = 48000
 LISTEN_IF = 240000                       # 1er étage : canal décimé à 240 kHz (FM large d'un micro HF : ±50 kHz)
 LISTEN_MODES = {
-    "wfm": dict(name="FM large (micros HF, ears)", cut=90000.0, dev=50000.0),
-    "nfm": dict(name="FM étroite (talkies)", cut=8000.0, dev=3000.0),
-    "am": dict(name="AM (aviation)", cut=6000.0, dev=None),
+    "wfm": dict(name="FM large (micros HF, ears en mono)", cut=90000.0, dev=50000.0),
+    "wfm_st": dict(name="FM stéréo (radio FM, ears stéréo)", cut=110000.0, dev=75000.0),
+    "nfm": dict(name="FM étroite (talkies, guide)", cut=8000.0, dev=3000.0),
+    "am": dict(name="AM (aviation, ondes courtes)", cut=6000.0, dev=None),
+    "usb": dict(name="BLU haute (USB, radioamateurs)", cut=3000.0, dev=None),
+    "lsb": dict(name="BLU basse (LSB, radioamateurs < 10 MHz)", cut=3000.0, dev=None),
+    "cw": dict(name="CW (morse, porteuse pure : bip à 700 Hz)", cut=500.0, dev=None),
 }
-# Companders : un émetteur HF analogique compresse son audio, le récepteur l'étend. Les courbes des marques ne
-# sont pas publiées : chaque mode = expanseur (taux, montée, descente) APPROCHÉ, nommé comme les modes des
-# récepteurs Wisycom (FLAT, ENC, ENR, ENS, ENC / ENR 1.2, SEN / EVO, LEX). Les différences entre ENC / ENR / ENS
-# ne sont pas documentées publiquement : réglages au jugé (temps de réponse), NON vérifiés — à régler à l'oreille.
+# Companders : un émetteur HF analogique compresse son audio, le récepteur l'étend. Les courbes exactes des marques
+# ne sont pas publiées : chaque mode est un expanseur APPROCHÉ, réglé d'après ce qu'on en sait (fiches Wisycom
+# MCR54 + docs lues par Clément) :
+#   ENC (Extended-NC) = voix / fidélité, pré-accentuation RÉDUITE, transitoires rapides ;
+#   ENR (Extended-NR) = réduction de bruit max : expansion plus forte quand le signal est faible, détecteur qui
+#       ignore les aigus extrêmes (pas de pompage sur des clés, des couverts) ;
+#   ENS (Sound) = le plus récent, compromis voix / musique (live, ears), tient aussi en bande étroite ;
+#   1.2 = dynamique réduite (entrées caméra) ; le MCR54 émule aussi SA572 / SA575 / RMS.
+#   Manuel Wisycom (capture de Clément) : NONE-d50 / NONE-d75 = pas de compander, désaccentuation 50 / 75 µs ;
+#   ENR-WISY = « noise optimized » ; ENC-WISY = « voice and high-fidelity optimized » ; FLAT = aucun compander,
+#   « test purposes only » (donc ici sans désaccentuation non plus).
+# Clés : ratio, attack / release (lissage par bloc de 5 ms), det « avg » (redressement moyen, SA572) ou « rms »,
+# deemph (µs, None = celle du préréglage), knee (dB sous la référence : en dessous, expansion + low), hf (Hz : le
+# détecteur ne voit pas au-delà). Valeurs AU JUGÉ, non vérifiées sur un vrai récepteur : à régler à l'oreille.
+def _cp(name, ratio=2.0, attack=0.3, release=0.05, det="rms", deemph=None, knee=None, low=0.0, hf=None):
+    return dict(name=name, ratio=ratio, attack=attack, release=release, det=det, deemph=deemph, knee=knee, low=low,
+                hf=hf)
+
+
 COMPANDERS = {
-    "none": ("FLAT : pas de compander (son brut)", 1.0, 0.3, 0.05),
-    "x2": ("Expanseur 2:1 générique", 2.0, 0.3, 0.05),
-    "wisy_enc": ("≈ Wisycom ENC", 2.0, 0.4, 0.08),
-    "wisy_enr": ("≈ Wisycom ENR", 2.0, 0.4, 0.05),
-    "wisy_ens": ("≈ Wisycom ENS", 2.0, 0.5, 0.12),
-    "wisy_enc12": ("≈ Wisycom ENC 1.2 (dynamique réduite)", 1.5, 0.4, 0.08),
-    "wisy_enr12": ("≈ Wisycom ENR 1.2 (dynamique réduite)", 1.5, 0.4, 0.05),
-    "hdx": ("≈ Sennheiser HDX (mode SEN / EVO)", 2.0, 0.35, 0.06),
-    "shure": ("≈ Shure analogique", 2.0, 0.3, 0.04),
-    "lex": ("≈ Lectrosonics (mode SR / LEX)", 2.0, 0.25, 0.03),
+    "none": _cp("FLAT : ni compander ni désaccentuation (test)", ratio=1.0, deemph=0.0),
+    "none_d50": _cp("NONE-d50 : pas de compander, désaccentuation 50 µs", ratio=1.0, deemph=50.0),
+    "none_d75": _cp("NONE-d75 : pas de compander, désaccentuation 75 µs", ratio=1.0, deemph=75.0),
+    "x2": _cp("Expanseur 2:1 générique"),
+    "sa572": _cp("Circuit SA572 / NE570 (2:1, redressement moyen)", attack=0.25, release=0.04, det="avg"),
+    "rms": _cp("Compander RMS 2:1 (type dbx)", attack=0.35, release=0.06),
+    "wisy_enc": _cp("≈ Wisycom ENC (voix, pré-accentuation réduite)", attack=0.5, release=0.12, deemph=25.0),
+    "wisy_enr": _cp("≈ Wisycom ENR (réduction de bruit)", attack=0.35, release=0.05, knee=-30.0, low=1.0, hf=8000.0),
+    "wisy_ens": _cp("≈ Wisycom ENS (son : voix et musique, live)", attack=0.4, release=0.08),
+    "wisy_enc12": _cp("≈ Wisycom ENC 1.2 (dynamique réduite)", ratio=1.5, attack=0.5, release=0.12, deemph=25.0),
+    "wisy_enr12": _cp("≈ Wisycom ENR 1.2 (dynamique réduite)", ratio=1.5, attack=0.35, release=0.05, knee=-30.0,
+                      low=0.5, hf=8000.0),
+    "hdx": _cp("≈ Sennheiser HDX (mode SEN / EVO)", attack=0.35, release=0.06),
+    "shure": _cp("≈ Shure analogique", attack=0.3, release=0.04, det="avg"),
+    "lex": _cp("≈ Lectrosonics (mode SR / LEX)", attack=0.25, release=0.03),
 }
-LISTEN_COMPANDERS = {k: v[0] for k, v in COMPANDERS.items()}
+LISTEN_COMPANDERS = {k: v["name"] for k, v in COMPANDERS.items()}
 # Préréglages de démodulation par type d'appareil : mode, déviation crête (Hz, = 100 % du volume), largeur du canal
 # (filtre, demi-largeur Hz), bande audio (Hz), désaccentuation (µs), compander. Valeurs de départ d'après les
 # fiches techniques publiques / l'usage courant, NON vérifiées sur les vrais appareils (à ajuster à l'oreille).
@@ -3511,16 +3535,17 @@ DEMOD_PRESETS = [
      dict(mode="wfm", dev=45000, cut=85000, audio=15000, deemph=50.0, comp="shure"),
      "FM ±45 kHz environ, compander Shure (approché)."),
     ("wisy_ana", "Micro Wisycom analogique (MTP, MRK)",
-     dict(mode="wfm", dev=50000, cut=90000, audio=18000, deemph=50.0, comp="wisy_enc"),
-     "FM ±50 kHz environ, compander Wisycom ENC (approché ; ENR / ENS / 1.2 / FLAT dans « Compander », comme le "
-     "réglage de l'émetteur)."),
+     dict(mode="wfm", dev=50000, cut=90000, audio=18000, deemph=50.0, comp="wisy_enr"),
+     "FM ±50 kHz environ, compander Wisycom ENR (approché ; ENC / ENS / 1.2 / FLAT dans « Compander » : mets le "
+     "même mode que l'émetteur)."),
     ("lectro", "Micro Lectrosonics analogique / compatible",
      dict(mode="wfm", dev=50000, cut=90000, audio=18000, deemph=50.0, comp="lex"),
      "FM large, compander type Lectrosonics (approché, mode SR / LEX des récepteurs Wisycom). Le « Digital Hybrid » "
      "Lectrosonics natif n'est pas un FM analogique classique : son rendu ne sera pas bon."),
-    ("iem", "Ear monitor analogique (PSM, EW IEM) : mono",
-     dict(mode="wfm", dev=48000, cut=100000, audio=15000, deemph=50.0, comp="x2"),
-     "Les ears stéréo sont en multiplex (comme la radio FM) : on entend la somme G + D (mono)."),
+    ("iem", "Ear monitor analogique stéréo (PSM, EW IEM)",
+     dict(mode="wfm_st", dev=48000, cut=100000, audio=15000, deemph=50.0, comp="x2"),
+     "Multiplex stéréo à porteuse pilote 19 kHz (comme la radio FM) : gauche / droite séparés si le pilote est là, "
+     "sinon mono."),
     ("guide", "Guide / talkback FM étroit",
      dict(mode="nfm", dev=5000, cut=12000, audio=4000, deemph=0.0, comp="none"),
      "FM étroite ±5 kHz (systèmes de guide, retours d'ordres analogiques)."),
@@ -3528,11 +3553,17 @@ DEMOD_PRESETS = [
      dict(mode="nfm", dev=2500, cut=6250, audio=3500, deemph=0.0, comp="none"),
      "Canaux 12,5 kHz, FM ±2,5 kHz."),
     ("radio_fm", "Radio FM (bande 87,5–108)",
-     dict(mode="wfm", dev=75000, cut=110000, audio=15000, deemph=50.0, comp="none"),
-     "FM ±75 kHz, désaccentuation 50 µs (Europe) ; mono."),
+     dict(mode="wfm_st", dev=75000, cut=110000, audio=15000, deemph=50.0, comp="none_d50"),
+     "FM ±75 kHz stéréo (pilote 19 kHz), désaccentuation 50 µs (Europe)."),
     ("aviation", "Aviation (AM 118–137 MHz)",
      dict(mode="am", dev=None, cut=5000, audio=3500, deemph=0.0, comp="none"),
      "AM, canaux 8,33 / 25 kHz."),
+    ("ham_usb", "Radioamateur phonie BLU haute (USB)",
+     dict(mode="usb", dev=None, cut=3000, audio=3000, deemph=0.0, comp="none"),
+     "USB au-dessus de 10 MHz (VHF / UHF comprises) ; LSB en dessous : choisis « BLU basse » dans Mode."),
+    ("cw", "Morse (CW)",
+     dict(mode="cw", dev=None, cut=500, audio=1500, deemph=0.0, comp="none"),
+     "Porteuse pure rendue en bip de 700 Hz, filtre étroit 500 Hz."),
 ]
 DEMOD_CUSTOM = "✏ Réglages à la main"
 
@@ -3600,10 +3631,13 @@ class FirDecim:
 
 
 class ChannelDemod:
-    """Un canal : décalage f_off (Hz) dans la bande IQ (fs), mode wfm / nfm / am, désaccentuation (µs, 0 = non),
-    squelch (dBFS, None = ouvert), expanseur 2:1. process(iq) -> (audio float32 à 48 kHz, niveau RF dBFS)."""
+    """Un canal : décalage f_off (Hz) dans la bande IQ (fs), mode (LISTEN_MODES : wfm, wfm_st, nfm, am, usb, lsb,
+    cw), déviation / largeur / bande audio (préréglage), désaccentuation (µs, 0 = non), squelch (dBFS, None =
+    ouvert), compander (COMPANDERS). process(iq) -> (audio float32 à 48 kHz : (n,) mono ou (n, 2) stéréo, niveau
+    RF dBFS). Chaîne : oscillateur → FIR + décimation à 240 kHz → démodulation → 48 kHz."""
+    BFO = 700.0                          # CW : hauteur du bip (Hz)
 
-    def __init__(self, fs, f_off, mode="wfm", deemph_us=50.0, squelch=None, compander="none", dev=None, cut=None,
+    def __init__(self, fs, f_off, mode="wfm", deemph_us=50.0, squelch=None, compander=None, dev=None, cut=None,
                  audio=None):
         self.fs, self.f_off, self.mode = float(fs), float(f_off), mode
         self.D1 = max(1, int(round(fs / LISTEN_IF)))
@@ -3611,76 +3645,185 @@ class ChannelDemod:
         self.D2 = max(1, int(round(self.fs1 / LISTEN_RATE)))
         md = LISTEN_MODES[mode]
         cut = float(cut or md["cut"])
-        audio = float(audio or (15000.0 if mode == "wfm" else 4000.0))
-        self.f1 = FirDecim(lowpass_taps(min(cut, 0.45 * self.fs1), fs, 129), self.D1)
+        fm = mode in ("wfm", "wfm_st", "nfm")
+        audio = float(audio or (15000.0 if mode in ("wfm", "wfm_st") else 4000.0))
+        # 1er étage : assez large pour le canal (BLU / CW : on filtre finement après, à 48 kHz)
+        c1 = cut if fm or mode == "am" else 6000.0
+        self.f1 = FirDecim(lowpass_taps(min(c1, 0.45 * self.fs1), fs, 129), self.D1)
         self.f2 = FirDecim(lowpass_taps(min(audio, 0.45 * LISTEN_RATE), self.fs1, 63), self.D2)
         self.dev = float(dev or md["dev"] or 1.0)
         self.ph, self.prev = 0.0, np.complex64(1.0)
         self.squelch, self.compander = squelch, compander
         self.de = None
-        if deemph_us and mode != "am":
+        cpd = COMPANDERS.get(compander, {}).get("deemph")
+        if cpd is not None:
+            deemph_us = cpd                  # FLAT : aucune ; NONE-d50 / d75 ; ENC : pré-accentuation réduite
+        if deemph_us and fm:
             a = math.exp(-1.0 / (LISTEN_RATE * deemph_us * 1e-6))
             self.de = ((1.0 - a) * a ** np.arange(64)).astype(np.float32)   # IIR 1 pôle tronqué (FIR)
-        self.de_tail = np.zeros(63, dtype=np.float32)
-        self.env, self.dc = 0.05, 0.0
+        self.de_tail = {0: np.zeros(63, dtype=np.float32), 1: np.zeros(63, dtype=np.float32)}
+        self.env, self.dc, self.agc = 0.05, 0.0, 0.05
         self.level = -120.0
+        if mode == "wfm_st":             # stéréo : pilote 19 kHz, sous-porteuse 38 kHz (G − D)
+            k = np.arange(129) - 64
+            self.fp = FirDecim(2.0 * lowpass_taps(800.0, self.fs1, 129) * np.cos(2 * np.pi * 19000.0 * k / self.fs1), 1)
+            self.f3 = FirDecim(lowpass_taps(min(audio, 0.45 * LISTEN_RATE), self.fs1, 63), self.D2)
+            # FirDecim n'ajoute pas de retard : sa sortie k correspond à l'entrée k + 64 (moitié du filtre) ; la
+            # dérivée centrée en retire 1 → la sous-porteuse k correspond au composite k + 63 : on aligne G+D et
+            # G−D sur ce même flux (composite sans ses 63 premiers échantillons)
+            self.dbuf, self.dskip = np.zeros(0, dtype=np.float32), 63
+            self.pprev = np.zeros(2, dtype=np.float32)
+            self.pil = None
+            self.sinD = math.sin(2 * math.pi * 19000.0 / self.fs1)
+        if mode in ("usb", "lsb", "cw"):  # BLU / CW : canal ramené à 48 kHz, puis filtre de bande latérale
+            self.fz = FirDecim(lowpass_taps(min(6000.0, 0.45 * LISTEN_RATE), self.fs1, 63), self.D2)
+            half = (cut / 2.0) if mode != "cw" else cut / 2.0
+            self.sb = FirDecim(lowpass_taps(half, LISTEN_RATE, 255).astype(np.complex64), 1)
+            self.sh = (cut / 2.0 if mode == "usb" else -cut / 2.0) if mode != "cw" else 0.0
+            self.ph2, self.ph3 = 0.0, 0.0
+
+    def _nco(self, x, f, fs, attr):
+        """Décale x de −f Hz (oscillateur table × phase par bloc, phase gardée dans self.<attr>)."""
+        n = len(x)
+        w = -2.0 * math.pi * f / fs
+        B = 8192
+        key = "_tab_" + attr
+        if getattr(self, key, None) is None:
+            setattr(self, key, np.exp(1j * w * np.arange(B)).astype(np.complex64))
+        nb = -(-n // B)
+        ph = getattr(self, attr)
+        steps = np.exp(1j * (ph + w * B * np.arange(nb))).astype(np.complex64)
+        setattr(self, attr, (ph + w * n) % (2.0 * math.pi))
+        return x * (steps[:, None] * getattr(self, key)[None, :]).ravel()[:n]
+
+    def _deemph(self, a, ch):
+        if self.de is None or not len(a):
+            return a
+        t = self.de_tail[ch]
+        c = np.convolve(np.concatenate([t, a]), self.de)[63:63 + len(a)]
+        self.de_tail[ch] = np.concatenate([t, a])[-63:]
+        return c.astype(np.float32)
+
+    def _agc(self, a, target=0.3):
+        """Contrôle automatique de gain lent (BLU, CW, AM : le niveau audio suit le niveau du signal)."""
+        if not len(a):
+            return a
+        pk = float(np.max(np.abs(a)))
+        self.agc = pk if pk > self.agc else 0.995 * self.agc + 0.005 * pk
+        return (a * (target / max(self.agc, 1e-4))).astype(np.float32)
 
     def process(self, iq):
-        n = len(iq)
-        w = -2.0 * math.pi * self.f_off / self.fs
-        B = 8192                                          # oscillateur : table × une phase par bloc (exp() par
-        if getattr(self, "_nco", None) is None:           # échantillon coûtait ~60 % d'un cœur à 19,2 MS/s)
-            self._nco = np.exp(1j * w * np.arange(B)).astype(np.complex64)
-        nb = -(-n // B)
-        steps = np.exp(1j * (self.ph + w * B * np.arange(nb))).astype(np.complex64)
-        x = iq * (steps[:, None] * self._nco[None, :]).ravel()[:n]
-        self.ph = (self.ph + w * n) % (2.0 * math.pi)
+        x = self._nco(iq, self.f_off, self.fs, "ph")
         y = self.f1(x)
         if not len(y):
             return np.zeros(0, dtype=np.float32), self.level
         pw = float(np.mean(np.abs(y) ** 2))
         self.level = 10.0 * math.log10(pw + 1e-12)
-        if self.mode == "am":
-            d = np.abs(y).astype(np.float32)
-            self.dc = 0.99 * self.dc + 0.01 * float(d.mean()) if self.dc else float(d.mean())
-            d = (d - self.dc) * 4.0
-        else:
+        m = self.mode
+        if m in ("wfm", "wfm_st", "nfm"):
             z = np.concatenate([[self.prev], y])
             d = np.angle(z[1:] * np.conj(z[:-1])).astype(np.float32) * (self.fs1 / (2.0 * math.pi * self.dev))
             self.prev = y[-1]
-        a = self.f2(d).astype(np.float32)
-        if self.de is not None and len(a):
-            c = np.convolve(np.concatenate([self.de_tail, a]), self.de)[63:63 + len(a)]
-            self.de_tail = np.concatenate([self.de_tail, a])[-63:]
-            a = c.astype(np.float32)
+            if m == "wfm_st":
+                p = self.fp(d).astype(np.float32)
+                amp = float(np.sqrt(2.0 * np.mean(p ** 2))) if len(p) else 0.0
+                self.pil = amp if self.pil is None else 0.8 * self.pil + 0.2 * amp
+                pf = np.concatenate([self.pprev, p])
+                self.pprev = pf[-2:]
+                self.dbuf = np.concatenate([self.dbuf, d])
+                if self.dskip:
+                    k_ = min(self.dskip, len(self.dbuf))
+                    self.dbuf, self.dskip = self.dbuf[k_:], self.dskip - k_
+                n_ = len(p)
+                da, self.dbuf = self.dbuf[:n_], self.dbuf[n_:]
+                mono = self._deemph(self.f2(da).astype(np.float32), 0)
+                if self.pil > 0.02:                         # pilote présent : stéréo
+                    # pilote A·sin θ, sous-porteuse sin 2θ = 2 sin θ cos θ (norme : passages à zéro communs) ;
+                    # cos θ par dérivée centrée
+                    sn = pf[1:-1] / self.pil
+                    cs = (pf[2:] - pf[:-2]) / (2.0 * self.sinD * self.pil)
+                    diff = self._deemph(self.f3(2.0 * da * (2.0 * sn * cs)).astype(np.float32), 1)
+                else:
+                    diff = self._deemph(self.f3(np.zeros(len(da), dtype=np.float32)), 1) * 0.0
+                nn = min(len(mono), len(diff))
+                a = np.stack([mono[:nn] + diff[:nn], mono[:nn] - diff[:nn]], axis=1)
+            else:
+                a = self._deemph(self.f2(d).astype(np.float32), 0)
+        elif m == "am":
+            d = np.abs(y).astype(np.float32)
+            self.dc = 0.99 * self.dc + 0.01 * float(d.mean()) if self.dc else float(d.mean())
+            a = self._agc(self.f2(d - self.dc).astype(np.float32))
+        else:                                               # usb / lsb / cw
+            zz = self.fz(y)
+            if not len(zz):
+                return np.zeros(0, dtype=np.float32), self.level
+            zz = self._nco(zz, self.sh, LISTEN_RATE, "ph2")  # bande latérale voulue centrée sur 0
+            zz = self.sb(zz)
+            if m == "cw":
+                zz = self._nco(zz, -self.BFO, LISTEN_RATE, "ph3")   # porteuse → bip à 700 Hz
+            else:
+                zz = self._nco(zz, -self.sh, LISTEN_RATE, "ph3")    # retour : audio = partie réelle
+            a = self._agc(np.real(zz).astype(np.float32))
         cp = COMPANDERS.get(self.compander)
-        if cp is not None and cp[1] > 1.0 and len(a):
-            a = expand2(a, self, ratio=cp[1], attack=cp[2], release=cp[3])
+        if cp is not None and cp["ratio"] > 1.0 and len(a):
+            if cp["hf"] and getattr(self, "_hf", None) is None:
+                self._hf = FirDecim(lowpass_taps(cp["hf"], LISTEN_RATE, 31), 1)
+                self._hf_buf = np.zeros(15, dtype=np.float32)
+            side = None
+            if cp["hf"]:                                  # détecteur sans les aigus extrêmes (ENR)
+                mono_ = a.mean(axis=1) if a.ndim == 2 else a
+                sb_ = np.concatenate([self._hf_buf, mono_.astype(np.float32)])
+                side = self._hf(sb_)[:len(mono_)]
+                self._hf_buf = np.zeros(0, dtype=np.float32)
+                if len(side) < len(mono_):
+                    side = np.concatenate([side, np.zeros(len(mono_) - len(side), dtype=np.float32)])
+            a = expand2(a, self, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"],
+                        knee=cp["knee"], low=cp["low"], side=side)
         if self.squelch is not None and self.level < self.squelch:
             a = np.zeros_like(a)
         return a, self.level
 
 
-def expand2(a, st, block=240, ref=0.25, attack=0.3, release=0.05, ratio=2.0):
+def expand2(a, st, block=240, ref=0.25, attack=0.3, release=0.05, ratio=2.0, detector="rms", knee=None, low=0.0,
+            side=None):
     """Expanseur (approximation d'un compander de micro HF) : gain = (enveloppe / ref)^(taux − 1) par blocs de
     5 ms (taux 2 = 2:1 : 10 dB en entrée → 20 dB en sortie), lissé (montée rapide, descente lente), interpolé par
-    échantillon. st.env garde l'enveloppe entre appels."""
-    nb = max(1, len(a) // block)
-    rms = np.sqrt(np.mean(a[:nb * block].reshape(nb, -1) ** 2, axis=1)) if len(a) >= block else \
-        np.array([float(np.sqrt(np.mean(a ** 2)))])
+    échantillon. st.env garde l'enveloppe entre appels. detector : « rms » (efficace) ou « avg » (redressement
+    moyen, comme le SA572 ; ramené à l'échelle efficace d'un sinus). Stéréo (n, 2) : même gain sur les 2 voies.
+    knee (dB sous ref) + low : sous ce niveau, le taux monte de `low` (réduction de bruit plus forte, ENR).
+    side : signal vu par le détecteur à la place de l'audio (ex. sans les aigus extrêmes)."""
+    a = np.asarray(a, dtype=np.float32)
+    mono = side if side is not None and len(side) == len(a) else (a.mean(axis=1) if a.ndim == 2 else a)
+    nb = max(1, len(mono) // block)
+    if detector == "avg":
+        rms = (np.mean(np.abs(mono[:nb * block]).reshape(nb, -1), axis=1) * (math.pi / (2 * math.sqrt(2)))
+               if len(mono) >= block else np.array([float(np.mean(np.abs(mono)))]))
+    else:
+        rms = np.sqrt(np.mean(mono[:nb * block].reshape(nb, -1) ** 2, axis=1)) if len(mono) >= block else \
+            np.array([float(np.sqrt(np.mean(mono ** 2)))])
     g = np.empty(len(rms), dtype=np.float32)
     e = st.env
     for k, r in enumerate(rms):
         e += (attack if r > e else release) * (r - e)
-        g[k] = min(4.0, max(0.02, (max(e, 1e-6) / ref) ** (ratio - 1.0)))
+        r_ = max(e, 1e-6) / ref
+        rt = ratio
+        if knee is not None and low and 20.0 * math.log10(r_) < knee:
+            rt = ratio + low                              # sous le genou : on « ferme » plus le souffle
+        g[k] = min(4.0, max(0.001, r_ ** (rt - 1.0)))
     st.env = e
     gi = np.interp(np.arange(len(a)), (np.arange(len(g)) + 0.5) * (len(a) / len(g)), g).astype(np.float32)
-    return a * gi
+    return a * (gi[:, None] if a.ndim == 2 else gi)
+
+
+def to_stereo(a):
+    """Audio mono (n,) ou stéréo (n, 2) -> stéréo (n, 2)."""
+    a = np.asarray(a, dtype=np.float32)
+    return a if a.ndim == 2 else np.stack([a, a], axis=1)
 
 
 def audio_int16(a, volume=1.0):
-    """Audio float -> octets int16 (écrêtage doux)."""
-    return (np.tanh(np.asarray(a, dtype=np.float32) * volume) * 32000).astype("<i2").tobytes()
+    """Audio float (mono ou stéréo) -> octets int16 STÉRÉO entrelacés G, D (écrêtage doux)."""
+    return (np.tanh(to_stereo(a) * volume) * 32000).astype("<i2").tobytes()
 
 
 def listen_center(freqs_mhz, kind):
@@ -7426,7 +7569,9 @@ class ListenWorker(QtCore.QThread):
                 outs = [d.process(iq) for d in demods]
                 sel = self.sel
                 if sel < 0 or sel >= len(outs):
-                    a = np.sum([o[0] for o in outs], axis=0) / max(1, len(outs)) if outs else np.zeros(0)
+                    nn_ = min((len(o[0]) for o in outs), default=0)
+                    a = (np.sum([to_stereo(o[0])[:nn_] for o in outs], axis=0) / max(1, len(outs))
+                         if outs else np.zeros(0))
                 else:
                     a = outs[sel][0]
                 if len(a):
@@ -7459,7 +7604,7 @@ class ListenWorker(QtCore.QThread):
 
 
 class AudioOut:
-    """Sortie son 48 kHz mono 16 bits (QtMultimedia), nourrie depuis une file d'octets par un minuteur."""
+    """Sortie son 48 kHz stéréo 16 bits (QtMultimedia), nourrie depuis une file d'octets par un minuteur."""
 
     def __init__(self, parent=None):
         self.sink = self.io = None
@@ -7468,14 +7613,14 @@ class AudioOut:
             from PySide6 import QtMultimedia
             fmt = QtMultimedia.QAudioFormat()
             fmt.setSampleRate(LISTEN_RATE)
-            fmt.setChannelCount(1)
+            fmt.setChannelCount(2)                                 # stéréo (FM stéréo, ears) ; mono = 2 voies égales
             fmt.setSampleFormat(QtMultimedia.QAudioFormat.SampleFormat.Int16)
             dev = QtMultimedia.QMediaDevices.defaultAudioOutput()
             if dev.isNull():
                 self.error = "aucune sortie son trouvée"
                 return
             self.sink = QtMultimedia.QAudioSink(dev, fmt, parent)
-            self.sink.setBufferSize(LISTEN_RATE * 2 // 4)        # 250 ms
+            self.sink.setBufferSize(LISTEN_RATE * 4 // 4)        # 250 ms (stéréo 16 bits)
             self.io = self.sink.start()
         except Exception as e:  # noqa: BLE001
             self.error = f"sortie son indisponible ({e})"
