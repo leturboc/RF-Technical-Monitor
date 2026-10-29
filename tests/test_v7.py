@@ -507,19 +507,65 @@ L_[np.abs(F_ - 605.0) < 1e-6] = -65.0
 L_[(F_ >= 610.0) & (F_ <= 617.9)] = -75.0          # plateau 8 MHz (TNT)
 pk_ = sp_(F_, L_, -80.0)
 check("scan : 3 signaux (réunis à 150 kHz)", [(p_["f"], p_["wide"]) for p_ in pk_],
-      [(602.0, False), (605.0, False), (613.95, True)])
+      [(602.05, False), (605.0, False), (613.95, True)])
 check("scan : niveau max et largeur", (pk_[0]["level"], pk_[0]["width"]), (-50.0, 250.0))
 check("scan : déjà dans la liste → écarté", [p_["f"] for p_ in sp_(F_, L_, -80.0, exclude=[605.05])],
-      [602.0, 613.95])
+      [602.05, 613.95])
 check("scan : plateau écarté si une fréquence de la liste est dedans",
-      [p_["f"] for p_ in sp_(F_, L_, -80.0, exclude=[612.0])], [602.0, 605.0])
-check("scan : seuil plus haut", [p_["f"] for p_ in sp_(F_, L_, -55.0)], [602.0])
+      [p_["f"] for p_ in sp_(F_, L_, -80.0, exclude=[612.0])], [602.05, 605.0])
+check("scan : seuil plus haut", [p_["f"] for p_ in sp_(F_, L_, -55.0)], [602.05])
 check("scan : rien au-dessus", sp_(F_, L_, -10.0), [])
 check("scan : spectre vide", sp_([], [], -80.0), [])
 F2_ = np.round(np.arange(470.0, 480.0, 0.224), 3)  # balayage grossier (pas 224 kHz) : plateau TNT 470–478
 L2_ = np.where(F2_ < 478.0, -64.0, -100.0)
 check("scan : pas grossier, plateau = UN signal large", [(p_["wide"], round(p_["f"])) for p_ in sp_(F2_, L2_, -80.0)],
       [(True, 474)])
+
+# marqueurs : niveau à une fréquence, pic voisin, largeur occupée
+Fm_ = np.round(np.arange(600.0, 601.0, 0.01), 3)
+Lm_ = np.full(len(Fm_), -100.0)
+Lm_[(Fm_ >= 600.45) & (Fm_ <= 600.55)] = -60.0
+Lm_[np.abs(Fm_ - 600.5) < 1e-6] = -50.0
+check("marqueur : niveau au point le plus proche", ns["trace_at"](Fm_, Lm_, 600.452), (600.45, -60.0))
+check("marqueur : pic voisin", ns["peak_near"](Fm_, Lm_, 600.3), (600.5, -50.0))
+check("marqueur : largeur occupée à −20 dB (pic − 20 = −70)", ns["occupied_width"](Fm_, Lm_, 600.4, 20.0),
+      (600.45, 600.55, 600.5, -50.0))
+check("marqueur : NaN (trous entre bandes) ignorés", ns["trace_at"]([600.0, np.nan, 601.0], [-80, np.nan, -70], 600.6),
+      (601.0, -70.0))
+check("marqueur : rien", ns["peak_near"]([], [], 600.0), None)
+
+# comparer deux sessions (max hold)
+Fc_ = np.round(np.arange(600.0, 610.0, 0.025), 3)
+La_ = np.full(len(Fc_), -100.0)
+Lb_ = La_.copy()
+La_[np.abs(Fc_ - 602.0) < 0.03] = -50.0             # présent dans les deux
+Lb_[np.abs(Fc_ - 602.0) < 0.03] = -52.0
+La_[np.abs(Fc_ - 605.0) < 0.03] = -60.0             # nouveau dans A
+Lb_[np.abs(Fc_ - 608.0) < 0.03] = -55.0             # disparu (seulement dans B)
+nw_, gn_ = ns["compare_spectra"](Fc_, La_, Fc_, Lb_, -80.0)
+check("comparer : signal en plus / en moins, l'identique ignoré",
+      ([round(p_["f"], 2) for p_ in nw_], [round(p_["f"], 2) for p_ in gn_]), ([605.0], [608.0]))
+
+# occupation par heure à partir d'un SweepStore
+st_ = ns["SweepStore"](seconds=1e9, max_mb=50)
+Fo_ = np.round(np.arange(600.0, 601.0, 0.01), 3)
+for k_ in range(20):                                 # 20 balayages : heure 20 (k < 10) puis 21
+    Lo_ = np.full(len(Fo_), -100.0)
+    if k_ % 2 == 0:
+        Lo_[np.abs(Fo_ - 600.5) < 0.02] = -50.0      # 600.5 occupée un balayage sur deux
+    st_.add(1, 1000.0 + k_, Fo_, Lo_)
+oc_ = ns["store_occupancy"](st_, [600.5, 600.2, 700.0], -80.0, lambda t: 20 if t < 1010 else 21, 0.05)
+check("occupation : 50 % sur 600.5, 0 % sur 600.2, rien hors bande",
+      {h: (list(n), list(k)) for h, (n, k) in oc_.items()},
+      {20: ([10.0, 10.0, 0.0], [5.0, 0.0, 0.0]), 21: ([10.0, 10.0, 0.0], [5.0, 0.0, 0.0])})
+
+# --- zoom live : points automatiques
+zoom_points, MIN_PTS = ns["zoom_points"], ns["MIN_PTS"]
+check("zoom 2 MHz -> 201 pts (10 kHz)", zoom_points(2.0), 201)
+check("zoom 20 MHz -> plafond 290", zoom_points(20.0), 290)
+check("zoom 0.1 MHz -> minimum MIN_PTS", zoom_points(0.1), MIN_PTS)
+check("zoom auto jamais plus que les points des bandes", zoom_points(20.0, None, 101), 101)
+check("zoom : nombre fixe respecté", zoom_points(2.0, 1000), 1000)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

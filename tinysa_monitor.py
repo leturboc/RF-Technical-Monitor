@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.13.0"
+APP_VER = "7.14.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -92,6 +92,8 @@ CALIB_IDS = (-3, -4)         # bandes internes de la calibration entre deux tiny
 CALIB_SWEEPS = 3             # balayages par appareil pour calibrer
 CALIB_TIMEOUT = 180.0
 MAX_LABELS = 30              # nb max de noms affichés sur le graphe
+SEL_COLOR = "#ffb300"        # fréquence(s) choisie(s) dans la liste, sur le spectre (ambre : lisible clair / sombre)
+SEL_MAX = 12                 # nb max de fréquences choisies surlignées
 HYST = 3.0                   # hystérésis (dB) pour repasser en "libre"
 TINYSA_VID, TINYSA_PID = 0x0483, 0x5740
 CFG_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "TinySAMonitor" / "config.json"
@@ -2066,6 +2068,39 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
     return out
 
 
+def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, new_sep=PF_SEP, new_tol=None,
+            new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800):
+    """Coordination automatique : n_new fréquences compatibles avec le plan existant (freqs, réglages par fréquence
+    comme pf_check) ET entre elles, pour un appareil (new_sep / new_tol / new_filt, pas `step`), dans [lo, hi],
+    en évitant ce que busy(c) dit occupé. Ajout une par une (la plus basse compatible à chaque fois, comme un
+    logiciel de coordination qui remplit la bande), chaque ajout vérifié par pf_suggest (aucun problème pour elle,
+    aucun nouveau pour les autres). -> liste des MHz trouvés (peut être plus courte que n_new : bande pleine)."""
+    F = [float(x) for x in freqs]
+    m = len(F)
+    T = [True] * m if is_tx is None else [bool(x) for x in is_tx]
+    B = [0.0] * m if bws is None else [float(x or 0.0) for x in bws]
+
+    def per(x, d):
+        return list(x) if isinstance(x, (list, tuple)) else [x] * m
+    SP, TL, FL = per(sep, PF_SEP), per(tol, None), per(filt, 0.0)
+    out = []
+    for _k in range(int(n_new)):
+        seed = lo - step                                   # graine juste sous la plage : la plus basse d'abord
+        sg = pf_suggest(len(F), F + [seed], T + [True], B + [0.0], SP + [new_sep], TL + [new_tol], None,
+                        lo=lo, hi=hi, step=step, n=1, busy=busy, max_check=max_check, filt=FL + [new_filt])
+        if not sg:
+            break
+        c = sg[0][0]
+        out.append(c)
+        F.append(c)
+        T.append(True)
+        B.append(0.0)
+        SP.append(new_sep)
+        TL.append(new_tol)
+        FL.append(new_filt)
+    return out
+
+
 def im3_clash(c, F, guard, guard3=None):
     """Collisions d'intermodulation 3e ordre mettant en jeu la fréquence candidate c (MHz) avec les émetteurs F.
     guard : tolérance des produits 2 TX (2A − B) ; guard3 : celle des 3 TX (A + B − C), = guard si absente.
@@ -2626,7 +2661,7 @@ def safe_filename(s, default="export"):
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
-             "points", "rbw", "zrbw", "input", "lna", "att", "seg", "offset",
+             "points", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
@@ -4528,10 +4563,97 @@ def scan_peaks(F, L, thr, merge_khz=150.0, wide_mhz=1.5, exclude=(), excl_khz=10
         seg = L[a:z + 1]
         width = (F[z] - F[a]) * 1000.0
         wide = width >= wide_mhz * 1000.0
-        f = float((F[a] + F[z]) / 2.0) if wide else float(F[a + int(np.argmax(seg))])
+        top = a + np.nonzero(seg >= seg.max() - 1e-9)[0]     # sommet plat (plusieurs points au max) : son milieu
+        f = float((F[a] + F[z]) / 2.0) if wide else float(np.mean(F[top]))
         if len(ex) and np.min(np.abs(ex - f)) * 1000.0 <= max(excl_khz, width / 2.0 if wide else 0.0):
             continue
         out.append(dict(f=round(f, 4), level=round(float(seg.max()), 1), width=round(width, 1), wide=bool(wide)))
+    return out
+
+
+# ------------------------------------------------------------------ marqueurs du spectre (7.14, demande de Clément :
+# « un marqueur déplaçable, affichable ou non, plus précis qu'à la souris »)
+def _valid(F, L):
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    ok = np.isfinite(F) & np.isfinite(L)
+    return F[ok], L[ok]
+
+
+def trace_at(F, L, f):
+    """Point de la courbe le plus proche de f -> (MHz, dBm) ou None."""
+    F, L = _valid(F, L)
+    if not len(F):
+        return None
+    k = int(np.argmin(np.abs(F - f)))
+    return float(F[k]), float(L[k])
+
+
+def peak_near(F, L, f, span=0.5):
+    """Le plus haut point à ±span MHz de f -> (MHz, dBm) ou None."""
+    F, L = _valid(F, L)
+    m = np.abs(F - f) <= span
+    if not m.any():
+        return None
+    k = int(np.argmax(np.where(m, L, -np.inf)))
+    return float(F[k]), float(L[k])
+
+
+def occupied_width(F, L, f, drop_db=20.0, span=0.5):
+    """Bande occupée par le signal le plus fort près de f : de part et d'autre du pic, tant que le niveau reste au-dessus
+    de (pic − drop_db). -> (MHz bas, MHz haut, MHz du pic, dBm du pic) ou None."""
+    F, L = _valid(F, L)
+    o = np.argsort(F)
+    F, L = F[o], L[o]
+    pk = peak_near(F, L, f, span)
+    if pk is None:
+        return None
+    k = int(np.argmin(np.abs(F - pk[0])))
+    lim = pk[1] - drop_db
+    a = z = k
+    while a > 0 and L[a - 1] >= lim:
+        a -= 1
+    while z < len(L) - 1 and L[z + 1] >= lim:
+        z += 1
+    return float(F[a]), float(F[z]), pk[0], pk[1]
+
+
+def compare_spectra(F1, L1, F2, L2, thr, margin=10.0):
+    """Comparer deux spectres (ex. max hold de la balance et du show) : signaux au-dessus de thr présents dans l'un
+    et pas dans l'autre (au moins margin dB de plus). -> (nouveaux dans 1, disparus = présents dans 2), listes de
+    scan_peaks."""
+    F1, L1 = _valid(F1, L1)
+    F2, L2 = _valid(F2, L2)
+    if not len(F1) or not len(F2):
+        return [], []
+    o1, o2 = np.argsort(F1), np.argsort(F2)
+    F1, L1, F2, L2 = F1[o1], L1[o1], F2[o2], L2[o2]
+    lo, hi = max(F1[0], F2[0]), min(F1[-1], F2[-1])
+    m1, m2 = (F1 >= lo) & (F1 <= hi), (F2 >= lo) & (F2 <= hi)
+    a1 = np.where(L1[m1] - np.interp(F1[m1], F2, L2) >= margin, L1[m1], -999.0)
+    a2 = np.where(L2[m2] - np.interp(F2[m2], F1, L1) >= margin, L2[m2], -999.0)
+    return scan_peaks(F1[m1], a1, thr), scan_peaks(F2[m2], a2, thr)
+
+
+def store_occupancy(store, freqs, thr, hour_of, win=0.1):
+    """Occupation de chaque fréquence (MHz) par heure, à partir des balayages d'un SweepStore : à chaque balayage,
+    occupée si le niveau à ±win MHz atteint thr. hour_of(t) -> heure (0-23). -> {heure: (n balayages par
+    fréquence np.array, n occupés np.array)}."""
+    freqs = np.asarray(freqs, dtype=float)
+    out = {}
+    for b, ts in store.t.items():
+        for t, (f, l) in zip(ts, store.d[b]):
+            if not len(f):
+                continue
+            inb = (freqs >= f[0] - win) & (freqs <= f[-1] + win)
+            if not inb.any():
+                continue
+            h = int(hour_of(t))
+            n, k = out.setdefault(h, (np.zeros(len(freqs)), np.zeros(len(freqs))))
+            for i in np.nonzero(inb)[0]:
+                m = np.abs(f - freqs[i]) <= win
+                v = float(np.max(l[m])) if m.any() else float(l[int(np.argmin(np.abs(f - freqs[i])))])
+                n[i] += 1
+                k[i] += v >= thr
     return out
 
 
@@ -4549,8 +4671,10 @@ STEPS = (
       ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"), (None, None),
       ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
-    ("plan", "③ Vérifier le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
-     "une remplaçante proposée pour chaque fréquence à problème.", ()),
+    ("plan", "③ Coordonner le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
+     "une remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.",
+     (("🪄 Trouver N fréquences compatibles…", "open_coord"), ("🧮 Vérifier le plan…", "open_plan_check"),
+      ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"))),
     ("im", "④ Intermod", "Produits d'intermodulation de tes émetteurs, ou d'où vient un signal gênant\n"
      "(d'après le spectre mesuré).", ()),
     ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
@@ -4559,7 +4683,8 @@ STEPS = (
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🆘 Fréquence de secours…", "open_rescue"))),
     ("after", "⑥ Après le show", "Revoir ce qui s'est passé (relecture, session enregistrée), rapport, exports.",
-     (("⏪ Relecture : revoir le spectre / une session…", "open_replay"), ("📄 Rapport de show…", "make_report"),
+     (("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
+      ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"), ("📄 Rapport de show…", "make_report"),
       ("📤 Exporter les fréquences…", "export_by_scene"))),
 )
 STEP_DEFAULT = dict(scan="step_scan", plan="open_plan_check", im="open_intermod")
@@ -4567,7 +4692,7 @@ STEP_HINTS = {
     "scan": "① Laisse tourner quelques minutes : le max hold (orange) montre ce qui occupe déjà le lieu.",
     "list": "② Ajoute depuis le scan, importe ou saisis tes fréquences ; puis Ctrl+E = doit émettre, "
             "statut « Libre » = doit rester libre.",
-    "plan": "③ Corrige les ✗ avec « Proposer » puis « Remplacer ».",
+    "plan": "③ 🪄 Trouve N fréquences compatibles, ou vérifie ton plan et corrige les ✗ (« Proposer », « Remplacer »).",
     "im": "④ Un signal bizarre ? « Chercher l'origine » à partir du spectre mesuré.",
     "show": "⑤ Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.",
     "after": "⑥ Relecture : revois n'importe quel moment de la session enregistrée.",
@@ -4579,6 +4704,16 @@ STATUS_HELP = ("Chaque fréquence de ta liste a un STATUT, qui dit ce que tu att
                "  → alarme ⚠ CONFLIT (quelqu'un d'autre émet là).\n\n"
                "• Sans statut : simple surveillance (occupé / libre), pas d'alarme.\n\n"
                "Pour changer : double-clic sur la colonne « Statut », ou sélectionne des lignes puis Ctrl+1…9.")
+
+def zoom_points(span_mhz, want=None, most=1000, step_khz=10.0, cap=290):
+    """Points du zoom live. want = nombre fixe choisi (None = auto). Auto : un pas d'environ step_khz (assez
+    fin pour voir la porteuse d'un micro), jamais plus de cap points (une seule commande tinySA = rapide) ni
+    plus que most (points choisis pour les bandes), au moins MIN_PTS. Zoomer = moins de points, pas plus."""
+    if want:
+        return max(2, int(want))
+    n = int(math.ceil(max(0.0, float(span_mhz)) * 1000.0 / float(step_khz) - 1e-9)) + 1
+    return max(MIN_PTS, min(int(cap), max(MIN_PTS, int(most)), n))
+
 
 # ===== PURE-END
 
@@ -7493,6 +7628,8 @@ class ReplayDialog(QtWidgets.QDialog):
         pi.setLabel("left", "Niveau", units="dBm")
         pi.setYRange(-120, -10, padding=0)
         pi.getAxis("bottom").enableAutoSIPrefix(False)
+        self.cmpcurve = pi.plot(pen=pg.mkPen("#c678dd", width=1.3, style=Qt.PenStyle.DashLine), connect="finite")
+        self.cmp = None                          # session de comparaison : (nom, F, L max hold)
         self.maxcurve = pi.plot(pen=pg.mkPen(th["maxhold"], width=1), connect="finite")
         self.curve = pi.plot(pen=pg.mkPen(th["curve"], width=1.6), connect="finite")
         self.thr_line = pg.InfiniteLine(pos=owner.thr_spin.value(), angle=0,
@@ -7533,7 +7670,19 @@ class ReplayDialog(QtWidgets.QDialog):
         self.mh_chk.setChecked(True)
         self.mh_chk.toggled.connect(lambda *_: self.seek(self.idx))
         lay.addWidget(self.slider)
-        lay.addLayout(owner._row(b_prev, self.play_btn, b_next, self.speed_combo, self.mh_chk, None, self.time_lbl))
+        b_cmp = QtWidgets.QPushButton("⚖ Comparer avec une session…")
+        b_cmp.setToolTip("Superpose le max hold d'une autre session (ex. la balance, ou hier) en pointillés violets,\n"
+                         "et liste les signaux en plus ou en moins par rapport à elle.")
+        b_cmp.clicked.connect(lambda *_: self.open_compare())
+        b_occ = QtWidgets.QPushButton("📊 Occupation par heure")
+        b_occ.setToolTip("% du temps où chaque fréquence était occupée, heure par heure, sur ce qui est relu.")
+        b_occ.clicked.connect(lambda *_: OccupancyDialog(self.owner, self.store, self.sess_watch,
+                                                          self.sess_path.name if self.sess_path else "").exec())
+        self.cmp_lbl = QtWidgets.QLabel("")
+        self.cmp_lbl.setWordWrap(True)
+        lay.addLayout(owner._row(b_prev, self.play_btn, b_next, self.speed_combo, self.mh_chk, b_cmp, b_occ, None,
+                                 self.time_lbl))
+        lay.addWidget(self.cmp_lbl)
         self.msg = QtWidgets.QLabel("")
         self.msg.setWordWrap(True)
         lay.addWidget(self.msg)
@@ -7601,6 +7750,37 @@ class ReplayDialog(QtWidgets.QDialog):
                          + (f", {len(self.sess_watch)} fréquences" if self.sess_watch else "")
                          + (f", {len(self.sess_events)} événements du journal" if self.sess_events else "") + ".")
         self.reload()
+
+    def open_compare(self, d=None):
+        """Charge une autre session : son max hold (toute sa durée) est superposé et comparé."""
+        if not d:
+            o = self.owner
+            start = o.session_cfg.get("dir") or str(o.log_dir / "enregistrements")
+            d = QtWidgets.QFileDialog.getExistingDirectory(self, "Session à comparer", str(start))
+        if not d:
+            return
+        st = SweepStore(seconds=1e12, max_mb=2500)
+        n, _nf = load_recording(d, st)
+        sp = st.span()
+        if not n or sp is None:
+            self.cmp_lbl.setText(f"Aucun balayage lisible dans « {d} ».")
+            return
+        F2, L2 = st.maxhold(sp[0], sp[1])
+        self.cmp = (Path(d).name, F2, L2)
+        self.cmpcurve.setData(F2, L2)
+        self.seek(self.idx)
+
+    def _compare_text(self, F1, L1):
+        if self.cmp is None or F1 is None:
+            return
+        name, F2, L2 = self.cmp
+        new, gone = compare_spectra(F1, L1, F2, L2, self.owner.thr_spin.value())
+
+        def fl(p_):
+            return ", ".join(f"{x['f']:.3f}" for x in p_[:8]) + (" …" if len(p_) > 8 else "")
+        self.cmp_lbl.setText(f"⚖ Comparé à « {name} » (pointillés violets) : {len(new)} signal(aux) en plus ici"
+                             + (f" ({fl(new)} MHz)" if new else "") + f" · {len(gone)} en moins"
+                             + (f" ({fl(gone)} MHz)" if gone else "") + ".")
 
     def export_session(self):
         """Enregistre le contenu relu (mémoire ou session ouverte) comme une session, dans le dossier choisi."""
@@ -7733,6 +7913,8 @@ class ReplayDialog(QtWidgets.QDialog):
             self.maxcurve.setData(Fm, Lm)
         else:
             self.maxcurve.setData([], [])
+        if self.cmp is not None:                     # comparaison : max hold jusqu'à cet instant vs l'autre session
+            self._compare_text(*((Fm, Lm) if Fm is not None else self.store.maxhold(t0, t)))
         if self._fit:
             self._fit = False
             self.plot.getPlotItem().setXRange(float(F[0]), float(F[-1]), padding=0.01)
@@ -10399,6 +10581,212 @@ class ScanAddDialog(QtWidgets.QDialog):
         self.refresh()
 
 
+class CoordDialog(QtWidgets.QDialog):
+    """🪄 Coordination automatique : « trouve-moi N fréquences compatibles » pour un appareil, compatibles avec ta
+    liste et entre elles, en évitant ce que le tinySA voit occupé, puis ajoutées à la liste."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.found = []
+        self.setWindowTitle("Trouver des fréquences compatibles")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Comme un logiciel de coordination : choisis l'appareil et combien de fréquences il te faut. L'appli "
+            "cherche, de bas en haut de la plage, des fréquences <b>compatibles avec toute ta liste et entre elles</b> "
+            "(écart, intermod, filtre de l'appareil), sur le pas de l'appareil, en évitant ce que le tinySA voit "
+            "occupé (max hold). Lance d'abord ① Scanner le lieu quelques minutes.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 4)
+        lay.addWidget(info)
+        f = QtWidgets.QFormLayout()
+        self.prof = QtWidgets.QComboBox()
+        fill_rx_combo(self.prof, "✏ réglages de « Vérifier le plan »")
+        ix = self.prof.findData("wisycom")
+        self.prof.setCurrentIndex(max(0, ix))
+        self.prof.setToolTip("Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.")
+        self.n_spin = QtWidgets.QSpinBox()
+        self.n_spin.setRange(1, 64)
+        self.n_spin.setValue(8)
+        self.n_spin.setToolTip("Combien de fréquences chercher.")
+        ext = o._band_extent() or (470.0, 694.0)
+        self.lo = QtWidgets.QDoubleSpinBox()
+        self.hi = QtWidgets.QDoubleSpinBox()
+        for sp_, v in ((self.lo, ext[0]), (self.hi, ext[1])):
+            sp_.setDecimals(3)
+            sp_.setRange(0.1, 6000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setValue(v)
+            sp_.setToolTip("Plage où chercher (la bande de tes appareils : ex. 470–608 pour un modèle G4 « A »).")
+        self.avoid = QtWidgets.QCheckBox("Éviter ce que le tinySA voit occupé (max hold)")
+        self.avoid.setChecked(True)
+        self.avoid.setToolTip("Écarte les fréquences où le max hold dépasse ton seuil « occupé ».")
+        self.prefix = QtWidgets.QLineEdit("HF")
+        self.prefix.setToolTip("Nom des nouvelles fréquences, numéroté : HF 1, HF 2…")
+        self.scene = QtWidgets.QComboBox()
+        self.scene.setEditable(True)
+        self.scene.addItem("")
+        for sc in o.scenes:
+            self.scene.addItem(sc["name"])
+        self.scene.setEditText("")
+        self.scene.setToolTip("Scène où les ranger (facultatif).")
+        self.group = QtWidgets.QLineEdit("")
+        self.group.setToolTip("Groupe où les ranger (facultatif).")
+        f.addRow("Appareil :", self.prof)
+        f.addRow("Combien :", self.n_spin)
+        f.addRow("De :", o._row(self.lo, "à", self.hi, None))
+        f.addRow(self.avoid)
+        f.addRow("Nom :", self.prefix)
+        f.addRow("Scène :", self.scene)
+        f.addRow("Groupe :", self.group)
+        lay.addLayout(f)
+        go = QtWidgets.QPushButton("🪄 Chercher")
+        go.setToolTip("Cherche les fréquences (quelques secondes avec beaucoup d'émetteurs).")
+        go.clicked.connect(lambda *_: self.compute())
+        lay.addWidget(go)
+        self.res = QtWidgets.QListWidget()
+        self.res.setToolTip("Fréquences trouvées, compatibles avec ta liste et entre elles.")
+        lay.addWidget(self.res, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        add = QtWidgets.QPushButton("＋ Ajouter à ma liste (statut En service)")
+        add.setToolTip("Ajoute les fréquences trouvées, avec cet appareil, au statut « doit émettre ».")
+        add.clicked.connect(lambda *_: self.add())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(add, None, close))
+        self.resize(620, 640)
+
+    def _new_profile(self):
+        d = rx_profile(self.prof.currentData())
+        if d is None:
+            po = self.owner.plan_opts
+            d = dict(sep=po["sep"] / 1000.0, filt=po["filt"], step=po["step"] / 1000.0, tol=IM_TOL_PRESETS[0][1])
+        return d
+
+    def compute(self):
+        o = self.owner
+        ws = list(o.watch)
+        P = [rx_profile(w.get("rx")) or self._new_profile() for w in ws]
+        d = self._new_profile()
+        busy = None
+        if self.avoid.isChecked():
+            Fm, Lm = o.fresh_FL(use_max=True, any_age=True)
+            if Fm is not None:                     # seuil « occupé » : le max hold du bruit dépasse souvent « faible »
+                lim = o.thr_spin.value()
+                win = max(0.05, o.win_spin.value() / 1000.0)
+                busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.found = pf_fill(self.n_spin.value(), [w["freq"] for w in ws],
+                                 [not o.is_keep_free(w["status"]) for w in ws], [float(w.get("bw") or 0.0) for w in ws],
+                                 [q["sep"] for q in P], [q["tol"] for q in P], [q["filt"] for q in P],
+                                 d["sep"], d["tol"], d["filt"], self.lo.value(), self.hi.value(), d["step"], busy)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        self.res.clear()
+        for k, c in enumerate(self.found, 1):
+            self.res.addItem(f"{self.prefix.text().strip() or 'HF'} {k}   {c:.3f} MHz")
+        n = self.n_spin.value()
+        self.msg.setText(f"✔ {len(self.found)} fréquence(s) trouvée(s)." if len(self.found) >= n else
+                         f"⚠ Seulement {len(self.found)} / {n} : la plage est pleine pour ces règles. Élargis la plage, "
+                         "choisis un appareil plus sélectif (filtre plus étroit) ou des tolérances plus souples.")
+
+    def add(self):
+        o = self.owner
+        if not self.found:
+            self.msg.setText("Lance d'abord « 🪄 Chercher ».")
+            return
+        pre = self.prefix.text().strip() or "HF"
+        taken = {w["name"] for w in o.watch}
+        st = next((s_["name"] for s_ in o.statuses if s_.get("on")), "")
+        k = 1
+        for c in self.found:
+            while f"{pre} {k}" in taken:
+                k += 1
+            taken.add(f"{pre} {k}")
+            o._append_watch(f"{pre} {k}", c, status=st, scene=self.scene.currentText().strip(),
+                            group=self.group.text().strip())
+            if self.prof.currentData():
+                o.watch[-1]["rx"] = self.prof.currentData()
+        o.sort_watch()
+        o.rebuild_tree()
+        o.rebuild_watch_table()
+        o._update_markers()
+        o.set_status(f"🪄 {len(self.found)} fréquence(s) coordonnée(s) ajoutée(s) à ta liste.")
+        self.msg.setText(f"✔ {len(self.found)} fréquence(s) ajoutée(s). Vérifie avec ③ Vérifier le plan.")
+        self.found = []
+        self.res.clear()
+
+
+class OccupancyDialog(QtWidgets.QDialog):
+    """📊 Occupation par heure : pour chaque fréquence, le % du temps où elle était occupée, heure par heure (mémoire
+    ou session enregistrée). Une réserve « doit rester libre » touchée = créneau à risque."""
+
+    def __init__(self, owner, store=None, watch=None, title=""):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Occupation par heure" + (f" — {title}" if title else ""))
+        lay = QtWidgets.QVBoxLayout(self)
+        ws = list(watch if watch is not None else o.watch)
+        store = store or o.store
+        thr = o.thr_spin.value()
+        occ = store_occupancy(store, [w["freq"] for w in ws], thr,
+                              lambda t: datetime.fromtimestamp(t).hour, max(0.05, o.win_spin.value() / 1000.0))
+        hours = sorted(occ)
+        info = QtWidgets.QLabel(
+            f"% du temps où chaque fréquence dépassait le seuil « occupé » ({o.lvl(thr, suffix=True)}), heure par "
+            "heure. Pour une fréquence qui doit émettre, c'est normal ; pour une <b>réserve qui doit rester libre</b>, "
+            "c'est un créneau à risque (quelqu'un d'autre émet). Survole une case pour le détail.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        t = QtWidgets.QTableWidget(len(ws), len(hours))
+        t.setHorizontalHeaderLabels([f"{h:02d} h" for h in hours])
+        t.setVerticalHeaderLabels([f"{w['name']}  {w['freq']:.3f}" for w in ws])
+        t.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        th, base = o.theme, o.theme["ui_base"]
+        risky = []
+        for c, h in enumerate(hours):
+            n, k = occ[h]
+            for r, w in enumerate(ws):
+                if not n[r]:
+                    continue
+                pct = 100.0 * k[r] / n[r]
+                it = QtWidgets.QTableWidgetItem(f"{pct:.0f} %")
+                it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                free = o.is_keep_free(w["status"])
+                col = th["st_occ"] if free else th["st_free"]
+                if pct > 0:
+                    bg = blend(col, base, min(0.85, 0.2 + pct / 120.0))
+                    it.setBackground(QtGui.QColor(bg))
+                    it.setForeground(QtGui.QColor(contrast_text(bg)))
+                it.setToolTip(f"{w['name']} ({w['freq']:.3f} MHz) à {h:02d} h : occupée {pct:.0f} % du temps "
+                              f"({int(k[r])} balayages sur {int(n[r])})")
+                t.setItem(r, c, it)
+                if free and pct >= 5:
+                    risky.append((pct, w["name"], h))
+        t.resizeColumnsToContents()
+        lay.addWidget(t, 1)
+        risky.sort(reverse=True)
+        self.risky = risky
+        self.sum_lbl = QtWidgets.QLabel(
+            ("⚠ Réserves touchées : " + ", ".join(f"{n_} à {h:02d} h ({p:.0f} %)" for p, n_, h in risky[:8])
+             + (" …" if len(risky) > 8 else "")) if risky else
+            ("✔ Aucune réserve « doit rester libre » touchée." if hours else
+             "Pas encore de balayage à analyser (lance ▶ Démarrer, ou ouvre une session dans la relecture)."))
+        self.sum_lbl.setWordWrap(True)
+        lay.addWidget(self.sum_lbl)
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addWidget(close, 0, Qt.AlignmentFlag.AlignRight)
+        self.table = t
+        self.resize(900, 600)
+
+
 class SpectrumLegendDialog(QtWidgets.QDialog):
     """« ❓ Courbes » : ce que montre chaque courbe / ligne du spectre, et les réglages correspondants (reliés dans les
     deux sens aux réglages de la fenêtre principale)."""
@@ -11184,13 +11572,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_xy = None
         self.last_cycle = 10.0
         self.labels = []
+        self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
+        self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
         self._mk_items = {}
         self.mk = mk_default()          # repères du spectre : filtres (état, couche, statut), style
         self.expert = False             # mode simple par défaut (☰ Plus › Mode expert)
         self.sections_open = dict(self.SECTIONS_OPEN)
         self._zoom = None
         self._zoom_view = None
-        self._cfg = dict(rbw=100, zrbw=None, input="auto", lna=None, att="auto", offset=0.0,
+        self._cfg = dict(rbw=100, zrbw=None, zpts=None, input="auto", lna=None, att="auto", offset=0.0,
                          seg=None, points=1000)
         self._build_ui()
         self._load_config()
@@ -11302,6 +11692,8 @@ class MainWindow(QtWidgets.QMainWindow):
         offset_spin="Correction ajoutée à toutes les mesures (câble, antenne, splitter…).",
         seg_combo="Taille des morceaux envoyés au tinySA à chaque commande. « Auto » selon le modèle.",
         points_combo="Points par balayage et par bande : plus il y en a, plus c'est fin… et plus c'est long.",
+        zpts_combo="Points du zoom live. « Auto » en met moins quand on zoome (un point tous les ~10 kHz,\n"
+                   "290 au plus) : assez fin pour une porteuse de micro, et le balayage reste rapide.",
         country_combo="Pays : canaux TV et attributions affichés sous le spectre, canaux proposés pour les blocs\n"
                       "Spectera. « Éditer le plan » pour l'adapter.",
         alloc_chk="Affiche sous le spectre à qui appartient chaque bande (TNT + micros, 4G/5G, militaire…).",
@@ -11532,6 +11924,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.is_running():
             self.toggle_run()
 
+    def open_occupancy(self):
+        OccupancyDialog(self).exec()
+
+    def open_coord(self):
+        CoordDialog(self).exec()
+
     def open_scan_add(self):
         ScanAddDialog(self).exec()
 
@@ -11679,6 +12077,7 @@ class MainWindow(QtWidgets.QMainWindow):
             (None, None),
             ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene())))
         tmenu = submenu(mm, "📐 Plan de fréquences", (
+            ("🪄 Trouver N fréquences compatibles (coordination auto)…", lambda *_: self.open_coord()),
             ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
             ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
             (None, None),
@@ -11690,6 +12089,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
         mm.addSection("③ Après le show")
         mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
+        mm.addAction("📊 Occupation par heure (créneaux à risque)…").triggered.connect(lambda *_: self.open_occupancy())
         submenu(mm, "📊 Scans et rapports", (
             ("📄 Rapport de show…", lambda *_: self.make_report()),
             ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
@@ -11757,6 +12157,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.points_combo.activated.connect(self.apply_points)
         self.rbw_combo = self._combo([("Auto", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST], 100)
         self.zrbw_combo = self._combo([("Auto (selon zoom)", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])
+        self.zpts_combo = self._combo([("Auto (selon zoom)", None)]
+                                      + [(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES])
         self.input_combo = self._combo([("Auto", "auto"), ("Basse (≤ 800 MHz)", "low"),
                                         ("Haute (> 800 MHz)", "high")])
         self.input_combo.setToolTip("Auto : tinySA d'origine → prise « haute » au-delà de 800 MHz ; tinySA Ultra (une\n"
@@ -11777,7 +12179,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                   "Auto = 450 sur tinySA Ultra, 290 sinon.")
         self.est_lbl = QtWidgets.QLabel("")
         self.est_lbl.setWordWrap(True)
-        for c in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo, self.att_combo,
+        for c in (self.rbw_combo, self.zrbw_combo, self.zpts_combo, self.input_combo, self.lna_combo, self.att_combo,
                   self.seg_combo):
             c.currentIndexChanged.connect(self._sync_cfg)
         self.offset_spin.valueChanged.connect(self._sync_cfg)
@@ -11787,6 +12189,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mform.addRow("Points / balayage :", self.points_combo)
         mform.addRow("RBW :", self.rbw_combo)
         mform.addRow("RBW en zoom :", self.zrbw_combo)
+        mform.addRow("Points en zoom :", self.zpts_combo)
         mform.addRow("Entrée :", self.input_combo)
         mform.addRow("LNA :", self.lna_combo)
         mform.addRow("Atténuateur :", self.att_combo)
@@ -11961,7 +12364,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                   ("dev2", dev2_box, 0), ("country", pbox, 0)):
             lv.addWidget(self._section(key, box), stretch)
         lv.addStretch(0)
-        self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.input_combo, self.lna_combo,
+        self._expert_rows = [(mform, w_) for w_ in (self.rbw_combo, self.zrbw_combo, self.zpts_combo, self.input_combo, self.lna_combo,
                                                    self.att_combo, self.offset_spin, self.seg_combo, self.baud_combo)]
         self._expert_rows += [(dform, w_) for w_ in (self.ref_chk, self.ref_margin, self.win_spin, self.occ_combo)]
         self._expert_rows += [(aform, self.unk_chk)]
@@ -11976,6 +12379,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view_combo = QtWidgets.QComboBox()
         self.view_combo.setMinimumWidth(170)
         self.view_combo.currentIndexChanged.connect(self.on_view_changed)
+        self.bands_btn = QtWidgets.QToolButton()
+        self.bands_btn.setText("📶 Bandes")
+        self.bands_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.bands_btn.setToolTip("Quelles bandes le tinySA balaye : toutes, seulement certaines (cocher / décocher),\n"
+                                  "ou seulement celle affichée dans « Vue ». Moins de bandes = cycle plus rapide.")
+        self.bands_menu = QtWidgets.QMenu(self.bands_btn)
+        self.bands_menu.aboutToShow.connect(self._build_bands_menu)
+        self.bands_btn.setMenu(self.bands_menu)
         self.zoom_btn = QtWidgets.QPushButton("🔍 Zoom live")
         self.zoom_btn.setCheckable(True)
         self.zoom_btn.setToolTip("Le tinySA ne scanne plus que la zone visible, avec le nombre de points choisi.\n"
@@ -12010,6 +12421,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.legend_btn.setToolTip("Ce que montre chaque courbe et ligne du spectre (direct, max hold, référence, "
                                    "seuils, trop fort, repères) et leurs réglages.")
         self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
+        self.mkr_btn = QtWidgets.QPushButton("🎯 Marqueurs")
+        self.mkr_btn.setCheckable(True)
+        self.mkr_btn.setToolTip("Marqueurs déplaçables M1 / M2 : fréquence au kHz près (saisie, molette, flèches),\n"
+                                "niveau, « ⤒ Pic », écart M1 → M2, largeur occupée.")
+        self.mkr_btn.toggled.connect(lambda on: self.show_markers_bar(on))
         ref_btn = QtWidgets.QPushButton("📏 Référence")
         ref_btn.setToolTip("Courbe de référence (spectre calme / bruit de fond du lieu), affichée en pointillés.")
         rmenu = QtWidgets.QMenu(ref_btn)
@@ -12119,8 +12535,9 @@ class MainWindow(QtWidgets.QMainWindow):
         center = QtWidgets.QWidget()
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
-        cl.addLayout(self._flow(("Vue :", self.view_combo), self.zoom_btn, self.mk_btn, self.hold_chk,
-                                self.persist_combo, reset_btn, cap_btn, self.legend_btn, self.readout))
+        cl.addLayout(self._flow(("Vue :", self.view_combo), self.bands_btn, self.zoom_btn, self.mk_btn, self.hold_chk,
+                                self.persist_combo, reset_btn, cap_btn, self.mkr_btn, self.legend_btn, self.readout))
+        cl.addWidget(self._build_markers_bar())
         self.ref_row = QtWidgets.QWidget()
         rl = self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -12259,6 +12676,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.watch_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.watch_table.itemChanged.connect(self.on_watch_edit)
         self.watch_table.cellDoubleClicked.connect(self.on_watch_dbl)
+        self.watch_table.itemSelectionChanged.connect(self._on_watch_sel)
         self.watch_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.watch_table.customContextMenuRequested.connect(self.watch_menu)
         self.watch_table.setItemDelegateForColumn(C_NAME, NameDelegate(self))
@@ -12406,6 +12824,7 @@ class MainWindow(QtWidgets.QMainWindow):
         c = self._cfg
         c["rbw"] = self.rbw_combo.currentData()
         c["zrbw"] = self.zrbw_combo.currentData()
+        c["zpts"] = self.zpts_combo.currentData()
         c["input"] = self.input_combo.currentData()
         c["lna"] = self.lna_combo.currentData()
         c["att"] = self.att_combo.currentData()
@@ -12422,7 +12841,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_estimate(self):
         seg = self._cfg["seg"] or getattr(self, "seg_known", None) or 290
-        act = [b for b in self.scan_bands() if b["enabled"]]
+        act = [b for b in self.scan_bands() if self._scan_now(b)]
         tot = sum(self._npts(b) for b in act)
         nseg = sum(len(segment_plan(self._npts(b), seg)) for b in act)
         pre = f"🎯 Scan ciblé ({len(act)} zone(s)) · " if self._focus_bands else ""
@@ -12436,7 +12855,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def band_devices(self):
         """{id bande: n° du tinySA qui la balaye} (tout sur le 1er quand il n'y en a qu'un)."""
-        bs = [b for b in self.scan_bands() if b["enabled"]]
+        bs = [b for b in self.scan_bands() if self._scan_now(b)]
         if self.ndev() == 1:
             return {b["id"]: 0 for b in bs}
         return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
@@ -12455,7 +12874,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             seg=c["seg"], demo_freqs=[w["freq"] for w in self.watch], ver=self._ver)
             if self._zoom:
                 a, b = self._zoom
-                n = max(2, int(c["points"]))
+                n = zoom_points(b - a, c.get("zpts"), c["points"])
                 step_khz = (b - a) * 1000.0 / (n - 1)
                 bands = [dict(id=ZOOM_ID, name="Zoom", start_hz=a * 1e6, stop_hz=b * 1e6, n=n, enabled=True)]
                 rbw = c["zrbw"] if c["zrbw"] is not None else auto_rbw(step_khz)
@@ -12468,7 +12887,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 asg = self.band_devices()
                 bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
-                              n=self._npts(b), enabled=b["enabled"]) for b in self.scan_bands()
+                              n=self._npts(b), enabled=self._scan_now(b)) for b in self.scan_bands()
                          if asg.get(b["id"], 0) == dev]
                 rbw = c["rbw"]
             freqs = [w["freq"] for w in self.watch if not w.get("bw")]
@@ -12601,12 +13020,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 if i >= 0:
                     combo.setCurrentIndex(i)
 
-        for combo, key in [(self.points_combo, "points"), (self.rbw_combo, "rbw"), (self.zrbw_combo, "zrbw"),
+        for combo, key in [(self.points_combo, "points"), (self.rbw_combo, "rbw"), (self.zrbw_combo, "zrbw"), (self.zpts_combo, "zpts"),
                            (self.input_combo, "input"), (self.lna_combo, "lna"), (self.att_combo, "att"),
                            (self.seg_combo, "seg"), (self.mark_combo, "mark"), (self.persist_combo, "persist"),
                            (self.occ_combo, "occ_minutes"), (self.country_combo, "country"),
                            (self.baud_combo, "baud")]:
             setc(combo, key)
+        self.scan_follow = bool(data.get("scan_follow", False))
         pc = data.get("plan_custom")
         self.plan_custom = {k: v for k, v in pc.items() if isinstance(v, str)} if isinstance(pc, dict) else {}
         self.offset_spin.setValue(data.get("offset", 0.0))
@@ -12770,7 +13190,8 @@ class MainWindow(QtWidgets.QMainWindow):
             statuses=[dict(name=s["name"], color=s["color"], free=bool(s.get("free")), on=bool(s.get("on")))
                       for s in self.statuses],
             theme=self.theme,
-            points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], input=c["input"], lna=c["lna"],
+            scan_follow=self.scan_follow,
+            points=c["points"], rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
             baud=self.baud_combo.currentData(),
             persist=self.persist_combo.currentData(),
@@ -13115,7 +13536,7 @@ class MainWindow(QtWidgets.QMainWindow):
                f"Raison : {reason or 'demandé'}", f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()} · {sys.platform}",
                f"tinySA : {self.info_lbl.text().strip() or '—'} · port {self.port_combo.currentData() or '—'}"
                f" · {self.baud_combo.currentData()} bauds · démo {self.demo_chk.isChecked()}",
-               f"Réglages : points {c['points']} · RBW {c['rbw'] or 'auto'} · RBW zoom {c['zrbw'] or 'auto'} · "
+               f"Réglages : points {c['points']} · RBW {c['rbw'] or 'auto'} · RBW zoom {c['zrbw'] or 'auto'} · points zoom {c.get('zpts') or 'auto'} · "
                f"entrée {c['input']} · LNA {c['lna']} · atténuateur {c['att']} · segment {c['seg'] or 'auto'} · "
                f"offset {c['offset']}", "", "Bandes :"]
         for b in self.bands:
@@ -13615,6 +14036,71 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fit_x = True
         QtCore.QTimer.singleShot(0, self._bands_changed)
 
+    def _build_bands_menu(self):
+        m = self.bands_menu
+        m.clear()
+        a = m.addAction("📶 Balayer toutes les bandes")
+        a.triggered.connect(lambda *_: self.scan_all_bands())
+        m.addSeparator()
+        hd = m.addAction("Bandes balayées (cocher / décocher) :")
+        hd.setEnabled(False)
+        for b in self.bands:
+            a = m.addAction(b["name"] + f"   {b['start']:g}–{b['stop']:g} MHz")
+            a.setCheckable(True)
+            a.setChecked(bool(b["enabled"]))
+            a.toggled.connect(lambda *_, a=a, bid=b["id"]: self.set_band_enabled(bid, a.isChecked()))
+        m.addSeparator()
+        a = m.addAction("🎯 Ne balayer que la bande affichée dans « Vue »")
+        a.setCheckable(True)
+        a.setChecked(self.scan_follow)
+        a.setToolTip("Choisis une bande dans « Vue » : seule celle-ci est balayée (beaucoup plus rapide).\n"
+                     "« Toutes les bandes » dans « Vue » = toutes les bandes cochées.")
+        a.toggled.connect(lambda *_, a=a: self.set_scan_follow(a.isChecked()))
+
+    def set_band_enabled(self, bid, on):
+        b = next((x for x in self.bands if x["id"] == bid), None)
+        if b is None or bool(b["enabled"]) == bool(on):
+            return
+        if not on and sum(1 for x in self.bands if x["enabled"]) <= 1:
+            self.set_status("Il faut garder au moins une bande à balayer.")
+            return
+        with self.lock:
+            b["enabled"] = bool(on)
+        self._bands_changed()
+        n = sum(1 for x in self.bands if x["enabled"])
+        self.set_status(f"{n} bande(s) balayée(s) sur {len(self.bands)}. Les fréquences des bandes non balayées "
+                        f"ne sont plus surveillées.")
+
+    def scan_all_bands(self):
+        with self.lock:
+            for b in self.bands:
+                b["enabled"] = True
+        self.scan_follow = False
+        self._bands_changed()
+        self.set_status("Toutes les bandes sont balayées.")
+
+    def set_scan_follow(self, on):
+        self.scan_follow = bool(on)
+        self._bump()
+        self.update_estimate()
+        if on and self._follow_id() is None:
+            self.set_status("Choisis maintenant une bande dans « Vue » : seule celle-ci sera balayée.")
+        elif on:
+            self.set_status("Seule la bande affichée est balayée. Les autres fréquences ne sont plus surveillées.")
+        else:
+            self.set_status("Toutes les bandes cochées sont de nouveau balayées.")
+
+    def _follow_id(self):
+        """Bande seule à balayer (mode « bande affichée »), sinon None."""
+        if not self.scan_follow or self._zoom is not None:
+            return None
+        vid = getattr(self, "view_id", -1)
+        return vid if any(b["id"] == vid and b["enabled"] for b in self.scan_bands()) else None
+
+    def _scan_now(self, b):
+        fid = self._follow_id()
+        return bool(b["enabled"]) and (fid is None or b["id"] == fid)
+
     def refresh_view_combo(self):
         cur = self.view_combo.currentData()
         self.view_combo.blockSignals(True)
@@ -13632,6 +14118,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         v = self.view_combo.currentData()
         self.view_id = -1 if v is None else v
+        if self.scan_follow:
+            self._bump()
+            self.update_estimate()
         self._wf_show(self.view_id != -1)
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
@@ -13652,8 +14141,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.view_combo.setEnabled(False)
             self._wf_show(True)
             self.zoom_timer.start()
-            self.set_status("Zoom live : le tinySA scanne uniquement la zone visible avec le nombre de points "
-                            "choisi. Zoome / déplace-toi, le scan suit (les autres fréquences sont suspendues).")
+            self.set_status("Zoom live : le tinySA scanne uniquement la zone visible. Zoome / déplace-toi, le "
+                            "scan suit (les autres fréquences sont suspendues). " + self.zoom_info())
         else:
             if self._zoom is None:
                 return
@@ -13698,6 +14187,17 @@ class MainWindow(QtWidgets.QMainWindow):
         tol = 0.02 * (b - a)
         if abs(vr[0] - a) > tol or abs(vr[1] - b) > tol:
             self._set_zoom(vr[0], vr[1])
+            self.set_status(self.zoom_info())
+
+    def zoom_info(self):
+        """« 2.000 MHz · 201 points (pas 10.0 kHz) » : ce que scanne le zoom live."""
+        z = self._zoom
+        if not z:
+            return ""
+        c = self._cfg
+        n = zoom_points(z[1] - z[0], c.get("zpts"), c["points"])
+        step = (z[1] - z[0]) * 1000.0 / (n - 1)
+        return f"Zoom : {z[1] - z[0]:.3f} MHz · {n} points (pas {step:.1f} kHz)"
 
     def zoom_on(self, row, half=1.0):
         if row >= len(self.watch):
@@ -14966,7 +15466,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_cycle[dev] = dt
         live = [v for k, v in self.dev_cycle.items() if k >= len(self.dev_live) or self.dev_live[k]]
         dt = max(live) if live else dt          # le plus lent des tinySA fixe le rythme de rafraîchissement
-        nb = len([b for b in self.scan_bands() if b["enabled"]]) if self.ndev() > 1 and self._zoom is None else nb
+        nb = len([b for b in self.scan_bands() if self._scan_now(b)]) if self.ndev() > 1 and self._zoom is None else nb
         self.last_cycle = dt
         ids = {b["id"] for b in self.scan_bands() if b["enabled"]}
         if self._zoom is not None:
@@ -15149,6 +15649,12 @@ class MainWindow(QtWidgets.QMainWindow):
         return min(b["start"] for b in bs), max(b["stop"] for b in bs)
 
     def update_plot(self, hist=True):
+        try:
+            self._update_plot(hist)
+        finally:
+            self.marker_refresh()
+
+    def _update_plot(self, hist=True):
         nan = np.array([np.nan])
         if self.view_id == -1:
             live = {b["id"] for b in self.scan_bands() if b["enabled"]}
@@ -15411,6 +15917,67 @@ class MainWindow(QtWidgets.QMainWindow):
                 lab.setVisible(True)
             else:
                 lab.setVisible(False)
+        self._update_selection()
+
+    def _on_watch_sel(self):
+        self._update_selection()
+        rows = self._sel_rows()
+        if len(rows) == 1 and self._last_xy is not None:
+            w = self.watch[rows[0]]
+            (x0, x1), _ = self.spec.getPlotItem().vb.viewRange()
+            if not x0 <= w["freq"] <= x1:
+                self.set_status(f"« {w['name']} » ({w['freq']:.3f} MHz) est hors de la vue du spectre : "
+                                f"double-clic sur son niveau pour zoomer dessus.")
+
+    def _update_selection(self):
+        """Fréquence(s) choisie(s) dans la liste : ressortent sur le spectre (bande ambrée, trait épais, nom)."""
+        pi = self.spec.getPlotItem()
+        if self._sel_items is None:
+            c = QtGui.QColor(SEL_COLOR)
+            c.setAlpha(80)
+            regs = []
+            for _i in range(SEL_MAX):
+                r = pg.LinearRegionItem(values=(0, 0), movable=False, brush=pg.mkBrush(c),
+                                        pen=pg.mkPen(SEL_COLOR, width=1))
+                r.setZValue(-5)
+                r.setVisible(False)
+                pi.addItem(r, ignoreBounds=True)
+                regs.append(r)
+            line = pg.PlotCurveItem(pen=pg.mkPen(SEL_COLOR, width=3.5), connect="pairs")
+            line.setZValue(40)
+            pi.addItem(line, ignoreBounds=True)
+            lab = pg.TextItem("", color=SEL_COLOR, anchor=(0.5, 1), fill=pg.mkBrush(0, 0, 0, 170),
+                              border=pg.mkPen(SEL_COLOR))
+            lab.setZValue(50)
+            lab.setVisible(False)
+            pi.addItem(lab, ignoreBounds=True)
+            self._sel_items = (regs, line, lab)
+        regs, line, lab = self._sel_items
+        rows = self._sel_rows()[:SEL_MAX]
+        (x0, x1), (y0, y1) = pi.vb.viewRange()
+        xs, ys = [], []
+        for i, r in enumerate(regs):
+            if i < len(rows):
+                w = self.watch[rows[i]]
+                half = max((w.get("bw") or 0.0) / 2, (x1 - x0) * 0.006)
+                r.setRegion((w["freq"] - half, w["freq"] + half))
+                r.setVisible(True)
+                if not w.get("bw"):
+                    xs += [w["freq"], w["freq"]]
+                    ys += [y0, y1]
+            else:
+                r.setVisible(False)
+        line.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        if len(rows) == 1:
+            w = self.watch[rows[0]]
+            lvl = "" if w.get("level") is None else "  " + self.lvl(w["level"], suffix=True)
+            lab.setText(f"{w['name']}  {w['freq']:.3f}" + lvl)
+            rel = (w["freq"] - x0) / max(1e-9, x1 - x0)          # près d'un bord : texte du côté intérieur
+            lab.setAnchor((0.0, 1) if rel < 0.2 else (1.0, 1) if rel > 0.8 else (0.5, 1))
+            lab.setPos(w["freq"], y0 + (y1 - y0) * 0.16)
+            lab.setVisible(True)
+        else:
+            lab.setVisible(False)
 
     def update_waterfall(self, bid, f, l):
         lr = decimate_max(l, WF_MAX_COLS)
@@ -15477,6 +16044,123 @@ class MainWindow(QtWidgets.QMainWindow):
         med = float(np.median(np.concatenate([v[1] for v in self.latest.values()])))
         self.thr_spin.setValue(round(med + 10.0))
         self.weak_spin.setValue(round(med + 4.0))
+
+    # ------------------------------------------------------- marqueurs M1 / M2
+    def _build_markers_bar(self):
+        bar = QtWidgets.QWidget()
+        self.mkr_bar = bar
+        self.mkr_spins, self.mkr_lines = [], []
+        cols = ("#ffd166", "#06d6a0")
+        pi = self.spec.getPlotItem()
+        for i, col in enumerate(cols):
+            sp_ = QtWidgets.QDoubleSpinBox()
+            sp_.setDecimals(3)
+            sp_.setRange(0.0, 6000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setKeyboardTracking(False)
+            sp_.setToolTip(f"Fréquence du marqueur M{i + 1} : tape-la, ou molette / flèches (pas choisi à droite).")
+            ln = pg.InfiniteLine(pos=0.0, angle=90, movable=True, pen=pg.mkPen(col, width=1.4, style=Qt.PenStyle.DashLine),
+                                 label=f"M{i + 1}", labelOpts=dict(position=0.96, color=col, fill=(0, 0, 0, 160)))
+            ln.setVisible(False)
+            pi.addItem(ln, ignoreBounds=True)
+            ln.sigPositionChanged.connect(lambda *_, i=i: self._mkr_from_line(i))
+            sp_.valueChanged.connect(lambda v, i=i: self._mkr_from_spin(i, v))
+            self.mkr_spins.append(sp_)
+            self.mkr_lines.append(ln)
+        self.mkr_step = self._combo([("pas 1 kHz", 0.001), ("pas 5 kHz", 0.005), ("pas 25 kHz", 0.025),
+                                     ("pas 100 kHz", 0.1), ("pas 1 MHz", 1.0)], 0.025)
+        self.mkr_step.setToolTip("De combien bougent les marqueurs à chaque cran de molette / flèche.")
+        self.mkr_step.currentIndexChanged.connect(lambda *_: [s_.setSingleStep(self.mkr_step.currentData())
+                                                              for s_ in self.mkr_spins])
+        for s_ in self.mkr_spins:
+            s_.setSingleStep(0.025)
+        pk = QtWidgets.QPushButton("⤒ Pic")
+        pk.setToolTip("Place M1 sur le plus haut signal à ±0,5 MHz.")
+        pk.clicked.connect(lambda *_: self.marker_to_peak(0))
+        self.mkr2_chk = QtWidgets.QCheckBox("M2")
+        self.mkr2_chk.setToolTip("Deuxième marqueur : écart en fréquence et en niveau entre M1 et M2.")
+        self.mkr2_chk.toggled.connect(lambda *_: self._mkr_visible())
+        self.mkr_drop = QtWidgets.QSpinBox()
+        self.mkr_drop.setRange(3, 60)
+        self.mkr_drop.setValue(20)
+        self.mkr_drop.setPrefix("largeur à −")
+        self.mkr_drop.setSuffix(" dB")
+        self.mkr_drop.setToolTip("Bande occupée autour du pic près de M1 : là où le niveau reste au-dessus du pic moins "
+                                 "cette valeur.")
+        self.mkr_drop.valueChanged.connect(lambda *_: self.marker_refresh())
+        self.mkr_lbl = QtWidgets.QLabel("")
+        self._elastic(self.mkr_lbl)
+        self.mkr_lbl.setStyleSheet("font-family:Consolas,monospace;")
+        self.mkr_lbl.setMinimumWidth(260)
+        self.mkr_lbl.setToolTip("M1 : fréquence et niveau · Δ : écart M1 → M2 · largeur occupée autour du pic.")
+        lay = self._flow(("M1 :", self.mkr_spins[0], pk), (self.mkr2_chk, self.mkr_spins[1]), self.mkr_step,
+                         self.mkr_drop, self.mkr_lbl)
+        lay.setContentsMargins(0, 0, 0, 0)
+        bar.setLayout(lay)
+        bar.setVisible(False)
+        return bar
+
+    def show_markers_bar(self, on):
+        self.mkr_bar.setVisible(bool(on))
+        if on and not any(s_.value() for s_ in self.mkr_spins):
+            x0, x1 = self.spec.getPlotItem().vb.viewRange()[0]
+            self.mkr_spins[0].setValue((x0 + x1) / 2.0)
+            self.mkr_spins[1].setValue(x0 + (x1 - x0) * 0.6)
+        self._mkr_visible()
+        self.marker_refresh()
+
+    def _mkr_visible(self):
+        on = self.mkr_btn.isChecked()
+        self.mkr_lines[0].setVisible(on)
+        self.mkr_lines[1].setVisible(on and self.mkr2_chk.isChecked())
+        self.mkr_spins[1].setEnabled(self.mkr2_chk.isChecked())
+        self.marker_refresh()
+
+    def _mkr_from_line(self, i):
+        sp_ = self.mkr_spins[i]
+        sp_.blockSignals(True)
+        sp_.setValue(self.mkr_lines[i].value())
+        sp_.blockSignals(False)
+        self.marker_refresh()
+
+    def _mkr_from_spin(self, i, v):
+        ln = self.mkr_lines[i]
+        ln.blockSignals(True)
+        ln.setValue(float(v))
+        ln.blockSignals(False)
+        self.marker_refresh()
+
+    def _mkr_trace(self):
+        try:
+            x, y = self.curve.getData()
+        except (TypeError, ValueError):            # pas encore de courbe
+            return None, None
+        return (None, None) if x is None or not isinstance(x, np.ndarray) else (x, y)
+
+    def marker_to_peak(self, i=0):
+        F, L = self._mkr_trace()
+        pk = None if F is None else peak_near(F, L, self.mkr_spins[i].value())
+        if pk is not None:
+            self.mkr_spins[i].setValue(pk[0])
+
+    def marker_refresh(self):
+        if not getattr(self, "mkr_btn", None) or not self.mkr_btn.isChecked():
+            return
+        F, L = self._mkr_trace()
+        f1 = self.mkr_spins[0].value()
+        p1 = None if F is None else trace_at(F, L, f1)
+        txt = f"M1 {f1:.3f} MHz " + (self.lvl(p1[1], suffix=True) if p1 else "—")
+        if self.mkr2_chk.isChecked():
+            f2 = self.mkr_spins[1].value()
+            p2 = None if F is None else trace_at(F, L, f2)
+            txt += f" · M2 {f2:.3f} · Δ {(f2 - f1) * 1000:+.0f} kHz"
+            if p1 and p2:
+                txt += f" / {p2[1] - p1[1]:+.1f} dB"
+        ow = None if F is None else occupied_width(F, L, f1, self.mkr_drop.value())
+        if ow:
+            txt += f" · largeur {(ow[1] - ow[0]) * 1000:.0f} kHz"
+        self.mkr_lbl.setText(txt)
+        self.mkr_lbl.setToolTip(txt)
 
     def open_spectrum_legend(self):
         d = getattr(self, "_legend", None)

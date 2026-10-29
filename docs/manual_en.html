@@ -152,7 +152,7 @@ each part of the screen in order, with a bubble next to it.</div>
   <tr><td><b>Top bar</b></td><td>Port, ▶ Start, 🎪 Shows, 🔔 alarms, ☰ More. The version is shown at the bottom
     right.</td></tr>
   <tr><td><b>Workflow bar</b></td><td>The work in order, from left to right: <b>① Scan the venue › ② My
-    frequencies › ③ Check the plan › ④ Intermod › ⑤ Monitor the show › ⑥ After the show</b>, then 🎓 Tutorial.
+    frequencies › ③ Coordinate the plan › ④ Intermod › ⑤ Monitor the show › ⑥ After the show</b>, then 🎓 Tutorial.
     Each button starts the step and says what to do right next to it.</td></tr>
   <tr><td><b>Settings</b> (left)</td><td>Collapsible sections: <b>Thresholds</b> (when is it busy?),
     <b>Alarms</b> (TX missing, too strong, sound, what to log), <b>Bands to sweep</b>, Measurement, 2nd tinySA,
@@ -247,6 +247,23 @@ linked to the main window's settings).</p>
 <p>Other tools: <b>View</b> (all bands or one), <b>🔍 Live zoom</b> (tight, fast sweep around one frequency),
 <b>Persistence</b> (older sweeps fading out), <b>📷 Capture</b> (PNG image), right-click on the spectrum (add to
 my list, where could it come from, zoom).</p>
+<ul>
+  <li><b>📶 Bands</b> (next to « View »): <b>which bands the tinySA sweeps</b>. « Sweep all bands », or check /
+    uncheck the ones you want, or « 🎯 Only sweep the band shown in View »: pick a band in <b>View</b> and the
+    tinySA only does that one (much faster). ⚠ Frequencies in bands that are not swept are no longer monitored
+    (no alarm for them): go back to « all » during the show.</li>
+  <li><b>🔍 Live zoom, automatic points</b>: when you zoom in, the app uses <b>fewer points</b> (one every
+    ~10 kHz, 290 at most, never more than your bands' points): fine enough to see a mic carrier, and the sweep
+    stays fast. The status bar shows « Zoom: width · points (step) ». Expert mode: « Points in zoom » forces a
+    fixed number.</li>
+  <li><b>🎯 Markers</b>: two movable markers <b>M1 / M2</b>, more precise than the mouse: type the frequency to the
+    kHz, or wheel / arrows with the chosen step (1 kHz to 1 MHz), or drag the line. « ⤒ Peak » puts M1 on the
+    highest signal within ±0.5 MHz. Shown: level, M1 → M2 difference (kHz, dB) and <b>occupied bandwidth</b>
+    around the peak (at −X dB). The button shows / hides them.</li>
+  <li><b>Click a frequency in your list</b>: it <b>stands out on the spectrum</b> (amber band, thick line, name +
+    level). Several selected rows = several highlights. If it's outside the view, the status bar says so
+    (double-click its level to zoom onto it).</li>
+</ul>
 
 <h2 id="show">6. Preparing a show</h2>
 <h3>Bands to sweep</h3>
@@ -370,6 +387,14 @@ Windows window (maximise, taskbar), on the screen of your choice, maximised or f
 “📌 Dock all” or the Standard layout puts everything back into the main window.</p>
 
 <h2 id="coordination">12. Coordination: plan, intermod, backup</h2>
+<h3>🪄 Find N compatible frequencies (auto coordination)</h3>
+<p>Workflow bar › ③ Coordinate the plan, or ☰ More › 📐 Plan. Like coordination software: pick the <b>device</b>
+(its filter, spacing, step, chapter 13), <b>how many</b> frequencies you need and the <b>range</b> (your
+transmitters' band). <b>🪄 Search</b> finds, from bottom to top, frequencies compatible with <b>your whole list and
+with each other</b> (spacing, intermod per the rules, filter), on the device's step, avoiding what the tinySA sees
+as busy (max hold above the « busy » threshold: run ① Scan the venue for a few minutes first). <b>＋ Add to my
+list</b> puts them « In use », named « HF 1, HF 2… », in the chosen stage. If the range is full, the app says so
+(widen the range, or use a more selective device). Then check with 🧮.</p>
 <h3>🧮 Check the plan (like EazyRF)</h3>
 <ul>
   <li>🧮 button or ☰ More › 📐 Frequency plan › 🧮 Check the plan. For each frequency: ✔ compatible or ✗ with
@@ -493,6 +518,14 @@ app was closed in between. The estimated disk space is shown (often a few dozen 
   <li><b>💾 Export…</b>: saves what is being played back (e.g. the last 30 minutes in memory) as a session, into the
     folder of your choice, to archive or send.</li>
 </ul>
+<h3>⚖ Compare two sessions</h3>
+<p>In the playback: <b>⚖ Compare with a session…</b> overlays the max hold of another session (soundcheck,
+yesterday…) as <b>purple dots</b>, and lists the <b>extra</b> (new here) or <b>missing</b> signals compared with
+it. Handy to see what came with the audience or another stage.</p>
+<h3>📊 Occupancy by hour (risky time slots)</h3>
+<p>Playback › 📊, ⑥ After the show, or ☰ More. A table: one row per frequency, one column per hour, the <b>% of the
+time</b> it was above the « busy » threshold. For a frequency that must transmit, that's normal; for a <b>« must
+stay free » reserve</b>, it's a risky time slot (red cell, summary at the bottom). Hover over a cell for details.</p>
 <h3>📄 Show report</h3>
 <p>☰ More › 📊 Scans and reports › 📄 Report: standalone HTML (alarms, occupancy, log), printable to PDF.</p>
 

@@ -153,7 +153,7 @@ atténuateur, segments, fenêtre de mesure, calibration…).</div>
   <tr><td><b>Barre du haut</b></td><td>Port, ▶ Démarrer, 🎪 Shows, 🔔 alarmes, ☰ Plus. La version est affichée en
     bas à droite.</td></tr>
   <tr><td><b>Barre du parcours</b></td><td>Le travail dans l'ordre, de gauche à droite : <b>① Scanner le lieu ›
-    ② Mes fréquences › ③ Vérifier le plan › ④ Intermod › ⑤ Surveiller le show › ⑥ Après le show</b>, puis
+    ② Mes fréquences › ③ Coordonner le plan › ④ Intermod › ⑤ Surveiller le show › ⑥ Après le show</b>, puis
     🎓 Tuto. Chaque bouton lance l'étape et dit quoi faire juste à droite.</td></tr>
   <tr><td><b>Réglages</b> (à gauche)</td><td>Sections repliables : <b>Seuils</b> (quand est-ce occupé ?),
     <b>Alarmes</b> (TX absent, trop fort, son, quoi noter au journal), <b>Bandes à balayer</b>, Mesure,
@@ -249,6 +249,24 @@ sont reliés à ceux de la fenêtre principale).</p>
 <p>Autres outils : <b>Vue</b> (toutes les bandes ou une seule), <b>🔍 Zoom live</b> (balayage serré et rapide
 autour d'une fréquence), <b>Rémanence</b> (anciens balayages en transparence), <b>📷 Capture</b> (image PNG),
 clic droit sur le spectre (ajouter à ma liste, d'où ça peut venir, zoom).</p>
+<ul>
+  <li><b>📶 Bandes</b> (à côté de « Vue ») : <b>quelles bandes le tinySA balaye</b>. « Balayer toutes les
+    bandes », ou coche / décoche celles que tu veux, ou « 🎯 Ne balayer que la bande affichée dans Vue » : tu
+    choisis une bande dans <b>Vue</b> et le tinySA ne fait plus qu'elle (beaucoup plus rapide). ⚠ Les fréquences
+    des bandes non balayées ne sont plus surveillées (pas d'alarme pour elles) : repasse sur « toutes » pendant
+    le show.</li>
+  <li><b>🔍 Zoom live, points automatiques</b> : quand tu zoomes, l'appli met <b>moins de points</b> (un tous les
+    ~10 kHz, 290 au plus, jamais plus que les points de tes bandes) : c'est assez fin pour voir une porteuse de
+    micro et le balayage reste rapide. La barre d'état affiche « Zoom : largeur · points (pas) ». Mode expert :
+    « Points en zoom » pour imposer un nombre fixe.</li>
+  <li><b>🎯 Marqueurs</b> : deux marqueurs déplaçables <b>M1 / M2</b>, plus précis qu'à la souris : tape la
+    fréquence au kHz, ou molette / flèches avec le pas choisi (1 kHz à 1 MHz), ou fais glisser le trait.
+    « ⤒ Pic » pose M1 sur le plus haut signal à ±0,5 MHz. Affiché : niveau, écart M1 → M2 (kHz, dB) et
+    <b>largeur occupée</b> autour du pic (à −X dB). Le bouton les affiche / cache.</li>
+  <li><b>Clic sur une fréquence de ta liste</b> : elle <b>ressort sur le spectre</b> (bande ambrée, trait épais,
+    nom + niveau). Plusieurs lignes choisies = plusieurs surbrillances. Si elle est hors de la vue, la barre
+    d'état le dit (double-clic sur son niveau pour zoomer dessus).</li>
+</ul>
 
 <h2 id="show">6. Préparer un show</h2>
 <h3>Les bandes à balayer</h3>
@@ -376,6 +394,15 @@ Les fenêtres reviennent au même endroit au prochain lancement ; « 📌 Tout r
 Standard remet tout dans la fenêtre principale.</p>
 
 <h2 id="coordination">12. Coordination : plan, intermod, secours</h2>
+<h3>🪄 Trouver N fréquences compatibles (coordination auto)</h3>
+<p>Barre du parcours › ③ Coordonner le plan, ou ☰ Plus › 📐 Plan. Comme un logiciel de coordination : choisis
+<b>l'appareil</b> (son filtre, son écart, son pas, chapitre 13), <b>combien</b> de fréquences il te faut et la
+<b>plage</b> (la bande de tes émetteurs). <b>🪄 Chercher</b> trouve, de bas en haut, des fréquences compatibles
+avec <b>toute ta liste et entre elles</b> (écart, intermod selon les règles, filtre), sur le pas de l'appareil,
+en évitant ce que le tinySA voit occupé (max hold au-dessus du seuil « occupé » : lance ① Scanner le lieu
+quelques minutes avant). <b>＋ Ajouter à ma liste</b> les met en « En service », nommées « HF 1, HF 2… », dans
+la scène choisie. Si la plage est pleine, l'appli le dit (élargis la plage, ou un appareil plus sélectif).
+Vérifie ensuite avec 🧮.</p>
 <h3>🧮 Vérifier le plan (comme EazyRF)</h3>
 <ul>
   <li>Bouton 🧮 ou ☰ Plus › 📐 Plan de fréquences › 🧮 Vérifier le plan. Pour chaque fréquence : ✔ compatible
@@ -502,6 +529,15 @@ après, même si l'appli a été fermée. La place estimée est affichée (souve
   <li><b>💾 Exporter…</b> : garde ce qui est relu (par ex. les 30 dernières minutes en mémoire) comme une session,
     dans le dossier de ton choix, pour l'archiver ou l'envoyer.</li>
 </ul>
+<h3>⚖ Comparer deux sessions</h3>
+<p>Dans la relecture : <b>⚖ Comparer avec une session…</b> superpose le max hold d'une autre session (la balance,
+hier…) en <b>pointillés violets</b>, et liste les signaux <b>en plus</b> (nouveaux ici) ou <b>en moins</b> par
+rapport à elle. Pratique pour voir ce qui est arrivé avec le public ou un autre plateau.</p>
+<h3>📊 Occupation par heure (créneaux à risque)</h3>
+<p>Relecture › 📊, ⑥ Après le show, ou ☰ Plus. Un tableau : une ligne par fréquence, une colonne par heure, le
+<b>% du temps</b> où elle dépassait le seuil « occupé ». Pour une fréquence qui doit émettre, c'est normal ;
+pour une <b>réserve « doit rester libre »</b>, c'est un créneau à risque (case rouge, résumé en bas). Survole une
+case pour le détail.</p>
 <h3>📄 Rapport de show</h3>
 <p>☰ Plus › 📊 Scans et rapports › 📄 Rapport : HTML autonome (alarmes, occupation, journal), imprimable en PDF.</p>
 

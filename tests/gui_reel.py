@@ -280,7 +280,54 @@ win._fit_x = True
 wait(800)
 
 step("zoom sur ligne 0", lambda: win.zoom_on(0)); wait(4000); shot(win, "zoom_live")
+zb_ = [b for b in win.get_cfg(0)["bands"] if b["id"] == m.ZOOM_ID]
+zsp_ = zb_ and (zb_[0]["stop_hz"] - zb_[0]["start_hz"]) / 1e3 / max(1, zb_[0]["n"] - 1)
+check("zoom live : points auto réduits (pas ≈ 10 kHz, ≤ 290 pts)", zb_ and zb_[0]["n"] <= 290 and 5 <= zsp_ <= 12,
+      str(zb_ and zb_[0]["n"]) + " · " + win.zoom_info())
+win.zpts_combo.setCurrentIndex(win.zpts_combo.findData(1000))
+zb_ = [b for b in win.get_cfg(0)["bands"] if b["id"] == m.ZOOM_ID]
+check("zoom live : nombre fixe choisi respecté", zb_ and zb_[0]["n"] == 1000, str(zb_ and zb_[0]["n"]))
+win.zpts_combo.setCurrentIndex(0)
 step("toggle_zoom off", lambda: win.toggle_zoom(False)); wait(1000)
+
+# clic sur une fréquence de la liste -> surlignée sur le spectre
+win.view_combo.setCurrentIndex(0); win._fit_x = True; wait(800)
+win.watch_table.clearSelection()
+win.watch_table.selectRow(0); wait(300)
+regs_, line_, lab_ = win._sel_items
+check("sélection dans la liste : surlignée sur le spectre", regs_[0].isVisible() and lab_.isVisible()
+      and win.watch[0]["name"] in lab_.toPlainText(), lab_.toPlainText())
+shot(win, "selection_spectre")
+win.watch_table.clearSelection(); wait(200)
+check("sélection effacée : plus de surbrillance", not regs_[0].isVisible() and not lab_.isVisible())
+
+# bandes à balayer : toutes / certaines / seulement celle affichée
+win._build_bands_menu()
+check("menu 📶 Bandes : une case par bande", sum(1 for a in win.bands_menu.actions() if a.isCheckable())
+      == len(win.bands) + 1, str(len(win.bands)))
+tmpb_ = None
+if len(win.bands) < 2:                      # la démo n'a qu'une bande : on en ajoute une le temps du test
+    win.add_band("Test 2", 600.0, 620.0, 0.1)
+    tmpb_ = win.bands[-1]
+if len(win.bands) >= 2:
+    b0_, b1_ = win.bands[0], win.bands[1]
+    win.set_band_enabled(b1_["id"], False)
+    en_ = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+    check("décocher une bande : plus balayée", b1_["id"] not in en_ and b0_["id"] in en_, str(en_))
+    win.view_combo.setCurrentIndex(win.view_combo.findData(b0_["id"])); wait(300)
+    win.set_scan_follow(True)
+    en_ = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+    check("« bande affichée » : seule celle de Vue est balayée", en_ == {b0_["id"]}, str(en_))
+    wait(3000)
+    shot(win, "bande_affichee_seule")
+    win.scan_all_bands()
+    en_ = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+    check("« Balayer toutes les bandes » : tout revient", len(en_) == len(win.bands) and not win.scan_follow, str(en_))
+    win.view_combo.setCurrentIndex(0); win._fit_x = True; wait(1500)
+if tmpb_ is not None:
+    with win.lock:
+        win.bands.remove(tmpb_)
+    win._bands_changed(); wait(1000)
 
 # dispositions
 for name in ("layout_analyzer", "layout_monitor", "layout_dual", "layout_standard"):
@@ -911,6 +958,32 @@ for _w in _new:                                  # on les retire (la suite du te
     win.watch.remove(_w)
 win.rebuild_watch_table(); win.rebuild_tree()
 win.latest.pop(9991, None); win.latest_t.pop(9991, None)
+# 🪄 coordination automatique : 4 fréquences compatibles ajoutées (sur un plan réaliste : celui de Clément)
+_saved = list(win.watch)
+win.watch.clear()
+for _i, _f in enumerate((470.2, 471.3, 478.0, 558.0, 574.0, 606.0, 614.0, 646.0)):
+    win._append_watch(f"W{_i}", _f, status="En service")
+    win.watch[-1]["rx"] = "wisycom"
+def _coord_act(d):
+    if isinstance(d, m.CoordDialog):
+        d.n_spin.setValue(4)
+        d.lo.setValue(520.0)
+        d.hi.setValue(556.0)
+        d.prefix.setText("COORD")
+        d.compute()
+        shot(d, "coordination_auto")
+        d.add()
+    return "reject"
+DLG_ACTION[0] = _coord_act
+step("🪄 coordination auto", win.open_coord)
+DLG_ACTION[0] = "reject"
+_cw = [w for w in win.watch if w["name"].startswith("COORD")]
+_iss, _ = m.pf_check([w["freq"] for w in win.watch], None, None, 0.5, m.rx_profile("wisycom")["tol"], None, 32.0)
+check("coordination : 4 ajoutées (Wisycom, en service), plan complet sans aucun problème",
+      len(_cw) == 4 and all(w.get("rx") == "wisycom" and win.is_keep_on(w["status"]) for w in _cw)
+      and sum(len(x) for x in _iss) == 0, str([(w["name"], w["freq"]) for w in _cw]) + str(_iss))
+win.watch[:] = _saved
+win.rebuild_watch_table(); win.rebuild_tree()
 # 📝 Quoi noter : un type décoché n'arrive plus au journal (les alarmes, elles, restent)
 _n0 = win.log_table.rowCount()
 win._logwhat_acts["unknown"].trigger()
@@ -919,6 +992,33 @@ check("journal : « Signaux inconnus » décoché → pas noté", win.log_table.
 win._logwhat_acts["unknown"].trigger()
 win.log_event({"name": "Signal inconnu", "freq": 600.0, "note": ""}, -50.0, "INCONNU")
 check("journal : recoché → noté", win.log_table.rowCount() == _n0 + 1 and win._collect_config()["log_kinds"]["unknown"])
+# 🎯 marqueurs M1 / M2 (demande de Clément : précis, déplaçables, affichables ou non)
+step("🎯 marqueurs", lambda: win.mkr_btn.setChecked(True))
+win.mkr2_chk.setChecked(True)
+win.mkr_spins[0].setValue(503.512)
+check("marqueur : la ligne M1 suit la saisie au kHz", abs(win.mkr_lines[0].value() - 503.512) < 1e-6
+      and win.mkr_lines[0].isVisible())
+win.mkr_lines[1].setValue(504.0)
+check("marqueur : déplacer M2 à la souris met la case à jour", abs(win.mkr_spins[1].value() - 504.0) < 1e-6)
+step("marqueur : ⤒ pic", lambda: win.marker_to_peak(0))
+wait(300)
+check("marqueur : lecture (niveau, Δ, largeur)", "M1" in win.mkr_lbl.text() and "Δ" in win.mkr_lbl.text(),
+      win.mkr_lbl.text())
+shot(win, "marqueurs")
+win.mkr_btn.setChecked(False)
+check("marqueurs masqués", not win.mkr_lines[0].isVisible() and not win.mkr_bar.isVisible())
+_occ = {}
+def _occ_act(d):
+    if isinstance(d, m.OccupancyDialog):
+        _occ["rows"] = d.table.rowCount()
+        _occ["cols"] = d.table.columnCount()
+        _occ["sum"] = d.sum_lbl.text()
+    return "reject"
+DLG_ACTION[0] = _occ_act
+step("📊 occupation par heure", win.open_occupancy)
+DLG_ACTION[0] = "reject"
+check("occupation par heure : une ligne par fréquence, au moins une heure, bilan des réserves",
+      _occ.get("rows") == len(win.watch) and _occ.get("cols", 0) >= 1 and _occ.get("sum"), str(_occ))
 step("❓ Courbes du spectre", win.open_spectrum_legend)
 _lg = win._legend
 if _lg is not None:
@@ -996,6 +1096,11 @@ if _rp is not None:
     _ed = [p_ for p_ in m.Path(_exp).iterdir()]
     check("export de la mémoire : une session complète", len(_ed) == 1 and any(_ed[0].glob("chunk_*.npz"))
           and (_ed[0] / "session.json").exists(), _rp.msg.text())
+    if _ed:
+        step("relecture : ⚖ comparer avec la session exportée", lambda: _rp.open_compare(str(_ed[0])))
+        check("comparer : max hold de l'autre session superposé, bilan affiché", _rp.cmp is not None
+              and _rp.cmp_lbl.text().startswith("⚖") and _rp.cmpcurve.getData()[0] is not None, _rp.cmp_lbl.text())
+        shot(_rp, "relecture_comparaison")
     _rp.close()
 shot(win, "arrete")
 
