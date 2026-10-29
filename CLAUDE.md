@@ -292,7 +292,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `rbw` / `mode` / `lna` / `attenuate` / **`ultra on|off|auto`** inchangés (« ultra on » existe bien). Nouveautés qui
   nous concernent : verrou des commandes (CMD_WAIT_MUTEX, corrige des blocages USB), `scan` refuse < 2 points,
   mode « disque USB » / mise à jour SD qui refusent tout → PURE `TINYSA_REFUSALS` / `tinysa_refusal(lines)`, message
-  clair levé par `TinySA.scan`. **Pas encore testé avec son tinySA à jour** : lui demander un 🩺 diagnostic.
+  clair levé par `TinySA.scan`. **Retour de Clément avec le firmware à jour : « ça balaye bien plus vite »**
+  (pas encore de 🩺 diagnostic ni de nuit complète avec ce firmware).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
