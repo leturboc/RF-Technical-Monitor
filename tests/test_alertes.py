@@ -383,7 +383,7 @@ else:
         pg.wait_for_selector("#lcancel:not(.hidden)", timeout=3000)
         pg.click("#lcancel")
         check("renommer (client) : Annuler revient à la page", pg.locator("#app").is_visible())
-        check("navigateur : accueil avec les 5 vues", pg.locator(".vcard").count() == 5 and pg.locator("nav a").count() == 6,
+        check("navigateur : accueil avec les 6 vues", pg.locator(".vcard").count() == 6 and pg.locator("nav a").count() == 7,
               f'{pg.locator(".vcard").count()} {pg.locator("nav a").count()}')
         check("navigateur : pastille d'alarme", "1 alarme" in pg.locator("#pill").inner_text())
         check("navigateur : bandeau d'alarme", "ABSENT — HF 2" in pg.locator("#al").inner_text())
@@ -417,6 +417,20 @@ else:
         check("mur : tuiles", pg.locator(".t").count() >= 3)
         if CAP:
             pg.screenshot(path=os.path.join(CAP, "web_mur.png"))
+        pg.goto(base + "/#/regie")
+        pg.wait_for_selector(".rg .g", timeout=5000)
+        check("régie : une tuile par groupe", pg.locator(".rg .g").count() >= 1, str(pg.locator(".rg .g").count()))
+        check("régie : alarme en gros en haut", "ABSENT — HF 2" in pg.locator("#ra").inner_text()
+              and pg.locator("#al").inner_text().strip() == "", pg.locator("#ra").inner_text())
+        gm_ = pg.locator(".rg .g", has_text="Micros")
+        check("régie : le groupe en alarme est rouge", gm_.count() == 1 and "bad" in (gm_.get_attribute("class") or ""))
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_regie.png"))
+        pg.set_viewport_size(dict(width=1600, height=900))
+        pg.wait_for_timeout(1200)
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_regie_grand.png"))
+        pg.set_viewport_size(dict(width=390, height=800))
         pg.goto(base + "/#/spectre")
         pg.wait_for_function("document.querySelector('#lg') && document.querySelector('#lg').textContent.includes('direct')",
                              timeout=6000)

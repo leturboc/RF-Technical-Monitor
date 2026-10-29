@@ -567,5 +567,31 @@ check("zoom 0.1 MHz -> minimum MIN_PTS", zoom_points(0.1), MIN_PTS)
 check("zoom auto jamais plus que les points des bandes", zoom_points(20.0, None, 101), 101)
 check("zoom : nombre fixe respecté", zoom_points(2.0, 1000), 1000)
 
+# --- mode festival
+fcn, fdue, astats, ftext = ns["festival_cfg_norm"], ns["festival_due"], ns["alarm_stats"], ns["festival_text"]
+fc = fcn({"on": 1, "hour": "30", "last": "2026-10-28", "bidule": 3})
+check("festival : heure bornée, valeurs lues", (fc["on"], fc["hour"], fc["last"], fc["autostart"]), (True, 23, "2026-10-28", True))
+check("festival : config bancale -> défaut", fcn("x")["on"], False)
+fc = fcn({"on": True, "hour": 9, "last": "2026-10-28"})
+check("bilan : pas avant l'heure", fdue("2026-10-29", 8, fc), False)
+check("bilan : à l'heure", fdue("2026-10-29", 9, fc), True)
+check("bilan : rattrapé plus tard dans la journée", fdue("2026-10-29", 15, fc), True)
+check("bilan : une seule fois par jour", fdue("2026-10-28", 15, fc), False)
+check("bilan : rien si mode coupé", fdue("2026-10-29", 15, fcn({"on": False})), False)
+check("bilan : rien si bilan décoché", fdue("2026-10-29", 15, fcn({"on": True, "daily": False})), False)
+al_ = [dict(kind="CONFLIT", t0=100.0), dict(kind="ABSENT", t0=200.0), dict(kind="ABSENT", t0=300.0), dict(kind="CONFLIT", t0=50.0)]
+check("statistiques d'alarmes depuis t", astats(al_, 100.0), {"CONFLIT": 1, "ABSENT": 2})
+t_, b_, ok_ = ftext("Main Stage", {}, 0, 0, 24, True, 26.4, 1, 1, "bilan.html")
+ok("bilan : tout va bien", ok_ and t_ == "✔ Tout va bien — Main Stage" and "aucune alarme" in b_ and "24 fréquence(s)" in b_
+   and "26 h" in b_ and "bilan.html" in b_, repr((t_, b_)))
+t_, b_, ok_ = ftext("", {"ABSENT": 2}, 1, 1, 24, True, 3, 2, 2)
+ok("bilan : alarmes en cours", not ok_ and t_ == "⚠ 1 alarme(s) en cours" and "ABSENT : 2" in b_ and "2 / 2" in b_, repr((t_, b_)))
+t_, b_, ok_ = ftext("", {}, 0, 0, 24, True, 3, 1, 2)
+ok("bilan : un tinySA hors ligne", not ok_ and "hors ligne" in t_, t_)
+t_, b_, ok_ = ftext("", {}, 0, 0, 24, False, 0, 0, 1)
+ok("bilan : surveillance arrêtée", not ok_ and "arrêtée" in t_, t_)
+req_ = ns["ntfy_request"]("https://ntfy.sh", "t", "x", "y", -1)
+check("ntfy : message « tout va bien » en priorité normale", req_[1]["Priority"], "default")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
