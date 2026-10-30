@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.20.1"
+APP_VER = "7.21.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4401,6 +4401,14 @@ def sites_for_scope(site_scans, scope):
         return list(site_scans or [])
     names = {k[0] for k in scope if k}
     return [d for d in site_scans or [] if d.get("name") in names]
+
+
+def multi_site(dev_site, ndev, live=None):
+    """Deux tinySA posés à deux lieux DIFFÉRENTS (et vivants) : chacun balaye toutes les bandes chez lui, au lieu de
+    se les partager."""
+    live = list(live) if live is not None else [True] * ndev
+    sites = [dev_site.get(d) for d in range(ndev) if d < len(live) and live[d] and dev_site.get(d)]
+    return ndev > 1 and len(set(sites)) > 1
 
 
 # ===== PURE-END
@@ -9101,6 +9109,20 @@ class SitesDialog(QtWidgets.QDialog):
         b_imp.setToolTip("Un scan WWB, WSM, CSV… (autre scanner, autre jour) rangé dans ce lieu.")
         b_imp.clicked.connect(lambda *_: self.import_file())
         lay.addLayout(owner._row("Lieu :", self.site_combo, self.merge_chk, b_keep, b_imp, None))
+        self.dev_combos = []
+        row_ = []
+        for d_ in range(o.ndev()):
+            c_ = QtWidgets.QComboBox()
+            c_.addItem("(aucun lieu)", "")
+            for n_ in dict.fromkeys(names + [v for v in o.dev_site.values() if v]):
+                c_.addItem(n_, n_)
+            c_.setCurrentIndex(max(0, c_.findData(o.dev_site.get(d_, ""))))
+            c_.setToolTip("Où est ce tinySA : chacun de ses balayages alimente EN CONTINU le spectre de ce lieu\n"
+                          "(clique la scène dans « Mes fréquences » pour le voir), gardé tout seul toutes les 30 s.")
+            c_.activated.connect(lambda *_, d_=d_, c_=c_: (o.set_dev_site(d_, c_.currentData()), self.fill()))
+            self.dev_combos.append(c_)
+            row_ += [f"📍 {'1er' if d_ == 0 else '2ᵉ'} tinySA est à :", c_]
+        lay.addLayout(owner._row(*row_, None))
         mid = QtWidgets.QHBoxLayout()
         self.lst = QtWidgets.QListWidget()
         self.lst.setMaximumWidth(270)
@@ -9192,6 +9214,8 @@ class SitesDialog(QtWidgets.QDialog):
         if old is not None and self.merge_chk.isChecked():
             F, L = merge_scans([(old["f"], old["l"]), (F, L)])
         o.site_scans = [d for d in o.site_scans if d["name"] != name] + [site_scan_doc(name, F, L, time.time())]
+        if name in o._site_base:                   # la fusion continue (tinySA posé ici) repart de ce scan
+            o._site_base[name] = o.site_scans[-1]
         self.fill()
         return True
 
@@ -10899,6 +10923,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
         self.site_scans = []                   # 📍 scans gardés par lieu [{name, t, f, l}]
+        self.dev_site = {}                     # 📍 lieu de chaque tinySA {n° appareil: nom du lieu} (continu)
+        self.site_live = {}                    # {lieu: {bande: (F, L, t)}} derniers balayages faits sur place
+        self.site_mh = {}                      # {lieu: {bande: max hold}} depuis le lancement
+        self._site_base = {}                   # {lieu: scan gardé au 1er balayage de la séance} (fusion continue)
+        self._sites_next = 0.0
         self.sites_coord = False               # coordination / secours : éviter l'occupé de TOUS les lieux
         self.planning = planning_norm(None)    # 🎬 qui joue quand, par scène
         self._plan_state = (set(), set())      # (actifs, scènes planifiées) au dernier calcul
@@ -11785,12 +11814,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.legend_btn.setToolTip("Ce que montre chaque courbe et ligne du spectre (direct, max hold, référence, "
                                    "seuils, trop fort, repères) et leurs réglages.")
         self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
-        self.sites_btn = QtWidgets.QPushButton("📍 Lieux")
+        self.sites_btn = QtWidgets.QToolButton()
+        self.sites_btn.setText("📍 Lieux")
         self.sites_btn.setCheckable(True)
         self.sites_btn.setChecked(True)
-        self.sites_btn.setToolTip("Montre sur le spectre le scan gardé du lieu : clique une scène dans « Mes fréquences »\n"
-                                  "pour voir le sien ; en Global, la fusion de tous les lieux (📍 Scans par lieu).")
-        self.sites_btn.toggled.connect(lambda *_: self.update_site_curve())
+        self.sites_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.sites_btn.setToolTip("Spectre par lieu : dis où est chaque tinySA (flèche ▾) ; clique une scène dans « Mes\n"
+                                  "fréquences » pour voir le spectre de CE lieu (en direct si un tinySA y est, sinon son\n"
+                                  "dernier spectre gardé). Global : tout. Clic sur le bouton = afficher / cacher.")
+        self.sites_menu = QtWidgets.QMenu(self.sites_btn)
+        self.sites_menu.aboutToShow.connect(self._build_sites_menu)
+        self.sites_btn.setMenu(self.sites_menu)
+        self.sites_btn.toggled.connect(lambda *_: (self.update_site_curve(), self.update_plot()))
         self.mkr_btn = QtWidgets.QPushButton("🎯 Marqueurs")
         self.mkr_btn.setCheckable(True)
         self.mkr_btn.setToolTip("Marqueurs déplaçables M1 / M2 : fréquence au kHz près (saisie, molette, flèches),\n"
@@ -12245,6 +12280,8 @@ class MainWindow(QtWidgets.QMainWindow):
         bs = [b for b in self.scan_bands() if self._scan_now(b)]
         if self.ndev() == 1:
             return {b["id"]: 0 for b in bs}
+        if multi_site(self.dev_site, self.ndev(), self.dev_live):
+            return {b["id"]: -1 for b in bs}          # -1 = chaque tinySA balaye la bande, chez lui
         return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
                             2, self.dev_live)
 
@@ -12276,7 +12313,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 asg = self.band_devices()
                 bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
                               n=self._npts(b), enabled=self._scan_now(b)) for b in self.scan_bands()
-                         if asg.get(b["id"], 0) == dev]
+                         if asg.get(b["id"], 0) in (dev, -1)]
                 rbw = c["rbw"]
             freqs = [w["freq"] for w in self.watch if not w.get("bw")]
             blocks = [(w["freq"], w["bw"]) for w in self.watch if w.get("bw") and self.is_keep_on(w["status"])]
@@ -12422,6 +12459,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if "site_scans" in data:
             self.site_scans = site_scans_norm(data.get("site_scans"))
         self.sites_coord = bool(data.get("sites_coord", self.sites_coord))
+        ds_ = data.get("dev_sites")
+        if isinstance(ds_, dict):
+            self.dev_site = {int(k): str(v)[:60] for k, v in ds_.items() if str(k) in ("0", "1") and str(v).strip()}
         QtCore.QTimer.singleShot(0, self.update_site_curve)
         if "planning" in data:
             self.planning = planning_norm(data.get("planning"))
@@ -12581,6 +12621,7 @@ class MainWindow(QtWidgets.QMainWindow):
             theme=self.theme,
             scan_follow=self.scan_follow,
             site_scans=self.site_scans, sites_coord=self.sites_coord,
+            dev_sites={str(k): v for k, v in self.dev_site.items() if v},
             planning=self.planning,
             sound=dict(self.sound.cfg),
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
@@ -13809,11 +13850,101 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.scope else "")
         self.update_title()
 
+    def _site_feed(self, bid, f, l):
+        """📍 Balayage d'un tinySA posé à un lieu : rangé dans le direct et le max hold de ce lieu. Avec deux tinySA à
+        deux lieux, la vue Global prend le plus fort des deux (le pire cas) -> (F, L) à garder en global."""
+        site = self.dev_site.get(self.band_src.get(bid, 0), "")
+        if not site:
+            return f, l
+        now = time.time()
+        self.site_live.setdefault(site, {})[bid] = (f, l, now)
+        mh = self.site_mh.setdefault(site, {})
+        old = mh.get(bid)
+        mh[bid] = (f, np.maximum(old[1], l) if old is not None and old[1].shape == l.shape else l.copy())
+        if site not in self._site_base:
+            self._site_base[site] = next((d for d in self.site_scans if d["name"] == site), None)
+        if multi_site(self.dev_site, self.ndev(), self.dev_live):
+            stale = max(15.0, 4 * self.last_cycle)
+            for s_, bands in self.site_live.items():
+                x = bands.get(bid)
+                if s_ != site and x is not None and now - x[2] <= stale and x[1].shape == l.shape:
+                    l = np.maximum(l, x[1])
+        return f, l
+
+    def site_fresh(self, site):
+        """Direct d'un lieu (bandes récentes) -> (F, L) trié, ou (None, None)."""
+        now, stale = time.time(), max(15.0, 4 * self.last_cycle)
+        segs = [(f, l) for f, l, t in self.site_live.get(site, {}).values() if now - t <= stale]
+        if not segs:
+            return None, None
+        F, L = np.concatenate([x[0] for x in segs]), np.concatenate([x[1] for x in segs])
+        o = np.argsort(F)
+        return F[o], L[o]
+
+    def _sites_tick(self, now):
+        """Toutes les 30 s : le max hold de chaque lieu est gardé tout seul (fusionné au scan déjà gardé)."""
+        if now < self._sites_next or not self.site_mh:
+            return
+        self._sites_next = now + 30.0
+        for site, bands in self.site_mh.items():
+            segs = sorted(bands.values(), key=lambda x: float(x[0][0]))
+            F, L = np.concatenate([x[0] for x in segs]), np.concatenate([x[1] for x in segs])
+            base = self._site_base.get(site)
+            if base is not None:
+                F, L = merge_scans([(base["f"], base["l"]), (F, L)])
+            if F is None:
+                continue
+            self.site_scans = [d for d in self.site_scans if d["name"] != site] + [site_scan_doc(site, F, L, now)]
+        self.update_site_curve()
+
+    def view_sites(self):
+        """Lieux à montrer sur le spectre : la (les) scène(s) choisie(s) dans « Mes fréquences » qui sont des lieux
+        (un tinySA y est, ou un scan y est gardé). None = vue normale (Global, ou scène qui n'est pas un lieu)."""
+        if not self.scope or not getattr(self, "sites_btn", None) or not self.sites_btn.isChecked():
+            return None
+        known = set(self.site_live) | {d["name"] for d in self.site_scans} | {v for v in self.dev_site.values() if v}
+        sel = sorted({k[0] for k in self.scope if k and k[0] in known})
+        return sel or None
+
+    def set_dev_site(self, dev, site):
+        """« Le tinySA n° dev est à : site » ("" = aucun lieu)."""
+        site = (site or "").strip()
+        if site:
+            self.dev_site[int(dev)] = site
+        else:
+            self.dev_site.pop(int(dev), None)
+        self._bump()
+        self.update_site_curve()
+        self.update_plot()
+        self.set_status(f"📍 {('1er' if int(dev) == 0 else '2ᵉ')} tinySA : " + (f"à « {site} »" if site else "sans lieu")
+                        + (" · deux lieux : chaque tinySA balaye toutes les bandes chez lui"
+                           if multi_site(self.dev_site, self.ndev(), self.dev_live) else ""))
+
+    def _build_sites_menu(self):
+        m = self.sites_menu
+        m.clear()
+        names = list(dict.fromkeys([x["name"] for x in self.scenes] + [d["name"] for d in self.site_scans]
+                                   + [v for v in self.dev_site.values() if v]))
+        for d_ in range(self.ndev()):
+            sm = m.addMenu(f"📍 {'1er' if d_ == 0 else '2ᵉ'} tinySA ({self.dev_name(d_)}) est à…")
+            grp = QtGui.QActionGroup(sm)
+            for n_ in [""] + names:
+                a = sm.addAction(n_ or "(aucun lieu)")
+                a.setCheckable(True)
+                a.setChecked(self.dev_site.get(d_, "") == n_)
+                grp.addAction(a)
+                a.triggered.connect(lambda *_, d_=d_, n_=n_: self.set_dev_site(d_, n_))
+        m.addSeparator()
+        a = m.addAction("👁 Afficher les lieux sur le spectre")
+        a.setCheckable(True)
+        a.setChecked(self.sites_btn.isChecked())
+        a.triggered.connect(lambda *_, a=a: self.sites_btn.setChecked(a.isChecked()))
+        m.addAction("📍 Scans par lieu (fusion, export)…").triggered.connect(lambda *_: self.open_sites())
+
     def update_site_curve(self):
         """📍 Scan gardé du lieu choisi (scène sélectionnée dans « Mes fréquences »), ou fusion de tous en Global."""
         if not hasattr(self, "sitecurve"):
             return
-        self.sites_btn.setVisible(bool(self.site_scans))
         docs = sites_for_scope(self.site_scans, self.scope) if self.sites_btn.isChecked() else []
         if not docs:
             self.sitecurve.setData([], [])
@@ -13828,7 +13959,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if len(docs) == 1:
             col = self.scene_color(docs[0]["name"]) if self.scene_by_name(docs[0]["name"]) else "#e5e7eb"
             when = datetime.fromtimestamp(docs[0]["t"]).strftime("%d/%m %H:%M") if docs[0]["t"] else ""
-            txt = f"📍 Scan gardé : {docs[0]['name']}" + (f" ({when})" if when else "")
+            if self.scope and self.site_fresh(docs[0]["name"])[0] is not None:
+                txt = f"📍 {docs[0]['name']} : en direct (pointillés = max gardé)"
+            elif self.scope:
+                txt = f"📍 {docs[0]['name']} : pas de tinySA ici en ce moment · dernier spectre gardé" + (
+                    f" ({when})" if when else "")
+            else:
+                txt = f"📍 Scan gardé : {docs[0]['name']}" + (f" ({when})" if when else "")
         else:
             col = "#e5e7eb"
             txt = f"📍 Tous les lieux : fusion de {len(docs)} scans"
@@ -14926,6 +15063,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._calib_add(CALIB_IDS.index(bid), f, l)
             return
         self.partial_data.pop(bid, None)
+        if bid != ZOOM_ID:
+            f, l = self._site_feed(bid, f, l)
         old = self.latest.get(bid)
         if (old is not None and old[0].shape == f.shape and abs(old[0][0] - f[0]) < 1e-6
                 and abs(old[0][-1] - f[-1]) < 1e-6):
@@ -15001,7 +15140,14 @@ class MainWindow(QtWidgets.QMainWindow):
         F = np.concatenate([self.latest[k][0] for k in fresh])
         L = np.concatenate([self.latest[k][1] for k in fresh])
         o = np.argsort(F)
-        F, L = F[o], L[o]
+        F0, L0 = F[o], L[o]
+        # 📍 deux tinySA à deux lieux : une fréquence de la scène X est jugée par le tinySA posé à X
+        per_site = {}
+        if multi_site(self.dev_site, self.ndev(), self.dev_live):
+            for site in set(self.dev_site.values()):
+                Fs, Ls = self.site_fresh(site)
+                if Fs is not None:
+                    per_site[site] = (Fs, Ls)
         win = self.win_spin.value() / 1000.0
         gthr, gweak, weak_on = self.thr_spin.value(), self.weak_spin.value(), self.weak_chk.isChecked()
         rel = self.ref_chk.isChecked() and self._ref_F is not None
@@ -15017,6 +15163,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             f = w["freq"]
             bw = w.get("bw") or 0.0
+            F, L = per_site.get(w.get("scene"), (F0, L0))
             how = "max" if self.is_keep_free(w["status"]) else "median"
             lvl = level_block(F, L, f, bw, how) if bw else level_at(F, L, f, win)
             w["level"] = lvl
@@ -15159,6 +15306,39 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_plot(self, hist=True):
         nan = np.array([np.nan])
+        sites = self.view_sites()
+        if sites is not None and self._zoom is None:
+            # 📍 scène choisie = un lieu : son direct à lui (tinySA posé là), sinon rien en direct (son spectre
+            # gardé reste en pointillés, voir update_site_curve)
+            xs, ys, mxs, mys = [], [], [], []
+            now, stale = time.time(), max(15.0, 4 * self.last_cycle)
+            for site in sites:
+                for bid, (f, l, t) in sorted(self.site_live.get(site, {}).items(), key=lambda kv: float(kv[1][0][0])):
+                    if now - t > stale or (self.view_id != -1 and bid != self.view_id):
+                        continue
+                    xs += [f, nan]
+                    ys += [l, nan]
+                    mh = self.site_mh.get(site, {}).get(bid)
+                    mxs += [mh[0] if mh is not None else f, nan]
+                    mys += [mh[1] if mh is not None and mh[1].shape == l.shape else l, nan]
+            if xs:
+                x, y = np.concatenate(xs), np.concatenate(ys)
+                self._last_xy = (x, y)
+                self.curve.setData(x, y)
+                self.maxcurve.setData(np.concatenate(mxs), np.concatenate(mys)) if self.hold_chk.isChecked() \
+                    else self.maxcurve.setData([], [])
+            else:
+                self.curve.setData([], [])
+                self.maxcurve.setData([], [])
+            self._update_history([])
+            if self._fit_x:
+                rng = self._fit_range()
+                if rng:
+                    span = rng[1] - rng[0]
+                    self.spec.getPlotItem().setXRange(rng[0] - 0.01 * span, rng[1] + 0.01 * span, padding=0)
+                self._fit_x = False
+            self._update_markers()
+            return
         if self.view_id == -1:
             live = {b["id"] for b in self.scan_bands() if b["enabled"]}
             keys = [k for k in set(self.latest) | set(self.partial_data) if k != ZOOM_ID and k in live]
@@ -16848,6 +17028,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._notify_new_alarms()
         self._festival_tick(now)
         self._planning_tick(now)
+        self._sites_tick(now)
         reason = getattr(self, "_diag_pending", None)
         if reason:
             self._diag_pending = None

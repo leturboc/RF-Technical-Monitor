@@ -723,5 +723,11 @@ check("lieux : Global -> tous", [d["name"] for d in sfs_(_ss, None)], ["Grande s
 check("lieux : un groupe de la scène -> le scan de la scène", [d["name"] for d in sfs_(_ss, [("Club", "DJ")])], ["Club"])
 check("lieux : scène sans scan -> rien", sfs_(_ss, [("Scène 3", None)]), [])
 
+msi_ = ns["multi_site"]
+ok("multi-lieux : 2 tinySA à 2 lieux", msi_({0: "A", 1: "B"}, 2))
+ok("multi-lieux : même lieu = partage des bandes", not msi_({0: "A", 1: "A"}, 2))
+ok("multi-lieux : un seul tinySA", not msi_({0: "A"}, 1))
+ok("multi-lieux : le 2ᵉ hors ligne", not msi_({0: "A", 1: "B"}, 2, [True, False]))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

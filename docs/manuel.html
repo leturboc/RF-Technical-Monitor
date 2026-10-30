@@ -343,9 +343,14 @@ même partout. Promène le tinySA :</p>
     secours évitent alors ce qui est occupé n'importe où sur le site, pas seulement là où est le tinySA.
     <b>📏 Fusion = référence</b> : la fusion devient la courbe de référence.</li>
 </ol>
-<p><b>Sur le spectre principal</b> (bouton <b>📍 Lieux</b>) : clique une scène dans « Mes fréquences » et son scan
-gardé s'affiche en pointillés de la couleur de la scène, par-dessus le direct ; en <b>Global</b>, c'est la fusion de
-tous les lieux.</p>
+<p><b>En continu, sur le spectre principal</b> (bouton <b>📍 Lieux</b>, flèche ▾) : dis <b>où est chaque tinySA</b>
+(« 1er tinySA est à : Grande scène »). Chacun de ses balayages alimente alors <b>en continu</b> le spectre de ce lieu, et
+son max hold est gardé tout seul toutes les 30 s. Clique une scène dans « Mes fréquences » : le spectre affiché est
+<b>celui de ce lieu</b>, en direct si un tinySA y est (pointillés = son max gardé), sinon son dernier spectre gardé
+(« pas de tinySA ici en ce moment »). <b>Global</b> : tout le direct, plus la fusion de tous les lieux.</p>
+<p><b>Deux tinySA à deux lieux différents</b> : chacun balaye <b>toutes les bandes</b> chez lui (au lieu de se les
+partager), chaque lieu a son direct, et les fréquences d'une scène sont jugées (occupé, ABSENT, CONFLIT…) par le tinySA
+posé à cette scène. Global = le plus fort des deux (le pire cas).</p>
 <p>Les scans gardés sont enregistrés avec le show (🎪) : l'an prochain, tu repars avec les scans de chaque scène.</p>
 
 <h2 id="seuils">7. Seuils et alarmes</h2>

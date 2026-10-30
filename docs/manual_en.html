@@ -337,8 +337,14 @@ same everywhere. Carry the tinySA around:</p>
     is busy anywhere on the site, not only where the tinySA is. <b>📏 Merge = reference</b>: the merge becomes the
     reference curve.</li>
 </ol>
-<p><b>On the main spectrum</b> (<b>📍 Locations</b> button): click a stage in « My frequencies » and its kept scan is
-drawn as dashes in the stage colour, over the live trace; in <b>Global</b>, it's the merge of all locations.</p>
+<p><b>Continuously, on the main spectrum</b> (<b>📍 Locations</b> button, arrow ▾): say <b>where each tinySA is</b> (« 1st
+tinySA is at: Main stage »). Each of its sweeps then feeds this location's spectrum <b>continuously</b>, and its max hold
+is kept automatically every 30 s. Click a stage in « My frequencies »: the spectrum shown is <b>that location's</b>, live
+if a tinySA is there (dashes = its kept max), otherwise its last kept spectrum (« no tinySA here right now »).
+<b>Global</b>: all the live data, plus the merge of all locations.</p>
+<p><b>Two tinySAs at two different locations</b>: each sweeps <b>all bands</b> where it is (instead of sharing them), each
+location has its own live spectrum, and a stage's frequencies are judged (busy, ABSENT, CONFLICT…) by the tinySA at that
+stage. Global = the stronger of the two (worst case).</p>
 <p>Kept scans are saved with the show (🎪): next year, you start again with the scans of each stage.</p>
 
 <h2 id="seuils">7. Thresholds and alarms</h2>

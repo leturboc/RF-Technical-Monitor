@@ -1112,7 +1112,36 @@ win.sites_btn.setChecked(True)
 win.sites_coord = False
 win.site_scans = []
 win.update_site_curve()
-check("aucun lieu gardé : bouton 📍 caché", not win.sites_btn.isVisible())
+# 📍 spectre par lieu EN CONTINU : le tinySA est à « Grande scène » -> son direct alimente ce lieu ; une autre scène
+# (rien de posé là) n'a pas de direct, seulement son spectre gardé
+step("le tinySA est à « Grande scène »", lambda: win.set_dev_site(0, "Grande scène"))
+wait(4000)
+check("lieu : direct du lieu rempli par les balayages", win.site_fresh("Grande scène")[0] is not None
+      and "Grande scène" in win.site_mh)
+win.set_scope([("Grande scène", None)])
+wait(1500)
+_x, _y = win.curve.getData()
+check("vue de la scène où est le tinySA : spectre en direct", _x is not None and len(_x) > 10)
+win._sites_next = 0
+win._sites_tick(time.time())
+check("lieu : max hold gardé tout seul (toutes les 30 s)", any(d["name"] == "Grande scène" for d in win.site_scans))
+check("lieu : étiquette « en direct »", "en direct" in win.site_lbl.toPlainText(), win.site_lbl.toPlainText())
+shot(win, "spectre_lieu_direct")
+win.site_scans.append(m.site_scan_doc("Scène 1", *win.fresh_FL(use_max=True, any_age=True), time.time() - 3600))
+win.set_scope([("Scène 1", None)])
+wait(1500)
+_x, _y = win.curve.getData()
+check("vue d'une scène sans tinySA : pas de direct, son spectre gardé", (_x is None or len(_x) == 0)
+      and "pas de tinySA ici" in win.site_lbl.toPlainText(), win.site_lbl.toPlainText())
+shot(win, "spectre_lieu_sans_tinysa")
+win.go_global()
+wait(1200)
+_x, _y = win.curve.getData()
+check("Global : tout le direct", _x is not None and len(_x) > 10)
+check("lieu du tinySA gardé dans la config", win._collect_config()["dev_sites"] == {"0": "Grande scène"})
+win.set_dev_site(0, "")
+win.site_scans = []
+win.update_site_curve()
 
 # 🌙 mode festival : réglages, bilan du jour (rapport + message + journal), une seule fois par jour
 def _fest_act(d):
@@ -1281,6 +1310,24 @@ wait(800)
 check("chasse web : arrêtée, zoom rendu au 1er tinySA", not win.hunt_state()["on"] and win._zoom is None
       and win.zoom_dev == 0)
 win._hunt.close()
+# 📍 deux tinySA à deux lieux : chacun balaye TOUTES les bandes chez lui ; chaque lieu a son direct
+step("tinySA 1 à « Grande scène », tinySA 2 à « Club »", lambda: (win.set_dev_site(0, "Grande scène"),
+                                                                 win.set_dev_site(1, "Club")))
+_ids0 = {b["id"] for b in win.get_cfg(0)["bands"] if b["enabled"]}
+_ids1 = {b["id"] for b in win.get_cfg(1)["bands"] if b["enabled"]}
+check("deux lieux : chaque tinySA balaye toutes les bandes", _ids0 and _ids0 == _ids1, f"{_ids0} {_ids1}")
+_t0 = time.time()
+while (win.site_fresh("Club")[0] is None or win.site_fresh("Grande scène")[0] is None) and time.time() - _t0 < 25:
+    wait(500)
+check("deux lieux : un direct par lieu", win.site_fresh("Club")[0] is not None and win.site_fresh("Grande scène")[0]
+      is not None)
+win.set_scope([("Club", None)])
+wait(1500)
+shot(win, "spectre_deux_lieux_club")
+win.go_global()
+win.set_dev_site(0, "")
+win.set_dev_site(1, "")
+check("un seul lieu : les bandes sont de nouveau partagées", not m.multi_site(win.dev_site, win.ndev(), win.dev_live))
 # page web servie par la vraie appli
 import json as _json
 import urllib.request as _ur
