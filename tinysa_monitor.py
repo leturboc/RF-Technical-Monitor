@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.26.0"
+APP_VER = "7.26.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -16991,6 +16991,8 @@ class MainWindow(QtWidgets.QMainWindow):
         (un tinySA y est, ou un scan y est gardé). None = vue normale (Global, ou scène qui n'est pas un lieu)."""
         if not self.scope or not getattr(self, "sites_btn", None) or not self.sites_btn.isChecked():
             return None
+        if not any(self.dev_scenes.values()):     # aucun tinySA rattaché à une scène : le direct reste celui de
+            return None                            # tous (sinon une scène avec un scan gardé n'avait plus de direct)
         known = set(self.site_live) | {d["name"] for d in self.site_scans} | {x for v in self.dev_scenes.values() for x in v}
         sel = sorted({k[0] for k in self.scope if k and k[0] in known})
         return sel or None
@@ -17123,12 +17125,15 @@ class MainWindow(QtWidgets.QMainWindow):
             sc = next(iter(scs))
             col = self.scene_color(sc)
             txt = (f"📍 {sc} : en direct · pointillés = fusion de {len(docs)} scans gardés"
-                   if self.site_fresh(sc)[0] is not None else f"📍 {sc} : fusion de {len(docs)} scans gardés")
+                   if self.site_fresh(sc)[0] is not None or not any(self.dev_scenes.values())
+                   else f"📍 {sc} : fusion de {len(docs)} scans gardés")
         elif len(docs) == 1:
             col = self.scene_color(docs[0]["name"]) if self.scene_by_name(docs[0]["name"]) else "#e5e7eb"
             when = datetime.fromtimestamp(docs[0]["t"]).strftime("%d/%m %H:%M") if docs[0]["t"] else ""
             if self.scope and self.site_fresh(docs[0]["name"])[0] is not None:
                 txt = f"📍 {docs[0]['name']} : en direct (pointillés = max gardé)"
+            elif self.scope and not any(self.dev_scenes.values()):
+                txt = f"📍 {docs[0]['name']} : scan gardé en pointillés" + (f" ({when})" if when else "")
             elif self.scope:
                 txt = f"📍 {docs[0]['name']} : pas de tinySA ici en ce moment · dernier spectre gardé" + (
                     f" ({when})" if when else "")

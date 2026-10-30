@@ -1224,6 +1224,10 @@ check("lieux : gardés dans la config et les shows", len(win._collect_config()["
 # 📍 clic sur une scène dans « Mes fréquences » -> le spectre montre le scan gardé de ce lieu ; Global -> la fusion
 step("scène « Grande scène » choisie", lambda: win.set_scope([("Grande scène", None)]))
 _x, _y = win.sitecurve.getData()
+wait(1500)
+_lx, _ly = win.curve.getData()
+check("scène avec scan gardé, aucun tinySA rattaché : le direct reste affiché (retour de Clément 7.26.0)",
+      not win.dev_scenes and _lx is not None and len(_lx) > 10, str(win.dev_scenes))
 check("spectre : scan gardé de la scène choisie", _x is not None and len(_x) > 10 and win.site_lbl.isVisible()
       and "Grande scène" in win.site_lbl.toPlainText(), win.site_lbl.toPlainText())
 wait(800)
