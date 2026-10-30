@@ -345,7 +345,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `SerialRelay`, même protocole ; `find_tinysa` = USB 0483:5740 sinon 1er ttyACM ; réouverture auto ; `serve(...,
     stop, opener, on_ready)`), `relais/install_pi.sh` (service systemd `tinysa-relais`, groupe dialout),
     `relais/LISEZMOI.md`. Test `tests/test_relais_pi.py` (pty, sauté sous Windows ; dans la liste de la CI).
-    **Jamais testé sur un vrai Pi.** Si on touche `SerialRelay`, garder `tinysa_relais.py` cohérent.
+    **Testé en vrai par Clément en 7.23.2 (Pi 4).** Si on touche `SerialRelay`, garder `tinysa_relais.py` cohérent.
   - **Chasse avec le 2ᵉ tinySA** : `self.zoom_dev` (préférence du zoom live dans `get_cfg`), `HuntDialog.dev_combo`
     (2ᵉ par défaut), remis à 0 à l'arrêt.
   - **Vue web 🔎 Chasse** (`WEB_VIEWS` « chasse ») : commandes POST `/chasse` {pin, action start|stop|reset, f, span,
@@ -404,6 +404,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `import serial.urlhandler.protocol_socket` en tête + `--hidden-import` (workflow, build.bat). Nouveau
   `TinySA-Monitor.exe --selftest fichier` (`self_test` : socket:// réel en local, lang_en, QtMultimedia, manuels) lancé
   par la CI après PyInstaller, **bloquant** (annotation « auto-test exe »). Tout nouvel import dynamique → l'y ajouter.
+  **✅ Vérifié en vrai par Clément (7.23.2, 30/10/2026)** : Raspberry Pi 4 + tinySA Ultra (firmware 2026) + relais
+  installé par `install_pi.sh`, 1er tinySA en réseau dans l'exe Windows : « ça fonctionne ». Restent non testés : la
+  chasse depuis le téléphone avec ce kit, une longue durée, le Wi-Fi d'un vrai festival.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
