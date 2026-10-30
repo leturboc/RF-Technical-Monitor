@@ -138,6 +138,16 @@ win.demo_chk.setChecked(True)
 win.toggle_run(); wait(6000)
 win.grab().save(os.path.join(OUT, "main.png"))
 scan(win, "main")
+# 🎓 tutos (chaque étape) et lexique
+win.start_tour(); wait(200); scan(win._tour_chooser, "TourChooser"); win._tour_chooser.close()
+for _k in m.TOUR_KEYS:
+    win.start_tour(_k); wait(100)
+    for _i in range(len(win._tour.steps)):
+        win._tour.go(_i); scan(win._tour, f"tour-{_k}-{_i}")
+    win._tour.grab().save(os.path.join(OUT, f"tour_{_k}.png"))
+    win._tour.close()
+win.open_glossary(); wait(200); scan(win._glossary, "Glossary")
+look(win._glossary.view.toPlainText(), "Glossary-text"); win._glossary.close()
 for name in ("edit_labels", "edit_statuses", "edit_colors", "edit_plan", "add_watch_dialog", "edit_vocab",
              "open_intermod", "open_rescue", "open_guide", "open_replay", "open_wall", "open_plan_check", "open_diag",
              "show_about", "open_linecheck", "open_scan_convert", "open_alerts", "edit_show_info", "open_show_dialog",

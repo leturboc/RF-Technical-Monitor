@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.25.0"
+APP_VER = "7.26.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4601,6 +4601,116 @@ def parse_deviceid(lines):
         if m_:
             return int(m_.group(1))
     return None
+
+
+# ------------------------------------------------------------------ 🎓 tutos intégrés et lexique (pour débutants complets)
+TOURS = [
+    ("ecran", "🖥 Découvrir l'écran", 3,
+     "Chaque partie de la fenêtre, à quoi elle sert, où cliquer. Commence par celui-là si tu ouvres l'appli pour la "
+     "première fois."),
+    ("show", "🎤 Mon premier show, de A à Z", 10,
+     "Le travail complet dans l'ordre : brancher, scanner le lieu, entrer ses fréquences, vérifier le plan, régler "
+     "les alarmes, surveiller, puis revoir après le show."),
+    ("spectre", "📈 Lire le spectre", 4,
+     "Comprendre le graphique : fréquences, niveaux, bruit de fond, max hold, seuil, zoom, marqueurs. Sans "
+     "connaissance préalable."),
+    ("coord", "🪄 Coordonner ses fréquences", 5,
+     "Trouver des fréquences qui ne se gênent pas : profils d'appareil, coordination auto, vérification du plan, "
+     "intermodulation, fréquence de secours."),
+    ("scenes", "🏟 Plusieurs scènes, tinySA volant", 5,
+     "Festival à plusieurs scènes : ranger les fréquences par scène, garder un scan par lieu, le tinySA dans le sac "
+     "(Raspberry Pi), la coordination par scène ou globale."),
+    ("live", "🚨 Pendant le show", 4,
+     "Réagir à une alarme, appeler les micros, le mur pour la régie, chasser un brouilleur, trouver une fréquence "
+     "de secours, laisser tourner la nuit."),
+]
+TOUR_KEYS = [k for k, *_ in TOURS]
+
+GLOSSARY = [
+    ("HF", "Ici : tout ce qui passe par les ondes radio (micros sans fil, ears, talkies). Dans le métier on dit "
+     "« la HF » pour l'ensemble des liaisons sans fil d'un spectacle."),
+    ("Fréquence (MHz)", "La « place » où émet un appareil, en mégahertz. Deux micros sur la même fréquence se "
+     "brouillent. Exemple : 606,500 MHz. Les micros de spectacle sont surtout entre 470 et 694 MHz (UHF)."),
+    ("Spectre", "Le graphique de l'appli : de gauche à droite les fréquences, de bas en haut la puissance reçue. Un "
+     "émetteur fait une « bosse » (un pic) à sa fréquence."),
+    ("dBm", "L'unité de puissance reçue. Plus le nombre est grand (proche de 0), plus c'est fort : −40 dBm est très "
+     "fort, −90 dBm est faible, −110 dBm c'est le bruit. +10 dB = 10 fois plus de puissance."),
+    ("dBµV", "Autre unité de niveau, utilisée par certains logiciels (Wisycom…). dBµV = dBm + 107."),
+    ("Bruit de fond (tapis)", "Le niveau minimum que le tinySA voit même sans émetteur : son propre bruit plus celui "
+     "du lieu (écrans LED, éclairage…). Tout ce qui dépasse franchement le tapis est un signal."),
+    ("Balayage (sweep)", "Le tinySA mesure une fréquence après l'autre, de gauche à droite : un passage complet "
+     "s'appelle un balayage. Il dure de moins d'une seconde à plusieurs secondes selon la largeur et le nombre de "
+     "points."),
+    ("Points", "Le nombre de mesures par balayage. Plus de points = plus de détails mais plus lent. « ⚡ Auto » choisit "
+     "un bon compromis tout seul."),
+    ("RBW", "La « finesse » de chaque mesure (largeur du filtre du tinySA). Fine = voit les petits signaux proches "
+     "mais lente ; large = rapide mais deux signaux proches se confondent. Laisse en Auto si tu débutes."),
+    ("Max hold", "La courbe orange : le plus haut niveau vu à chaque fréquence depuis le dernier « Reset max ». "
+     "Elle garde la trace d'un émetteur même s'il n'a émis qu'une seconde."),
+    ("Rémanence", "Chaque balayage laisse une trace qui s'estompe peu à peu : ce qui est souvent là marque fort, ce "
+     "qui passe rarement laisse une trace pâle (vue web Spectre / Terrain)."),
+    ("Seuil « occupé »", "La ligne rouge : au-dessus, une fréquence est considérée comme occupée (quelqu'un émet). "
+     "« Auto » le place un peu au-dessus du bruit de fond."),
+    ("Seuil « faible »", "En dessous du seuil occupé : un signal qui dépasse ce niveau sans atteindre « occupé » est "
+     "« faible » (émetteur loin, pile faible, ou bruit qui monte)."),
+    ("Doit émettre (En service)", "Statut d'une fréquence où TON émetteur doit être allumé. S'il se tait trop "
+     "longtemps : alarme ABSENT."),
+    ("Doit rester libre (Libre)", "Statut d'une fréquence que tu gardes en réserve (secours, fréquence d'un autre "
+     "jour…). Si un signal y apparaît : alarme CONFLIT."),
+    ("ABSENT", "Alarme : un émetteur qui doit émettre ne se voit plus (pile vide, émetteur éteint, antenne "
+     "débranchée, artiste trop loin)."),
+    ("CONFLIT", "Alarme : un signal est apparu sur une fréquence qui devait rester libre (autre équipe, brouilleur, "
+     "intermodulation)."),
+    ("Acquitter", "Dire « j'ai vu » à une alarme : le son s'arrête, l'alarme reste affichée tant que le problème "
+     "dure."),
+    ("Intermodulation (IM)", "Quand plusieurs émetteurs sont proches, ils fabriquent des « fréquences fantômes » "
+     "par calcul (ex. 2 × A − B). Si un fantôme tombe sur un de tes micros, il le brouille. La coordination sert "
+     "surtout à éviter ça."),
+    ("IM3 / IM5", "Ordre de l'intermodulation : le 3ᵉ ordre (2A − B, A + B − C) est le plus fort et le plus gênant, "
+     "le 5ᵉ ordre (3A − 2B…) est plus faible."),
+    ("Coordination", "Choisir les fréquences de tous les appareils pour qu'aucune ne gêne une autre : assez "
+     "d'écart entre elles, pas d'intermodulation dessus, loin de ce qui est déjà occupé sur le lieu."),
+    ("Plan de fréquences", "La liste finale des fréquences de tous tes appareils, une fois coordonnée."),
+    ("Écart (séparation)", "La distance minimale entre deux porteuses pour qu'elles ne se gênent pas (ex. 300 à "
+     "500 kHz selon les appareils)."),
+    ("Filtre récepteur", "La largeur que le récepteur « entend » autour de sa fréquence. Un filtre étroit (appareil "
+     "sélectif, ex. Wisycom) ignore les émetteurs éloignés, donc moins de problèmes d'intermodulation."),
+    ("Profil d'appareil", "Les réglages de coordination d'une marque / gamme (écart, filtre, tolérances, pas). "
+     "Choisis celui de ton matériel pour que les calculs collent."),
+    ("Pas (incrément)", "Les fréquences possibles sur un appareil vont de pas en pas (ex. 25 kHz) : la "
+     "coordination ne propose que des fréquences réglables sur ton appareil."),
+    ("Porteuse", "Le signal d'un émetteur à sa fréquence (le pic sur le spectre)."),
+    ("Bloc large (WMAS, Spectera)", "Certains systèmes numériques récents occupent un canal entier de 6 à 8 MHz au "
+     "lieu d'une seule fréquence : sur le spectre, un plateau au lieu d'un pic."),
+    ("TNT", "La télévision numérique terrestre : des plateaux de 8 MHz dans la bande UHF. Ces canaux sont pris, il "
+     "faut les éviter (bandeau des canaux TV en bas du spectre)."),
+    ("UHF", "La bande 470–694 MHz (en France) où travaillent la plupart des micros de spectacle, partagée avec la "
+     "TNT."),
+    ("Scène / groupe", "Le classement de tes fréquences : une scène = un lieu ou un plateau, un groupe = un ensemble "
+     "(micros, ears, talkies…). Facultatif mais utile en festival."),
+    ("Scan gardé", "Un spectre enregistré (le max hold à un moment, à un endroit) : sert de mémoire du lieu et pour "
+     "la coordination."),
+    ("Fusion", "Le mélange de plusieurs scans : on garde le niveau le plus fort de chacun, pour voir le pire cas de "
+     "tout le site."),
+    ("tinySA volant", "Un tinySA promené de scène en scène (dans un sac, avec un Raspberry Pi) pour scanner chaque "
+     "lieu, pendant que le PC reste en régie."),
+    ("Relais", "Le petit programme qui partage un tinySA sur le réseau (sur un Raspberry Pi ou un autre PC), pour "
+     "que l'appli le voie à distance."),
+    ("Line check (appel des micros)", "Avant le show : on allume chaque émetteur l'un après l'autre et l'appli coche "
+     "ceux qu'elle voit, pour vérifier que tout est là."),
+    ("Session", "L'enregistrement de tout ce que l'appli a vu pendant une surveillance, pour le revoir après "
+     "(relecture)."),
+    ("Show (🎪)", "Un fichier qui contient tout ton travail pour un événement (fréquences, scènes, bandes, scans…), "
+     "à rouvrir l'année suivante."),
+]
+
+
+def glossary_find(text):
+    """Lexique : les mots dont le nom ou l'explication contient le texte cherché (sans les accents ni la casse)."""
+    def k(x):
+        return "".join(c for c in unicodedata.normalize("NFD", str(x).lower()) if unicodedata.category(c) != "Mn")
+    q = k(text).strip()
+    return [g for g in GLOSSARY if not q or q in k(g[0]) or q in k(g[1])]
 
 
 # ===== PURE-END
@@ -9975,49 +10085,332 @@ class LevelSpin(QtWidgets.QDoubleSpinBox):
         self.lineEdit().setText(self.textFromValue(self.value()))
 
 
-def tour_steps(o):
-    """Étapes du tuto : (widget à montrer, titre, texte), dans l'ordre du parcours."""
+def tour_steps(o, key="ecran"):
+    """Étapes d'un tuto : (widget montré, titre, c'est quoi, pourquoi, comment, action ou None). action = (texte du
+    bouton, nom de la méthode de MainWindow) : le bouton « Fais-le » ouvre l'outil. Écrit pour quelqu'un qui n'y
+    connaît rien : mots simples, une idée par étape."""
     sb = getattr(o, "step_btns", {})
+    g = lambda name: getattr(o, name, None)         # noqa: E731 — un widget absent = étape sautée
+    dock = lambda name: (g(name).widget() if g(name) is not None else None)  # noqa: E731
+    if key == "show":
+        return [
+            (g("port_combo"), "1. Brancher le tinySA",
+             "Le tinySA est un petit analyseur de spectre : il « écoute » toutes les fréquences radio autour de lui. "
+             "Il se branche en USB sur le PC, avec son antenne vissée dessus.",
+             "Sans lui, l'appli ne voit rien. Le mode démo permet d'essayer sans appareil.",
+             "Visse l'antenne, allume le tinySA, branche-le en USB, ferme tinySA-App s'il est ouvert (un seul "
+             "logiciel à la fois). Dans cette liste, choisis la ligne « ✔ tinySA ». S'il est sur un Raspberry Pi : "
+             "« 🌐 tinySA en réseau… ».", None),
+            (g("bands_btn"), "2. Les bandes à surveiller",
+             "Une bande = une plage de fréquences que le tinySA balaye, par exemple 470–694 MHz (la bande des micros).",
+             "Plus la plage est large, plus un balayage est long. On ne surveille que là où sont tes appareils.",
+             "📶 Bandes : coche celles qui t'intéressent. Le pays (réglages) choisit les canaux TV affichés. Laisse "
+             "« ⚡ Points » en Auto : l'appli règle la finesse toute seule.", None),
+            (sb.get("scan"), "3. Scanner le lieu",
+             "Avant de choisir tes fréquences, on regarde ce qui occupe DÉJÀ le lieu : télé (TNT), autres équipes, "
+             "brouilleurs.",
+             "Choisir une fréquence déjà prise, c'est la garantie d'un micro qui coupe pendant le show.",
+             "Clique ① : le balayage démarre et le max hold (courbe orange) repart de zéro. Laisse tourner 5 à 10 "
+             "minutes, idéalement avec les écrans LED et les lumières allumés.", ("▶ Scanner le lieu", "step_scan")),
+            (dock("dock_spec"), "4. Regarder le résultat",
+             "Les bosses sont des émetteurs. Les grands plateaux de 8 MHz sont des chaînes de télé (TNT). Le bas "
+             "irrégulier, c'est le bruit de fond.",
+             "Tes fréquences doivent tomber dans les creux, loin des bosses et des plateaux.",
+             "Survole le spectre : la fréquence et le niveau s'affichent. Le bandeau en dessous dit à quoi sert "
+             "chaque morceau de bande dans ton pays. Le tuto « Lire le spectre » explique tout en détail.", None),
+            (sb.get("list"), "5. Entrer tes fréquences",
+             "Ta liste = toutes les fréquences de tes appareils (micros, ears, talkies…), une par ligne.",
+             "C'est cette liste que l'appli surveille pendant le show.",
+             "Importe ton plan (fichier EazyRF, WWB, WSM, Excel), colle une liste, ajoute à la main, ou « 📡 Ajouter "
+             "depuis le scan » pour reprendre les signaux vus.", ("📥 Importer ma liste…", "import_watch")),
+            (g("watch_table"), "6. Le statut de chaque fréquence : LE réglage important",
+             "« En service » (doit émettre) : ton émetteur doit être là. « Libre » (doit rester libre) : une "
+             "fréquence que tu gardes en réserve, personne ne doit y être.",
+             "C'est ce qui décide des alarmes : un « En service » qui se tait → ABSENT ; un signal sur un « Libre » → "
+             "CONFLIT.",
+             "Double-clic dans la colonne Statut, ou sélectionne des lignes puis Ctrl+E (= En service). Ctrl+1…9 "
+             "pour les autres statuts.", ("❓ C'est quoi exactement ?", "status_help")),
+            (sb.get("plan"), "7. Vérifier que tes fréquences s'entendent",
+             "La coordination vérifie qu'aucune fréquence n'est trop près d'une autre et qu'aucune « fréquence "
+             "fantôme » (intermodulation) ne tombe sur un de tes micros.",
+             "Deux micros mal coordonnés se brouillent, même si chacun est sur une fréquence libre.",
+             "🧮 Vérifier le plan : chaque fréquence en ✗ a une remplaçante proposée (« Remplacer »). Ou 🪄 Trouver N "
+             "fréquences : l'appli les choisit pour toi.", ("🧮 Vérifier mon plan…", "open_plan_check")),
+            (g("thr_spin"), "8. Les seuils",
+             "Le seuil « occupé » est la ligne rouge sur le spectre : au-dessus, on considère qu'il y a un signal.",
+             "Trop bas : fausses alarmes à cause du bruit. Trop haut : tu rates des signaux faibles.",
+             "Clique « Auto » : il se place un peu au-dessus du bruit de fond. « TX absent après » = combien de "
+             "secondes sans signal avant l'alarme ABSENT (5 à 10 s, c'est bien).", None),
+            (sb.get("show"), "9. Surveiller le show",
+             "La surveillance balaye en continu et compare ce qu'elle voit à ta liste.",
+             "C'est le cœur de l'appli : elle te prévient dès qu'un micro tombe ou qu'un intrus arrive.",
+             "⑤ ▶ Démarrer. L'appli propose d'enregistrer la session (dis oui : tu pourras tout revoir). La colonne "
+             "« Signal » passe au vert pour les émetteurs présents.", None),
+            (g("alarm_btn"), "10. Quand une alarme sonne",
+             "Une alarme = un problème sur une fréquence : ABSENT (ton micro ne se voit plus) ou CONFLIT (quelqu'un "
+             "est sur ta réserve).",
+             "Réagir vite, c'est éviter le trou dans le son.",
+             "ABSENT : pile, émetteur allumé ? antenne ? artiste trop loin ? CONFLIT : regarde le spectre, passe sur "
+             "une fréquence de secours. « Acquitter » coupe le son ; l'alarme reste tant que le problème dure.", None),
+            (sb.get("show"), "11. Juste avant d'ouvrir : l'appel des micros",
+             "Le line check : tu allumes tes émetteurs un par un, l'appli coche ceux qu'elle voit.",
+             "Tu sais en une minute si un émetteur manque ou s'il est sur la mauvaise fréquence.",
+             "⑤ › 🎤 Appel des micros (Ctrl+L). Une fréquence inconnue proche d'une manquante = sûrement l'émetteur "
+             "mal réglé.", ("🎤 Ouvrir l'appel des micros", "open_linecheck")),
+            (sb.get("show"), "12. Être prévenu sur ton téléphone",
+             "Les alarmes peuvent partir sur ton téléphone (ntfy, Telegram) et une page web montre tout aux autres "
+             "techniciens du site.",
+             "Tu n'es pas collé à l'écran pendant tout le show.",
+             "⑤ › 📣 Alertes téléphone et page web : le bouton 📖 Tuto explique chaque étape.",
+             ("📣 Régler les alertes…", "open_alerts")),
+            (sb.get("after"), "13. Après le show",
+             "Tout ce qui s'est passé est enregistré : spectre, alarmes, journal.",
+             "Pour comprendre un incident (« à 21 h 34 le micro 3 a coupé : pourquoi ? ») et faire un compte rendu.",
+             "⑥ › ⏪ Relecture pour revoir n'importe quel moment ; 📄 Rapport de show pour un document propre ; 📊 "
+             "Occupation par heure.", ("⏪ Ouvrir la relecture", "open_replay")),
+            (g("more_btn"), "14. Garder tout ton travail",
+             "Un « show » 🎪 est un fichier qui contient tout : fréquences, scènes, bandes, scans gardés.",
+             "L'an prochain, au même festival, tu repars de là en deux clics.",
+             "Ctrl+S (ou 🎪 Shows en haut) pour enregistrer, 🎪 › Ouvrir pour le reprendre. Bon show ! 🎤", None),
+        ]
+    if key == "spectre":
+        return [
+            (dock("dock_spec"), "1. Ce que montre le graphique",
+             "De gauche à droite : les fréquences en MHz (comme les stations d'une radio). De bas en haut : la "
+             "puissance reçue en dBm.",
+             "C'est la « photo » de tout ce qui émet autour du tinySA.",
+             "−100 dBm en bas = presque rien, −40 dBm en haut = très fort. Un émetteur fait une bosse pointue à sa "
+             "fréquence.", None),
+            (dock("dock_spec"), "2. Le bruit de fond",
+             "Même sans aucun émetteur, la courbe n'est jamais tout en bas : c'est le bruit de fond (le « tapis »), "
+             "vers −100 dBm.",
+             "Un signal compte quand il dépasse nettement ce tapis (10 dB et plus).",
+             "Si le tapis monte d'un coup sur une zone : un écran LED, un éclairage ou un ordinateur rayonne. Approche "
+             "ou éloigne le tinySA pour voir.", None),
+            (g("legend_btn"), "3. Les courbes",
+             "Bleu = ce que le tinySA voit maintenant. Orange = le plus haut vu depuis le dernier « Reset max » (max "
+             "hold). Rouge pointillé = le seuil « occupé ».",
+             "Le direct bouge tout le temps ; le max hold garde la trace d'un émetteur qui n'a émis qu'une seconde.",
+             "❓ Courbes explique chaque trait et permet de les régler.", ("❓ Ouvrir l'explication des courbes",
+                                                                          "open_spectrum_legend")),
+            (g("hold_chk"), "4. Max hold et Reset max",
+             "Le max hold mémorise le plus haut niveau vu à chaque fréquence.",
+             "Pour un scan du lieu, c'est lui qu'on regarde : il montre tout ce qui a émis, même brièvement.",
+             "Décoche pour le cacher ; « Reset max » le remet à zéro (par exemple en arrivant dans un nouveau lieu).",
+             None),
+            (g("view_combo"), "5. Choisir ce qu'on regarde",
+             "La vue : toutes les bandes d'un coup, ou une seule bande.",
+             "Sur une bande étroite on voit mieux les détails.",
+             "Choisis une bande dans la liste ; molette de la souris pour zoomer, glisser pour déplacer, double-clic "
+             "pour revenir.", None),
+            (g("zoom_btn"), "6. Zoom live",
+             "Le zoom live fait balayer au tinySA SEULEMENT la zone que tu regardes, beaucoup plus finement.",
+             "Pour voir un signal en détail (sa largeur, s'il bouge) ou séparer deux signaux proches.",
+             "Zoome sur la zone, puis 🔍 Zoom live. Re-clique pour revenir au balayage complet.", None),
+            (g("mkr_btn"), "7. Marqueurs",
+             "Deux repères M1 et M2 que tu poses sur le spectre.",
+             "Pour lire précisément une fréquence, un niveau, l'écart entre deux signaux ou la largeur d'un signal.",
+             "🎯 Marqueurs, puis clique sur le spectre ; « sur le pic » cale le marqueur sur le maximum voisin.",
+             None),
+            (g("pts_btn"), "8. Vitesse ou détail",
+             "Le nombre de mesures par balayage.",
+             "Beaucoup de points = détaillé mais lent ; peu = rapide mais on peut rater un signal étroit.",
+             "Laisse « ⚡ Auto équilibré ». « Rapide » pour surveiller beaucoup de bandes, « Détaillé » pour un scan "
+             "précis.", None),
+            (dock("dock_wf"), "9. Le waterfall (chute d'eau)",
+             "L'historique du spectre qui défile : chaque ligne = un balayage, la couleur = le niveau.",
+             "On voit ce qui apparaît et disparaît dans le temps : un talkie qui parle, un émetteur qui saute.",
+             "Visible en mode simple ou expert (☰ Plus › 👁 Affichage).", None),
+            (g("tv_chk"), "10. Les canaux TV et le plan du pays",
+             "Le bandeau sous le spectre : les canaux de télévision et à quoi sert chaque bande dans ton pays.",
+             "Une fréquence dans un canal TV allumé ne marchera pas bien.",
+             "Survole le bandeau pour le détail ; le pays se règle dans les réglages.", None),
+        ]
+    if key == "coord":
+        return [
+            (sb.get("plan"), "1. C'est quoi coordonner ?",
+             "Choisir les fréquences de TOUS tes appareils pour qu'aucune ne gêne une autre.",
+             "Il ne suffit pas qu'une fréquence soit libre : deux émetteurs proches créent des « fréquences "
+             "fantômes » (intermodulation) qui peuvent tomber sur un troisième micro.",
+             "Trois règles : assez d'écart entre les fréquences, pas de fantôme dessus, loin de ce qui occupe déjà "
+             "le lieu (scan).", None),
+            (sb.get("plan"), "2. Dire quel matériel tu as",
+             "Un profil d'appareil = les réglages de coordination d'une marque (écart minimum, filtre du récepteur, "
+             "pas de réglage).",
+             "Un récepteur sélectif (Wisycom…) supporte des fréquences plus serrées qu'un modèle d'entrée de gamme.",
+             "🎛 Profils d'appareil : choisis le tien, ou crée le tien avec les valeurs de ton logiciel de "
+             "coordination.", ("🎛 Profils d'appareil…", "open_rx_profiles")),
+            (sb.get("plan"), "3. Laisser l'appli trouver",
+             "🪄 Trouver N fréquences : tu dis combien il t'en faut, l'appli cherche les meilleures.",
+             "Elle tient compte de ta liste, de l'intermodulation et du spectre du lieu.",
+             "Choisis l'appareil, combien, la plage (celle de tes émetteurs), et le « Spectre » à éviter : tout le "
+             "site ou une scène. Puis « Ajouter à ma liste ».", ("🪄 Trouver N fréquences…", "open_coord")),
+            (sb.get("plan"), "4. Vérifier un plan existant",
+             "🧮 Vérifier le plan contrôle ta liste comme un logiciel de coordination.",
+             "Pour valider un plan importé ou repérer la fréquence qui pose problème.",
+             "Les lignes en ✗ disent pourquoi (trop près, intermod) ; « Remplacer » propose une fréquence qui ne crée "
+             "aucun nouveau problème.", ("🧮 Vérifier le plan…", "open_plan_check")),
+            (sb.get("im"), "5. L'intermodulation",
+             "Le calcul des fréquences fantômes de tes émetteurs (2A − B, A + B − C…).",
+             "Pour comprendre d'où vient un signal gênant, ou vérifier un emplacement.",
+             "④ Intermod : la liste des produits qui tombent sur tes fréquences, du plus grave au moins grave. Les "
+             "« règles » choisissent quels produits on compte.", ("⚡ Ouvrir l'intermod…", "open_intermod")),
+            (sb.get("show"), "6. Une fréquence de secours",
+             "Quand un micro est brouillé pendant le show, il faut une autre fréquence, vite.",
+             "L'appli cherche une fréquence libre MAINTENANT, compatible avec le reste.",
+             "⑤ › 🆘 Fréquence de secours ; prépare-en quelques-unes avant le show (statut « Libre » : elles sont "
+             "surveillées).", ("🆘 Fréquence de secours…", "open_rescue")),
+            (sb.get("plan"), "7. Coordination par scène ou globale",
+             "Avec des scans gardés par scène, tu peux coordonner une scène avec SON spectre, ou tout le site d'un "
+             "coup.",
+             "Une scène loin des autres a son propre environnement radio.",
+             "Dans 🪄 Trouver N et 🆘 Secours, la liste « Spectre : … » : max hold actuel, tout le site, ou une "
+             "scène.", ("📍 Scans par lieu…", "open_sites")),
+        ]
+    if key == "scenes":
+        return [
+            (g("layer_box"), "1. Scènes et groupes",
+             "Un classement de tes fréquences : une scène (Grande scène, Club…) contient des groupes (Micros, Ears, "
+             "Talkies…).",
+             "En festival on s'y retrouve, on filtre l'écran par scène, et chaque groupe peut avoir sa priorité "
+             "d'alarme.",
+             "＋ Scène, ＋ Groupe ; clic sur une scène = n'afficher qu'elle ; clic droit = renommer, couleur, "
+             "priorité.", None),
+            (sb.get("plan"), "2. Garder un scan par lieu",
+             "Un scan gardé = la mémoire du spectre d'un endroit.",
+             "Chaque scène a son environnement radio : la coordination peut en tenir compte.",
+             "📍 Scans par lieu : choisis le lieu, « 📍 Garder », ou importe un scan d'un autre logiciel (WWB, WSM…).",
+             ("📍 Scans par lieu…", "open_sites")),
+            (g("port_combo"), "3. Le tinySA dans le sac (Raspberry Pi)",
+             "Un tinySA branché sur un Raspberry Pi, avec une batterie, partagé en Wi-Fi : le PC reste en régie, toi "
+             "tu te déplaces.",
+             "Pour scanner chaque scène sans déplacer le PC, ou chercher un brouilleur.",
+             "Kit à télécharger avec l'exe (relais-raspberry-pi.zip, mode d'emploi dedans). Dans l'appli : liste des "
+             "ports › « 🌐 tinySA en réseau… » › l'adresse du Pi.", None),
+            (g("sites_btn"), "4. Dire où est chaque tinySA (mode expert)",
+             "Chaque tinySA peut surveiller une ou plusieurs scènes : ses balayages alimentent le spectre de ces "
+             "scènes.",
+             "Cliquer une scène dans « Mes fréquences » montre alors SON spectre en direct.",
+             "📡 Scènes ▾ › Mes tinySA et leurs scènes, ou clic droit sur une scène › Surveillée par. 👋 Identifier "
+             "fait clignoter l'écran du tinySA.", ("📡 Mes tinySA et leurs scènes…", "open_devices")),
+            (sb.get("show"), "5. Depuis le téléphone : la vue Terrain",
+             "Une vue cachée de la page web : dire où est le tinySA volant, voir son spectre (rémanence, max hold "
+             "par scène) et garder des scans, tout depuis le téléphone.",
+             "Tu fais le tour du site sans revenir au PC : chaque scan est enregistré sur le PC, dans sa scène.",
+             "📣 Alertes et page web : coche la vue « 🎒 Terrain » et règle un code PIN, puis ouvre l'adresse de la "
+             "page sur ton téléphone.", ("📣 Page web…", "open_alerts")),
+            (sb.get("plan"), "6. Coordonner par scène ou tout le site",
+             "Avec tes scans gardés, la coordination évite ce qui est occupé sur une scène, ou partout.",
+             "Des fréquences qui marchent partout pour le matériel qui circule, ou au plus serré par scène.",
+             "🪄 Trouver N fréquences › « Spectre : scène … » ou « tout le site ».", ("🪄 Trouver N fréquences…",
+                                                                                    "open_coord")),
+        ]
+    if key == "live":
+        return [
+            (dock("dock_alarm"), "1. Le tableau des alarmes",
+             "Toutes les alarmes en cours et terminées : quoi, où, depuis quand, quel niveau.",
+             "D'un coup d'œil tu sais ce qui ne va pas, même si tu n'as pas entendu le bip.",
+             "Rouge = à acquitter. « Acquitter » coupe le son ; double-clic = voir la fréquence sur le spectre.",
+             None),
+            (g("alarm_btn"), "2. Que faire face à une alarme ?",
+             "ABSENT : un émetteur ne se voit plus. CONFLIT : un signal sur une fréquence réservée. TROP FORT : un "
+             "signal énorme.",
+             "Chaque type a ses causes habituelles.",
+             "ABSENT → pile, interrupteur, antenne, artiste hors portée. CONFLIT → qui émet ? (spectre, chasse au "
+             "brouilleur), sinon fréquence de secours. TROP FORT → un émetteur collé au tinySA, ou un brouilleur.",
+             None),
+            (sb.get("show"), "3. Le mur pour la régie",
+             "Une grande tuile par fréquence, lisible de loin, à mettre sur un 2ᵉ écran.",
+             "Toute l'équipe voit l'état des micros sans lire de chiffres.",
+             "🧱 Mur, puis ⛶ Plein écran ; 🖥 Autre écran s'il y en a deux.", ("🧱 Ouvrir le mur", "open_wall")),
+            (sb.get("show"), "4. Chasser un brouilleur",
+             "Un bip qui accélère quand tu te rapproches du signal, comme un détecteur de métaux.",
+             "Pour trouver l'appareil qui pollue (talkie oublié, écran LED, émetteur d'une autre équipe).",
+             "🔎 Chasse : la fréquence, ▶ Chasser, et promène le tinySA (ou le kit Pi avec le téléphone qui bippe).",
+             ("🔎 Chasse au brouilleur…", "open_hunt")),
+            (sb.get("show"), "5. Le planning des plateaux",
+             "Qui joue quand, par scène : pendant un changement de plateau, les micros éteints ne déclenchent pas "
+             "d'alarme ABSENT.",
+             "Moins de fausses alarmes, et le journal note chaque changement.",
+             "🎬 Planning : une ligne par créneau (scène, groupe, début, fin).", ("🎬 Planning…", "open_planning")),
+            (sb.get("show"), "6. La nuit et plusieurs jours",
+             "Le mode festival : l'appli reprend toute seule après une coupure, empêche la mise en veille et envoie "
+             "un bilan chaque matin.",
+             "Tu dors tranquille, et le matin tu sais si quelque chose s'est passé.",
+             "🌙 Mode festival : coche ce que tu veux, l'heure du bilan.", ("🌙 Mode festival…", "open_festival")),
+        ]
     return [
-        (o.port_combo, "Bienvenue 👋", "TinySA Monitor surveille tes fréquences HF en continu avec un tinySA et "
-         "t'alerte si un micro se tait ou si un signal arrive où il ne faut pas. Commence par choisir le port du "
-         "tinySA (marqué ✔ tinySA), ou coche « Mode démo » pour essayer sans appareil."),
-        (o.steps_bar, "Le parcours", "Cette barre suit l'ordre logique du travail, de gauche à droite : scanner le "
-         "lieu → ta liste → vérifier le plan → intermod → surveiller le show → après le show. Chaque bouton lance "
-         "l'étape et explique quoi faire à droite."),
-        (sb.get("scan"), "① Scanner le lieu", "Avant de choisir tes fréquences, regarde ce qui occupe déjà le lieu "
-         "(TNT, autres équipes, brouilleurs). Ce bouton démarre le balayage."),
-        (o.dock_spec.widget(), "Le spectre", "Horizontalement les fréquences (MHz), verticalement le niveau (dBm). "
-         "Bleu = en direct, orange = le plus haut vu (max hold), ligne rouge = seuil « occupé ». ❓ Courbes "
-         "explique chaque trait."),
-        (sb.get("list"), "② Mes fréquences", "Importe ton plan (EazyRF, WWB, WSM, Excel…) ou ajoute tes fréquences "
-         "à la main."),
-        (o.watch_table, "Ta liste", "Une ligne par fréquence. Colonne « Signal » : vert = OK, bleu = libre, rouge = "
-         "problème. Colonne « Statut » : « En service » = doit émettre, « Libre » = doit rester libre (double-clic "
-         "pour changer, Ctrl+E = en service)."),
-        (sb.get("plan"), "③ Vérifier le plan", "Comme EazyRF : chaque fréquence est-elle assez loin des autres et à "
-         "l'abri de l'intermod ? Pour celles en ✗, l'appli propose une remplaçante."),
-        (sb.get("im"), "④ Intermod", "Les produits d'intermodulation de tes émetteurs, ou d'où vient un signal "
-         "gênant (à partir du spectre mesuré)."),
-        (sb.get("show"), "⑤ Surveiller le show", "Démarre la surveillance. À chaque démarrage, l'appli propose "
-         "d'enregistrer toute la session pour la revoir après."),
-        (o.alarm_btn, "Les alarmes 🔔", "Rouge = une alarme à acquitter (micro absent, conflit…). « Acquitter » coupe "
-         "le son ; l'alarme reste orange tant que le problème est là."),
-        (sb.get("after"), "⑥ Après le show", "Relecture : revois n'importe quel moment ; rapport de show."),
-        (o.more_btn, "☰ Plus", "Tout le reste, rangé dans le même ordre ; « 👁 Affichage » passe en ultra simple / "
-         "simple / expert ; 📖 Manuel pour tout comprendre en détail. Bon show ! 🎤"),
+        (g("port_combo"), "Bienvenue 👋",
+         "TinySA Monitor écoute en permanence les fréquences radio de tes micros sans fil grâce à un petit appareil, "
+         "le tinySA.",
+         "Il te prévient tout de suite si un micro se tait ou si quelqu'un vient émettre sur ta fréquence.",
+         "Ici tu choisis où est branché le tinySA (la ligne « ✔ tinySA »).", None),
+        (g("demo_chk"), "Le mode démo",
+         "De faux signaux, pour essayer sans appareil.",
+         "Pour apprendre tranquillement avant le jour J.",
+         "Coche « Mode démo » puis ▶ Démarrer.", None),
+        (g("start_btn"), "Démarrer / arrêter",
+         "Lance ou arrête le balayage : le tinySA mesure les fréquences en boucle.",
+         "Rien ne se passe tant que ce n'est pas démarré.",
+         "▶ Démarrer ; ■ Arrêter pour stopper.", None),
+        (g("steps_bar"), "Le parcours",
+         "La barre des étapes, dans l'ordre du travail de gauche à droite : ① scanner le lieu, ② tes fréquences, ③ "
+         "coordonner, ④ intermod, ⑤ surveiller, ⑥ après le show.",
+         "Si tu ne sais pas quoi faire, suis les numéros.",
+         "Chaque bouton lance l'étape ; le texte à droite dit quoi faire ensuite.", None),
+        (dock("dock_spec"), "Le spectre",
+         "Le graphique : de gauche à droite les fréquences, de bas en haut la puissance reçue.",
+         "Tu vois ce qui émet autour de toi.",
+         "Bleu = maintenant, orange = le plus haut vu (max hold), rouge = seuil « occupé ». Tuto « Lire le "
+         "spectre » pour tout comprendre.", None),
+        (g("bands_btn"), "Bandes et points",
+         "📶 Bandes : quelles plages balayer. ⚡ Points : vitesse ou détail.",
+         "Moins de bandes = balayage plus rapide.",
+         "Laisse ⚡ en Auto si tu débutes.", None),
+        (g("watch_table"), "Ta liste de fréquences",
+         "Une ligne par fréquence surveillée, avec son état en direct.",
+         "C'est ce qui déclenche les alarmes.",
+         "Colonne Signal : vert = OK, bleu = libre, orange = faible, rouge = problème. Colonne Statut : « En "
+         "service » = doit émettre, « Libre » = doit rester libre (double-clic pour changer).", None),
+        (g("layer_box"), "Scènes et groupes (facultatif)",
+         "Pour ranger tes fréquences par scène et par groupe.",
+         "Utile en festival ; inutile pour un petit événement.",
+         "Clic sur une scène = n'afficher qu'elle ; « Global » = tout.", None),
+        (dock("dock_set"), "Les réglages",
+         "Seuils (quand est-ce occupé ?), alarmes, bandes, mesure, 2ᵉ tinySA.",
+         "Ce sont eux qui décident quand une alarme part.",
+         "Commence par « Auto » à côté du seuil « occupé ».", None),
+        (g("alarm_btn"), "Les alarmes 🔔",
+         "Le compteur des alarmes en cours.",
+         "Rouge = quelque chose à regarder tout de suite.",
+         "Clique pour ouvrir le tableau ; « Acquitter » coupe le son.", None),
+        (g("settings_btn"), "⚙ Réglages généraux",
+         "Langue, son (choix de la sortie audio), dossiers, connexions.",
+         "Pour adapter l'appli à ton PC.",
+         "Ctrl+, l'ouvre aussi.", None),
+        (g("more_btn"), "☰ Plus",
+         "Tous les outils, rangés dans l'ordre du travail (préparer, pendant, après).",
+         "Tout ce qui n'est pas sur l'écran principal est là.",
+         "« 👁 Affichage » : ultra simple (l'essentiel), simple, ou expert (tout). 📖 Manuel et 📚 Lexique dans "
+         "Aide.", None),
+        (g("tour_btn"), "Les autres tutos",
+         "D'autres visites guidées : mon premier show de A à Z, lire le spectre, coordonner, plusieurs scènes, "
+         "pendant le show.",
+         "Chacune prend quelques minutes et ouvre les bons outils pour toi.",
+         "Clique 🎓 Tuto à tout moment ; 📚 Lexique explique chaque mot.", None),
     ]
 
 
 class TourDialog(QtWidgets.QDialog):
-    """Tuto : une bulle par étape, posée à côté de la partie de l'écran concernée (entourée en orange)."""
+    """Tuto : une bulle par étape, posée à côté de la partie de l'écran concernée (entourée en orange) :
+    c'est quoi / pourquoi / comment, et un bouton « Fais-le » qui ouvre l'outil."""
 
-    def __init__(self, owner, steps):
+    def __init__(self, owner, steps, title="Tuto"):
         super().__init__(owner)
         self.owner = owner
         self.steps = [s_ for s_ in steps if s_[0] is not None]
         self.i, self._hl = 0, None
-        self.setWindowTitle("Tuto")
+        self.setWindowTitle(title)
         self.setModal(False)
         lay = QtWidgets.QVBoxLayout(self)
         self.title = QtWidgets.QLabel("")
@@ -10025,24 +10418,44 @@ class TourDialog(QtWidgets.QDialog):
         f_.setPointSize(f_.pointSize() + 3)
         f_.setBold(True)
         self.title.setFont(f_)
-        self.text = QtWidgets.QLabel("")
-        self.text.setWordWrap(True)
-        self.text.setMinimumWidth(380)
-        self.text.setMinimumHeight(self.text.fontMetrics().height() * 5)
+        self.title.setWordWrap(True)
+        lay.addWidget(self.title)
+        self.parts = []
+        for head in ("🧐 C'est quoi ?", "🎯 Pourquoi ?", "👉 Comment ?"):
+            h_ = QtWidgets.QLabel(head)
+            hf = h_.font()
+            hf.setBold(True)
+            h_.setFont(hf)
+            t_ = QtWidgets.QLabel("")
+            t_.setWordWrap(True)
+            t_.setMinimumWidth(420)
+            t_.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            lay.addWidget(h_)
+            lay.addWidget(t_)
+            self.parts.append(t_)
+        self.note = QtWidgets.QLabel("")
+        self.note.setWordWrap(True)
+        self.note.setStyleSheet("color:#d29922")
+        lay.addWidget(self.note)
+        self.act_btn = QtWidgets.QPushButton("")
+        self.act_btn.setToolTip("Ouvre l'outil dont parle cette étape (le tuto reste ouvert).")
+        self.act_btn.clicked.connect(lambda *_: self._do())
         self.count = QtWidgets.QLabel("")
         self.prev_btn = QtWidgets.QPushButton("◀ Précédent")
         self.prev_btn.setToolTip("Étape précédente.")
         self.next_btn = QtWidgets.QPushButton("Suivant ▶")
         self.next_btn.setToolTip("Étape suivante.")
+        gl_btn = QtWidgets.QPushButton("📚 Lexique")
+        gl_btn.setToolTip("Tous les mots de la HF expliqués simplement.")
+        gl_btn.clicked.connect(lambda *_: owner.open_glossary())
         quit_btn = QtWidgets.QPushButton("Quitter le tuto")
-        quit_btn.setToolTip("Ferme le tuto (relançable : ☰ Plus › 🎓 Tuto, ou le bouton 🎓).")
+        quit_btn.setToolTip("Ferme le tuto (relançable : bouton 🎓 Tuto, ou ☰ Plus › Aide).")
         self.prev_btn.clicked.connect(lambda *_: self.go(self.i - 1))
         self.next_btn.clicked.connect(lambda *_: self.go(self.i + 1) if self.i + 1 < len(self.steps) else self.close())
         quit_btn.clicked.connect(self.close)
-        lay.addWidget(self.title)
-        lay.addWidget(self.text)
+        lay.addLayout(owner._row(self.act_btn, None, gl_btn))
         lay.addLayout(owner._row(self.count, None, quit_btn, self.prev_btn, self.next_btn))
-        self.resize(460, 220)
+        self.resize(500, 360)
 
     def _mark(self, w):
         if self._hl is not None:
@@ -10055,12 +10468,28 @@ class TourDialog(QtWidgets.QDialog):
             self._hl = (w, w.styleSheet())
             w.setStyleSheet(w.styleSheet() + "; border: 3px solid #f5a623; border-radius: 4px;")
 
+    def _do(self):
+        act = self.steps[self.i][5]
+        if act is not None and callable(getattr(self.owner, act[1], None)):
+            getattr(self.owner, act[1])()
+
     def go(self, i):
         i = max(0, min(len(self.steps) - 1, i))
         self.i = i
-        w, t, txt = self.steps[i]
+        w, t, what, why, how, act = self.steps[i]
         self.title.setText(t)
-        self.text.setText(txt)
+        for lab, txt in zip(self.parts, (what, why, how)):
+            lab.setText(txt)
+        hidden = False
+        try:
+            hidden = not w.isVisible()
+        except RuntimeError:
+            pass
+        self.note.setText("Cette partie est cachée dans l'affichage actuel : ☰ Plus › 👁 Affichage › Simple ou Expert "
+                          "pour la voir." if hidden else "")
+        self.act_btn.setVisible(act is not None)
+        if act is not None:
+            self.act_btn.setText(act[0])
         self.count.setText(f"{i + 1} / {len(self.steps)}")
         self.prev_btn.setEnabled(i > 0)
         self.next_btn.setText("Terminer ✔" if i == len(self.steps) - 1 else "Suivant ▶")
@@ -10080,6 +10509,74 @@ class TourDialog(QtWidgets.QDialog):
         self._mark(None)
         self.owner.tour_finished()
         super().closeEvent(e)
+
+
+class TourChooser(QtWidgets.QDialog):
+    """🎓 Choisir un tuto (pour débutants complets), ou ouvrir le lexique."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Tutos")
+        lay = QtWidgets.QVBoxLayout(self)
+        head = QtWidgets.QLabel("Des visites guidées pas à pas : chaque étape montre une partie de l'écran (entourée "
+                                "en orange) et explique c'est quoi, pourquoi et comment, avec un bouton qui ouvre "
+                                "l'outil. Aucune connaissance nécessaire.")
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        self.buttons = {}
+        for k, t, mins, desc in TOURS:
+            b = QtWidgets.QPushButton(f"{t}  ·  {mins} min")
+            b.setToolTip(desc)
+            b.setStyleSheet("text-align:left; padding:6px 10px; font-weight:bold")
+            b.clicked.connect(lambda *_, k=k: (self.accept(), owner.start_tour(k)))
+            d_ = QtWidgets.QLabel(desc)
+            d_.setWordWrap(True)
+            d_.setStyleSheet("color:gray; margin:0 0 6px 12px")
+            lay.addWidget(b)
+            lay.addWidget(d_)
+            self.buttons[k] = b
+        gl = QtWidgets.QPushButton("📚 Lexique : tous les mots de la HF expliqués")
+        gl.setToolTip("dBm, max hold, intermodulation, RBW… expliqués simplement.")
+        gl.clicked.connect(lambda *_: owner.open_glossary())
+        man = QtWidgets.QPushButton("📖 Manuel complet")
+        man.setToolTip("Le manuel détaillé, avec le processus complet d'un festival.")
+        man.clicked.connect(lambda *_: owner.open_manual())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.reject)
+        lay.addLayout(owner._row(gl, man, None, close))
+        self.resize(560, 520)
+
+
+class GlossaryDialog(QtWidgets.QDialog):
+    """📚 Lexique : les mots de la HF et de l'appli expliqués à quelqu'un qui n'y connaît rien (avec recherche)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.setWindowTitle("Lexique")
+        self.setModal(False)
+        lay = QtWidgets.QVBoxLayout(self)
+        self.q = QtWidgets.QLineEdit()
+        self.q.setPlaceholderText("🔎 Chercher un mot (ex. intermod, dBm, max hold)…")
+        self.q.setToolTip("Tape un mot : la liste ne garde que ce qui en parle.")
+        self.q.setClearButtonEnabled(True)
+        lay.addWidget(self.q)
+        self.view = QtWidgets.QTextBrowser()
+        self.view.setToolTip("Les mots de la HF, du plus simple au plus technique.")
+        lay.addWidget(self.view, 1)
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(None, close))
+        self.q.textChanged.connect(lambda *_: self.fill())
+        self.resize(620, 620)
+        self.fill()
+
+    def fill(self):
+        import html
+        items = glossary_find(self.q.text())
+        self.view.setHtml("".join(f"<p><b>{html.escape(TR(t))}</b><br>{html.escape(TR(x))}</p>" for t, x in items)
+                          or f"<p>{html.escape(TR('Aucun mot trouvé.'))}</p>")
+        self.count = len(items)
 
 
 class ScanAddDialog(QtWidgets.QDialog):
@@ -11609,7 +12106,8 @@ class MainWindow(QtWidgets.QMainWindow):
         bar.addSeparator()
         self.tour_btn = QtWidgets.QToolButton()
         self.tour_btn.setText("🎓 Tuto")
-        self.tour_btn.setToolTip("Visite guidée : ce que fait chaque partie de l'écran, dans l'ordre (2 minutes).")
+        self.tour_btn.setToolTip("Tutos pas à pas pour débutants : découvrir l'écran, premier show de A à Z, lire le\n"
+                                 "spectre, coordonner, plusieurs scènes, pendant le show ; + le lexique.")
         self.tour_btn.setAutoRaise(True)
         self.tour_btn.clicked.connect(lambda *_: self.start_tour())
         bar.addWidget(self.tour_btn)
@@ -11675,12 +12173,24 @@ class MainWindow(QtWidgets.QMainWindow):
         for k_, a_ in getattr(self, "level_acts", {}).items():
             a_.setChecked(k_ == level)
 
-    def start_tour(self):
+    def start_tour(self, key=None):
+        """🎓 Sans clé : choisir un tuto ; avec : le lancer (ecran, show, spectre, coord, scenes, live)."""
+        if key is None:
+            self._tour_chooser = TourChooser(self)
+            self._tour_chooser.show()
+            return
         if getattr(self, "_tour", None) is not None:
             self._tour.close()
-        self._tour = TourDialog(self, tour_steps(self))
+        title = next((t for k, t, *_ in TOURS if k == key), "Tuto")
+        self._tour = TourDialog(self, tour_steps(self, key), title)
         self._tour.show()
         self._tour.go(0)
+
+    def open_glossary(self):
+        if getattr(self, "_glossary", None) is None or not self._glossary.isVisible():
+            self._glossary = GlossaryDialog(self)
+        self._glossary.show()
+        self._glossary.raise_()
 
     def tour_finished(self):
         self.tour_done = True
@@ -11859,7 +12369,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.level_acts[key_] = a_
         self.expert_act = self.level_acts["expert"]
         mm.addSection("Aide")
-        mm.addAction("🎓 Tuto : visite guidée (2 min)").triggered.connect(lambda *_: self.start_tour())
+        mm.addAction("🎓 Tutos pas à pas (débutants)…").triggered.connect(lambda *_: self.start_tour())
+        mm.addAction("📚 Lexique : les mots de la HF expliqués…").triggered.connect(lambda *_: self.open_glossary())
         mm.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
         mm.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
         self._spare_btns = [tools_btn, win_btn, wall_btn, colors_btn, status_btn]   # gardés pour leurs menus

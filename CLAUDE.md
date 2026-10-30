@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.25.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.26.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -430,6 +430,21 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   enregistre sur le serveur sur chaque scène, pour faire une coord par scène ou globale après ») : PURE `coord_docs`
   (live | all | une scène) ; `coord_FL(src)` (scène = ses scans + `_site_mh_FL`) ; `fill_coord_combo` (« Spectre : … »,
   scène de « Mes fréquences » d'office) dans `CoordDialog.spec_combo` et `RescueDialog.spec_combo`.
+- **7.26.0 (Clément : « refaire le manuel, vraiment hyper détaillé, avec tout le processus » ; « pousser le tuto dans le
+  soft, tout hyper détailler, comme à des gens qui n'y connaissent rien »)** :
+  - **Tutos** : PURE `TOURS` (ecran, show, spectre, coord, scenes, live : clé, titre, minutes, description) +
+    `GLOSSARY` (≈ 38 mots, explication pour débutant) + `glossary_find` (sans accents / casse). `tour_steps(o, key)` →
+    étapes `(widget, titre, c'est quoi, pourquoi, comment, action)` ; action = (texte, nom de méthode MainWindow) →
+    bouton « Fais-le ». `TourDialog` (3 rubriques, note si la partie est cachée par le niveau d'affichage, 📚
+    Lexique), `TourChooser` (`start_tour()` sans clé), `GlossaryDialog` (`open_glossary`, recherche). ☰ Plus ›
+    Aide : Tutos + Lexique. **Ajouter une étape = sa traduction dans lang_en (titre + 3 textes + bouton)** ; gui_reel
+    parcourt les 6 tutos et vérifie que chaque action existe ; gui_en scanne chaque étape en anglais.
+  - **Manuel** reconstruit par `tests/make_manual.py` (idempotent) : 5 parties (A commencer, B comprendre la HF, C le
+    festival pas à pas, D référence des outils, E aide), 39 chapitres ; nouveaux chapitres dans
+    `docs/src/nouveaux_fr.html` / `nouveaux_en.html` (blocs `<!--CH id|Titre-->`) ; les chapitres de référence restent
+    éditables directement dans `docs/manuel.html` / `manual_en.html` ; le lexique du manuel est GÉNÉRÉ depuis
+    `GLOSSARY` (+ lang_en) ; renvois « chapitre N » renumérotés. **Après toute modif : `python tests/make_manual.py`
+    puis `python tests/make_pdf.py`.** Nouveau chapitre : l'ajouter dans `PARTS` du script.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
