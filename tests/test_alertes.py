@@ -545,6 +545,8 @@ else:
                    dict(name="Club · bar", scene="Club", t=1761822000, n=4000, lo=470.0, hi=694.0, auto=False)],
             msg="💾 Gardé : Club · bar")))
         state["v"] = json.dumps(st_t, ensure_ascii=False).encode("utf-8")
+        _sc = {"Club": dict(color="#a855f7", segs=[dict(f=b["f"], l=[x + 8 for x in b["l"]]) for b in out])}
+        spec_b = json.dumps(dict(t=20.0, bands=out, scenes=_sc)).encode()
         pa.goto(f"http://127.0.0.1:{wa.port}/#/terrain")
         pa.wait_for_function("document.querySelectorAll('#tsc input').length === 3", timeout=6000)
         check("terrain (téléphone) : 2ᵉ tinySA choisi, sa scène cochée", pa.locator("#td").input_value() == "1"
@@ -571,6 +573,16 @@ else:
             time.sleep(0.05)
         check("terrain (téléphone) : 🗑 effacer un scan (confirmé)", terr[-1] == dict(terr[-1], action="delete",
                                                                                    name="Club · jardin"), str(terr[-1:]))
+        for k in range(3):
+            spec_b = json.dumps(dict(t=21.0 + k, bands=out, scenes=_sc)).encode()
+            pa.wait_for_timeout(1100)
+        check("terrain (téléphone) : spectre avec rémanence intégré", pa.evaluate("() => (pers ? pers.n : -1)") >= 2
+              and "rémanence" in pa.locator("#lg").inner_text())
+        check("terrain (téléphone) : max hold par scène (liste + courbe à la couleur de la scène)",
+              pa.locator("#tmh option").count() == 3 and "max hold Club" in pa.locator("#lg").inner_text()
+              and pa.evaluate("""() => {const c=document.querySelector('#cv'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+                  let n=0;for(let i=0;i<d.length;i+=4){if(d[i]>140&&d[i]<190&&d[i+1]<110&&d[i+2]>220)n++}return n}""") > 100,
+              pa.locator("#lg").inner_text())
         if CAP:
             pa.screenshot(path=os.path.join(CAP, "web_terrain.png"), full_page=True)
         # --- grand écran (tablette / PC de la régie)

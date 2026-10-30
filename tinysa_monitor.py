@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.24.1"
+APP_VER = "7.25.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3531,7 +3531,7 @@ async function tick(){if(busy)return;busy=true;try{
  if(!editing){$("#login").classList.add("hidden");$("#app").classList.remove("hidden")}
  if(d.me&&d.me!==LS.get("name",""))LS.set("name",d.me);       // renommé depuis le PC
  $("#ident").classList.toggle("hidden",!d.ident);$("#identn").textContent=d.me||"";
- if((v==="spectre"||v==="waterfall")&&d.views.includes(v)){try{const s=await api("spectre.json");if(s.ok){spec=await s.json()}}catch(e){}}
+ if((v==="spectre"||v==="waterfall"||v==="terrain")&&d.views.includes(v)){try{const s=await api("spectre.json");if(s.ok){spec=await s.json()}}catch(e){}}
  render()}finally{busy=false;$("#stale").style.display=(last&&Date.now()-last>8000)?"block":"none"}}
 function clock(){const n=new Date();$("#clock").textContent=n.toLocaleTimeString("fr-FR",{hour12:false})}
 setInterval(clock,500);clock();setInterval(tick,1000);tick();
@@ -3596,13 +3596,15 @@ function mount(v){const el=$("#view");
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
   $("#hrs").onclick=()=>hunt("reset");return}
- if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div>${D.views.includes("spectre")?'<div class="tools"><a class="btn" id="tsp" href="#/spectre">📈 Voir le spectre avec rémanence</a></div>':""}</div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
+ if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📈 Ce que voit le tinySA</b><label class="sw"><input type="checkbox" id="rm" checked> Rémanence</label><label class="sw"><input type="checkbox" id="mk"> Mes fréquences</label><select class="in" id="tmh"></select></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
   $("#td").onchange=()=>{$("#tsc").dataset.k="";$("#tsc").dataset.dirty="";update(v)};
   $("#tsc").onchange=()=>{$("#tsc").dataset.dirty="1"};
   $("#tall").onclick=()=>{const cs=[...document.querySelectorAll("#tsc input")],all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all);$("#tsc").dataset.dirty="1"};
   $("#tap").onclick=()=>{$("#tsc").dataset.dirty="";terrain("assign",{scenes:tChecked()})};
   $("#tsv").onclick=()=>{terrain("save",{label:$("#tlab").value});$("#tlab").value=""};
-  const tsp=$("#tsp");if(tsp)tsp.onclick=()=>{LS.set("rm","1");pers=null};
+  pers=null;["rm","mk"].forEach(i=>{$("#"+i).onchange=()=>{if(i==="rm")pers=null;draw()}});
+  $("#tmh").onchange=()=>{LS.set("tmh",$("#tmh").value);pers=null;draw()};
+  const cv=$("#cv");cv.onpointermove=cv.onpointerdown=e=>readout(e);cv.onpointerleave=()=>{$("#rd").textContent=""};
   $("#trs").onclick=()=>{if(confirm("Repartir de zéro ici ? Le max hold de ce tinySA est remis à zéro (les scans déjà gardés restent)."))terrain("reset")};return}
  if(v==="regie"){el.innerHTML=`<div class="tools">${layerSel("flt")}<button class="btn" id="fs">⛶ Plein écran</button></div><div id="ra"></div><div class="rg" id="g"></div>`;
   keepLayer("flt");$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
@@ -3648,7 +3650,10 @@ function update(v){const st=D.state;
   $("#tmsg").textContent=T.msg||"";
   const sv=T.saved||[],noSv="Aucun scan gardé pour l’instant";
   const hs=sv.map(x=>`<div class="row" style="border-left-color:#64748b"><div class="x"><b>${esc(x.name)}</b><div class="mut">${esc(x.scene)} · ${x.lo.toFixed(1)}–${x.hi.toFixed(1)} MHz · ${x.n} points · ${new Date(x.t*1000).toLocaleString("fr-FR",{hour12:false,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${x.auto?" · mis à jour tout seul":""}</div></div><button class="ackbtn" data-del="${esc(x.name)}">🗑</button></div>`).join("");
-  $("#tsaved").innerHTML=hs||`<div class="empty">${esc(noSv)}</div>`;return}
+  $("#tsaved").innerHTML=hs||`<div class="empty">${esc(noSv)}</div>`;
+  const scm=Object.keys((spec&&spec.scenes)||{}),tm=$("#tmh"),ok=["","*"].concat(scm).join("|");
+  if(tm.dataset.k!==ok){const want=tm.value||LS.get("tmh","*");tm.innerHTML=`<option value="">Max hold : aucun</option><option value="*">Max hold : toutes les scènes</option>`+scm.map(x=>`<option value="${esc(x)}">Max hold : ${esc(x)}</option>`).join("");tm.value=[""].concat(["*"],scm).includes(want)?want:"*";tm.dataset.k=ok}
+  if(spec&&spec.t!==specT)specT=spec.t;draw();return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
   $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
   if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
@@ -3678,21 +3683,25 @@ function persLayer(c,w,h,ss,X,Y,key){const cv=$("#cv"),k=key+"|"+cv.width+"x"+cv
   ss.forEach(s=>{g.beginPath();s.l.forEach((v,i)=>{const x=X(s.f[i]),y=Y(v);i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle="rgba(56,189,248,.45)";g.lineWidth=2.2;g.stroke()})}
  c.drawImage(pers.c,0,0,w,h)}
 function draw(){const cv=$("#cv");if(!cv||!spec)return;const ss=segs(),sp=span(ss),lg=$("#lg");
- const H=mounted==="spectre"?Math.max(240,Math.min(innerHeight-230,520)):Math.max(260,innerHeight-220);
+ const H=mounted==="spectre"?Math.max(240,Math.min(innerHeight-230,520)):mounted==="terrain"?Math.max(220,Math.min(innerHeight*.45,420)):Math.max(260,innerHeight-220);
  const[c,w,h]=setup(cv,H);c.clearRect(0,0,w,h);if(!sp){c.fillStyle="#8b95a5";c.font="15px system-ui";c.textAlign="center";c.fillText(spec.bands.length?"…":"Pas encore de balayage",w/2,h/2);return}
  const[f0,f1]=sp,X=f=>PL+(f-f0)/(f1-f0)*(w-PL-8);
  c.font="11px system-ui";c.fillStyle="#8b95a5";c.strokeStyle="#272d38";c.lineWidth=1;c.textAlign="center";
  ticks(f0,f1,Math.max(3,Math.floor(w/90))).forEach(f=>{const x=X(f);c.beginPath();c.moveTo(x,PT);c.lineTo(x,h-PB);c.stroke();c.fillText(f.toFixed(f1-f0<5?2:(f1-f0<50?1:0)),x,h-8)});
  if(mounted==="waterfall"){wfDraw(c,w,h,f0,f1);marks(c,w,h,f0,f1,PT);lg.innerHTML='<span>Récent en haut · une ligne par balayage (il se remplit tant que la vue est ouverte)</span><span><i style="background:linear-gradient(90deg,#0b1e5b,#1d9bf0,#22c55e,#eab308,#ef4444)"></i>faible → fort</span>';return}
- const lo=-120,hi=Math.max(-20,Math.ceil((Math.max(...ss.flatMap(s=>s.mh||s.l))+5)/10)*10),Y=v=>PT+(hi-v)/(hi-lo)*(h-PT-PB);
+ const tsm=mounted==="terrain"&&$("#tmh")?$("#tmh").value:"",scs=Object.entries((spec&&spec.scenes)||{}).filter(([k])=>tsm==="*"||k===tsm);
+ const lo=-120,hi=Math.max(-20,Math.ceil((Math.max(...ss.flatMap(s=>s.mh||s.l),...scs.flatMap(([k,o])=>o.segs.flatMap(g=>g.l)))+5)/10)*10),Y=v=>PT+(hi-v)/(hi-lo)*(h-PT-PB);
  c.textAlign="right";for(let v=lo;v<=hi;v+=10){const y=Y(v);c.strokeStyle="#272d38";c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.fillText(v,PL-6,y+4)}
  const line=(arr,f,col,lw,fill)=>{c.beginPath();arr.forEach((v,i)=>{const x=X(f[i]),y=Y(Math.max(lo,v));i?c.lineTo(x,y):c.moveTo(x,y)});c.strokeStyle=col;c.lineWidth=lw;c.stroke();
   if(fill){c.lineTo(X(f[f.length-1]),h-PB);c.lineTo(X(f[0]),h-PB);c.closePath();const g=c.createLinearGradient(0,PT,0,h-PB);g.addColorStop(0,"#ff9f1c55");g.addColorStop(1,"#ff9f1c05");c.fillStyle=g;c.fill()}};
- const mh=$("#mh")&&$("#mh").checked,rm=$("#rm")&&$("#rm").checked;if(rm)persLayer(c,w,h,ss,X,Y,[$("#band").value,f0,f1,hi].join("|"));
+ const mh=$("#mh")&&$("#mh").checked,rm=$("#rm")&&$("#rm").checked;if(rm)persLayer(c,w,h,ss,X,Y,[$("#band")?$("#band").value:"*",f0,f1,hi].join("|"));
+ scs.forEach(([k,o])=>o.segs.forEach(g=>{const f=g.f.filter((x,i)=>x>=f0&&x<=f1),idx=g.f.map((x,i)=>i).filter(i=>g.f[i]>=f0&&g.f[i]<=f1);
+  if(idx.length>1)line(idx.map(i=>g.l[i]),f,o.color||"#a3e635",1.4,false)}));
  ss.forEach(s=>{if(mh&&s.mh)line(s.mh,s.f,"#ff9f1c55",1,false);line(s.l,s.f,"#ff9f1c",rm?1.2:1.6,!rm)});
  if(D.state.thr!=null){const y=Y(D.state.thr);c.setLineDash([6,4]);c.strokeStyle="#ef4444";c.lineWidth=1.2;c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.setLineDash([]);c.fillStyle="#ef4444";c.textAlign="left";c.fillText("seuil "+D.state.thr+" dBm",PL+4,y-4)}
  marks(c,w,h,f0,f1,PT);c.fillStyle="#8b95a5";c.textAlign="left";c.fillText("dBm",4,PT-8);
- lg.innerHTML='<span><i style="background:#ff9f1c"></i>en direct</span>'+(mh?'<span><i style="background:#ff9f1c55"></i>max hold</span>':"")+(rm?'<span><i style="background:#38bdf8"></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)</span>':"")+'<span><i style="background:#ef4444"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
+ const scLg=scs.map(([k,o])=>{const t="max hold "+k;return `<span><i style="background:${esc(o.color||"#a3e635")}"></i>${esc(t)}</span>`}).join("");
+ lg.innerHTML=scLg+'<span><i style="background:#ff9f1c"></i>en direct</span>'+(mh?'<span><i style="background:#ff9f1c55"></i>max hold</span>':"")+(rm?'<span><i style="background:#38bdf8"></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)</span>':"")+'<span><i style="background:#ef4444"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
 function levelAt(f){let best=null,bd=1e9;segs().forEach(s=>{let lo=0,hi=s.f.length-1;while(hi-lo>1){const m=(lo+hi)>>1;s.f[m]<f?lo=m:hi=m}[lo,hi].forEach(i=>{const d=Math.abs(s.f[i]-f);if(d<bd){bd=d;best=s.l[i]}})});return best}
 function readout(e){const cv=$("#cv"),sp=span(segs());if(!sp)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,f=sp[0]+(x-PL)/(r.width-PL-8)*(sp[1]-sp[0]);
  if(f<sp[0]||f>sp[1]){$("#rd").textContent="";return}const l=levelAt(f),near=D.state.rows.filter(w=>Math.abs(w.freq-f)<Math.max(.15,(w.bw||0)/2)).sort((a,b)=>Math.abs(a.freq-f)-Math.abs(b.freq-f))[0];
@@ -4491,6 +4500,16 @@ def site_scan_doc(name, F, L, t, scene=None):
 def site_doc_scene(d):
     """Scène d'un scan gardé (son nom pour le scan continu d'une scène)."""
     return d.get("scene") or d.get("name", "")
+
+
+def coord_docs(site_scans, src):
+    """Scans gardés qui comptent pour la coordination : src « live » -> aucun, « all » -> tous, sinon une scène ->
+    les siens (le scan continu de la scène + ceux gardés à la main)."""
+    if src == "live":
+        return []
+    if src == "all":
+        return list(site_scans or [])
+    return [d for d in site_scans or [] if site_doc_scene(d) == src]
 
 
 def snapshot_name(scene, label, existing, hhmm):
@@ -7089,10 +7108,13 @@ class RescueDialog(QtWidgets.QDialog):
         self.src_combo.addItem("Éviter : la couche active seulement", "scope")
         self.go_btn = QtWidgets.QPushButton("🔎 Chercher")
         self.go_btn.clicked.connect(lambda *_: self.search())
+        self.spec_combo = QtWidgets.QComboBox()
+        owner.fill_coord_combo(self.spec_combo)
         lay.addLayout(R("De", self.a_spin, "à", self.b_spin, "Nombre :", self.n_spin, None))
         lay.addLayout(R("Canal :", self.width_spin, "Écart mini :", self.sep_spin, "Tolérance :", self.guard_spin,
                         self.im_combo, "Filtre :", self.filt_spin, None))
         lay.addLayout(R("Niveau max toléré :", self.thr_spin, self.src_combo, None, self.go_btn))
+        lay.addLayout(R(self.spec_combo, None))
         self.msg = QtWidgets.QLabel("")
         self.msg.setWordWrap(True)
         lay.addWidget(self.msg)
@@ -7124,7 +7146,7 @@ class RescueDialog(QtWidgets.QDialog):
 
     def search(self):
         o = self.owner
-        F, L = o.coord_FL()
+        F, L = o.coord_FL(self.spec_combo.currentData())
         if F is None:
             self.msg.setText("Aucune mesure : lance un balayage (▶ Démarrer) sur cette zone, laisse tourner un moment, "
                              "puis relance la recherche.")
@@ -10269,9 +10291,12 @@ class CoordDialog(QtWidgets.QDialog):
             sp_.setSuffix(" MHz")
             sp_.setValue(v)
             sp_.setToolTip("Plage où chercher (la bande de tes appareils : ex. 470–608 pour un modèle G4 « A »).")
-        self.avoid = QtWidgets.QCheckBox("Éviter ce que le tinySA voit occupé (max hold)")
+        self.avoid = QtWidgets.QCheckBox("Éviter ce qui est occupé")
         self.avoid.setChecked(True)
-        self.avoid.setToolTip("Écarte les fréquences où le max hold dépasse ton seuil « occupé ».")
+        self.avoid.setToolTip("Écarte les fréquences où le spectre choisi dépasse ton seuil « occupé ».")
+        self.spec_combo = QtWidgets.QComboBox()
+        o.fill_coord_combo(self.spec_combo)
+        self.avoid.toggled.connect(self.spec_combo.setEnabled)
         self.prefix = QtWidgets.QLineEdit("HF")
         self.prefix.setToolTip("Nom des nouvelles fréquences, numéroté : HF 1, HF 2…")
         self.scene = QtWidgets.QComboBox()
@@ -10286,8 +10311,10 @@ class CoordDialog(QtWidgets.QDialog):
         f.addRow("Appareil :", self.prof)
         f.addRow("Combien :", self.n_spin)
         f.addRow("De :", o._row(self.lo, "à", self.hi, None))
-        f.addRow(self.avoid)
+        f.addRow(self.avoid, self.spec_combo)
         f.addRow("Nom :", self.prefix)
+        self.spec_combo.currentIndexChanged.connect(lambda *_: self._scene_from_spec())
+        self._scene_from_spec()
         f.addRow("Scène :", self.scene)
         f.addRow("Groupe :", self.group)
         lay.addLayout(f)
@@ -10310,6 +10337,12 @@ class CoordDialog(QtWidgets.QDialog):
         lay.addLayout(o._row(add, None, close))
         self.resize(620, 640)
 
+    def _scene_from_spec(self):
+        """Coordination pour une scène : les nouvelles fréquences y sont rangées (si une telle scène existe)."""
+        sc = self.spec_combo.currentData()
+        if sc not in ("live", "all", None) and self.owner.scene_by_name(sc) is not None:
+            self.scene.setEditText(sc)
+
     def _new_profile(self):
         d = rx_profile(self.prof.currentData())
         if d is None:
@@ -10324,7 +10357,7 @@ class CoordDialog(QtWidgets.QDialog):
         d = self._new_profile()
         busy = None
         if self.avoid.isChecked():
-            Fm, Lm = o.coord_FL()
+            Fm, Lm = o.coord_FL(self.spec_combo.currentData())
             if Fm is not None:                     # seuil « occupé » : le max hold du bruit dépasse souvent « faible »
                 lim = o.thr_spin.value()
                 win = max(0.05, o.win_spin.value() / 1000.0)
@@ -13644,7 +13677,14 @@ class MainWindow(QtWidgets.QMainWindow):
             f, l = self.latest[k]
             segs.append((names.get(k, f"{f[0]:.0f}–{f[-1]:.0f} MHz"), f, l, self.maxhold.get(k)))
             t = max(t, self.latest_t.get(k, 0.0))
-        return json.dumps(dict(t=round(t, 3), bands=web_spectrum(segs)), ensure_ascii=False).encode("utf-8")
+        scenes = {}
+        if self.web is not None and self.web.watching(("terrain",)):      # 🎒 max hold de chaque scène
+            for sc, bands in self.site_mh.items():
+                parts = sorted(bands.values(), key=lambda x: float(x[0][0]))
+                scenes[sc] = dict(color=self.scene_color(sc),
+                                  segs=[dict(f=b["f"], l=b["l"]) for b in web_spectrum([(sc, F, L, None) for F, L in parts],
+                                                                                        n_max=600)])
+        return json.dumps(dict(t=round(t, 3), bands=web_spectrum(segs), scenes=scenes), ensure_ascii=False).encode("utf-8")
 
     def apply_web(self):
         want = self.web_cfg["on"]
@@ -16910,12 +16950,39 @@ class MainWindow(QtWidgets.QMainWindow):
         SitesDialog(self).exec()
         self.update_site_curve()
 
-    def coord_FL(self):
-        """Spectre à éviter pour la coordination : max hold actuel, + les scans gardés de tous les lieux si demandé."""
-        F, L = self.fresh_FL(use_max=True, any_age=True)
-        if not (self.sites_coord and self.site_scans):
+    def coord_FL(self, src=None):
+        """Spectre à éviter pour la coordination. src : « live » = max hold actuel ; « all » = tout le site (fusion de
+        tous les scans gardés + max hold) ; une scène = ses scans gardés + son max hold en cours (tinySA volant).
+        None = réglage « éviter l'occupé de TOUS les lieux » (Scans par lieu)."""
+        if src is None:
+            src = "all" if self.sites_coord else "live"
+        docs = coord_docs(self.site_scans, src)
+        if src in ("live", "all"):
+            F, L = self.fresh_FL(use_max=True, any_age=True)
+        else:
+            F, L = self._site_mh_FL(src)
+        if not docs:
             return F, L
-        return merge_scans([(d["f"], d["l"]) for d in self.site_scans] + ([(F, L)] if F is not None else []))
+        return merge_scans([(d["f"], d["l"]) for d in docs] + ([(F, L)] if F is not None else []))
+
+    def fill_coord_combo(self, combo):
+        """Liste « Spectre à éviter » : max hold actuel, tout le site, ou une scène (ses scans gardés)."""
+        combo.clear()
+        combo.addItem("Spectre : max hold actuel (ce que voient les tinySA)", "live")
+        combo.addItem(f"Spectre : tout le site (fusion de {len(self.site_scans)} scan(s) gardé(s) + max hold)", "all")
+        per = {}
+        for d in self.site_scans:
+            per[site_doc_scene(d)] = per.get(site_doc_scene(d), 0) + 1
+        for sc in list(dict.fromkeys([x["name"] for x in self.scenes] + list(per))):
+            if per.get(sc) or self.site_mh.get(sc):
+                combo.addItem(f"Spectre : scène {sc} ({per.get(sc, 0)} scan(s) gardé(s))", sc)
+        want = "all" if self.sites_coord else "live"
+        one = {k[0] for k in self.scope or [] if k}
+        if len(one) == 1 and combo.findData(next(iter(one))) >= 0:
+            want = next(iter(one))                 # la scène choisie dans « Mes fréquences »
+        combo.setCurrentIndex(max(0, combo.findData(want)))
+        combo.setToolTip("Le spectre dont on évite les signaux : coordination GLOBALE (tout le site) ou PAR SCÈNE\n"
+                         "(les scans gardés de cette scène, par ex. avec le tinySA volant et la vue web 🎒 Terrain).")
 
     def open_settings(self, tab=0):
         d = SettingsDialog(self)
@@ -17503,7 +17570,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.web is not None:
             self._web_json = self.web_json()
             if self.web_cfg["views"].get("spectre") or self.web_cfg["views"].get("waterfall"):
-                if self.web.watching(("spectre", "waterfall")):        # seulement si quelqu'un regarde
+                if self.web.watching(("spectre", "waterfall", "terrain")):   # seulement si quelqu'un regarde
                     self._web_spec = self.web_spec_json()
         if self.recorder is not None:
             self.recorder.maybe_flush(now)

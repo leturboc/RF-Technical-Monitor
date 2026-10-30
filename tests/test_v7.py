@@ -780,6 +780,11 @@ ok("scan gardé : sa scène est notée (pas pour le continu)", _d1["scene"] == "
 check("scans d'une scène : continu + gardés", [d["name"] for d in ns["sites_for_scope"]([_d0, _d1, dict(name="Autre")],
                                                                                       [("Club", None)])], ["Club", "Club · bar"])
 ok("scène gardée relue de la config", ns["site_scans_norm"]([_d1])[0]["scene"] == "Club")
+cd_ = ns["coord_docs"]
+_all = [_d0, _d1, dict(name="Autre", f=[1, 2], l=[0, 0])]
+check("coord par scène : ses scans seulement", [d["name"] for d in cd_(_all, "Club")], ["Club", "Club · bar"])
+check("coord globale : tous les scans", len(cd_(_all, "all")), 3)
+check("coord max hold actuel : aucun scan gardé", cd_(_all, "live"), [])
 tq_ = ns["terrain_request"]
 check("terrain : commande propre", tq_(dict(action="assign", dev="1", scenes=["A", " ", "B"])),
       dict(action="assign", dev=1, scenes=["A", "B"], label="", name=""))
