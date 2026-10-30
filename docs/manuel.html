@@ -546,6 +546,22 @@ fréquence qui manque signale un pack mal réglé.</p>
   <li><b>⚖ Calibrer le 2ᵉ sur le 1er</b> : même signal sur les deux (splitter), ~20 s, offset réglé seul.</li>
 </ol>
 <p>Si un tinySA décroche, l'autre reprend toutes les bandes (⚠ APPAREIL). En réseau, préfère le câble au Wi-Fi.</p>
+<h3>🎒 Kit de chasse portable : tinySA + Raspberry Pi + téléphone</h3>
+<p>Le PC reste en régie ; tu te déplaces avec un 2ᵉ tinySA branché en USB sur un <b>Raspberry Pi</b> (batterie
+USB), qui le partage en Wi-Fi. Ton téléphone affiche la chasse et bippe.</p>
+<ol class="steps">
+  <li><b>Sur le Pi</b> (une fois) : Raspberry Pi OS (Lite suffit ; dans Raspberry Pi Imager, règle le Wi-Fi du site
+    et SSH), copie le dossier <code>relais</code> du dépôt, puis <code>sh install_pi.sh</code>. Le relais démarre
+    tout seul à chaque allumage et trouve le tinySA tout seul (fichier <code>relais/LISEZMOI.md</code>).</li>
+  <li><b>Sur le PC</b> : Réglages › 2ᵉ tinySA = l'adresse du Pi (<code>192.168.x.x</code> ou
+    <code>raspberrypi.local</code>), nom de position « Sac à dos ».</li>
+  <li><b>Sur le téléphone</b> : la page web (📣 Alertes et page web), vue <b>🔎 Chasse</b>. Tape la fréquence,
+    choisis « 2ᵉ tinySA · Sac à dos », <b>▶ Chasser</b> (code PIN de la page web). Le PC fait le zoom live avec le
+    tinySA du Pi pendant que le 1er continue de surveiller toutes les bandes ; le téléphone affiche le niveau en
+    gros et <b>bippe</b> (le PC, lui, se tait).</li>
+</ol>
+<p>Il faut que le Pi et le téléphone restent dans la couverture du Wi-Fi du site. Hors Wi-Fi : le tinySA tout seul,
+sur son propre écran (fréquence au centre, petite plage, marqueur sur le pic), marche toujours.</p>
 
 <h2 id="alertes">17. Alertes téléphone et page web</h2>
 <h3>📣 Alertes push</h3>
@@ -560,6 +576,7 @@ fréquence qui manque signale un pack mal réglé.</p>
 <ul>
   <li>Même fenêtre : active la page web ; l'équipe ouvre l'adresse affichée (<code>http://192.168.x.x:8080</code>).</li>
   <li>Vues au choix : liste, mur, spectre en direct, waterfall, alarmes, <b>🎛 Régie</b>. Mot de passe possible.</li>
+  <li><b>🔎 Chasse</b> : chasser un brouilleur depuis le téléphone (voir « Kit de chasse portable », chapitre 16).</li>
   <li><b>🎛 Régie</b> : l'écran à poser en régie (tablette, télé). En haut, les alarmes en très gros, qui clignotent
     (ou « ✔ Tout va bien ») ; dessous, <b>un gros voyant par groupe</b> (scène › groupe) : vert = tout est OK,
     orange = un signal faible ou à surveiller, rouge = une alarme, avec les noms en cause. ⛶ Plein écran, et le

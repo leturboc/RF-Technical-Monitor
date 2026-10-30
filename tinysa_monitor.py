@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.18.0"
+APP_VER = "7.19.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3195,7 +3195,8 @@ WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par 
              ("spectre", "📈", "Spectre", "Le spectre en direct, avec tes fréquences"),
              ("waterfall", "🌊", "Waterfall", "L'historique du spectre qui défile"),
              ("alarmes", "🔔", "Alarmes", "Conflits et émetteurs absents, à acquitter"),
-             ("regie", "🎛", "Régie", "Gros voyants par groupe, alarmes en haut : pour l'écran de la régie")]
+             ("regie", "🎛", "Régie", "Gros voyants par groupe, alarmes en haut : pour l'écran de la régie"),
+             ("chasse", "🔎", "Chasse", "Chasser un brouilleur en se déplaçant : niveau en gros et bip sur le téléphone")]
 WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
 
 
@@ -3323,6 +3324,10 @@ button,input,select{font:inherit;color:inherit}
 .rg .g .p{font-size:calc(var(--rf,26px)*.5);margin-top:6px;opacity:.95}
 .rg .g.ok{background:#14532d;border-color:#22c55e}.rg .g.warn{background:#713f12;border-color:#eab308}
 .rg .g.bad{background:#7f1d1d;border-color:#ef4444}.rg .g.none{opacity:.7}
+.hb{text-align:center;padding:10px 16px}.hb .lv{font-size:clamp(54px,16vw,120px);font-weight:900;line-height:1.05}
+.hb .bar{height:28px;border-radius:14px;background:var(--panel2);overflow:hidden;margin:12px 0}
+.hb .bar i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);transition:width .3s}
+.hb .sub{color:var(--mut);font-size:16px}
 #stale{display:none;position:sticky;top:0;z-index:9;background:var(--bad);color:#fff;padding:8px 16px;font-weight:700;text-align:center}
 #ident{position:fixed;inset:0;z-index:50;display:grid;place-items:center;text-align:center;animation:blink .5s steps(1) infinite}
 #ident div{font-size:72px}#ident b{display:block;font-size:42px;margin:8px 16px}#ident span{font-size:20px;opacity:.85}
@@ -3485,6 +3490,20 @@ async function ack(id){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (r
  if(r.ok){LS.set("pin",pin);tick();return}
  try{localStorage.removeItem("pin")}catch(x){}
  alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou acquittement désactivé sur le PC).":"Erreur "+r.status)}
+// ---------- chasse au brouilleur : commande (code PIN) + bip joué PAR LE TÉLÉPHONE (même formule que le PC)
+async function hunt(action){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ const b={pin:pin,action:action,f:parseFloat($("#hf").value)||0,span:parseFloat($("#hs").value)||2,follow:$("#hfo").checked,dev:parseInt($("#hd").value||"0")};
+ let r;try{r=await post("chasse",b)}catch(e){alert("PC injoignable");return}
+ if(r.ok){LS.set("pin",pin);tick();return}
+ if(r.status===403)try{localStorage.removeItem("pin")}catch(x){}
+ alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou commande à distance désactivée sur le PC).":"Erreur "+r.status)}
+let AC=null,hTimer=null,hLvl=null;
+function huntAudio(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==="suspended")AC.resume()}catch(e){}}
+function huntTone(l){const x=Math.max(0,Math.min(1,(l+100)/70));return[400+1600*x,1000-920*x]}
+function blip(hz){if(!AC)return;const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.frequency.value=hz;g.gain.setValueAtTime(0,t);
+ g.gain.linearRampToValueAtTime(.4,t+.005);g.gain.linearRampToValueAtTime(0,t+.045);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+.05)}
+function huntBeep(l){hLvl=l;if(l==null){if(hTimer){clearTimeout(hTimer);hTimer=null}return}if(hTimer)return;
+ const step=()=>{if(hLvl==null||mounted!=="chasse"){hTimer=null;return}const[hz,per]=huntTone(hLvl);blip(hz);hTimer=setTimeout(step,Math.max(60,per))};step()}
 function layers(){return[...new Set(D.state.rows.map(lay).filter(x=>x))].sort()}
 function layerSel(id){const k=LS.get("flt","");return `<select class="in" id="${id}"><option value="">Toutes les couches</option>${layers().map(l=>`<option${l===k?" selected":""}>${esc(l)}</option>`).join("")}</select>`}
 function keepLayer(id){const s=$("#"+id);if(s)s.onchange=()=>{LS.set("flt",s.value);update(mounted)}}
@@ -3498,6 +3517,10 @@ function mount(v){const el=$("#view");
  if(v==="spectre"||v==="waterfall"){el.innerHTML=`<div class="tools"><select class="in" id="band"></select>${v==="spectre"?'<label class="sw"><input type="checkbox" id="mh" checked> Max hold</label>':""}<label class="sw"><input type="checkbox" id="mk" checked> Mes fréquences</label></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div>`;
   $("#band").onchange=()=>{LS.set("band",$("#band").value);wf=null;draw()};["mh","mk"].forEach(i=>{const c=$("#"+i);if(c)c.onchange=()=>draw()});
   const cv=$("#cv");cv.onpointermove=cv.onpointerdown=e=>readout(e);cv.onpointerleave=()=>{$("#rd").textContent=""};return}
+ if(v==="chasse"){const h=D.state.hunt||{};el.innerHTML=`<div class="tools"><input class="in" id="hf" type="number" step="0.001" inputmode="decimal" value="${h.f||""}" placeholder="MHz" style="max-width:140px"><select class="in" id="hs">${[1,2,5,10].map(x=>`<option value="${x}"${x==(h.span||2)?" selected":""}>± ${x/2} MHz</option>`).join("")}</select><select class="in" id="hd">${(h.devs||[]).map((n,i)=>`<option value="${i}"${i==(h.dev!=null?h.dev:(h.devs||[]).length-1)?" selected":""}>${esc(n)}</option>`).join("")}</select><label class="sw"><input type="checkbox" id="hfo"${h.follow?" checked":""}> Suivre le plus fort</label></div><div class="tools"><button class="btn pri" id="hgo" style="width:auto;margin:0"></button><button class="btn" id="hrs">↺ Max à zéro</button><label class="sw"><input type="checkbox" id="hmu"> Muet</label></div><div class="hb"><div class="lv" id="hl">—</div><div class="bar"><i id="hbar" style="width:0%"></i></div><div class="sub" id="hsub">Branche le tinySA portable, choisis la fréquence puis « Chasser ». Le téléphone bippe plus vite et plus aigu quand tu te rapproches.</div></div>`;
+  $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
+  $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
+  $("#hrs").onclick=()=>hunt("reset");return}
  if(v==="regie"){el.innerHTML=`<div class="tools">${layerSel("flt")}<button class="btn" id="fs">⛶ Plein écran</button></div><div id="ra"></div><div class="rg" id="g"></div>`;
   keepLayer("flt");$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
  if(v==="alarmes"){el.innerHTML=`<div class="tools"><b style="flex:1">Alarmes en cours</b><span id="aa"></span></div><div class="alist" id="g"></div>`;return}}
@@ -3521,6 +3544,15 @@ function update(v){const st=D.state;
    const c=bad.length?"bad":(wn.length?"warn":(a.every(r=>r.paused)?"none":(ok?"ok":"none"))),pb=[...bad,...wn].slice(0,6).map(r=>esc(r.name)+(r.alarm?" ("+esc(r.alarm)+")":"")).join(" · ");
    const kt=bad.length?`⚠ ${bad.length} alarme(s)`:(wn.length?`◐ ${wn.length} à surveiller`:(a.every(r=>r.paused)?`💤 pas sur scène`:`✔ ${ok} / ${a.length} OK`));
    return `<div class="g ${c}"><b>${esc(k)}</b><div class="k">${kt}</div>${pb?`<div class="p">${pb}</div>`:""}</div>`}).join("");g.innerHTML=h||`<div class="who">Aucune fréquence surveillée.</div>`;return}
+ if(v==="chasse"){const h=st.hunt||{},hd=$("#hd"),ds=h.devs||[];
+  if(hd.options.length!==ds.length){hd.innerHTML=ds.map((n,i)=>`<option value="${i}">${esc(n)}</option>`).join("");hd.value=String(h.dev!=null?h.dev:ds.length-1);hd.classList.toggle("hidden",ds.length<2)}
+  if(!$("#hf").value&&h.f)$("#hf").value=h.f;
+  $("#hgo").textContent=h.on?"■ Arrêter la chasse":"▶ Chasser";
+  $("#hl").textContent=h.on&&h.level!=null?h.level_txt:"—";
+  $("#hbar").style.width=(h.on&&h.level!=null?Math.max(0,Math.min(100,(h.level+110)/90*100)):0)+"%";
+  if(!h.on&&h.msg)$("#hsub").textContent=h.msg;
+  if(h.on)$("#hsub").textContent=(h.level==null?"Attends le premier balayage…":"Pic à "+h.fpk.toFixed(3)+" MHz"+(h.best!=null?" · max vu "+h.best_txt+" ("+(h.level-h.best).toFixed(1)+" dB)":""))+" · "+(h.devs&&h.devs[h.dev]||"");
+  huntBeep(h.on&&!$("#hmu").checked?h.level:null);return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
   $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
   if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
@@ -4298,6 +4330,17 @@ def gen_commands(freq_mhz, level_dbm, mod="off", dev_khz=25.0, tone_hz=1000):
     return cmds
 
 
+def hunt_request(req):
+    """Commande de chasse venue du téléphone -> dict propre (ValueError si bancale)."""
+    if not isinstance(req, dict) or req.get("action") not in ("start", "stop", "reset"):
+        raise ValueError("action")
+    f, span = float(req.get("f") or 0), float(req.get("span") or 2)
+    if req["action"] == "start" and not 0.1 <= f <= 6000:
+        raise ValueError("fréquence")
+    return dict(action=req["action"], f=f, span=min(50.0, max(0.2, span)), follow=bool(req.get("follow")),
+                dev=1 if int(req.get("dev") or 0) == 1 else 0)
+
+
 # ===== PURE-END
 
 
@@ -4804,13 +4847,14 @@ class WebServer(threading.Thread):
     COOKIE = "tsm"
 
     def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
-                 get_page=None, default_lang="fr"):
+                 get_page=None, default_lang="fr", on_hunt=None):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
         # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
         self.get_page = get_page or (lambda lang: WEB_PAGE.encode("utf-8"))
         self.default_lang = default_lang if default_lang in ("fr", "en") else "fr"
         self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
+        self.on_hunt = on_hunt                     # 🔎 chasse lancée / arrêtée depuis un téléphone (code PIN)
         self.get_spec = get_spec or (lambda: b'{"bands":[]}')
         self.get_cfg = get_cfg or (lambda: {})
         self.guard, self.login_guard, self._lock = PinGuard(), PinGuard(), threading.Lock()
@@ -4970,6 +5014,25 @@ class WebServer(threading.Thread):
                         self._json(401, dict(login=True))
                         return
                     self._json(200, dict(ok=True, name=name))
+                    return
+                if path == "/chasse" and owner.on_hunt is not None:
+                    ok, _me = self._who()
+                    if not ok:
+                        self._json(401, dict(login=True))
+                        return
+                    try:
+                        req = self._body()
+                        cmd = hunt_request(req)
+                    except (ValueError, AttributeError, TypeError, UnicodeDecodeError):
+                        self._json(400, dict(error="requête invalide"))
+                        return
+                    with owner._lock:
+                        res = owner.guard.check(owner.get_pin(), req.get("pin"), self.client_address[0], time.time())
+                    if res != "ok":
+                        self._json(429 if res == "locked" else 403, dict(error=res))
+                        return
+                    owner.on_hunt(cmd)
+                    self._json(200, dict(ok=True))
                     return
                 if path != "/acquitter" or owner.on_ack is None:
                     self.send_error(404)
@@ -8507,11 +8570,18 @@ class HuntDialog(QtWidgets.QDialog):
                                    "Décoché : le niveau à ± 100 kHz de la fréquence choisie.")
         self.mute_chk = QtWidgets.QCheckBox("Muet")
         self.mute_chk.setToolTip("Coupe le bip (l'affichage continue).")
+        self.dev_combo = QtWidgets.QComboBox()
+        for d_ in range(o.ndev()):
+            self.dev_combo.addItem(f"{'1er' if d_ == 0 else '2ᵉ'} tinySA · {o.dev_name(d_)}", d_)
+        self.dev_combo.setCurrentIndex(o.ndev() - 1)          # le 2ᵉ (portable, sur un Pi) par défaut
+        self.dev_combo.setToolTip("Le tinySA qui chasse. Avec 2 tinySA : le portable (2ᵉ, ex. sur un Raspberry Pi\n"
+                                  "dans un sac) chasse, le 1er continue de surveiller toutes les bandes.")
+        self.dev_combo.setVisible(o.ndev() > 1)
         self.go_btn = QtWidgets.QPushButton("▶ Chasser")
         self.go_btn.setCheckable(True)
         self.go_btn.setToolTip("Zoom live sur la zone + bip. Il faut que la surveillance tourne (▶ Démarrer).")
         self.go_btn.toggled.connect(lambda *_: self.toggle(self.go_btn.isChecked()))
-        lay.addLayout(owner._row("Fréquence :", self.f_spin, "Zone :", self.span_spin, None))
+        lay.addLayout(owner._row("Fréquence :", self.f_spin, "Zone :", self.span_spin, self.dev_combo, None))
         lay.addLayout(owner._row(self.follow_chk, self.mute_chk, None, self.go_btn))
         self.big = QtWidgets.QLabel("—")
         self.big.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -8549,6 +8619,7 @@ class HuntDialog(QtWidgets.QDialog):
                 self.go_btn.blockSignals(False)
                 return
             f, h = self.f_spin.value(), self.span_spin.value() / 2.0
+            o.zoom_dev = int(self.dev_combo.currentData() or 0)
             o.spec.getPlotItem().setXRange(f - h, f + h, padding=0)
             o._fit_x = False
             if o._zoom is None:
@@ -8575,6 +8646,7 @@ class HuntDialog(QtWidgets.QDialog):
                 o.zoom_btn.setChecked(False)
                 o.toggle_zoom(False)
             self.we_zoomed = False
+            o.zoom_dev = 0
 
     def feed(self, F, L):
         if not self.go_btn.isChecked():
@@ -10549,6 +10621,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.web_cfg = dict(on=False, port=WEB_PORT, pin="", password="", views=web_views_norm(None))
         self._web_spec = b'{"t":0,"bands":[]}'
         self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
+        self._web_hunts = queue.Queue()     # 🔎 chasse commandée depuis un téléphone
         self.web = None
         self._web_json = {"fr": b"{}", "en": b"{}"}
         self.view_id = -1
@@ -10562,6 +10635,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
         self.sound = SoundOut()                # sons de l'appli sur la sortie audio choisie (⚙ Réglages › Son)
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
+        self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
         self.planning = planning_norm(None)    # 🎬 qui joue quand, par scène
         self._plan_state = (set(), set())      # (actifs, scènes planifiées) au dernier calcul
         self._plan_next = 0.0
@@ -11913,7 +11987,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 step_khz = (b - a) * 1000.0 / (n - 1)
                 bands = [dict(id=ZOOM_ID, name="Zoom", start_hz=a * 1e6, stop_hz=b * 1e6, n=n, enabled=True)]
                 rbw = c["zrbw"] if c["zrbw"] is not None else auto_rbw(step_khz)
-                zdev = 0 if (self.ndev() == 1 or self.dev_live[0] or not self.dev_live[1]) else 1
+                pref = self.zoom_dev if self.ndev() > 1 else 0     # chasse : le tinySA choisi (ex. celui du Pi)
+                zdev = pref if (self.ndev() == 1 or self.dev_live[pref] or not self.dev_live[1 - pref]) else 1 - pref
                 if dev != zdev:
                     # le zoom live est fait par un seul tinySA ; l'autre continue de surveiller toutes les bandes
                     bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
@@ -12849,6 +12924,7 @@ class MainWindow(QtWidgets.QMainWindow):
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
+            hunt=self.hunt_state(),
             thr=round(float(self.thr_spin.value()), 1)))
         out = {"fr": json.dumps(st, ensure_ascii=False).encode("utf-8")}
         tr = en_translator()                              # chaque personne choisit sa langue sur la page
@@ -12856,6 +12932,8 @@ class MainWindow(QtWidgets.QMainWindow):
             r.update(state_txt=tr(r["state_txt"]), status=tr(r["status"]), alarm=tr(r["alarm"]))
         for a in st["alarms"]:
             a.update(kind=tr(a["kind"]), info=tr(a["info"]))
+        if st.get("hunt"):
+            st["hunt"] = dict(st["hunt"], devs=[tr(x) for x in st["hunt"]["devs"]], msg=tr(st["hunt"].get("msg") or ""))
         out["en"] = json.dumps(st, ensure_ascii=False).encode("utf-8")
         return out
 
@@ -12881,6 +12959,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._web_json = self.web_json()
             ws = WebServer(self.web_cfg["port"], lambda lang="fr": self._web_json.get(lang, self._web_json["fr"]),
                            get_pin=lambda: self.web_cfg.get("pin", ""), on_ack=self._web_acks.put,
+                           on_hunt=self._web_hunts.put,
                            get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
                            default_lang=self.lang)
             ws.start()
@@ -16443,6 +16522,7 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:  # noqa: BLE001 — le diagnostic ne doit jamais faire tomber l'appli
                 pass
         self._web_ack_pending()
+        self._web_hunt_pending()
         if self.web is not None:
             self._web_json = self.web_json()
             if self.web_cfg["views"].get("spectre") or self.web_cfg["views"].get("waterfall"):
@@ -16527,6 +16607,46 @@ class MainWindow(QtWidgets.QMainWindow):
             self.refresh_alarms()
             self.set_status(f"📱 {n} alarme(s) acquittée(s) depuis la page web.")
         return n
+
+    def _web_hunt_pending(self):
+        """🔎 Chasse commandée depuis un téléphone (vue Chasse de la page web) : le téléphone bippe, le PC se tait."""
+        while True:
+            try:
+                c = self._web_hunts.get_nowait()
+            except queue.Empty:
+                return
+            if c["action"] == "start":
+                self.open_hunt(c["f"])
+                h = self._hunt
+                h.go_btn.setChecked(False)
+                h.f_spin.setValue(c["f"])
+                h.span_spin.setValue(c["span"])
+                h.follow_chk.setChecked(c["follow"])
+                h.dev_combo.setCurrentIndex(max(0, h.dev_combo.findData(c["dev"])))
+                h.mute_chk.setChecked(True)
+                h.best = None
+                h.go_btn.setChecked(True)
+                self.set_status(f"📱 Chasse lancée depuis un téléphone sur {c['f']:.3f} MHz.")
+            elif self._hunt is not None and c["action"] == "stop":
+                self._hunt.go_btn.setChecked(False)
+                self.set_status("📱 Chasse arrêtée depuis un téléphone.")
+            elif self._hunt is not None:
+                self._hunt._reset_best()
+
+    def hunt_state(self):
+        """État de la chasse pour la page web (vue Chasse)."""
+        h = self._hunt
+        devs = [f"{'1er' if d == 0 else '2ᵉ'} tinySA · {self.dev_name(d)}" for d in range(self.ndev())]
+        if h is None:
+            return dict(on=False, f=None, span=2.0, follow=False, dev=self.ndev() - 1, devs=devs, level=None)
+        on = h.go_btn.isChecked()
+        return dict(on=on, f=round(h.f_spin.value(), 4), span=h.span_spin.value(), follow=h.follow_chk.isChecked(),
+                    dev=int(h.dev_combo.currentData() or 0), devs=devs,
+                    level=None if (h.level is None or not on) else round(h.level, 1),
+                    level_txt="" if h.level is None else self.lvl(h.level, suffix=True),
+                    best=None if h.best is None else round(h.best, 1),
+                    best_txt="" if h.best is None else self.lvl(h.best, suffix=True),
+                    fpk=None if h.fpk is None else round(h.fpk, 4), msg="" if on else h.sub.text())
 
     def ack_all_alarms(self):
         n = self.alarms.ack_all()

@@ -277,9 +277,9 @@ busy.ready.wait(3)
 check("port déjà pris : erreur claire", "indisponible" in busy.error, busy.error)
 
 # --- acquitter (code PIN)
-acks, pin_ = [], {"v": "4321"}
+acks, pin_, hunts = [], {"v": "4321"}, []
 wa = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_pin=lambda: pin_["v"], on_ack=acks.append,
-                     get_spec=lambda: spec_b, get_cfg=lambda: wcfg)
+                     get_spec=lambda: spec_b, get_cfg=lambda: wcfg, on_hunt=hunts.append)
 wa.start()
 wa.ready.wait(3)
 oa = opener()
@@ -287,6 +287,13 @@ check("POST sans acquittement branché : 404", post_(o1, "/acquitter", dict(pin=
 check("acquitter : code faux → 403", post_(oa, "/acquitter", dict(pin="0000", id=7), wa.port)[0] == 403 and not acks)
 check("acquitter : bon code → 200", post_(oa, "/acquitter", dict(pin="4321", id=7), wa.port)[0] == 200 and acks == [7])
 check("acquitter : tout", post_(oa, "/acquitter", dict(pin="4321", id="all"), wa.port)[0] == 200 and acks[-1] == "all")
+check("chasse : code faux → 403", post_(oa, "/chasse", dict(pin="0000", action="start", f=606.5), wa.port)[0] == 403
+      and not hunts)
+check("chasse : bon code → commande transmise", post_(oa, "/chasse", dict(pin="4321", action="start", f=606.5, span=2,
+                                                                          dev=1, follow=True), wa.port)[0] == 200
+      and hunts[-1] == dict(action="start", f=606.5, span=2.0, follow=True, dev=1), str(hunts))
+check("chasse : fréquence absurde → 400", post_(oa, "/chasse", dict(pin="4321", action="start", f=99999), wa.port)[0] == 400)
+check("chasse : action inconnue → 400", post_(oa, "/chasse", dict(pin="4321", action="rm -rf"), wa.port)[0] == 400)
 check("acquitter : requête bancale → 400", post_(oa, "/acquitter", dict(pin="4321", id="1; rm"), wa.port)[0] == 400
       and post_(oa, "/acquitter", dict(pin="4321", id=True), wa.port)[0] == 400)
 for _ in range(5):
@@ -383,7 +390,7 @@ else:
         pg.wait_for_selector("#lcancel:not(.hidden)", timeout=3000)
         pg.click("#lcancel")
         check("renommer (client) : Annuler revient à la page", pg.locator("#app").is_visible())
-        check("navigateur : accueil avec les 6 vues", pg.locator(".vcard").count() == 6 and pg.locator("nav a").count() == 7,
+        check("navigateur : accueil avec les 7 vues", pg.locator(".vcard").count() == 7 and pg.locator("nav a").count() == 8,
               f'{pg.locator(".vcard").count()} {pg.locator("nav a").count()}')
         check("navigateur : pastille d'alarme", "1 alarme" in pg.locator("#pill").inner_text())
         check("navigateur : bandeau d'alarme", "ABSENT — HF 2" in pg.locator("#al").inner_text())
@@ -482,6 +489,29 @@ else:
         check("nom retenu : connecté sans redemander", any(e["name"] == "Plateau" for e in wa.client_list()))
         if CAP:
             pa.screenshot(path=os.path.join(CAP, "web_alarmes.png"))
+        # --- 🔎 chasse depuis le téléphone : niveau en gros, bouton Chasser → POST /chasse (code retenu)
+        st_h = ws(rows, al, dict(title="T", time="12:00:05", running=True, cycle="", thr=-80.0,
+                                 hunt=dict(on=True, f=606.5, span=2.0, follow=False, dev=1, level=-61.4,
+                                           level_txt="-61.4 dBm", best=-55.0, best_txt="-55.0 dBm", fpk=606.52,
+                                           devs=["1er tinySA · Régie", "2ᵉ tinySA · Sac à dos"], msg="")))
+        state["v"] = json.dumps(st_h, ensure_ascii=False).encode("utf-8")
+        pa.goto(f"http://127.0.0.1:{wa.port}/#/chasse")
+        pa.wait_for_function("document.querySelector('#hl') && document.querySelector('#hl').textContent.includes('-61.4')",
+                             timeout=6000)
+        check("chasse (téléphone) : niveau en gros, pic, max vu", "606.520" in pa.locator("#hsub").inner_text()
+              and "-6.4 dB" in pa.locator("#hsub").inner_text(), pa.locator("#hsub").inner_text())
+        check("chasse (téléphone) : choix du tinySA (2 appareils)", pa.locator("#hd option").count() == 2
+              and pa.locator("#hd").input_value() == "1", f'{pa.locator("#hd option").count()} {pa.locator("#hd").input_value()}')
+        nh = len(hunts)
+        pa.click("#hgo")
+        t0 = time.time()
+        while len(hunts) == nh and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("chasse (téléphone) : bouton → commande au PC, code retenu", len(hunts) == nh + 1
+              and hunts[-1]["action"] == "stop" and prompts == ["prompt"], f"{hunts[-1:]} {prompts}")
+        check("chasse (téléphone) : le bip tourne (son du navigateur)", pa.evaluate("hTimer !== null && hLvl === -61.4"))
+        if CAP:
+            pa.screenshot(path=os.path.join(CAP, "web_chasse.png"))
         # --- grand écran (tablette / PC de la régie)
         pt = br.new_page(viewport=dict(width=1280, height=760))
         pt.on("pageerror", lambda e: errs.append(str(e)))
