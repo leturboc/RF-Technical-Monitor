@@ -608,14 +608,18 @@ web page PIN.</p>
   <li>Wait a few sweeps, then <b>💾 Keep this scan</b>, with a label if you like (« stage left », « FOH »,
     « dressing rooms »…). You can keep <b>as many as you like per stage</b>, on different stages.</li>
   <li>The « 📊 Kept scans » list shows them all; 🗑 deletes one.</li>
-  <li><b>📈 Show the spectrum with persistence</b>: the Spectrum view with the <b>Persistence</b> box ticked. Every
-    sweep leaves a blue trace that fades over about fifteen sweeps: a signal that is always there draws a thick bright
-    line, an intermittent one (walkie-talkie, hopping transmitter) a faint trace. Handy to see what lives where you
-    stand before keeping the scan.</li>
+  <li><b>📈 What the tinySA sees</b> (in the Field view): the live spectrum with <b>persistence</b> (every sweep leaves
+    a blue trace that fades over about fifteen sweeps: a signal that is always there draws a thick bright line, an
+    intermittent one — walkie-talkie, hopping transmitter — a faint trace) and the <b>max hold of each stage</b> in its
+    colour (« Max hold: … » list: all stages, one, or none). A stage's max hold = what the tinySA saw for it since the
+    last ↺ New scan here: that is what 💾 keeps. The Persistence box also exists in the 📈 Spectrum view.</li>
 </ol>
 <p>On the PC, clicking a stage in « My frequencies » shows the merge of its kept scans; 📍 Scans by location lists
-them all (WWB / WSM / CSV export). 🪄 Find N frequencies and 🆘 Backup frequency take them all into account (« avoid what
-is busy at ALL locations » box).</p>
+them all (WWB / WSM / CSV export).</p>
+<p><b>Then, coordination per stage or global</b>: in 🪄 Find N frequencies and 🆘 Backup frequency, the
+<b>« Spectrum: … »</b> list chooses what to avoid: <b>one stage</b> (all its kept scans + its current max hold), <b>the
+whole site</b> (merge of all scans, for frequencies that work everywhere) or the current max hold. If a stage is
+selected in « My frequencies », it is offered by default.</p>
 <p>The Pi and the phone must stay within the site Wi-Fi coverage. Without Wi-Fi: the tinySA on its own, on its own
 screen (frequency in the centre, small span, marker on the peak), still works.</p>
 

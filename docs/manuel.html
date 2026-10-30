@@ -620,14 +620,19 @@ Toutes les commandes demandent le code PIN de la page web.</p>
   <li>Attends quelques balayages, puis <b>💾 Garder ce scan</b>, avec une étiquette si tu veux (« jardin », « régie »,
     « loges »…). Tu peux en garder <b>autant que tu veux par scène</b>, sur des scènes différentes.</li>
   <li>La liste « 📊 Scans gardés » montre tout ; 🗑 en efface un.</li>
-  <li><b>📈 Voir le spectre avec rémanence</b> : la vue Spectre, case <b>Rémanence</b> cochée. Chaque balayage laisse
-    une trace bleue qui s'estompe en une quinzaine de balayages : un signal toujours là fait un trait épais et vif, un
-    signal intermittent (talkie, émetteur qui saute) une trace pâle. Pratique pour voir ce qui vit à l'endroit où tu es
-    avant de garder le scan.</li>
+  <li><b>📈 Ce que voit le tinySA</b> (dans la vue Terrain) : le spectre en direct avec la <b>rémanence</b> (chaque
+    balayage laisse une trace bleue qui s'estompe en une quinzaine de balayages : un signal toujours là fait un trait
+    épais et vif, un signal intermittent — talkie, émetteur qui saute — une trace pâle) et le <b>max hold de chaque
+    scène</b> à sa couleur (liste « Max hold : … » : toutes les scènes, une seule, ou aucun). Le max hold d'une scène =
+    ce que le tinySA a vu pour elle depuis le dernier ↺ Nouveau scan ici : c'est lui que 💾 garde. La case Rémanence
+    existe aussi dans la vue 📈 Spectre.</li>
 </ol>
 <p>Sur le PC, cliquer une scène dans « Mes fréquences » affiche la fusion de ses scans gardés ; 📍 Scans par lieu
-les liste tous (export WWB / WSM / CSV). 🪄 Trouver N fréquences et 🆘 Fréquence de secours tiennent compte de tous
-(case « éviter ce qui est occupé sur TOUS les lieux »).</p>
+les liste tous (export WWB / WSM / CSV).</p>
+<p><b>Ensuite, la coordination par scène ou globale</b> : dans 🪄 Trouver N fréquences et 🆘 Fréquence de secours, la
+liste <b>« Spectre : … »</b> choisit ce qu'on évite : <b>une scène</b> (tous ses scans gardés + son max hold en cours),
+<b>tout le site</b> (fusion de tous les scans, pour des fréquences qui marchent partout) ou le max hold actuel. Si une
+scène est choisie dans « Mes fréquences », elle est proposée d'office.</p>
 <p>Il faut que le Pi et le téléphone restent dans la couverture du Wi-Fi du site. Hors Wi-Fi : le tinySA tout seul,
 sur son propre écran (fréquence au centre, petite plage, marqueur sur le pic), marche toujours.</p>
 

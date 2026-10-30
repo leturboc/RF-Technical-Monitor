@@ -9,9 +9,15 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Le spectre dont on évite les signaux : coordination GLOBALE (tout le site) ou PAR SCÈNE\n(les scans gardés de cette scène, par ex. avec le tinySA volant et la vue web 🎒 Terrain).': "The spectrum whose signals are avoided: GLOBAL coordination (whole site) or PER STAGE\n(that stage's kept scans, e.g. with the roaming tinySA and the 🎒 Field web view).",
+    'Spectre : max hold actuel (ce que voient les tinySA)': 'Spectrum: current max hold (what the tinySAs see)',
+    'Écarte les fréquences où le spectre choisi dépasse ton seuil « occupé ».': 'Skips frequencies where the chosen spectrum exceeds your « busy » threshold.',
+    'Éviter ce qui est occupé': 'Avoid what is busy',
+    'Max hold : aucun': 'Max hold: none',
+    'Max hold : toutes les scènes': 'Max hold: all stages',
     'Rémanence': 'Persistence',
     'rémanence (plus c’est épais et vif, plus le signal est souvent là)': 'persistence (the thicker and brighter, the more often the signal is there)',
-    '📈 Voir le spectre avec rémanence': '📈 Show the spectrum with persistence',
+    '📈 Ce que voit le tinySA': '📈 What the tinySA sees',
     '📍 Où est ce tinySA ?': '📍 Where is this tinySA?',
     '📊 Scans gardés (pour la coordination)': '📊 Kept scans (for coordination)',
     "Aucune scène : dis d'abord où est ce tinySA.": 'No scene: first say where this tinySA is.',
@@ -2348,6 +2354,8 @@ EXACT = {
 }
 
 TEMPLATES = {
+    'Spectre : scène {} ({} scan(s) gardé(s))': 'Spectrum: stage {} ({} kept scan(s))',
+    'Spectre : tout le site (fusion de {} scan(s) gardé(s) + max hold)': 'Spectrum: whole site (merge of {} kept scan(s) + max hold)',
     '↺ Nouveau scan pour : {}': '↺ New scan for: {}',
     'rien à garder pour {} (pas encore de balayage)': 'nothing to keep for {} (no sweep yet)',
     '📍 {} : en direct · pointillés = fusion de {} scans gardés': '📍 {}: live · dashes = merge of {} kept scans',
@@ -2763,9 +2771,13 @@ SAME_TEMPLATES = [
 
 # Page web (téléphone) : remplacements de morceaux exacts dans WEB_PAGE (HTML + JavaScript), dans l'ordre.
 WEB = [
+    ('<option value="">Max hold : aucun</option><option value="*">Max hold : toutes les scènes</option>', '<option value="">Max hold: none</option><option value="*">Max hold: all stages</option>'),
+    ('">Max hold : ${esc(x)}</option>', '">Max hold: ${esc(x)}</option>'),
+    ('<b>📈 Ce que voit le tinySA</b>', '<b>📈 What the tinySA sees</b>'),
+    ('id="rm" checked> Rémanence<', 'id="rm" checked> Persistence<'),
+    ('id="mk"> Mes fréquences<', 'id="mk"> My frequencies<'),
     ('id="rm"> Rémanence<', 'id="rm"> Persistence<'),
     ('></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)<', '></i>persistence (the thicker and brighter, the more often the signal is there)<'),
-    ('href="#/spectre">📈 Voir le spectre avec rémanence<', 'href="#/spectre">📈 Show the spectrum with persistence<'),
     ('<b>📍 Où est ce tinySA ?</b>', '<b>📍 Where is this tinySA?</b>'),
     ('<b>📊 Scans gardés (pour la coordination)</b>', '<b>📊 Kept scans (for coordination)</b>'),
     ('placeholder="Étiquette (facultatif) : jardin, régie…"', 'placeholder="Label (optional): stage left, FOH…"'),

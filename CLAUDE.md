@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.24.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.25.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -418,10 +418,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `sites_for_scope` prend le continu + les gardés de la scène ; `update_site_curve` « fusion de N scans gardés ».
   État `terrain_state()` dans /etat.json (`terrain`). Testé : PURE, route (faux PIN 403…), page dans Chromium
   (capture `web_terrain.png`), vraie appli (gui_reel). **Pas essayé par Clément sur le terrain.**
-  **7.24.1 (Clément : « avec une rémanence si possible »)** : vue web Spectre, case « Rémanence » (`#rm`, retenue
+  **7.25.0 (Clément : « avec une rémanence si possible »)** : vue web Spectre, case « Rémanence » (`#rm`, retenue
   `LS rm`) : `persLayer` = canevas hors écran, à chaque nouveau balayage (`spec.t`) estompé (destination-out 0,13) puis
-  trace bleue `rgba(56,189,248,.45)` ; remis à zéro si bande / échelle / taille changent (`pers.k`). Bouton « 📈 Voir le
-  spectre avec rémanence » dans la vue Terrain. Côté PC : pas de rémanence (la V8 en a une en temps réel SDR).
+  trace bleue `rgba(56,189,248,.45)` ; remis à zéro si bande / échelle / taille changent (`pers.k`). Clément voulait
+  ça **dans la vue cachée Terrain** : spectre intégré (« 📈 Ce que voit le tinySA », rémanence cochée d'office) +
+  **max hold par scène** (« avec max hold aussi par scène ») : `/spectre.json` porte `scenes` {scène: {color, segs}}
+  (`site_mh` réduit par `web_spectrum`, seulement si quelqu'un regarde Terrain : `watching(("terrain",))`), liste
+  `#tmh` (aucun / toutes / une scène, `LS tmh`). Limite : le direct / la rémanence = spectre global (avec 2 tinySA
+  à 2 endroits, le max des deux), le max hold, lui, est bien celui de la scène. Côté PC : pas de rémanence.
+  **Coordination par scène ou globale** (Clément : « je me balade en faisant mes scans sur différents lieux pour que ça
+  enregistre sur le serveur sur chaque scène, pour faire une coord par scène ou globale après ») : PURE `coord_docs`
+  (live | all | une scène) ; `coord_FL(src)` (scène = ses scans + `_site_mh_FL`) ; `fill_coord_combo` (« Spectre : … »,
+  scène de « Mes fréquences » d'office) dans `CoordDialog.spec_combo` et `RescueDialog.spec_combo`.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

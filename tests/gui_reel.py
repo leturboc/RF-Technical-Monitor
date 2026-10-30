@@ -1258,6 +1258,30 @@ check("terrain : deux scans gardés pour la même scène", len(_mine) == 2 and _
 _ts = win.terrain_state()
 check("terrain : état pour le téléphone", _ts["devs"][0]["scenes"] == ["Grande scène"] and len(_ts["saved"]) >= 3
       and "Gardé" in _ts["msg"], str(_ts["msg"]))
+class _WatchAll:
+    def watching(self, v):
+        return True
+_ow, win.web = win.web, _WatchAll()
+import json as _jsn
+_sj = _jsn.loads(win.web_spec_json())
+win.web = _ow
+check("terrain : max hold de chaque scène envoyé au téléphone", "Grande scène" in _sj["scenes"]
+      and len(_sj["scenes"]["Grande scène"]["segs"]) >= 1 and _sj["scenes"]["Grande scène"]["color"].startswith("#"),
+      str(list(_sj.get("scenes", {}))))
+_Fg, _Lg = win.coord_FL("Grande scène")
+check("coord par scène : spectre = scans de la scène", _Fg is not None and len(_Fg) > 10)
+win.set_scope([("Grande scène", None)])
+_cd = m.CoordDialog(win)
+check("coord : « Spectre : scène … » proposé d'office pour la scène choisie", _cd.spec_combo.currentData() == "Grande scène"
+      and _cd.spec_combo.findData("all") >= 0, str(_cd.spec_combo.currentData()))
+check("coord par scène : rangées dans cette scène", _cd.scene.currentText() == "Grande scène")
+_cd.compute()
+check("coord par scène : propositions calculées", isinstance(_cd.found, list))
+shot(_cd, "coord_par_scene")
+_cd.close()
+_rd = m.RescueDialog(win)
+check("secours : même choix de spectre", _rd.spec_combo.currentData() == "Grande scène")
+_rd.close()
 win.set_scope([("Grande scène", None)])
 check("terrain : la scène montre la fusion de ses scans", "fusion de 3 scans" in win.site_lbl.toPlainText(),
       win.site_lbl.toPlainText())
