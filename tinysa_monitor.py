@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.26.1"
+APP_VER = "7.26.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -9685,10 +9685,21 @@ class DevicesDialog(QtWidgets.QDialog):
                              "l'appli les reconnaît et leurs scènes les suivent.")
             b_num.clicked.connect(lambda *_, d=d: self._number(d))
             self.grid.addWidget(b_num, 2, col)
+            mine = o.dev_scenes.get(d, [])
+            b_none = QtWidgets.QPushButton("∅ Aucune scène (tout le site)")
+            b_none.setToolTip("Ce tinySA ne surveille plus de scène précise : il compte pour tout le site.")
+            b_none.setEnabled(bool(mine))
+            b_none.clicked.connect(lambda *_, d=d: (o.set_dev_scenes(d, []), self.refresh()))
+            self.grid.addWidget(b_none, 3, col)
+            sm = QtWidgets.QLabel(("Surveille : " + ", ".join(mine)) if mine else "Surveille : tout le site")
+            sm.setWordWrap(True)
+            sm.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            sm.setStyleSheet("color:#d29922" if mine else "color:gray")
+            self.grid.addWidget(sm, 4, col)
         names = list(dict.fromkeys([x["name"] for x in o.scenes] + [x for v in o.dev_scenes.values() for x in v]))
         if not names:
-            self.grid.addWidget(QtWidgets.QLabel("Crée d'abord tes scènes (« Classer par scène › groupe »)."), 3, 0, 1, nd + 1)
-        for r, name in enumerate(names, start=3):
+            self.grid.addWidget(QtWidgets.QLabel("Crée d'abord tes scènes (« Classer par scène › groupe »)."), 5, 0, 1, nd + 1)
+        for r, name in enumerate(names, start=5):
             lab = QtWidgets.QLabel(name)
             sc = o.scene_by_name(name)
             if sc is not None:
@@ -9704,11 +9715,12 @@ class DevicesDialog(QtWidgets.QDialog):
         if nd < 2:
             tip = QtWidgets.QLabel("Un 2ᵉ tinySA ? Réglages › 2ᵉ tinySA (USB ou réseau, ex. un Raspberry Pi).")
             tip.setStyleSheet("color:gray")
-            self.grid.addWidget(tip, len(names) + 3, 0, 1, nd + 1)
+            self.grid.addWidget(tip, len(names) + 5, 0, 1, nd + 1)
 
     def _toggle(self, d, name, on):
         self.owner.toggle_dev_scene(d, name, on)
         self.msg.setText(self.owner.stat_lbl.text())
+        QtCore.QTimer.singleShot(0, self.refresh)            # le résumé « Surveille : … » suit
 
     def _number(self, d):
         n, ok_ = QtWidgets.QInputDialog.getInt(self, "Numéroter le tinySA", "Numéro à graver dans ce tinySA :",
@@ -12818,6 +12830,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ref_row.setLayout(rl)
         cl.addWidget(self.ref_row)
         cl.addWidget(self.band_lbl)
+        self.site_bar = QtWidgets.QFrame()          # 📡 « aucun tinySA ne surveille cette scène » + boutons
+        self.site_bar.setStyleSheet("QFrame { background:#3a2a00; border:1px solid #d29922; border-radius:4px; }")
+        sbl = QtWidgets.QHBoxLayout(self.site_bar)
+        sbl.setContentsMargins(8, 3, 8, 3)
+        self.site_bar_lbl = QtWidgets.QLabel("")
+        self.site_bar_lbl.setWordWrap(True)
+        self.site_bar_lbl.setStyleSheet("border:0")
+        sbl.addWidget(self.site_bar_lbl, 1)
+        self.site_bar_btns = QtWidgets.QHBoxLayout()
+        sbl.addLayout(self.site_bar_btns)
+        self.site_bar.setVisible(False)
+        cl.addWidget(self.site_bar)
         cl.addWidget(self.spec, 1)
         cl.addWidget(self.bandw)
 
@@ -14864,8 +14888,9 @@ class MainWindow(QtWidgets.QMainWindow):
                            if multi_site(self.dev_scenes, self.ndev(), self.dev_live) else ""))
 
     def dev_tag(self, scene):
-        """« 📡 Plateau » : quel(s) tinySA surveille(nt) cette scène (affiché dans l'arbre, en mode expert)."""
-        if not self.expert:
+        """« 📡 Plateau » : quel(s) tinySA surveille(nt) cette scène (dans l'arbre, dès qu'un rattachement existe : il
+        change ce que montre le spectre, il ne doit pas être caché)."""
+        if not any(self.dev_scenes.values()):
             return ""
         who = [self.dev_name(d) for d in sorted(self.dev_scenes) if scene in self.dev_scenes[d]]
         return f"   📡 {' + '.join(who)}" if who else ""
@@ -14944,6 +14969,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """📍 Scan gardé du lieu choisi (scène sélectionnée dans « Mes fréquences »), ou fusion de tous en Global."""
         if not hasattr(self, "sitecurve"):
             return
+        self.update_site_bar()
         docs = sites_for_scope(self.site_scans, self.scope) if self.sites_btn.isChecked() else []
         if not docs:
             self.sitecurve.setData([], [])
@@ -14982,6 +15008,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self.site_lbl.setText(txt, color=col)
         self.site_lbl.setVisible(True)
         self._place_site_lbl()
+
+    def update_site_bar(self):
+        """Bandeau au-dessus du spectre quand la scène regardée n'a AUCUN tinySA rattaché (son direct est donc vide) :
+        qui surveille quoi, et en un clic « ce tinySA est ici » ou « tout le site » (retour de Clément 7.26.1 : « j'avais
+        mal assigné le tiny, il faut que ce soit intuitif »)."""
+        bar = getattr(self, "site_bar", None)
+        if bar is None:
+            return
+        sites = self.view_sites()
+        watched = {x for v in self.dev_scenes.values() for x in v}
+        lost = [x for x in (sites or []) if x not in watched]
+        while self.site_bar_btns.count():
+            it = self.site_bar_btns.takeAt(0)
+            if it.widget() is not None:
+                it.widget().deleteLater()
+        if not sites or len(lost) < len(sites):
+            bar.setVisible(False)
+            return
+        sc = lost[0]
+        where = " · ".join(f"{'1er' if d == 0 else '2ᵉ'} tinySA ({self.dev_name(d)}) : {', '.join(self.dev_scenes[d])}"
+                           for d in sorted(self.dev_scenes) if self.dev_scenes[d])
+        self.site_bar_lbl.setText(f"📡 Aucun tinySA ne surveille « {sc} » : pas de direct ici. Actuellement : {where}.")
+        for d in range(self.ndev()):
+            b = QtWidgets.QPushButton(f"📡 Le {'1er' if d == 0 else '2ᵉ'} tinySA ({self.dev_name(d)}) est ici")
+            b.setToolTip(f"Ce tinySA surveille désormais « {sc} » (à la place de ses scènes actuelles).")
+            b.clicked.connect(lambda *_, d=d, sc=sc: self.set_dev_scenes(d, [sc]))
+            self.site_bar_btns.addWidget(b)
+        g_ = QtWidgets.QPushButton("🌐 Tout le site")
+        g_.setToolTip("Revenir à la vue globale : le direct de tous les tinySA.")
+        g_.clicked.connect(lambda *_: self.go_global())
+        self.site_bar_btns.addWidget(g_)
+        o_ = QtWidgets.QPushButton("⚙")
+        o_.setToolTip("Mes tinySA et leurs scènes : qui surveille quoi.")
+        o_.clicked.connect(lambda *_: self.open_devices())
+        self.site_bar_btns.addWidget(o_)
+        bar.setVisible(True)
 
     def _place_site_lbl(self):
         if getattr(self, "site_lbl", None) is not None and self.site_lbl.isVisible():

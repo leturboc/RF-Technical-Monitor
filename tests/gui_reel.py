@@ -1261,7 +1261,23 @@ win.dev_ids = {}
 win.set_expert(False)
 check("bouton 📡 Scènes caché en mode simple", not win.sites_btn.isVisible())
 _top = [win.layer_tree.topLevelItem(i).text(0) for i in range(win.layer_tree.topLevelItemCount())]
-check("arbre sans « 📡 » en mode simple", not any("📡" in t for t in _top), str(_top))
+check("arbre : « 📡 » visible aussi en mode simple (le rattachement change l'affichage)",
+      any("Scène 1" in t and "📡" in t for t in _top), str(_top))
+# bandeau « aucun tinySA ne surveille cette scène » + « ce tinySA est ici » en un clic (retour de Clément 7.26.1)
+win.set_dev_scenes(0, ["Grande scène"])
+win.site_scans.append(m.site_scan_doc("Scène 1", *win.fresh_FL(use_max=True, any_age=True), time.time()))
+win.set_scope([("Scène 1", None)])
+app.processEvents()
+check("bandeau : scène sans tinySA signalée, qui surveille quoi", win.site_bar.isVisible()
+      and "Scène 1" in win.site_bar_lbl.text() and "Grande scène" in win.site_bar_lbl.text(), win.site_bar_lbl.text())
+shot(win, "bandeau_scene_sans_tinysa")
+_bb = [win.site_bar_btns.itemAt(i).widget() for i in range(win.site_bar_btns.count())]
+step("« Le 1er tinySA est ici »", lambda: _bb[0].click())
+app.processEvents()
+check("bandeau : un clic rattache le tinySA à la scène regardée, bandeau caché",
+      win.dev_scenes.get(0) == ["Scène 1"] and not win.site_bar.isVisible(), str(win.dev_scenes))
+win.go_global()
+check("bandeau : caché en vue globale", not win.site_bar.isVisible())
 win.set_dev_site(0, "")
 win.site_scans = []
 win.update_site_curve()
