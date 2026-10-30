@@ -9,6 +9,9 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Rémanence': 'Persistence',
+    'rémanence (plus c’est épais et vif, plus le signal est souvent là)': 'persistence (the thicker and brighter, the more often the signal is there)',
+    '📈 Voir le spectre avec rémanence': '📈 Show the spectrum with persistence',
     '📍 Où est ce tinySA ?': '📍 Where is this tinySA?',
     '📊 Scans gardés (pour la coordination)': '📊 Kept scans (for coordination)',
     "Aucune scène : dis d'abord où est ce tinySA.": 'No scene: first say where this tinySA is.',
@@ -2760,6 +2763,9 @@ SAME_TEMPLATES = [
 
 # Page web (téléphone) : remplacements de morceaux exacts dans WEB_PAGE (HTML + JavaScript), dans l'ordre.
 WEB = [
+    ('id="rm"> Rémanence<', 'id="rm"> Persistence<'),
+    ('></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)<', '></i>persistence (the thicker and brighter, the more often the signal is there)<'),
+    ('href="#/spectre">📈 Voir le spectre avec rémanence<', 'href="#/spectre">📈 Show the spectrum with persistence<'),
     ('<b>📍 Où est ce tinySA ?</b>', '<b>📍 Where is this tinySA?</b>'),
     ('<b>📊 Scans gardés (pour la coordination)</b>', '<b>📊 Kept scans (for coordination)</b>'),
     ('placeholder="Étiquette (facultatif) : jardin, régie…"', 'placeholder="Label (optional): stage left, FOH…"'),
