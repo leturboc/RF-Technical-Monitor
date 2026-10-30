@@ -717,5 +717,11 @@ check("lieu : version compacte", (d_["name"], d_["f"], d_["l"]), ("Grande scène
 check("lieux lus d'un fichier : invalides écartés, nom unique", [x["name"] for x in ns["site_scans_norm"](
     [d_, dict(name="", f=[1, 2], l=[1, 2]), dict(name="B", f=[1], l=[1]), dict(d_, l=[-1.0, -2.0, -3.0])])], ["Grande scène"])
 
+sfs_ = ns["sites_for_scope"]
+_ss = [dict(name="Grande scène"), dict(name="Club")]
+check("lieux : Global -> tous", [d["name"] for d in sfs_(_ss, None)], ["Grande scène", "Club"])
+check("lieux : un groupe de la scène -> le scan de la scène", [d["name"] for d in sfs_(_ss, [("Club", "DJ")])], ["Club"])
+check("lieux : scène sans scan -> rien", sfs_(_ss, [("Scène 3", None)]), [])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

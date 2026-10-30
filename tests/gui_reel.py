@@ -1094,8 +1094,25 @@ _cf, _cl = win.coord_FL()
 check("lieux : la coordination évite l'occupé de TOUS les lieux", win.sites_coord and _cf is not None
       and _cf[-1] > win.fresh_FL(use_max=True, any_age=True)[0][-1] + 250)
 check("lieux : gardés dans la config et les shows", len(win._collect_config()["site_scans"]) == 2 and "site_scans" in m.SHOW_KEYS)
+# 📍 clic sur une scène dans « Mes fréquences » -> le spectre montre le scan gardé de ce lieu ; Global -> la fusion
+step("scène « Grande scène » choisie", lambda: win.set_scope([("Grande scène", None)]))
+_x, _y = win.sitecurve.getData()
+check("spectre : scan gardé de la scène choisie", _x is not None and len(_x) > 10 and win.site_lbl.isVisible()
+      and "Grande scène" in win.site_lbl.toPlainText(), win.site_lbl.toPlainText())
+wait(800)
+shot(win, "spectre_lieu_scene")
+step("Global", win.go_global)
+check("spectre Global : fusion de tous les lieux", "fusion de 2" in win.site_lbl.toPlainText(), win.site_lbl.toPlainText())
+win.set_scope([("Scène 1", None)])
+check("scène sans scan gardé : rien en plus", not win.site_lbl.isVisible())
+win.go_global()
+win.sites_btn.setChecked(False)
+check("📍 Lieux décoché : courbe cachée", not win.site_lbl.isVisible() and (win.sitecurve.getData()[0] is None or len(win.sitecurve.getData()[0]) == 0))
+win.sites_btn.setChecked(True)
 win.sites_coord = False
 win.site_scans = []
+win.update_site_curve()
+check("aucun lieu gardé : bouton 📍 caché", not win.sites_btn.isVisible())
 
 # 🌙 mode festival : réglages, bilan du jour (rapport + message + journal), une seule fois par jour
 def _fest_act(d):

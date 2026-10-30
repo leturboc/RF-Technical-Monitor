@@ -9,6 +9,8 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    '📍 Lieux': '📍 Locations',
+    'Montre sur le spectre le scan gardé du lieu : clique une scène dans « Mes fréquences »\npour voir le sien ; en Global, la fusion de tous les lieux (📍 Scans par lieu).': "Shows the location's kept scan on the spectrum: click a stage in « My frequencies »\nto see its own; in Global, the merge of all locations (📍 Scans by location).",
     "(le plus fort de tous, en blanc) sert à coordonner tout le site et s'exporte vers WWB / WSM / EazyRF.": '(the strongest of all, in white) is used to coordinate the whole site and exports to WWB / WSM / EazyRF.',
     'Ajouter au scan déjà gardé (max)': 'Add to the scan already kept (max)',
     'Aucun lieu encore : lance un scan, puis « 📍 Garder ».': 'No location yet: run a scan, then « 📍 Keep ».',
@@ -2272,6 +2274,9 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '📍 Scan gardé : {}': '📍 Kept scan: {}',
+    '📍 Tous les lieux : fusion de {} scans': '📍 All locations: merge of {} scans',
+    ' ({})': ' ({})',
     'scan_{}_{}.csv': 'scan_{}_{}.csv',
     'Scan illisible : {}': 'Unreadable scan: {}',
     '📥 Scan importé dans « {} » ({} points).': '📥 Scan imported into « {} » ({} points).',

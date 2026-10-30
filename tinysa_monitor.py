@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.20.0"
+APP_VER = "7.20.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4392,6 +4392,15 @@ def site_scans_norm(lst):
         except (KeyError, TypeError, ValueError):
             continue
     return list(out.values())
+
+
+def sites_for_scope(site_scans, scope):
+    """Scans gardés à montrer sur le spectre : Global (scope None) -> tous ; une scène (ou un de ses groupes)
+    choisie dans « Mes fréquences » -> le scan du lieu qui porte son nom."""
+    if not scope:
+        return list(site_scans or [])
+    names = {k[0] for k in scope if k}
+    return [d for d in site_scans or [] if d.get("name") in names]
 
 
 # ===== PURE-END
@@ -11776,6 +11785,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.legend_btn.setToolTip("Ce que montre chaque courbe et ligne du spectre (direct, max hold, référence, "
                                    "seuils, trop fort, repères) et leurs réglages.")
         self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
+        self.sites_btn = QtWidgets.QPushButton("📍 Lieux")
+        self.sites_btn.setCheckable(True)
+        self.sites_btn.setChecked(True)
+        self.sites_btn.setToolTip("Montre sur le spectre le scan gardé du lieu : clique une scène dans « Mes fréquences »\n"
+                                  "pour voir le sien ; en Global, la fusion de tous les lieux (📍 Scans par lieu).")
+        self.sites_btn.toggled.connect(lambda *_: self.update_site_curve())
         self.mkr_btn = QtWidgets.QPushButton("🎯 Marqueurs")
         self.mkr_btn.setCheckable(True)
         self.mkr_btn.setToolTip("Marqueurs déplaçables M1 / M2 : fréquence au kHz près (saisie, molette, flèches),\n"
@@ -11820,6 +11835,12 @@ class MainWindow(QtWidgets.QMainWindow):
         pi.getAxis("left").enableAutoSIPrefix(False)
         self.refcurve = pi.plot(pen=pg.mkPen(self.theme["ref"], width=1.3, style=Qt.PenStyle.DashLine),
                                 connect="finite")
+        self.sitecurve = pg.PlotCurveItem(connect="finite")      # 📍 scan gardé du lieu choisi (ou fusion en Global)
+        pi.addItem(self.sitecurve, ignoreBounds=True)
+        self.site_lbl = pg.TextItem("", anchor=(0, 0), fill=pg.mkBrush(0, 0, 0, 150))
+        self.site_lbl.setZValue(60)
+        self.site_lbl.setVisible(False)
+        pi.addItem(self.site_lbl, ignoreBounds=True)
         self.maxcurve = pi.plot(pen=pg.mkPen(self.theme["maxhold"], width=1), connect="finite")
         self.curve = pi.plot(pen=pg.mkPen(self.theme["curve"], width=1.6), connect="finite")
         for c_ in (self.refcurve, self.maxcurve, self.curve):
@@ -11891,7 +11912,8 @@ class MainWindow(QtWidgets.QMainWindow):
         cl = QtWidgets.QVBoxLayout(center)
         cl.setContentsMargins(6, 4, 6, 0)
         cl.addLayout(self._flow(("Vue :", self.view_combo), self.bands_btn, self.pts_btn, self.zoom_btn, self.mk_btn, self.hold_chk,
-                                self.persist_combo, reset_btn, cap_btn, self.mkr_btn, self.legend_btn, self.readout))
+                                self.persist_combo, reset_btn, cap_btn, self.mkr_btn, self.sites_btn, self.legend_btn,
+                                self.readout))
         cl.addWidget(self._build_markers_bar())
         self.ref_row = QtWidgets.QWidget()
         rl = self._row("Référence :", ref_btn, self.showref_chk, exp_btn, None)
@@ -12400,6 +12422,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if "site_scans" in data:
             self.site_scans = site_scans_norm(data.get("site_scans"))
         self.sites_coord = bool(data.get("sites_coord", self.sites_coord))
+        QtCore.QTimer.singleShot(0, self.update_site_curve)
         if "planning" in data:
             self.planning = planning_norm(data.get("planning"))
             self._plan_next = 0.0
@@ -13786,8 +13809,47 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.scope else "")
         self.update_title()
 
+    def update_site_curve(self):
+        """📍 Scan gardé du lieu choisi (scène sélectionnée dans « Mes fréquences »), ou fusion de tous en Global."""
+        if not hasattr(self, "sitecurve"):
+            return
+        self.sites_btn.setVisible(bool(self.site_scans))
+        docs = sites_for_scope(self.site_scans, self.scope) if self.sites_btn.isChecked() else []
+        if not docs:
+            self.sitecurve.setData([], [])
+            self.site_lbl.setVisible(False)
+            return
+        F, L = merge_scans([(d["f"], d["l"]) for d in docs]) if len(docs) > 1 else (np.asarray(docs[0]["f"]),
+                                                                                    np.asarray(docs[0]["l"]))
+        if F is None:
+            return
+        gap = np.nonzero(np.diff(F) > 5 * float(np.median(np.diff(F))))[0] + 1 if len(F) > 2 else []
+        F, L = np.insert(F, gap, np.nan), np.insert(L, gap, np.nan)
+        if len(docs) == 1:
+            col = self.scene_color(docs[0]["name"]) if self.scene_by_name(docs[0]["name"]) else "#e5e7eb"
+            when = datetime.fromtimestamp(docs[0]["t"]).strftime("%d/%m %H:%M") if docs[0]["t"] else ""
+            txt = f"📍 Scan gardé : {docs[0]['name']}" + (f" ({when})" if when else "")
+        else:
+            col = "#e5e7eb"
+            txt = f"📍 Tous les lieux : fusion de {len(docs)} scans"
+        self.sitecurve.setPen(pg.mkPen(col, width=1.2, style=Qt.PenStyle.DashLine))
+        self.sitecurve.setData(F, L)
+        self.site_lbl.setText(txt, color=col)
+        self.site_lbl.setVisible(True)
+        self._place_site_lbl()
+
+    def _place_site_lbl(self):
+        if getattr(self, "site_lbl", None) is not None and self.site_lbl.isVisible():
+            (x0, x1), (y0, y1) = self.spec.getPlotItem().vb.viewRange()
+            self.site_lbl.setPos(x0 + (x1 - x0) * 0.01, y1 - (y1 - y0) * 0.24)   # sous les noms des fréquences
+
+    def scene_color(self, name):
+        sc = self.scene_by_name(name)
+        return sc["color"] if sc else "#e5e7eb"
+
     def set_scope(self, scope):
         self.scope = [tuple(k) for k in scope] if scope else None
+        self.update_site_curve()
         for w in self.watch:
             w["t_acc"] = None
             w["sig"] = None
@@ -15359,6 +15421,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 lab.setVisible(False)
         self._update_selection()
+        self._place_site_lbl()
 
     def _on_watch_sel(self):
         self._update_selection()
@@ -16204,6 +16267,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def open_sites(self):
         SitesDialog(self).exec()
+        self.update_site_curve()
 
     def coord_FL(self):
         """Spectre à éviter pour la coordination : max hold actuel, + les scans gardés de tous les lieux si demandé."""
