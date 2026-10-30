@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.22.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.22.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -414,6 +414,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`Frequency;RF level (%);RF level;Memory (%);…`), fréquence en kHz, niveau en % (0 % = −120 dBm, 100 % = 0 dBm),
   ~13 lignes de pied de page. Référence : https://github.com/nikharju/WSM-WWB-csv-converter (MIT).
 - Import de scan **Shure WWB** : lignes `470.000, -98` (MHz à 3 décimales, virgule + espace, dBm entier, sans en-tête).
+- **Scan natif WWB `.sdb3` (7.22.1, vrai fichier de Clément : SLXD4, H56, WWB 7.0, `tests/data/wwb_slxd4_scan.sdb3`)** :
+  `//@ShureScan` + JSON (`BinarySchema` : start-of-sweep 4, id 4, timestamp 4, Curve {FreqRanges kHz Start/End/Step},
+  crc16 2 ; `BitWidth` 16, `Scale Factor` 10, `NoDataValue` −1400), puis `@Binary:` = enregistrements `@Swp` (niveaux
+  int16 **big-endian** / 10 = dBm), `@Extended:` (Band, Channel, Creator), `@End`. PURE `parse_sdb3` (plusieurs
+  balayages → max), appelé par `parse_scan_text` (decode_text lit ce fichier en latin-1 pour retrouver les octets).
+  CRC non vérifié ; un fichier à plusieurs courbes / plusieurs balayages jamais vu en vrai.
 - Les formats « EazyRF / WWB / WSM » pour l'**export de listes de fréquences** sont des suppositions génériques :
   demander à Clément un vrai fichier d'import avant de les « corriger ».
 

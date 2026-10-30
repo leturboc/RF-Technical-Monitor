@@ -9,6 +9,25 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    '//@ShureScan': '//@ShureScan',
+    'BinarySchema': 'BinarySchema',
+    'BitWidth': 'BitWidth',
+    'Bytes': 'Bytes',
+    'CoordinationSource': 'CoordinationSource',
+    'Curve': 'Curve',
+    'EndFreq': 'EndFreq',
+    'FreqRanges': 'FreqRanges',
+    'FreqUnits': 'FreqUnits',
+    'KHz': 'KHz',
+    'NoDataValue': 'NoDataValue',
+    'Scale Factor': 'Scale Factor',
+    'ScannerName': 'ScannerName',
+    'StartFreq': 'StartFreq',
+    'StepFreq': 'StepFreq',
+    "ce n'est pas un scan WWB (.sdb3)": 'this is not a WWB scan (.sdb3)',
+    'scan WWB natif (.sdb3)': 'native WWB scan (.sdb3)',
+    'scan WWB sans balayage': 'WWB scan without any sweep',
+    'scan WWB sans courbe de mesure': 'WWB scan without a measurement curve',
     ' · scènes différentes : chaque tinySA balaye toutes les bandes chez lui': ' · different scenes: each tinySA sweeps every band where it is',
     'Coche les scènes que surveille chaque tinySA (une ou plusieurs ; tu peux changer à tout moment). Ses balayages alimentent en continu le spectre de ces scènes : clique une scène dans « Mes fréquences » pour voir le sien. Deux tinySA sur des scènes différentes : chacun balaye toutes les bandes chez lui. Tu ne sais plus lequel est lequel ?': 'Tick the scenes each tinySA watches (one or several; you can change it any time). Its sweeps continuously feed the spectrum of those scenes: click a scene in “My frequencies” to see its own. Two tinySA on different scenes: each one sweeps every band where it is. Lost track of which is which?',
     'fait clignoter son écran.': 'makes its screen flash.',
@@ -2307,6 +2326,7 @@ EXACT = {
 }
 
 TEMPLATES = {
+    'scan WWB natif (.sdb3) : {} balayage(s), max gardé': 'native WWB scan (.sdb3): {} sweep(s), max kept',
     '{} tinySA ({})': '{} tinySA ({})',
     'Le {} tinySA surveille « {} ».': 'The {} tinySA watches “{}”.',
     "👋 Regarde les tinySA : celui dont l'écran clignote en orange est le {} ({}).": '👋 Look at the tinySA: the one whose screen flashes orange is the {} ({}).',

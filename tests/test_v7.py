@@ -1,3 +1,4 @@
+import os
 import io, csv, json, math, os, re, sys, unicodedata, itertools, time, random, bisect
 import numpy as np
 
@@ -743,6 +744,30 @@ check("palette tinySA : rien compris", pc_(["usage: color"], 0), None)
 pd_ = ns["parse_deviceid"]
 check("numéro gravé lu", pd_(["deviceid", "deviceid 3", "ch> "]), 3)
 check("numéro gravé : vieux firmware", pd_(["?"]), None)
+
+# --- scan WWB natif (.sdb3) : vrai fichier envoyé par Clément (SLXD4, bande H56, WWB 7)
+_sdb = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "wwb_slxd4_scan.sdb3"), "rb").read()
+Fs, Ls, inf_s = parse_scan_text(ns["decode_text"](_sdb))
+check("sdb3 : 1 751 points", len(Fs), 1751)
+ok("sdb3 : plage H56 518,125 – 561,875 MHz", abs(Fs[0] - 518.125) < 1e-6 and abs(Fs[-1] - 561.875) < 1e-6)
+ok("sdb3 : pas de 25 kHz", abs(Fs[1] - Fs[0] - 0.025) < 1e-9)
+ok("sdb3 : niveaux en dBm plausibles (dixièmes)", -110 < Ls.min() < -100 and -75 < Ls.max() < -65
+   and abs(Ls[0] + 99.0) < 1e-6, f"{Ls.min()} {Ls.max()} {Ls[0]}")
+ok("sdb3 : format reconnu", inf_s["fmt"] == "sdb3" and "SLXD4" in inf_s["title"])
+# deux balayages -> max gardé ; « pas de mesure » (-1400) retiré
+_i = _sdb.index(b"@Binary:") + 8
+_j = _sdb.index(b"@Extended:")
+_sw = bytearray(_sdb[_i:_j])
+_sw2 = bytearray(_sw)
+_sw2[12:14] = (-500).to_bytes(2, "big", signed=True)        # 1er point du 2ᵉ balayage : -50 dBm
+_sw2[14:16] = (-1400).to_bytes(2, "big", signed=True)       # 2ᵉ point : pas de mesure (le 1er balayage compte)
+F2, L2, i2 = ns["parse_sdb3"](_sdb[:_i] + bytes(_sw) + bytes(_sw2) + _sdb[_j:])
+ok("sdb3 : 2 balayages -> max hold", abs(L2[0] + 50) < 1e-6 and abs(L2[1] - Ls[1]) < 1e-6 and "2 balayage" in i2["note"])
+try:
+    ns["parse_sdb3"](b"//@ShureScan\n{}")
+    ok("sdb3 abîmé : erreur claire", False)
+except ValueError:
+    ok("sdb3 abîmé : erreur claire", True)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
