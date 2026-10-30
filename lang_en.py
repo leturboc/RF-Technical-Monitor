@@ -9,6 +9,14 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Branche le tinySA portable, choisis la fréquence puis « Chasser ». Le téléphone bippe plus vite et plus aigu quand tu te rapproches.': 'Connect the portable tinySA, choose the frequency, then « Hunt ». The phone beeps faster and higher as you get closer.',
+    'Chasse': 'Hunt',
+    'Chasser un brouilleur en se déplaçant : niveau en gros et bip sur le téléphone': 'Hunt an interferer while moving around: large level and beep on the phone',
+    'Le tinySA qui chasse. Avec 2 tinySA : le portable (2ᵉ, ex. sur un Raspberry Pi\ndans un sac) chasse, le 1er continue de surveiller toutes les bandes.': 'The tinySA that hunts. With 2 tinySAs: the portable one (2nd, e.g. on a Raspberry Pi\nin a backpack) hunts, the 1st keeps monitoring all the bands.',
+    'Suivre le plus fort': 'Follow the strongest',
+    'fréquence': 'frequency',
+    '↺ Max à zéro': '↺ Reset max',
+    '📱 Chasse arrêtée depuis un téléphone.': '📱 Hunt stopped from a phone.',
     ' Hz': ' Hz',
     'AM': 'AM',
     "Arrête d'abord la surveillance (■ Arrêter) : le tinySA ne peut pas balayer et émettre en même temps.": "Stop monitoring first (■ Stop): the tinySA can't sweep and transmit at the same time.",
@@ -2230,6 +2238,10 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '📱 Chasse lancée depuis un téléphone sur {} MHz.': '📱 Hunt started from a phone on {} MHz.',
+    '{} tinySA · {}': '{} tinySA · {}',
+    '1er tinySA · {}': '1st tinySA · {}',
+    '2ᵉ tinySA · {}': '2nd tinySA · {}',
     'modulation freq {}': 'modulation freq {}',
     '📡 Émission : {} MHz · {} dBm · {}': '📡 Transmitting: {} MHz · {} dBm · {}',
     'tinySA injoignable : {}': 'tinySA unreachable: {}',
@@ -2598,6 +2610,14 @@ SAME_TEMPLATES = [
 
 # Page web (téléphone) : remplacements de morceaux exacts dans WEB_PAGE (HTML + JavaScript), dans l'ordre.
 WEB = [
+    ('id="hfo"${h.follow?" checked":""}> Suivre le plus fort<', 'id="hfo"${h.follow?" checked":""}> Follow the strongest<'),
+    ('id="hrs">↺ Max à zéro<', 'id="hrs">↺ Reset max<'),
+    ('id="hmu"> Muet<', 'id="hmu"> Mute<'),
+    ('id="hsub">Branche le tinySA portable, choisis la fréquence puis « Chasser ». Le téléphone bippe plus vite et plus aigu quand tu te rapproches.<', 'id="hsub">Connect the portable tinySA, choose the frequency, then « Hunt ». The phone beeps faster and higher as you get closer.<'),
+    ('h.on?"■ Arrêter la chasse":"▶ Chasser"', 'h.on?"■ Stop the hunt":"▶ Hunt"'),
+    ('"Attends le premier balayage…":"Pic à "', '"Waiting for the first sweep…":"Peak at "'),
+    ('" · max vu "', '" · max seen "'),
+    ('"Code faux (ou commande à distance désactivée sur le PC)."', '"Wrong code (or remote control disabled on the PC)."'),
     ('`💤 pas sur scène`', '`💤 not on stage`'),
     ('>✔ Tout va bien<small>', '>✔ All good<small>'),
     ('} fréquence(s) surveillée(s)${', '} frequency(ies) monitored${'),

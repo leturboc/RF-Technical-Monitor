@@ -1299,6 +1299,27 @@ check("zoom : le 2e surveille toujours les bandes", seen[1] and m.ZOOM_ID not in
 step("zoom off", lambda: win.toggle_zoom(False))
 win.zoom_btn.setChecked(False)
 wait(1000)
+# 🔎 chasse lancée depuis le téléphone avec le 2ᵉ tinySA (portable, sur un Pi) : le 1er continue de surveiller
+_fh = win.watch[0]["freq"]
+win._web_hunts.put(dict(action="start", f=_fh, span=2.0, follow=False, dev=1))
+step("chasse depuis le téléphone (2ᵉ tinySA)", win._web_hunt_pending)
+seen[1].clear()
+seen[0].clear()
+_t0 = time.time()
+while (win._hunt is None or win._hunt.level is None) and time.time() - _t0 < 20:
+    wait(300)
+wait(2500)
+check("chasse web : le 2ᵉ tinySA fait le zoom, le 1er surveille les bandes", win._hunt is not None
+      and win.zoom_dev == 1 and m.ZOOM_ID in seen[1] and seen[0] and m.ZOOM_ID not in seen[0], f"{seen[0]} {seen[1]}")
+_hs = win.hunt_state()
+check("chasse web : état pour le téléphone (niveau, 2 tinySA, PC muet)", _hs["on"] and _hs["level"] is not None
+      and len(_hs["devs"]) == 2 and _hs["dev"] == 1 and win._hunt.mute_chk.isChecked(), str(_hs))
+win._web_hunts.put(dict(action="stop", f=0, span=2.0, follow=False, dev=1))
+win._web_hunt_pending()
+wait(800)
+check("chasse web : arrêtée, zoom rendu au 1er tinySA", not win.hunt_state()["on"] and win._zoom is None
+      and win.zoom_dev == 0)
+win._hunt.close()
 # page web servie par la vraie appli
 import json as _json
 import urllib.request as _ur

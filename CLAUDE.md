@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.18.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.19.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -340,6 +340,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     output », `gen_commands` (PURE : freq, level, modulation off|fm|am, modulation freq / deviation), « output on|off »,
     retour « mode low input ». `EmitDialog` (case « en câble » obligatoire, refus si la surveillance tourne, connexion
     `TinySA` à part, démo = commandes notées dans `sent`, « Parcourir ma liste »), `open_emit` (☰ Plus ②).
+- **7.19.0 (Clément : « chercher le brouilleur en me déplaçant, le PC reste en régie », « j'ai un Raspberry »)** :
+  - **Relais autonome pour Raspberry Pi** : `relais/tinysa_relais.py` (pyserial seul, SANS Qt : copie de la logique de
+    `SerialRelay`, même protocole ; `find_tinysa` = USB 0483:5740 sinon 1er ttyACM ; réouverture auto ; `serve(...,
+    stop, opener, on_ready)`), `relais/install_pi.sh` (service systemd `tinysa-relais`, groupe dialout),
+    `relais/LISEZMOI.md`. Test `tests/test_relais_pi.py` (pty, sauté sous Windows ; dans la liste de la CI).
+    **Jamais testé sur un vrai Pi.** Si on touche `SerialRelay`, garder `tinysa_relais.py` cohérent.
+  - **Chasse avec le 2ᵉ tinySA** : `self.zoom_dev` (préférence du zoom live dans `get_cfg`), `HuntDialog.dev_combo`
+    (2ᵉ par défaut), remis à 0 à l'arrêt.
+  - **Vue web 🔎 Chasse** (`WEB_VIEWS` « chasse ») : commandes POST `/chasse` {pin, action start|stop|reset, f, span,
+    follow, dev} (PURE `hunt_request`, code PIN comme `/acquitter`, `WebServer(on_hunt=…)`), file `_web_hunts` →
+    `_web_hunt_pending` (ouvre / règle la chasse, PC muet) ; état `hunt_state()` dans /etat.json (`hunt`) ; bip joué
+    par le NAVIGATEUR (Web Audio, `huntTone` = même formule que `hunt_tone`) ; liste des tinySA reconstruite si elle
+    change (montée avant le 1er état).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

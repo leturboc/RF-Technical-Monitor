@@ -686,5 +686,16 @@ check("générateur : porteuse pure", gc_(470.2, -80.25, "off"), ["freq 47020000
 check("générateur : modulation inconnue -> porteuse", gc_(470, -80, "xx")[-1], "modulation off")
 check("générateur : AM, son borné", gc_(470, -80, "am", tone_hz=20000)[-1], "modulation freq 6000")
 
+# --- 🔎 chasse commandée depuis le téléphone
+hr_ = ns["hunt_request"]
+check("chasse web : commande propre", hr_(dict(action="start", f="606.5", span=200, dev="1", follow=1)),
+      dict(action="start", f=606.5, span=50.0, follow=True, dev=1))
+for bad_ in (dict(action="start", f=0), dict(action="x"), None, dict(action="start", f="abc")):
+    try:
+        hr_(bad_)
+        ok(f"chasse web : refusée {bad_}", False)
+    except (ValueError, TypeError, AttributeError):
+        ok(f"chasse web : refusée {bad_}", True)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
