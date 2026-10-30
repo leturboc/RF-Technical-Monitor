@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.26.2"
+APP_VER = "7.26.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1798,8 +1798,9 @@ RX_PROFILES = [
      "Filtre 32 MHz comme dans EazyRF (valeur de Clément pour QLX-D ; ULX-D supposé pareil). Écart, pas et "
      "tolérances : valeurs de départ."),
     ("shure_slx", "Shure SLX / SLX-D · filtre 16 MHz",
-     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
-     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ."),
+     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_LARGE, src="eazyrf"),
+     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ, plus prudentes "
+     "que Wisycom (150 / 75 kHz) : un SLX encaisse moins l'intermod qu'un Wisycom, même avec un filtre plus étroit."),
     ("shure_ana", "Shure analogique (UR, BLX…)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
      "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz."),
@@ -1893,8 +1894,13 @@ def rx_help_html():
         "40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. "
         "Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
         "filtre de son récepteur</b> (à ± la moitié du filtre).</p>"
-        "<ul><li><b>Filtre étroit</b> (16 MHz) = récepteur sélectif : peu d'émetteurs comptent, plan plus facile.</li>"
-        "<li><b>Filtre large</b> (32 MHz) = plus d'émetteurs comptent.</li>"
+        "<ul><li><b>Le chiffre du filtre ne dit pas si un récepteur est « bon »</b> : il dit seulement quelle tranche "
+        "du spectre entre dans le récepteur, donc combien d'émetteurs comptent dans le calcul. À règles égales, 16 MHz "
+        "fait compter moins d'émetteurs que 32 MHz.</li>"
+        "<li><b>La robustesse</b> d'un récepteur (fabriquer peu d'intermod, bien séparer les canaux voisins) se règle "
+        "avec l'<b>écart</b> et les <b>tolérances</b> du profil : un Wisycom encaisse des fréquences serrées (petites "
+        "tolérances), un modèle d'entrée de gamme (SLX…) demande plus de marge, même si son filtre est plus "
+        "étroit.</li>"
         "<li><b>Aucun</b> (0) = tous les émetteurs comptent : le plus prudent, à utiliser quand on ne connaît pas "
         "l'appareil.</li></ul>"
         "<p>Les produits fabriqués ailleurs (dans les <b>émetteurs</b> eux-mêmes, ex. des ears couplés sur un "
@@ -4673,8 +4679,10 @@ GLOSSARY = [
     ("Plan de fréquences", "La liste finale des fréquences de tous tes appareils, une fois coordonnée."),
     ("Écart (séparation)", "La distance minimale entre deux porteuses pour qu'elles ne se gênent pas (ex. 300 à "
      "500 kHz selon les appareils)."),
-    ("Filtre récepteur", "La largeur que le récepteur « entend » autour de sa fréquence. Un filtre étroit (appareil "
-     "sélectif, ex. Wisycom) ignore les émetteurs éloignés, donc moins de problèmes d'intermodulation."),
+    ("Filtre récepteur", "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. "
+     "32 MHz = ±16 MHz). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans "
+     "ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et "
+     "les tolérances du profil."),
     ("Profil d'appareil", "Les réglages de coordination d'une marque / gamme (écart, filtre, tolérances, pas). "
      "Choisis celui de ton matériel pour que les calculs collent."),
     ("Pas (incrément)", "Les fréquences possibles sur un appareil vont de pas en pas (ex. 25 kHz) : la "
@@ -8153,8 +8161,8 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.prof_combo = QtWidgets.QComboBox()
         fill_rx_combo(self.prof_combo, "✏ Réglages ci-dessous")
         self.prof_combo.setToolTip("Appareil par défaut (comme un profil EazyRF) : remplit écart, filtre, pas et "
-                                   "tolérances.\nWisycom = très sélectif (filtre 32 MHz) ; Shure / Sennheiser / ears = "
-                                   "moins sélectifs.\nLes fréquences avec leur propre appareil (colonne « Appareil ») "
+                                   "tolérances.\nWisycom = très robuste (écart et tolérances serrés) ; Shure / Sennheiser / ears = "
+                                   "moins robustes.\nLes fréquences avec leur propre appareil (colonne « Appareil ») "
                                    "gardent le leur.\nValeurs des profils autres que Wisycom : de départ, NON vérifiées.")
         self.tol_combo = QtWidgets.QComboBox()
         fill_rules_combo(self.tol_combo)
@@ -10885,7 +10893,7 @@ class CoordDialog(QtWidgets.QDialog):
         n = self.n_spin.value()
         self.msg.setText(f"✔ {len(self.found)} fréquence(s) trouvée(s)." if len(self.found) >= n else
                          f"⚠ Seulement {len(self.found)} / {n} : la plage est pleine pour ces règles. Élargis la plage, "
-                         "choisis un appareil plus sélectif (filtre plus étroit) ou des tolérances plus souples.")
+                         "choisis un appareil plus robuste (écart et tolérances plus serrés) ou des règles plus souples.")
 
     def add(self):
         o = self.owner

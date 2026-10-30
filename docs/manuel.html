@@ -120,7 +120,7 @@ nav .np { margin: 12px 0 2px; font-weight: 700; color: var(--accent); }
 </nav>
 <main>
 <h1>TinySA Monitor — manuel d'utilisation</h1>
-<p class="sub">Version 7.26.2 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.
+<p class="sub">Version 7.26.3 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.
 Version PDF : <code>docs/manuel.pdf</code>.</p>
 
 <div class="box"><b>En une phrase :</b> l'appli balaye en continu tes bandes avec un tinySA, compare ce qu'elle
@@ -511,7 +511,7 @@ dépendent (chapitre « Filtre récepteur et profils »).</p>
   <li><b>🔎 Chercher</b>, puis <b>＋ Ajouter à ma liste</b>. Elles arrivent avec le statut « En service ».</li>
 </ol>
 <p>Si l'appli n'en trouve pas assez (« la plage est pleine »), c'est souvent physique : trop d'émetteurs sur trop peu
-de MHz. Élargis la plage, choisis un profil plus sélectif, ou répartis sur une autre bande.</p>
+de MHz. Élargis la plage, choisis un profil plus robuste (écart et tolérances plus serrés), ou répartis sur une autre bande.</p>
 <h3>4.3 Vérifier : 🧮</h3>
 <p><b>③ › 🧮 Vérifier le plan</b> contrôle toute la liste. Chaque ligne en ✗ dit pourquoi (« trop près de HF 3 »,
 « IM3 de HF 1 et HF 4 ») ; <b>Remplacer</b> propose une fréquence qui ne crée aucun nouveau problème. Refais la
@@ -794,7 +794,7 @@ Standard remet tout dans la fenêtre principale.</p>
 avec <b>toute ta liste et entre elles</b> (écart, intermod selon les règles, filtre), sur le pas de l'appareil,
 en évitant ce que le tinySA voit occupé (max hold au-dessus du seuil « occupé » : lance ① Scanner le lieu
 quelques minutes avant). <b>＋ Ajouter à ma liste</b> les met en « En service », nommées « HF 1, HF 2… », dans
-la scène choisie. Si la plage est pleine, l'appli le dit (élargis la plage, ou un appareil plus sélectif).
+la scène choisie. Si la plage est pleine, l'appli le dit (élargis la plage, ou un profil plus robuste : écart et tolérances plus serrés).
 Vérifie ensuite avec 🧮.</p>
 <h3>🧮 Vérifier le plan (comme EazyRF)</h3>
 <ul>
@@ -862,7 +862,11 @@ du récepteur à partir des émetteurs qu'il reçoit fort. Si A est à 40 MHz, l
 produit. Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le
 filtre de son récepteur</b>.</p>
 <ul>
-  <li>Filtre étroit (16 MHz) = récepteur sélectif : moins d'émetteurs comptent, plan plus facile.</li>
+  <li><b>Le chiffre du filtre ne dit pas si un récepteur est « bon »</b> : il dit quelle tranche du spectre entre dans
+    le récepteur, donc combien d'émetteurs comptent dans le calcul (16 MHz en fait compter moins que 32 MHz).</li>
+  <li><b>La robustesse</b> (fabriquer peu d'intermod, bien séparer les canaux voisins) se règle avec l'<b>écart</b> et
+    les <b>tolérances</b> du profil : un Wisycom MRK980 (filtre 32 MHz) encaisse des fréquences serrées ; un SLX (filtre
+    16 MHz) demande plus de marge, d'où ses tolérances plus larges (150 / 75 kHz, valeurs de départ).</li>
   <li>Filtre large (32 MHz) = plus d'émetteurs comptent.</li>
   <li><b>Aucun</b> (0) = tous comptent : le plus prudent quand on ne connaît pas l'appareil.</li>
   <li>Les produits fabriqués dans les <b>émetteurs</b> eux-mêmes (ears sur un combineur, ampli d'antenne) ne
@@ -1129,7 +1133,7 @@ Pi : <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> dit ce qui 
   <tr><td><b>Coordination</b></td><td>Choisir les fréquences de tous les appareils pour qu&#x27;aucune ne gêne une autre : assez d&#x27;écart entre elles, pas d&#x27;intermodulation dessus, loin de ce qui est déjà occupé sur le lieu.</td></tr>
   <tr><td><b>Plan de fréquences</b></td><td>La liste finale des fréquences de tous tes appareils, une fois coordonnée.</td></tr>
   <tr><td><b>Écart (séparation)</b></td><td>La distance minimale entre deux porteuses pour qu&#x27;elles ne se gênent pas (ex. 300 à 500 kHz selon les appareils).</td></tr>
-  <tr><td><b>Filtre récepteur</b></td><td>La largeur que le récepteur « entend » autour de sa fréquence. Un filtre étroit (appareil sélectif, ex. Wisycom) ignore les émetteurs éloignés, donc moins de problèmes d&#x27;intermodulation.</td></tr>
+  <tr><td><b>Filtre récepteur</b></td><td>La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. 32 MHz = ±16 MHz). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l&#x27;intermod dans ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l&#x27;écart et les tolérances du profil.</td></tr>
   <tr><td><b>Profil d&#x27;appareil</b></td><td>Les réglages de coordination d&#x27;une marque / gamme (écart, filtre, tolérances, pas). Choisis celui de ton matériel pour que les calculs collent.</td></tr>
   <tr><td><b>Pas (incrément)</b></td><td>Les fréquences possibles sur un appareil vont de pas en pas (ex. 25 kHz) : la coordination ne propose que des fréquences réglables sur ton appareil.</td></tr>
   <tr><td><b>Porteuse</b></td><td>Le signal d&#x27;un émetteur à sa fréquence (le pic sur le spectre).</td></tr>

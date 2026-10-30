@@ -9,6 +9,17 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    ": il dit seulement quelle tranche du spectre entre dans le récepteur, donc combien d'émetteurs comptent dans le calcul. À règles égales, 16 MHz fait compter moins d'émetteurs que 32 MHz.": ': it only says which slice of the spectrum gets into the receiver, hence how many transmitters count in the calculation. With the same rules, 16 MHz makes fewer transmitters count than 32 MHz.',
+    'Appareil par défaut (comme un profil EazyRF) : remplit écart, filtre, pas et tolérances.\nWisycom = très robuste (écart et tolérances serrés) ; Shure / Sennheiser / ears = moins robustes.\nLes fréquences avec leur propre appareil (colonne « Appareil ») gardent le leur.\nValeurs des profils autres que Wisycom : de départ, NON vérifiées.': 'Default device (like an EazyRF profile): fills in spacing, filter, step and tolerances.\nWisycom = very robust (tight spacing and tolerances); Shure / Sennheiser / in-ears = less robust.\nFrequencies with their own device (« Device » column) keep theirs.\nProfile values other than Wisycom: starting values, NOT verified.',
+    "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ, plus prudentes que Wisycom (150 / 75 kHz) : un SLX encaisse moins l'intermod qu'un Wisycom, même avec un filtre plus étroit.": "16 MHz filter as in EazyRF (Clément's value). Spacing, step and tolerances: starting values, more cautious than Wisycom (150 / 75 kHz): an SLX copes with intermod less well than a Wisycom, even with a narrower filter.",
+    'La robustesse': 'The robustness',
+    "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. 32 MHz = ±16 MHz). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et les tolérances du profil.": "The slice of spectrum that gets into the receiver around its frequency (preselection, e.g. 32 MHz = ±16 MHz). For the calculation, only transmitters inside that slice can create intermod in that receiver. This figure alone does not say whether a receiver is good: its robustness is set with the profile's spacing and tolerances.",
+    'Le chiffre du filtre ne dit pas si un récepteur est « bon »': 'The filter figure does not say whether a receiver is « good »',
+    "d'un récepteur (fabriquer peu d'intermod, bien séparer les canaux voisins) se règle avec l'": 'of a receiver (creating little intermod, separating neighbouring channels well) is set with the ',
+    "du profil : un Wisycom encaisse des fréquences serrées (petites tolérances), un modèle d'entrée de gamme (SLX…) demande plus de marge, même si son filtre est plus étroit.": 'of the profile: a Wisycom copes with tight frequencies (small tolerances), an entry-level model (SLX…) needs more margin, even if its filter is narrower.',
+    'et les': 'and the',
+    'tolérances': 'tolerances',
+    'écart': 'spacing',
     'Ce tinySA ne surveille plus de scène précise : il compte pour tout le site.': 'This tinySA no longer watches a specific stage: it counts for the whole site.',
     'Mes tinySA et leurs scènes : qui surveille quoi.': 'My tinySA and their stages: who watches what.',
     'QFrame { background:#3a2a00; border:1px solid #d29922; border-radius:4px; }': 'QFrame { background:#3a2a00; border:1px solid #d29922; border-radius:4px; }',
@@ -2700,6 +2711,7 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '⚠ Seulement {} / {} : la plage est pleine pour ces règles. Élargis la plage, choisis un appareil plus robuste (écart et tolérances plus serrés) ou des règles plus souples.': '⚠ Only {} / {}: the range is full for these rules. Widen the range, choose a more robust device (tighter spacing and tolerances) or more lenient rules.',
     '📡 Aucun tinySA ne surveille « {} » : pas de direct ici. Actuellement : {}.': '📡 No tinySA watches “{}”: no live data here. Currently: {}.',
     '{} tinySA ({}) : {}': '{} tinySA ({}): {}',
     '📡 Le {} tinySA ({}) est ici': '📡 The {} tinySA ({}) is here',

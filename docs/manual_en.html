@@ -120,7 +120,7 @@ nav .np { margin: 12px 0 2px; font-weight: 700; color: var(--accent); }
 </nav>
 <main>
 <h1>TinySA Monitor — user manual</h1>
-<p class="sub">Version 7.26.2 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.
+<p class="sub">Version 7.26.3 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.
 PDF version: <code>docs/manual_en.pdf</code>.</p>
 
 <div class="box"><b>In one sentence:</b> the app keeps sweeping your bands with a tinySA, compares what it sees
@@ -500,7 +500,7 @@ WWB's native <code>.sdb3</code> format).</p>
   <li><b>🔎 Search</b>, then <b>＋ Add to my list</b>. They arrive with the « In use » status.</li>
 </ol>
 <p>If the app does not find enough (« the range is full »), it is often physics: too many transmitters on too few MHz.
-Widen the range, choose a more selective profile, or spread over another band.</p>
+Widen the range, choose a more robust profile (tighter spacing and tolerances), or spread over another band.</p>
 <h3>4.3 Check: 🧮</h3>
 <p><b>③ › 🧮 Check the plan</b> checks the whole list. Each line marked ✗ says why (« too close to HF 3 », « IM3 of HF 1
 and HF 4 »); <b>Replace</b> suggests a frequency that creates no new problem. Check again until there are 0
@@ -776,7 +776,7 @@ transmitters' band). <b>🪄 Search</b> finds, from bottom to top, frequencies c
 with each other</b> (spacing, intermod per the rules, filter), on the device's step, avoiding what the tinySA sees
 as busy (max hold above the « busy » threshold: run ① Scan the venue for a few minutes first). <b>＋ Add to my
 list</b> puts them « In use », named « HF 1, HF 2… », in the chosen stage. If the range is full, the app says so
-(widen the range, or use a more selective device). Then check with 🧮.</p>
+(widen the range, or use a more robust profile: tighter spacing and tolerances). Then check with 🧮.</p>
 <h3>🧮 Check the plan (like EazyRF)</h3>
 <ul>
   <li>🧮 button or ☰ More › 📐 Frequency plan › 🧮 Check the plan. For each frequency: ✔ compatible or ✗ with
@@ -841,7 +841,11 @@ from the transmitters it receives strongly. If A is 40 MHz away, the filter has 
 as in EazyRF: <b>a product only bothers a frequency if ALL its transmitters are inside its receiver's
 filter</b>.</p>
 <ul>
-  <li>Narrow filter (16 MHz) = selective receiver: fewer transmitters count, easier plan.</li>
+  <li><b>The filter figure does not say whether a receiver is « good »</b>: it says which slice of the spectrum gets
+    into the receiver, hence how many transmitters count in the calculation (16 MHz makes fewer count than 32 MHz).</li>
+  <li><b>Robustness</b> (creating little intermod, separating neighbouring channels well) is set with the profile's
+    <b>spacing</b> and <b>tolerances</b>: a Wisycom MRK980 (32 MHz filter) copes with tight frequencies; an SLX (16 MHz
+    filter) needs more margin, hence its wider tolerances (150 / 75 kHz, starting values).</li>
   <li>Wide filter (32 MHz) = more transmitters count.</li>
   <li><b>None</b> (0) = all of them count: the most careful choice when you don't know the device.</li>
   <li>Products made in the <b>transmitters</b> themselves (in-ears on a combiner, antenna amplifier) are not
@@ -1101,7 +1105,7 @@ EazyRF » rules; the receiver filter changes the result a lot (Filter chapter).<
   <tr><td><b>Coordination</b></td><td>Choosing the frequencies of all devices so that none interferes with another: enough spacing between them, no intermodulation on them, away from what already occupies the venue.</td></tr>
   <tr><td><b>Frequency plan</b></td><td>The final list of frequencies of all your devices, once coordinated.</td></tr>
   <tr><td><b>Spacing (separation)</b></td><td>The minimum distance between two carriers so they do not interfere (e.g. 300 to 500 kHz depending on the devices).</td></tr>
-  <tr><td><b>Receiver filter</b></td><td>The width the receiver « hears » around its frequency. A narrow filter (selective device, e.g. Wisycom) ignores distant transmitters, so fewer intermodulation problems.</td></tr>
+  <tr><td><b>Receiver filter</b></td><td>The slice of spectrum that gets into the receiver around its frequency (preselection, e.g. 32 MHz = ±16 MHz). For the calculation, only transmitters inside that slice can create intermod in that receiver. This figure alone does not say whether a receiver is good: its robustness is set with the profile&#x27;s spacing and tolerances.</td></tr>
   <tr><td><b>Device profile</b></td><td>The coordination settings of a brand / range (spacing, filter, tolerances, step). Pick yours so the calculations match.</td></tr>
   <tr><td><b>Step (increment)</b></td><td>The frequencies a device can use go step by step (e.g. 25 kHz): coordination only suggests frequencies your device can be set to.</td></tr>
   <tr><td><b>Carrier</b></td><td>A transmitter&#x27;s signal at its frequency (the peak on the spectrum).</td></tr>
