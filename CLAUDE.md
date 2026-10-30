@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.16.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.16.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -307,6 +307,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   **⚡ Points** (`pts_btn`, `_build_pts_menu`, `set_points_choice`, `_update_pts_btn` « ⚡ Auto · 50 kHz ») dans la
   barre du spectre, visible même en ultra simple. Config / shows : `points_sel` (donnée exacte du menu) ; **absent →
   Auto équilibré pour tout le monde** (y compris les configs existantes, demande de Clément).
+- **7.16.2 (comparatif de formats envoyé par Clément, texte de source inconnue — à prendre avec prudence)** :
+  `parse_scan_text` lisait déjà WWB (virgule / point-virgule / tabulation, sans en-tête), un « WSM » à blocs
+  `[Data]`, décimale à virgule, Hz ; **ajout : en-tête « dBµV » (Wisycom Manager) → dBm = dBµV − 107**. Le format WSM
+  du comparatif (`[Data]`, MHz, dBm) contredit celui de nikharju (kHz + %, ligne 7) : on lit les deux, l'export WSM
+  reste celui de nikharju. Formats de **listes de fréquences** (WWB / WSM / Wisycom / EazyRF) : toujours pas de vrai
+  fichier → demander des exemples à Clément (docs.soundbase.app bloqué par le réseau de la session).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

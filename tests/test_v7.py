@@ -615,5 +615,20 @@ check("auto rapide (2 000 pts) : UHF 224 MHz -> 125 kHz", ast_(224.0, None, ns["
 check("auto détaillé (9 000 pts) : UHF 224 MHz -> 25 kHz", ast_(224.0, None, ns["AUTO_BUDGET"][-2]), 25)
 check("auto équilibré = donnée 0 du menu", ns["AUTO_BUDGET"][0], 4500)
 
+# --- scans des autres logiciels (comparatif de Clément, 7.16.2)
+pst_ = ns["parse_scan_text"]
+def _rows(fmt, n=8):
+    return "".join(fmt.format(f=470 + i * 0.025, l=-98 + (i % 3)) for i in range(n))
+for nom_, txt_ in (("WWB virgule", _rows("{f:.3f},{l:.1f}\n")), ("WWB point-virgule", _rows("{f:.3f};{l:.1f}\n")),
+                   ("WWB tabulation", _rows("{f:.3f}\t{l:.1f}\n")),
+                   ("WSM [Data]", "[Sennheiser WSM Scan Data]\nStartFrequency;470000\nEndFrequency;600000\nStepSize;25\n[Data]\n"
+                    + _rows("{f:.3f};{l:.0f}\n")),
+                   ("décimale virgule", _rows("{f:.3f};{l:.1f}\n").replace(".", ",")),
+                   ("Hz", "".join(f"{int((470 + i * 0.025) * 1e6)},{-98 + i % 3}\n" for i in range(8)))):
+    F_, L_, _i = pst_(txt_)
+    ok(f"scan {nom_} : lu en MHz / dBm", abs(F_[1] - 470.025) < 1e-6 and abs(L_[0] + 98) < 1e-6, f"{F_[:2]} {L_[:2]}")
+F_, L_, i_ = pst_("Frequency (MHz);Level (dBµV)\n" + "".join(f"{470 + i * 0.025:.3f};{9 + i % 3:.1f}\n" for i in range(8)))
+ok("scan Wisycom en dBµV : converti en dBm", abs(L_[0] + 98) < 1e-6 and "dBµV" in i_["note"], f"{L_[:2]} {i_}")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

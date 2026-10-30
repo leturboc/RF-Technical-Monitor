@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.16.1"
+APP_VER = "7.16.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2405,7 +2405,7 @@ def parse_scan_text(text):
             return F[o], L[o], dict(fmt="wsm", n=len(F), unit="kHz",
                                     note="export WSM : niveau en % converti en dBm (0 % = −120 dBm, 100 % = 0 dBm)")
     # --- fichier simple : « fréquence, niveau » (WWB), « fréquence;niveau », tabulations, avec ou sans en-tête
-    F, L, hint = [], [], None
+    F, L, hint, head = [], [], None, ""
     for ln in lines:
         s = ln.strip()
         if not s:
@@ -2417,6 +2417,7 @@ def parse_scan_text(text):
             if F:
                 break
             hint = hint or _scan_unit_hint(s)
+            head += " " + s.lower()
             continue
         if F and a < F[-1]:
             if len(F) < 3:
@@ -2432,8 +2433,11 @@ def parse_scan_text(text):
     unit = hint or ""
     F = F * scan_unit_scale(F, hint)
     note = ""
-    if float(np.nanmax(L)) > 30.0:
-        note = "niveaux supérieurs à 30 : ce ne sont peut-être pas des dBm"
+    if re.search(r"db\s*[µμu]v", head):                  # Wisycom Manager peut exporter en dBµV (50 Ω)
+        L = L - 107.0
+        note = "niveaux en dBµV convertis en dBm (dBm = dBµV − 107, 50 Ω)"
+    elif float(np.nanmax(L)) > 30.0:
+        note = "niveaux supérieurs à 30 : ce ne sont peut-être pas des dBm (des dBµV ? dBm = dBµV − 107)"
     o = np.argsort(F, kind="stable")
     return F[o], L[o], dict(fmt="simple", n=len(F), unit=unit, note=note)
 

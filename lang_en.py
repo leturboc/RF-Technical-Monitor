@@ -9,6 +9,8 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'niveaux en dBµV convertis en dBm (dBm = dBµV − 107, 50 Ω)': 'levels in dBµV converted to dBm (dBm = dBµV − 107, 50 Ω)',
+    'niveaux supérieurs à 30 : ce ne sont peut-être pas des dBm (des dBµV ? dBm = dBµV − 107)': 'levels above 30: these may not be dBm (dBµV? dBm = dBµV − 107)',
     '⚡ Auto rapide': '⚡ Auto fast',
     '⚡ Auto équilibré': '⚡ Auto balanced',
     '⚡ Auto détaillé': '⚡ Auto detailed',
