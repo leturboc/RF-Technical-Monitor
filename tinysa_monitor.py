@@ -66,7 +66,7 @@ import unicodedata
 import urllib.request
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.17.0"
+APP_VER = "7.18.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2709,7 +2709,7 @@ def safe_filename(s, default="export"):
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
-             "points", "points_auto", "points_sel", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
+             "points", "points_auto", "points_sel", "planning", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
@@ -3292,7 +3292,7 @@ def web_state(rows, alarms, info):
                         tone=r.get("tone") or {"occ": "bad", "weak": "warn", "free": "free"}.get(st, "none"),
                         color=r.get("color") or "",
                         status=r.get("status") or "",
-                        scene=r.get("scene") or "", group=r.get("group") or "",
+                        scene=r.get("scene") or "", group=r.get("group") or "", paused=bool(r.get("paused")),
                         alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
     al = [dict(id=int(a.get("id", 0)), kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
                acked=bool(a["acked"]), layer=a.get("layer") or "", info=a.get("info") or "", t0=a["t0"])
@@ -3518,8 +3518,8 @@ function update(v){const st=D.state;
   const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
   g.style.setProperty("--rw",Math.max(220,W/cols-16)+"px");g.style.setProperty("--rf",Math.max(18,Math.min(44,(W/cols)/11))+"px");
   const h=ks.map(k=>{const a=G[k],bad=a.filter(r=>r.alarm),wn=a.filter(r=>!r.alarm&&(r.tone==="warn"||r.tone==="bad")),ok=a.filter(r=>r.tone==="ok"||r.tone==="free").length;
-   const c=bad.length?"bad":(wn.length?"warn":(ok?"ok":"none")),pb=[...bad,...wn].slice(0,6).map(r=>esc(r.name)+(r.alarm?" ("+esc(r.alarm)+")":"")).join(" · ");
-   const kt=bad.length?`⚠ ${bad.length} alarme(s)`:(wn.length?`◐ ${wn.length} à surveiller`:`✔ ${ok} / ${a.length} OK`);
+   const c=bad.length?"bad":(wn.length?"warn":(a.every(r=>r.paused)?"none":(ok?"ok":"none"))),pb=[...bad,...wn].slice(0,6).map(r=>esc(r.name)+(r.alarm?" ("+esc(r.alarm)+")":"")).join(" · ");
+   const kt=bad.length?`⚠ ${bad.length} alarme(s)`:(wn.length?`◐ ${wn.length} à surveiller`:(a.every(r=>r.paused)?`💤 pas sur scène`:`✔ ${ok} / ${a.length} OK`));
    return `<div class="g ${c}"><b>${esc(k)}</b><div class="k">${kt}</div>${pb?`<div class="p">${pb}</div>`:""}</div>`}).join("");g.innerHTML=h||`<div class="who">Aucune fréquence surveillée.</div>`;return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
   $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
@@ -4011,7 +4011,8 @@ STEPS = (
      "(d'après le spectre mesuré).", ()),
     ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
      "alertes sur téléphone.",
-     (("▶ Démarrer la surveillance", "step_monitor"), ("🎤 Appel des micros (line check)…", "open_linecheck"),
+     (("▶ Démarrer la surveillance", "step_monitor"), ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
+      ("🎤 Appel des micros (line check)…", "open_linecheck"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🆘 Fréquence de secours…", "open_rescue"),
       ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"),
@@ -4201,6 +4202,100 @@ def hunt_tone(level, lo=-100.0, hi=-30.0):
         return 0, 1000
     x = min(1.0, max(0.0, (float(level) - lo) / max(1e-6, hi - lo)))
     return int(round(400 + 1600 * x)), int(round(1000 - 920 * x))
+
+
+# ------------------------------------------------------------------ 🎬 planning des plateaux (qui joue quand, par scène)
+PLANNING_DEFAULT = dict(on=True, pre=15, post=10, slots=[])
+
+
+def _hm(s_):
+    """« 20:30 » -> 1230 minutes (None si illisible)."""
+    m_ = re.fullmatch(r"\s*(\d{1,2})[:hH.](\d{2})\s*", str(s_ or ""))
+    if not m_ or int(m_.group(1)) > 24 or int(m_.group(2)) > 59:
+        return None
+    return int(m_.group(1)) * 60 + int(m_.group(2))
+
+
+def planning_norm(d):
+    """Planning lu de la config / d'un show. Créneau = {scene, group ("" = toute la scène), day ("" = tous les jours,
+    sinon « AAAA-MM-JJ »), start, end « HH:MM »} ; fin avant le début = finit après minuit."""
+    d = d if isinstance(d, dict) else {}
+    out = dict(PLANNING_DEFAULT, slots=[])
+    out["on"] = bool(d.get("on", True))
+    for k, hi in (("pre", 240), ("post", 240)):
+        try:
+            out[k] = min(hi, max(0, int(d.get(k, out[k]))))
+        except (TypeError, ValueError):
+            pass
+    for s_ in d.get("slots") or []:
+        if not isinstance(s_, dict) or not str(s_.get("scene", "")).strip():
+            continue
+        a, b = _hm(s_.get("start")), _hm(s_.get("end"))
+        day = str(s_.get("day", "") or "").strip()
+        if a is None or b is None or (day and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day)):
+            continue
+        out["slots"].append(dict(scene=str(s_["scene"]).strip(), group=str(s_.get("group", "") or "").strip(),
+                                 day=day, start=f"{a // 60:02d}:{a % 60:02d}", end=f"{b // 60:02d}:{b % 60:02d}"))
+    out["slots"].sort(key=lambda x: (x["scene"].lower(), x["day"], _hm(x["start"])))
+    return out
+
+
+def planning_active(pl, ymd, minute, prev_ymd="", next_ymd=""):
+    """Qui est sur scène maintenant (marges avant / après comprises) -> (actifs {(scène, groupe)}, scènes planifiées)."""
+    act, planned = set(), set()
+    if not pl or not pl.get("on"):
+        return act, planned
+    pre, post = int(pl.get("pre", 0)), int(pl.get("post", 0))
+    for s_ in pl.get("slots") or []:
+        planned.add(s_["scene"])
+        a0, b0 = _hm(s_["start"]), _hm(s_["end"])
+        if a0 is None or b0 is None:
+            continue
+        b = b0 + (1440 if b0 <= a0 else 0)
+        a, b = a0 - pre, b + post
+        for day, m_ in ((ymd, minute), (prev_ymd, minute + 1440), (next_ymd, minute - 1440)):
+            if day and s_["day"] in ("", day) and a <= m_ < b:
+                act.add((s_["scene"], s_["group"]))
+    return act, planned
+
+
+def planning_paused(scene, group, act, planned):
+    """Fréquence d'un groupe pas sur scène en ce moment (sa scène a un planning, et ce n'est pas son créneau) ?"""
+    return bool(scene) and scene in planned and (scene, group) not in act and (scene, "") not in act
+
+
+def planning_lines(pl, act, ymd, minute):
+    """Pour chaque scène planifiée : qui joue maintenant, et le prochain créneau du jour -> [texte]."""
+    out = []
+    for sc in sorted({s_["scene"] for s_ in (pl or {}).get("slots", [])}, key=str.lower):
+        now = [g or "toute la scène" for (c, g) in sorted(act) if c == sc]
+        nxt = sorted((s_ for s_ in pl["slots"] if s_["scene"] == sc and s_["day"] in ("", ymd)
+                      and _hm(s_["start"]) > minute), key=lambda x: _hm(x["start"]))
+        t = f"{sc} : " + (f"▶ {', '.join(now)}" if now else "💤 personne")
+        if nxt:
+            t += f" · ensuite {nxt[0]['group'] or 'toute la scène'} à {nxt[0]['start']}"
+        out.append(t)
+    return out
+
+
+# ------------------------------------------------------------------ 📡 mode émission (générateur du tinySA Ultra)
+# Commandes lues dans le source officiel du firmware (sa_cmd.c, 2026) : « mode low output » / « mode low input »,
+# « freq <Hz> », « level <dBm> » (borné par le firmware), « modulation off|am|fm », « modulation freq <Hz> »,
+# « modulation deviation <Hz> », « output on|off ».
+GEN_MODS = (("off", "Porteuse pure (CW)"), ("fm", "FM (comme un micro HF analogique)"), ("am", "AM"))
+
+
+def gen_commands(freq_mhz, level_dbm, mod="off", dev_khz=25.0, tone_hz=1000):
+    """Réglage complet du générateur -> liste de commandes tinySA (à envoyer après « mode low output »)."""
+    f = int(round(float(freq_mhz) * 1e6))
+    cmds = [f"freq {f}", f"level {float(level_dbm):.1f}"]
+    mod = mod if mod in dict(GEN_MODS) else "off"
+    cmds.append(f"modulation {mod}")
+    if mod != "off":
+        cmds.append(f"modulation freq {int(max(100, min(6000, tone_hz)))}")
+    if mod == "fm":
+        cmds.append(f"modulation deviation {int(max(1000, min(300000, float(dev_khz) * 1000)))}")
+    return cmds
 
 
 # ===== PURE-END
@@ -7208,7 +7303,7 @@ class ReplayDialog(QtWidgets.QDialog):
                 self.slider.setValue(0)
                 self.seek(0)
             self.timer.start()
-            self.play_btn.setText("⏸ Pause")
+            self.play_btn.setText("💤 Pause")
 
     def _tick(self):
         if self.idx >= len(self.times) - 1:
@@ -8519,6 +8614,321 @@ class HuntDialog(QtWidgets.QDialog):
         self.toggle(False)
         if self.owner._hunt is self:
             self.owner._hunt = None
+        super().done(r)
+
+
+class PlanningDialog(QtWidgets.QDialog):
+    """🎬 Planning des plateaux : pour chaque scène, quel groupe joue quand. Pendant son créneau (marges comprises),
+    un groupe doit émettre (alarme ABSENT normale) ; hors créneau ses micros sont « 💤 pas sur scène », sans alarme."""
+    COLS = ["Scène", "Groupe", "Jour", "Début", "Fin"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        pl = o.planning
+        self.setWindowTitle("Planning des plateaux")
+        self.resize(760, 520)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Qui joue quand, scène par scène. Pendant son créneau (avec les marges), un groupe <b>doit émettre</b> : "
+            "alarme ABSENT si un micro se tait. Hors créneau, ses micros sont « 💤 pas sur scène » : plus d'alarme "
+            "pour un groupe pas encore arrivé ou déjà parti. Une scène sans créneau n'est pas touchée.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.on_chk = QtWidgets.QCheckBox("Utiliser le planning")
+        self.on_chk.setChecked(pl["on"])
+        self.on_chk.setToolTip("Décoché : tous les groupes sont surveillés tout le temps, comme avant.")
+        self.pre = QtWidgets.QSpinBox()
+        self.pre.setRange(0, 240)
+        self.pre.setValue(pl["pre"])
+        self.pre.setSuffix(" min")
+        self.pre.setToolTip("Le groupe est « sur scène » ce temps-là AVANT son créneau (line check, changement de plateau).")
+        self.post = QtWidgets.QSpinBox()
+        self.post.setRange(0, 240)
+        self.post.setValue(pl["post"])
+        self.post.setSuffix(" min")
+        self.post.setToolTip("… et ce temps-là APRÈS (rappel, fin qui déborde).")
+        lay.addLayout(owner._row(self.on_chk, None, "Marge avant :", self.pre, "après :", self.post))
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        lay.addWidget(self.table, 1)
+        b_add = QtWidgets.QPushButton("＋ Créneau")
+        b_add.setToolTip("Ajoute un créneau (scène, groupe, jour, début, fin).")
+        b_add.clicked.connect(lambda *_: self.add_row())
+        b_del = QtWidgets.QPushButton("🗑 Supprimer")
+        b_del.setToolTip("Supprime les créneaux choisis.")
+        b_del.clicked.connect(lambda *_: self.del_rows())
+        lay.addLayout(owner._row(b_add, b_del, None))
+        self.now_lbl = QtWidgets.QLabel("")
+        self.now_lbl.setWordWrap(True)
+        lay.addWidget(self.now_lbl)
+        for s_ in pl["slots"]:
+            self.add_row(s_)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self.refresh_now()
+
+    def _days(self):
+        today = datetime.now().date()
+        return [("Tous les jours", "")] + [((today + timedelta(days=i)).strftime("%a %d/%m"),
+                                            (today + timedelta(days=i)).isoformat()) for i in range(-1, 8)]
+
+    def add_row(self, s_=None):
+        o = self.owner
+        s_ = s_ or {}
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        sc = QtWidgets.QComboBox()
+        names = [x["name"] for x in o.scenes]
+        if s_.get("scene") and s_["scene"] not in names:
+            names.append(s_["scene"])
+        sc.addItems(names)
+        sc.setToolTip("La scène (un planning par scène).")
+        gr = QtWidgets.QComboBox()
+        gr.setToolTip("Le groupe qui joue ; « toute la scène » = tous ses groupes.")
+        day = QtWidgets.QComboBox()
+        for t, k in self._days():
+            day.addItem(t, k)
+        if s_.get("day") and day.findData(s_["day"]) < 0:
+            day.addItem(s_["day"], s_["day"])
+        day.setCurrentIndex(max(0, day.findData(s_.get("day", ""))))
+        day.setToolTip("Tous les jours, ou un jour précis du festival.")
+        t0, t1 = QtWidgets.QTimeEdit(), QtWidgets.QTimeEdit()
+        for te, v, dflt in ((t0, s_.get("start"), "20:00"), (t1, s_.get("end"), "21:30")):
+            te.setDisplayFormat("HH:mm")
+            m_ = _hm(v or dflt)
+            te.setTime(QtCore.QTime(m_ // 60 % 24, m_ % 60))
+            te.setToolTip("Heure de début / de fin du set (fin avant le début = finit après minuit).")
+            te.timeChanged.connect(lambda *_: self.refresh_now())
+
+        def fill_groups(*_a, sc=sc, gr=gr, want=None):
+            cur = want if want is not None else gr.currentData()
+            gr.blockSignals(True)
+            gr.clear()
+            gr.addItem("(toute la scène)", "")
+            scn = o.scene_by_name(sc.currentText())
+            for g in (scn["groups"] if scn else []):
+                gr.addItem(g["name"], g["name"])
+            if cur and gr.findData(cur) < 0:
+                gr.addItem(cur, cur)
+            gr.setCurrentIndex(max(0, gr.findData(cur or "")))
+            gr.blockSignals(False)
+            self.refresh_now()
+        if s_.get("scene"):
+            sc.setCurrentText(s_["scene"])
+        fill_groups(want=s_.get("group", ""))
+        sc.currentIndexChanged.connect(fill_groups)
+        for w_ in (gr, day):
+            w_.currentIndexChanged.connect(lambda *_: self.refresh_now())
+        for c, w_ in enumerate((sc, gr, day, t0, t1)):
+            self.table.setCellWidget(r, c, w_)
+
+    def del_rows(self):
+        for r in sorted({i.row() for i in self.table.selectedIndexes()}, reverse=True):
+            self.table.removeRow(r)
+        self.refresh_now()
+
+    def values(self):
+        slots = []
+        for r in range(self.table.rowCount()):
+            sc, gr, day, t0, t1 = (self.table.cellWidget(r, c) for c in range(5))
+            if None in (sc, gr, day, t0, t1) or not sc.currentText().strip():   # ligne en cours de création
+                continue
+            slots.append(dict(scene=sc.currentText(), group=gr.currentData() or "", day=day.currentData() or "",
+                              start=t0.time().toString("HH:mm"), end=t1.time().toString("HH:mm")))
+        return planning_norm(dict(on=self.on_chk.isChecked(), pre=self.pre.value(), post=self.post.value(),
+                                  slots=slots))
+
+    def refresh_now(self):
+        if not hasattr(self, "now_lbl"):
+            return
+        pl = self.values()
+        n = datetime.now()
+        act, _pl = self.owner._planning_now(pl, n)
+        lines = planning_lines(pl, act, n.date().isoformat(), n.hour * 60 + n.minute)
+        self.now_lbl.setText(("Maintenant (" + n.strftime("%H:%M") + ") :\n" + "\n".join(lines)) if lines
+                             else "Aucun créneau : toutes les fréquences sont surveillées tout le temps.")
+
+
+class EmitDialog(QtWidgets.QDialog):
+    """📡 Mode émission : le tinySA Ultra devient un petit générateur (porteuse, FM, AM) pour tester un récepteur,
+    son afficheur RF, son squelch, un câble… EN CÂBLE, avec un atténuateur. La surveillance doit être arrêtée."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.dev = None
+        self.on = False
+        self.setWindowTitle("Mode émission (générateur)")
+        self.resize(560, 520)
+        lay = QtWidgets.QVBoxLayout(self)
+        warn = QtWidgets.QLabel(
+            "⚠ <b>En câble seulement</b>, avec un atténuateur vers l'entrée antenne du récepteur. Émettre en l'air "
+            "sans autorisation est interdit (ANFR / ARCEP). Niveau faible : de −115 à environ −20 dBm.")
+        warn.setWordWrap(True)
+        lay.addWidget(warn)
+        f = QtWidgets.QFormLayout()
+        self.f_spin = QtWidgets.QDoubleSpinBox()
+        self.f_spin.setDecimals(3)
+        self.f_spin.setRange(0.1, 6000.0)
+        self.f_spin.setSuffix(" MHz")
+        rows = o._sel_rows()
+        self.f_spin.setValue(o.watch[rows[0]]["freq"] if rows else 600.0)
+        self.f_spin.setToolTip("Fréquence émise. tinySA Ultra : jusqu'à ~800 MHz en sortie directe (au-delà : pas "
+                               "garanti, non vérifié).")
+        self.list_combo = QtWidgets.QComboBox()
+        self.list_combo.addItem("— choisir dans ma liste —", None)
+        for w in o.watch:
+            self.list_combo.addItem(f"{w['name']}  {w['freq']:.3f}", w["freq"])
+        self.list_combo.setToolTip("Prendre la fréquence d'une ligne de ta liste.")
+        self.list_combo.activated.connect(lambda *_: self.list_combo.currentData() and
+                                          self.f_spin.setValue(self.list_combo.currentData()))
+        self.lvl = QtWidgets.QDoubleSpinBox()
+        self.lvl.setRange(-115.0, -10.0)
+        self.lvl.setValue(-60.0)
+        self.lvl.setSuffix(" dBm")
+        self.lvl.setToolTip("Niveau de sortie (le firmware le borne à ce que le tinySA sait faire).")
+        self.mod = QtWidgets.QComboBox()
+        for k, t in GEN_MODS:
+            self.mod.addItem(t, k)
+        self.mod.setCurrentIndex(1)
+        self.mod.setToolTip("Porteuse pure, FM (son d'un micro analogique), AM.")
+        self.dev_spin = QtWidgets.QDoubleSpinBox()
+        self.dev_spin.setRange(1.0, 300.0)
+        self.dev_spin.setValue(25.0)
+        self.dev_spin.setSuffix(" kHz")
+        self.dev_spin.setToolTip("Excursion FM (un micro HF : quelques dizaines de kHz).")
+        self.tone = QtWidgets.QSpinBox()
+        self.tone.setRange(100, 6000)
+        self.tone.setValue(1000)
+        self.tone.setSuffix(" Hz")
+        self.tone.setToolTip("Fréquence du son de test (modulation).")
+        f.addRow("Fréquence :", self.f_spin)
+        f.addRow("", self.list_combo)
+        f.addRow("Niveau :", self.lvl)
+        f.addRow("Modulation :", self.mod)
+        f.addRow("Excursion FM :", self.dev_spin)
+        f.addRow("Son de test :", self.tone)
+        lay.addLayout(f)
+        self.walk_chk = QtWidgets.QCheckBox("Parcourir ma liste (une fréquence toutes les")
+        self.walk_chk.setToolTip("Passe d'une fréquence de ta liste à l'autre : vérifier chaque récepteur à la suite.")
+        self.walk_s = QtWidgets.QSpinBox()
+        self.walk_s.setRange(1, 120)
+        self.walk_s.setValue(5)
+        self.walk_s.setSuffix(" s)")
+        self.walk_s.setToolTip("Temps passé sur chaque fréquence.")
+        lay.addLayout(owner._row(self.walk_chk, self.walk_s, None))
+        self.cable_chk = QtWidgets.QCheckBox("Je suis en câble (atténuateur), pas sur une antenne")
+        self.cable_chk.setToolTip("Obligatoire pour émettre.")
+        self.go = QtWidgets.QPushButton("📡 Émettre")
+        self.go.setCheckable(True)
+        self.go.setToolTip("Met le tinySA en générateur et allume la sortie. La surveillance doit être arrêtée.")
+        self.go.toggled.connect(lambda *_: self.toggle(self.go.isChecked()))
+        lay.addLayout(owner._row(self.cable_chk, None, self.go))
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        lay.addStretch(1)
+        for w_ in (self.f_spin, self.lvl, self.dev_spin, self.tone):
+            w_.valueChanged.connect(lambda *_: self.apply())
+        self.mod.currentIndexChanged.connect(lambda *_: self.apply())
+        self.walk_i = 0
+        self.walk_t = QtCore.QTimer(self)
+        self.walk_t.timeout.connect(self._walk)
+        self.walk_chk.toggled.connect(lambda *_: self._walk_toggle())
+        self.sent = []                             # commandes envoyées (diagnostic, tests)
+
+    def _send(self, cmds):
+        self.sent += cmds
+        if self.dev is None:                       # mode démo : rien à envoyer
+            return ""
+        for c in cmds:
+            ok_, err = self.dev.try_cmd(c)
+            if not ok_:
+                return err
+        return ""
+
+    def toggle(self, on):
+        o = self.owner
+        if on:
+            def no(txt):
+                self.msg.setText(txt)
+                self.go.blockSignals(True)
+                self.go.setChecked(False)
+                self.go.blockSignals(False)
+            if not self.cable_chk.isChecked():
+                return no("Coche d'abord « je suis en câble ».")
+            if o.is_running():
+                return no("Arrête d'abord la surveillance (■ Arrêter) : le tinySA ne peut pas balayer et émettre "
+                          "en même temps.")
+            if not o.demo_chk.isChecked():
+                port = o.port_combo.currentData()
+                if not port:
+                    return no("Aucun tinySA branché.")
+                try:
+                    self.dev = TinySA(port, int(o.baud_combo.currentData() or 115200))
+                except Exception as e:  # noqa: BLE001
+                    return no(f"tinySA injoignable : {e}")
+            err = self._send(["mode low output"] + self._cmds() + ["output on"])
+            self.on = True
+            self.go.setText("■ Couper l'émission")
+            self.msg.setText(("⚠ " + err) if err else self._state_txt())
+            o.set_status("📡 Mode émission : le tinySA émet. ■ Couper l'émission pour revenir à l'analyse.")
+            self._walk_toggle()
+        else:
+            self.walk_t.stop()
+            if self.on:
+                self._send(["output off", "mode low input"])
+            self.on = False
+            if self.dev is not None:
+                self.dev.close()
+                self.dev = None
+            self.go.setText("📡 Émettre")
+            self.msg.setText("Émission coupée, tinySA revenu en analyseur.")
+
+    def _cmds(self):
+        return gen_commands(self.f_spin.value(), self.lvl.value(), self.mod.currentData(), self.dev_spin.value(),
+                            self.tone.value())
+
+    def _state_txt(self):
+        return (f"📡 Émission : {self.f_spin.value():.3f} MHz · {self.lvl.value():.1f} dBm · "
+                f"{self.mod.currentText()}")
+
+    def apply(self):
+        self.dev_spin.setEnabled(self.mod.currentData() == "fm")
+        self.tone.setEnabled(self.mod.currentData() != "off")
+        if self.on:
+            err = self._send(self._cmds())
+            self.msg.setText(("⚠ " + err) if err else self._state_txt())
+
+    def _walk_toggle(self):
+        if self.on and self.walk_chk.isChecked() and self.owner.watch:
+            self.walk_t.start(self.walk_s.value() * 1000)
+            self._walk()
+        else:
+            self.walk_t.stop()
+
+    def _walk(self):
+        ws = self.owner.watch
+        if not ws:
+            return
+        w = ws[self.walk_i % len(ws)]
+        self.walk_i += 1
+        self.f_spin.setValue(w["freq"])
+        self.msg.setText(self._state_txt() + f" · {w['name']}")
+
+    def closeEvent(self, e):
+        self.toggle(False)
+        super().closeEvent(e)
+
+    def done(self, r):
+        self.toggle(False)
         super().done(r)
 
 
@@ -10152,6 +10562,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
         self.sound = SoundOut()                # sons de l'appli sur la sortie audio choisie (⚙ Réglages › Son)
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
+        self.planning = planning_norm(None)    # 🎬 qui joue quand, par scène
+        self._plan_state = (set(), set())      # (actifs, scènes planifiées) au dernier calcul
+        self._plan_next = 0.0
         self._auto_changed = False             # ⚡ points Auto : un pas a-t-il changé au dernier calcul ?
         self.festival = festival_cfg_norm(None)  # 🌙 mode festival
         self._fest_next = 0.0
@@ -10682,6 +11095,8 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
         mm.addAction("🔎 Chasse au brouilleur (bip qui suit le niveau)…").triggered.connect(lambda *_: self.open_hunt())
+        mm.addAction("🎬 Planning des plateaux (qui joue quand)…").triggered.connect(lambda *_: self.open_planning())
+        mm.addAction("📡 Mode émission (générateur : tester un récepteur)…").triggered.connect(lambda *_: self.open_emit())
         mm.addAction("🌙 Mode festival (nuit complète, bilan chaque jour)…").triggered.connect(
             lambda *_: self.open_festival())
         mm.addSection("③ Après le show")
@@ -11651,6 +12066,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.points_combo.setCurrentIndex(self.points_combo.findData(sel_))
             self._cfg["points_auto"] = True
         self.scan_follow = bool(data.get("scan_follow", False))
+        if "planning" in data:
+            self.planning = planning_norm(data.get("planning"))
+            self._plan_next = 0.0
         self.sound.cfg = sound_cfg_norm(data.get("sound"))
         if "festival" in data:
             self.festival = festival_cfg_norm(data.get("festival"))
@@ -11805,6 +12223,7 @@ class MainWindow(QtWidgets.QMainWindow):
                       for s in self.statuses],
             theme=self.theme,
             scan_follow=self.scan_follow,
+            planning=self.planning,
             sound=dict(self.sound.cfg),
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
             points=c["points"], points_auto=bool(c.get("points_auto")),
@@ -12423,6 +12842,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for w in self.watch:
             txt, tone, c_ = self.sig_view(w)
             rows.append(dict(w, conflict=(w["state"] == "occ" and self.is_keep_free(w["status"])), sig_txt=txt,
+                             paused=self.w_paused(w),
                              tone=tone, color=c_ if tone != "none" else "", level_txt="" if w["level"] is None else self.lvl(w["level"], suffix=True)))
         cyc = f"{self.last_cycle:.1f} s" if self.is_running() else ""
         site = self.notify_cfg.get("site", "")
@@ -13526,8 +13946,15 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.wall is not None and self.wall.isVisible():
                 self.wall.rebuild()
 
+    def w_paused(self, w):
+        """🎬 Groupe pas sur scène en ce moment (planning) : pas d'alarme ABSENT."""
+        act, planned = self._plan_state
+        return planning_paused(w.get("scene", ""), w.get("group", ""), act, planned)
+
     def sig_view(self, w):
         """(texte, ton, couleur) du signal de w selon son statut (voir signal_view)."""
+        if w["state"] in (None, "free") and self.is_keep_on(w["status"]) and self.w_paused(w):
+            return "💤 pas sur scène", "none", self.theme["st_none"]
         key, tone = signal_key(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
                                bool(w.get("absent")), bool(w.get("im")))
         txt, _t = signal_view(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
@@ -14240,7 +14667,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     new_prio = max(new_prio, prio)
             else:
                 self.alarms.clear(("CONFLIT", fk), now)
-            if self.is_keep_on(w["status"]):
+            if self.is_keep_on(w["status"]) and not self.w_paused(w):
                 if new == "free":
                     fs = w.get("free_since")
                     if fs is None:
@@ -15388,6 +15815,54 @@ class MainWindow(QtWidgets.QMainWindow):
         self._hunt = HuntDialog(self, f0)
         self._hunt.show()
 
+    @staticmethod
+    def _planning_now(pl, n):
+        return planning_active(pl, n.date().isoformat(), n.hour * 60 + n.minute,
+                               (n.date() - timedelta(days=1)).isoformat(), (n.date() + timedelta(days=1)).isoformat())
+
+    def _planning_tick(self, now, force=False):
+        """Toutes les 15 s : qui est sur scène ? Un changement = journal « CHANGEMENT DE PLATEAU » et les ABSENT des
+        groupes qui viennent de quitter la scène sont effacés."""
+        if not force and now < self._plan_next:
+            return
+        self._plan_next = now + 15.0
+        st = self._planning_now(self.planning, datetime.now())
+        if st == self._plan_state:
+            return
+        old_act = self._plan_state[0]
+        self._plan_state = st
+        act, planned = st
+        for sc in sorted(planned, key=str.lower):
+            was = sorted(g or "toute la scène" for (c, g) in old_act if c == sc)
+            is_ = sorted(g or "toute la scène" for (c, g) in act if c == sc)
+            if was != is_ and not force:
+                note = f"{', '.join(was) or 'personne'} → {', '.join(is_) or 'personne'}"
+                self.log_event(dict(name=sc, freq=0.0, note=note), 0.0, "CHANGEMENT DE PLATEAU")
+                self.set_status(f"🎬 {sc} : {note}")
+        for w in self.watch:
+            w["sig"] = None
+            if self.w_paused(w) and w.get("absent"):
+                w["absent"] = False
+                w["free_since"] = None
+                self.alarms.clear(("ABSENT", int(round(w["freq"] * 1000))), now)
+        self.update_watch_table(force=True)
+        self._update_markers()
+        if self.wall is not None and self.wall.isVisible():
+            self.wall.rebuild()
+
+    def open_planning(self):
+        d = PlanningDialog(self)
+        if not d.exec():
+            return
+        self.planning = d.values()
+        self._planning_tick(time.time(), force=True)
+        n = len(self.planning["slots"])
+        self.set_status(f"🎬 Planning : {n} créneau(x)." if n else "🎬 Planning vide : tout est surveillé tout le temps.")
+
+    def open_emit(self):
+        d = EmitDialog(self)
+        d.exec()
+
     def open_settings(self, tab=0):
         d = SettingsDialog(self)
         d.tabs.setCurrentIndex(tab)
@@ -15959,6 +16434,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._alarm_sound(a["prio"])
         self._notify_new_alarms()
         self._festival_tick(now)
+        self._planning_tick(now)
         reason = getattr(self, "_diag_pending", None)
         if reason:
             self._diag_pending = None

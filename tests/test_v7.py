@@ -653,5 +653,38 @@ ok("chasse : plus fort = plus aigu et plus rapide", ht_(-40)[0] > ht_(-90)[0] an
 check("chasse : rien mesuré = silence", ht_(None)[0], 0)
 check("chasse : bornes (très faible / saturé)", (ht_(-200), ht_(10)), ((400, 1000), (2000, 80)))
 
+# --- 🎬 planning des plateaux
+pn_, pa_, pp_, pl_ = ns["planning_norm"], ns["planning_active"], ns["planning_paused"], ns["planning_lines"]
+P_ = pn_(dict(pre=15, post=10, slots=[
+    dict(scene="Grande scène", group="Groupe A", start="20:30", end="22:00"),
+    dict(scene="Grande scène", group="Groupe B", start="22:30", end="00:30"),          # finit après minuit
+    dict(scene="Club", group="DJ", day="2026-07-12", start="23:00", end="02:00"),
+    dict(scene="", group="x", start="10:00", end="11:00"),                               # sans scène : ignoré
+    dict(scene="Club", group="y", start="99:00", end="10:00")]))                        # heure illisible : ignoré
+check("planning : créneaux lus (illisibles écartés)", len(P_["slots"]), 3)
+def _act(ymd, hm, prev="", nxt=""):
+    return pa_(P_, ymd, ns["_hm"](hm), prev, nxt)[0]
+check("planning : A sur scène à 21 h", _act("2026-07-12", "21:00"), {("Grande scène", "Groupe A")})
+check("planning : marge avant (A dès 20:15)", ("Grande scène", "Groupe A") in _act("2026-07-12", "20:15"), True)
+check("planning : marge après (A jusqu'à 22:10)", ("Grande scène", "Groupe A") in _act("2026-07-12", "22:09"), True)
+check("planning : changement de plateau 22:12 → personne", _act("2026-07-12", "22:12"), set())
+check("planning : B après minuit (00:20)", ("Grande scène", "Groupe B") in _act("2026-07-13", "00:20", "2026-07-12"), True)
+check("planning : DJ seulement le 12 (01:00 le 13)", ("Club", "DJ") in _act("2026-07-13", "01:00", "2026-07-12"), True)
+check("planning : DJ pas le 13 au soir", ("Club", "DJ") in _act("2026-07-13", "23:30", "2026-07-12", "2026-07-14"), False)
+act_, plan_ = pa_(P_, "2026-07-12", ns["_hm"]("21:00"))
+ok("planning : B en pause pendant A", pp_("Grande scène", "Groupe B", act_, plan_) and not pp_("Grande scène", "Groupe A", act_, plan_))
+ok("planning : scène sans planning jamais en pause", not pp_("Petite scène", "X", act_, plan_) and not pp_("", "", act_, plan_))
+ok("planning : coupé = rien en pause", pa_(dict(P_, on=False), "2026-07-12", 1260) == (set(), set()))
+ok("planning : texte « maintenant / ensuite »", any("▶ Groupe A" in t and "ensuite Groupe B à 22:30" in t for t in pl_(P_, act_, "2026-07-12", 1260)),
+   str(pl_(P_, act_, "2026-07-12", 1260)))
+
+# --- 📡 mode émission : commandes du générateur (lues dans le source du firmware)
+gc_ = ns["gen_commands"]
+check("générateur : FM", gc_(606.5, -60, "fm", 25, 1000),
+      ["freq 606500000", "level -60.0", "modulation fm", "modulation freq 1000", "modulation deviation 25000"])
+check("générateur : porteuse pure", gc_(470.2, -80.25, "off"), ["freq 470200000", "level -80.2", "modulation off"])
+check("générateur : modulation inconnue -> porteuse", gc_(470, -80, "xx")[-1], "modulation off")
+check("générateur : AM, son borné", gc_(470, -80, "am", tone_hz=20000)[-1], "modulation freq 6000")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

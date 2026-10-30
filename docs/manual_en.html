@@ -440,6 +440,19 @@ list</b> puts them « In use », named « HF 1, HF 2… », in the chosen stage.
     a while first: the max hold catches intermittent transmitters.</li>
   <li><b>👁 Monitor</b> adds products to your list as “Free”.</li>
 </ul>
+<h3>🎬 Stage schedule (who plays when)</h3>
+<p>⑤ Monitor the show › 🎬, or ☰ More › ② During the show. For each <b>stage</b>, you add slots: group (or the whole
+stage), day (every day or a specific festival day), start and end (an end before the start = the set ends after
+midnight). With a <b>margin before</b> (line check, changeover: 15 min by default) and <b>after</b> (encore: 10 min):</p>
+<ul>
+  <li>during its slot, the group <b>must transmit</b>: normal ABSENT alarm if a mic goes quiet;</li>
+  <li>outside its slot, its mics are « 💤 not on stage »: <b>no more alarms</b> for a band that hasn't arrived yet or
+    has already left; if they transmit anyway (soundcheck), they stay « OK »;</li>
+  <li>each stage has its own schedule; a stage without slots is not affected;</li>
+  <li>every change is written to the log (« STAGE CHANGEOVER: Group A → Group B »); the web page's Control room view
+    shows the group in grey « 💤 not on stage ».</li>
+</ul>
+<p>The schedule is saved with the show (🎪).</p>
 <h3>🔎 Interference hunt</h3>
 <p>⑤ Monitor the show, ☰ More › ② During the show, or right-click a row of the log. Put a <b>directional
 antenna</b> on the tinySA, choose the frequency (taken from the row selected in your list, or from M1) and
@@ -447,6 +460,13 @@ antenna</b> on the tinySA, choose the frequency (taken from the row selected in 
 rises</b> as the level rises, like a metal detector. The level is shown in large type, with the max seen and the gap to
 the max (« −7.8 dB »): turn around, move, and walk back to the source. « Follow the strongest in the area » if the
 signal drifts a bit. If it saturates close by, add attenuation.</p>
+<h3>📡 Transmit mode (generator)</h3>
+<p>☰ More › ② During the show › 📡. The tinySA Ultra becomes a small generator to <b>test a receiver</b> (its RF meter,
+its squelch, reception of a frequency), a cable or a splitter: pure carrier, <b>FM</b> (like an analogue mic: adjustable
+deviation and test tone) or AM, from −115 to about −20 dBm. « Step through my list » moves from one frequency of your
+list to the next every N seconds: handy to check every receiver in turn. ⚠ <b>Cable only</b>, with an attenuator:
+transmitting over the air without authorisation is illegal. Monitoring must be stopped (the tinySA can't sweep and
+transmit at the same time); « ■ Stop transmitting » puts it back into analyser mode.</p>
 <h3>🆘 Backup frequency</h3>
 <p>Free channels according to the measured spectrum, with no intermod against your list, one click away when a mic
 gets interference. Only transmitters count for intermod (not « must stay free » reserves), with the receiver <b>filter</b>.

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.17.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.18.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -327,6 +327,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     1 000 → 80 ms) ; `HuntDialog` (non modal, `self._hunt`, nourri par `on_sweep` pour `ZOOM_ID`, zoom live sur
     f ± zone/2 ; bouton zoom resté coché sans zoom → `toggle_zoom(True)` direct), `open_hunt(f0)` (sélection de la
     liste, M1, centre de la vue) ; ⑤, ☰ Plus ②, clic droit du journal.
+- **7.18.0 (Clément : « le planning, corrélé avec les scènes », « mode émission juste pour kiffer, test de récepteur »)** :
+  - **🎬 Planning** : PURE `PLANNING_DEFAULT`, `_hm`, `planning_norm` (créneau {scene, group "" = toute la scène, day ""
+    = tous les jours / AAAA-MM-JJ, start, end ; fin < début = après minuit}), `planning_active(pl, ymd, minute, prev,
+    next)` (marges `pre` / `post`), `planning_paused`, `planning_lines`. `PlanningDialog` (table de widgets, aperçu
+    « Maintenant » ; `values()` ignore une ligne en cours de création), `open_planning` (⑤, ☰ Plus ②). MainWindow :
+    `self.planning` (config + SHOW_KEYS « planning »), `_plan_state`, `_planning_now`, `_planning_tick` (dans
+    `_alarm_tick`, 15 s : journal « CHANGEMENT DE PLATEAU », ABSENT des groupes partis effacés), `w_paused(w)` →
+    pas d'ABSENT (`update_watch_levels`), `sig_view` « 💤 pas sur scène » (⏸ ne s'affiche pas partout), page web
+    `paused` (Régie : groupe gris).
+  - **📡 Mode émission** : commandes LUES dans le source du firmware (pas testées sur un vrai Ultra) : « mode low
+    output », `gen_commands` (PURE : freq, level, modulation off|fm|am, modulation freq / deviation), « output on|off »,
+    retour « mode low input ». `EmitDialog` (case « en câble » obligatoire, refus si la surveillance tourne, connexion
+    `TinySA` à part, démo = commandes notées dans `sent`, « Parcourir ma liste »), `open_emit` (☰ Plus ②).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
