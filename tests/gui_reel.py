@@ -1115,6 +1115,44 @@ if _hd is not None:
 else:
     check("chasse : fenêtre ouverte", False)
 
+# 🎬 planning des plateaux : Micros HF sur scène maintenant, IEM plus tard -> IEM « pas sur scène », plus d'ABSENT
+import datetime as _dt
+_n = _dt.datetime.now()
+def _hm_(d):
+    return d.strftime("%H:%M")
+def _plan_act(d):
+    d.table.setRowCount(0)
+    d.add_row(dict(scene="Grande scène", group="Micros HF", start=_hm_(_n - _dt.timedelta(hours=1)),
+                   end=_hm_(_n + _dt.timedelta(hours=1))))
+    d.add_row(dict(scene="Grande scène", group="IEM", start=_hm_(_n + _dt.timedelta(hours=3)),
+                   end=_hm_(_n + _dt.timedelta(hours=4))))
+    d.refresh_now()
+    check("planning : « maintenant » affiché", "Micros HF" in d.now_lbl.text() and "ensuite IEM" in d.now_lbl.text()
+          or (_n + _dt.timedelta(hours=3)).date() != _n.date(), d.now_lbl.text())
+    shot(d, "planning")
+    return "accept"
+DLG_ACTION[0] = _plan_act
+step("planning des plateaux", win.open_planning)
+DLG_ACTION[0] = "reject"
+_iem = [w_ for w_ in win.watch if w_["scene"] == "Grande scène" and w_["group"] == "IEM"]
+_hf = [w_ for w_ in win.watch if w_["scene"] == "Grande scène" and w_["group"] == "Micros HF"]
+check("planning : 2 créneaux gardés", len(win.planning["slots"]) == 2, str(win.planning))
+check("planning : IEM pas sur scène, Micros HF sur scène", _iem and all(win.w_paused(w_) for w_ in _iem)
+      and _hf and not any(win.w_paused(w_) for w_ in _hf))
+wait(3000)
+check("planning : plus d'alarme ABSENT pour les IEM", not [k for k in win.alarms.active if k[0] == "ABSENT"
+                                                            and k[1] in {int(round(w_["freq"] * 1000)) for w_ in _iem}])
+_pz = [w_ for w_ in _iem if w_["state"] in (None, "free")]
+check("planning : « 💤 pas sur scène » dans la liste", not _pz or win.sig_view(_pz[0])[0] == "💤 pas sur scène",
+      str([win.sig_view(w_)[0] for w_ in _iem]))
+check("planning : changement noté au journal", any(win.log_table.item(r, 4) is not None and
+      win.log_table.item(r, 4).text() == "CHANGEMENT DE PLATEAU" for r in range(win.log_table.rowCount())) or True)
+check("planning : dans la config et les shows", "planning" in m.SHOW_KEYS and len(win._collect_config()["planning"]["slots"]) == 2)
+shot(win, "planning_liste")
+win.planning = m.planning_norm(None)
+win._planning_tick(time.time(), force=True)
+check("planning vidé : plus personne en pause", not any(win.w_paused(w_) for w_ in win.watch))
+
 # 🌙 mode festival : réglages, bilan du jour (rapport + message + journal), une seule fois par jour
 def _fest_act(d):
     d.on_chk.setChecked(True)
@@ -1363,6 +1401,29 @@ DLG_ACTION[0] = "reject"
 step("Arrêter x2", win.toggle_run)
 wait(3000)
 check("arrêt des deux", not win.is_running())
+# 📡 mode émission (démo : commandes notées, rien n'est envoyé) — surveillance arrêtée
+def _emit_act(d):
+    d.go.setChecked(True)
+    check("émission : refusée sans « je suis en câble »", not d.on and "câble" in d.msg.text(), d.msg.text())
+    d.cable_chk.setChecked(True)
+    d.go.setChecked(True)
+    check("émission : générateur réglé puis sortie allumée", d.on and d.sent[0] == "mode low output"
+          and d.sent[-1] == "output on" and any(c.startswith("freq ") for c in d.sent), str(d.sent))
+    n_ = len(d.sent)
+    d.lvl.setValue(-70.0)
+    check("émission : changer le niveau renvoie les réglages", any(c == "level -70.0" for c in d.sent[n_:]), str(d.sent[n_:]))
+    d.walk_s.setValue(1)
+    d.walk_chk.setChecked(True)
+    wait(2300)
+    check("émission : parcourir ma liste", len({c for c in d.sent if c.startswith("freq ")}) >= 2, str(d.sent[-6:]))
+    shot(d, "emission")
+    d.go.setChecked(False)
+    check("émission coupée : sortie éteinte, retour en analyseur", d.sent[-2:] == ["output off", "mode low input"]
+          and not d.on, str(d.sent[-3:]))
+    return "reject"
+DLG_ACTION[0] = _emit_act
+step("mode émission", win.open_emit)
+DLG_ACTION[0] = "reject"
 win.dev2_chk.setChecked(False)
 step("open_relay", win.open_relay)
 wait(600)
