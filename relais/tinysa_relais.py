@@ -12,6 +12,7 @@ Même protocole que « TinySA-Monitor.exe --relais » : les octets passent tels 
 (un nouveau remplace l'ancien : reconnexion après une coupure Wi-Fi), réouverture du port USB s'il est débranché.
 """
 import argparse
+import glob
 import os
 import select
 import socket
@@ -37,7 +38,64 @@ def find_tinysa():
     for p in ports:
         if "ACM" in p.device:
             return p.device
-    return None
+    acm = sorted(glob.glob("/dev/ttyACM*"))       # pyserial ne voit pas tout (ex. /sys incomplet)
+    return acm[0] if acm else None
+
+
+def _read(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def usb_devices(sys_root="/sys/bus/usb/devices"):
+    """Appareils USB vus par le Pi : [(vid, pid, nom)] (hubs internes exclus)."""
+    out = []
+    for d in sorted(glob.glob(os.path.join(sys_root, "*"))):
+        v, p_ = _read(os.path.join(d, "idVendor")), _read(os.path.join(d, "idProduct"))
+        if not v or v == "1d6b":                     # 1d6b = hubs racine Linux
+            continue
+        name = " ".join(x for x in (_read(os.path.join(d, "manufacturer")), _read(os.path.join(d, "product"))) if x)
+        out.append((v.lower(), p_.lower(), name or "?"))
+    return out
+
+
+def diagnose(sys_root="/sys/bus/usb/devices", dev_glob="/dev/ttyACM*", user=None):
+    """Pourquoi le tinySA n'est pas trouvé : lignes de texte à lire dans journalctl (ou --diag)."""
+    lines = []
+    devs = usb_devices(sys_root)
+    stm = [d for d in devs if d[0] == "0483"]
+    acm = sorted(glob.glob(dev_glob))
+    lines.append("Appareils USB vus : " + (", ".join(f"{v}:{p} {n}" for v, p, n in devs) or "AUCUN"))
+    lines.append("Ports série USB (/dev/ttyACM*) : " + (", ".join(acm) or "aucun"))
+    if any(p == "5740" for _, p, _ in stm):
+        if not acm:
+            lines.append("→ Le tinySA est bien branché (0483:5740) mais sans port série : redémarre le Pi.")
+    elif any(p == "df11" for _, p, _ in stm):
+        lines.append("→ Le tinySA est en mode MISE À JOUR (DFU) : éteins-le et rallume-le normalement.")
+    elif stm:
+        lines.append("→ Un appareil STM32 est vu mais pas en port série : le tinySA est peut-être en mode « disque USB »"
+                     " (menu SD / USB) : quitte ce mode ou redémarre le tinySA.")
+    else:
+        lines.append("→ Le Pi ne voit PAS le tinySA du tout. Vérifie : 1) le tinySA est ALLUMÉ (éteint, il ne fait "
+                     "que charger) ; 2) le câble transmet les données (beaucoup de câbles USB-C ne font que la "
+                     "charge : essaie celui qui marche avec le PC) ; 3) il est branché sur un port USB-A du Pi (sur "
+                     "un Pi 4 / 5, la prise USB-C sert UNIQUEMENT à l'alimentation ; sur un Pi Zero, prise « USB » "
+                     "et pas « PWR », avec un adaptateur OTG).")
+    for a in acm:
+        if not os.access(a, os.R_OK | os.W_OK):
+            u = user or os.environ.get("USER") or "pi"
+            try:
+                import grp
+                in_dialout = u in grp.getgrnam("dialout").gr_mem
+            except (ImportError, KeyError):
+                in_dialout = False
+            lines.append(f"→ {a} existe mais n'est pas accessible : " + (
+                "redémarre le Pi (l'ajout au groupe dialout n'est pris en compte qu'après)." if in_dialout else
+                f"sudo usermod -aG dialout {u} puis redémarre le Pi."))
+    return lines
 
 
 def local_ips():
@@ -74,13 +132,16 @@ def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, open
                 path = serial_port or find_tinysa()
                 try:
                     if not path:
-                        raise OSError("aucun tinySA branché en USB")
+                        raise OSError("aucun tinySA vu en USB")
                     ser = opener(path)
                     log(f"tinySA ouvert : {path}")
                     last_err = ""
                 except Exception as e:  # noqa: BLE001
                     if str(e) != last_err:
                         log(f"En attente du tinySA ({e})")
+                        if serial_port is None:
+                            for ln in diagnose():
+                                log("   " + ln)
                         last_err = str(e)
                     time.sleep(2.0)
                     continue
@@ -137,7 +198,13 @@ def main(argv=None):
     ap.add_argument("--serial", help="port du tinySA (défaut : trouvé tout seul)")
     ap.add_argument("--port", type=int, default=int(os.environ.get("TSM_RELAY_PORT", RELAY_PORT)),
                     help=f"port TCP (défaut {RELAY_PORT})")
+    ap.add_argument("--diag", action="store_true", help="dit pourquoi le tinySA n'est pas trouvé, puis quitte")
     a = ap.parse_args(argv)
+    if a.diag:
+        print("tinySA trouvé :", find_tinysa() or "NON")
+        for ln in diagnose():
+            print(ln)
+        return
     try:
         serve(a.serial, a.port)
     except KeyboardInterrupt:

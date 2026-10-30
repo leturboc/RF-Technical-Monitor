@@ -80,6 +80,30 @@ check("détection : sinon le 1er ttyACM", R.find_tinysa() == "/dev/ttyACM0")
 R.list_ports.comports = lambda: []
 check("détection : rien de branché", R.find_tinysa() is None)
 R.list_ports.comports = _orig
+# --- diagnostic « le Pi ne voit pas le tinySA » (faux /sys)
+import tempfile  # noqa: E402
+
+
+def _fake_sys(devs):
+    root = tempfile.mkdtemp()
+    for i, (v, p_, name) in enumerate(devs):
+        d = os.path.join(root, f"1-{i}")
+        os.makedirs(d)
+        for k, val in (("idVendor", v), ("idProduct", p_), ("product", name)):
+            open(os.path.join(d, k), "w").write(val + "\n")
+    return root
+
+
+_none = os.path.join(tempfile.mkdtemp(), "ttyACM*")
+_dg = R.diagnose(_fake_sys([("1d6b", "0002", "hub"), ("046d", "c52b", "Receiver")]), _none)
+check("diag : rien vu -> allumé / câble data / bon port", any("ALLUMÉ" in x and "câble" in x for x in _dg), str(_dg))
+check("diag : liste les appareils vus (sans les hubs)", "046d:c52b" in _dg[0] and "1d6b" not in _dg[0], _dg[0])
+_dg = R.diagnose(_fake_sys([("0483", "df11", "DFU")]), _none)
+check("diag : tinySA en mode DFU", any("DFU" in x for x in _dg[2:]), str(_dg))
+_dg = R.diagnose(_fake_sys([("0483", "5720", "Mass Storage")]), _none)
+check("diag : STM32 sans port série = disque USB ?", any("disque USB" in x for x in _dg), str(_dg))
+_dg = R.diagnose(_fake_sys([("0483", "5740", "tinySA4")]), _none)
+check("diag : tinySA vu sans ttyACM -> redémarrer", any("redémarre le Pi" in x for x in _dg), str(_dg))
 stop.set()
 th.join(3)
 check("relais arrêté proprement", not th.is_alive())

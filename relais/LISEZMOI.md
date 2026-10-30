@@ -65,6 +65,24 @@ Si `tinysa-sac.local` ne répond pas, utilise l'adresse IP du Pi (visible dans l
 
 ## Dépannage
 
+### « En attente du tinySA (aucun tinySA vu en USB) »
+
+Le Pi ne voit pas le tinySA. Lance le diagnostic : `python3 /opt/tinysa-relais/tinysa_relais.py --diag`
+(il liste ce que le Pi voit en USB et dit quoi faire ; le journal l'affiche aussi). Dans 9 cas sur 10 :
+
+1. **Le tinySA est éteint** : éteint, il ne fait que se charger, il n'apparaît pas en USB. Allume-le.
+2. **Le câble ne fait que la charge** : beaucoup de câbles USB-C n'ont pas les fils de données. Prends celui qui marche
+   avec le PC (tinySA-App / TinySA Monitor).
+3. **Mauvaise prise du Pi** : sur un Pi 4 / Pi 5, la prise USB-C sert **seulement** à l'alimentation → branche le
+   tinySA sur un port USB-A (câble USB-A ↔ USB-C). Sur un Pi Zero : la prise marquée « USB » (pas « PWR ») avec un
+   adaptateur OTG.
+4. **Le tinySA est en mode « disque USB » ou mise à jour (DFU)** : redémarre-le normalement.
+
+Commandes utiles : `lsusb` (le tinySA = `0483:5740 STMicroelectronics`), `ls -l /dev/ttyACM*`,
+`sudo dmesg | tail -20` juste après l'avoir branché.
+
+### Le reste
+
 - Ce que fait le relais : `ssh tinysa-sac.local` puis `journalctl -u tinysa-relais -f`
 - Le relancer : `sudo systemctl restart tinysa-relais` · l'arrêter : `sudo systemctl stop tinysa-relais`
 - Sans l'installer (pour essayer) : `python3 tinysa_relais.py` (ou `--serial /dev/ttyACM0 --port 5025`)
