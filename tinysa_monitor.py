@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.21.0"
+APP_VER = "7.22.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4403,12 +4403,48 @@ def sites_for_scope(site_scans, scope):
     return [d for d in site_scans or [] if d.get("name") in names]
 
 
-def multi_site(dev_site, ndev, live=None):
-    """Deux tinySA posés à deux lieux DIFFÉRENTS (et vivants) : chacun balaye toutes les bandes chez lui, au lieu de
-    se les partager."""
+def multi_site(dev_scenes, ndev, live=None):
+    """Deux tinySA (vivants) rattachés à des scènes DIFFÉRENTES : chacun balaye toutes les bandes chez lui, au lieu de
+    se les partager. dev_scenes = {n° appareil: [scènes]} (un ancien {n°: « scène »} est accepté)."""
     live = list(live) if live is not None else [True] * ndev
-    sites = [dev_site.get(d) for d in range(ndev) if d < len(live) and live[d] and dev_site.get(d)]
-    return ndev > 1 and len(set(sites)) > 1
+    sets = []
+    for d in range(ndev):
+        v = dev_scenes.get(d)
+        v = [v] if isinstance(v, str) else list(v or [])
+        if d < len(live) and live[d] and v:
+            sets.append(frozenset(v))
+    return ndev > 1 and len(set(sets)) > 1
+
+
+def dev_scenes_norm(d):
+    """Scènes de chaque tinySA lues de la config -> {0: [..], 1: [..]} (accepte l'ancien « dev_sites » à 1 lieu)."""
+    out = {}
+    for k, v in (d.items() if isinstance(d, dict) else []):
+        if str(k) not in ("0", "1"):
+            continue
+        v = [v] if isinstance(v, str) else (v if isinstance(v, list) else [])
+        v = list(dict.fromkeys(str(x).strip()[:60] for x in v if str(x).strip()))
+        if v:
+            out[int(k)] = v
+    return out
+
+
+def palette_color(lines, idx=0):
+    """Réponse de « color » (tinySA) -> couleur n° idx en entier (0xRRGGBB), ou None."""
+    for ln in lines:
+        m_ = re.match(r"\s*(\d+)\s*:\s*0x([0-9a-fA-F]{1,6})", str(ln))
+        if m_ and int(m_.group(1)) == idx:
+            return int(m_.group(2), 16)
+    return None
+
+
+def parse_deviceid(lines):
+    """Réponse de « deviceid » -> numéro gravé dans le tinySA (0 = pas numéroté), ou None."""
+    for ln in lines:
+        m_ = re.match(r"\s*deviceid\s+(\d+)", str(ln))
+        if m_:
+            return int(m_.group(1))
+    return None
 
 
 # ===== PURE-END
@@ -4538,6 +4574,7 @@ class ScanWorker(QtCore.QThread):
     info = Signal(str)
     error = Signal(str)
     link = Signal(bool)                            # liaison perdue (False) / retrouvée (True)
+    devid = Signal(int)                            # numéro gravé dans le tinySA (« deviceid »), 0 = aucun
 
     RETRY_S = 5
 
@@ -4555,6 +4592,7 @@ class ScanWorker(QtCore.QThread):
         self.trace = deque(maxlen=800)             # derniers échanges avec le tinySA (diagnostic)
         self.st = dict(rbw="?", front="?", high=None)
         self.dev = None
+        self.cmdq = queue.Queue()                  # commandes à glisser entre deux bandes (identifier, numéroter)
 
     def force_close(self):
         """Arrêt qui traîne (tinySA qui ne répond plus) : on ferme le port depuis l'extérieur."""
@@ -4585,6 +4623,12 @@ class ScanWorker(QtCore.QThread):
                     if self.ultra:
                         self.seg_auto = 450
                     self.info.emit(ver or "tinySA")
+                    try:
+                        n_ = parse_deviceid(dev.cmd("deviceid", timeout=3))
+                        if n_ is not None:
+                            self.devid.emit(n_)
+                    except Exception:  # noqa: BLE001 — vieux firmware : pas de numéro
+                        pass
                     self.status.emit(self._say(f"Connecté sur {self.port}"))
                 else:
                     self.info.emit("Mode démo")
@@ -4635,6 +4679,7 @@ class ScanWorker(QtCore.QThread):
                          + f" · RBW {cfg['rbw'] or 'auto'} · entrée {cfg['input']}")
             t0, aborted = time.time(), False
             for b in bands:
+                self._run_cmds(dev)
                 res = self._scan_band(dev, b, cfg)
                 if res is None:
                     aborted = True
@@ -4643,6 +4688,34 @@ class ScanWorker(QtCore.QThread):
                     self.sweep.emit(b["id"], res[0], res[1])
             if not aborted and not self.isInterruptionRequested():
                 self.cycle.emit(time.time() - t0, len(bands))
+
+    def _run_cmds(self, dev):
+        """👋 identifier (le fond de l'écran clignote en orange, puis ses couleurs reviennent) / 🔢 numéroter."""
+        while True:
+            try:
+                c = self.cmdq.get_nowait()
+            except queue.Empty:
+                return
+            if c[0] == "identify":
+                if dev is None:
+                    self.status.emit(self._say("👋 (démo) l'écran de ce tinySA clignoterait en orange"))
+                    continue
+                try:
+                    orig = palette_color(dev.cmd("color", timeout=3), 0)
+                    for _ in range(4):
+                        dev.try_cmd(f"color 0 {0xFF9F1C}")
+                        self.msleep(450)
+                        dev.try_cmd(f"color 0 {orig if orig is not None else 0}")
+                        self.msleep(350)
+                    self.status.emit(self._say("👋 Écran du tinySA : clignotement orange terminé"))
+                except Exception as e:  # noqa: BLE001
+                    self.status.emit(self._say(f"👋 Identification impossible : {e}"))
+            elif c[0] == "setid":
+                n_ = int(c[1])
+                if dev is not None:
+                    dev.try_cmd(f"deviceid {n_}")
+                    dev.try_cmd("saveconfig")
+                self.devid.emit(n_)
 
     def _apply_settings(self, dev, cfg):
         if cfg["rbw"] != self.st["rbw"]:
@@ -9109,20 +9182,11 @@ class SitesDialog(QtWidgets.QDialog):
         b_imp.setToolTip("Un scan WWB, WSM, CSV… (autre scanner, autre jour) rangé dans ce lieu.")
         b_imp.clicked.connect(lambda *_: self.import_file())
         lay.addLayout(owner._row("Lieu :", self.site_combo, self.merge_chk, b_keep, b_imp, None))
-        self.dev_combos = []
-        row_ = []
-        for d_ in range(o.ndev()):
-            c_ = QtWidgets.QComboBox()
-            c_.addItem("(aucun lieu)", "")
-            for n_ in dict.fromkeys(names + [v for v in o.dev_site.values() if v]):
-                c_.addItem(n_, n_)
-            c_.setCurrentIndex(max(0, c_.findData(o.dev_site.get(d_, ""))))
-            c_.setToolTip("Où est ce tinySA : chacun de ses balayages alimente EN CONTINU le spectre de ce lieu\n"
-                          "(clique la scène dans « Mes fréquences » pour le voir), gardé tout seul toutes les 30 s.")
-            c_.activated.connect(lambda *_, d_=d_, c_=c_: (o.set_dev_site(d_, c_.currentData()), self.fill()))
-            self.dev_combos.append(c_)
-            row_ += [f"📍 {'1er' if d_ == 0 else '2ᵉ'} tinySA est à :", c_]
-        lay.addLayout(owner._row(*row_, None))
+        b_dev = QtWidgets.QPushButton("📡 Mes tinySA et leurs scènes…")
+        b_dev.setToolTip("Quel tinySA surveille quelle(s) scène(s) : ses balayages alimentent EN CONTINU le spectre de\n"
+                         "ces scènes (clique la scène dans « Mes fréquences » pour le voir).")
+        b_dev.clicked.connect(lambda *_: o.open_devices())
+        lay.addLayout(owner._row(b_dev, None))
         mid = QtWidgets.QHBoxLayout()
         self.lst = QtWidgets.QListWidget()
         self.lst.setMaximumWidth(270)
@@ -9288,6 +9352,108 @@ class SitesDialog(QtWidgets.QDialog):
         o.showref_chk.setChecked(True)
         o.reeval()
         self.msg.setText("📏 La fusion est la nouvelle courbe de référence.")
+
+
+class DevicesDialog(QtWidgets.QDialog):
+    """📡 Mes tinySA et leurs scènes (mode expert) : une colonne par tinySA, une ligne par scène, une case = « ce tinySA
+    surveille cette scène ». Une ou plusieurs scènes par tinySA, changeable à tout moment, appliqué tout de suite.
+    👋 Identifier : l'écran du tinySA clignote ; 🔢 Numéroter : un numéro gravé dedans, ses scènes le suivent."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Mes tinySA et leurs scènes")
+        self.setModal(False)
+        self.resize(640, 380)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Coche les scènes que surveille chaque tinySA (une ou plusieurs ; tu peux changer à tout moment). Ses "
+            "balayages alimentent en continu le spectre de ces scènes : clique une scène dans « Mes fréquences » pour "
+            "voir le sien. Deux tinySA sur des scènes différentes : chacun balaye toutes les bandes chez lui. "
+            "Tu ne sais plus lequel est lequel ? <b>👋 Identifier</b> fait clignoter son écran.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.grid = QtWidgets.QGridLayout()
+        lay.addLayout(self.grid)
+        lay.addStretch(1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(self.close)
+        lay.addWidget(bb)
+        self.checks = {}
+        self.refresh()
+
+    def refresh(self):
+        o = self.owner
+        while self.grid.count():
+            it = self.grid.takeAt(0)
+            if it.widget() is not None:
+                it.widget().deleteLater()
+        self.checks = {}
+        nd = o.ndev()
+        for d in range(nd):
+            col = d + 1
+            live = o.is_running() and d < len(o.dev_live) and o.dev_live[d]
+            addr = ("démo" if o.demo_chk.isChecked() else (o.port_combo.currentData() or "—")) if d == 0 \
+                else (o.dev2.get("addr") or "—")
+            n_ = o.dev_ids.get(d)
+            head = QtWidgets.QLabel(f"<b>{'1er' if d == 0 else '2ᵉ'} tinySA · {o.dev_name(d)}</b><br>"
+                                    f"{'● en ligne' if live else '○ pas connecté'} · {addr}"
+                                    + (f"<br>n° {n_}" if n_ else ""))
+            head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.grid.addWidget(head, 0, col)
+            b_id = QtWidgets.QPushButton("👋 Identifier")
+            b_id.setToolTip("Fait clignoter l'écran de CE tinySA en orange quelques secondes (il faut ▶ Démarrer).")
+            b_id.clicked.connect(lambda *_, d=d: o.identify_device(d))
+            self.grid.addWidget(b_id, 1, col)
+            b_num = QtWidgets.QPushButton("🔢 Numéroter")
+            b_num.setToolTip("Grave un numéro dans ce tinySA : si un jour les tinySA sont branchés à l'envers,\n"
+                             "l'appli les reconnaît et leurs scènes les suivent.")
+            b_num.clicked.connect(lambda *_, d=d: self._number(d))
+            self.grid.addWidget(b_num, 2, col)
+        names = list(dict.fromkeys([x["name"] for x in o.scenes] + [x for v in o.dev_scenes.values() for x in v]))
+        if not names:
+            self.grid.addWidget(QtWidgets.QLabel("Crée d'abord tes scènes (« Classer par scène › groupe »)."), 3, 0, 1, nd + 1)
+        for r, name in enumerate(names, start=3):
+            lab = QtWidgets.QLabel(name)
+            sc = o.scene_by_name(name)
+            if sc is not None:
+                lab.setStyleSheet(f"color:{sc['color']};font-weight:bold")
+            self.grid.addWidget(lab, r, 0)
+            for d in range(nd):
+                cb = QtWidgets.QCheckBox("")
+                cb.setChecked(name in o.dev_scenes.get(d, []))
+                cb.setToolTip(f"Le {'1er' if d == 0 else '2ᵉ'} tinySA surveille « {name} ».")
+                cb.toggled.connect(lambda *_, d=d, name=name, cb=cb: self._toggle(d, name, cb.isChecked()))
+                self.grid.addWidget(cb, r, d + 1, alignment=Qt.AlignmentFlag.AlignCenter)
+                self.checks[(d, name)] = cb
+        if nd < 2:
+            tip = QtWidgets.QLabel("Un 2ᵉ tinySA ? Réglages › 2ᵉ tinySA (USB ou réseau, ex. un Raspberry Pi).")
+            tip.setStyleSheet("color:gray")
+            self.grid.addWidget(tip, len(names) + 3, 0, 1, nd + 1)
+
+    def _toggle(self, d, name, on):
+        self.owner.toggle_dev_scene(d, name, on)
+        self.msg.setText(self.owner.stat_lbl.text())
+
+    def _number(self, d):
+        n, ok_ = QtWidgets.QInputDialog.getInt(self, "Numéroter le tinySA", "Numéro à graver dans ce tinySA :",
+                                               self.owner.dev_ids.get(d) or (d + 1), 1, 999)
+        if ok_:
+            self.owner.number_device(d, n)
+            self.msg.setText(self.owner.stat_lbl.text())
+
+    def closeEvent(self, e):
+        if self.owner._devdlg is self:
+            self.owner._devdlg = None
+        super().closeEvent(e)
+
+    def done(self, r):
+        if self.owner._devdlg is self:
+            self.owner._devdlg = None
+        super().done(r)
 
 
 class SettingsDialog(QtWidgets.QDialog):
@@ -10923,7 +11089,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
         self.site_scans = []                   # 📍 scans gardés par lieu [{name, t, f, l}]
-        self.dev_site = {}                     # 📍 lieu de chaque tinySA {n° appareil: nom du lieu} (continu)
+        self.dev_scenes = {}                   # 📡 scènes de chaque tinySA {n° appareil: [scènes]} (en continu)
+        self.dev_ids = {}                      # 🔢 numéro gravé dans chaque tinySA branché {n° appareil: deviceid}
+        self.devid_scenes = {}                 # {deviceid: [scènes]} : un tinySA numéroté retrouve ses scènes
+        self._devdlg = None
         self.site_live = {}                    # {lieu: {bande: (F, L, t)}} derniers balayages faits sur place
         self.site_mh = {}                      # {lieu: {bande: max hold}} depuis le lancement
         self._site_base = {}                   # {lieu: scan gardé au 1er balayage de la séance} (fusion continue)
@@ -11223,6 +11392,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, "expert_hint"):
             self.expert_hint.setText("🎛 Mode expert : revenir au mode simple" if self.expert
                                      else "🎛 Mode simple : afficher tous les réglages")
+        if getattr(self, "sites_btn", None) is not None:      # 📡 tinySA ↔ scènes : réservé au mode expert
+            self.sites_btn.setVisible(self.expert)
+        if getattr(self, "layer_tree", None) is not None and hasattr(self, "watch"):
+            self.rebuild_tree()
 
     # ------------------------------------------------------- parcours (7.13, Clément : « dans l'ordre logique :
     # scan → plan → intermod → monitoring ») et niveaux d'affichage (« un mode ultra simple »)
@@ -11815,13 +11988,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                    "seuils, trop fort, repères) et leurs réglages.")
         self.legend_btn.clicked.connect(lambda *_: self.open_spectrum_legend())
         self.sites_btn = QtWidgets.QToolButton()
-        self.sites_btn.setText("📍 Lieux")
+        self.sites_btn.setText("📡 Scènes")
         self.sites_btn.setCheckable(True)
         self.sites_btn.setChecked(True)
         self.sites_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self.sites_btn.setToolTip("Spectre par lieu : dis où est chaque tinySA (flèche ▾) ; clique une scène dans « Mes\n"
-                                  "fréquences » pour voir le spectre de CE lieu (en direct si un tinySA y est, sinon son\n"
-                                  "dernier spectre gardé). Global : tout. Clic sur le bouton = afficher / cacher.")
+        self.sites_btn.setToolTip("Spectre par scène : dis quel tinySA surveille quelle(s) scène(s) (flèche ▾) ; clique une\n"
+                                  "scène dans « Mes fréquences » pour voir SON spectre (en direct si un tinySA la surveille,\n"
+                                  "sinon son dernier spectre gardé). Global : tout. Clic sur le bouton = afficher / cacher.")
         self.sites_menu = QtWidgets.QMenu(self.sites_btn)
         self.sites_menu.aboutToShow.connect(self._build_sites_menu)
         self.sites_btn.setMenu(self.sites_menu)
@@ -12280,7 +12453,7 @@ class MainWindow(QtWidgets.QMainWindow):
         bs = [b for b in self.scan_bands() if self._scan_now(b)]
         if self.ndev() == 1:
             return {b["id"]: 0 for b in bs}
-        if multi_site(self.dev_site, self.ndev(), self.dev_live):
+        if multi_site(self.dev_scenes, self.ndev(), self.dev_live):
             return {b["id"]: -1 for b in bs}          # -1 = chaque tinySA balaye la bande, chez lui
         return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
                             2, self.dev_live)
@@ -12459,9 +12632,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if "site_scans" in data:
             self.site_scans = site_scans_norm(data.get("site_scans"))
         self.sites_coord = bool(data.get("sites_coord", self.sites_coord))
-        ds_ = data.get("dev_sites")
-        if isinstance(ds_, dict):
-            self.dev_site = {int(k): str(v)[:60] for k, v in ds_.items() if str(k) in ("0", "1") and str(v).strip()}
+        if "dev_scenes" in data or "dev_sites" in data:      # dev_sites : réglage à un seul lieu (7.21.0)
+            self.dev_scenes = dev_scenes_norm(data.get("dev_scenes", data.get("dev_sites")))
+        di_ = data.get("devid_scenes")
+        if isinstance(di_, dict):
+            self.devid_scenes = {int(k): [str(x) for x in v] for k, v in di_.items()
+                                 if str(k).isdigit() and isinstance(v, list)}
         QtCore.QTimer.singleShot(0, self.update_site_curve)
         if "planning" in data:
             self.planning = planning_norm(data.get("planning"))
@@ -12621,7 +12797,8 @@ class MainWindow(QtWidgets.QMainWindow):
             theme=self.theme,
             scan_follow=self.scan_follow,
             site_scans=self.site_scans, sites_coord=self.sites_coord,
-            dev_sites={str(k): v for k, v in self.dev_site.items() if v},
+            dev_scenes={str(k): v for k, v in self.dev_scenes.items() if v},
+            devid_scenes={str(k): v for k, v in self.devid_scenes.items()},
             planning=self.planning,
             sound=dict(self.sound.cfg),
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
@@ -12915,6 +13092,7 @@ class MainWindow(QtWidgets.QMainWindow):
             w.cycle.connect(lambda dt, nb, d=i: self.on_cycle(dt, nb, d))
             w.status.connect(self.set_status)
             w.info.connect(lambda txt, d=i: self.on_info(txt, d))
+            w.devid.connect(lambda n, d=i: self.on_devid(d, n))
             w.error.connect(lambda msg, d=i: self.on_error(msg, d))
             w.link.connect(lambda ok, d=i: self.on_link(d, ok))
             w.finished.connect(self.on_finished)
@@ -13809,7 +13987,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return it
 
         for sc in self.scenes:
-            top = mk(None, sc["name"], None, sc["name"], sc["color"])
+            top = mk(None, sc["name"], None, sc["name"] + self.dev_tag(sc["name"]), sc["color"])
             for g in sc["groups"]:
                 mk(top, sc["name"], g["name"], g["name"] + self.prio_mark(g), g["color"])
         if self.scenes and any(w["scene"] == "" for w in self.watch):
@@ -13853,21 +14031,22 @@ class MainWindow(QtWidgets.QMainWindow):
     def _site_feed(self, bid, f, l):
         """📍 Balayage d'un tinySA posé à un lieu : rangé dans le direct et le max hold de ce lieu. Avec deux tinySA à
         deux lieux, la vue Global prend le plus fort des deux (le pire cas) -> (F, L) à garder en global."""
-        site = self.dev_site.get(self.band_src.get(bid, 0), "")
-        if not site:
+        mine = self.dev_scenes.get(self.band_src.get(bid, 0), [])
+        if not mine:
             return f, l
         now = time.time()
-        self.site_live.setdefault(site, {})[bid] = (f, l, now)
-        mh = self.site_mh.setdefault(site, {})
-        old = mh.get(bid)
-        mh[bid] = (f, np.maximum(old[1], l) if old is not None and old[1].shape == l.shape else l.copy())
-        if site not in self._site_base:
-            self._site_base[site] = next((d for d in self.site_scans if d["name"] == site), None)
-        if multi_site(self.dev_site, self.ndev(), self.dev_live):
+        for site in mine:                          # un tinySA peut couvrir plusieurs scènes : chacune reçoit le balayage
+            self.site_live.setdefault(site, {})[bid] = (f, l, now)
+            mh = self.site_mh.setdefault(site, {})
+            old = mh.get(bid)
+            mh[bid] = (f, np.maximum(old[1], l) if old is not None and old[1].shape == l.shape else l.copy())
+            if site not in self._site_base:
+                self._site_base[site] = next((d for d in self.site_scans if d["name"] == site), None)
+        if multi_site(self.dev_scenes, self.ndev(), self.dev_live):
             stale = max(15.0, 4 * self.last_cycle)
             for s_, bands in self.site_live.items():
                 x = bands.get(bid)
-                if s_ != site and x is not None and now - x[2] <= stale and x[1].shape == l.shape:
+                if s_ not in mine and x is not None and now - x[2] <= stale and x[1].shape == l.shape:
                     l = np.maximum(l, x[1])
         return f, l
 
@@ -13902,38 +14081,111 @@ class MainWindow(QtWidgets.QMainWindow):
         (un tinySA y est, ou un scan y est gardé). None = vue normale (Global, ou scène qui n'est pas un lieu)."""
         if not self.scope or not getattr(self, "sites_btn", None) or not self.sites_btn.isChecked():
             return None
-        known = set(self.site_live) | {d["name"] for d in self.site_scans} | {v for v in self.dev_site.values() if v}
+        known = set(self.site_live) | {d["name"] for d in self.site_scans} | {x for v in self.dev_scenes.values() for x in v}
         sel = sorted({k[0] for k in self.scope if k and k[0] in known})
         return sel or None
 
     def set_dev_site(self, dev, site):
-        """« Le tinySA n° dev est à : site » ("" = aucun lieu)."""
-        site = (site or "").strip()
-        if site:
-            self.dev_site[int(dev)] = site
+        """« Le tinySA n° dev est à : site » ("" = aucun lieu) : une seule scène."""
+        self.set_dev_scenes(dev, [site] if (site or "").strip() else [])
+
+    def toggle_dev_scene(self, dev, scene, on):
+        cur = list(self.dev_scenes.get(int(dev), []))
+        if on and scene not in cur:
+            cur.append(scene)
+        elif not on and scene in cur:
+            cur.remove(scene)
+        self.set_dev_scenes(dev, cur)
+
+    def set_dev_scenes(self, dev, scenes):
+        """📡 Les scènes que surveille le tinySA n° dev (une ou plusieurs ; vide = aucune) : appliqué tout de suite."""
+        dev = int(dev)
+        scenes = list(dict.fromkeys(x.strip() for x in scenes if (x or "").strip()))
+        if scenes:
+            self.dev_scenes[dev] = scenes
         else:
-            self.dev_site.pop(int(dev), None)
+            self.dev_scenes.pop(dev, None)
+        if self.dev_ids.get(dev):                  # tinySA numéroté : ses scènes le suivront s'il change de port
+            self.devid_scenes[self.dev_ids[dev]] = scenes
         self._bump()
+        self.rebuild_tree()
         self.update_site_curve()
         self.update_plot()
-        self.set_status(f"📍 {('1er' if int(dev) == 0 else '2ᵉ')} tinySA : " + (f"à « {site} »" if site else "sans lieu")
-                        + (" · deux lieux : chaque tinySA balaye toutes les bandes chez lui"
-                           if multi_site(self.dev_site, self.ndev(), self.dev_live) else ""))
+        who = f"{'1er' if dev == 0 else '2ᵉ'} tinySA ({self.dev_name(dev)})"
+        self.set_status(f"📡 {who} : " + (", ".join(scenes) if scenes else "aucune scène")
+                        + (" · scènes différentes : chaque tinySA balaye toutes les bandes chez lui"
+                           if multi_site(self.dev_scenes, self.ndev(), self.dev_live) else ""))
+
+    def dev_tag(self, scene):
+        """« 📡 Plateau » : quel(s) tinySA surveille(nt) cette scène (affiché dans l'arbre, en mode expert)."""
+        if not self.expert:
+            return ""
+        who = [self.dev_name(d) for d in sorted(self.dev_scenes) if scene in self.dev_scenes[d]]
+        return f"   📡 {' + '.join(who)}" if who else ""
+
+    def on_devid(self, dev, n):
+        """🔢 Numéro gravé dans le tinySA lu à la connexion : s'il a déjà été rattaché à des scènes sous ce numéro,
+        elles le suivent (ex. les deux tinySA ont été branchés à l'envers)."""
+        self.dev_ids[dev] = int(n)
+        if not n:
+            return
+        want = self.devid_scenes.get(int(n))
+        if want is not None and want != self.dev_scenes.get(dev, []):
+            self.dev_scenes[dev] = list(want)
+            if not want:
+                self.dev_scenes.pop(dev, None)
+            self._bump()
+            self.rebuild_tree()
+            self.set_status(f"🔁 tinySA n° {n} reconnu en {'1er' if dev == 0 else '2ᵉ'} : ses scènes le suivent "
+                            f"({', '.join(want) or 'aucune'}).")
+        elif want is None and self.dev_scenes.get(dev):
+            self.devid_scenes[int(n)] = list(self.dev_scenes[dev])
+        if self._devdlg is not None:
+            self._devdlg.refresh()
+
+    def identify_device(self, dev):
+        """👋 Fait clignoter l'écran du tinySA n° dev (pour savoir lequel est lequel)."""
+        ws = [w for i, w in enumerate(self.workers) if i == dev and w.isRunning()]
+        if not ws:
+            self.set_status("👋 Lance d'abord ▶ Démarrer : il faut être connecté au tinySA pour le faire clignoter.")
+            return False
+        ws[0].cmdq.put(("identify",))
+        self.set_status(f"👋 Regarde les tinySA : celui dont l'écran clignote en orange est le "
+                        f"{'1er' if dev == 0 else '2ᵉ'} ({self.dev_name(dev)}).")
+        return True
+
+    def number_device(self, dev, n):
+        """🔢 Grave un numéro dans le tinySA (gardé même débranché, même sur un autre PC)."""
+        ws = [w for i, w in enumerate(self.workers) if i == dev and w.isRunning()]
+        if not ws:
+            self.set_status("🔢 Lance d'abord ▶ Démarrer : il faut être connecté au tinySA pour le numéroter.")
+            return False
+        ws[0].cmdq.put(("setid", int(n)))
+        if self.dev_scenes.get(dev):
+            self.devid_scenes[int(n)] = list(self.dev_scenes[dev])
+        self.set_status(f"🔢 Numéro {n} gravé dans le {'1er' if dev == 0 else '2ᵉ'} tinySA.")
+        return True
+
+    def open_devices(self):
+        if self._devdlg is not None:
+            self._devdlg.raise_()
+            return
+        self._devdlg = DevicesDialog(self)
+        self._devdlg.show()
 
     def _build_sites_menu(self):
         m = self.sites_menu
         m.clear()
+        m.addAction("📡 Mes tinySA et leurs scènes…").triggered.connect(lambda *_: self.open_devices())
         names = list(dict.fromkeys([x["name"] for x in self.scenes] + [d["name"] for d in self.site_scans]
-                                   + [v for v in self.dev_site.values() if v]))
+                                   + [x for v in self.dev_scenes.values() for x in v]))
         for d_ in range(self.ndev()):
-            sm = m.addMenu(f"📍 {'1er' if d_ == 0 else '2ᵉ'} tinySA ({self.dev_name(d_)}) est à…")
-            grp = QtGui.QActionGroup(sm)
-            for n_ in [""] + names:
-                a = sm.addAction(n_ or "(aucun lieu)")
+            sm = m.addMenu(f"📡 {'1er' if d_ == 0 else '2ᵉ'} tinySA ({self.dev_name(d_)}) surveille…")
+            for n_ in names:
+                a = sm.addAction(n_)
                 a.setCheckable(True)
-                a.setChecked(self.dev_site.get(d_, "") == n_)
-                grp.addAction(a)
-                a.triggered.connect(lambda *_, d_=d_, n_=n_: self.set_dev_site(d_, n_))
+                a.setChecked(n_ in self.dev_scenes.get(d_, []))
+                a.triggered.connect(lambda *_, d_=d_, n_=n_, a=a: self.toggle_dev_scene(d_, n_, a.isChecked()))
         m.addSeparator()
         a = m.addAction("👁 Afficher les lieux sur le spectre")
         a.setCheckable(True)
@@ -14228,6 +14480,15 @@ class MainWindow(QtWidgets.QMainWindow):
                                           (1, "Normale : bip à l'apparition", self._cur_prio(key) == 1),
                                           (0, "🔕 Info : pas de son", self._cur_prio(key) == 0))}
             m.addMenu(sub)
+            if self.expert and not key[1]:          # 📡 quel(s) tinySA surveille(nt) cette scène
+                dm = m.addMenu("📡 Surveillée par")
+                for d_ in range(self.ndev()):
+                    a_ = dm.addAction(f"{'1er' if d_ == 0 else '2ᵉ'} tinySA ({self.dev_name(d_)})")
+                    a_.setCheckable(True)
+                    a_.setChecked(key[0] in self.dev_scenes.get(d_, []))
+                    a_.triggered.connect(lambda *_, d_=d_, a_=a_, n_=key[0]: self.toggle_dev_scene(d_, n_, a_.isChecked()))
+                dm.addSeparator()
+                dm.addAction("📡 Mes tinySA et leurs scènes…").triggered.connect(lambda *_: self.open_devices())
             a_del = m.addAction("Supprimer")
         act = m.exec(self.layer_tree.viewport().mapToGlobal(pos))
         if act is None:
@@ -15143,8 +15404,8 @@ class MainWindow(QtWidgets.QMainWindow):
         F0, L0 = F[o], L[o]
         # 📍 deux tinySA à deux lieux : une fréquence de la scène X est jugée par le tinySA posé à X
         per_site = {}
-        if multi_site(self.dev_site, self.ndev(), self.dev_live):
-            for site in set(self.dev_site.values()):
+        if multi_site(self.dev_scenes, self.ndev(), self.dev_live):
+            for site in {x for v in self.dev_scenes.values() for x in v}:
                 Fs, Ls = self.site_fresh(site)
                 if Fs is not None:
                     per_site[site] = (Fs, Ls)

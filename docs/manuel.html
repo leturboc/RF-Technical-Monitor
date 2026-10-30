@@ -343,11 +343,25 @@ même partout. Promène le tinySA :</p>
     secours évitent alors ce qui est occupé n'importe où sur le site, pas seulement là où est le tinySA.
     <b>📏 Fusion = référence</b> : la fusion devient la courbe de référence.</li>
 </ol>
-<p><b>En continu, sur le spectre principal</b> (bouton <b>📍 Lieux</b>, flèche ▾) : dis <b>où est chaque tinySA</b>
-(« 1er tinySA est à : Grande scène »). Chacun de ses balayages alimente alors <b>en continu</b> le spectre de ce lieu, et
-son max hold est gardé tout seul toutes les 30 s. Clique une scène dans « Mes fréquences » : le spectre affiché est
-<b>celui de ce lieu</b>, en direct si un tinySA y est (pointillés = son max gardé), sinon son dernier spectre gardé
-(« pas de tinySA ici en ce moment »). <b>Global</b> : tout le direct, plus la fusion de tous les lieux.</p>
+<h3>📡 Mes tinySA et leurs scènes (mode expert)</h3>
+<p><b>En continu, sur le spectre principal</b> : dis <b>quel tinySA surveille quelle(s) scène(s)</b>. Trois façons, au
+choix, à tout moment, appliquées tout de suite (rien à redémarrer) :</p>
+<ul>
+  <li>bouton <b>📡 Scènes</b> (flèche ▾) › <b>📡 Mes tinySA et leurs scènes…</b> : une grille, une colonne par tinySA, une
+    ligne par scène ; coche les cases. Un tinySA peut surveiller <b>une ou plusieurs</b> scènes (ex. un tinySA entre deux
+    plateaux voisins) ;</li>
+  <li><b>clic droit sur une scène</b> dans « Mes fréquences » › <b>📡 Surveillée par</b> ;</li>
+  <li>la flèche ▾ du bouton <b>📡 Scènes</b> : « 1er tinySA surveille… » (cases à cocher).</li>
+</ul>
+<p>L'arbre « Mes fréquences » affiche à côté de chaque scène le tinySA qui la surveille (« 📡 Plateau »). Chaque balayage
+d'un tinySA alimente <b>en continu</b> le spectre de ses scènes, et leur max hold est gardé tout seul toutes les 30 s.
+Clique une scène : le spectre affiché est <b>celui de cette scène</b>, en direct si un tinySA la surveille (pointillés =
+son max gardé), sinon son dernier spectre gardé (« pas de tinySA ici en ce moment »). <b>Global</b> : tout le direct, plus
+la fusion de tous les lieux.</p>
+<p><b>Lequel est lequel ?</b> Dans la grille : <b>👋 Identifier</b> fait clignoter en orange l'écran du tinySA choisi
+(il faut ▶ Démarrer). <b>🔢 Numéroter</b> grave un numéro dans le tinySA (commande <code>deviceid</code>, gardé même
+débranché) : si un jour les deux tinySA sont branchés à l'envers, l'appli les reconnaît et leurs scènes les suivent.
+<i>Pas encore essayé sur un vrai tinySA Ultra</i> (commandes lues dans le firmware officiel).</p>
 <p><b>Deux tinySA à deux lieux différents</b> : chacun balaye <b>toutes les bandes</b> chez lui (au lieu de se les
 partager), chaque lieu a son direct, et les fréquences d'une scène sont jugées (occupé, ABSENT, CONFLIT…) par le tinySA
 posé à cette scène. Global = le plus fort des deux (le pire cas).</p>

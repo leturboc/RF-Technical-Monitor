@@ -728,6 +728,21 @@ ok("multi-lieux : 2 tinySA à 2 lieux", msi_({0: "A", 1: "B"}, 2))
 ok("multi-lieux : même lieu = partage des bandes", not msi_({0: "A", 1: "A"}, 2))
 ok("multi-lieux : un seul tinySA", not msi_({0: "A"}, 1))
 ok("multi-lieux : le 2ᵉ hors ligne", not msi_({0: "A", 1: "B"}, 2, [True, False]))
+ok("multi-scènes : mêmes scènes = partage", not msi_({0: ["A", "B"], 1: ["B", "A"]}, 2))
+ok("multi-scènes : scènes différentes", msi_({0: ["A", "B"], 1: ["C"]}, 2))
+ok("multi-scènes : le 2ᵉ sans scène", not msi_({0: ["A"], 1: []}, 2))
+dsn_ = ns["dev_scenes_norm"]
+check("scènes des tinySA : ancien réglage à 1 lieu", dsn_({"0": "Grande scène", "1": ""}), {0: ["Grande scène"]})
+check("scènes des tinySA : listes, doublons, clés inconnues", dsn_({"0": ["A", "A", " B "], "1": ["C"], "7": ["X"]}),
+      {0: ["A", "B"], 1: ["C"]})
+check("scènes des tinySA : config abîmée", dsn_("n'importe quoi"), {})
+pc_ = ns["palette_color"]
+check("palette tinySA : fond (couleur 0)", pc_(["color", "  0: 0x000000", "  1: 0xffffff", "ch> "], 0), 0)
+check("palette tinySA : couleur 1", pc_([" 0: 0x101010", " 1: 0xffffff"], 1), 0xFFFFFF)
+check("palette tinySA : rien compris", pc_(["usage: color"], 0), None)
+pd_ = ns["parse_deviceid"]
+check("numéro gravé lu", pd_(["deviceid", "deviceid 3", "ch> "]), 3)
+check("numéro gravé : vieux firmware", pd_(["?"]), None)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

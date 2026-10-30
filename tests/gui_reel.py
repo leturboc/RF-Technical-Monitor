@@ -1107,7 +1107,7 @@ win.set_scope([("Scène 1", None)])
 check("scène sans scan gardé : rien en plus", not win.site_lbl.isVisible())
 win.go_global()
 win.sites_btn.setChecked(False)
-check("📍 Lieux décoché : courbe cachée", not win.site_lbl.isVisible() and (win.sitecurve.getData()[0] is None or len(win.sitecurve.getData()[0]) == 0))
+check("📡 Scènes décoché : courbe cachée", not win.site_lbl.isVisible() and (win.sitecurve.getData()[0] is None or len(win.sitecurve.getData()[0]) == 0))
 win.sites_btn.setChecked(True)
 win.sites_coord = False
 win.site_scans = []
@@ -1138,7 +1138,40 @@ win.go_global()
 wait(1200)
 _x, _y = win.curve.getData()
 check("Global : tout le direct", _x is not None and len(_x) > 10)
-check("lieu du tinySA gardé dans la config", win._collect_config()["dev_sites"] == {"0": "Grande scène"})
+check("scènes du tinySA gardées dans la config", win._collect_config()["dev_scenes"] == {"0": ["Grande scène"]})
+# 📡 Mes tinySA et leurs scènes (expert) : grille, plusieurs scènes, arbre, identifier
+win.set_expert(True)
+check("bouton 📡 Scènes visible en mode expert", win.sites_btn.isVisible())
+step("ouvrir Mes tinySA et leurs scènes", win.open_devices)
+wait(300)
+_dd = win._devdlg
+check("grille tinySA × scènes", _dd is not None and (0, "Grande scène") in _dd.checks
+      and _dd.checks[(0, "Grande scène")].isChecked())
+step("cocher une 2ᵉ scène pour le même tinySA", lambda: _dd.checks[(0, "Scène 1")].setChecked(True))
+check("un tinySA, deux scènes", win.dev_scenes.get(0) == ["Grande scène", "Scène 1"], str(win.dev_scenes))
+wait(3000)
+check("les deux scènes reçoivent le direct", win.site_fresh("Scène 1")[0] is not None
+      and win.site_fresh("Grande scène")[0] is not None)
+_top = [win.layer_tree.topLevelItem(i).text(0) for i in range(win.layer_tree.topLevelItemCount())]
+check("arbre : « 📡 » à côté des scènes surveillées", any("Scène 1" in t and "📡" in t for t in _top), str(_top))
+shot(_dd, "dialogue_tinysa_scenes")
+step("👋 identifier (démo)", lambda: win.identify_device(0))
+wait(1500)
+step("🔢 numéroter (démo)", lambda: win.number_device(0, 7))
+wait(2500)
+check("numéro gravé -> scènes mémorisées pour ce numéro", win.dev_ids.get(0) == 7
+      and win.devid_scenes.get(7) == ["Grande scène", "Scène 1"], f"{win.dev_ids} {win.devid_scenes}")
+win.dev_scenes[0] = ["Club"]
+win.on_devid(0, 7)
+check("tinySA n° 7 rebranché : ses scènes le suivent", win.dev_scenes.get(0) == ["Grande scène", "Scène 1"],
+      str(win.dev_scenes))
+_dd.close()
+win.devid_scenes = {}
+win.dev_ids = {}
+win.set_expert(False)
+check("bouton 📡 Scènes caché en mode simple", not win.sites_btn.isVisible())
+_top = [win.layer_tree.topLevelItem(i).text(0) for i in range(win.layer_tree.topLevelItemCount())]
+check("arbre sans « 📡 » en mode simple", not any("📡" in t for t in _top), str(_top))
 win.set_dev_site(0, "")
 win.site_scans = []
 win.update_site_curve()
@@ -1327,7 +1360,7 @@ shot(win, "spectre_deux_lieux_club")
 win.go_global()
 win.set_dev_site(0, "")
 win.set_dev_site(1, "")
-check("un seul lieu : les bandes sont de nouveau partagées", not m.multi_site(win.dev_site, win.ndev(), win.dev_live))
+check("un seul lieu : les bandes sont de nouveau partagées", not m.multi_site(win.dev_scenes, win.ndev(), win.dev_live))
 # page web servie par la vraie appli
 import json as _json
 import urllib.request as _ur
