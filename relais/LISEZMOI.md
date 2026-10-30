@@ -91,5 +91,5 @@ Commandes utiles : `lsusb` (le tinySA = `0483:5740 STMicroelectronics`), `ls -l 
   `sudo nmtui`.
 
 ⚠ Le Pi, le PC et le téléphone doivent rester dans la couverture du même Wi-Fi. Tout passe en clair sur le réseau
-local. **Jamais testé sur un vrai Raspberry Pi** par l'auteur du programme (testé avec un tinySA simulé) : en cas de
+local. Testé sur un Raspberry Pi 4 avec un tinySA Ultra (firmware 2026). En cas de
 souci, envoie la sortie de `journalctl -u tinysa-relais`.
