@@ -1163,6 +1163,26 @@ wait(1200)
 _x, _y = win.curve.getData()
 check("Global : tout le direct", _x is not None and len(_x) > 10)
 check("scènes du tinySA gardées dans la config", win._collect_config()["dev_scenes"] == {"0": ["Grande scène"]})
+# 🎒 vue Terrain (téléphone) : plusieurs scans gardés par scène, nouveau scan, effacer
+win._web_terrain.put(dict(action="save", dev=0, scenes=[], label="jardin", name=""))
+win._web_terrain.put(dict(action="save", dev=0, scenes=[], label="", name=""))
+win._web_terrain_pending()
+_mine = [d for d in win.site_scans if d.get("scene") == "Grande scène"]
+check("terrain : deux scans gardés pour la même scène", len(_mine) == 2 and _mine[0]["name"] == "Grande scène · jardin",
+      str([d["name"] for d in win.site_scans]))
+_ts = win.terrain_state()
+check("terrain : état pour le téléphone", _ts["devs"][0]["scenes"] == ["Grande scène"] and len(_ts["saved"]) >= 3
+      and "Gardé" in _ts["msg"], str(_ts["msg"]))
+win.set_scope([("Grande scène", None)])
+check("terrain : la scène montre la fusion de ses scans", "fusion de 3 scans" in win.site_lbl.toPlainText(),
+      win.site_lbl.toPlainText())
+win.go_global()
+win._web_terrain.put(dict(action="reset", dev=0, scenes=[], label="", name=""))
+win._web_terrain.put(dict(action="delete", dev=0, scenes=[], label="", name="Grande scène · jardin"))
+win._web_terrain_pending()
+check("terrain : nouveau scan (max hold à zéro) et scan effacé", "Grande scène" not in win.site_mh
+      and not any(d["name"] == "Grande scène · jardin" for d in win.site_scans))
+win.site_scans = [d for d in win.site_scans if not d.get("scene")]
 # 📡 Mes tinySA et leurs scènes (expert) : grille, plusieurs scènes, arbre, identifier
 win.set_expert(True)
 check("bouton 📡 Scènes visible en mode expert", win.sites_btn.isVisible())

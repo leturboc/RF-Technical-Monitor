@@ -166,7 +166,8 @@ srv.shutdown()
 
 # ------------------------------------------------------------- vues, clients, spectre (PURE)
 vn = ns["web_views_norm"]
-check("vues : toutes par défaut", all(vn(None).values()) and list(vn(None)) == ns["WEB_VIEW_KEYS"])
+check("vues : toutes par défaut sauf les cachées", list(vn(None)) == ns["WEB_VIEW_KEYS"]
+      and all(v == (k not in ns["WEB_VIEWS_HIDDEN"]) for k, v in vn(None).items()))
 check("vues : une décochée, inconnue ignorée", vn({"spectre": False, "x": True}) == dict(vn(None), spectre=False))
 cb = ns["ClientBook"](online_s=10, keep_s=100)
 cb.login("a" * 32, "  Clément   FOH ", "10.0.0.2", "UA", 0.0)
@@ -239,7 +240,7 @@ check("page : vues injectées", '"waterfall":["🌊","Waterfall"' in page and "_
 code, b_ = get(o1, "/etat.json?v=liste")
 js = json.loads(b_)
 check("sans mot de passe : état lisible", code == 200 and js["state"]["rows"][0]["name"] == "HF 1" and js["me"] is None)
-check("état : vues partagées", js["views"] == ns["WEB_VIEW_KEYS"] and js["password"] is False)
+check("état : vues partagées", js["views"] == [k for k in ns["WEB_VIEW_KEYS"] if k not in ns["WEB_VIEWS_HIDDEN"]] and js["password"] is False)
 code, r_ = post_(o1, "/connexion", dict(name="Régie", password=""))
 check("connexion sans mot de passe : nom enregistré", code == 200 and r_["name"] == "Régie")
 code, b_ = get(o1, "/etat.json?v=mur")
@@ -277,9 +278,11 @@ busy.ready.wait(3)
 check("port déjà pris : erreur claire", "indisponible" in busy.error, busy.error)
 
 # --- acquitter (code PIN)
-acks, pin_, hunts = [], {"v": "4321"}, []
+acks, pin_, hunts, terr = [], {"v": "4321"}, [], []
+check("vue 🎒 Terrain cachée par défaut", vn(None)["terrain"] is False and vn({"terrain": True})["terrain"] is True)
+wcfg["views"] = dict(vn(None), terrain=True)
 wa = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_pin=lambda: pin_["v"], on_ack=acks.append,
-                     get_spec=lambda: spec_b, get_cfg=lambda: wcfg, on_hunt=hunts.append)
+                     get_spec=lambda: spec_b, get_cfg=lambda: wcfg, on_hunt=hunts.append, on_terrain=terr.append)
 wa.start()
 wa.ready.wait(3)
 oa = opener()
@@ -294,6 +297,13 @@ check("chasse : bon code → commande transmise", post_(oa, "/chasse", dict(pin=
       and hunts[-1] == dict(action="start", f=606.5, span=2.0, follow=True, dev=1), str(hunts))
 check("chasse : fréquence absurde → 400", post_(oa, "/chasse", dict(pin="4321", action="start", f=99999), wa.port)[0] == 400)
 check("chasse : action inconnue → 400", post_(oa, "/chasse", dict(pin="4321", action="rm -rf"), wa.port)[0] == 400)
+check("terrain : code faux → 403", post_(oa, "/terrain", dict(pin="0000", action="save"), wa.port)[0] == 403 and not terr)
+check("terrain : scènes du tinySA volant", post_(oa, "/terrain", dict(pin="4321", action="assign", dev=1,
+                                                                    scenes=["Club", "Grande scène"]), wa.port)[0] == 200
+      and terr[-1]["scenes"] == ["Club", "Grande scène"] and terr[-1]["dev"] == 1, str(terr))
+check("terrain : garder avec étiquette", post_(oa, "/terrain", dict(pin="4321", action="save", label="  côté   jardin "),
+                                               wa.port)[0] == 200 and terr[-1]["label"] == "côté jardin", str(terr[-1:]))
+check("terrain : effacer sans nom → 400", post_(oa, "/terrain", dict(pin="4321", action="delete"), wa.port)[0] == 400)
 check("acquitter : requête bancale → 400", post_(oa, "/acquitter", dict(pin="4321", id="1; rm"), wa.port)[0] == 400
       and post_(oa, "/acquitter", dict(pin="4321", id=True), wa.port)[0] == 400)
 for _ in range(5):
@@ -390,7 +400,7 @@ else:
         pg.wait_for_selector("#lcancel:not(.hidden)", timeout=3000)
         pg.click("#lcancel")
         check("renommer (client) : Annuler revient à la page", pg.locator("#app").is_visible())
-        check("navigateur : accueil avec les 7 vues", pg.locator(".vcard").count() == 7 and pg.locator("nav a").count() == 8,
+        check("navigateur : accueil avec les 8 vues (Terrain cochée)", pg.locator(".vcard").count() == 8 and pg.locator("nav a").count() == 9,
               f'{pg.locator(".vcard").count()} {pg.locator("nav a").count()}')
         check("navigateur : pastille d'alarme", "1 alarme" in pg.locator("#pill").inner_text())
         check("navigateur : bandeau d'alarme", "ABSENT — HF 2" in pg.locator("#al").inner_text())
@@ -512,6 +522,44 @@ else:
         check("chasse (téléphone) : le bip tourne (son du navigateur)", pa.evaluate("hTimer !== null && hLvl === -61.4"))
         if CAP:
             pa.screenshot(path=os.path.join(CAP, "web_chasse.png"))
+        # --- 🎒 terrain : où est le tinySA volant, scans gardés (plusieurs par scène)
+        st_t = ws(rows, al, dict(title="T", time="12:00:06", running=True, cycle="", thr=-80.0, terrain=dict(
+            devs=[dict(label="1er tinySA · Régie", live=True, scenes=["Grande scène"]),
+                  dict(label="2ᵉ tinySA · Sac à dos", live=True, scenes=["Club"])],
+            scenes=["Grande scène", "Club", "Chapiteau"], live={"Club": dict(age=3, bands=2)},
+            saved=[dict(name="Club", scene="Club", t=1761820000, n=4000, lo=470.0, hi=694.0, auto=True),
+                   dict(name="Club · jardin", scene="Club", t=1761821000, n=4000, lo=470.0, hi=694.0, auto=False),
+                   dict(name="Club · bar", scene="Club", t=1761822000, n=4000, lo=470.0, hi=694.0, auto=False)],
+            msg="💾 Gardé : Club · bar")))
+        state["v"] = json.dumps(st_t, ensure_ascii=False).encode("utf-8")
+        pa.goto(f"http://127.0.0.1:{wa.port}/#/terrain")
+        pa.wait_for_function("document.querySelectorAll('#tsc input').length === 3", timeout=6000)
+        check("terrain (téléphone) : 2ᵉ tinySA choisi, sa scène cochée", pa.locator("#td").input_value() == "1"
+              and pa.locator("#tsc input:checked").count() == 1, pa.locator("#td").input_value())
+        check("terrain (téléphone) : scan en cours + plusieurs scans gardés", "2 bande(s)" in pa.locator("#tlive").inner_text()
+              and pa.locator("#tsaved .row").count() == 3 and "Club · bar" in pa.locator("#tmsg").inner_text())
+        nt = len(terr)
+        pa.click("#tall")
+        pa.click("#tap")
+        t0 = time.time()
+        while len(terr) == nt and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("terrain (téléphone) : ☑ Toutes → les 3 scènes", terr and terr[-1]["action"] == "assign"
+              and len(terr[-1]["scenes"]) == 3 and terr[-1]["dev"] == 1, str(terr[-1:]))
+        pa.fill("#tlab", "loges")
+        pa.click("#tsv")
+        t0 = time.time()
+        while len(terr) == nt + 1 and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("terrain (téléphone) : 💾 garder avec étiquette", terr[-1]["action"] == "save" and terr[-1]["label"] == "loges")
+        pa.click("#tsaved .row:nth-child(2) .ackbtn")
+        t0 = time.time()
+        while len(terr) == nt + 2 and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("terrain (téléphone) : 🗑 effacer un scan (confirmé)", terr[-1] == dict(terr[-1], action="delete",
+                                                                                   name="Club · jardin"), str(terr[-1:]))
+        if CAP:
+            pa.screenshot(path=os.path.join(CAP, "web_terrain.png"), full_page=True)
         # --- grand écran (tablette / PC de la régie)
         pt = br.new_page(viewport=dict(width=1280, height=760))
         pt.on("pageerror", lambda e: errs.append(str(e)))

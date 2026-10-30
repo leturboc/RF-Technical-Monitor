@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.23.2"
+APP_VER = "7.24.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3259,14 +3259,16 @@ WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par 
              ("waterfall", "🌊", "Waterfall", "L'historique du spectre qui défile"),
              ("alarmes", "🔔", "Alarmes", "Conflits et émetteurs absents, à acquitter"),
              ("regie", "🎛", "Régie", "Gros voyants par groupe, alarmes en haut : pour l'écran de la régie"),
-             ("chasse", "🔎", "Chasse", "Chasser un brouilleur en se déplaçant : niveau en gros et bip sur le téléphone")]
+             ("chasse", "🔎", "Chasse", "Chasser un brouilleur en se déplaçant : niveau en gros et bip sur le téléphone"),
+             ("terrain", "🎒", "Terrain", "tinySA volant : dire à quelle(s) scène(s) il est et garder des scans pour la coordination")]
 WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
+WEB_VIEWS_HIDDEN = ("terrain",)             # cachées tant qu'on ne les coche pas (outils de l'équipe HF)
 
 
 def web_views_norm(v):
-    """{vue: bool} complet (les vues inconnues sont ignorées, les manquantes sont partagées)."""
+    """{vue: bool} complet (les vues inconnues sont ignorées ; les manquantes sont partagées, sauf les cachées)."""
     v = v if isinstance(v, dict) else {}
-    return {k: bool(v.get(k, True)) for k in WEB_VIEW_KEYS}
+    return {k: bool(v.get(k, k not in WEB_VIEWS_HIDDEN)) for k in WEB_VIEW_KEYS}
 
 
 class ClientBook:
@@ -3560,6 +3562,15 @@ async function hunt(action){let pin=LS.get("pin","");if(!pin){pin=prompt("Code P
  if(r.ok){LS.set("pin",pin);tick();return}
  if(r.status===403)try{localStorage.removeItem("pin")}catch(x){}
  alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou commande à distance désactivée sur le PC).":"Erreur "+r.status)}
+// ---------- 🎒 terrain : le tinySA volant dit où il est, et garde des scans (code PIN)
+async function terrain(action,extra){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ const b=Object.assign({pin:pin,action:action,dev:parseInt($("#td").value||"0")},extra||{});
+ let r;try{r=await post("terrain",b)}catch(e){alert("PC injoignable");return}
+ if(r.ok){LS.set("pin",pin);tick();return}
+ if(r.status===403)try{localStorage.removeItem("pin")}catch(x){}
+ alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou commande à distance désactivée sur le PC).":"Erreur "+r.status)}
+function tChecked(){return[...document.querySelectorAll("#tsc input:checked")].map(c=>c.value)}
+document.addEventListener("click",e=>{const b=e.target.closest("button[data-del]");if(b&&confirm("Effacer ce scan gardé ?\n"+b.dataset.del))terrain("delete",{name:b.dataset.del})});
 let AC=null,hTimer=null,hLvl=null;
 function huntAudio(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==="suspended")AC.resume()}catch(e){}}
 function huntTone(l){const x=Math.max(0,Math.min(1,(l+100)/70));return[400+1600*x,1000-920*x]}
@@ -3584,6 +3595,13 @@ function mount(v){const el=$("#view");
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
   $("#hrs").onclick=()=>hunt("reset");return}
+ if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
+  $("#td").onchange=()=>{$("#tsc").dataset.k="";$("#tsc").dataset.dirty="";update(v)};
+  $("#tsc").onchange=()=>{$("#tsc").dataset.dirty="1"};
+  $("#tall").onclick=()=>{const cs=[...document.querySelectorAll("#tsc input")],all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all);$("#tsc").dataset.dirty="1"};
+  $("#tap").onclick=()=>{$("#tsc").dataset.dirty="";terrain("assign",{scenes:tChecked()})};
+  $("#tsv").onclick=()=>{terrain("save",{label:$("#tlab").value});$("#tlab").value=""};
+  $("#trs").onclick=()=>{if(confirm("Repartir de zéro ici ? Le max hold de ce tinySA est remis à zéro (les scans déjà gardés restent)."))terrain("reset")};return}
  if(v==="regie"){el.innerHTML=`<div class="tools">${layerSel("flt")}<button class="btn" id="fs">⛶ Plein écran</button></div><div id="ra"></div><div class="rg" id="g"></div>`;
   keepLayer("flt");$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
  if(v==="alarmes"){el.innerHTML=`<div class="tools"><b style="flex:1">Alarmes en cours</b><span id="aa"></span></div><div class="alist" id="g"></div>`;return}}
@@ -3616,6 +3634,19 @@ function update(v){const st=D.state;
   if(!h.on&&h.msg)$("#hsub").textContent=h.msg;
   if(h.on)$("#hsub").textContent=(h.level==null?"Attends le premier balayage…":"Pic à "+h.fpk.toFixed(3)+" MHz"+(h.best!=null?" · max vu "+h.best_txt+" ("+(h.level-h.best).toFixed(1)+" dB)":""))+" · "+(h.devs&&h.devs[h.dev]||"");
   huntBeep(h.on&&!$("#hmu").checked?h.level:null);return}
+ if(v==="terrain"){const T=st.terrain||{},ds=T.devs||[],td=$("#td"),box=$("#tsc"),scs=T.scenes||[];
+  const dk=ds.map(d=>d.label).join("|");
+  if(td.dataset.k!==dk){td.innerHTML=ds.map((d,i)=>`<option value="${i}">${esc(d.label)}</option>`).join("");td.dataset.k=dk;td.value=String(Math.max(0,ds.length-1));td.classList.toggle("hidden",ds.length<2);box.dataset.k=""}
+  const di=parseInt(td.value||"0"),d=ds[di]||{scenes:[],live:false},mine=d.scenes||[],sk=scs.join("|")+"#"+di+"#"+mine.join("|");
+  const noSc="Crée d’abord tes scènes sur le PC (« Classer par scène › groupe »).";
+  if(box.dataset.k!==sk&&!box.dataset.dirty){const h=scs.map(s=>`<label class="sw"><input type="checkbox" value="${esc(s)}"${mine.includes(s)?" checked":""}> ${esc(s)}</label>`).join("");box.innerHTML=h||esc(noSc);box.dataset.k=sk}
+  const lv=T.live||{},off="⚠ Ce tinySA n’est pas connecté (▶ Démarrer sur le PC).",none="Ce tinySA ne surveille aucune scène : coche où tu es puis « Ce tinySA est ici ».";
+  const tl=s=>{const l=lv[s],t=l?l.bands+" bande(s) en max hold · dernier balayage il y a "+l.age+" s":"pas encore de balayage";return esc(s+" : "+t)};
+  $("#tlive").innerHTML=[d.live?"":esc(off)].concat(mine.length?mine.map(tl):[esc(none)]).filter(x=>x).join("<br>");
+  $("#tmsg").textContent=T.msg||"";
+  const sv=T.saved||[],noSv="Aucun scan gardé pour l’instant";
+  const hs=sv.map(x=>`<div class="row" style="border-left-color:#64748b"><div class="x"><b>${esc(x.name)}</b><div class="mut">${esc(x.scene)} · ${x.lo.toFixed(1)}–${x.hi.toFixed(1)} MHz · ${x.n} points · ${new Date(x.t*1000).toLocaleString("fr-FR",{hour12:false,day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${x.auto?" · mis à jour tout seul":""}</div></div><button class="ackbtn" data-del="${esc(x.name)}">🗑</button></div>`).join("");
+  $("#tsaved").innerHTML=hs||`<div class="empty">${esc(noSv)}</div>`;return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
   $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
   if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
@@ -4437,10 +4468,41 @@ def merge_scans(scans, max_points=60000):
     return G[keep], out[keep]
 
 
-def site_scan_doc(name, F, L, t):
-    """Scan d'un lieu en version compacte (config / show) : MHz à 4 décimales, dBm à 1 décimale."""
-    return dict(name=str(name).strip()[:60], t=float(t), f=[round(float(x), 4) for x in F],
-                l=[round(float(x), 1) for x in L])
+def site_scan_doc(name, F, L, t, scene=None):
+    """Scan d'un lieu en version compacte (config / show) : MHz à 4 décimales, dBm à 1 décimale. scene : la scène
+    d'un scan gardé à la main (plusieurs par scène possibles, ex. « Grande scène · jardin ») ; sinon le nom."""
+    d = dict(name=str(name).strip()[:60], t=float(t), f=[round(float(x), 4) for x in F],
+             l=[round(float(x), 1) for x in L])
+    if scene and str(scene).strip() != d["name"]:
+        d["scene"] = str(scene).strip()[:60]
+    return d
+
+
+def site_doc_scene(d):
+    """Scène d'un scan gardé (son nom pour le scan continu d'une scène)."""
+    return d.get("scene") or d.get("name", "")
+
+
+def snapshot_name(scene, label, existing, hhmm):
+    """Nom d'un scan gardé à la main : « Scène · étiquette » (ou l'heure), rendu unique."""
+    base = f"{scene} · {str(label or '').strip() or hhmm}"[:56]
+    name, k = base, 2
+    while name in existing:
+        name, k = f"{base} ({k})", k + 1
+    return name
+
+
+def terrain_request(req):
+    """Commande de la vue Terrain (téléphone) -> dict propre (ValueError si bancale)."""
+    if not isinstance(req, dict) or req.get("action") not in ("assign", "reset", "save", "delete"):
+        raise ValueError("action")
+    sc = req.get("scenes")
+    sc = [str(x).strip()[:60] for x in (sc if isinstance(sc, list) else []) if str(x).strip()][:50]
+    name = str(req.get("name") or "").strip()[:80]
+    if req["action"] == "delete" and not name:
+        raise ValueError("nom")
+    return dict(action=req["action"], dev=1 if int(req.get("dev") or 0) == 1 else 0, scenes=sc,
+                label=re.sub(r"\s+", " ", str(req.get("label") or "")).strip()[:40], name=name)
 
 
 def site_scans_norm(lst):
@@ -4452,6 +4514,8 @@ def site_scans_norm(lst):
             name = str(d["name"]).strip()
             if name and len(f) >= 2 and len(f) == len(l):
                 out[name] = dict(name=name[:60], t=float(d.get("t") or 0), f=[float(x) for x in f], l=[float(x) for x in l])
+                if d.get("scene"):
+                    out[name]["scene"] = str(d["scene"]).strip()[:60]
         except (KeyError, TypeError, ValueError):
             continue
     return list(out.values())
@@ -4459,11 +4523,11 @@ def site_scans_norm(lst):
 
 def sites_for_scope(site_scans, scope):
     """Scans gardés à montrer sur le spectre : Global (scope None) -> tous ; une scène (ou un de ses groupes)
-    choisie dans « Mes fréquences » -> le scan du lieu qui porte son nom."""
+    choisie dans « Mes fréquences » -> les scans de cette scène (le continu + ceux gardés à la main)."""
     if not scope:
         return list(site_scans or [])
     names = {k[0] for k in scope if k}
-    return [d for d in site_scans or [] if d.get("name") in names]
+    return [d for d in site_scans or [] if site_doc_scene(d) in names]
 
 
 def multi_site(dev_scenes, ndev, live=None):
@@ -5053,7 +5117,7 @@ class WebServer(threading.Thread):
     COOKIE = "tsm"
 
     def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
-                 get_page=None, default_lang="fr", on_hunt=None):
+                 get_page=None, default_lang="fr", on_hunt=None, on_terrain=None):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
         # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
@@ -5061,6 +5125,7 @@ class WebServer(threading.Thread):
         self.default_lang = default_lang if default_lang in ("fr", "en") else "fr"
         self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
         self.on_hunt = on_hunt                     # 🔎 chasse lancée / arrêtée depuis un téléphone (code PIN)
+        self.on_terrain = on_terrain               # 🎒 tinySA volant : scènes, scans gardés (code PIN)
         self.get_spec = get_spec or (lambda: b'{"bands":[]}')
         self.get_cfg = get_cfg or (lambda: {})
         self.guard, self.login_guard, self._lock = PinGuard(), PinGuard(), threading.Lock()
@@ -5221,14 +5286,16 @@ class WebServer(threading.Thread):
                         return
                     self._json(200, dict(ok=True, name=name))
                     return
-                if path == "/chasse" and owner.on_hunt is not None:
+                pin_routes = {"/chasse": (hunt_request, owner.on_hunt), "/terrain": (terrain_request, owner.on_terrain)}
+                if path in pin_routes and pin_routes[path][1] is not None:
+                    parse_, cb_ = pin_routes[path]
                     ok, _me = self._who()
                     if not ok:
                         self._json(401, dict(login=True))
                         return
                     try:
                         req = self._body()
-                        cmd = hunt_request(req)
+                        cmd = parse_(req)
                     except (ValueError, AttributeError, TypeError, UnicodeDecodeError):
                         self._json(400, dict(error="requête invalide"))
                         return
@@ -5237,7 +5304,7 @@ class WebServer(threading.Thread):
                     if res != "ok":
                         self._json(429 if res == "locked" else 403, dict(error=res))
                         return
-                    owner.on_hunt(cmd)
+                    cb_(cmd)
                     self._json(200, dict(ok=True))
                     return
                 if path != "/acquitter" or owner.on_ack is None:
@@ -11138,6 +11205,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._web_spec = b'{"t":0,"bands":[]}'
         self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self._web_hunts = queue.Queue()     # 🔎 chasse commandée depuis un téléphone
+        self._web_terrain = queue.Queue()   # 🎒 tinySA volant : scènes / scans gardés depuis un téléphone
+        self._terrain_msg = ""
         self.web = None
         self._web_json = {"fr": b"{}", "en": b"{}"}
         self.view_id = -1
@@ -13538,7 +13607,7 @@ class MainWindow(QtWidgets.QMainWindow):
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
-            hunt=self.hunt_state(),
+            hunt=self.hunt_state(), terrain=self.terrain_state(),
             thr=round(float(self.thr_spin.value()), 1)))
         out = {"fr": json.dumps(st, ensure_ascii=False).encode("utf-8")}
         tr = en_translator()                              # chaque personne choisit sa langue sur la page
@@ -13548,6 +13617,9 @@ class MainWindow(QtWidgets.QMainWindow):
             a.update(kind=tr(a["kind"]), info=tr(a["info"]))
         if st.get("hunt"):
             st["hunt"] = dict(st["hunt"], devs=[tr(x) for x in st["hunt"]["devs"]], msg=tr(st["hunt"].get("msg") or ""))
+        if st.get("terrain"):
+            st["terrain"] = dict(st["terrain"], msg=tr(st["terrain"].get("msg") or ""),
+                                 devs=[dict(d, label=tr(d["label"])) for d in st["terrain"]["devs"]])
         out["en"] = json.dumps(st, ensure_ascii=False).encode("utf-8")
         return out
 
@@ -13573,7 +13645,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._web_json = self.web_json()
             ws = WebServer(self.web_cfg["port"], lambda lang="fr": self._web_json.get(lang, self._web_json["fr"]),
                            get_pin=lambda: self.web_cfg.get("pin", ""), on_ack=self._web_acks.put,
-                           on_hunt=self._web_hunts.put,
+                           on_hunt=self._web_hunts.put, on_terrain=self._web_terrain.put,
                            get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
                            default_lang=self.lang)
             ws.start()
@@ -14320,7 +14392,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         gap = np.nonzero(np.diff(F) > 5 * float(np.median(np.diff(F))))[0] + 1 if len(F) > 2 else []
         F, L = np.insert(F, gap, np.nan), np.insert(L, gap, np.nan)
-        if len(docs) == 1:
+        scs = {site_doc_scene(d) for d in docs}
+        if self.scope and len(scs) == 1 and len(docs) > 1:      # une scène, plusieurs scans gardés : leur fusion
+            sc = next(iter(scs))
+            col = self.scene_color(sc)
+            txt = (f"📍 {sc} : en direct · pointillés = fusion de {len(docs)} scans gardés"
+                   if self.site_fresh(sc)[0] is not None else f"📍 {sc} : fusion de {len(docs)} scans gardés")
+        elif len(docs) == 1:
             col = self.scene_color(docs[0]["name"]) if self.scene_by_name(docs[0]["name"]) else "#e5e7eb"
             when = datetime.fromtimestamp(docs[0]["t"]).strftime("%d/%m %H:%M") if docs[0]["t"] else ""
             if self.scope and self.site_fresh(docs[0]["name"])[0] is not None:
@@ -17411,6 +17489,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
         self._web_ack_pending()
         self._web_hunt_pending()
+        self._web_terrain_pending()
         if self.web is not None:
             self._web_json = self.web_json()
             if self.web_cfg["views"].get("spectre") or self.web_cfg["views"].get("waterfall"):
@@ -17520,6 +17599,88 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.set_status("📱 Chasse arrêtée depuis un téléphone.")
             elif self._hunt is not None:
                 self._hunt._reset_best()
+
+    def _site_mh_FL(self, scene):
+        """Max hold de la scène depuis le dernier « nouveau scan » (toutes ses bandes) -> (F, L) ou (None, None)."""
+        bands = self.site_mh.get(scene) or {}
+        if not bands:
+            return None, None
+        segs = sorted(bands.values(), key=lambda x: float(x[0][0]))
+        F, L = np.concatenate([x[0] for x in segs]), np.concatenate([x[1] for x in segs])
+        o = np.argsort(F, kind="stable")
+        return F[o], L[o]
+
+    def terrain_save(self, scenes, label=""):
+        """💾 Garde le scan en cours (max hold) de chaque scène comme un scan à part (« Scène · étiquette ») : on peut en
+        garder plusieurs par scène, ils comptent tous pour la fusion et la coordination."""
+        done, empty = [], []
+        hhmm = datetime.now().strftime("%H:%M")
+        for sc in scenes:
+            F, L = self._site_mh_FL(sc)
+            if F is None:
+                empty.append(sc)
+                continue
+            name = snapshot_name(sc, label, {d["name"] for d in self.site_scans}, hhmm)
+            self.site_scans.append(site_scan_doc(name, F, L, time.time(), scene=sc))
+            done.append(name)
+        if done:
+            self._bump()
+            self.update_site_curve()
+        msg = (f"💾 Gardé : {', '.join(done)}" if done else "") + (
+            (" · " if done else "") + f"rien à garder pour {', '.join(empty)} (pas encore de balayage)" if empty else "")
+        return msg or "Aucune scène : dis d'abord où est ce tinySA."
+
+    def terrain_reset(self, scenes):
+        """↺ Nouveau scan ici : le max hold de ces scènes repart de zéro (les scans gardés ne bougent pas)."""
+        for sc in scenes:
+            self.site_mh.pop(sc, None)
+            self._site_base[sc] = next((d for d in self.site_scans if d["name"] == sc), None)
+        return f"↺ Nouveau scan pour : {', '.join(scenes)}" if scenes else "Aucune scène : dis d'abord où est ce tinySA."
+
+    def _web_terrain_pending(self):
+        """🎒 Commandes de la vue Terrain (téléphone) : où est le tinySA volant, garder / effacer des scans."""
+        while True:
+            try:
+                c = self._web_terrain.get_nowait()
+            except queue.Empty:
+                return
+            dev = min(c["dev"], self.ndev() - 1)
+            mine = list(self.dev_scenes.get(dev, []))
+            if c["action"] == "assign":
+                self.set_dev_scenes(dev, c["scenes"])
+                self._terrain_msg = (f"📡 {self.dev_name(dev)} : " + (", ".join(c["scenes"]) or "aucune scène"))
+            elif c["action"] == "reset":
+                self._terrain_msg = self.terrain_reset(mine)
+            elif c["action"] == "save":
+                self._terrain_msg = self.terrain_save(c["scenes"] or mine, c["label"])
+            elif c["action"] == "delete":
+                n0 = len(self.site_scans)
+                self.site_scans = [d for d in self.site_scans if d["name"] != c["name"]]
+                if self._site_base.get(c["name"]) is not None:      # scan continu effacé : il repart de zéro
+                    self._site_base[c["name"]] = None
+                    self.site_mh.pop(c["name"], None)
+                if len(self.site_scans) < n0:
+                    self._bump()
+                    self.update_site_curve()
+                self._terrain_msg = f"🗑 Effacé : {c['name']}"
+            self.set_status(f"📱 {self._terrain_msg}")
+
+    def terrain_state(self):
+        """État de la vue Terrain pour la page web."""
+        now = time.time()
+        names = list(dict.fromkeys([x["name"] for x in self.scenes] + [x for v in self.dev_scenes.values() for x in v]))
+        devs = [dict(label=f"{'1er' if d == 0 else '2ᵉ'} tinySA · {self.dev_name(d)}",
+                     live=bool(self.is_running() and d < len(self.dev_live) and self.dev_live[d]),
+                     scenes=list(self.dev_scenes.get(d, []))) for d in range(self.ndev())]
+        assigned = {x for v in self.dev_scenes.values() for x in v}
+        live = {}
+        for sc, bands in self.site_live.items():
+            mh = self.site_mh.get(sc) or {}
+            if bands:
+                live[sc] = dict(age=int(now - max(x[2] for x in bands.values())), bands=len(mh))
+        saved = [dict(name=d["name"], scene=site_doc_scene(d), t=d["t"], n=len(d["f"]), lo=d["f"][0], hi=d["f"][-1],
+                      auto="scene" not in d and d["name"] in assigned) for d in sorted(self.site_scans, key=lambda d: (site_doc_scene(d), -d["t"]))]
+        return dict(devs=devs, scenes=names, live=live, saved=saved, msg=self._terrain_msg)
 
     def hunt_state(self):
         """État de la chasse pour la page web (vue Chasse)."""
