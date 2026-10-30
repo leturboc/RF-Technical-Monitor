@@ -9,6 +9,14 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Ce tinySA ne surveille plus de scène précise : il compte pour tout le site.': 'This tinySA no longer watches a specific stage: it counts for the whole site.',
+    'Mes tinySA et leurs scènes : qui surveille quoi.': 'My tinySA and their stages: who watches what.',
+    'QFrame { background:#3a2a00; border:1px solid #d29922; border-radius:4px; }': 'QFrame { background:#3a2a00; border:1px solid #d29922; border-radius:4px; }',
+    'Revenir à la vue globale : le direct de tous les tinySA.': 'Back to the global view: the live data of every tinySA.',
+    'Surveille : ': 'Watches: ',
+    'Surveille : tout le site': 'Watches: the whole site',
+    '∅ Aucune scène (tout le site)': '∅ No stage (whole site)',
+    '🌐 Tout le site': '🌐 Whole site',
     "Des visites guidées pas à pas : chaque étape montre une partie de l'écran (entourée en orange) et explique c'est quoi, pourquoi et comment, avec un bouton qui ouvre l'outil. Aucune connaissance nécessaire.": 'Step-by-step guided tours: each step shows a part of the screen (outlined in orange) and explains what it is, why and how, with a button that opens the tool. No knowledge needed.',
     'Mn': 'Mn',
     'NFD': 'NFD',
@@ -2692,6 +2700,10 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '📡 Aucun tinySA ne surveille « {} » : pas de direct ici. Actuellement : {}.': '📡 No tinySA watches “{}”: no live data here. Currently: {}.',
+    '{} tinySA ({}) : {}': '{} tinySA ({}): {}',
+    '📡 Le {} tinySA ({}) est ici': '📡 The {} tinySA ({}) is here',
+    'Ce tinySA surveille désormais « {} » (à la place de ses scènes actuelles).': 'This tinySA now watches “{}” (instead of its current stages).',
     '📍 {} : scan gardé en pointillés': '📍 {}: kept scan as dashes',
     '{}  ·  {} min': '{}  ·  {} min',
     'Spectre : scène {} ({} scan(s) gardé(s))': 'Spectrum: stage {} ({} kept scan(s))',

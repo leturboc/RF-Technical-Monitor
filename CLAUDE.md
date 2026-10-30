@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.26.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.26.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -449,6 +449,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   scène qui avait un scan gardé devenait un « lieu » → `view_sites` n'y traçait que le direct des tinySA RATTACHÉS
   (`dev_scenes`, réglage expert) → rien en direct. Corrigé : si aucun tinySA n'est rattaché à une scène, `view_sites`
   renvoie None (direct de tous) et l'étiquette dit « scan gardé en pointillés ».
+  **7.26.2 (Clément : « j'avais mal assigné le tiny, il faut que ce soit intuitif »)** : bandeau `site_bar` au-dessus
+  du spectre (`update_site_bar`, appelé par `update_site_curve`) quand la scène regardée n'a aucun tinySA rattaché :
+  qui surveille quoi + « 📡 Le Nᵉ tinySA est ici » (`set_dev_scenes(d, [scène])`), « 🌐 Tout le site », ⚙ ; « 📡 nom »
+  dans l'arbre dès qu'un rattachement existe (plus seulement en expert) ; DevicesDialog : « Surveille : … » et
+  « ∅ Aucune scène (tout le site) » par tinySA.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
