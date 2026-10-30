@@ -458,6 +458,19 @@ else:
         check("spectre : lecture au doigt (MHz · dBm)", "MHz" in pg.locator("#rd").inner_text())
         if CAP:
             pg.screenshot(path=os.path.join(CAP, "web_spectre.png"))
+        # --- rémanence : chaque balayage laisse une trace bleue qui s'estompe
+        pg.click("#rm")
+        for k in range(4):
+            spec_b = json.dumps(dict(t=10.0 + k, bands=[dict(b, l=[x + (k % 2) * 6 for x in b["l"]]) for b in out])).encode()
+            pg.wait_for_timeout(1100)
+        pn = pg.evaluate("() => (pers ? pers.n : -1)")
+        blue = pg.evaluate("""() => {const c=document.querySelector('#cv'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+            let n=0;for(let i=0;i<d.length;i+=4){if(d[i+2]>150&&d[i]<120&&d[i+1]>100)n++}return n}""")
+        check("spectre : rémanence (une trace par balayage, bleue)", isinstance(pn, int) and pn >= 3 and blue > 200
+              and "rémanence" in pg.locator("#lg").inner_text(), f"{pn} {blue}")
+        check("spectre : rémanence retenue", pg.evaluate("localStorage.getItem('rm')") == "1")
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_remanence.png"))
         pg.goto(base + "/#/waterfall")
         for k in range(4):
             spec_b = json.dumps(dict(t=2.0 + k, bands=out)).encode()

@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.24.0"
+APP_VER = "7.24.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3592,19 +3592,21 @@ function mount(v){const el=$("#view");
   keepLayer("flt");$("#q").oninput=()=>update(v);$("#oo").onchange=()=>update(v);return}
  if(v==="mur"){el.innerHTML=`<div class="tools">${layerSel("flt")}<label class="sw"><input type="checkbox" id="oo"> Occupées / faibles seulement</label><button class="btn" id="fs">⛶ Plein écran</button></div><div class="wall" id="g"></div>`;
   keepLayer("flt");$("#oo").onchange=()=>update(v);$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
- if(v==="spectre"||v==="waterfall"){el.innerHTML=`<div class="tools"><select class="in" id="band"></select>${v==="spectre"?'<label class="sw"><input type="checkbox" id="mh" checked> Max hold</label>':""}<label class="sw"><input type="checkbox" id="mk" checked> Mes fréquences</label></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div>`;
-  $("#band").onchange=()=>{LS.set("band",$("#band").value);wf=null;draw()};["mh","mk"].forEach(i=>{const c=$("#"+i);if(c)c.onchange=()=>draw()});
+ if(v==="spectre"||v==="waterfall"){el.innerHTML=`<div class="tools"><select class="in" id="band"></select>${v==="spectre"?'<label class="sw"><input type="checkbox" id="mh" checked> Max hold</label><label class="sw"><input type="checkbox" id="rm"> Rémanence</label>':""}<label class="sw"><input type="checkbox" id="mk" checked> Mes fréquences</label></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div>`;
+  $("#band").onchange=()=>{LS.set("band",$("#band").value);wf=null;pers=null;draw()};
+  const rmc=$("#rm");if(rmc){rmc.checked=LS.get("rm","")==="1";rmc.onchange=()=>{LS.set("rm",rmc.checked?"1":"");pers=null;draw()}}["mh","mk"].forEach(i=>{const c=$("#"+i);if(c)c.onchange=()=>draw()});
   const cv=$("#cv");cv.onpointermove=cv.onpointerdown=e=>readout(e);cv.onpointerleave=()=>{$("#rd").textContent=""};return}
  if(v==="chasse"){const h=D.state.hunt||{};el.innerHTML=`<div class="tools"><input class="in" id="hf" type="number" step="0.001" inputmode="decimal" value="${h.f||""}" placeholder="MHz" style="max-width:140px"><select class="in" id="hs">${[1,2,5,10].map(x=>`<option value="${x}"${x==(h.span||2)?" selected":""}>± ${x/2} MHz</option>`).join("")}</select><select class="in" id="hd">${(h.devs||[]).map((n,i)=>`<option value="${i}"${i==(h.dev!=null?h.dev:(h.devs||[]).length-1)?" selected":""}>${esc(n)}</option>`).join("")}</select><label class="sw"><input type="checkbox" id="hfo"${h.follow?" checked":""}> Suivre le plus fort</label></div><div class="tools"><button class="btn pri" id="hgo" style="width:auto;margin:0"></button><button class="btn" id="hrs">↺ Max à zéro</button><label class="sw"><input type="checkbox" id="hmu"> Muet</label></div><div class="hb"><div class="lv" id="hl">—</div><div class="bar"><i id="hbar" style="width:0%"></i></div><div class="sub" id="hsub">Branche le tinySA portable, choisis la fréquence puis « Chasser ». Le téléphone bippe plus vite et plus aigu quand tu te rapproches.</div></div>`;
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
   $("#hrs").onclick=()=>hunt("reset");return}
- if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
+ if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div>${D.views.includes("spectre")?'<div class="tools"><a class="btn" id="tsp" href="#/spectre">📈 Voir le spectre avec rémanence</a></div>':""}</div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
   $("#td").onchange=()=>{$("#tsc").dataset.k="";$("#tsc").dataset.dirty="";update(v)};
   $("#tsc").onchange=()=>{$("#tsc").dataset.dirty="1"};
   $("#tall").onclick=()=>{const cs=[...document.querySelectorAll("#tsc input")],all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all);$("#tsc").dataset.dirty="1"};
   $("#tap").onclick=()=>{$("#tsc").dataset.dirty="";terrain("assign",{scenes:tChecked()})};
   $("#tsv").onclick=()=>{terrain("save",{label:$("#tlab").value});$("#tlab").value=""};
+  const tsp=$("#tsp");if(tsp)tsp.onclick=()=>{LS.set("rm","1");pers=null};
   $("#trs").onclick=()=>{if(confirm("Repartir de zéro ici ? Le max hold de ce tinySA est remis à zéro (les scans déjà gardés restent)."))terrain("reset")};return}
  if(v==="regie"){el.innerHTML=`<div class="tools">${layerSel("flt")}<button class="btn" id="fs">⛶ Plein écran</button></div><div id="ra"></div><div class="rg" id="g"></div>`;
   keepLayer("flt");$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
@@ -3672,6 +3674,13 @@ function marks(c,w,h,f0,f1,top){if(!$("#mk")||!$("#mk").checked)return;const X=f
   if(r.bw){const x0=X(r.freq-r.bw/2),x1=X(r.freq+r.bw/2);c.fillStyle=cc+"22";c.fillRect(x0,top,x1-x0,h-PB-top);c.strokeRect(x0,top,x1-x0,h-PB-top)}
   else{c.setLineDash([3,3]);c.beginPath();c.moveTo(x,top);c.lineTo(x,h-PB);c.stroke();c.setLineDash([])}
   c.globalAlpha=1;if(x-lastX>46){c.fillStyle=cc;c.font="600 11px system-ui";c.textAlign="center";c.fillText(r.name.slice(0,10),x,top-6);lastX=x}})}
+// rémanence : chaque balayage laisse une trace qui s'estompe (ce qui revient souvent marque, comme un analyseur temps réel)
+let pers=null;
+function persLayer(c,w,h,ss,X,Y,key){const cv=$("#cv"),k=key+"|"+cv.width+"x"+cv.height;
+ if(!pers||pers.k!==k){const b=document.createElement("canvas");b.width=cv.width;b.height=cv.height;const g=b.getContext("2d");g.scale(cv.width/w,cv.height/h);pers={c:b,g:g,k:k,t:0,n:0}}
+ if(spec.t!==pers.t){pers.t=spec.t;pers.n++;const g=pers.g;g.globalCompositeOperation="destination-out";g.fillStyle="rgba(0,0,0,.13)";g.fillRect(0,0,w,h);g.globalCompositeOperation="source-over";
+  ss.forEach(s=>{g.beginPath();s.l.forEach((v,i)=>{const x=X(s.f[i]),y=Y(v);i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle="rgba(56,189,248,.45)";g.lineWidth=2.2;g.stroke()})}
+ c.drawImage(pers.c,0,0,w,h)}
 function draw(){const cv=$("#cv");if(!cv||!spec)return;const ss=segs(),sp=span(ss),lg=$("#lg");
  const H=mounted==="spectre"?Math.max(240,Math.min(innerHeight-230,520)):Math.max(260,innerHeight-220);
  const[c,w,h]=setup(cv,H);c.clearRect(0,0,w,h);if(!sp){c.fillStyle="#8b95a5";c.font="15px system-ui";c.textAlign="center";c.fillText(spec.bands.length?"…":"Pas encore de balayage",w/2,h/2);return}
@@ -3683,10 +3692,11 @@ function draw(){const cv=$("#cv");if(!cv||!spec)return;const ss=segs(),sp=span(s
  c.textAlign="right";for(let v=lo;v<=hi;v+=10){const y=Y(v);c.strokeStyle="#272d38";c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.fillText(v,PL-6,y+4)}
  const line=(arr,f,col,lw,fill)=>{c.beginPath();arr.forEach((v,i)=>{const x=X(f[i]),y=Y(Math.max(lo,v));i?c.lineTo(x,y):c.moveTo(x,y)});c.strokeStyle=col;c.lineWidth=lw;c.stroke();
   if(fill){c.lineTo(X(f[f.length-1]),h-PB);c.lineTo(X(f[0]),h-PB);c.closePath();const g=c.createLinearGradient(0,PT,0,h-PB);g.addColorStop(0,"#ff9f1c55");g.addColorStop(1,"#ff9f1c05");c.fillStyle=g;c.fill()}};
- const mh=$("#mh")&&$("#mh").checked;ss.forEach(s=>{if(mh&&s.mh)line(s.mh,s.f,"#ff9f1c55",1,false);line(s.l,s.f,"#ff9f1c",1.6,true)});
+ const mh=$("#mh")&&$("#mh").checked,rm=$("#rm")&&$("#rm").checked;if(rm)persLayer(c,w,h,ss,X,Y,[$("#band").value,f0,f1,hi].join("|"));
+ ss.forEach(s=>{if(mh&&s.mh)line(s.mh,s.f,"#ff9f1c55",1,false);line(s.l,s.f,"#ff9f1c",rm?1.2:1.6,!rm)});
  if(D.state.thr!=null){const y=Y(D.state.thr);c.setLineDash([6,4]);c.strokeStyle="#ef4444";c.lineWidth=1.2;c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.setLineDash([]);c.fillStyle="#ef4444";c.textAlign="left";c.fillText("seuil "+D.state.thr+" dBm",PL+4,y-4)}
  marks(c,w,h,f0,f1,PT);c.fillStyle="#8b95a5";c.textAlign="left";c.fillText("dBm",4,PT-8);
- lg.innerHTML='<span><i style="background:#ff9f1c"></i>en direct</span>'+(mh?'<span><i style="background:#ff9f1c55"></i>max hold</span>':"")+'<span><i style="background:#ef4444"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
+ lg.innerHTML='<span><i style="background:#ff9f1c"></i>en direct</span>'+(mh?'<span><i style="background:#ff9f1c55"></i>max hold</span>':"")+(rm?'<span><i style="background:#38bdf8"></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)</span>':"")+'<span><i style="background:#ef4444"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
 function levelAt(f){let best=null,bd=1e9;segs().forEach(s=>{let lo=0,hi=s.f.length-1;while(hi-lo>1){const m=(lo+hi)>>1;s.f[m]<f?lo=m:hi=m}[lo,hi].forEach(i=>{const d=Math.abs(s.f[i]-f);if(d<bd){bd=d;best=s.l[i]}})});return best}
 function readout(e){const cv=$("#cv"),sp=span(segs());if(!sp)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,f=sp[0]+(x-PL)/(r.width-PL-8)*(sp[1]-sp[0]);
  if(f<sp[0]||f>sp[1]){$("#rd").textContent="";return}const l=levelAt(f),near=D.state.rows.filter(w=>Math.abs(w.freq-f)<Math.max(.15,(w.bw||0)/2)).sort((a,b)=>Math.abs(a.freq-f)-Math.abs(b.freq-f))[0];
