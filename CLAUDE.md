@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.16.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.17.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -313,6 +313,20 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   du comparatif (`[Data]`, MHz, dBm) contredit celui de nikharju (kHz + %, ligne 7) : on lit les deux, l'export WSM
   reste celui de nikharju. Formats de **listes de fréquences** (WWB / WSM / Wisycom / EazyRF) : toujours pas de vrai
   fichier → demander des exemples à Clément (docs.soundbase.app bloqué par le réseau de la session).
+- **7.17.0 (Clément : « choisir la sortie audio, un menu Settings avec roue crantée », « hyper chaud de la chasse au
+  brouilleur »)** :
+  - **Son** : PURE `SOUND_DEFAULT` / `SOUND_STYLES` / `ALARM_TONES` / `TONE_OK` / `sound_cfg_norm` / `tone_pcm` (PCM
+    16 bits, fondu). `SoundOut` (QtMultimedia importé à la demande : `QMediaDevices.audioOutputs`, `QAudioSink` sur un
+    `QBuffer`, 22 050 Hz mono ; style « beep » ou erreur → `QApplication.beep`). `self.sound` remplace tous les
+    `beep()` (alarmes, alerte, appel des micros). Config `sound`. `--hidden-import PySide6.QtMultimedia` (workflow +
+    build.bat). **Pas testé sur un vrai Windows / dans l'exe** (CI Linux et Windows sans carte son).
+  - **⚙ Réglages** : `SettingsDialog` (onglets Général / Son / Fichiers / Connexions, tout s'applique tout de suite,
+    reflète les contrôles existants), bouton `settings_btn` « ⚙ » dans `cmd_bar`, ☰ Plus › Réglages et connexions,
+    Ctrl+, , `open_settings(tab)`.
+  - **🔎 Chasse au brouilleur** : PURE `hunt_level` (max à ± 100 kHz ou pic de la zone), `hunt_tone` (400 → 2 000 Hz,
+    1 000 → 80 ms) ; `HuntDialog` (non modal, `self._hunt`, nourri par `on_sweep` pour `ZOOM_ID`, zoom live sur
+    f ± zone/2 ; bouton zoom resté coché sans zoom → `toggle_zoom(True)` direct), `open_hunt(f0)` (sélection de la
+    liste, M1, centre de la vue) ; ⑤, ☰ Plus ②, clic droit du journal.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

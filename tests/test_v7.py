@@ -630,5 +630,28 @@ for nom_, txt_ in (("WWB virgule", _rows("{f:.3f},{l:.1f}\n")), ("WWB point-virg
 F_, L_, i_ = pst_("Frequency (MHz);Level (dBµV)\n" + "".join(f"{470 + i * 0.025:.3f};{9 + i % 3:.1f}\n" for i in range(8)))
 ok("scan Wisycom en dBµV : converti en dBm", abs(L_[0] + 98) < 1e-6 and "dBµV" in i_["note"], f"{L_[:2]} {i_}")
 
+# --- sons de l'appli (7.17)
+scn_, tpcm_ = ns["sound_cfg_norm"], ns["tone_pcm"]
+check("son : config bancale -> défaut", scn_({"volume": "x", "style": "??"}), ns["SOUND_DEFAULT"])
+check("son : volume borné", scn_({"volume": 250})["volume"], 100)
+pc_ = tpcm_([(1000, 100), (0, 50)], 22050, 0.5)
+check("son : 150 ms à 22 050 Hz en 16 bits", len(pc_), (2205 + 1102) * 2)
+a_ = np.frombuffer(pc_, dtype="<i2")
+ok("son : la note est là puis le silence", np.abs(a_[:2205]).max() > 10000 and np.abs(a_[2205:]).max() == 0)
+ok("son : fondu (pas de clic au début)", abs(int(a_[0])) < 200)
+ok("son : alarme critique = 3 notes", sum(1 for hz, _ms in ns["ALARM_TONES"][2] if hz) == 3)
+
+# --- chasse au brouilleur
+hl_, ht_ = ns["hunt_level"], ns["hunt_tone"]
+Fh_ = np.linspace(599, 601, 201)
+Lh_ = np.full_like(Fh_, -100.0)
+Lh_[100] = -60.0                                   # 600.000
+Lh_[160] = -40.0                                   # 600.600 : plus fort, mais hors de ± 100 kHz
+check("chasse : niveau à ± 100 kHz", hl_(Fh_, Lh_, 600.0)[0], -60.0)
+check("chasse : suivre le plus fort de la zone", hl_(Fh_, Lh_, 600.0, follow=True, span_mhz=2.0), (-40.0, 600.6))
+ok("chasse : plus fort = plus aigu et plus rapide", ht_(-40)[0] > ht_(-90)[0] and ht_(-40)[1] < ht_(-90)[1])
+check("chasse : rien mesuré = silence", ht_(None)[0], 0)
+check("chasse : bornes (très faible / saturé)", (ht_(-200), ht_(10)), ((400, 1000), (2000, 80)))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
