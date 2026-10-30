@@ -576,17 +576,26 @@ missing frequency points to a pack set to the wrong channel.</p>
 <p>If one tinySA drops out, the other takes over all the bands (⚠ DEVICE). On a network, prefer a cable to Wi-Fi.</p>
 
 <h3>🎒 Portable hunting kit: tinySA + Raspberry Pi + phone</h3>
-<p>The PC stays at the RF desk; you walk around with a 2nd tinySA plugged by USB into a <b>Raspberry Pi</b> (USB power
-bank), which shares it over Wi-Fi. Your phone shows the hunt and beeps.</p>
+<p>The PC stays at the RF desk; you walk around with a tinySA plugged by USB into a <b>Raspberry Pi</b> (USB power
+bank), which shares it over Wi-Fi. Your phone shows the hunt and beeps. <b>Only one tinySA</b>: it goes in the bag, it
+is the 1st tinySA. <b>Two tinySAs</b>: one stays on the PC and monitors, the other goes in the bag (2nd tinySA).</p>
 <ol class="steps">
-  <li><b>On the Pi</b> (once): Raspberry Pi OS (Lite is enough; in Raspberry Pi Imager, set the site Wi-Fi and SSH),
-    copy the <code>relais</code> folder of the repository, then <code>sh install_pi.sh</code>. The relay starts by
-    itself at every boot and finds the tinySA by itself (file <code>relais/LISEZMOI.md</code>).</li>
-  <li><b>On the PC</b>: Settings › 2nd tinySA = the Pi's address (<code>192.168.x.x</code> or
-    <code>raspberrypi.local</code>), position name « Backpack ».</li>
-  <li><b>On the phone</b>: the web page (📣 Alerts and web page), <b>🔎 Hunt</b> view. Type the frequency, pick « 2nd
-    tinySA · Backpack », <b>▶ Hunt</b> (web page PIN). The PC runs the live zoom with the Pi's tinySA while the 1st one
-    keeps monitoring all the bands; the phone shows the level in large type and <b>beeps</b> (the PC stays quiet).</li>
+  <li><b>Get the kit</b>: on the release page, next to the exe, the file
+    <b><code>relais-raspberry-pi.zip</code></b> (<code>relais</code> folder: the Pi program
+    <code>tinysa_relais.py</code>, its installer <code>install_pi.sh</code> and the step-by-step guide
+    <code>LISEZMOI.md</code>, in French).</li>
+  <li><b>Prepare the Pi</b> (once): Raspberry Pi Imager › Raspberry Pi OS Lite; in its settings: hostname
+    <code>tinysa-sac</code>, the RF desk Wi-Fi, user / password, SSH enabled.</li>
+  <li><b>Install the relay</b> (once), from the Windows Terminal, in the unzipped folder:
+    <code>scp -r relais tinysa-sac.local:</code> then <code>ssh tinysa-sac.local</code>, then on the Pi
+    <code>cd relais</code> and <code>sh install_pi.sh</code>. The relay then starts by itself at every boot and finds
+    the tinySA by itself.</li>
+  <li><b>On the PC</b>: one tinySA → port list at the top › <b>🌐 Network tinySA (Raspberry Pi, other PC)…</b> ›
+    <code>tinysa-sac.local</code> (or the Pi's IP address), remembered for next time. Two tinySAs → ⚙ Settings › 2nd
+    tinySA = <code>tinysa-sac.local</code>, position name « Backpack ». Then ▶ Start.</li>
+  <li><b>On the phone</b>: the web page (📣 Alerts and web page), <b>🔎 Hunt</b> view. Type the frequency, pick the
+    bag's tinySA, <b>▶ Hunt</b> (web page PIN). The phone shows the level in large type and <b>beeps</b> (the PC stays
+    quiet). With two tinySAs, the PC's one keeps monitoring all the bands.</li>
 </ol>
 <p>The Pi and the phone must stay within the site Wi-Fi coverage. Without Wi-Fi: the tinySA on its own, on its own
 screen (frequency in the centre, small span, marker on the peak), still works.</p>

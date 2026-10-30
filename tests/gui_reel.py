@@ -630,6 +630,24 @@ _df = sorted(_dd.glob("diagnostic_tinysa_*.txt")) if _dd.exists() else []
 check("diagnostic : fichier écrit avec versions, réglages, bandes", bool(_df)
       and m.APP_VER in _df[-1].read_text(encoding="utf-8") and "Bandes :" in _df[-1].read_text(encoding="utf-8"))
 check("vitesse série dans la config", win._collect_config()["baud"] == 115200)
+# 🌐 1er tinySA en réseau (kit Raspberry Pi) : choix dans la liste des ports, adresse demandée, retenue
+_gt = W.QInputDialog.getText
+W.QInputDialog.getText = staticmethod(lambda *a, **k: ("tinysa-sac.local", True))
+_ni = win.port_combo.findData(win.NET_ITEM)
+check("ports : entrée « 🌐 tinySA en réseau… » en bas", _ni == win.port_combo.count() - 1, str(_ni))
+win.port_combo.setCurrentIndex(_ni)
+step("choisir « tinySA en réseau »", lambda: win._port_chosen())
+W.QInputDialog.getText = _gt
+check("réseau : adresse du Pi = 1er tinySA", win.port1() == "socket://tinysa-sac.local:5025" and win.port_net
+      and "tinysa-sac.local" in win.port_combo.currentText(), str(win.port1()))
+check("réseau : gardé dans la config", win._collect_config()["net_addr"] == "tinysa-sac.local"
+      and win._collect_config()["port_net"])
+shot(win, "port_reseau")
+win.refresh_ports()
+check("réseau : toujours en tête après ⟳", win.port1() == "socket://tinysa-sac.local:5025")
+win.port_net, win.net_addr = False, ""
+win.refresh_ports()
+check("réseau : retour à l'USB", not str(win.port1() or "").startswith("socket://"), str(win.port1()))
 check("version affichée (barre d'état)", m.APP_VER in win.ver_lbl.text() and win.ver_lbl.isVisible())
 step("à propos", win.show_about)
 _lm = [a_.text() for a_ in win.lang_menu.actions()]
