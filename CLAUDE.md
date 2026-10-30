@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.23.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.23.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -397,7 +397,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   **7.23.1 (1er essai de Clément : « le Pi ne détecte pas le tiny en USB selon journalctl »)** : `tinysa_relais.py` :
   `diagnose()` (lu dans /sys/bus/usb/devices : rien vu → allumé / câble data / prise USB-A ; 0483:df11 = DFU ; autre
   0483 = disque USB ? ; 5740 sans ttyACM ; ttyACM sans droits → dialout), écrit dans le journal à chaque attente,
-  `--diag` ; `find_tinysa` retombe sur `glob /dev/ttyACM*`. Cause réelle chez Clément : inconnue au moment d'écrire.
+  `--diag` ; `find_tinysa` retombe sur `glob /dev/ttyACM*`. Cause réelle chez Clément : **câble USB-C charge seule**.
+  **7.23.2 (Clément : « tiny ouvert dans journalctl mais pas le lien à l'appli », ping OK)** : l'exe n'embarquait PAS
+  `serial.urlhandler.protocol_socket` (importé dynamiquement par `serial_for_url`) → **tout tinySA en réseau était
+  impossible dans l'exe** depuis toujours (1er comme 2ᵉ ; les tests tournent en Python, pas dans l'exe). Corrigé :
+  `import serial.urlhandler.protocol_socket` en tête + `--hidden-import` (workflow, build.bat). Nouveau
+  `TinySA-Monitor.exe --selftest fichier` (`self_test` : socket:// réel en local, lang_en, QtMultimedia, manuels) lancé
+  par la CI après PyInstaller, **bloquant** (annotation « auto-test exe »). Tout nouvel import dynamique → l'y ajouter.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

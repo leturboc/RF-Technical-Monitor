@@ -76,11 +76,15 @@ import pyqtgraph as pg
 import pyqtgraph.exporters  # noqa: F401  (capture PNG)
 import serial
 import serial.tools.list_ports
+try:                                      # chargé par serial_for_url("socket://…") : à embarquer dans l'exe
+    import serial.urlhandler.protocol_socket  # noqa: F401
+except ImportError:                       # faux pyserial des tests
+    pass
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.23.1"
+APP_VER = "7.23.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -20533,7 +20537,50 @@ MainWindow.TIPS_MENU.update({
 })
 
 
+def self_test(path):
+    """TinySA-Monitor.exe --selftest fichier : vérifie que l'EXE contient bien ce qui est chargé à la demande
+    (réseau socket://, traductions, son). Lancé par la CI après PyInstaller (7.23.2 : sans protocol_socket dans
+    l'exe, le tinySA en réseau était impossible : « invalid URL, protocol 'socket' not known »)."""
+    import importlib
+    import socket as _s
+    out, fails = [], 0
+
+    def check(label, fn):
+        nonlocal fails
+        try:
+            fn()
+            out.append(f"OK   {label}")
+        except Exception as e:  # noqa: BLE001
+            fails += 1
+            out.append(f"FAIL {label} : {type(e).__name__} : {e}")
+
+    def net():
+        srv = _s.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        ser = serial.serial_for_url(f"socket://127.0.0.1:{srv.getsockname()[1]}", 115200, timeout=2)
+        conn, _ = srv.accept()
+        conn.sendall(b"ch> ")
+        got = ser.read(4)
+        ser.close()
+        conn.close()
+        srv.close()
+        assert got == b"ch> ", got
+
+    check("tinySA en réseau (socket://, relais / Raspberry Pi)", net)
+    check("traductions anglaises (lang_en)", lambda: importlib.import_module("lang_en"))
+    check("son (PySide6.QtMultimedia)", lambda: importlib.import_module("PySide6.QtMultimedia"))
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    check("manuels embarqués (FR + EN)", lambda: [(base / "docs" / n).stat() for n in ("manuel.html", "manual_en.html")])
+    out.append(f"ÉCHECS: {fails}")
+    Path(path).write_text("\n".join(out) + "\n", encoding="utf-8")
+    return fails
+
+
 def main():
+    if "--selftest" in sys.argv:            # CI : contrôle de l'exe, sans fenêtre
+        i = sys.argv.index("--selftest")
+        sys.exit(1 if self_test(sys.argv[i + 1] if i + 1 < len(sys.argv) else "selftest.txt") else 0)
     app = QtWidgets.QApplication(sys.argv)
     app._gc_timer = install_gc_main_thread(app)
     app._lang = read_language()
