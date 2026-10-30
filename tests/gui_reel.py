@@ -1068,6 +1068,35 @@ win.planning = m.planning_norm(None)
 win._planning_tick(time.time(), force=True)
 check("planning vidé : plus personne en pause", not any(win.w_paused(w_) for w_ in win.watch))
 
+# 📍 scans par lieu : deux lieux gardés, fusion affichée, export WWB, coordination avec tous les lieux
+win.site_scans = []
+_exp = m.Path(tmp) / "fusion_wwb.csv"
+def _sites_act(d):
+    d.site_combo.setEditText("Grande scène")
+    d.keep_current()
+    _F, _L = win.fresh_FL(use_max=True, any_age=True)
+    win.site_scans.append(m.site_scan_doc("Club", _F + 300.0, _L, time.time()))   # un 2ᵉ lieu, ailleurs dans le spectre
+    d.fill()
+    check("lieux : 2 gardés, cochés, fusion sur les deux plages", d.lst.count() == 2 and len(d.checked()) == 2
+          and d.merged()[0] is not None and d.merged()[0][-1] > _F[-1] + 250, d.msg.text())
+    d.fmt.setCurrentIndex(d.fmt.findData("wwb"))
+    p_ = d.export(str(_exp))
+    _t = _exp.read_text(encoding="utf-8") if p_ else ""
+    check("lieux : fusion exportée au format WWB (sans en-tête)", p_ and _t[:3].isdigit() and ", -" in _t.splitlines()[0],
+          _t[:60])
+    d.coord_chk.setChecked(True)
+    shot(d, "scans_par_lieu")
+    return "reject"
+DLG_ACTION[0] = _sites_act
+step("scans par lieu", win.open_sites)
+DLG_ACTION[0] = "reject"
+_cf, _cl = win.coord_FL()
+check("lieux : la coordination évite l'occupé de TOUS les lieux", win.sites_coord and _cf is not None
+      and _cf[-1] > win.fresh_FL(use_max=True, any_age=True)[0][-1] + 250)
+check("lieux : gardés dans la config et les shows", len(win._collect_config()["site_scans"]) == 2 and "site_scans" in m.SHOW_KEYS)
+win.sites_coord = False
+win.site_scans = []
+
 # 🌙 mode festival : réglages, bilan du jour (rapport + message + journal), une seule fois par jour
 def _fest_act(d):
     d.on_chk.setChecked(True)
