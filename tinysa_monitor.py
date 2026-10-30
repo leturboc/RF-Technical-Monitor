@@ -15027,9 +15027,10 @@ class MainWindow(QtWidgets.QMainWindow):
         sites = self.view_sites()
         watched = {x for v in self.dev_scenes.values() for x in v}
         lost = [x for x in (sites or []) if x not in watched]
-        while self.site_bar_btns.count():
+        n_ = self.site_bar_btns.count()
+        for _ in range(n_ if isinstance(n_, int) else 0):      # (faux Qt des tests : count() n'est pas un entier)
             it = self.site_bar_btns.takeAt(0)
-            if it.widget() is not None:
+            if it is not None and it.widget() is not None:
                 it.widget().deleteLater()
         if not sites or len(lost) < len(sites):
             bar.setVisible(False)
