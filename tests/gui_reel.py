@@ -166,20 +166,38 @@ win._build_pts_menu()
 [a_ for a_ in win.pts_menu.actions() if a_.isCheckable()][1].trigger()
 check("⚡ Auto équilibré : retour au pas d'avant", abs(win.bands[0]["step"] - _st0) < 1e-9, win.pts_btn.text())
 
-step("🎓 tuto", win.start_tour)
-_tr = win._tour
-if _tr is not None:
+step("🎓 tutos : choix", win.start_tour)
+_tc = win._tour_chooser
+check("tutos : 6 parcours proposés", len(_tc.buttons) == 6 and set(_tc.buttons) == set(m.TOUR_KEYS))
+shot(_tc, "tutos_choix")
+_tc.close()
+for _key in m.TOUR_KEYS:
+    step(f"🎓 tuto {_key}", lambda _key=_key: win.start_tour(_key))
+    _tr = win._tour
     _n = len(_tr.steps)
-    shot(_tr, "tuto_1")
+    _acts = [st_[5] for st_ in _tr.steps if st_[5] is not None]
+    check(f"tuto {_key} : actions « Fais-le » existantes", all(callable(getattr(win, a_[1], None)) for a_ in _acts),
+          str([a_[1] for a_ in _acts if not callable(getattr(win, a_[1], None))]))
+    check(f"tuto {_key} : chaque étape a c'est quoi / pourquoi / comment",
+          all(len(st_) == 6 and all(len(x) > 20 for x in st_[2:5]) for st_ in _tr.steps))
+    if _key in ("ecran", "show"):
+        shot(_tr, f"tuto_{_key}")
     for _k in range(_n - 1):
         _tr.next_btn.click()
         app.processEvents()
-    check("tuto : toutes les étapes, dernière = Terminer", _tr.i == _n - 1 and "✔" in _tr.next_btn.text()
-          and _n >= 10, f"{_tr.i}/{_n}")
+    check(f"tuto {_key} : toutes les étapes ({_n}), dernière = Terminer", _tr.i == _n - 1 and "✔" in _tr.next_btn.text()
+          and _n >= 6, f"{_tr.i}/{_n}")
     _w_last = _tr.steps[-1][0]
     _tr.next_btn.click()
     app.processEvents()
-    check("tuto terminé : retenu, surlignage retiré", win.tour_done and "f5a623" not in _w_last.styleSheet())
+    check(f"tuto {_key} terminé : surlignage retiré", win.tour_done and "f5a623" not in _w_last.styleSheet())
+step("📚 lexique", win.open_glossary)
+_gl = win._glossary
+_n0 = _gl.count
+_gl.q.setText("intermod")
+check("lexique : recherche", 0 < _gl.count < _n0 and "Intermodulation" in _gl.view.toPlainText(), str(_gl.count))
+shot(_gl, "lexique")
+_gl.close()
 shot(win, "ultra_simple")
 step("passer en simple", lambda: win.set_level("simple"))
 check("simple : réglages et classement visibles", win.dock_set.isVisible() and win.layer_box.isVisible())

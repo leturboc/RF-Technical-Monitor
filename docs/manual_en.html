@@ -64,6 +64,8 @@ code { overflow-wrap: anywhere; }
     padding: 0 0 12px; columns: 2; }
 }
 @media print { .theme { display: none; } .wrap { display: block; padding: 0; } body { background: #fff; } nav { position: static; max-height: none; border: 0; columns: 2; padding: 0 0 12px; font-size: 12px; } h2, h3 { break-after: avoid; } table, .box, li { break-inside: avoid; } }
+.part { margin: 56px 0 0; padding: 10px 14px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 700; letter-spacing: .03em; }
+nav .np { margin: 12px 0 2px; font-weight: 700; color: var(--accent); }
 </style>
 </head>
 <body>
@@ -71,42 +73,84 @@ code { overflow-wrap: anywhere; }
 <div class="wrap">
 <nav>
   <b>Contents</b>
-  <a href="#intro">1. What is it?</a>
-  <a href="#install">2. Install and start</a>
-  <a href="#ecran">3. The main window</a>
-  <a href="#rf">4. RF basics</a>
-  <a href="#spectre">5. Reading the spectrum</a>
-  <a href="#show">6. Preparing a show</a>
-  <a href="#seuils">7. Thresholds and alarms</a>
-  <a href="#surveiller">8. During the show</a>
-  <a href="#signal">9. Reading the states</a>
-  <a href="#mur">10. The frequency wall</a>
-  <a href="#fenetres">11. Windows and dual screen</a>
-  <a href="#coordination">12. Coordination: plan, intermod, backup</a>
-  <a href="#filtre">13. Receiver filter and device profiles</a>
-  <a href="#linecheck">14. Line check</a>
-  <a href="#spectera">15. Spectera / WMAS</a>
-  <a href="#deux">16. Two tinySAs, network relay</a>
-  <a href="#alertes">17. Phone alerts and web page</a>
-  <a href="#sessions">18. Sessions, playback, report</a>
-  <a href="#journal">19. The log</a>
-  <a href="#apparence">20. Appearance and language</a>
-  <a href="#menus">21. Where is what (menus)</a>
-  <a href="#clavier">22. Keyboard shortcuts</a>
-  <a href="#depannage">23. Troubleshooting</a>
-  <a href="#donnees">24. Where are my files?</a>
-  <a href="#limites">25. What is not verified</a>
+  <div class="np">A. Getting started</div>
+  <a href="#lire">1. How to read this manual</a>
+  <a href="#intro">2. What is it?</a>
+  <a href="#materiel">3. The equipment</a>
+  <a href="#install">4. Install and start</a>
+  <a href="#ecran">5. The main window</a>
+  <a href="#aide-in">6. Tutorials, glossary and tooltips</a>
+  <div class="np">B. Understanding RF</div>
+  <a href="#rf">7. RF basics</a>
+  <a href="#spectre">8. Reading the spectrum</a>
+  <div class="np">C. The festival step by step</div>
+  <a href="#vue">9. Overview: the steps of a festival</a>
+  <a href="#avant">10. Step 1 — Prepare at home</a>
+  <a href="#arrivee">11. Step 2 — Arriving on site: scan the venue</a>
+  <a href="#terrain">12. Step 3 — Several stages: scan each place with the roaming tinySA</a>
+  <a href="#plan">13. Step 4 — Build the frequency plan</a>
+  <a href="#portes">14. Step 5 — Before doors open</a>
+  <a href="#reagir">15. Step 6 — During the show: monitor and react</a>
+  <a href="#nuit">16. Step 7 — The night and several days</a>
+  <a href="#apres">17. Step 8 — After the festival</a>
+  <div class="np">D. Tool reference</div>
+  <a href="#show">18. Preparing a show</a>
+  <a href="#seuils">19. Thresholds and alarms</a>
+  <a href="#surveiller">20. During the show</a>
+  <a href="#signal">21. Reading the states</a>
+  <a href="#mur">22. The frequency wall</a>
+  <a href="#fenetres">23. Windows and dual screen</a>
+  <a href="#coordination">24. Coordination: plan, intermod, backup</a>
+  <a href="#filtre">25. Receiver filter and device profiles</a>
+  <a href="#linecheck">26. Line check</a>
+  <a href="#spectera">27. Spectera / WMAS (wideband carriers)</a>
+  <a href="#deux">28. Two tinySAs, network relay</a>
+  <a href="#alertes">29. Phone alerts and web page</a>
+  <a href="#sessions">30. Sessions, playback, report</a>
+  <a href="#journal">31. The log</a>
+  <a href="#apparence">32. Appearance and language</a>
+  <div class="np">E. Help</div>
+  <a href="#faq">33. Frequently asked questions</a>
+  <a href="#depannage">34. Troubleshooting</a>
+  <a href="#lexique">35. Glossary</a>
+  <a href="#menus">36. Where is what (menus)</a>
+  <a href="#clavier">37. Keyboard shortcuts</a>
+  <a href="#donnees">38. Where are my files?</a>
+  <a href="#limites">39. What is not verified</a>
 </nav>
 <main>
 <h1>TinySA Monitor — user manual</h1>
-<p class="sub">Version 7.13 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.
+<p class="sub">Version 7.26.0 · for the tinySA Ultra on Windows · RF coordination for festivals, concerts and events.
 PDF version: <code>docs/manual_en.pdf</code>.</p>
 
 <div class="box"><b>In one sentence:</b> the app keeps sweeping your bands with a tinySA, compares what it sees
 with your frequency list, and warns you as soon as a transmitter goes quiet or a signal shows up where it
 should not.</div>
+<div class="part">Part A — Getting started</div>
+<h2 id="lire">1. How to read this manual</h2>
+<p>This manual is written for <b>someone who has never done RF</b> as well as for a technician who wants the details
+of a setting. It is organised in five parts:</p>
+<table>
+  <tr><th>Part</th><th>For whom / when</th></tr>
+  <tr><td><b>A. Getting started</b></td><td>Install, plug in, understand the screen, find help (tutorials,
+    glossary). Read once.</td></tr>
+  <tr><td><b>B. Understanding RF</b></td><td>The basics (dBm, noise, intermodulation…) and how to read the spectrum.
+    If you are a beginner, this is what will save you the most time.</td></tr>
+  <tr><td><b>C. The festival step by step</b></td><td><b>The complete workflow</b>, in order: from preparing at home
+    to the report after the last gig. It is the heart of the manual: follow it the first time.</td></tr>
+  <tr><td><b>D. Tool reference</b></td><td>Each tool in detail: what it is for, every setting, the pitfalls. Look it
+    up when you need it.</td></tr>
+  <tr><td><b>E. Help</b></td><td>FAQ, troubleshooting, A-to-Z glossary, shortcuts, where your files are, what is not
+    verified yet.</td></tr>
+</table>
+<div class="box ok"><b>In the app too:</b> the <b>🎓 Tutorial</b> button offers six guided tours (discover the screen,
+first show from A to Z, reading the spectrum, coordinating, several stages, during the show); each step shows the
+part of the screen concerned and explains <b>what it is / why / how</b>, with a « Do it » button that opens the tool.
+The <b>📚 Glossary</b> (☰ More › Help) explains every word.</div>
+<p>Words in bold between quotes (« ▶ Start », « 📶 Bands »…) are the exact button texts; <b>☰ More › Tool</b> means
+« open the ☰ More menu, then click Tool ».</p>
 
-<h2 id="intro">1. What is it?</h2>
+<h2 id="intro">2. What is it?</h2>
 <p>TinySA Monitor does two jobs at once:</p>
 <ul>
   <li><b>Spectrum analyser</b>: live spectrum over several bands, max hold, waterfall, live zoom, venue
@@ -120,7 +164,37 @@ check), a web page for the team, alerts on phones.</p>
 <div class="box warn">The band allocations shown (DTT, 4G/5G, aero…) are <b>for guidance only</b>: always
 check the local regulations (Ofcom, ANFR, BNetzA…) before transmitting.</div>
 
-<h2 id="install">2. Install and start</h2>
+<h2 id="materiel">3. The equipment</h2>
+<h3>What you need at minimum</h3>
+<ul>
+  <li><b>A tinySA Ultra</b> (the « Ultra » model, with the big screen, up to 6 GHz). It is a small spectrum
+    analyser: a device that measures radio power frequency by frequency. The app tells it what to measure and fetches
+    the results over USB.</li>
+  <li><b>Its antenna</b> (supplied), screwed onto the RF socket. For mics (470–700 MHz), the telescopic antenna or a
+    small UHF antenna is enough. An antenna for the wrong band sees badly: the measured level is lower than
+    reality.</li>
+  <li><b>A USB-C cable that carries data.</b> Careful: many USB-C cables only charge. If the PC does not see the
+    tinySA, change the cable first.</li>
+  <li><b>A Windows PC</b> (10 or 11). No need for a racing machine; a screen of at least 1280 × 720.</li>
+</ul>
+<h3>Optional</h3>
+<ul>
+  <li><b>A 2nd tinySA</b>: twice as fast (they share the bands), or one per stage (chapter « Two tinySAs, network
+    relay »).</li>
+  <li><b>A Raspberry Pi</b> (Pi 4 recommended) + a USB power bank: the « roaming tinySA » kit to scan each stage or
+    hunt a jammer while the PC stays at the FOH. The software kit comes with each version
+    (<code>relais-raspberry-pi.zip</code>).</li>
+  <li><b>A phone</b>: to receive alarms (ntfy, Telegram) and see the web page (list, wall, spectrum, FOH, hunt,
+    field).</li>
+  <li><b>A 2nd screen</b>: for the frequency wall at the FOH.</li>
+  <li><b>A small Wi-Fi router</b>: your own network for the PC, the Pi and the phones, more reliable than a venue's
+    Wi-Fi.</li>
+</ul>
+<div class="box warn"><b>Where to put the tinySA?</b> Like a mic receiver: high up, in the clear, near the receiving
+antennas but not right next to a transmitter (a transmitter 10 cm away saturates the measurement and shows fake
+signals). Away from LED screens, power supplies and computers, which raise the noise floor.</div>
+
+<h2 id="install">4. Install and start</h2>
 <h3>Getting the exe</h3>
 <ol class="steps">
   <li>On the <b>Releases</b> page of the GitHub repository, download <code>TinySA-Monitor.exe</code> from the
@@ -136,17 +210,17 @@ check the local regulations (Ofcom, ANFR, BNetzA…) before transmitting.</div>
     on the port).</li>
   <li>At the top, pick the <b>Port</b>: the one marked <b>✔ tinySA</b> is detected automatically.
     No tinySA at hand? Tick <b>Demo mode</b>: simulated signals so you can try everything.</li>
-  <li>Click <b>▶ Start</b>. The app offers to <b>record the session</b> (chapter 18); then the spectrum fills up
+  <li>Click <b>▶ Start</b>. The app offers to <b>record the session</b> (chapter 30); then the spectrum fills up
     and the tinySA version is shown next to the port.</li>
 </ol>
 <div class="box"><b>Three display levels</b> (☰ More › 👁 Display): <b>🟢 Ultra simple</b> (on the very first
 start) = the spectrum, your list and the alarms, nothing else; <b>🔵 Simple</b> = + essential settings, the log and
 sorting by scene / group; <b>🎛 Expert</b> = every setting (RBW, LNA, attenuator, segments, measurement window,
 calibration…).</div>
-<div class="box ok"><b>🎓 Tutorial</b> (button on the workflow bar, or ☰ More › 🎓): a 2-minute guided tour showing
-each part of the screen in order, with a bubble next to it.</div>
+<div class="box ok"><b>🎓 Tutorial</b> (button on the workflow bar, or ☰ More › Help): six guided tours for beginners
+(see the chapter « Tutorials, glossary and tooltips »). Start with « 🖥 Discover the screen ».</div>
 
-<h2 id="ecran">3. The main window</h2>
+<h2 id="ecran">5. The main window</h2>
 <table>
   <tr><th>Area</th><th>What you do there</th></tr>
   <tr><td><b>Top bar</b></td><td>Port, ▶ Start, 🎪 Shows, 🔔 alarms, ☰ More. The version is shown at the bottom
@@ -167,7 +241,32 @@ each part of the screen in order, with a bubble next to it.</div>
 </table>
 <p>Every button, checkbox and list has a <b>tooltip</b> on hover, also copied to the bottom of the window.</p>
 
-<h2 id="rf">4. RF basics</h2>
+<h2 id="aide-in">6. Tutorials, glossary and tooltips</h2>
+<ul>
+  <li><b>🎓 Tutorial</b> (workflow bar, or ☰ More › Help): six guided tours. A bubble appears next to the part of the
+    screen concerned (outlined in orange), with three headings: <b>🧐 What is it?</b>, <b>🎯 Why?</b>, <b>👉 How?</b>.
+    When the step is about a tool, the <b>« Do it »</b> button opens it; the tutorial stays open beside it.
+    <table>
+      <tr><th>Tutorial</th><th>Length</th><th>Content</th></tr>
+      <tr><td>🖥 Discover the screen</td><td>3 min</td><td>Each part of the window.</td></tr>
+      <tr><td>🎤 My first show, from A to Z</td><td>10 min</td><td>The complete job in order.</td></tr>
+      <tr><td>📈 Reading the spectrum</td><td>4 min</td><td>Curves, noise, max hold, zoom, markers.</td></tr>
+      <tr><td>🪄 Coordinating your frequencies</td><td>5 min</td><td>Profiles, auto coordination, plan, intermod,
+        backup.</td></tr>
+      <tr><td>🏟 Several stages, roaming tinySA</td><td>5 min</td><td>Stages, scans per location, Pi kit, Field
+        view.</td></tr>
+      <tr><td>🚨 During the show</td><td>4 min</td><td>Alarms, wall, hunt, schedule, night.</td></tr>
+    </table></li>
+  <li><b>📚 Glossary</b> (☰ More › Help, or the tutorial's button): every word explained simply, with a search
+    (« intermod », « dBm »…). It is also copied at the end of this manual.</li>
+  <li><b>Tooltips</b>: hover over any button, box or list: a bubble explains what it is for; the same text shows at
+    the bottom of the window.</li>
+  <li><b>❓ Traces</b> (above the spectrum): each line of the spectrum explained, with the related settings.</li>
+  <li><b>📖 Manual</b> (☰ More › Help): this document.</li>
+</ul>
+
+<div class="part">Part B — Understanding RF</div>
+<h2 id="rf">7. RF basics</h2>
 <p>You don't need to be an engineer, but these few ideas avoid 90 % of the bad surprises.</p>
 <h3>dBm: the received power</h3>
 <ul>
@@ -210,10 +309,10 @@ in-ear combiner, transmitters too close together), they create <b>new frequencie
   <li><b>5th order</b>: 3A − 2B… (weaker still, useful for in-ears on a combiner).</li>
 </ul>
 <p>The <b>stronger</b> and the <b>closer together</b> the transmitters are, the stronger the products. The aim is
-to keep products off the frequencies in use: that's what coordination does (chapter 12).</p>
+to keep products off the frequencies in use: that's what coordination does (chapter 24).</p>
 <h3>Selectivity and receiver filter</h3>
 <p>Every receiver has an input filter that only lets through a slice of spectrum around its frequency (16 MHz,
-32 MHz…). Transmitters outside it are attenuated and don't create IM in that receiver. Details in chapter 13.</p>
+32 MHz…). Transmitters outside it are attenuated and don't create IM in that receiver. Details in chapter 25.</p>
 <h3>Antennas, cables, distance</h3>
 <ul>
   <li>The level read depends on the <b>antenna</b> (gain, orientation), the <b>cable</b> (loss: ~3 to 6 dB per
@@ -224,7 +323,7 @@ to keep products off the frequencies in use: that's what coordination does (chap
     IM): move it away or add attenuation.</li>
 </ul>
 
-<h2 id="spectre">5. Reading the spectrum</h2>
+<h2 id="spectre">8. Reading the spectrum</h2>
 <p><b>❓ Traces</b> button above the spectrum: every line explained, with its settings in the same place (they are
 linked to the main window's settings).</p>
 <table>
@@ -264,8 +363,226 @@ my list, where could it come from, zoom).</p>
     level). Several selected rows = several highlights. If it's outside the view, the status bar says so
     (double-click its level to zoom onto it).</li>
 </ul>
+<div class="part">Part C — The festival step by step</div>
+<h2 id="vue">9. Overview: the steps of a festival</h2>
+<p>Here is the complete flow. Each step has its own chapter right after, with the detailed clicks.</p>
+<table>
+  <tr><th>When</th><th>Step</th><th>Result</th></tr>
+  <tr><td>Weeks before, at home</td><td><b>1. Prepare</b>: bands, country, list of your devices, profiles, stages, show
+    🎪</td><td>A show file ready, the app known (demo mode)</td></tr>
+  <tr><td>Arriving on site</td><td><b>2. Scan the venue</b>: let the tinySA sweep each place</td><td>You know what
+    already occupies the air</td></tr>
+  <tr><td>Arriving (several stages)</td><td><b>3. Scan each stage</b> with the roaming tinySA</td><td>One or more
+    scans kept per stage, on the PC</td></tr>
+  <tr><td>Load-in</td><td><b>4. Build the plan</b>: coordination per stage or global, check, intermod,
+    statuses</td><td>A clean frequency list, without conflicts</td></tr>
+  <tr><td>Before doors</td><td><b>5. Prepare monitoring</b>: thresholds, alarms, line check, alerts, web page,
+    wall</td><td>Everything checked, the team sees the state</td></tr>
+  <tr><td>Show</td><td><b>6. Monitor and react</b></td><td>Problems are seen and fixed in time</td></tr>
+  <tr><td>Night, several days</td><td><b>7. Keep it running</b>: festival mode</td><td>Auto restart, summary every
+    morning</td></tr>
+  <tr><td>After</td><td><b>8. Review, report, keep</b></td><td>Report, replay, show reusable next year</td></tr>
+</table>
+<div class="box">Small event, a single stage? Do steps 1, 2, 4, 5, 6, 8; it takes about an hour.</div>
 
-<h2 id="show">6. Preparing a show</h2>
+<h2 id="avant">10. Step 1 — Prepare at home</h2>
+<h3>1.1 Learn the app in demo mode</h3>
+<ol class="steps">
+  <li>Start the app, tick <b>Demo mode</b> (at the top) then <b>▶ Start</b>. Fake signals appear: mics, TV channels, a
+    jammer that comes and goes.</li>
+  <li>Do the <b>🎤 My first show, from A to Z</b> tutorial (🎓 Tutorial). It walks you through each step with the
+    fake signals.</li>
+  <li>Untick demo mode when you are done (<b>■ Stop</b> first).</li>
+</ol>
+<h3>1.2 Country and bands</h3>
+<ol class="steps">
+  <li>In the settings, <b>Country and plan</b> section: choose your country. It sets the TV channels shown and the
+    « what is this frequency used for » strip under the spectrum.</li>
+  <li><b>Bands to sweep</b>: only keep the ranges where your devices are. Classic example: UHF 470–694 MHz for mics
+    and in-ears; add 1.8 GHz (DECT) or 2.4 GHz if you have those systems. Fewer bands = faster sweep = more reactive
+    alarms.</li>
+  <li><b>⚡ Points</b> above the spectrum: leave <b>Auto balanced</b>. The app picks the fineness so a sweep stays
+    fast.</li>
+</ol>
+<h3>1.3 Your frequency list</h3>
+<p>If you already have a plan (EazyRF, WWB, WSM, Excel), <b>② My frequencies › 📥 Import</b>. Otherwise, add by hand
+(<b>＋ Add</b>) or wait for the site scan to do the coordination (step 4).</p>
+<p>For each frequency, the <b>status</b> is the most important setting:</p>
+<ul>
+  <li><b>« In use »</b> (must transmit): your transmitter must be on it. If it disappears → <span class="bad">ABSENT</span>
+    alarm.</li>
+  <li><b>« Free »</b> (must stay free): a reserve (backup, another day). If someone comes onto it →
+    <span class="bad">CONFLICT</span> alarm.</li>
+</ul>
+<h3>1.4 Device profiles</h3>
+<p><b>☰ More › 📐 Plan › 🎛 Device profiles</b>: pick the brand / range of each device. The profile gives the minimum
+spacing between frequencies, the receiver filter width and the tuning step. Coordination calculations depend on it.
+If you know the values from your usual coordination software, create a custom profile with them.</p>
+<h3>1.5 Stages (festival)</h3>
+<p>In « My frequencies », <b>Sort by stage › group</b> box: <b>＋ Stage</b> for each stage (Main stage, Club…),
+<b>＋ Group</b> for each family (Mics, In-ears, Walkies…). Put your frequencies in them (right-click a stage › assign
+the selection). The alarm priority is set per group (right-click › 🔔 Priority).</p>
+<h3>1.6 Save the show</h3>
+<p><b>Ctrl+S</b> (or 🎪 Shows › Save): a <code>.tsashow</code> file keeps everything (frequencies, stages, bands, kept
+scans, schedule). Fill in the festival name, venue and dates (🎪 › Show info): they will appear in the reports.</p>
+
+<h2 id="arrivee">11. Step 2 — Arriving on site: scan the venue</h2>
+<p><b>Why?</b> Before choosing any frequency, you need to know what already occupies the air: TV channels, other RF
+teams (rental companies, broadcast, security), walkie-talkies, LED screens that « spit ». A frequency that looks free
+on paper may be taken on site.</p>
+<ol class="steps">
+  <li>Set up the tinySA where your receivers will be (RF desk, side-stage), antenna in the clear.</li>
+  <li>Choose the port (✔ tinySA) then click <b>① Scan the venue</b>: sweeping starts and the max hold (orange curve)
+    restarts from zero.</li>
+  <li>Let it run <b>at least 10 minutes</b>, ideally during light / screen tests (they change the noise floor). The
+    longer, the more the max hold catches intermittent transmitters (walkies, transmitters being tested).</li>
+  <li>Look at the spectrum (chapter « Reading the spectrum »): 8 MHz plateaus = TV, peaks = transmitters, the bottom =
+    noise floor. Hover to read frequency and level.</li>
+  <li><b>Keep this scan</b>: <b>☰ More › 📍 Scans by location › 📍 Keep</b> (name it after the stage or place). It will
+    be used for coordination and the report.</li>
+  <li>Optional: <b>📏 Reference › Capture</b> = the venue's « quiet », for a relative threshold (expert).</li>
+</ol>
+<div class="box warn"><b>Classic trap:</b> scanning at 9 am on an empty site, then finding out in the evening that the
+regional TV is setting up its links. Scan again once the other teams have arrived, and compare (⚖ in the
+replay).</div>
+
+<h2 id="terrain">12. Step 3 — Several stages: scan each place with the roaming tinySA</h2>
+<p><b>Why?</b> On a big site, each stage has its own radio environment: the stage near the road sees the town's TV
+transmitter, the one in the tent sees the LED screens. By keeping a scan per stage, you can coordinate each stage with
+<b>its</b> spectrum, or the whole site at once.</p>
+<h3>3.1 The kit</h3>
+<p>A tinySA plugged into a Raspberry Pi with a power bank, in a bag, linked over Wi-Fi to the FOH PC. Full setup in the
+chapter « Two tinySAs, network relay › Portable hunting kit » (install once, <code>relais-raspberry-pi.zip</code> file
+supplied with each version). With <b>a single tinySA</b>, it is the 1st tinySA (port list › « 🌐 Network tinySA… » ›
+the Pi's address). With two, the 2nd.</p>
+<h3>3.2 Prepare the web page</h3>
+<ol class="steps">
+  <li>On the PC: <b>📣 Alerts and web page</b> (⑤ or ☰ More) › web page tab: enable it, set a <b>PIN code</b> (4
+    digits or more) and tick the <b>🎒 Field</b> view (it is hidden by default).</li>
+  <li>The page's address is shown (e.g. <code>http://192.168.1.10:8080</code>): open it on your phone, connected to
+    the same Wi-Fi.</li>
+</ol>
+<h3>3.3 Walking around the site</h3>
+<ol class="steps">
+  <li>Arrive at the first stage. On the phone, <b>🎒 Field</b> view: choose the bag's tinySA, tick the stage you are at
+    then <b>📡 This tinySA is here</b>. (Several neighbouring stages? tick them all.)</li>
+  <li><b>↺ New scan here</b>: those stages' max hold restarts from zero.</li>
+  <li>Look at <b>📈 What the tinySA sees</b>: the live spectrum, the <b>persistence</b> (blue traces that fade: what
+    comes back often makes a thick line) and the <b>stage's max hold</b> in its colour. Wait until the max hold stops
+    moving much (a few minutes).</li>
+  <li><b>💾 Keep this scan</b>, with a label if you like (« front », « stage left », « FOH »). You can keep several
+    per stage, at different spots: they will be merged.</li>
+  <li>Move to the next stage and start again. Everything is saved on the PC, in the show.</li>
+</ol>
+<p>On the PC, clicking a stage in « My frequencies » shows the merge of its scans (dashes); ☰ More › 📍 Scans by
+location lists them all, and lets you export them (WWB, WSM, CSV) or import a scan from other software (including
+WWB's native <code>.sdb3</code> format).</p>
+
+<h2 id="plan">13. Step 4 — Build the frequency plan</h2>
+<p><b>The goal:</b> a list where each frequency is far enough from the others, with no « ghost frequency »
+(intermodulation) on it, and away from what already occupies the venue.</p>
+<h3>4.1 Choose the profiles</h3>
+<p>Each frequency has its <b>device</b> (« Device » column of 🧮 Check the plan): spacing and filter depend on it
+(chapter « Receiver filter and device profiles »).</p>
+<h3>4.2 Find frequencies: 🪄 auto coordination</h3>
+<ol class="steps">
+  <li><b>③ Coordinate the plan › 🪄 Find N compatible frequencies</b>.</li>
+  <li><b>Device</b>: the profile of the equipment to tune. <b>How many</b>: the number of frequencies. <b>From … to</b>:
+    the range of your transmitters (written on them, e.g. 470–608 MHz for an « A » range).</li>
+  <li><b>Avoid what is busy</b> + the <b>« Spectrum: … »</b> list:
+    <ul>
+      <li><b>stage X</b>: <b>per-stage</b> coordination (its kept scans + its current max hold); offered by default if
+        that stage is selected in « My frequencies », and the new frequencies are filed in it;</li>
+      <li><b>whole site</b>: <b>global</b> coordination (merge of all scans): for equipment that moves between stages,
+        or a compact site;</li>
+      <li><b>current max hold</b>: what the tinySAs see now.</li>
+    </ul></li>
+  <li><b>🔎 Search</b>, then <b>＋ Add to my list</b>. They arrive with the « In use » status.</li>
+</ol>
+<p>If the app does not find enough (« the range is full »), it is often physics: too many transmitters on too few MHz.
+Widen the range, choose a more selective profile, or spread over another band.</p>
+<h3>4.3 Check: 🧮</h3>
+<p><b>③ › 🧮 Check the plan</b> checks the whole list. Each line marked ✗ says why (« too close to HF 3 », « IM3 of HF 1
+and HF 4 »); <b>Replace</b> suggests a frequency that creates no new problem. Check again until there are 0
+problems.</p>
+<h3>4.4 Understand intermod: ④</h3>
+<p><b>④ Intermod</b> lists the products (2A − B, A + B − C…) landing on your frequencies, from the most serious
+(measured above the threshold) to the least (calculation only). The <b>rules</b> at the top choose what is counted;
+« Like EazyRF » is a good starting point.</p>
+<h3>4.5 Reserves</h3>
+<p>Keep 2 or 3 compatible frequencies as <b>« Free »</b> per stage: they will be your backups, and the app warns you if
+someone moves onto them.</p>
+<h3>4.6 Set the transmitters and save</h3>
+<p>Export the list (☰ More › 📋 List › 📤 Export) to set the receivers (or their software), then <b>Ctrl+S</b>.</p>
+
+<h2 id="portes">14. Step 5 — Before doors open</h2>
+<ol class="steps">
+  <li><b>Thresholds</b> (settings › Thresholds): click <b>Auto</b> next to the « busy » threshold: it sits just above
+    the noise floor. « Weak level from »: 10 dB below busy. « TX absent after »: 5 to 10 s.</li>
+  <li><b>⑤ › ▶ Start monitoring</b>; accept to <b>record the session</b>.</li>
+  <li><b>🎤 Line check</b> (Ctrl+L): switch the transmitters on one by one; each frequency seen gets ticked. An
+    « unknown » frequency near a missing one = the wrongly set transmitter.</li>
+  <li>All « In use » lines must be <span class="ok">OK</span> (green). The « Free » ones blue.</li>
+  <li><b>📣 Phone alerts</b>: test sending (📖 Tutorial button for ntfy or Telegram).</li>
+  <li><b>Web page</b> for the team: <b>🎛 FOH</b> view on a tablet, <b>📋 List</b> on phones.</li>
+  <li><b>🧱 Wall</b> on the FOH's 2nd screen (⛶ full screen).</li>
+  <li><b>🎬 Schedule</b>: if sets change, enter who plays when: mics switched off between two gigs will not trigger an
+    alarm.</li>
+</ol>
+
+<h2 id="reagir">15. Step 6 — During the show: monitor and react</h2>
+<p>The <b>Signal</b> column and the wall are enough to follow along: green = all is well. When an alarm goes off (sound
++ red line in the alarms + phone):</p>
+<table>
+  <tr><th>Alarm</th><th>What it means</th><th>What to do, in order</th></tr>
+  <tr><td><span class="bad">ABSENT</span></td><td>An « In use » transmitter is no longer seen</td><td>1. Battery?
+    transmitter on, not in RF mute? 2. Antenna bent / unplugged? 3. Artist out of range (dressing rooms, car park)?
+    4. Planned changeover → schedule. Acknowledge to stop the sound.</td></tr>
+  <tr><td><span class="bad">CONFLICT</span></td><td>A signal on a « Free » frequency</td><td>1. Look at the spectrum:
+    narrow peak (transmitter) or wide bump (noise)? 2. « seen by … » and « INTERMOD » info: if it is an intermod
+    product, the formula is given. 3. If it was your reserve, it can no longer be used: 🆘 find another one. 4. 🔎 Hunt
+    to find the source.</td></tr>
+  <tr><td><span class="bad">TOO STRONG</span></td><td>A huge signal somewhere</td><td>A transmitter right next to the
+    tinySA (false alarm), or a powerful jammer: hunt.</td></tr>
+  <tr><td><span class="bad">DEVICE</span></td><td>The tinySA no longer answers</td><td>Cable, tinySA battery, Pi Wi-Fi.
+    The app retries by itself; after 3 failures, unplug / replug.</td></tr>
+  <tr><td><span class="warn">weak</span> (no alarm)</td><td>Signal present but low</td><td>Distant transmitter or
+    battery running low: keep an eye on it.</td></tr>
+</table>
+<h3>A mic gets jammed in the middle of a gig</h3>
+<ol class="steps">
+  <li><b>🆘 Backup frequency</b>: the app suggests frequencies that are free NOW and compatible (choose the stage's
+    spectrum).</li>
+  <li>Switch the transmitter / receiver pair (or take a « Free » reserve already prepared).</li>
+  <li>Change the frequency in the list (double-click MHz): the log notes « NEW FREQUENCY ».</li>
+  <li>After the song: 🔎 hunt to find the culprit.</li>
+</ol>
+
+<h2 id="nuit">16. Step 7 — The night and several days</h2>
+<p><b>☰ More › 🌙 Festival mode</b>: the app</p>
+<ul>
+  <li>restarts monitoring by itself after a power cut or a crash (if it was running);</li>
+  <li>prevents the PC from going to sleep;</li>
+  <li>can start with Windows;</li>
+  <li>sends <b>a summary every morning</b> (phone + HTML report): the night's alarms, or « ✅ all good ».</li>
+</ul>
+<p>Keep the tinySA on mains power (not on its battery). Check disk space if session recording is on (a few tens of MB
+per hour, shown in the settings).</p>
+
+<h2 id="apres">17. Step 8 — After the festival</h2>
+<ol class="steps">
+  <li><b>■ Stop</b>: the session is closed (folder with the recorded spectrum, the log and the list).</li>
+  <li><b>⑥ › ⏪ Replay</b>: review any moment (time slider); « 📂 Open a session » for another day; ⚖ compare two
+    sessions.</li>
+  <li><b>📊 Occupancy per hour</b>: the time slots when each frequency was disturbed.</li>
+  <li><b>📄 Show report</b>: a clean HTML document (frequencies, alarms, incidents, scans) to send to the
+    production.</li>
+  <li><b>Ctrl+S</b>: the show keeps the per-stage scans and the plan. Next year: 🎪 › Open, and you start again from
+    there.</li>
+</ol>
+
+<div class="part">Part D — Tool reference</div>
+<h2 id="show">18. Preparing a show</h2>
 <h3>Bands to sweep</h3>
 <ul>
   <li><b>Settings › Bands to sweep</b>: tick the bands, or add some (start, stop, step). Presets exist (UHF mics,
@@ -360,7 +677,7 @@ location has its own live spectrum, and a stage's frequencies are judged (busy, 
 stage. Global = the stronger of the two (worst case).</p>
 <p>Kept scans are saved with the show (🎪): next year, you start again with the scans of each stage.</p>
 
-<h2 id="seuils">7. Thresholds and alarms</h2>
+<h2 id="seuils">19. Thresholds and alarms</h2>
 <h3>Thresholds: when is it busy?</h3>
 <ul>
   <li><b>“Busy” threshold</b>: above it, the frequency is busy. Set it 6 to 10 dB above the carpet; <b>Auto</b>
@@ -378,11 +695,11 @@ stage. Global = the stronger of the two (worst case).</p>
   <li><b>“Too strong” alert</b> (−25 dBm by default, purple line): ⚠ TOO STRONG, overload risk (walkie-talkie right
     next to an antenna…).</li>
   <li><b>Sound alert</b>: beep when an alarm appears; critical ones repeat.</li>
-  <li><b>📝 What to log</b>: see chapter 19.</li>
+  <li><b>📝 What to log</b>: see chapter 31.</li>
   <li>Expert: <b>Detect unknown signals</b> (peaks not in the list, logged as UNKNOWN).</li>
 </ul>
 
-<h2 id="surveiller">8. During the show</h2>
+<h2 id="surveiller">20. During the show</h2>
 <ol class="steps">
   <li><b>▶ Start</b>. Every sweep updates the list, the wall, the markers and the alarms.</li>
   <li>Watch the <b>Signal</b> column (or the wall): green “OK” for your transmitters, blue “✔ free” for your
@@ -417,7 +734,7 @@ night or all week:</p>
     now » to test.</li>
 </ul>
 
-<h2 id="signal">9. Reading the states</h2>
+<h2 id="signal">21. Reading the states</h2>
 <table>
   <tr><th>Status</th><th>Signal present</th><th>No signal</th></tr>
   <tr><td>Must transmit</td><td><span class="ok">OK</span> · “OK (weak)”</td>
@@ -434,7 +751,7 @@ night or all week:</p>
   <li>Words and colours can be changed: ☰ More › 🎨 Appearance and language › 🔤 Words and colours.</li>
 </ul>
 
-<h2 id="mur">10. The frequency wall</h2>
+<h2 id="mur">22. The frequency wall</h2>
 <ul>
   <li>🧱 button (top bar) or ☰ More › 🧱 Wall: one tile per frequency, colour = signal state.</li>
   <li><b>📋 Choose</b>: which frequencies get a tile. “Alarms always visible” brings back a removed frequency
@@ -444,17 +761,17 @@ night or all week:</p>
     back.</li>
 </ul>
 
-<h2 id="fenetres">11. Windows and dual screen</h2>
+<h2 id="fenetres">23. Windows and dual screen</h2>
 <p>☰ More › 🪟 Windows and layouts: <b>Standard</b>, <b>Analyser only</b>, <b>Monitoring</b>, <b>Dual screen</b>,
 and <b>🗗 Real windows / dual screen</b>: each panel (Spectrum, Waterfall, List, Log, Alarms, Settings) as a real
 Windows window (maximise, taskbar), on the screen of your choice, maximised or full screen. In the window:
 🖥 Next screen, ⛶ Full screen (<kbd>F11</kbd>), 📌 Dock. Windows reopen in the same place at the next start;
 “📌 Dock all” or the Standard layout puts everything back into the main window.</p>
 
-<h2 id="coordination">12. Coordination: plan, intermod, backup</h2>
+<h2 id="coordination">24. Coordination: plan, intermod, backup</h2>
 <h3>🪄 Find N compatible frequencies (auto coordination)</h3>
 <p>Workflow bar › ③ Coordinate the plan, or ☰ More › 📐 Plan. Like coordination software: pick the <b>device</b>
-(its filter, spacing, step, chapter 13), <b>how many</b> frequencies you need and the <b>range</b> (your
+(its filter, spacing, step, chapter 25), <b>how many</b> frequencies you need and the <b>range</b> (your
 transmitters' band). <b>🪄 Search</b> finds, from bottom to top, frequencies compatible with <b>your whole list and
 with each other</b> (spacing, intermod per the rules, filter), on the device's step, avoiding what the tinySA sees
 as busy (max hold above the « busy » threshold: run ① Scan the venue for a few minutes first). <b>＋ Add to my
@@ -464,7 +781,7 @@ list</b> puts them « In use », named « HF 1, HF 2… », in the chosen stage.
 <ul>
   <li>🧮 button or ☰ More › 📐 Frequency plan › 🧮 Check the plan. For each frequency: ✔ compatible or ✗ with
     the details (spacing too small, 2A − B, A + B − C, 5th order).</li>
-  <li><b>Default device</b> and <b>Device</b> column: a profile per frequency (chapter 13).</li>
+  <li><b>Default device</b> and <b>Device</b> column: a profile per frequency (chapter 25).</li>
   <li><b>Rules</b>: “Like EazyRF” (2 TX ±100 kHz, 3 TX ±50 kHz) by default; the sentence “We check: …” says
     exactly what is counted.</li>
   <li>On a ✗ row: <b>🔍 Suggest</b> a compatible frequency (on the device's step, avoiding what the tinySA sees as
@@ -514,7 +831,7 @@ With many transmitters, 3 TX products quickly cover the whole band: pick « 2 TX
 frequency, the app still offers <b>the least bad ones</b>, in orange, with what's wrong (« intermod ×2: 2×… »,
 « level … ») in the Note column.</p>
 
-<h2 id="filtre">13. Receiver filter and device profiles</h2>
+<h2 id="filtre">25. Receiver filter and device profiles</h2>
 <h3>What is the filter?</h3>
 <p>Right after the antenna, every receiver has an <b>input filter</b> (preselection) that only lets through a slice
 of spectrum around its frequency. A receiver with a 32 MHz filter “sees” ±16 MHz; a 16 MHz filter sees ±8 MHz.
@@ -550,12 +867,12 @@ profile, <b>＋ From current settings</b> takes the window's settings. Name, fil
 note. Custom profiles are kept in your settings and in your shows. The filter of a device can depend on its band
 (e.g. group A of an evolution): make one profile per band if needed.</p>
 
-<h2 id="linecheck">14. Line check</h2>
+<h2 id="linecheck">26. Line check</h2>
 <p>🎤 button or <kbd>Ctrl</kbd>+<kbd>L</kbd>: switch your transmitters on one by one; each frequency turns ✓ as soon
 as its signal arrives. A summary “14 / 16 OK, missing: …” goes into the log. An unknown signal right next to a
 missing frequency points to a pack set to the wrong channel.</p>
 
-<h2 id="spectera">15. Spectera / WMAS (wideband carriers)</h2>
+<h2 id="spectera">27. Spectera / WMAS (wideband carriers)</h2>
 <ul>
   <li>☰ More › 📐 Frequency plan › 📶 Add a block: TV channel or centre frequency + width (6 or 8 MHz). Or
     right-click a frequency › “Wide block”.</li>
@@ -563,7 +880,7 @@ missing frequency points to a pack set to the wrong channel.</p>
   <li>Intermod and the plan check take the width of the blocks into account.</li>
 </ul>
 
-<h2 id="deux">16. Two tinySAs, network relay</h2>
+<h2 id="deux">28. Two tinySAs, network relay</h2>
 <ol class="steps">
   <li>Settings › 2nd tinySA: tick “Use a 2nd tinySA” and give its port (<code>COM4</code>) or network address.</li>
   <li>On another PC: <code>TinySA-Monitor.exe --relais</code> (or ☰ More › 🔗 Connections › 📡 Network relay),
@@ -623,7 +940,7 @@ selected in « My frequencies », it is offered by default.</p>
 <p>The Pi and the phone must stay within the site Wi-Fi coverage. Without Wi-Fi: the tinySA on its own, on its own
 screen (frequency in the centre, small span, marker on the peak), still works.</p>
 
-<h2 id="alertes">17. Phone alerts and web page</h2>
+<h2 id="alertes">29. Phone alerts and web page</h2>
 <h3>📣 Push alerts</h3>
 <ul>
   <li>📣 button or ☰ More › 🔗 Connections › 📣 Alerts: <b>ntfy</b> (free app, no account: subscribe to the
@@ -636,7 +953,7 @@ screen (frequency in the centre, small span, marker on the peak), still works.</
 <ul>
   <li>Same window: enable the web page; the team opens the address shown (<code>http://192.168.x.x:8080</code>).</li>
   <li>Views to choose from: list, wall, live spectrum, waterfall, alarms, <b>🎛 Control room</b>. Optional password.</li>
-  <li><b>🔎 Hunt</b>: hunt an interferer from the phone (see « Portable hunting kit », chapter 16).</li>
+  <li><b>🔎 Hunt</b>: hunt an interferer from the phone (see « Portable hunting kit », chapter 28).</li>
   <li><b>🎛 Control room</b>: the screen for the RF desk (tablet, TV). At the top, alarms in very large blinking
     text (or « ✔ All good »); below, <b>one big status light per group</b> (stage › group): green = all OK,
     orange = a weak signal or something to watch, red = an alarm, with the names involved. ⛶ Full screen, and the
@@ -647,7 +964,7 @@ screen (frequency in the centre, small span, marker on the peak), still works.</
     <b>PIN code</b>.</li>
 </ul>
 
-<h2 id="sessions">18. Sessions, playback, report</h2>
+<h2 id="sessions">30. Sessions, playback, report</h2>
 <h3>💾 Recording the session (offered at ▶ Start)</h3>
 <p>At every start, the app asks whether to record <b>the whole session</b>: the spectrum of every sweep, the log
 and your frequency list, into the <b>folder of your choice</b> (external drive, USB stick…), one sub-folder per
@@ -677,7 +994,7 @@ stay free » reserve</b>, it's a risky time slot (red cell, summary at the botto
 <h3>📄 Show report</h3>
 <p>☰ More › 📊 Scans and reports › 📄 Report: standalone HTML (alarms, occupancy, log), printable to PDF.</p>
 
-<h2 id="journal">19. The log</h2>
+<h2 id="journal">31. The log</h2>
 <ul>
   <li><b>Log</b> tab: everything that happens, newest at the top; <b>Auto log</b> = one CSV per day.</li>
   <li><b>📝 What to log…</b>: tick the kinds of events to keep: alarms (CONFLICT, INTERMOD, MISSING), TOO STRONG,
@@ -686,7 +1003,7 @@ stay free » reserve</b>, it's a risky time slot (red cell, summary at the botto
   <li>Double-click an “UNKNOWN”: adds it to your list.</li>
 </ul>
 
-<h2 id="apparence">20. Appearance and language</h2>
+<h2 id="apparence">32. Appearance and language</h2>
 <h3>⚙ Settings (⚙ button at the top, Ctrl+,)</h3>
 <ul>
   <li><b>🖥 General</b>: language, interface (ultra simple / simple / expert), level unit, colours and themes, words of
@@ -705,36 +1022,39 @@ stay free » reserve</b>, it's a risky time slot (red cell, summary at the botto
   <li><b>🌐 Language / Langue</b>: Français or English; the app offers to restart. On the very first start it
     follows the Windows language.</li>
 </ul>
+<div class="part">Part E — Help</div>
+<h2 id="faq">33. Frequently asked questions</h2>
+<h3>The PC does not see the tinySA.</h3>
+<p>In order: is the tinySA on? does the cable carry data (try another)? is tinySA-App closed? ⟳ next to the port. A
+tinySA in « USB disk » mode (SD menu) is not a serial port: leave that mode.</p>
+<h3>The spectrum is empty / flat.</h3>
+<p>Antenna screwed on? Right band ticked (📶 Bands)? Demo mode unticked if you have a real tinySA? Hover: a level
+around −100 dBm everywhere = the antenna picks up nothing (wrong socket or antenna unplugged).</p>
+<h3>I get lots of false CONFLICT alarms.</h3>
+<p>The « busy » threshold is too low (in the noise): click Auto, or raise it a few dB. An LED screen or a power supply
+near the tinySA also raises the noise: move it away.</p>
+<h3>My mic is on but stays ABSENT.</h3>
+<p>Check that the list frequency is exactly the transmitter's (to the kHz), that the band containing it is ticked, and
+that the transmitter is not too far from the tinySA (level under the « weak » threshold).</p>
+<h3>Sweeping is slow.</h3>
+<p>Fewer bands, ⚡ Points on « Auto fast », or a 2nd tinySA. Live zoom only sweeps a small area, very fast.</p>
+<h3>What is the difference between max hold, persistence and a kept scan?</h3>
+<p><b>Max hold</b> keeps the highest level seen since the last Reset (in memory). <b>Persistence</b> (web page) shows
+what comes back often, fading out. A <b>kept scan</b> is a max hold saved in the show, for a stage, for coordination
+and the report.</p>
+<h3>Per-stage or global coordination?</h3>
+<p>Per stage if the stages are far apart and the equipment does not move: more frequencies available. Global for
+equipment that moves around (presenters, walkies) or a compact site: frequencies that work everywhere.</p>
+<h3>The calculations say « problem » but EazyRF / WWB say OK.</h3>
+<p>Intermod rules and profiles differ from one program to another. Choose your device's profile and the « Like
+EazyRF » rules; the receiver filter changes the result a lot (Filter chapter).</p>
+<h3>The Raspberry Pi kit does not see the tinySA.</h3>
+<p>USB-C data cable, tinySA on, the Pi's USB-A socket (the Pi 4's USB-C socket only powers it). On the Pi:
+<code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> tells you what is missing.</p>
+<h3>Can I use the app in English?</h3>
+<p>Yes: ☰ More › 🌐 Langue / Language, then restart. The web page is chosen per person (FR / EN button).</p>
 
-<h2 id="menus">21. Where is what (menus)</h2>
-<p>☰ More follows the same order as the workflow bar.</p>
-<table>
-  <tr><th>☰ More menu</th><th>Contents</th></tr>
-  <tr><td>① Prepare</td><td>📋 Frequency list (import, add, name, number, export), 📐 Frequency plan (🧮 check,
-    🎛 device profiles, 📶 Spectera block), ⚡ Intermodulation</td></tr>
-  <tr><td>② During the show</td><td>🎤 Line check, 🧱 Wall, 🆘 Backup frequency</td></tr>
-  <tr><td>③ After the show</td><td>⏪ Playback, 📊 Scans and reports (📄 report, 📏 reference, 🔁 convert)</td></tr>
-  <tr><td>Settings and connections</td><td>🔗 Connections (📣 alerts, 📡 relay, 🩺 diagnostics), 🪟 Windows,
-    🎨 Appearance and language, 👁 Display (ultra simple / simple / expert)</td></tr>
-  <tr><td>Help</td><td>🎓 Tutorial, 📖 Manual, ℹ About</td></tr>
-</table>
-
-<h2 id="clavier">22. Keyboard shortcuts</h2>
-<table>
-  <tr><th>Keys</th><th>Action</th></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save the show</td></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Line check</td></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Hide / show the spectrum markers</td></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Selection → In use (must transmit)</td></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>9</kbd></td><td>Selection → status no. 1 to 9</td></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Selection → no status</td></tr>
-  <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Number downwards from the first selected row</td></tr>
-  <tr><td><kbd>F11</kbd> / <kbd>Esc</kbd></td><td>Full screen for the wall or a real window / leave it</td></tr>
-  <tr><td>Double-click (list)</td><td>Status: change · Level / Signal: live zoom · Threshold: own threshold</td></tr>
-  <tr><td>Right-click</td><td>Context menus: list, spectrum, layers, wall tiles, log</td></tr>
-</table>
-
-<h2 id="depannage">23. Troubleshooting</h2>
+<h2 id="depannage">34. Troubleshooting</h2>
 <table>
   <tr><th>Problem</th><th>What to do</th></tr>
   <tr><td>Port not found / “access denied”</td><td>Close tinySA-App (one program at a time), replug the USB,
@@ -749,7 +1069,79 @@ stay free » reserve</b>, it's a risky time slot (red cell, summary at the botto
     every minute, with a backup copy.</td></tr>
 </table>
 
-<h2 id="donnees">24. Where are my files?</h2>
+<h2 id="lexique">35. Glossary</h2>
+<p>Every word of RF and of the app, explained simply. The same glossary is in the app (☰ More › Help › 📚 Glossary), with a search.</p>
+<table>
+  <tr><th>Word</th><th>Meaning</th></tr>
+  <tr><td><b>HF</b></td><td>Here: everything that goes over the air (wireless mics, in-ears, walkie-talkies). In the trade, « RF » means all the wireless links of a show.</td></tr>
+  <tr><td><b>Frequency (MHz)</b></td><td>The « slot » where a device transmits, in megahertz. Two mics on the same frequency interfere. Example: 606.500 MHz. Show mics mostly sit between 470 and 694 MHz (UHF).</td></tr>
+  <tr><td><b>Spectrum</b></td><td>The app&#x27;s graph: frequencies from left to right, received power from bottom to top. A transmitter makes a « bump » (a peak) at its frequency.</td></tr>
+  <tr><td><b>dBm</b></td><td>The unit of received power. The bigger the number (closer to 0), the stronger: −40 dBm is very strong, −90 dBm is weak, −110 dBm is noise. +10 dB = 10 times more power.</td></tr>
+  <tr><td><b>dBµV</b></td><td>Another level unit, used by some software (Wisycom…). dBµV = dBm + 107.</td></tr>
+  <tr><td><b>Noise floor</b></td><td>The minimum level the tinySA sees even without any transmitter: its own noise plus the venue&#x27;s (LED screens, lighting…). Anything clearly above the floor is a signal.</td></tr>
+  <tr><td><b>Sweep</b></td><td>The tinySA measures one frequency after another, from left to right: one full pass is called a sweep. It lasts from under a second to several seconds depending on width and number of points.</td></tr>
+  <tr><td><b>Points</b></td><td>The number of measurements per sweep. More points = more detail but slower. « ⚡ Auto » picks a good compromise by itself.</td></tr>
+  <tr><td><b>RBW</b></td><td>The « fineness » of each measurement (width of the tinySA&#x27;s filter). Narrow = sees small close signals but slow; wide = fast but two close signals merge. Leave it on Auto if you are starting out.</td></tr>
+  <tr><td><b>Max hold</b></td><td>The orange curve: the highest level seen at each frequency since the last « Reset max ». It keeps track of a transmitter even if it was only on for a second.</td></tr>
+  <tr><td><b>Persistence</b></td><td>Each sweep leaves a trace that slowly fades: what is often there marks strongly, what rarely passes leaves a faint trace (Spectrum / Field web views).</td></tr>
+  <tr><td><b>“Busy” threshold</b></td><td>The red line: above it, a frequency is considered busy (someone is transmitting). « Auto » places it a bit above the noise floor.</td></tr>
+  <tr><td><b>« Weak » threshold</b></td><td>Below the busy threshold: a signal above this level but under « busy » is « weak » (distant transmitter, weak battery, or rising noise).</td></tr>
+  <tr><td><b>Must transmit (In use)</b></td><td>Status of a frequency where YOUR transmitter must be on. If it goes quiet for too long: ABSENT alarm.</td></tr>
+  <tr><td><b>Must stay free (Free)</b></td><td>Status of a frequency you keep in reserve (backup, another day&#x27;s frequency…). If a signal shows up there: CONFLICT alarm.</td></tr>
+  <tr><td><b>MISSING</b></td><td>Alarm: a transmitter that must transmit is no longer seen (flat battery, transmitter off, antenna unplugged, artist too far).</td></tr>
+  <tr><td><b>CONFLICT</b></td><td>Alarm: a signal appeared on a frequency that had to stay free (another team, a jammer, intermodulation).</td></tr>
+  <tr><td><b>Acknowledge</b></td><td>Telling an alarm « I&#x27;ve seen it »: the sound stops, the alarm stays displayed as long as the problem lasts.</td></tr>
+  <tr><td><b>Intermodulation (IM)</b></td><td>When several transmitters are close together, they create « ghost frequencies » by arithmetic (e.g. 2 × A − B). If a ghost lands on one of your mics, it interferes. Coordination is mostly about avoiding that.</td></tr>
+  <tr><td><b>IM3 / IM5</b></td><td>Intermodulation order: 3rd order (2A − B, A + B − C) is the strongest and most annoying, 5th order (3A − 2B…) is weaker.</td></tr>
+  <tr><td><b>Coordination</b></td><td>Choosing the frequencies of all devices so that none interferes with another: enough spacing between them, no intermodulation on them, away from what already occupies the venue.</td></tr>
+  <tr><td><b>Frequency plan</b></td><td>The final list of frequencies of all your devices, once coordinated.</td></tr>
+  <tr><td><b>Spacing (separation)</b></td><td>The minimum distance between two carriers so they do not interfere (e.g. 300 to 500 kHz depending on the devices).</td></tr>
+  <tr><td><b>Receiver filter</b></td><td>The width the receiver « hears » around its frequency. A narrow filter (selective device, e.g. Wisycom) ignores distant transmitters, so fewer intermodulation problems.</td></tr>
+  <tr><td><b>Device profile</b></td><td>The coordination settings of a brand / range (spacing, filter, tolerances, step). Pick yours so the calculations match.</td></tr>
+  <tr><td><b>Step (increment)</b></td><td>The frequencies a device can use go step by step (e.g. 25 kHz): coordination only suggests frequencies your device can be set to.</td></tr>
+  <tr><td><b>Carrier</b></td><td>A transmitter&#x27;s signal at its frequency (the peak on the spectrum).</td></tr>
+  <tr><td><b>Wide block (WMAS, Spectera)</b></td><td>Some recent digital systems use a whole 6 to 8 MHz channel instead of a single frequency: on the spectrum, a plateau instead of a peak.</td></tr>
+  <tr><td><b>DTT</b></td><td>Digital terrestrial television: 8 MHz plateaus in the UHF band. These channels are taken and must be avoided (TV channel strip under the spectrum).</td></tr>
+  <tr><td><b>UHF</b></td><td>The 470–694 MHz band (in France) where most show mics work, shared with DTT.</td></tr>
+  <tr><td><b>Stage / group</b></td><td>How your frequencies are sorted: a stage = a venue or a set, a group = a set of devices (mics, in-ears, walkies…). Optional but handy at a festival.</td></tr>
+  <tr><td><b>Kept scan</b></td><td>A saved spectrum (the max hold at a given time and place): it is the venue&#x27;s memory and is used for coordination.</td></tr>
+  <tr><td><b>Merge</b></td><td>Combining several scans: the strongest level of each is kept, to see the worst case of the whole site.</td></tr>
+  <tr><td><b>Roaming tinySA</b></td><td>A tinySA carried from stage to stage (in a bag, with a Raspberry Pi) to scan each location, while the PC stays at the FOH.</td></tr>
+  <tr><td><b>Relay</b></td><td>The small program that shares a tinySA over the network (on a Raspberry Pi or another PC), so the app sees it remotely.</td></tr>
+  <tr><td><b>Line check</b></td><td>Before the show: each transmitter is switched on one after the other and the app ticks those it sees, to check that everything is there.</td></tr>
+  <tr><td><b>Session</b></td><td>The recording of everything the app saw during monitoring, to review it afterwards (replay).</td></tr>
+  <tr><td><b>Show (🎪)</b></td><td>A file holding all your work for an event (frequencies, stages, bands, scans…), to reopen the following year.</td></tr>
+</table>
+
+<h2 id="menus">36. Where is what (menus)</h2>
+<p>☰ More follows the same order as the workflow bar.</p>
+<table>
+  <tr><th>☰ More menu</th><th>Contents</th></tr>
+  <tr><td>① Prepare</td><td>📋 Frequency list (import, add, name, number, export), 📐 Frequency plan (🧮 check,
+    🎛 device profiles, 📶 Spectera block), ⚡ Intermodulation</td></tr>
+  <tr><td>② During the show</td><td>🎤 Line check, 🧱 Wall, 🆘 Backup frequency</td></tr>
+  <tr><td>③ After the show</td><td>⏪ Playback, 📊 Scans and reports (📄 report, 📏 reference, 🔁 convert)</td></tr>
+  <tr><td>Settings and connections</td><td>🔗 Connections (📣 alerts, 📡 relay, 🩺 diagnostics), 🪟 Windows,
+    🎨 Appearance and language, 👁 Display (ultra simple / simple / expert)</td></tr>
+  <tr><td>Help</td><td>🎓 Step-by-step tutorials, 📚 Glossary, 📖 Manual, ℹ About</td></tr>
+</table>
+
+<h2 id="clavier">37. Keyboard shortcuts</h2>
+<table>
+  <tr><th>Keys</th><th>Action</th></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save the show</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Line check</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Hide / show the spectrum markers</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Selection → In use (must transmit)</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>9</kbd></td><td>Selection → status no. 1 to 9</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Selection → no status</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Number downwards from the first selected row</td></tr>
+  <tr><td><kbd>F11</kbd> / <kbd>Esc</kbd></td><td>Full screen for the wall or a real window / leave it</td></tr>
+  <tr><td>Double-click (list)</td><td>Status: change · Level / Signal: live zoom · Threshold: own threshold</td></tr>
+  <tr><td>Right-click</td><td>Context menus: list, spectrum, layers, wall tiles, log</td></tr>
+</table>
+
+<h2 id="donnees">38. Where are my files?</h2>
 <ul>
   <li>Settings: <code>%APPDATA%\TinySAMonitor\</code> (<code>config.json</code> + <code>config.json.bak</code>,
     <code>reference.json</code>, <code>crash.log</code>).</li>
@@ -759,7 +1151,7 @@ stay free » reserve</b>, it's a risky time slot (red cell, summary at the botto
     sub-folder per session: <code>chunk_*.npz</code> slices, <code>session.json</code>, <code>journal.csv</code>.</li>
 </ul>
 
-<h2 id="limites">25. What is not verified</h2>
+<h2 id="limites">39. What is not verified</h2>
 <div class="box warn">
 <p>The app is tested automatically (logic, real interface on Windows, fake tinySA), and has run for 2 hours in
 the field with a real tinySA Ultra. Not yet proven in real conditions:</p>

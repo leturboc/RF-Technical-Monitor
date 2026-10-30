@@ -795,5 +795,12 @@ for _bad in (dict(action="rm"), dict(action="delete"), "x"):
     except ValueError:
         ok(f"terrain : refusé {_bad}", True)
 
+# --- 🎓 tutos et lexique
+check("tutos : 6 parcours", ns["TOUR_KEYS"], ["ecran", "show", "spectre", "coord", "scenes", "live"])
+gf_ = ns["glossary_find"]
+ok("lexique : au moins 30 mots, tous expliqués", len(ns["GLOSSARY"]) >= 30 and all(len(x) > 30 for _t, x in ns["GLOSSARY"]))
+ok("lexique : recherche sans accents ni majuscules", any(t.startswith("Rémanence") for t, _x in gf_("REMANENCE")))
+ok("lexique : recherche dans l'explication", any(t == "TNT" for t, _x in gf_("télévision")))
+check("lexique : rien = tout", len(gf_("")), len(ns["GLOSSARY"]))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
