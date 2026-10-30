@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.22.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.23.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -386,6 +386,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   connexion (`deviceid`, PURE `parse_deviceid`) → signal `devid` → `on_devid` : `devid_scenes` {n°: scènes} (config)
   → un tinySA numéroté retrouve ses scènes s'il est branché à l'autre place. **Commandes lues dans le firmware, jamais
   essayées sur un vrai Ultra** (clignotement / numéro).
+- **7.23.0 (Clément : « mieux m'expliquer le kit Pi », il n'a qu'UN tinySA)** : le **1er tinySA peut être en réseau** :
+  dernière entrée de `port_combo` « 🌐 tinySA en réseau (Raspberry Pi, autre PC)… » (`NET_ITEM`) → `_port_chosen`
+  (QInputDialog, `parse_device_addr`) ; `self.net_addr` / `self.port_net` (config `net_addr`, `port_net`) : l'adresse
+  retenue s'affiche « 🌐 adresse (réseau) » (en tête si choisie) ; **`port1()`** = adresse du 1er tinySA (jamais
+  `NET_ITEM`) : à utiliser au lieu de `port_combo.currentData()`. Worker réseau : `retry_first` (le Pi peut démarrer
+  après). Workflow : étape « Kit Raspberry Pi » → `dist/relais-raspberry-pi.zip` (dossier `relais/`, fins de ligne LF
+  forcées, `install_pi.sh` exécutable) attaché aux releases et pré-releases. `relais/LISEZMOI.md` réécrit pas à pas
+  (Imager, scp / ssh depuis le Terminal Windows, 1 ou 2 tinySA, dépannage). **Pi toujours jamais testé en vrai.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

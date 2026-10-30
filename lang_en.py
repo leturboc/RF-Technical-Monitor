@@ -9,6 +9,11 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Adresse du relais (Raspberry Pi ou autre PC) :\nex. tinysa-sac.local  ·  192.168.1.42  ·  192.168.1.42:5025': 'Relay address (Raspberry Pi or other PC):\ne.g. tinysa-sac.local  ·  192.168.1.42  ·  192.168.1.42:5025',
+    'Adresse réseau illisible.\nExemples : tinysa-sac.local · 192.168.1.42 · 192.168.1.42:5025': 'Unreadable network address.\nExamples: tinysa-sac.local · 192.168.1.42 · 192.168.1.42:5025',
+    'Port USB du tinySA (✔ tinySA = reconnu automatiquement). Ferme tinySA-App avant : un seul\nlogiciel à la fois peut parler au tinySA. ⟳ : relire la liste des ports.\n🌐 tinySA en réseau : le tinySA est branché sur un Raspberry Pi (ou un autre PC) qui le partage.': 'tinySA USB port (✔ tinySA = recognised automatically). Close tinySA-App first: only one\nprogram at a time can talk to the tinySA. ⟳: re-read the port list.\n🌐 Network tinySA: the tinySA is plugged into a Raspberry Pi (or another PC) that shares it.',
+    'tinySA en réseau': 'Network tinySA',
+    '🌐 tinySA en réseau (Raspberry Pi, autre PC)…': '🌐 Network tinySA (Raspberry Pi, other PC)…',
     '//@ShureScan': '//@ShureScan',
     'BinarySchema': 'BinarySchema',
     'BitWidth': 'BitWidth',
@@ -2326,6 +2331,8 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '🌐 {} (réseau)': '🌐 {} (network)',
+    "🌐 1er tinySA en réseau : {} (relais sur le port {} par défaut). ▶ Démarrer pour s'y connecter.": '🌐 1st tinySA on the network: {} (relay on port {} by default). ▶ Start to connect to it.',
     'scan WWB natif (.sdb3) : {} balayage(s), max gardé': 'native WWB scan (.sdb3): {} sweep(s), max kept',
     '{} tinySA ({})': '{} tinySA ({})',
     'Le {} tinySA surveille « {} ».': 'The {} tinySA watches “{}”.',

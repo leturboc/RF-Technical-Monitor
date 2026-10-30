@@ -96,6 +96,22 @@ jobs:
             --icon assets/icone.ico --add-data "assets/icone.png;." --add-data "docs/manuel.html;docs" --add-data "docs/manual_en.html;docs" \
             --add-data "$tr/qtbase_fr.qm;PySide6/Qt/translations" --hidden-import lang_en --hidden-import PySide6.QtMultimedia $extra tinysa_monitor.py
 
+      - name: Kit Raspberry Pi (relais-raspberry-pi.zip)
+        shell: bash
+        run: |
+          # dossier relais/ (fins de ligne Unix forcées : le checkout Windows peut les passer en CRLF, mortel pour sh)
+          python - <<'EOF'
+          import pathlib, zipfile
+          with zipfile.ZipFile("dist/relais-raspberry-pi.zip", "w", zipfile.ZIP_DEFLATED) as z:
+              for f in sorted(pathlib.Path("relais").iterdir()):
+                  if f.is_file() and f.suffix in (".py", ".sh", ".md"):
+                      zi = zipfile.ZipInfo(f"relais/{f.name}", (2026, 1, 1, 0, 0, 0))
+                      zi.external_attr = (0o755 if f.suffix == ".sh" else 0o644) << 16
+                      z.writestr(zi,
+                                 f.read_bytes().replace(b"\r\n", b"\n"))
+          print("dist/relais-raspberry-pi.zip OK")
+          EOF
+
       - name: Exe (artefact)
         uses: actions/upload-artifact@v4
         with:
@@ -106,7 +122,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/TinySA-Monitor.exe
+          files: |
+            dist/TinySA-Monitor.exe
+            dist/relais-raspberry-pi.zip
           # v7.1-beta1 (avec tiret) = pré-release de test ; v7.1 = version stable (« latest »)
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
@@ -123,11 +141,11 @@ jobs:
         run: |
           tag="test-${GITHUB_REF_NAME//\//-}"
           gh release delete "$tag" --cleanup-tag -y || true
-          gh release create "$tag" dist/TinySA-Monitor.exe --prerelease --target "$GITHUB_SHA" \
+          gh release create "$tag" dist/TinySA-Monitor.exe dist/relais-raspberry-pi.zip --prerelease --target "$GITHUB_SHA" \
             --title "Test ${GITHUB_REF_NAME} — $(date -u +'%d/%m %H:%M') UTC" \
             --notes "Version de test (branche ${GITHUB_REF_NAME}, commit ${GITHUB_SHA::7}), remplacée à chaque push.
           Télécharger TinySA-Monitor.exe ci-dessous. SmartScreen (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
-          PC du 2ᵉ tinySA en réseau : lancer TinySA-Monitor.exe --relais."
+          PC du 2ᵉ tinySA en réseau : lancer TinySA-Monitor.exe --relais. Raspberry Pi : relais-raspberry-pi.zip (voir LISEZMOI.md)."
 
       - name: Release stable (push sur main, une fois par version)
         if: github.ref == 'refs/heads/main'
@@ -139,7 +157,7 @@ jobs:
           if gh release view "v$ver" >/dev/null 2>&1; then
             echo "Release v$ver déjà publiée : rien à faire (monte APP_VER pour une nouvelle version)."
           else
-            gh release create "v$ver" dist/TinySA-Monitor.exe --target "$GITHUB_SHA" --title "TinySA Monitor $ver" \
+            gh release create "v$ver" dist/TinySA-Monitor.exe dist/relais-raspberry-pi.zip --target "$GITHUB_SHA" --title "TinySA Monitor $ver" \
               --generate-notes --latest
           fi
 

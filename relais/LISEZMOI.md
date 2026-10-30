@@ -1,34 +1,77 @@
-# Relais réseau du tinySA sur Raspberry Pi
+# Kit Raspberry Pi : le tinySA dans le sac, le PC en régie
 
-Pour chasser un brouilleur loin du PC : un tinySA branché en USB sur un Raspberry Pi (dans un sac, avec une batterie
-USB), partagé en Wi-Fi. TinySA Monitor (sur le PC de régie) le voit comme **2ᵉ tinySA**, et ton téléphone affiche
-la chasse (page web, vue **🔎 Chasse**) et bippe.
+Un tinySA branché en USB sur un Raspberry Pi (dans un sac, avec une batterie USB), partagé en Wi-Fi.
+TinySA Monitor, sur le PC de régie, le voit comme s'il était branché sur le PC. Ton téléphone affiche la chasse
+(page web, vue **🔎 Chasse**) et bippe.
 
-## Installer (une seule fois)
+- **Un seul tinySA** : il va dans le sac, et c'est le **1er tinySA** (liste des ports › « 🌐 tinySA en réseau… »).
+- **Deux tinySA** : l'un reste sur le PC et surveille, l'autre va dans le sac comme **2ᵉ tinySA** (⚙ Réglages › 2ᵉ tinySA).
 
-1. **Raspberry Pi Imager** → Raspberry Pi OS (Lite suffit). Dans les réglages d'Imager : nom d'hôte (ex.
-   `tinysa-sac`), **Wi-Fi du site** (ou de ta régie), utilisateur / mot de passe, **SSH activé**.
-2. Démarre le Pi, puis depuis ton PC : `scp -r relais tinysa-sac.local:` (ou copie le dossier `relais` avec une clé USB).
-3. Sur le Pi (`ssh tinysa-sac.local`) : `cd relais && sh install_pi.sh`
+Ce dossier contient :
 
-C'est tout : le relais démarre **tout seul à chaque allumage**, trouve le tinySA tout seul (même débranché /
-rebranché) et attend TinySA Monitor sur le port **5025**. L'installeur affiche l'adresse du Pi.
+| Fichier | Rôle |
+|---|---|
+| `tinysa_relais.py` | Le programme du Pi : trouve le tinySA en USB et le partage sur le réseau (port TCP **5025**). Python + pyserial, rien d'autre. |
+| `install_pi.sh` | L'installeur, à lancer **une seule fois** sur le Pi : installe pyserial, copie le programme dans `/opt/tinysa-relais` et le lance tout seul à chaque allumage. |
+| `LISEZMOI.md` | Ce mode d'emploi. |
 
-## Dans TinySA Monitor (PC)
+Où le trouver : sur la page de la release, à côté de `TinySA-Monitor.exe`, le fichier **`relais-raspberry-pi.zip`**.
 
-Réglages › **2ᵉ tinySA** : coche « Utiliser un 2ᵉ tinySA », adresse = `tinysa-sac.local` (ou son adresse IP, ex.
-`192.168.1.42`), nom de position « Sac à dos ». Puis ▶ Démarrer.
+## 1. Préparer la carte SD (sur le PC, une seule fois)
 
-## Sur le téléphone
+1. Installe **Raspberry Pi Imager** (raspberrypi.com/software) et lance-le.
+2. Appareil : ton modèle de Pi. Système : **Raspberry Pi OS Lite** (sans bureau : c'est suffisant). Stockage : la carte SD.
+3. Quand Imager propose de **modifier les réglages**, accepte :
+   - nom d'hôte : `tinysa-sac` ;
+   - nom d'utilisateur et mot de passe (note-les) ;
+   - **Wi-Fi** : le réseau sur lequel sera le PC de régie (nom + mot de passe, pays FR) ;
+   - onglet Services : **activer SSH** (mot de passe).
+4. Écris la carte, mets-la dans le Pi, branche l'alimentation. Attends 1 à 2 minutes (1er démarrage plus long).
 
-Page web de l'appli (📣 Alertes et page web), vue **🔎 Chasse** : fréquence, « 2ᵉ tinySA · Sac à dos », ▶ Chasser
-(code PIN de la page web). Le 1er tinySA continue de surveiller toutes les bandes pendant ce temps.
+## 2. Copier le kit sur le Pi et l'installer (une seule fois)
 
-## Utile
+Sur le PC Windows, dézippe `relais-raspberry-pi.zip` (par ex. dans Téléchargements). Ouvre **Terminal** (ou
+« Invite de commandes »), puis :
 
-- Voir ce que fait le relais : `journalctl -u tinysa-relais -f`
-- L'arrêter / le relancer : `sudo systemctl stop tinysa-relais` / `sudo systemctl restart tinysa-relais`
-- Sans installer : `python3 tinysa_relais.py` (ou `--serial /dev/ttyACM0 --port 5025`)
-- Besoin : Python 3 + pyserial (`sudo apt install python3-serial`, fait par l'installeur).
+```
+cd Downloads\relais-raspberry-pi
+scp -r relais tinysa-sac.local:
+ssh tinysa-sac.local
+```
 
-⚠ Le Pi et le téléphone doivent rester dans la couverture du Wi-Fi. Tout passe en clair sur le réseau local.
+(Le PC doit être sur le même Wi-Fi que le Pi. À la 1re connexion, réponds `yes`, puis le mot de passe du Pi.)
+Une fois connecté au Pi :
+
+```
+cd relais
+sh install_pi.sh
+```
+
+L'installeur affiche l'**adresse IP** du Pi : note-la (ex. `192.168.1.42`). C'est fini : tape `exit`.
+
+Si `tinysa-sac.local` ne répond pas, utilise l'adresse IP du Pi (visible dans la page de ta box / routeur).
+
+## 3. Le jour J
+
+1. Branche le tinySA sur le Pi (câble USB-C), allume le tinySA, alimente le Pi. Le relais démarre tout seul,
+   retrouve le tinySA même débranché / rebranché.
+2. Dans TinySA Monitor (PC) :
+   - **un seul tinySA** : liste des ports en haut › **🌐 tinySA en réseau (Raspberry Pi, autre PC)…** › adresse
+     `tinysa-sac.local` (ou l'IP). L'appli s'en souvient la fois suivante. Puis ▶ Démarrer ;
+   - **deux tinySA** : ⚙ Réglages › 2ᵉ tinySA › « Utiliser un 2ᵉ tinySA », adresse `tinysa-sac.local`, nom de
+     position « Sac à dos ». Puis ▶ Démarrer.
+3. Sur le téléphone : page web de l'appli (📣 Alertes et page web), vue **🔎 Chasse** : choisis le tinySA du sac,
+   la fréquence, ▶ Chasser (code PIN de la page web). Le téléphone bippe de plus en plus vite en approchant.
+
+## Dépannage
+
+- Ce que fait le relais : `ssh tinysa-sac.local` puis `journalctl -u tinysa-relais -f`
+- Le relancer : `sudo systemctl restart tinysa-relais` · l'arrêter : `sudo systemctl stop tinysa-relais`
+- Sans l'installer (pour essayer) : `python3 tinysa_relais.py` (ou `--serial /dev/ttyACM0 --port 5025`)
+- Pas de Wi-Fi au festival ? Un petit routeur Wi-Fi de poche (ou le partage de connexion du téléphone) pour le PC,
+  le Pi et le téléphone : il suffit qu'ils soient sur le même réseau. Pour changer de Wi-Fi sur le Pi :
+  `sudo nmtui`.
+
+⚠ Le Pi, le PC et le téléphone doivent rester dans la couverture du même Wi-Fi. Tout passe en clair sur le réseau
+local. **Jamais testé sur un vrai Raspberry Pi** par l'auteur du programme (testé avec un tinySA simulé) : en cas de
+souci, envoie la sortie de `journalctl -u tinysa-relais`.

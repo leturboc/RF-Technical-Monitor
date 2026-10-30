@@ -588,18 +588,26 @@ fréquence qui manque signale un pack mal réglé.</p>
 </ol>
 <p>Si un tinySA décroche, l'autre reprend toutes les bandes (⚠ APPAREIL). En réseau, préfère le câble au Wi-Fi.</p>
 <h3>🎒 Kit de chasse portable : tinySA + Raspberry Pi + téléphone</h3>
-<p>Le PC reste en régie ; tu te déplaces avec un 2ᵉ tinySA branché en USB sur un <b>Raspberry Pi</b> (batterie
-USB), qui le partage en Wi-Fi. Ton téléphone affiche la chasse et bippe.</p>
+<p>Le PC reste en régie ; tu te déplaces avec un tinySA branché en USB sur un <b>Raspberry Pi</b> (batterie
+USB), qui le partage en Wi-Fi. Ton téléphone affiche la chasse et bippe. <b>Un seul tinySA</b> : il va dans le sac, c'est
+le 1er tinySA. <b>Deux tinySA</b> : l'un reste sur le PC et surveille, l'autre va dans le sac (2ᵉ tinySA).</p>
 <ol class="steps">
-  <li><b>Sur le Pi</b> (une fois) : Raspberry Pi OS (Lite suffit ; dans Raspberry Pi Imager, règle le Wi-Fi du site
-    et SSH), copie le dossier <code>relais</code> du dépôt, puis <code>sh install_pi.sh</code>. Le relais démarre
-    tout seul à chaque allumage et trouve le tinySA tout seul (fichier <code>relais/LISEZMOI.md</code>).</li>
-  <li><b>Sur le PC</b> : Réglages › 2ᵉ tinySA = l'adresse du Pi (<code>192.168.x.x</code> ou
-    <code>raspberrypi.local</code>), nom de position « Sac à dos ».</li>
+  <li><b>Récupère le kit</b> : sur la page de la release, à côté de l'exe, le fichier
+    <b><code>relais-raspberry-pi.zip</code></b> (dossier <code>relais</code> : le programme du Pi
+    <code>tinysa_relais.py</code>, son installeur <code>install_pi.sh</code> et le mode d'emploi pas à pas
+    <code>LISEZMOI.md</code>).</li>
+  <li><b>Prépare le Pi</b> (une fois) : Raspberry Pi Imager › Raspberry Pi OS Lite ; dans ses réglages : nom
+    <code>tinysa-sac</code>, Wi-Fi de la régie, utilisateur / mot de passe, SSH activé.</li>
+  <li><b>Installe le relais</b> (une fois), depuis le Terminal Windows, dans le dossier dézippé :
+    <code>scp -r relais tinysa-sac.local:</code> puis <code>ssh tinysa-sac.local</code>, puis sur le Pi
+    <code>cd relais</code> et <code>sh install_pi.sh</code>. Le relais démarre ensuite tout seul à chaque allumage
+    et retrouve le tinySA tout seul.</li>
+  <li><b>Sur le PC</b> : un seul tinySA → liste des ports en haut › <b>🌐 tinySA en réseau (Raspberry Pi, autre
+    PC)…</b> › <code>tinysa-sac.local</code> (ou l'adresse IP du Pi), retenu pour la fois suivante. Deux tinySA → ⚙
+    Réglages › 2ᵉ tinySA = <code>tinysa-sac.local</code>, nom de position « Sac à dos ». Puis ▶ Démarrer.</li>
   <li><b>Sur le téléphone</b> : la page web (📣 Alertes et page web), vue <b>🔎 Chasse</b>. Tape la fréquence,
-    choisis « 2ᵉ tinySA · Sac à dos », <b>▶ Chasser</b> (code PIN de la page web). Le PC fait le zoom live avec le
-    tinySA du Pi pendant que le 1er continue de surveiller toutes les bandes ; le téléphone affiche le niveau en
-    gros et <b>bippe</b> (le PC, lui, se tait).</li>
+    choisis le tinySA du sac, <b>▶ Chasser</b> (code PIN de la page web). Le téléphone affiche le niveau en gros et
+    <b>bippe</b> (le PC, lui, se tait). Avec deux tinySA, celui du PC continue de surveiller toutes les bandes.</li>
 </ol>
 <p>Il faut que le Pi et le téléphone restent dans la couverture du Wi-Fi du site. Hors Wi-Fi : le tinySA tout seul,
 sur son propre écran (fréquence au centre, petite plage, marqueur sur le pic), marche toujours.</p>

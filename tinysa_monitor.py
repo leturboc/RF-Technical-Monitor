@@ -78,7 +78,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.22.1"
+APP_VER = "7.23.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -9142,7 +9142,7 @@ class EmitDialog(QtWidgets.QDialog):
                 return no("Arrête d'abord la surveillance (■ Arrêter) : le tinySA ne peut pas balayer et émettre "
                           "en même temps.")
             if not o.demo_chk.isChecked():
-                port = o.port_combo.currentData()
+                port = o.port1()
                 if not port:
                     return no("Aucun tinySA branché.")
                 try:
@@ -9455,7 +9455,7 @@ class DevicesDialog(QtWidgets.QDialog):
         for d in range(nd):
             col = d + 1
             live = o.is_running() and d < len(o.dev_live) and o.dev_live[d]
-            addr = ("démo" if o.demo_chk.isChecked() else (o.port_combo.currentData() or "—")) if d == 0 \
+            addr = ("démo" if o.demo_chk.isChecked() else (o.port1() or "—")) if d == 0 \
                 else (o.dev2.get("addr") or "—")
             n_ = o.dev_ids.get(d)
             head = QtWidgets.QLabel(f"<b>{'1er' if d == 0 else '2ᵉ'} tinySA · {o.dev_name(d)}</b><br>"
@@ -11111,6 +11111,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.unk_now, self.unk_seen = {}, {}
         self.worker = None              # 1er tinySA (compatibilité) ; tous les appareils : self.workers
         self.workers = []
+        self.net_addr, self.port_net = "", False   # 🌐 1er tinySA en réseau (Raspberry Pi…) : adresse, choisi ou non
         self.dev2 = dict(on=False, addr="", offset=0.0)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
         self.dev_live = [True, True]    # liaison de chaque appareil (False = perdue, ses bandes passent sur l'autre)
         self.dev_cycle = {}
@@ -11258,7 +11259,8 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------ aide au survol
     TIPS_ATTR = dict(
         port_combo="Port USB du tinySA (✔ tinySA = reconnu automatiquement). Ferme tinySA-App avant : un seul\n"
-                   "logiciel à la fois peut parler au tinySA. ⟳ : relire la liste des ports.",
+                   "logiciel à la fois peut parler au tinySA. ⟳ : relire la liste des ports.\n"
+                   "🌐 tinySA en réseau : le tinySA est branché sur un Raspberry Pi (ou un autre PC) qui le partage.",
         start_btn="Lance / arrête le balayage (les deux tinySA si le 2ᵉ est activé). Pendant un arrêt, si le tinySA\n"
                   "ne répond plus, le port est fermé au bout de 4 s.",
         thr_spin="Seuil « occupé » : au-dessus, la fréquence est OCCUPÉE (rouge). « Auto » le place juste\n"
@@ -11610,6 +11612,7 @@ class MainWindow(QtWidgets.QMainWindow):
         btn_ports.setText("⟳")
         btn_ports.setToolTip("Rafraîchir les ports")
         btn_ports.clicked.connect(self.refresh_ports)
+        self.port_combo.activated.connect(self._port_chosen)
         self.demo_chk = QtWidgets.QCheckBox("Mode démo")
         self.demo_chk.setToolTip("Signaux simulés, sans appareil branché")
         self.info_lbl = QtWidgets.QLabel("")
@@ -12781,6 +12784,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logdir_lbl.setText(str(self.log_dir))
         ex = data.get("export")
         self.export_prefs = ex if isinstance(ex, dict) else {}
+        if "net_addr" in data:
+            self.net_addr = str(data.get("net_addr") or "")[:120]
+            self.port_net = bool(data.get("port_net")) and bool(self.net_addr)
+            if not startup:
+                self.refresh_ports()
         d2 = data.get("dev2")
         if isinstance(d2, dict):
             self.dev2_chk.setChecked(bool(d2.get("on")))
@@ -12875,6 +12883,7 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
+            net_addr=self.net_addr, port_net=self.port_net,
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
@@ -13092,15 +13101,55 @@ class MainWindow(QtWidgets.QMainWindow):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(PROFILE_DIR)))
 
     # --------------------------------------------------------------- ports
+    NET_ITEM = "__net__"
+
     def refresh_ports(self):
+        self.port_combo.blockSignals(True)
         self.port_combo.clear()
         ports = list(serial.tools.list_ports.comports())
         ports.sort(key=lambda p: not (p.vid == TINYSA_VID and p.pid == TINYSA_PID))
+        net = parse_device_addr(self.net_addr)[1] if self.net_addr else None
+        if net and self.port_net:                      # tinySA en réseau choisi la dernière fois : en tête
+            self.port_combo.addItem(f"🌐 {self.net_addr} (réseau)", net)
         for p in ports:
             tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
             self.port_combo.addItem(f"{p.device} — {p.description}{tag}", p.device)
-        if not ports:
+        if net and not self.port_net:
+            self.port_combo.addItem(f"🌐 {self.net_addr} (réseau)", net)
+        if not ports and not net:
             self.port_combo.addItem("Aucun port détecté", None)
+        self.port_combo.addItem("🌐 tinySA en réseau (Raspberry Pi, autre PC)…", self.NET_ITEM)
+        self.port_combo.blockSignals(False)
+
+    def port1(self):
+        """Adresse du 1er tinySA (port USB, ou « socket://… » en réseau), None si rien de choisi."""
+        d = self.port_combo.currentData()
+        return None if d in (None, self.NET_ITEM) else d
+
+    def _port_chosen(self, *_):
+        """Choix dans la liste des ports : « 🌐 tinySA en réseau… » demande l'adresse du relais (Raspberry Pi ou
+        TinySA-Monitor.exe --relais) ; le 1er tinySA peut alors être dans le sac, loin du PC."""
+        d = self.port_combo.currentData()
+        if d != self.NET_ITEM:
+            self.port_net = bool(d) and str(d).startswith("socket://")
+            return
+        addr, ok_ = QtWidgets.QInputDialog.getText(
+            self, "tinySA en réseau", "Adresse du relais (Raspberry Pi ou autre PC) :\n"
+            "ex. tinysa-sac.local  ·  192.168.1.42  ·  192.168.1.42:5025", text=self.net_addr or "tinysa-sac.local")
+        addr = (addr or "").strip()
+        if ok_ and addr:
+            kind, url = parse_device_addr(addr)
+            if kind != "net":
+                QtWidgets.QMessageBox.warning(self, APP_NAME, "Adresse réseau illisible.\nExemples : tinysa-sac.local · "
+                                              "192.168.1.42 · 192.168.1.42:5025")
+            else:
+                self.net_addr, self.port_net = addr, True
+                self._bump()
+        self.refresh_ports()
+        self.port_combo.setCurrentIndex(0)
+        if self.port_net:
+            self.set_status(f"🌐 1er tinySA en réseau : {self.net_addr} (relais sur le port {RELAY_PORT} par défaut). "
+                            "▶ Démarrer pour s'y connecter.")
 
     # ----------------------------------------------------------- run / stop
     def is_running(self):
@@ -13115,7 +13164,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(STOP_FORCE_MS, self._force_stop)
             return
         demo = self.demo_chk.isChecked()
-        port = self.port_combo.currentData()
+        port = self.port1()
         if not demo and not port:
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Aucun port série sélectionné.\n"
                                           "Branche le tinySA (et ferme tinySA-App) ou active le mode démo.")
@@ -13143,7 +13192,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.workers = []
         for i, (addr, label) in enumerate(targets):
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
-            w.retry_first = i > 0                 # le 2ᵉ (souvent en réseau) peut arriver après : on l'attend
+            w.retry_first = i > 0 or str(addr).startswith("socket://")   # en réseau, il peut arriver après
             w.baud = int(self.baud_combo.currentData() or 115200)
             w.sweep.connect(lambda bid, f, l, d=i: self.band_src.__setitem__(bid, d))
             w.sweep.connect(self.on_sweep)
@@ -13197,7 +13246,7 @@ class MainWindow(QtWidgets.QMainWindow):
         c = self._cfg
         out = [f"{APP_NAME} {APP_VER} — diagnostic du {datetime.now():%d/%m/%Y %H:%M:%S}",
                f"Raison : {reason or 'demandé'}", f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()} · {sys.platform}",
-               f"tinySA : {self.info_lbl.text().strip() or '—'} · port {self.port_combo.currentData() or '—'}"
+               f"tinySA : {self.info_lbl.text().strip() or '—'} · port {self.port1() or '—'}"
                f" · {self.baud_combo.currentData()} bauds · démo {self.demo_chk.isChecked()}",
                f"Réglages : points {c['points']} · RBW {c['rbw'] or 'auto'} · RBW zoom {c['zrbw'] or 'auto'} · points zoom {c.get('zpts') or 'auto'} · "
                f"entrée {c['input']} · LNA {c['lna']} · atténuateur {c['att']} · segment {c['seg'] or 'auto'} · "
@@ -16800,7 +16849,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """Reprise après une coupure : la surveillance tournait quand l'appli s'est arrêtée (sans être fermée)."""
         if self.is_running():
             return
-        if not self.demo_chk.isChecked() and not self.port_combo.currentData():
+        if not self.demo_chk.isChecked() and not self.port1():
             self.set_status("🌙 Mode festival : reprise impossible, aucun tinySA trouvé (nouvel essai dans 30 s).")
             QtCore.QTimer.singleShot(30000, self._festival_autostart)
             return
