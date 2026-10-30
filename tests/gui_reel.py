@@ -1070,6 +1070,51 @@ if win._rescue_dlg:
     _rd.im_combo.setCurrentIndex(_rd.im_combo.findData("2tx")); _rd.search(); wait(200)
     check("secours : « 2 TX seulement » cherche aussi", _rd.table.rowCount() >= 1, _rd.msg.text())
     shot(_rd, "rescue")
+# ⚙ Réglages : onglets, sortie audio, volume (appliqué tout de suite), sons joués sans planter
+def _set_act(d):
+    check("⚙ réglages : 4 onglets (général, son, fichiers, connexions)", d.tabs.count() == 4, str(d.tabs.count()))
+    check("⚙ son : « sortie par défaut » + les sorties de l'ordinateur", d.dev_combo.count() >= 1
+          and d.dev_combo.itemData(0) == "", str([d.dev_combo.itemText(i) for i in range(d.dev_combo.count())]))
+    d.vol.setValue(35)
+    check("⚙ son : volume appliqué tout de suite", win.sound.cfg["volume"] == 35, str(win.sound.cfg))
+    for _b in d.findChildren(W.QPushButton):
+        if _b.text().startswith("▶ Alarme"):
+            _b.click()
+    miss_ = [type(x).__name__ for x in d.findChildren(W.QAbstractButton) + d.findChildren(W.QComboBox)
+             + d.findChildren(W.QSlider) if not x.toolTip().strip() and not isinstance(x.parentWidget(), W.QTabBar)
+             and x.objectName() != "qt_tabwidget_tabbar" and not (isinstance(x, W.QAbstractButton) and not x.text())]
+    check("⚙ réglages : info-bulles", not [t for t in miss_ if t != "QPushButton"] , str(miss_))
+    for _i in range(d.tabs.count()):
+        d.tabs.setCurrentIndex(_i)
+        wait(150)
+        shot(d, f"reglages_{_i}")
+    return "reject"
+DLG_ACTION[0] = _set_act
+step("⚙ réglages", win.open_settings)
+DLG_ACTION[0] = "reject"
+check("⚙ son : gardé dans la config", win._collect_config()["sound"]["volume"] == 35)
+step("son d'alarme (sortie choisie ou bip)", lambda: win.sound.alarm(2))
+
+# 🔎 chasse au brouilleur : zoom live serré + niveau + bip
+_hw = next((w_ for w_ in win.watch if w_["state"] in ("occ", "weak") and not w_.get("bw")), win.watch[0])
+step("chasse au brouilleur", lambda: win.open_hunt(_hw["freq"]))
+_hd = win._hunt
+if _hd is not None:
+    _hd.go_btn.setChecked(True)
+    _t0 = time.time()
+    while _hd.level is None and time.time() - _t0 < 20:
+        wait(300)
+    check("chasse : zoom live sur la zone et niveau mesuré", win._zoom is not None and _hd.level is not None
+          and abs((win._zoom[0] + win._zoom[1]) / 2 - _hw["freq"]) < 0.5, f"{win._zoom} {_hd.level}")
+    check("chasse : le bip suit le niveau", _hd.timer.isActive() and _hd.timer.interval() == max(60, m.hunt_tone(_hd.level)[1]))
+    wait(1500)
+    shot(_hd, "chasse_brouilleur")
+    _hd.close()
+    wait(500)
+    check("chasse fermée : zoom live coupé, plus de bip", win._zoom is None and win._hunt is None and not _hd.timer.isActive())
+else:
+    check("chasse : fenêtre ouverte", False)
+
 # 🌙 mode festival : réglages, bilan du jour (rapport + message + journal), une seule fois par jour
 def _fest_act(d):
     d.on_chk.setChecked(True)

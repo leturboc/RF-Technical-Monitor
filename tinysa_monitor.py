@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.16.2"
+APP_VER = "7.17.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4757,6 +4757,7 @@ STEPS = (
      (("▶ Démarrer la surveillance", "step_monitor"), ("🎤 Appel des micros (line check)…", "open_linecheck"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🆘 Fréquence de secours…", "open_rescue"),
+      ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"),
       ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "open_festival"))),
     ("after", "⑥ Après le show", "Revoir ce qui s'est passé (relecture, session enregistrée), rapport, exports.",
      (("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
@@ -4872,6 +4873,77 @@ def auto_scan_step(total_mhz, rbw_khz=None, budget=4500, step_min=10.0):
     if rbw_khz and step > rbw_khz:
         step = max([x for x in AUTO_STEPS_KHZ if x <= rbw_khz] or [AUTO_STEPS_KHZ[0]])
     return step
+
+
+# ------------------------------------------------------------------ sons de l'appli (sortie audio au choix)
+SOUND_DEFAULT = dict(device="", volume=70, style="tones")      # device "" = sortie par défaut de Windows
+SOUND_STYLES = (("tones", "🎵 Sons de l'appli (sortie audio au choix)"), ("beep", "🔔 Bip de Windows"))
+ALARM_TONES = {2: [(1320, 140), (0, 60), (1320, 140), (0, 60), (1760, 260)],   # critique : 3 notes, aiguë à la fin
+               1: [(990, 160), (0, 80), (990, 160)],                              # normale : 2 notes
+               0: [(880, 110)]}                                                   # info : 1 note
+TONE_OK = [(1500, 70)]                                                            # appel des micros : ✓
+
+
+def sound_cfg_norm(d):
+    """Réglages du son lus de la config (valeurs manquantes ou bancales -> défaut)."""
+    d = d if isinstance(d, dict) else {}
+    out = dict(SOUND_DEFAULT)
+    out["device"] = str(d.get("device", "") or "")[:200]
+    try:
+        out["volume"] = min(100, max(0, int(d.get("volume", out["volume"]))))
+    except (TypeError, ValueError):
+        pass
+    if d.get("style") in dict(SOUND_STYLES):
+        out["style"] = d["style"]
+    return out
+
+
+def tone_pcm(seq, rate=22050, volume=0.7):
+    """Suite de notes [(Hz, ms)] (Hz 0 = silence) -> octets PCM 16 bits mono, petit fondu (5 ms) contre les clics."""
+    parts = []
+    fade = max(1, int(rate * 0.005))
+    for hz, ms in seq:
+        n = max(1, int(rate * float(ms) / 1000.0))
+        if not hz:
+            parts.append(np.zeros(n))
+            continue
+        t = np.arange(n) / float(rate)
+        x = np.sin(2 * np.pi * float(hz) * t)
+        env = np.ones(n)
+        k = min(fade, n // 2)
+        if k:
+            env[:k] = np.linspace(0.0, 1.0, k)
+            env[-k:] = np.linspace(1.0, 0.0, k)
+        parts.append(x * env)
+    sig = np.concatenate(parts) if parts else np.zeros(1)
+    v = min(1.0, max(0.0, float(volume)))
+    return (sig * v * 32000).astype("<i2").tobytes()
+
+
+# ------------------------------------------------------------------ chasse au brouilleur (bip qui suit le niveau)
+def hunt_level(F, L, f0, win_khz=100.0, follow=False, span_mhz=None):
+    """Niveau à suivre : le max à ± win_khz de f0 ; follow = le plus haut pic de toute la zone (± span / 2).
+    -> (niveau dBm, fréquence du pic MHz) ou (None, None)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    if not len(F) or len(F) != len(L):
+        return None, None
+    half = (span_mhz / 2.0) if (follow and span_mhz) else win_khz / 1000.0
+    m = np.abs(F - float(f0)) <= max(half, 1e-6)
+    if not m.any():
+        i = int(np.argmin(np.abs(F - float(f0))))
+        return float(L[i]), float(F[i])
+    idx = np.nonzero(m)[0]
+    i = int(idx[np.argmax(L[idx])])
+    return float(L[i]), float(F[i])
+
+
+def hunt_tone(level, lo=-100.0, hi=-30.0):
+    """Bip de la chasse : plus le niveau monte, plus c'est aigu et rapide (comme un détecteur de métaux).
+    -> (Hz, période en ms) ; niveau None -> (0, 1000) = silence."""
+    if level is None:
+        return 0, 1000
+    x = min(1.0, max(0.0, (float(level) - lo) / max(1e-6, hi - lo)))
+    return int(round(400 + 1600 * x)), int(round(1000 - 920 * x))
 
 
 # ===== PURE-END
@@ -10294,7 +10366,7 @@ class LineCheckDialog(QtWidgets.QDialog):
                 self.unknown[round(fr, 3)] = now
         self.unknown = {f: t for f, t in self.unknown.items() if now - t < 120}
         if new and beep and self.beep_chk.isChecked():
-            QtWidgets.QApplication.beep()
+            self.owner.sound.play(TONE_OK)
         self.refresh()
 
     def refresh(self):
@@ -10374,6 +10446,374 @@ class LineCheckDialog(QtWidgets.QDialog):
         if self.owner._linecheck is self:
             self.owner._linecheck = None
         super().done(r)
+
+
+class SoundOut:
+    """Sons de l'appli joués sur la sortie audio choisie (⚙ Réglages › Son) ; bip de Windows si QtMultimedia manque
+    ou si aucune sortie ne répond. Une note à la fois : la suivante coupe la précédente."""
+
+    def __init__(self):
+        self.cfg = dict(SOUND_DEFAULT)
+        self.sink = self.buf = None
+        self.error = ""
+
+    @staticmethod
+    def _mm():
+        try:
+            from PySide6 import QtMultimedia
+            return QtMultimedia
+        except Exception:  # noqa: BLE001
+            return None
+
+    @classmethod
+    def devices(cls):
+        """Sorties audio de l'ordinateur -> [(id, nom)]."""
+        mm = cls._mm()
+        if mm is None:
+            return []
+        try:
+            return [(bytes(d.id()).hex(), d.description()) for d in mm.QMediaDevices.audioOutputs()]
+        except Exception:  # noqa: BLE001
+            return []
+
+    def _device(self, mm):
+        want = self.cfg.get("device") or ""
+        if want:
+            for d in mm.QMediaDevices.audioOutputs():
+                if bytes(d.id()).hex() == want or d.description() == want:
+                    return d
+        return mm.QMediaDevices.defaultAudioOutput()
+
+    def play(self, seq):
+        if not self.cfg.get("volume"):
+            return
+        mm = self._mm() if self.cfg.get("style", "tones") == "tones" else None
+        if mm is None:
+            QtWidgets.QApplication.beep()
+            return
+        try:
+            dev = self._device(mm)
+            if dev is None or dev.isNull():
+                raise RuntimeError("aucune sortie audio")
+            fmt = mm.QAudioFormat()
+            fmt.setSampleRate(22050)
+            fmt.setChannelCount(1)
+            fmt.setSampleFormat(mm.QAudioFormat.SampleFormat.Int16)
+            if self.sink is not None:
+                self.sink.stop()
+            self.sink = mm.QAudioSink(dev, fmt)
+            self.sink.setVolume(self.cfg.get("volume", 70) / 100.0)
+            self.buf = QtCore.QBuffer()
+            self.buf.setData(QtCore.QByteArray(tone_pcm(seq, 22050, 1.0)))
+            self.buf.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
+            self.sink.start(self.buf)
+            self.error = ""
+        except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son
+            self.error = str(e)
+            QtWidgets.QApplication.beep()
+
+    def alarm(self, prio):
+        self.play(ALARM_TONES.get(int(prio), ALARM_TONES[0]))
+
+
+class HuntDialog(QtWidgets.QDialog):
+    """🔎 Chasse au brouilleur : zoom live serré sur la fréquence gênante et un bip qui accélère et monte quand le
+    niveau monte. Avec une antenne directive sur le tinySA, on se promène et on remonte jusqu'à la source."""
+
+    def __init__(self, owner, f0=None):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Chasse au brouilleur")
+        self.setModal(False)
+        self.resize(520, 420)
+        self.level = self.fpk = None
+        self.best = None
+        self.we_zoomed = False
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Mets une <b>antenne directive</b> sur le tinySA, lance la chasse puis tourne-toi / "
+                                "déplace-toi : le bip <b>accélère et monte</b> quand tu te rapproches de la source. "
+                                "Baisse l'atténuation (ou ajoute-en) si le niveau sature tout près.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.f_spin = QtWidgets.QDoubleSpinBox()
+        self.f_spin.setDecimals(3)
+        self.f_spin.setRange(0.1, 6000.0)
+        self.f_spin.setSuffix(" MHz")
+        self.f_spin.setValue(float(f0) if f0 else 600.0)
+        self.f_spin.setToolTip("Fréquence du signal à chasser (prise de la ligne choisie dans ta liste, ou de M1).")
+        self.span_spin = QtWidgets.QDoubleSpinBox()
+        self.span_spin.setDecimals(1)
+        self.span_spin.setRange(0.2, 50.0)
+        self.span_spin.setValue(2.0)
+        self.span_spin.setSuffix(" MHz")
+        self.span_spin.setToolTip("Largeur balayée autour : petite = balayage très rapide, donc bip plus réactif.")
+        self.follow_chk = QtWidgets.QCheckBox("Suivre le plus fort de la zone")
+        self.follow_chk.setToolTip("Coché : le bip suit le pic le plus haut de la zone (signal qui bouge un peu).\n"
+                                   "Décoché : le niveau à ± 100 kHz de la fréquence choisie.")
+        self.mute_chk = QtWidgets.QCheckBox("Muet")
+        self.mute_chk.setToolTip("Coupe le bip (l'affichage continue).")
+        self.go_btn = QtWidgets.QPushButton("▶ Chasser")
+        self.go_btn.setCheckable(True)
+        self.go_btn.setToolTip("Zoom live sur la zone + bip. Il faut que la surveillance tourne (▶ Démarrer).")
+        self.go_btn.toggled.connect(lambda *_: self.toggle(self.go_btn.isChecked()))
+        lay.addLayout(owner._row("Fréquence :", self.f_spin, "Zone :", self.span_spin, None))
+        lay.addLayout(owner._row(self.follow_chk, self.mute_chk, None, self.go_btn))
+        self.big = QtWidgets.QLabel("—")
+        self.big.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.big.setStyleSheet("font-size:44px;font-weight:bold")
+        lay.addWidget(self.big)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setRange(-110, -20)
+        self.bar.setTextVisible(False)
+        self.bar.setMinimumHeight(26)
+        self.bar.setToolTip("Niveau mesuré : plus la barre est longue, plus tu es près.")
+        lay.addWidget(self.bar)
+        self.sub = QtWidgets.QLabel("")
+        self.sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sub.setWordWrap(True)
+        lay.addWidget(self.sub)
+        rst = QtWidgets.QPushButton("↺ Remettre le max à zéro")
+        rst.setToolTip("Oublie le plus fort niveau vu (pour recommencer à un autre endroit).")
+        rst.clicked.connect(lambda *_: self._reset_best())
+        lay.addLayout(owner._row(None, rst))
+        lay.addStretch(1)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._tick)
+
+    def _reset_best(self):
+        self.best = None
+        self._show()
+
+    def toggle(self, on):
+        o = self.owner
+        if on:
+            if not o.is_running():
+                self.sub.setText("Lance d'abord la surveillance (▶ Démarrer), puis la chasse.")
+                self.go_btn.blockSignals(True)
+                self.go_btn.setChecked(False)
+                self.go_btn.blockSignals(False)
+                return
+            f, h = self.f_spin.value(), self.span_spin.value() / 2.0
+            o.spec.getPlotItem().setXRange(f - h, f + h, padding=0)
+            o._fit_x = False
+            if o._zoom is None:
+                if o._last_xy is None:
+                    self.sub.setText("Attends le premier balayage, puis relance la chasse.")
+                    self.go_btn.blockSignals(True)
+                    self.go_btn.setChecked(False)
+                    self.go_btn.blockSignals(False)
+                    return
+                if o.zoom_btn.isChecked():               # bouton resté coché sans zoom en cours
+                    o.toggle_zoom(True)
+                else:
+                    o.zoom_btn.setChecked(True)
+                self.we_zoomed = True
+            else:
+                o._set_zoom(f - h, f + h)
+            self.go_btn.setText("■ Arrêter la chasse")
+            self.timer.start(1000)
+            self.sub.setText("Chasse en cours : attends le premier balayage…")
+        else:
+            self.timer.stop()
+            self.go_btn.setText("▶ Chasser")
+            if self.we_zoomed and o._zoom is not None:
+                o.zoom_btn.setChecked(False)
+                o.toggle_zoom(False)
+            self.we_zoomed = False
+
+    def feed(self, F, L):
+        if not self.go_btn.isChecked():
+            return
+        lvl, fpk = hunt_level(F, L, self.f_spin.value(), 100.0, self.follow_chk.isChecked(), self.span_spin.value())
+        self.level, self.fpk = lvl, fpk
+        if lvl is not None:
+            self.best = lvl if self.best is None else max(self.best, lvl)
+        self._show()
+        hz, per = hunt_tone(lvl)
+        self.timer.setInterval(max(60, per))
+
+    def _show(self):
+        o = self.owner
+        if self.level is None:
+            self.big.setText("—")
+            return
+        self.big.setText(o.lvl(self.level, suffix=True))
+        self.bar.setValue(int(max(-110, min(-20, self.level))))
+        d = "" if self.best is None else f" · max vu {o.lvl(self.best, suffix=True)} ({self.level - self.best:+.1f} dB)"
+        self.sub.setText(f"Pic à {self.fpk:.3f} MHz" + d)
+
+    def _tick(self):
+        if self.mute_chk.isChecked() or self.level is None:
+            return
+        hz, _per = hunt_tone(self.level)
+        if hz:
+            self.owner.sound.play([(hz, 45)])
+
+    def closeEvent(self, e):
+        self.toggle(False)
+        if self.owner._hunt is self:
+            self.owner._hunt = None
+        super().closeEvent(e)
+
+    def done(self, r):
+        self.toggle(False)
+        if self.owner._hunt is self:
+            self.owner._hunt = None
+        super().done(r)
+
+
+class SettingsDialog(QtWidgets.QDialog):
+    """⚙ Réglages : ce qu'on règle une fois (langue, affichage, son, dossiers, connexions), rangé au même endroit.
+    Tout s'applique tout de suite."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Réglages")
+        self.resize(620, 480)
+        lay = QtWidgets.QVBoxLayout(self)
+        tabs = QtWidgets.QTabWidget()
+        lay.addWidget(tabs)
+        self.tabs = tabs
+        # --- Général
+        g = QtWidgets.QWidget()
+        f = QtWidgets.QFormLayout(g)
+        self.lang_combo = QtWidgets.QComboBox()
+        for k, t in LANGS:
+            self.lang_combo.addItem(t, k)
+        self.lang_combo.setCurrentIndex(max(0, self.lang_combo.findData(o.lang or "fr")))
+        self.lang_combo.setToolTip("Langue de l'interface (redémarrage proposé).")
+        self.lang_combo.activated.connect(lambda *_: o.set_language(self.lang_combo.currentData()))
+        self.level_combo = QtWidgets.QComboBox()
+        for k, t in UI_LEVELS:
+            self.level_combo.addItem(t, k)
+        self.level_combo.setCurrentIndex(max(0, self.level_combo.findData(o.ui_level)))
+        self.level_combo.setToolTip("Ultra simple : spectre, liste, alarmes · Simple : + réglages essentiels · "
+                                    "Expert : tout.")
+        self.level_combo.activated.connect(lambda *_: o.set_level(self.level_combo.currentData()))
+        self.unit_combo = QtWidgets.QComboBox()
+        for k, t in LEVEL_UNITS:
+            self.unit_combo.addItem(t, k)
+        self.unit_combo.setCurrentIndex(max(0, self.unit_combo.findData(o.unit)))
+        self.unit_combo.setToolTip("Unité d'affichage des niveaux (les fichiers restent en dBm).")
+        self.unit_combo.activated.connect(lambda *_: o.set_unit(self.unit_combo.currentData()))
+        col_btn = QtWidgets.QPushButton("🎨 Couleurs et thèmes…")
+        col_btn.setToolTip("Thèmes (sombre doux, clair, daltonien…) et chaque couleur une par une.")
+        col_btn.clicked.connect(lambda *_: o.edit_colors())
+        lab_btn = QtWidgets.QPushButton("🔤 Mots et couleurs (OK, libre, ABSENT…)…")
+        lab_btn.setToolTip("Les mots de la colonne Signal et leurs couleurs.")
+        lab_btn.clicked.connect(lambda *_: o.edit_labels())
+        f.addRow("Langue / Language :", self.lang_combo)
+        f.addRow("Interface :", self.level_combo)
+        f.addRow("Unité des niveaux :", self.unit_combo)
+        f.addRow(col_btn)
+        f.addRow(lab_btn)
+        tabs.addTab(g, "🖥 Général")
+        # --- Son
+        sw = QtWidgets.QWidget()
+        f = QtWidgets.QFormLayout(sw)
+        c = o.sound.cfg
+        self.alert_chk = QtWidgets.QCheckBox("Alarmes sonores")
+        self.alert_chk.setChecked(o.alert_chk.isChecked())
+        self.alert_chk.setToolTip("Son quand une alarme arrive (les critiques sont rejouées toutes les 10 s).")
+        self.alert_chk.toggled.connect(lambda *_: o.alert_chk.setChecked(self.alert_chk.isChecked()))
+        self.style_combo = QtWidgets.QComboBox()
+        for k, t in SOUND_STYLES:
+            self.style_combo.addItem(t, k)
+        self.style_combo.setCurrentIndex(max(0, self.style_combo.findData(c["style"])))
+        self.style_combo.setToolTip("Sons de l'appli : 3 notes = critique, 2 = normale, 1 = info, sur la sortie choisie.\n"
+                                    "Bip de Windows : le son système, toujours sur la sortie par défaut.")
+        self.dev_combo = QtWidgets.QComboBox()
+        self.dev_combo.addItem("Sortie par défaut de Windows", "")
+        for k, t in SoundOut.devices():
+            self.dev_combo.addItem(t, k)
+        i = self.dev_combo.findData(c["device"])
+        self.dev_combo.setCurrentIndex(i if i >= 0 else 0)
+        self.dev_combo.setToolTip("Carte son, casque, enceinte HDMI, interface audio… : où sortent les alarmes\n"
+                                  "et le bip de la chasse au brouilleur.")
+        self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        self.vol.setRange(0, 100)
+        self.vol.setValue(c["volume"])
+        self.vol.setToolTip("Volume des sons de l'appli (0 = muet).")
+        t_crit = QtWidgets.QPushButton("▶ Alarme critique")
+        t_crit.setToolTip("Écouter le son d'une alarme critique.")
+        t_crit.clicked.connect(lambda *_: (self._apply_sound(), o.sound.alarm(2)))
+        t_norm = QtWidgets.QPushButton("▶ Alarme normale")
+        t_norm.setToolTip("Écouter le son d'une alarme normale.")
+        t_norm.clicked.connect(lambda *_: (self._apply_sound(), o.sound.alarm(1)))
+        for w_ in (self.style_combo, self.dev_combo):
+            w_.currentIndexChanged.connect(lambda *_: self._apply_sound())
+        self.vol.valueChanged.connect(lambda *_: self._apply_sound())
+        self.snd_msg = QtWidgets.QLabel("" if SoundOut.devices() else
+                                        "Aucune sortie audio trouvée : le bip de Windows sera utilisé.")
+        self.snd_msg.setWordWrap(True)
+        f.addRow(self.alert_chk)
+        f.addRow("Sons :", self.style_combo)
+        f.addRow("Sortie audio :", self.dev_combo)
+        f.addRow("Volume :", self.vol)
+        f.addRow(owner._row(t_crit, t_norm, None))
+        f.addRow(self.snd_msg)
+        tabs.addTab(sw, "🔊 Son")
+        # --- Fichiers
+        fw = QtWidgets.QWidget()
+        f = QtWidgets.QFormLayout(fw)
+        self.log_lbl = QtWidgets.QLabel(str(o.log_dir))
+        self.log_lbl.setWordWrap(True)
+        b_log = QtWidgets.QPushButton("📁 Changer…")
+        b_log.setToolTip("Dossier du journal automatique, des rapports, des diagnostics.")
+        b_log.clicked.connect(lambda *_: (o.pick_log_dir(), self.log_lbl.setText(str(o.log_dir))))
+        b_open = QtWidgets.QPushButton("📂 Ouvrir")
+        b_open.setToolTip("Ouvrir ce dossier dans l'explorateur.")
+        b_open.clicked.connect(lambda *_: o.open_log_dir())
+        self.sess_lbl = QtWidgets.QLabel(o.session_cfg.get("dir") or str(o.log_dir / "enregistrements"))
+        self.sess_lbl.setWordWrap(True)
+        b_sess = QtWidgets.QPushButton("📁 Changer…")
+        b_sess.setToolTip("Où ranger les sessions enregistrées (proposé aussi à chaque ▶ Démarrer).")
+        b_sess.clicked.connect(lambda *_: self._pick_sess())
+        self.ask_chk = QtWidgets.QCheckBox("Demander à chaque démarrage s'il faut enregistrer la session")
+        self.ask_chk.setChecked(o.sess_ask_chk.isChecked())
+        self.ask_chk.setToolTip("Sinon, l'appli suit ton dernier choix sans poser la question.")
+        self.ask_chk.toggled.connect(lambda *_: o.sess_ask_chk.setChecked(self.ask_chk.isChecked()))
+        f.addRow("Journaux et rapports :", self.log_lbl)
+        f.addRow(owner._row(b_log, b_open, None))
+        f.addRow("Sessions enregistrées :", self.sess_lbl)
+        f.addRow(owner._row(b_sess, None))
+        f.addRow(self.ask_chk)
+        f.addRow("Shows :", QtWidgets.QLabel(str(SHOW_DIR)))
+        tabs.addTab(fw, "📁 Fichiers")
+        # --- Connexions et nuit
+        cw = QtWidgets.QWidget()
+        f = QtWidgets.QVBoxLayout(cw)
+        for txt, tip, fn in (
+                ("📣 Alertes téléphone et page web…", "ntfy / Telegram, page web pour l'équipe, vue Régie.", o.open_alerts),
+                ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "Reprise auto, pas de veille, bilan du jour.",
+                 o.open_festival),
+                ("📡 Relais réseau : partager le tinySA de CE PC…", "Pour brancher un 2ᵉ tinySA par le réseau.",
+                 o.open_relay),
+                ("🩺 Diagnostic tinySA (fichier pour le support)…", "Le fichier à m'envoyer en cas de souci.",
+                 o.open_diag)):
+            b_ = QtWidgets.QPushButton(txt)
+            b_.setToolTip(tip)
+            b_.clicked.connect(lambda *_, fn=fn: fn())
+            f.addWidget(b_)
+        f.addStretch(1)
+        tabs.addTab(cw, "🔗 Connexions")
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def _apply_sound(self):
+        self.owner.sound.cfg = sound_cfg_norm(dict(device=self.dev_combo.currentData() or "",
+                                                   volume=self.vol.value(), style=self.style_combo.currentData()))
+        self.dev_combo.setEnabled(self.style_combo.currentData() == "tones")
+
+    def _pick_sess(self):
+        o = self.owner
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier des sessions enregistrées",
+                                                       o.session_cfg.get("dir") or str(o.log_dir))
+        if d:
+            o.session_cfg["dir"] = d
+            self.sess_lbl.setText(d)
 
 
 class FestivalDialog(QtWidgets.QDialog):
@@ -11851,6 +12291,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.labels = []
         self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
+        self.sound = SoundOut()                # sons de l'appli sur la sortie audio choisie (⚙ Réglages › Son)
+        self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self._auto_changed = False             # ⚡ points Auto : un pas a-t-il changé au dernier calcul ?
         self.festival = festival_cfg_norm(None)  # 🌙 mode festival
         self._fest_next = 0.0
@@ -12321,6 +12763,8 @@ class MainWindow(QtWidgets.QMainWindow):
         sc_save.activated.connect(lambda *_: self.save_show())
         sc_lc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
         sc_lc.activated.connect(lambda *_: self.open_linecheck())
+        sc_set = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+,"), self)
+        sc_set.activated.connect(lambda *_: self.open_settings())
         prof_btn.setMenu(pmenu)
         tools_btn = QtWidgets.QPushButton("🔧 Outils")
         tools_btn.setToolTip("Intermodulation, fréquence de secours, relecture, rapport, scans WSM/WWB, export par scène, "
@@ -12346,6 +12790,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # barre du haut épurée : l'essentiel visible, le reste dans « ☰ Plus », rangé par moment du travail
         # (7.12, Clément : « ranger de façon logique, intuitive et efficace ») : pendant le show en haut,
         # préparer / après le show / connexions / apparence en sous-menus, aide en bas.
+        self.settings_btn = QtWidgets.QPushButton("⚙")
+        self.settings_btn.setToolTip("Réglages : langue, affichage, son et sortie audio, dossiers, connexions,\n"
+                                     "mode festival (Ctrl+,).")
+        self.settings_btn.clicked.connect(lambda *_: self.open_settings())
         more_btn = QtWidgets.QPushButton("☰ Plus")
         self.more_btn = more_btn
         more_btn.setToolTip("Pendant le show (appel des micros, mur, relecture), préparer le plan, après le show,\n"
@@ -12374,6 +12822,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
         mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
+        mm.addAction("🔎 Chasse au brouilleur (bip qui suit le niveau)…").triggered.connect(lambda *_: self.open_hunt())
         mm.addAction("🌙 Mode festival (nuit complète, bilan chaque jour)…").triggered.connect(
             lambda *_: self.open_festival())
         mm.addSection("③ Après le show")
@@ -12384,6 +12833,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
             ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert())))
         mm.addSection("Réglages et connexions")
+        mm.addAction("⚙ Réglages (langue, son, dossiers…)…  Ctrl+,").triggered.connect(lambda *_: self.open_settings())
         submenu(mm, "🔗 Connexions", (
             ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
             ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
@@ -12432,7 +12882,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for wd in (QtWidgets.QLabel("Port :"), self.port_combo, btn_ports, self.demo_chk, self.info_lbl):
             ph.addWidget(wd)
         tb.addWidget(port_box)
-        for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn):
+        for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn, self.settings_btn):
             tb.addWidget(wd)
             tb.addSeparator()
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
@@ -13342,6 +13792,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.points_combo.setCurrentIndex(self.points_combo.findData(sel_))
             self._cfg["points_auto"] = True
         self.scan_follow = bool(data.get("scan_follow", False))
+        self.sound.cfg = sound_cfg_norm(data.get("sound"))
         if "festival" in data:
             self.festival = festival_cfg_norm(data.get("festival"))
         pc = data.get("plan_custom")
@@ -13508,6 +13959,7 @@ class MainWindow(QtWidgets.QMainWindow):
                       for s in self.statuses],
             theme=self.theme,
             scan_follow=self.scan_follow,
+            sound=dict(self.sound.cfg),
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
             points=c["points"], points_auto=bool(c.get("points_auto")),
             points_sel=self.points_combo.currentData(), rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
@@ -15840,6 +16292,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.detect_unknown(bid, f, l)
         if self._linecheck is not None and bid != ZOOM_ID:
             self._linecheck.feed()
+        if self._hunt is not None and bid == ZOOM_ID:
+            self._hunt.feed(f, l)
         if self.view_id in (-1, bid):
             self.update_plot()
         if self.view_id == bid:
@@ -15988,7 +16442,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_status(f"⚠ ABSENT : {absent['name']} ({absent['freq']:.3f} MHz) n'émet plus alors qu'elle "
                             f"doit émettre.")
         if alert is not None and conflict is None and self.alert_chk.isChecked():
-            QtWidgets.QApplication.beep()
+            self.sound.alarm(0)
         if new_prio >= 0:
             self._alarm_sound(new_prio)
             self.refresh_alarms()
@@ -17124,6 +17578,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self._rescue_dlg = RescueDialog(self)
         self._rescue_dlg.show()
 
+    def open_hunt(self, f0=None):
+        """🔎 Chasse au brouilleur sur f0, sinon la fréquence choisie dans la liste, sinon M1, sinon le centre de la vue."""
+        if f0 is None:
+            rows = self._sel_rows()
+            if rows:
+                f0 = self.watch[rows[0]]["freq"]
+            elif getattr(self, "mkr_bar", None) is not None and self.mkr_bar.isVisible():
+                f0 = self.mkr_spins[0].value()
+            else:
+                vr = self.spec.getPlotItem().vb.viewRange()[0]
+                f0 = (vr[0] + vr[1]) / 2.0
+        if self._hunt is not None:
+            self._hunt.f_spin.setValue(f0)
+            self._hunt.raise_()
+            return
+        self._hunt = HuntDialog(self, f0)
+        self._hunt.show()
+
+    def open_settings(self, tab=0):
+        d = SettingsDialog(self)
+        d.tabs.setCurrentIndex(tab)
+        d.exec()
+        self._save_config()
+
     # ---------------------------------------------------------------- 🌙 mode festival
     def open_festival(self):
         d = FestivalDialog(self)
@@ -17316,11 +17794,14 @@ class MainWindow(QtWidgets.QMainWindow):
         m = QtWidgets.QMenu(self)
         a_or = m.addAction("⚡ D'où ça peut venir ? (intermodulation)…")
         a_zoom = m.addAction("🔍 Voir sur le spectre")
+        a_hunt = m.addAction("🔎 Chasser ce signal (bip)…")
         a_add = m.addAction("＋ Ajouter à ma liste")
         act = m.exec(self.log_table.viewport().mapToGlobal(pos))
         if act is None:
             return
-        if act is a_or:
+        if act is a_hunt:
+            self.open_hunt(f)
+        elif act is a_or:
             self.open_intermod_for(f)
         elif act is a_zoom:
             self.view_range(f - 1.0, f + 1.0)
@@ -17667,10 +18148,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtCore.QTimer.singleShot(0, self._middle_sizes)
         if prio < 1 or not self.alert_chk.isChecked():
             return
-        QtWidgets.QApplication.beep()
-        QtCore.QTimer.singleShot(260, QtWidgets.QApplication.beep)
-        if prio >= 2:
-            QtCore.QTimer.singleShot(520, QtWidgets.QApplication.beep)
+        if self.sound.cfg.get("style") == "beep":
+            QtWidgets.QApplication.beep()
+            QtCore.QTimer.singleShot(260, QtWidgets.QApplication.beep)
+            if prio >= 2:
+                QtCore.QTimer.singleShot(520, QtWidgets.QApplication.beep)
+            return
+        self.sound.alarm(prio)
 
     def _alarm_tick(self):
         """Chaque seconde : nettoie les alarmes de fréquences supprimées, rejoue les critiques, met l'écran à jour."""
