@@ -9,6 +9,29 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    ' · scènes différentes : chaque tinySA balaye toutes les bandes chez lui': ' · different scenes: each tinySA sweeps every band where it is',
+    'Coche les scènes que surveille chaque tinySA (une ou plusieurs ; tu peux changer à tout moment). Ses balayages alimentent en continu le spectre de ces scènes : clique une scène dans « Mes fréquences » pour voir le sien. Deux tinySA sur des scènes différentes : chacun balaye toutes les bandes chez lui. Tu ne sais plus lequel est lequel ?': 'Tick the scenes each tinySA watches (one or several; you can change it any time). Its sweeps continuously feed the spectrum of those scenes: click a scene in “My frequencies” to see its own. Two tinySA on different scenes: each one sweeps every band where it is. Lost track of which is which?',
+    'fait clignoter son écran.': 'makes its screen flash.',
+    "Crée d'abord tes scènes (« Classer par scène › groupe »).": 'Create your scenes first (“Sort by scene › group”).',
+    "Fait clignoter l'écran de CE tinySA en orange quelques secondes (il faut ▶ Démarrer).": "Flashes THIS tinySA's screen orange for a few seconds (needs ▶ Start).",
+    "Grave un numéro dans ce tinySA : si un jour les tinySA sont branchés à l'envers,\nl'appli les reconnaît et leurs scènes les suivent.": 'Stores a number inside this tinySA: if the tinySA are ever plugged the other way round,\nthe app recognises them and their scenes follow them.',
+    'Mes tinySA et leurs scènes': 'My tinySA and their scenes',
+    'Numéro à graver dans ce tinySA :': 'Number to store in this tinySA:',
+    'Numéroter le tinySA': 'Number the tinySA',
+    'Quel tinySA surveille quelle(s) scène(s) : ses balayages alimentent EN CONTINU le spectre de\nces scènes (clique la scène dans « Mes fréquences » pour le voir).': 'Which tinySA watches which scene(s): its sweeps CONTINUOUSLY feed the spectrum of\nthose scenes (click the scene in “My frequencies” to see it).',
+    'Spectre par scène : dis quel tinySA surveille quelle(s) scène(s) (flèche ▾) ; clique une\nscène dans « Mes fréquences » pour voir SON spectre (en direct si un tinySA la surveille,\nsinon son dernier spectre gardé). Global : tout. Clic sur le bouton = afficher / cacher.': 'Spectrum per scene: say which tinySA watches which scene(s) (arrow ▾); click a\nscene in “My frequencies” to see ITS spectrum (live if a tinySA watches it,\notherwise its last kept spectrum). Global: everything. Click the button = show / hide.',
+    'Un 2ᵉ tinySA ? Réglages › 2ᵉ tinySA (USB ou réseau, ex. un Raspberry Pi).': 'A 2nd tinySA? Settings › 2nd tinySA (USB or network, e.g. a Raspberry Pi).',
+    'aucune scène': 'no scene',
+    '○ pas connecté': '○ not connected',
+    '● en ligne': '● online',
+    "👋 (démo) l'écran de ce tinySA clignoterait en orange": "👋 (demo) this tinySA's screen would flash orange",
+    "👋 Lance d'abord ▶ Démarrer : il faut être connecté au tinySA pour le faire clignoter.": '👋 Press ▶ Start first: the app must be connected to the tinySA to make it flash.',
+    '👋 Écran du tinySA : clignotement orange terminé': '👋 tinySA screen: orange flashing done',
+    '📡 Mes tinySA et leurs scènes…': '📡 My tinySA and their scenes…',
+    '📡 Scènes': '📡 Scenes',
+    '📡 Surveillée par': '📡 Watched by',
+    "🔢 Lance d'abord ▶ Démarrer : il faut être connecté au tinySA pour le numéroter.": '🔢 Press ▶ Start first: the app must be connected to the tinySA to number it.',
+    '🔢 Numéroter': '🔢 Number it',
     ' · deux lieux : chaque tinySA balaye toutes les bandes chez lui': ' · two locations: each tinySA sweeps all bands where it is',
     'deux lieux : chaque tinySA balaye toutes les bandes chez lui': 'two locations: each tinySA sweeps all bands where it is',
     '(aucun lieu)': '(no location)',
@@ -2284,6 +2307,15 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '{} tinySA ({})': '{} tinySA ({})',
+    'Le {} tinySA surveille « {} ».': 'The {} tinySA watches “{}”.',
+    "👋 Regarde les tinySA : celui dont l'écran clignote en orange est le {} ({}).": '👋 Look at the tinySA: the one whose screen flashes orange is the {} ({}).',
+    '🔁 tinySA n° {} reconnu en {} : ses scènes le suivent ({}).': '🔁 tinySA no. {} recognised as {}: its scenes follow it ({}).',
+    '<br>n° {}': '<br>no. {}',
+    '🔢 Numéro {} gravé dans le {} tinySA.': '🔢 Number {} stored in the {} tinySA.',
+    '<b>{} tinySA · {}</b><br>{} · {}': '<b>{} tinySA · {}</b><br>{} · {}',
+    '👋 Identification impossible : {}': '👋 Cannot identify: {}',
+    '📡 {} tinySA ({}) surveille…': '📡 {} tinySA ({}) watches…',
     '📍 {} : en direct (pointillés = max gardé)': '📍 {}: live (dashes = kept max)',
     '📍 {} tinySA ({}) est à…': '📍 {} tinySA ({}) is at…',
     '📍 {} : pas de tinySA ici en ce moment · dernier spectre gardé': '📍 {}: no tinySA here right now · last kept spectrum',
@@ -2619,6 +2651,8 @@ TEMPLATES = {
 }
 
 SAME_TEMPLATES = [
+    'color:{};font-weight:bold',
+    'color 0 {}',
     '  {} MHz',
     '<tr><td>{}</td><td align=right>{}</td><td align=right>{} kHz</td><td align=right>{} kHz</td><td>{}</td></tr>',
     'color:{}; font-weight:bold; font-size:16px;',

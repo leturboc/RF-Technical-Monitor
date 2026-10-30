@@ -337,11 +337,24 @@ same everywhere. Carry the tinySA around:</p>
     is busy anywhere on the site, not only where the tinySA is. <b>📏 Merge = reference</b>: the merge becomes the
     reference curve.</li>
 </ol>
-<p><b>Continuously, on the main spectrum</b> (<b>📍 Locations</b> button, arrow ▾): say <b>where each tinySA is</b> (« 1st
-tinySA is at: Main stage »). Each of its sweeps then feeds this location's spectrum <b>continuously</b>, and its max hold
-is kept automatically every 30 s. Click a stage in « My frequencies »: the spectrum shown is <b>that location's</b>, live
-if a tinySA is there (dashes = its kept max), otherwise its last kept spectrum (« no tinySA here right now »).
-<b>Global</b>: all the live data, plus the merge of all locations.</p>
+<h3>📡 My tinySA and their scenes (expert mode)</h3>
+<p><b>Continuously, on the main spectrum</b>: say <b>which tinySA watches which stage(s)</b>. Three ways, any time,
+applied immediately (nothing to restart):</p>
+<ul>
+  <li><b>📡 Scenes</b> button (arrow ▾) › <b>📡 My tinySA and their scenes…</b>: a grid, one column per tinySA, one row
+    per stage; tick the boxes. A tinySA can watch <b>one or several</b> stages (e.g. one tinySA between two neighbouring
+    stages);</li>
+  <li><b>right-click a stage</b> in « My frequencies » › <b>📡 Watched by</b>;</li>
+  <li>the arrow ▾ of the <b>📡 Scenes</b> button: « 1st tinySA watches… » (check boxes).</li>
+</ul>
+<p>The « My frequencies » tree shows next to each stage the tinySA watching it (« 📡 Stage »). Every sweep of a tinySA
+feeds the spectrum of its stages <b>continuously</b>, and their max hold is kept automatically every 30 s. Click a
+stage: the spectrum shown is <b>that stage's</b>, live if a tinySA watches it (dashes = its kept max), otherwise its last
+kept spectrum (« no tinySA here right now »). <b>Global</b>: all the live data, plus the merge of all locations.</p>
+<p><b>Which one is which?</b> In the grid: <b>👋 Identify</b> flashes the chosen tinySA's screen orange (needs ▶ Start).
+<b>🔢 Number it</b> stores a number inside the tinySA (<code>deviceid</code> command, kept even when unplugged): if the
+two tinySAs are ever plugged the other way round, the app recognises them and their stages follow them.
+<i>Not yet tried on a real tinySA Ultra</i> (commands read in the official firmware).</p>
 <p><b>Two tinySAs at two different locations</b>: each sweeps <b>all bands</b> where it is (instead of sharing them), each
 location has its own live spectrum, and a stage's frequencies are judged (busy, ABSENT, CONFLICT…) by the tinySA at that
 stage. Global = the stronger of the two (worst case).</p>
