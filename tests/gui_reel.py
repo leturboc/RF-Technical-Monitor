@@ -809,6 +809,12 @@ wsm = os.path.join(tmp, "scan_wsm.csv")
 open(wsm, "w", encoding="utf-8").write("\n".join(rows + [hdr] + body + [""] * 13))
 opened[:] = [wsm]
 step("import_scan_as_ref (WSM)", win.import_scan_as_ref); wait(2500); shot(win, "ref_wsm")
+opened[:] = [os.path.join(HERE, "data", "wwb_slxd4_scan.sdb3")]
+step("import_scan_as_ref (WWB natif .sdb3)", win.import_scan_as_ref)
+check("scan WWB .sdb3 importé comme référence", win._ref_F is not None and len(win._ref_F) == 1751
+      and abs(win._ref_F[0] - 518.125) < 1e-6, str(None if win._ref_F is None else len(win._ref_F)))
+wait(1500)
+shot(win, "ref_sdb3")
 wwb = os.path.join(tmp, "scan_wwb.txt")
 open(wwb, "w").write("\n".join(f"{470 + i * 0.025:.3f}, {-98 + (i % 11)}" for i in range(4000)))
 opened[:] = [wwb]

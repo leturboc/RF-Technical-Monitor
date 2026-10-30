@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.22.0"
+APP_VER = "7.22.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -387,7 +387,10 @@ def parse_scan_lines(lines):
 
 # ----------------------------------------------------------------- import CSV
 def decode_text(raw):
-    """Décode un fichier texte (UTF-8, UTF-16 Excel, cp1252, latin-1)."""
+    """Décode un fichier texte (UTF-8, UTF-16 Excel, cp1252, latin-1). Scan binaire WWB (.sdb3) : latin-1, pour que
+    parse_scan_text retrouve les octets exacts."""
+    if raw.lstrip(b"\xef\xbb\xbf")[:12] == b"//@ShureScan":
+        return raw.decode("latin-1")
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
         return raw.decode("utf-16", errors="replace")
     for enc in ("utf-8-sig", "cp1252", "latin-1"):
@@ -2373,10 +2376,66 @@ def scan_unit_scale(freqs, hint=None):
     return 1.0
 
 
+def parse_sdb3(raw):
+    """Scan Shure WWB natif (.sdb3, « //@ShureScan ») : en-tête JSON (plages en kHz, BitWidth, Scale Factor,
+    NoDataValue), puis « @Binary: » = balayages « @Swp » (id, horodatage, niveaux entiers signés big-endian / Scale
+    Factor = dBm, CRC16), puis « @Extended: » (infos WWB), « @End ». Plusieurs balayages -> max hold (le pire cas).
+    -> (F MHz, L dBm, info). Format déduit d'un vrai fichier (WWB 7, SLXD4) : pas de doc Shure publique."""
+    import json
+    raw = bytes(raw).lstrip(b"\xef\xbb\xbf")
+    i = raw.find(b"@Binary:")
+    if not raw.startswith(b"//@ShureScan") or i < 0:
+        raise ValueError("ce n'est pas un scan WWB (.sdb3)")
+    head = json.loads(raw[raw.index(b"{"):i].decode("utf-8", "replace"))
+    j = raw.find(b"@Extended:", i)
+    data = raw[i + 8: j if j > 0 else len(raw)]
+    fmul = {"hz": 1e-6, "khz": 1e-3, "mhz": 1.0, "ghz": 1e3}.get(str(head.get("FreqUnits", "KHz")).lower(), 1e-3)
+    bw = int(head.get("BitWidth", 16)) // 8
+    scale = float(head.get("Scale Factor", 10) or 1)
+    nodata = head.get("NoDataValue")
+    lay, fr = [], None                     # (octets, None) champ simple ; (n points, fréquences) courbe
+    for el in head.get("BinarySchema", []):
+        if "Curve" in el:
+            fs = []
+            for r in el["Curve"].get("FreqRanges", []):
+                a_, b_, st = float(r["StartFreq"]), float(r["EndFreq"]), float(r["StepFreq"])
+                fs.append(a_ + st * np.arange(int(round((b_ - a_) / st)) + 1))
+            f_ = np.concatenate(fs) * fmul if fs else np.zeros(0)
+            lay.append((len(f_) * bw, f_))
+            if fr is None or el["Curve"].get("CoordinationSource"):
+                fr = (len(lay) - 1, f_)
+        else:
+            lay.append((int(el.get("Bytes", 0)), None))
+    if fr is None or not len(fr[1]):
+        raise ValueError("scan WWB sans courbe de mesure")
+    rec = sum(n for n, _ in lay)
+    off = sum(n for n, _ in lay[:fr[0]])
+    sweeps = []
+    k = data.find(b"@Swp")
+    while k >= 0 and k + rec <= len(data):
+        v = np.frombuffer(data, dtype=f">i{bw}", count=len(fr[1]), offset=k + off).astype(float)
+        if nodata is not None:
+            v[v == float(nodata)] = np.nan
+        sweeps.append(v / scale)
+        k = data.find(b"@Swp", k + rec)
+    if not sweeps:
+        raise ValueError("scan WWB sans balayage")
+    with np.errstate(all="ignore"):
+        L = np.nanmax(np.vstack(sweeps), axis=0)
+    ok_ = np.isfinite(L)
+    F, L = fr[1][ok_], L[ok_]
+    o = np.argsort(F, kind="stable")
+    name = " · ".join(x for x in (head.get("ScannerName"), head.get("Title")) if x)
+    return F[o], L[o], dict(fmt="sdb3", n=len(F), unit="kHz", title=name,
+                            note=f"scan WWB natif (.sdb3) : {len(sweeps)} balayage(s), max gardé")
+
+
 def parse_scan_text(text):
     """Lit un scan de fréquences : export WSM (Sennheiser) ou fichier « fréquence, niveau » (WWB, notre export…).
     -> (F en MHz croissant, L en dBm, info) ; ValueError avec un message clair si ce n'est pas un scan."""
     text = str(text).lstrip("﻿")
+    if text.startswith("//@ShureScan"):                       # .sdb3 lu par decode_text en latin-1
+        return parse_sdb3(text.encode("latin-1"))
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     # --- export WSM : « Frequency;RF level (%);RF level;Memory (%);… », niveau en % de 0 (−120 dBm) à 100 (0 dBm)
     for k, ln in enumerate(lines[:80]):
@@ -10463,7 +10522,7 @@ class ScanConvertDialog(QtWidgets.QDialog):
 
     def open_files(self):
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Scans à convertir", "",
-                                                          "Scans (*.csv *.txt);;Tous les fichiers (*)")
+                                                          "Scans (*.csv *.txt *.sdb3);;Tous les fichiers (*)")
         if paths:
             self.paths = list(paths)
             self.F = self.L = None
@@ -10484,7 +10543,7 @@ class ScanConvertDialog(QtWidgets.QDialog):
         try:
             if self.paths:
                 F, L, info = self._read(decode_text(Path(self.paths[0]).read_bytes()))
-                kind = {"wsm": "export WSM", "simple": "fichier « fréquence, niveau »",
+                kind = {"wsm": "export WSM", "simple": "fichier « fréquence, niveau »", "sdb3": "scan WWB natif (.sdb3)",
                         "custom": "CSV personnalisé"}.get(info["fmt"], info["fmt"])
                 more = f" (+ {len(self.paths) - 1} autre(s) fichier(s))" if len(self.paths) > 1 else ""
                 self.src_lbl.setText(f"✔ {os.path.basename(self.paths[0])}{more} : {kind}, {len(F)} points, "
@@ -11434,7 +11493,7 @@ class SitesDialog(QtWidgets.QDialog):
 
     def import_file(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Importer un scan (WWB, WSM, CSV…)", "",
-                                                        "Scans (*.csv *.txt);;Tous les fichiers (*)")
+                                                        "Scans (*.csv *.txt *.sdb3);;Tous les fichiers (*)")
         if not path:
             return
         try:
@@ -19695,7 +19754,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------- scans WSM / WWB
     def import_scan_as_ref(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Importer un scan (export WSM, WWB, CSV…)", "", "Scans (*.csv *.txt);;Tous les fichiers (*)")
+            self, "Importer un scan (export WSM, WWB, CSV…)", "", "Scans (*.csv *.txt *.sdb3);;Tous les fichiers (*)")
         if not path:
             return
         try:
@@ -19707,7 +19766,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._save_ref_file(REF_PATH)
         self.showref_chk.setChecked(True)
         self.reeval()
-        kind = "export WSM" if info["fmt"] == "wsm" else "fichier fréquence, niveau"
+        kind = {"wsm": "export WSM", "sdb3": "scan WWB natif (.sdb3)"}.get(info["fmt"], "fichier fréquence, niveau")
         self.set_status(f"Scan importé comme référence ({kind}) : {len(F)} points, {F[0]:.3f} – {F[-1]:.3f} MHz"
                         + (f" · {info['note']}" if info.get("note") else "")
                         + ". Courbe en pointillés ; coche « Seuil = courbe de référence + » pour l'utiliser.")
