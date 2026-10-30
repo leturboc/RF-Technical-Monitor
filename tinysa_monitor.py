@@ -80,7 +80,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.19.0"
+APP_VER = "7.20.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2711,7 +2711,7 @@ def safe_filename(s, default="export"):
 # --------------------------------------------------------------------------
 SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
-             "points", "points_auto", "points_sel", "planning", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
+             "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
@@ -4781,6 +4781,7 @@ STEPS = (
     ("plan", "③ Coordonner le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
      "une remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.",
      (("🪄 Trouver N fréquences compatibles…", "open_coord"), ("🧮 Vérifier le plan…", "open_plan_check"),
+      ("📍 Scans par lieu (plusieurs scènes, fusion, export)…", "open_sites"),
       ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"))),
     ("im", "④ Intermod", "Produits d'intermodulation de tes émetteurs, ou d'où vient un signal gênant\n"
      "(d'après le spectre mesuré).", ()),
@@ -5082,6 +5083,58 @@ def hunt_request(req):
         raise ValueError("fréquence")
     return dict(action=req["action"], f=f, span=min(50.0, max(0.2, span)), follow=bool(req.get("follow")),
                 dev=1 if int(req.get("dev") or 0) == 1 else 0)
+
+
+# ------------------------------------------------------------------ 📍 scans par lieu (un tinySA promené de scène en scène)
+def merge_scans(scans, max_points=60000):
+    """Fusion de scans [(F MHz, L dBm)] sur une grille commune : le MAX de tous (le pire cas du site) -> (F, L).
+    Grille au pas le plus fin des scans (plafonnée à max_points) ; chaque scan est interpolé sur sa propre plage, et
+    ses points exacts sont aussi posés sur la grille (un pic étroit n'est pas perdu). (None, None) si rien."""
+    ok_ = []
+    for F, L in scans or []:
+        if F is None or L is None:
+            continue
+        F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+        if len(F) < 2 or len(F) != len(L):
+            continue
+        o = np.argsort(F, kind="stable")
+        ok_.append((F[o], L[o]))
+    if not ok_:
+        return None, None
+    lo = min(F[0] for F, _L in ok_)
+    hi = max(F[-1] for F, _L in ok_)
+    step = min(float(np.median(np.diff(F))) for F, _L in ok_) or 0.001
+    step = max(step, (hi - lo) / max(1, max_points - 1), 1e-6)
+    n = int(round((hi - lo) / step)) + 1
+    G = lo + np.arange(n) * step
+    out = np.full(n, np.nan)
+    for F, L in ok_:
+        inside = (G >= F[0]) & (G <= F[-1])
+        out[inside] = np.fmax(out[inside], np.interp(G[inside], F, L))
+        idx = np.clip(np.round((F - lo) / step).astype(int), 0, n - 1)
+        np.fmax.at(out, idx, L)
+    keep = np.isfinite(out)
+    return G[keep], out[keep]
+
+
+def site_scan_doc(name, F, L, t):
+    """Scan d'un lieu en version compacte (config / show) : MHz à 4 décimales, dBm à 1 décimale."""
+    return dict(name=str(name).strip()[:60], t=float(t), f=[round(float(x), 4) for x in F],
+                l=[round(float(x), 1) for x in L])
+
+
+def site_scans_norm(lst):
+    """Scans par lieu lus d'un fichier -> [{name, t, f, l}] valides (noms uniques, le dernier gagne)."""
+    out = {}
+    for d in lst if isinstance(lst, list) else []:
+        try:
+            f, l = list(d["f"]), list(d["l"])
+            name = str(d["name"]).strip()
+            if name and len(f) >= 2 and len(f) == len(l):
+                out[name] = dict(name=name[:60], t=float(d.get("t") or 0), f=[float(x) for x in f], l=[float(x) for x in l])
+        except (KeyError, TypeError, ValueError):
+            continue
+    return list(out.values())
 
 
 # ===== PURE-END
@@ -7769,7 +7822,7 @@ class RescueDialog(QtWidgets.QDialog):
 
     def search(self):
         o = self.owner
-        F, L = o.fresh_FL(use_max=True, any_age=True)
+        F, L = o.coord_FL()
         if F is None:
             self.msg.setText("Aucune mesure : lance un balayage (▶ Démarrer) sur cette zone, laisse tourner un moment, "
                              "puis relance la recherche.")
@@ -11144,6 +11197,206 @@ class EmitDialog(QtWidgets.QDialog):
         super().done(r)
 
 
+class SitesDialog(QtWidgets.QDialog):
+    """📍 Scans par lieu : un tinySA promené de scène en scène, un scan (max hold) gardé par lieu, tous superposés,
+    et leur FUSION (le pire cas de tout le site) pour coordonner l'ensemble ou l'exporter vers WWB / WSM / EazyRF."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Scans par lieu")
+        self.resize(1000, 640)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Promène le tinySA : à chaque scène, laisse tourner le scan quelques minutes (max hold), puis "
+            "« 📍 Garder le scan » pour ce lieu. Les spectres de tous les lieux se superposent ; la <b>fusion</b> "
+            "(le plus fort de tous, en blanc) sert à coordonner tout le site et s'exporte vers WWB / WSM / EazyRF.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.site_combo = QtWidgets.QComboBox()
+        self.site_combo.setEditable(True)
+        names = [x["name"] for x in o.site_scans] + [x["name"] for x in o.scenes]
+        for n_ in dict.fromkeys(names):
+            self.site_combo.addItem(n_)
+        if not names:
+            self.site_combo.setEditText("Lieu 1")
+        self.site_combo.setToolTip("Nom du lieu (les scènes sont proposées) ; tape un nouveau nom pour un autre lieu.")
+        self.merge_chk = QtWidgets.QCheckBox("Ajouter au scan déjà gardé (max)")
+        self.merge_chk.setChecked(True)
+        self.merge_chk.setToolTip("Coché : on garde le plus fort de l'ancien et du nouveau scan de ce lieu.\n"
+                                  "Décoché : le nouveau remplace l'ancien.")
+        b_keep = QtWidgets.QPushButton("📍 Garder le scan actuel pour ce lieu")
+        b_keep.setToolTip("Enregistre le max hold actuel (toutes les bandes) comme scan de ce lieu.")
+        b_keep.clicked.connect(lambda *_: self.keep_current())
+        b_imp = QtWidgets.QPushButton("📥 Importer un scan…")
+        b_imp.setToolTip("Un scan WWB, WSM, CSV… (autre scanner, autre jour) rangé dans ce lieu.")
+        b_imp.clicked.connect(lambda *_: self.import_file())
+        lay.addLayout(owner._row("Lieu :", self.site_combo, self.merge_chk, b_keep, b_imp, None))
+        mid = QtWidgets.QHBoxLayout()
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setMaximumWidth(270)
+        self.lst.setToolTip("Coche les lieux à afficher et à fusionner.")
+        self.lst.itemChanged.connect(lambda *_: self.redraw())
+        mid.addWidget(self.lst)
+        self.plot = pg.PlotWidget()
+        self.plot.showGrid(x=True, y=True, alpha=0.25)
+        self.plot.setLabel("bottom", "Fréquence (MHz)")
+        self.plot.setLabel("left", "Niveau (dBm)")
+        self.plot.addLegend(offset=(10, 10))
+        mid.addWidget(self.plot, 1)
+        lay.addLayout(mid, 1)
+        b_del = QtWidgets.QPushButton("🗑 Supprimer le lieu")
+        b_del.setToolTip("Oublie le scan du lieu sélectionné.")
+        b_del.clicked.connect(lambda *_: self.delete())
+        self.what = QtWidgets.QComboBox()
+        self.what.addItem("la fusion (lieux cochés)", "merge")
+        self.what.addItem("le lieu sélectionné", "one")
+        self.what.setToolTip("Quoi exporter.")
+        self.fmt = QtWidgets.QComboBox()
+        for k, t in (("wwb", "Shure WWB (.csv)"), ("wsm", "Sennheiser WSM (.csv)"), ("csv", "CSV MHz ; dBm")):
+            self.fmt.addItem(t, k)
+        self.fmt.setToolTip("WWB : « 470.000, -98 » sans en-tête · WSM : kHz et % · CSV : pour EazyRF, Excel…")
+        b_exp = QtWidgets.QPushButton("💾 Exporter…")
+        b_exp.setToolTip("Enregistre le scan choisi pour un logiciel de coordination.")
+        b_exp.clicked.connect(lambda *_: self.export())
+        b_ref = QtWidgets.QPushButton("📏 Fusion = référence")
+        b_ref.setToolTip("La fusion devient la courbe de référence (seuil = référence + marge possible).")
+        b_ref.clicked.connect(lambda *_: self.as_ref())
+        lay.addLayout(owner._row(b_del, None, "Exporter", self.what, self.fmt, b_exp, b_ref))
+        self.coord_chk = QtWidgets.QCheckBox("🪄 Coordination et fréquence de secours : éviter ce qui est occupé sur "
+                                             "TOUS les lieux (fusion)")
+        self.coord_chk.setChecked(o.sites_coord)
+        self.coord_chk.setToolTip("Coché : « Trouver N fréquences » et « Fréquence de secours » évitent ce qui est\n"
+                                  "occupé n'importe où sur le site (scans gardés + scan en cours), pas seulement ici.")
+        self.coord_chk.toggled.connect(lambda *_: setattr(o, "sites_coord", self.coord_chk.isChecked()))
+        lay.addWidget(self.coord_chk)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.fill()
+
+    def fill(self):
+        o = self.owner
+        self.lst.blockSignals(True)
+        self.lst.clear()
+        for i, d in enumerate(o.site_scans):
+            when = datetime.fromtimestamp(d["t"]).strftime("%d/%m %H:%M") if d["t"] else ""
+            it = QtWidgets.QListWidgetItem(f"{d['name']}  ·  {when}  ·  {d['f'][0]:.0f}–{d['f'][-1]:.0f} MHz")
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Checked)
+            it.setData(Qt.ItemDataRole.UserRole, d["name"])
+            it.setForeground(QtGui.QColor(GROUP_COLORS[i % len(GROUP_COLORS)]))
+            self.lst.addItem(it)
+        self.lst.blockSignals(False)
+        self.redraw()
+
+    def checked(self):
+        names = {self.lst.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.lst.count())
+                 if self.lst.item(i).checkState() == Qt.CheckState.Checked}
+        return [d for d in self.owner.site_scans if d["name"] in names]
+
+    def merged(self):
+        return merge_scans([(d["f"], d["l"]) for d in self.checked()])
+
+    def redraw(self):
+        o = self.owner
+        self.plot.clear()
+        for i, d in enumerate(o.site_scans):
+            if d in self.checked():
+                self.plot.plot(d["f"], d["l"], pen=pg.mkPen(GROUP_COLORS[i % len(GROUP_COLORS)], width=1.2), name=d["name"])
+        F, L = self.merged()
+        if F is not None and len(self.checked()) > 1:
+            gap = np.nonzero(np.diff(F) > 5 * float(np.median(np.diff(F))))[0] + 1   # pas de trait sur les trous
+            Fp, Lp = np.insert(F, gap, np.nan), np.insert(L, gap, np.nan)
+            self.plot.plot(Fp, Lp, pen=pg.mkPen("#ffffff", width=1.6, style=Qt.PenStyle.DashLine), name="Fusion",
+                           connect="finite")
+        n = len(o.site_scans)
+        self.msg.setText(f"{n} lieu(x) gardé(s)." if n else "Aucun lieu encore : lance un scan, puis « 📍 Garder ».")
+
+    def _store(self, name, F, L):
+        o = self.owner
+        name = name.strip()
+        if not name:
+            self.msg.setText("Donne un nom au lieu.")
+            return False
+        old = next((d for d in o.site_scans if d["name"] == name), None)
+        if old is not None and self.merge_chk.isChecked():
+            F, L = merge_scans([(old["f"], old["l"]), (F, L)])
+        o.site_scans = [d for d in o.site_scans if d["name"] != name] + [site_scan_doc(name, F, L, time.time())]
+        self.fill()
+        return True
+
+    def keep_current(self):
+        F, L = self.owner.fresh_FL(use_max=True, any_age=True)
+        if F is None:
+            self.msg.setText("Pas encore de scan : lance ▶ Démarrer et laisse tourner quelques minutes ici.")
+            return
+        name = self.site_combo.currentText()
+        if self._store(name, F, L):
+            self.msg.setText(f"📍 Scan gardé pour « {name.strip()} » ({len(F)} points).")
+
+    def import_file(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Importer un scan (WWB, WSM, CSV…)", "",
+                                                        "Scans (*.csv *.txt);;Tous les fichiers (*)")
+        if not path:
+            return
+        try:
+            F, L, _info = parse_scan_text(decode_text(Path(path).read_bytes()))
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(f"Scan illisible : {e}")
+            return
+        name = self.site_combo.currentText().strip() or Path(path).stem
+        if self._store(name, F, L):
+            self.msg.setText(f"📥 Scan importé dans « {name} » ({len(F)} points).")
+
+    def delete(self):
+        it = self.lst.currentItem()
+        if it is None:
+            return
+        name = it.data(Qt.ItemDataRole.UserRole)
+        self.owner.site_scans = [d for d in self.owner.site_scans if d["name"] != name]
+        self.fill()
+
+    def _pick(self):
+        if self.what.currentData() == "merge":
+            F, L = self.merged()
+            return F, L, "fusion"
+        it = self.lst.currentItem()
+        d = next((x for x in self.owner.site_scans if it is not None and x["name"] == it.data(Qt.ItemDataRole.UserRole)),
+                 None)
+        return (None, None, "") if d is None else (np.asarray(d["f"]), np.asarray(d["l"]), d["name"])
+
+    def export(self, path=None):
+        F, L, label = self._pick()
+        if F is None:
+            self.msg.setText("Rien à exporter (coche des lieux, ou sélectionne-en un).")
+            return None
+        fmt = self.fmt.currentData()
+        if path is None:
+            dflt = str(self.owner.log_dir / f"scan_{session_name(label)}_{fmt}.csv")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter le scan", dflt, "CSV (*.csv)")
+            if not path:
+                return None
+        try:
+            Path(path).write_text(scan_write(F, L, fmt, title=label), encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(f"Export impossible : {e}")
+            return None
+        self.msg.setText(f"💾 « {label} » exporté : {path}")
+        return path
+
+    def as_ref(self):
+        F, L = self.merged()
+        if F is None:
+            return
+        o = self.owner
+        o._set_ref([(F, L)])
+        o._save_ref_file(REF_PATH)
+        o.showref_chk.setChecked(True)
+        o.reeval()
+        self.msg.setText("📏 La fusion est la nouvelle courbe de référence.")
+
+
 class SettingsDialog(QtWidgets.QDialog):
     """⚙ Réglages : ce qu'on règle une fois (langue, affichage, son, dossiers, connexions), rangé au même endroit.
     Tout s'applique tout de suite."""
@@ -11872,7 +12125,7 @@ class CoordDialog(QtWidgets.QDialog):
         d = self._new_profile()
         busy = None
         if self.avoid.isChecked():
-            Fm, Lm = o.fresh_FL(use_max=True, any_age=True)
+            Fm, Lm = o.coord_FL()
             if Fm is not None:                     # seuil « occupé » : le max hold du bruit dépasse souvent « faible »
                 lim = o.thr_spin.value()
                 win = max(0.05, o.win_spin.value() / 1000.0)
@@ -12777,6 +13030,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sound = SoundOut()                # sons de l'appli sur la sortie audio choisie (⚙ Réglages › Son)
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
+        self.site_scans = []                   # 📍 scans gardés par lieu [{name, t, f, l}]
+        self.sites_coord = False               # coordination / secours : éviter l'occupé de TOUS les lieux
         self.planning = planning_norm(None)    # 🎬 qui joue quand, par scène
         self._plan_state = (set(), set())      # (actifs, scènes planifiées) au dernier calcul
         self._plan_next = 0.0
@@ -13304,6 +13559,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
             (None, None),
             ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
+        mm.addAction("📍 Scans par lieu (plusieurs scènes, fusion, export)…").triggered.connect(lambda *_: self.open_sites())
         mm.addAction("⚡ Intermodulation (2 / 3 / 5 TX)…").triggered.connect(lambda *_: self.open_intermod())
         mm.addSection("② Pendant le show")
         mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
@@ -14282,6 +14538,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.points_combo.setCurrentIndex(self.points_combo.findData(sel_))
             self._cfg["points_auto"] = True
         self.scan_follow = bool(data.get("scan_follow", False))
+        if "site_scans" in data:
+            self.site_scans = site_scans_norm(data.get("site_scans"))
+        self.sites_coord = bool(data.get("sites_coord", self.sites_coord))
         if "planning" in data:
             self.planning = planning_norm(data.get("planning"))
             self._plan_next = 0.0
@@ -14452,6 +14711,7 @@ class MainWindow(QtWidgets.QMainWindow):
                       for s in self.statuses],
             theme=self.theme,
             scan_follow=self.scan_follow,
+            site_scans=self.site_scans, sites_coord=self.sites_coord,
             planning=self.planning,
             sound=dict(self.sound.cfg),
             festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
@@ -18149,6 +18409,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_emit(self):
         d = EmitDialog(self)
         d.exec()
+
+    def open_sites(self):
+        SitesDialog(self).exec()
+
+    def coord_FL(self):
+        """Spectre à éviter pour la coordination : max hold actuel, + les scans gardés de tous les lieux si demandé."""
+        F, L = self.fresh_FL(use_max=True, any_age=True)
+        if not (self.sites_coord and self.site_scans):
+            return F, L
+        return merge_scans([(d["f"], d["l"]) for d in self.site_scans] + ([(F, L)] if F is not None else []))
 
     def open_settings(self, tab=0):
         d = SettingsDialog(self)

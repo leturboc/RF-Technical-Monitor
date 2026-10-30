@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.19.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.20.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -353,6 +353,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `_web_hunt_pending` (ouvre / règle la chasse, PC muet) ; état `hunt_state()` dans /etat.json (`hunt`) ; bip joué
     par le NAVIGATEUR (Web Audio, `huntTone` = même formule que `hunt_tone`) ; liste des tinySA reconstruite si elle
     change (montée avant le 1er état).
+- **7.20.0 (Clément : « un multi-spectre en fonction des scènes, un tiny en mouvance entre scènes, export ou merge des
+  scans pour une coord complète »)** : PURE `merge_scans` (grille au pas le plus fin, interpolation sur la plage de
+  chaque scan + points exacts posés, MAX = pire cas ; trous sans mesure retirés), `site_scan_doc` (compact),
+  `site_scans_norm`. `SitesDialog` (lieu = combo modifiable, scènes proposées ; « 📍 Garder » = max hold actuel,
+  « ajouter (max) » ou remplacer ; 📥 import d'un fichier ; courbes par lieu + fusion pointillée coupée sur les trous ;
+  export fusion / lieu en WWB / WSM / CSV via `scan_write` ; 📏 fusion = référence ; case `sites_coord`).
+  `self.site_scans` (config + SHOW_KEYS « site_scans »), `coord_FL()` (max hold + lieux si `sites_coord`) utilisé par
+  `CoordDialog.compute` et `RescueDialog.search`. `open_sites` (☰ Plus ①, parcours ③).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

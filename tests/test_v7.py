@@ -697,5 +697,25 @@ for bad_ in (dict(action="start", f=0), dict(action="x"), None, dict(action="sta
     except (ValueError, TypeError, AttributeError):
         ok(f"chasse web : refusée {bad_}", True)
 
+# --- 📍 scans par lieu : fusion (le pire cas du site)
+ms_ = ns["merge_scans"]
+Fa_ = np.linspace(470, 500, 1201)                 # pas 25 kHz
+La_ = np.full_like(Fa_, -100.0)
+La_[400] = -60.0                                  # 480.000 vu seulement à la scène A
+Fb_ = np.linspace(490, 520, 301)                  # pas 100 kHz, plage différente
+Lb_ = np.full_like(Fb_, -95.0)
+Lb_[150] = -50.0                                  # 505.000 vu seulement à la scène B
+Fm_, Lm_ = ms_([(Fa_, La_), (Fb_, Lb_)])
+ok("fusion : couvre 470–520 MHz", abs(Fm_[0] - 470) < 1e-6 and abs(Fm_[-1] - 520) < 1e-6, f"{Fm_[0]} {Fm_[-1]}")
+ok("fusion : pas le plus fin (25 kHz)", abs(float(np.median(np.diff(Fm_))) - 0.025) < 1e-6)
+ok("fusion : le pic de la scène A est là", abs(ns["level_at"](Fm_, Lm_, 480.0, 0.05) + 60) < 0.01)
+ok("fusion : le pic de la scène B est là", abs(ns["level_at"](Fm_, Lm_, 505.0, 0.05) + 50) < 0.01)
+ok("fusion : là où les deux se recouvrent, le plus fort (−95 de B)", abs(ns["level_at"](Fm_, Lm_, 495.0, 0.01) + 95) < 0.5)
+check("fusion : rien -> rien", ms_([]), (None, None))
+d_ = ns["site_scan_doc"]("Grande scène", Fa_[:3], La_[:3], 1000.0)
+check("lieu : version compacte", (d_["name"], d_["f"], d_["l"]), ("Grande scène", [470.0, 470.025, 470.05], [-100.0, -100.0, -100.0]))
+check("lieux lus d'un fichier : invalides écartés, nom unique", [x["name"] for x in ns["site_scans_norm"](
+    [d_, dict(name="", f=[1, 2], l=[1, 2]), dict(name="B", f=[1], l=[1]), dict(d_, l=[-1.0, -2.0, -3.0])])], ["Grande scène"])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
