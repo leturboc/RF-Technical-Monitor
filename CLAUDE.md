@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.20.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.21.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -362,10 +362,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `self.site_scans` (config + SHOW_KEYS « site_scans »), `coord_FL()` (max hold + lieux si `sites_coord`) utilisé par
   `CoordDialog.compute` et `RescueDialog.search`. `open_sites` (☰ Plus ①, parcours ③).
   **7.20.1** : spectre principal = scan gardé de la scène choisie dans l'arbre (PURE `sites_for_scope`), fusion en
-  Global : `sitecurve` (PlotCurveItem, ignoreBounds), `site_lbl`, bouton `sites_btn` « 📍 Lieux » (caché sans lieu),
-  `update_site_curve` (appelé par `set_scope`, `open_sites`, la config). Idée suivante de Clément (PAS faite) : un
-  tinySA PAR SCÈNE en monitoring (chacun balaye tout chez lui, le spectre / les états d'une scène viennent de SON
-  tinySA) → stockage par appareil (`latest` est indexé par bande seulement aujourd'hui) : gros chantier.
+  Global : `sitecurve` (PlotCurveItem, ignoreBounds), `site_lbl`, `update_site_curve` (appelé par `set_scope`,
+  `open_sites`, la config).
+  **7.21.0 (Clément : « ça scanne en continu, c'est vraiment la sélection du lieu visualisé sur le spectre »)** :
+  `self.dev_site` {appareil: lieu} (config `dev_sites`), `set_dev_site`, bouton `sites_btn` = QToolButton à menu
+  (`_build_sites_menu` : « 1er tinySA est à… », afficher, Scans par lieu ; toujours visible) + combos dans SitesDialog.
+  `on_sweep` → `_site_feed` (via `band_src` : `site_live` {lieu: {bande: (F, L, t)}}, `site_mh` max hold du lieu,
+  `_site_base` = scan gardé au 1er balayage) ; `_sites_tick` (30 s, dans `_alarm_tick`) garde `site_mh` fusionné à
+  `_site_base` dans `site_scans`. `view_sites()` : scène choisie qui est un lieu → `_update_plot` trace le direct du
+  lieu (`site_live`), rien en direct si aucun tinySA n'y est (étiquette « pas de tinySA ici »). PURE `multi_site` :
+  2 tinySA vivants à 2 lieux différents → `band_devices` renvoie -1 (chacun balaye toutes les bandes, `get_cfg`
+  accepte -1), `latest` global = max des lieux (pire cas), `update_watch_levels` juge une fréquence de la scène X avec
+  `site_fresh(X)`. Testé en démo (2 tinySA simulés) ; **jamais avec deux vrais tinySA à deux endroits**.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

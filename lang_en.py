@@ -9,6 +9,16 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    ' · deux lieux : chaque tinySA balaye toutes les bandes chez lui': ' · two locations: each tinySA sweeps all bands where it is',
+    'deux lieux : chaque tinySA balaye toutes les bandes chez lui': 'two locations: each tinySA sweeps all bands where it is',
+    '(aucun lieu)': '(no location)',
+    'Où est ce tinySA : chacun de ses balayages alimente EN CONTINU le spectre de ce lieu\n(clique la scène dans « Mes fréquences » pour le voir), gardé tout seul toutes les 30 s.': "Where this tinySA is: each of its sweeps CONTINUOUSLY feeds this location's spectrum\n(click the stage in « My frequencies » to see it), kept automatically every 30 s.",
+    'Spectre par lieu : dis où est chaque tinySA (flèche ▾) ; clique une scène dans « Mes\nfréquences » pour voir le spectre de CE lieu (en direct si un tinySA y est, sinon son\ndernier spectre gardé). Global : tout. Clic sur le bouton = afficher / cacher.': "Spectrum by location: say where each tinySA is (arrow ▾); click a stage in « My\nfrequencies » to see THIS location's spectrum (live if a tinySA is there, otherwise its\nlast kept spectrum). Global: everything. Click the button = show / hide.",
+    'sans lieu': 'no location',
+    '👁 Afficher les lieux sur le spectre': '👁 Show locations on the spectrum',
+    '📍 Scans par lieu (fusion, export)…': '📍 Scans by location (merge, export)…',
+    '1er': '1st',
+    '2ᵉ': '2nd',
     '📍 Lieux': '📍 Locations',
     'Montre sur le spectre le scan gardé du lieu : clique une scène dans « Mes fréquences »\npour voir le sien ; en Global, la fusion de tous les lieux (📍 Scans par lieu).': "Shows the location's kept scan on the spectrum: click a stage in « My frequencies »\nto see its own; in Global, the merge of all locations (📍 Scans by location).",
     "(le plus fort de tous, en blanc) sert à coordonner tout le site et s'exporte vers WWB / WSM / EazyRF.": '(the strongest of all, in white) is used to coordinate the whole site and exports to WWB / WSM / EazyRF.',
@@ -2274,6 +2284,15 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '📍 {} : en direct (pointillés = max gardé)': '📍 {}: live (dashes = kept max)',
+    '📍 {} tinySA ({}) est à…': '📍 {} tinySA ({}) is at…',
+    '📍 {} : pas de tinySA ici en ce moment · dernier spectre gardé': '📍 {}: no tinySA here right now · last kept spectrum',
+    '📍 {} : pas de tinySA ici en ce moment · dernier spectre gardé ({})': '📍 {}: no tinySA here right now · last kept spectrum ({})',
+    '📍 {} tinySA : ': '📍 {} tinySA: ',
+    '📍 {} tinySA est à :': '📍 {} tinySA is at:',
+    'à « {} »': 'at « {} »',
+    '📍 {} tinySA : à « {} »': '📍 {} tinySA: at « {} »',
+    '📍 {} tinySA : sans lieu': '📍 {} tinySA: no location',
     '📍 Scan gardé : {}': '📍 Kept scan: {}',
     '📍 Tous les lieux : fusion de {} scans': '📍 All locations: merge of {} scans',
     ' ({})': ' ({})',
