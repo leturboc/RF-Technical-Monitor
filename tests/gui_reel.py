@@ -998,11 +998,12 @@ check("festival : « tourne » enregistré dans la config", win._collect_config(
 win.festival["last"] = ""
 win._fest_next = 0
 _rd_ = win.log_dir / "rapports"
-_n0 = len(list(_rd_.glob("bilan_*.html"))) if _rd_.exists() else 0
+for _f in (_rd_.glob("bilan_*.html") if _rd_.exists() else []):
+    _f.unlink()                       # le minuteur du mode festival a pu faire un bilan juste avant (même minute)
 step("bilan du jour (dû)", lambda: win._festival_tick(time.time()))
 _bl = sorted(_rd_.glob("bilan_*.html")) if _rd_.exists() else []
 check("bilan : fait une fois aujourd'hui", win.festival["last"] == time.strftime("%Y-%m-%d"), str(win.festival))
-check("bilan : rapport du jour écrit", len(_bl) == _n0 + 1 and "<html" in _bl[-1].read_text(encoding="utf-8")[:600].lower(),
+check("bilan : rapport du jour écrit", len(_bl) == 1 and "<html" in _bl[-1].read_text(encoding="utf-8")[:600].lower(),
       str(_bl[-1:]))
 check("bilan : noté au journal", win.log_table.item(0, 4) is not None and win.log_table.item(0, 4).text() == "BILAN DU JOUR")
 win._fest_next = 0
