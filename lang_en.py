@@ -2692,6 +2692,7 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '📍 {} : scan gardé en pointillés': '📍 {}: kept scan as dashes',
     '{}  ·  {} min': '{}  ·  {} min',
     'Spectre : scène {} ({} scan(s) gardé(s))': 'Spectrum: stage {} ({} kept scan(s))',
     'Spectre : tout le site (fusion de {} scan(s) gardé(s) + max hold)': 'Spectrum: whole site (merge of {} kept scan(s) + max hold)',
