@@ -9,6 +9,11 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'PySide6.QtMultimedia': 'PySide6.QtMultimedia',
+    'manuels embarqués (FR + EN)': 'bundled manuals (FR + EN)',
+    'son (PySide6.QtMultimedia)': 'sound (PySide6.QtMultimedia)',
+    'tinySA en réseau (socket://, relais / Raspberry Pi)': 'network tinySA (socket://, relay / Raspberry Pi)',
+    'traductions anglaises (lang_en)': 'English translations (lang_en)',
     'Adresse du relais (Raspberry Pi ou autre PC) :\nex. tinysa-sac.local  ·  192.168.1.42  ·  192.168.1.42:5025': 'Relay address (Raspberry Pi or other PC):\ne.g. tinysa-sac.local  ·  192.168.1.42  ·  192.168.1.42:5025',
     'Adresse réseau illisible.\nExemples : tinysa-sac.local · 192.168.1.42 · 192.168.1.42:5025': 'Unreadable network address.\nExamples: tinysa-sac.local · 192.168.1.42 · 192.168.1.42:5025',
     'Port USB du tinySA (✔ tinySA = reconnu automatiquement). Ferme tinySA-App avant : un seul\nlogiciel à la fois peut parler au tinySA. ⟳ : relire la liste des ports.\n🌐 tinySA en réseau : le tinySA est branché sur un Raspberry Pi (ou un autre PC) qui le partage.': 'tinySA USB port (✔ tinySA = recognised automatically). Close tinySA-App first: only one\nprogram at a time can talk to the tinySA. ⟳: re-read the port list.\n🌐 Network tinySA: the tinySA is plugged into a Raspberry Pi (or another PC) that shares it.',
@@ -2678,6 +2683,9 @@ TEMPLATES = {
 }
 
 SAME_TEMPLATES = [
+    'ÉCHECS: {}',
+    'OK   {}',
+    'FAIL {} : {} : {}',
     'color:{};font-weight:bold',
     'color 0 {}',
     '  {} MHz',
