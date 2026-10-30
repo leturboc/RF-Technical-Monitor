@@ -769,5 +769,26 @@ try:
 except ValueError:
     ok("sdb3 abîmé : erreur claire", True)
 
+# --- 🎒 terrain : plusieurs scans gardés par scène
+sn_ = ns["snapshot_name"]
+check("scan gardé : nom « scène · étiquette »", sn_("Club", " jardin ", set(), "14:32"), "Club · jardin")
+check("scan gardé : sans étiquette = l'heure", sn_("Club", "", set(), "14:32"), "Club · 14:32")
+check("scan gardé : nom unique", sn_("Club", "bar", {"Club · bar", "Club · bar (2)"}, "x"), "Club · bar (3)")
+_d1 = ns["site_scan_doc"]("Club · bar", [470, 471], [-90, -80], 1.0, scene="Club")
+_d0 = ns["site_scan_doc"]("Club", [470, 471], [-95, -85], 2.0)
+ok("scan gardé : sa scène est notée (pas pour le continu)", _d1["scene"] == "Club" and "scene" not in _d0)
+check("scans d'une scène : continu + gardés", [d["name"] for d in ns["sites_for_scope"]([_d0, _d1, dict(name="Autre")],
+                                                                                      [("Club", None)])], ["Club", "Club · bar"])
+ok("scène gardée relue de la config", ns["site_scans_norm"]([_d1])[0]["scene"] == "Club")
+tq_ = ns["terrain_request"]
+check("terrain : commande propre", tq_(dict(action="assign", dev="1", scenes=["A", " ", "B"])),
+      dict(action="assign", dev=1, scenes=["A", "B"], label="", name=""))
+for _bad in (dict(action="rm"), dict(action="delete"), "x"):
+    try:
+        tq_(_bad)
+        ok(f"terrain : refusé {_bad}", False)
+    except ValueError:
+        ok(f"terrain : refusé {_bad}", True)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

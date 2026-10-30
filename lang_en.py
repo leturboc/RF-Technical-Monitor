@@ -9,6 +9,15 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    '📍 Où est ce tinySA ?': '📍 Where is this tinySA?',
+    '📊 Scans gardés (pour la coordination)': '📊 Kept scans (for coordination)',
+    "Aucune scène : dis d'abord où est ce tinySA.": 'No scene: first say where this tinySA is.',
+    'Terrain': 'Field',
+    'tinySA volant : dire à quelle(s) scène(s) il est et garder des scans pour la coordination': 'Roaming tinySA: say which stage(s) it is at and keep scans for coordination',
+    '↺ Nouveau scan ici': '↺ New scan here',
+    '☑ Toutes': '☑ All',
+    '💾 Garder ce scan': '💾 Keep this scan',
+    '📡 Ce tinySA est ici': '📡 This tinySA is here',
     'PySide6.QtMultimedia': 'PySide6.QtMultimedia',
     'manuels embarqués (FR + EN)': 'bundled manuals (FR + EN)',
     'son (PySide6.QtMultimedia)': 'sound (PySide6.QtMultimedia)',
@@ -2336,6 +2345,12 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '↺ Nouveau scan pour : {}': '↺ New scan for: {}',
+    'rien à garder pour {} (pas encore de balayage)': 'nothing to keep for {} (no sweep yet)',
+    '📍 {} : en direct · pointillés = fusion de {} scans gardés': '📍 {}: live · dashes = merge of {} kept scans',
+    '📍 {} : fusion de {} scans gardés': '📍 {}: merge of {} kept scans',
+    '🗑 Effacé : {}': '🗑 Deleted: {}',
+    '💾 Gardé : {}': '💾 Kept: {}',
     '🌐 {} (réseau)': '🌐 {} (network)',
     "🌐 1er tinySA en réseau : {} (relais sur le port {} par défaut). ▶ Démarrer pour s'y connecter.": '🌐 1st tinySA on the network: {} (relay on port {} by default). ▶ Start to connect to it.',
     'scan WWB natif (.sdb3) : {} balayage(s), max gardé': 'native WWB scan (.sdb3): {} sweep(s), max kept',
@@ -2745,6 +2760,18 @@ SAME_TEMPLATES = [
 
 # Page web (téléphone) : remplacements de morceaux exacts dans WEB_PAGE (HTML + JavaScript), dans l'ordre.
 WEB = [
+    ('<b>📍 Où est ce tinySA ?</b>', '<b>📍 Where is this tinySA?</b>'),
+    ('<b>📊 Scans gardés (pour la coordination)</b>', '<b>📊 Kept scans (for coordination)</b>'),
+    ('placeholder="Étiquette (facultatif) : jardin, régie…"', 'placeholder="Label (optional): stage left, FOH…"'),
+    ('"Crée d’abord tes scènes sur le PC (« Classer par scène › groupe »)."', '"Create your stages on the PC first (« Sort by stage › group »)."'),
+    ('"⚠ Ce tinySA n’est pas connecté (▶ Démarrer sur le PC)."', '"⚠ This tinySA is not connected (▶ Start on the PC)."'),
+    ('"Ce tinySA ne surveille aucune scène : coche où tu es puis « Ce tinySA est ici »."', '"This tinySA watches no stage: tick where you are, then « This tinySA is here »."'),
+    ('" bande(s) en max hold · dernier balayage il y a "+l.age+" s":"pas encore de balayage"', '" band(s) in max hold · last sweep "+l.age+" s ago":"no sweep yet"'),
+    ('"Aucun scan gardé pour l’instant"', '"No kept scan yet"'),
+    ('" · mis à jour tout seul"', '" · updated automatically"'),
+    ('"Effacer ce scan gardé ?\\n"', '"Delete this kept scan?\\n"'),
+    ('"Repartir de zéro ici ? Le max hold de ce tinySA est remis à zéro (les scans déjà gardés restent)."', '"Start again from zero here? This tinySA\'s max hold is reset (scans already kept stay)."'),
+    ('toLocaleString("fr-FR",{hour12:false,day:', 'toLocaleString("en-GB",{hour12:false,day:'),
     ('id="hfo"${h.follow?" checked":""}> Suivre le plus fort<', 'id="hfo"${h.follow?" checked":""}> Follow the strongest<'),
     ('id="hrs">↺ Max à zéro<', 'id="hrs">↺ Reset max<'),
     ('id="hmu"> Muet<', 'id="hmu"> Mute<'),

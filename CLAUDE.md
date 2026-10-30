@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.23.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.24.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -407,6 +407,17 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   **✅ Vérifié en vrai par Clément (7.23.2, 30/10/2026)** : Raspberry Pi 4 + tinySA Ultra (firmware 2026) + relais
   installé par `install_pi.sh`, 1er tinySA en réseau dans l'exe Windows : « ça fonctionne ». Restent non testés : la
   chasse depuis le téléphone avec ce kit, une longue durée, le Wi-Fi d'un vrai festival.
+- **7.24.0 (Clément : « depuis l'interface web, en mode caché, affecter le tiny volant à n'importe quelle scène ou
+  toutes, et save des scans, pour la coord en amont » ; « en save plusieurs sur des scènes différentes »)** : vue web
+  **🎒 Terrain** (`WEB_VIEWS` « terrain », **cachée par défaut** : `WEB_VIEWS_HIDDEN`, `web_views_norm`) ; POST
+  `/terrain` {pin, action assign|reset|save|delete, dev, scenes, label, name} (PURE `terrain_request`, routes à PIN
+  génériques `pin_routes` dans `WebServer`, `on_terrain`) → file `_web_terrain` → `_web_terrain_pending` (dans le tick) :
+  `set_dev_scenes`, `terrain_reset` (vide `site_mh`, base = scan continu), `terrain_save` (max hold `_site_mh_FL` →
+  scan à part), effacer. **Plusieurs scans par scène** : doc `site_scan_doc(..., scene=)` (clé `scene`, gardée par
+  `site_scans_norm`), nom unique `snapshot_name` (« Scène · étiquette » ou l'heure) ; `site_doc_scene(d)` ;
+  `sites_for_scope` prend le continu + les gardés de la scène ; `update_site_curve` « fusion de N scans gardés ».
+  État `terrain_state()` dans /etat.json (`terrain`). Testé : PURE, route (faux PIN 403…), page dans Chromium
+  (capture `web_terrain.png`), vraie appli (gui_reel). **Pas essayé par Clément sur le terrain.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
