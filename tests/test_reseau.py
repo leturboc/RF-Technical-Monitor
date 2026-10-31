@@ -67,6 +67,8 @@ check("le relais voit le client", relay.client == "127.0.0.1", str(relay.client)
 fr, lv = dev.scan(470e6, 530e6, 301)
 check("scan via le relais : 301 points", len(lv) == 301 and fr is not None and len(fr) == 301, str(len(lv)))
 check("scan : porteuse à 500 MHz retrouvée", abs(fr[int(np.argmax(lv))] - 500e6) < 300e3 and lv.max() > -50)
+check("🌐 compteur réseau : octets reçus / envoyés, délai de réponse", dev.rx_bytes > 5000 and dev.tx_bytes > 10
+      and dev.rtt is not None and 0 <= dev.rtt < 2, f"rx={dev.rx_bytes} tx={dev.tx_bytes} rtt={dev.rtt}")
 ok, msg = dev.try_cmd("rbw 100")
 check("commande de réglage via le relais", ok, msg)
 dt = time.time() - t0

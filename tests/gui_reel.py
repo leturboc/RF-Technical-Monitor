@@ -620,6 +620,24 @@ if _pd is not None:
     DLG_ACTION[0] = _prof_act
     step("plan : ✏ Mes profils › nouveau profil perso", _pd.edit_profiles)
     DLG_ACTION[0] = "reject"
+    # 📚 bibliothèque EazyRF : import d'un .lst4, recherche, ajout aux profils, la coordination prend sa plage
+    _ld = m.RxLibraryDialog(win)
+    _ld.import_file(os.path.join(HERE, "data", "appareils_essai.lst4"))
+    check("bibliothèque : 3 appareils importés et gardés", len(win.rx_library()) == 3 and win.LIB_PATH.exists()
+          and _ld.table.rowCount() == 3)
+    _ld.q.setText("numerique")
+    _ld.table.selectRow(0)
+    _ld.add()
+    shot(_ld, "bibliotheque_eazyrf")
+    _ld.close()
+    _lk = next((k for k, n, *_x in m.RX_CUSTOM if n == "Essai Micro Numérique G1"), None)
+    check("bibliothèque : appareil devenu profil (valeurs EazyRF)", _lk is not None and m.rx_profile(_lk)["filt"] == 50.0
+          and m.rx_profile(_lk)["tol"]["3tx3"] == 0.0)
+    _cd0 = m.CoordDialog(win)
+    _cd0.prof.setCurrentIndex(_cd0.prof.findData(_lk))
+    check("coordination : la plage suit l'appareil de la bibliothèque", abs(_cd0.lo.value() - 470.125) < 1e-6
+          and abs(_cd0.hi.value() - 514.0) < 1e-6, f"{_cd0.lo.value()} {_cd0.hi.value()}")
+    _cd0.close()
     check("profil perso créé et proposé dans la liste", _pd.rx_combo.findText("✏ EW G4 bande A") >= 0
           and m.rx_profile("perso_1") is not None and m.rx_profile("perso_1")["filt"] == 16.0,
           str([_pd.rx_combo.itemText(i) for i in range(_pd.rx_combo.count())]))
@@ -1050,6 +1068,22 @@ DLG_ACTION[0] = _set_act
 step("⚙ réglages", win.open_settings)
 DLG_ACTION[0] = "reject"
 check("⚙ son : gardé dans la config", win._collect_config()["sound"]["volume"] == 35)
+# 🔕 silence des alarmes + réglages de répétition / confirmation
+_calls = []
+_orig_alarm = win.sound.alarm
+win.sound.alarm = lambda p_: _calls.append(p_)
+win.alert_chk.setChecked(True)
+win.snooze(15 * 60)
+win._alarm_sound(2)
+check("🔕 silence : pas de son, bouton « jusqu'à … »", not _calls and "jusqu" in win.snooze_btn.text(), win.snooze_btn.text())
+win.snooze_until = time.time() - 1
+win._alarm_tick()
+win._alarm_sound(2)
+check("🔕 fin du silence : le son revient tout seul", _calls == [2] and win.snooze_btn.text() == "🔕 Silence", str(_calls))
+win.sound.alarm = _orig_alarm
+check("son : critiques rejouées toutes les 30 s par défaut, CONFLIT confirmé après 3 s",
+      win.alarms.repeat_s == 30 and win.sound.cfg["confirm"] == 3 and not win.sound.cfg["occ_beep"],
+      f"{win.alarms.repeat_s} {win.sound.cfg}")
 step("son d'alarme (sortie choisie ou bip)", lambda: win.sound.alarm(2))
 
 # 🔎 chasse au brouilleur : zoom live serré + niveau + bip

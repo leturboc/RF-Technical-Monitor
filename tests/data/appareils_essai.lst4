@@ -1,0 +1,60 @@
+<?xml version="1.0" standalone="yes"?>
+<AppareilsDs>
+  <AppVariablesDt>
+    <Description>Essai Micro Numérique G1</Description>
+    <Départ>470,125</Départ>
+    <Arrêt>514,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Type>Micros</Type>
+    <Simultané>2</Simultané>
+    <Modèle>0</Modèle>
+    <BaséSur />
+    <Tolérance>200</Tolérance>
+    <Séparation>450</Séparation>
+    <BackupNom />
+    <FréqImageDéfinie>False</FréqImageDéfinie>
+    <FréqImage>0</FréqImage>
+    <Filtre>50</Filtre>
+    <Tolérance3TX>0</Tolérance3TX>
+    <Tolérance5e>50</Tolérance5e>
+    <Actif>true</Actif>
+  </AppVariablesDt>
+  <AppVariablesDt>
+    <Description>Essai Micro Analogique B</Description>
+    <Départ>518,025</Départ>
+    <Arrêt>554,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Type>Micros</Type>
+    <Simultané>2</Simultané>
+    <Modèle>0</Modèle>
+    <BaséSur />
+    <Tolérance>100</Tolérance>
+    <Séparation>300</Séparation>
+    <BackupNom />
+    <FréqImageDéfinie>True</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <Filtre>16</Filtre>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>50</Tolérance5e>
+    <Actif>true</Actif>
+  </AppVariablesDt>
+  <AppVariablesDt>
+    <Description>Essai Ear 1000</Description>
+    <Départ>470,000</Départ>
+    <Arrêt>800,000</Arrêt>
+    <Incrément></Incrément>
+    <Type>In-Ear</Type>
+    <Simultané>2</Simultané>
+    <Modèle>0</Modèle>
+    <BaséSur />
+    <Tolérance>150</Tolérance>
+    <Séparation>500</Séparation>
+    <BackupNom />
+    <FréqImageDéfinie>False</FréqImageDéfinie>
+    <FréqImage>0</FréqImage>
+    <Filtre>16</Filtre>
+    <Tolérance3TX>100</Tolérance3TX>
+    <Tolérance5e>50</Tolérance5e>
+    <Actif>true</Actif>
+  </AppVariablesDt>
+</AppareilsDs>

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.26.3**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.27.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -461,6 +461,28 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   passé à `_TOL_LARGE` (150 / 75, valeurs de départ). Textes corrigés (aide filtre, lexique, bulles, manuel).
   **À demander à Clément** : ses profils EazyRF complets (2 TX, 3 TX, séparation, filtre, incrément) pour SLX / SLX-D,
   evolution, PSM, AD, QLX-D, et ce que dit l'aide d'EazyRF sur « Filtre ».
+- **Retours terrain de Clément (31/10/2026)** : vue Terrain ✅, son (sortie choisie) ✅, 👋 Identifier ✅, ntfy ✅.
+- **7.27.0 (Clément : bibliothèque EazyRF, « ça sonne beaucoup », compteur réseau, coord simple, manuel sans « non
+  vérifié »)** :
+  - **📚 Bibliothèque EazyRF** : PURE `parse_lst4` (XML « Appareils.lst4 » : Description, Départ / Arrêt MHz, Incrément,
+    Tolérance / Tolérance3TX / Tolérance5e et Séparation en kHz, Filtre MHz, FréqImage), `rx_library_find`,
+    `rx_from_library` ; `RX_LIBRARY` (fichier à part `appareils_eazyrf.json` à côté de config.json : `rx_library`,
+    `set_rx_library`) ; `RxLibraryDialog` (import, recherche, « Ajouter à mes profils » → profil perso src « eazyrf »
+    avec `lo` / `hi`) ; `CoordDialog._range_from_prof` (la plage suit l'appareil). **Le fichier de Clément (1 217
+    appareils, données EazyRF) n'est PAS dans le dépôt** ; test sur `tests/data/appareils_essai.lst4` (inventé).
+    `RX_PROFILES` recalés sur ses valeurs (SLX ≠ SLX-D, PSM 900 ≠ 1000, EW-D tolérances 0…) ; `_TOL_*` ont « 5 » = 50 kHz
+    (le plan Wisycom de Clément reste à 0 problème avec le 5ᵉ ordre et le filtre 32 MHz). Pas encore géré : la
+    fréquence image (FréqImage 10,7 MHz des analogiques).
+  - **Alarmes** : `SOUND_DEFAULT` + `repeat` (30 s, `ALARM_REPEATS`, 0 = jamais → `AlarmBook.due_repeat`), `confirm`
+    (CONFLIT seulement si occupé depuis ≥ 3 s : `w["since"]`), `occ_beep` (bip « occupé » coupé par défaut : c'était
+    le bruit le plus fréquent) ; `snooze` / `snooze_until` / `snooze_btn` (🔕 5–60 min, PURE `snooze_left`) ; réglages
+    dans ⚙ Son. smoke_test4/5 forcent `confirm=0, repeat=10` pour garder leurs vérifs.
+  - **🌐 Compteur réseau** : `TinySA.rx_bytes` / `tx_bytes` / `rtt` (1er octet), `_net_tick` (2 s) → `net_text` (PURE)
+    à côté de la version (`_info_base`, `_net_txt`, `_show_info`).
+  - **Coord simple** : `coord_note()` en tête de Coord / Plan / Intermod / Secours (« EazyRF, Soundbase, WWB, WSM pour
+    un vrai plan »).
+  - **Manuel** : chapitre « Ce qui n'est pas vérifié » retiré (`DROP` dans make_manual.py), plus de « non vérifié »
+    ni de prénom dans le manuel / l'appli (le suivi reste ICI). Profils : tableau des valeurs EazyRF.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

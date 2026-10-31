@@ -38,6 +38,8 @@ msgs = []
 W.QMessageBox.warning = staticmethod(lambda p, t, x, *a, **k: msgs.append(x))
 W.QMessageBox.critical = staticmethod(lambda p, t, x, *a, **k: msgs.append(x))
 win = step("MainWindow()", m.MainWindow)
+win.sound.cfg.update(confirm=0, repeat=10)          # ces tests vérifient le CONFLIT immédiat et la répétition 10 s
+win.alarms.repeat_s = 10.0
 if win is None:
     sys.exit(1)
 win.log_dir = m.Path(tmp) / "journaux"

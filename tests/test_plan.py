@@ -156,11 +156,13 @@ ok("préréglages: aperçu tout le spectre", any(p[1] == 0.1 and p[2] == 5300.0 
 
 # profils d'appareil : valeurs de filtre données par Clément (EazyRF), profils perso
 rp = ns["rx_profile"]
-check("filtre Sennheiser evolution 16 MHz", rp("senn_evo")["filt"], 16.0)
+check("filtre Sennheiser ew G4 32 MHz (bibliothèque EazyRF)", rp("senn_evo")["filt"], 32.0)
 check("filtre Shure PSM 16 MHz", rp("shure_psm")["filt"], 16.0)
 check("filtre Shure SLX 16 MHz", rp("shure_slx")["filt"], 16.0)
 check("filtre Shure AD 32 MHz", rp("shure_ad")["filt"], 32.0)
-check("filtre Shure QLX-D 32 MHz", rp("shure_dig")["filt"], 32.0)
+check("filtre Shure ULX-D / QLX-D 16 MHz (bibliothèque EazyRF)", rp("shure_dig")["filt"], 16.0)
+check("Shure SLX-D : 200 / 3 TX ignoré, écart 450, filtre 50 (EazyRF)", (rp("shure_slxd")["tol"]["2tx3"],
+      rp("shure_slxd")["tol"]["3tx3"], rp("shure_slxd")["sep"], rp("shure_slxd")["filt"]), (0.2, 0.0, 0.45, 50.0))
 check("filtre Wisycom 32 MHz (profil EazyRF)", (rp("wisycom")["filt"], rp("wisycom")["sep"]), (32.0, 0.5))
 check("anciennes clés toujours là (listes / shows)", all(rp(k) for k in ("wisycom", "senn_dig", "senn_ana",
                                                                         "shure_dig", "shure_ana", "iem")), True)

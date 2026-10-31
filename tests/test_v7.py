@@ -802,5 +802,41 @@ ok("lexique : au moins 30 mots, tous expliqués", len(ns["GLOSSARY"]) >= 30 and 
 ok("lexique : recherche sans accents ni majuscules", any(t.startswith("Rémanence") for t, _x in gf_("REMANENCE")))
 ok("lexique : recherche dans l'explication", any(t == "TNT" for t, _x in gf_("télévision")))
 check("lexique : rien = tout", len(gf_("")), len(ns["GLOSSARY"]))
+# --- 📚 bibliothèque d'appareils EazyRF (.lst4) : échantillon inventé au même format
+_lib = ns["parse_lst4"](open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "appareils_essai.lst4"),
+                             "rb").read())
+check("lst4 : 3 appareils", [d["name"] for d in _lib], ["Essai Micro Numérique G1", "Essai Micro Analogique B", "Essai Ear 1000"])
+check("lst4 : valeurs (kHz -> MHz, virgules)", (_lib[0]["lo"], _lib[0]["hi"], _lib[0]["sep"], _lib[0]["filt"],
+                                                _lib[0]["tol"]["2tx3"], _lib[0]["tol"]["3tx3"], _lib[0]["tol"]["5"]),
+      (470.125, 514.0, 0.45, 50.0, 0.2, 0.0, 0.05))
+ok("lst4 : pas absent -> 25 kHz ; fréquence image lue", _lib[2]["step"] == 0.025 and _lib[1]["img"] == 10.7
+   and _lib[0]["img"] == 0.0)
+check("lst4 : recherche (mots, sans accents)", [d["name"] for d in ns["rx_library_find"](_lib, "numerique g1")],
+      ["Essai Micro Numérique G1"])
+check("lst4 : recherche par type", len(ns["rx_library_find"](_lib, "in-ear")), 1)
+_pr = ns["rx_custom_norm"]([ns["rx_from_library"](_lib[0])])[0]
+ok("lst4 -> profil perso : valeurs, plage et source gardées", _pr[2]["filt"] == 50.0 and _pr[2]["tol"]["3tx3"] == 0.0
+   and _pr[2]["lo"] == 470.125 and _pr[2]["src"] == "eazyrf", str(_pr))
+for _bad in (b"<x/>", b"pas du xml"):
+    try:
+        ns["parse_lst4"](_bad)
+        ok(f"lst4 refusé : {_bad[:10]!r}", False)
+    except ValueError:
+        ok(f"lst4 refusé : {_bad[:10]!r}", True)
+
+# --- 🔕 alarmes moins envahissantes
+scn_ = ns["sound_cfg_norm"]
+check("son : nouveaux défauts (rejoué 30 s, CONFLIT confirmé 3 s, pas de bip « occupé »)",
+      (scn_({})["repeat"], scn_({})["confirm"], scn_({})["occ_beep"]), (30, 3, False))
+check("son : réglages lus", (scn_(dict(repeat=0, confirm=8, occ_beep=1))["repeat"], scn_(dict(confirm=999))["confirm"],
+                            scn_(dict(repeat=7))["repeat"]), (0, 60, 30))
+check("silence : temps restant", (ns["snooze_left"](100.0, 40.0), ns["snooze_left"](0, 40.0), ns["snooze_left"](30.0, 40.0)),
+      (60, 0, 0))
+_ab = ns["AlarmBook"](0)
+_ab.raise_(("CONFLIT", 1), "CONFLIT", "x", 1.0, 2, 0.0, -50, "", "")
+check("répétition « jamais » : la critique ne resonne pas", _ab.due_repeat(1000.0), [])
+
+check("🌐 texte du lien réseau", (ns["net_text"](24 * 1024, 2.0, 0.008), ns["net_text"](1024, 2.0, None),
+                                    ns["net_text"](10, 0, 0.1)), ("🌐 12 Ko/s · 8 ms", "🌐 0.5 Ko/s", ""))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

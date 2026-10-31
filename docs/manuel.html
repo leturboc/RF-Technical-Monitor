@@ -116,11 +116,10 @@ nav .np { margin: 12px 0 2px; font-weight: 700; color: var(--accent); }
   <a href="#menus">36. Où est quoi (menus)</a>
   <a href="#clavier">37. Raccourcis clavier</a>
   <a href="#donnees">38. Où sont mes fichiers ?</a>
-  <a href="#limites">39. Ce qui n'est pas vérifié</a>
 </nav>
 <main>
 <h1>TinySA Monitor — manuel d'utilisation</h1>
-<p class="sub">Version 7.26.3 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.
+<p class="sub">Version 7.27.0 · pour le tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel.
 Version PDF : <code>docs/manuel.pdf</code>.</p>
 
 <div class="box"><b>En une phrase :</b> l'appli balaye en continu tes bandes avec un tinySA, compare ce qu'elle
@@ -141,7 +140,7 @@ d'un réglage. Il est rangé en cinq parties :</p>
   <tr><td><b>D. Référence des outils</b></td><td>Chaque outil en détail : à quoi il sert, chaque réglage, les
     pièges. À consulter quand tu en as besoin.</td></tr>
   <tr><td><b>E. Aide</b></td><td>Questions fréquentes, dépannage, lexique de A à Z, raccourcis, où sont tes
-    fichiers, ce qui n'est pas encore vérifié.</td></tr>
+    fichiers.</td></tr>
 </table>
 <div class="box ok"><b>Dans l'appli aussi :</b> le bouton <b>🎓 Tuto</b> propose six visites guidées (découvrir
 l'écran, premier show de A à Z, lire le spectre, coordonner, plusieurs scènes, pendant le show) ; chaque étape
@@ -686,8 +685,7 @@ son max gardé), sinon son dernier spectre gardé (« pas de tinySA ici en ce mo
 la fusion de tous les lieux.</p>
 <p><b>Lequel est lequel ?</b> Dans la grille : <b>👋 Identifier</b> fait clignoter en orange l'écran du tinySA choisi
 (il faut ▶ Démarrer). <b>🔢 Numéroter</b> grave un numéro dans le tinySA (commande <code>deviceid</code>, gardé même
-débranché) : si un jour les deux tinySA sont branchés à l'envers, l'appli les reconnaît et leurs scènes les suivent.
-<i>Pas encore essayé sur un vrai tinySA Ultra</i> (commandes lues dans le firmware officiel).</p>
+débranché) : si un jour les deux tinySA sont branchés à l'envers, l'appli les reconnaît et leurs scènes les suivent.</p>
 <p><b>Deux tinySA à deux lieux différents</b> : chacun balaye <b>toutes les bandes</b> chez lui (au lieu de se les
 partager), chaque lieu a son direct, et les fréquences d'une scène sont jugées (occupé, ABSENT, CONFLIT…) par le tinySA
 posé à cette scène. Global = le plus fort des deux (le pire cas).</p>
@@ -711,7 +709,19 @@ posé à cette scène. Global = le plus fort des deux (le pire cas).</p>
   <li><b>TX absent après</b> : combien de secondes sans signal avant ⚠ ABSENT (jamais moins de 2 cycles).</li>
   <li><b>Alerte « trop fort »</b> (−25 dBm par défaut, ligne violette) : ⚠ TROP FORT, risque de saturation
     (talkie collé à l'antenne…).</li>
-  <li><b>Alerte sonore</b> : bip à l'apparition ; les critiques répètent le son.</li>
+  <li><b>Alerte sonore</b> : un son à l'apparition d'une alarme ; les critiques le rejouent tant qu'elles ne sont pas
+    acquittées.</li>
+</ul>
+<h3>Des alarmes qui ne sonnent pas pour rien</h3>
+<ul>
+  <li><b>⚙ Réglages › Son › Rejouer les critiques</b> : toutes les 10 s, 30 s (par défaut), 1 min, 5 min ou jamais.</li>
+  <li><b>CONFLIT après</b> (3 s par défaut) : un signal sur une fréquence « doit rester libre » doit durer ce temps
+    avant l'alarme ; un pic bref ne sonne plus. Le journal le note quand même.</li>
+  <li><b>Petit bip quand une fréquence devient occupée</b> : décoché par défaut ; seules les vraies alarmes font du
+    bruit.</li>
+  <li><b>🔕 Silence</b> (panneau des alarmes) : coupe le son 5, 15, 30 ou 60 min, par exemple pendant un line check
+    ou un changement de plateau. Les alarmes restent affichées et partent toujours sur le téléphone ; le son revient
+    tout seul.</li>
   <li><b>📝 Quoi noter au journal</b> : voir chapitre 31.</li>
   <li>Expert : <b>Détecter les signaux inconnus</b> (pics hors liste, notés INCONNU).</li>
 </ul>
@@ -862,30 +872,37 @@ du récepteur à partir des émetteurs qu'il reçoit fort. Si A est à 40 MHz, l
 produit. Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le
 filtre de son récepteur</b>.</p>
 <ul>
-  <li><b>Le chiffre du filtre ne dit pas si un récepteur est « bon »</b> : il dit quelle tranche du spectre entre dans
-    le récepteur, donc combien d'émetteurs comptent dans le calcul (16 MHz en fait compter moins que 32 MHz).</li>
-  <li><b>La robustesse</b> (fabriquer peu d'intermod, bien séparer les canaux voisins) se règle avec l'<b>écart</b> et
-    les <b>tolérances</b> du profil : un Wisycom MRK980 (filtre 32 MHz) encaisse des fréquences serrées ; un SLX (filtre
-    16 MHz) demande plus de marge, d'où ses tolérances plus larges (150 / 75 kHz, valeurs de départ).</li>
-  <li>Filtre large (32 MHz) = plus d'émetteurs comptent.</li>
+  <li>Le chiffre du filtre dit seulement <b>quelle tranche du spectre entre dans le récepteur</b>, donc combien
+    d'émetteurs comptent dans le calcul (16 MHz en fait compter moins que 32 MHz). Il ne classe pas les récepteurs
+    entre eux.</li>
+  <li>L'<b>écart</b> (distance minimale entre deux porteuses) et les <b>tolérances</b> (marge autour d'un produit
+    d'intermodulation, par type : 2 TX, 3 TX, 5ᵉ ordre ; 0 = type ignoré) complètent le profil.</li>
   <li><b>Aucun</b> (0) = tous comptent : le plus prudent quand on ne connaît pas l'appareil.</li>
   <li>Les produits fabriqués dans les <b>émetteurs</b> eux-mêmes (ears sur un combineur, ampli d'antenne) ne
     sont pas filtrés par le récepteur : c'est pourquoi les profils d'ears comptent aussi le 5ᵉ ordre.</li>
 </ul>
 <h3>Profils intégrés</h3>
+<p>Les profils fournis reprennent les valeurs de la bibliothèque d'appareils d'EazyRF :</p>
 <table>
-  <tr><th>Appareil</th><th>Filtre</th><th>Source</th></tr>
-  <tr><td>Wisycom (MRK980, MTK952…)</td><td>32 MHz</td><td>profil EazyRF (complet)</td></tr>
-  <tr><td>Sennheiser evolution (EW G3 / G4)</td><td>16 MHz</td><td>EazyRF (Clément)</td></tr>
-  <tr><td>Shure Axient Digital (AD)</td><td>32 MHz</td><td>EazyRF (Clément)</td></tr>
-  <tr><td>Shure QLX-D / ULX-D</td><td>32 MHz</td><td>EazyRF (Clément, ULX-D supposé pareil)</td></tr>
-  <tr><td>Shure SLX / SLX-D</td><td>16 MHz</td><td>EazyRF (Clément)</td></tr>
-  <tr><td>Shure PSM (300 / 900 / 1000)</td><td>16 MHz</td><td>EazyRF (Clément)</td></tr>
-  <tr><td>Shure Axient Digital PSM (ADTQ / ADTD)</td><td>aucun</td><td>à renseigner</td></tr>
-  <tr><td>Sennheiser analogique / numérique, Shure analogique, autres ears</td><td>aucun</td>
-    <td>valeurs de départ</td></tr>
+  <tr><th>Appareil</th><th>Écart</th><th>Filtre</th><th>2 TX / 3 TX / 5ᵉ</th></tr>
+  <tr><td>Wisycom MRK980 / MTK952</td><td>500 kHz</td><td>32 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Sennheiser ew G4</td><td>400 kHz</td><td>32 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Sennheiser ew IEM G4</td><td>450 kHz</td><td>32 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Sennheiser EW-D / EW-DX</td><td>600 kHz</td><td>32 MHz</td><td>non comptés (numérique)</td></tr>
+  <tr><td>Shure Axient Digital (AD4D / AD4Q)</td><td>400 kHz</td><td>32 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Shure ULX-D / QLX-D</td><td>300 kHz</td><td>16 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Shure SLX</td><td>300 kHz</td><td>16 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Shure SLX-D</td><td>450 kHz</td><td>50 MHz</td><td>±200 / — / ±50 kHz</td></tr>
+  <tr><td>Shure PSM 900</td><td>300 kHz</td><td>16 MHz</td><td>±100 / ±50 / ±50 kHz</td></tr>
+  <tr><td>Shure PSM 1000</td><td>500 kHz</td><td>16 MHz</td><td>±150 / ±100 / ±50 kHz</td></tr>
+  <tr><td>Génériques (analogiques Sennheiser / Shure, ADT)</td><td>400 kHz</td><td>aucun</td><td>±150 / ±75 / ±50 kHz</td></tr>
 </table>
-<p>L'écart mini, le pas et les tolérances des profils autres que Wisycom sont des valeurs de départ.</p>
+<h3>📚 Bibliothèque EazyRF : tous tes modèles</h3>
+<p>Si tu utilises EazyRF, importe sa bibliothèque d'appareils : <b>🎛 Profils d'appareil › 📚 Bibliothèque EazyRF ›
+📥 Importer Appareils.lst4</b> (le fichier se trouve dans le dossier d'EazyRF). Cherche ton modèle (« slx-d g58 »,
+« mrk980 », « psm 1000 »…), sélectionne-le et <b>＋ Ajouter à mes profils</b> : il reprend exactement l'écart, le filtre,
+les tolérances, le pas <b>et la plage</b> de l'appareil. Dans 🪄 Trouver N fréquences, choisir ce profil règle aussi
+la plage « De … à ».</p>
 <h3>Profils perso</h3>
 <p>☰ Plus › 📐 Plan de fréquences › 🎛 Profils d'appareil (ou « ✏ Mes profils » dans la vérification du plan) :
 <b>＋ Nouveau</b> copie un profil, <b>＋ Depuis les réglages actuels</b> reprend ceux de la fenêtre. Nom, filtre,
@@ -965,6 +982,11 @@ liste <b>« Spectre : … »</b> choisit ce qu'on évite : <b>une scène</b> (to
 scène est choisie dans « Mes fréquences », elle est proposée d'office.</p>
 <p>Il faut que le Pi et le téléphone restent dans la couverture du Wi-Fi du site. Hors Wi-Fi : le tinySA tout seul,
 sur son propre écran (fréquence au centre, petite plage, marqueur sur le pic), marche toujours.</p>
+
+<h3>🌐 État du lien réseau</h3>
+<p>Pour un tinySA en réseau (Raspberry Pi, autre PC), son débit et son délai de réponse s'affichent à côté de sa
+version, mis à jour toutes les 2 s (ex. « 🌐 18 Ko/s · 12 ms »). Un tinySA consomme quelques dizaines de Ko/s : le
+réseau n'est jamais saturé ; un délai qui grimpe (centaines de ms) signale un Wi-Fi faible ou encombré.</p>
 
 <h2 id="alertes">29. Alertes téléphone et page web</h2>
 <h3>📣 Alertes push</h3>
@@ -1189,22 +1211,6 @@ Pi : <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> dit ce qui 
     <code>journal.csv</code>.</li>
 </ul>
 
-<h2 id="limites">39. Ce qui n'est pas vérifié</h2>
-<div class="box warn">
-<p>L'appli est testée automatiquement (logique, interface réelle sous Windows, faux tinySA), et a tourné
-2 h sur le terrain avec un vrai tinySA Ultra. Pas encore éprouvé en conditions réelles :</p>
-<ul>
-  <li>deux vrais tinySA en même temps, le relais sur un vrai réseau de festival, une nuit complète ;</li>
-  <li>les sons d'alarme, un vrai double écran ; l'envoi ntfy a marché chez Clément, pas Telegram ;</li>
-  <li>les valeurs d'écart / pas / tolérances des profils autres que Wisycom, et le filtre ULX-D (supposé
-    comme QLX-D) ; le filtre de l'ADT (inconnu) ;</li>
-  <li>le niveau d'un vrai porteur Spectera au tinySA ;</li>
-  <li>les formats d'export de listes EazyRF / WWB / WSM (suppositions génériques) ;</li>
-  <li>la recherche d'origine d'intermod sur un vrai spectre de festival (testée sur des signaux simulés).</li>
-</ul>
-</div>
-<p class="sub">TinySA Monitor n'est affilié ni à tinySA, ni à Sennheiser, Shure, Wisycom ou EazyRF ; leurs noms
-sont des marques de leurs propriétaires.</p>
 </main>
 </div>
 <script>
