@@ -133,7 +133,8 @@ wait(600)
 shot(win, "demarrage")
 # 1er lancement : mode ULTRA SIMPLE (spectre + liste + alarmes), parcours dans l'ordre, tuto proposé
 check("1er lancement : ultra simple (réglages et classement cachés)", win.ui_level == "ultra"
-      and not win.dock_set.isVisible() and not win.layer_box.isVisible(), win.ui_level)
+      and not win.thr_bar.isVisible() and not win.layer_box.isVisible(), win.ui_level)
+check("plus de panneau Réglages à gauche (tout dans ⚙)", not hasattr(win, "dock_set"))
 check("parcours : ① scan › ② liste › ③ plan › ④ intermod › ⑤ show › ⑥ après",
       [b.text()[:1] for b in win.step_btns.values()] == ["①", "②", "③", "④", "⑤", "⑥"],
       str([b.text() for b in win.step_btns.values()]))
@@ -200,7 +201,13 @@ shot(_gl, "lexique")
 _gl.close()
 shot(win, "ultra_simple")
 step("passer en simple", lambda: win.set_level("simple"))
-check("simple : réglages et classement visibles", win.dock_set.isVisible() and win.layer_box.isVisible())
+check("simple : seuils au-dessus du spectre et classement visibles", win.thr_bar.isVisible() and win.layer_box.isVisible()
+      and win.thr_spin.isVisible() and win.absent_spin.isVisible())
+check("barre du spectre allégée : outils secondaires derrière ⋯", not win.mk_btn.isVisible() and not win.legend_btn.isVisible())
+win.more_spec_btn.setChecked(True); wait(200)
+check("⋯ : repères, marqueurs, légende visibles", win.mk_btn.isVisible() and win.mkr_btn.isVisible() and win.legend_btn.isVisible())
+shot(win, "spectre_plus_outils")
+win.more_spec_btn.setChecked(False)
 
 # fréquences + couches
 win.ensure_group("Grande scène", "Micros HF")
@@ -724,10 +731,9 @@ win.layout_standard()
 wait(400)
 check("disposition de base : spectre ≥ 45 % de la largeur", win.dock_spec.width() >= 0.45 * win.width(),
       f"spectre {win.dock_spec.width()} / fenêtre {win.width()}")
-win.resizeDocks([win.dock_set, win.dock_freq], [50, 50], Qt.Orientation.Horizontal)
+win.resizeDocks([win.dock_freq], [50], Qt.Orientation.Horizontal)
 wait(300)
-check("colonnes rétrécissables (réglages ≤ 240, liste ≤ 300)", win.dock_set.width() <= 240 and win.dock_freq.width() <= 300,
-      f"réglages {win.dock_set.width()} · liste {win.dock_freq.width()}")
+check("liste rétrécissable (≤ 300)", win.dock_freq.width() <= 300, f"liste {win.dock_freq.width()}")
 win.view_combo.setCurrentIndex(1)
 wait(2500)
 if win.dock_wf.isVisible():
@@ -763,12 +769,16 @@ check("mode simple : RBW caché, seuils visibles", not win.rbw_combo.isVisible()
 shot(win, "mode_simple")
 win.set_expert(True)
 wait(300)
-win.open_section("measure", True)
+_sd = m.SettingsDialog(win)
+_sd.show_page("measure")
+_sd.show()
 wait(300)
-check("mode expert : RBW visible", win.rbw_combo.isVisible())
-win.open_section("measure", False)
-wait(300)
-check("section repliée : RBW caché", not win.rbw_combo.isVisible())
+check("⚙ › Mesure en expert : RBW visible", win.rbw_combo.isVisible())
+_sd.show_page("detect"); wait(200)
+check("⚙ › Seuils et alarmes : alarme « trop fort » visible", win.strong_spin.isVisible())
+shot(_sd, "reglages_seuils")
+_sd.reject(); wait(300)
+check("⚙ fermé : pages rendues à la fenêtre", win.rbw_combo.window() is win and not win.rbw_combo.isVisible())
 win.set_expert(False)
 step("toggle_alarm_dock", win.toggle_alarm_dock); wait(1500); shot(win, "panneau_alarmes")
 print("ALARMES actives:", len(win.alarms.active), "btn:", win.alarm_btn.text(), flush=True)
@@ -1132,7 +1142,8 @@ if win._rescue_dlg:
     shot(_rd, "rescue")
 # ⚙ Réglages : onglets, sortie audio, volume (appliqué tout de suite), sons joués sans planter
 def _set_act(d):
-    check("⚙ réglages : 4 onglets (général, son, fichiers, connexions)", d.tabs.count() == 4, str(d.tabs.count()))
+    check("⚙ réglages : 9 rubriques (seuils, bandes, mesure, 2ᵉ tinySA, pays, général, son, fichiers, connexions)",
+          d.tabs.count() == 9 and d.nav.count() == 9, str(d.tabs.count()))
     check("⚙ son : « sortie par défaut » + les sorties de l'ordinateur", d.dev_combo.count() >= 1
           and d.dev_combo.itemData(0) == "", str([d.dev_combo.itemText(i) for i in range(d.dev_combo.count())]))
     d.vol.setValue(35)
@@ -1350,7 +1361,8 @@ check("terrain : nouveau scan (max hold à zéro) et scan effacé", "Grande scè
 win.site_scans = [d for d in win.site_scans if not d.get("scene")]
 # 📡 Mes tinySA et leurs scènes (expert) : grille, plusieurs scènes, arbre, identifier
 win.set_expert(True)
-check("bouton 📡 Scènes visible en mode expert", win.sites_btn.isVisible())
+win.more_spec_btn.setChecked(True); wait(200)
+check("bouton 📡 Scènes visible en mode expert (outils ⋯)", win.sites_btn.isVisible())
 step("ouvrir Mes tinySA et leurs scènes", win.open_devices)
 wait(300)
 _dd = win._devdlg
@@ -1511,8 +1523,6 @@ for i, w in enumerate(win.workers):
 wait(6000)
 check("les deux tinySA balayent", seen[0] and seen[1] and not (seen[0] & seen[1]), str(seen))
 check("cycles des deux appareils", set(win.dev_cycle) == {0, 1}, str(win.dev_cycle))
-win.dock_set.show()
-win.dock_set.raise_()
 wait(800)
 shot(win, "deux_tinysa")
 step("coupure du 2e", lambda: win.on_link(1, False))

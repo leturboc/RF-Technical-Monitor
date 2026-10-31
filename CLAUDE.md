@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.27.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.28.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -483,6 +483,21 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     un vrai plan »).
   - **Manuel** : chapitre « Ce qui n'est pas vérifié » retiré (`DROP` dans make_manual.py), plus de « non vérifié »
     ni de prénom dans le manuel / l'appli (le suivi reste ICI). Profils : tableau des valeurs EazyRF.
+- **7.28.0 (Clément : « trop fouillis, usine à gaz », « un manuel beaucoup plus pro », sans « non testé »)** — choix validés
+  avec lui : garder l'écran (parcours, ☰ Plus), tout dans ⚙ sauf les seuils, emojis sur les boutons clés seulement :
+  - **Plus de panneau Réglages** (`dock_set` supprimé, `LAYOUT_VER` 4) : ses sections sont des pages `set_pages`
+    (detect = seuils + alarmes, bands, measure, dev2, country) garées dans `set_park` (widget caché) et **empruntées**
+    par `SettingsDialog` (liste `nav` à gauche + `tabs` à onglets cachés, `keys`, `show_page(clé)`, rendues par
+    `_give_back` sur `finished`) : les widgets vivent toujours dans la fenêtre (config, `_sync_cfg`…).
+    `SETTINGS_PAGES`, `open_settings(clé | n°)`. `open_section` = sans effet (config `sections` gardée).
+  - **Barre des seuils** `thr_bar` au-dessus du spectre : « Occupé au-dessus de » thr_spin + Auto, `weak_chk`
+    « Faible dès » + weak_spin, « TX absent après » absent_spin, ⚙ → page detect ; cachée en ultra simple.
+  - **Barre du spectre** : Vue, 📶 Bandes, ⚡ Points, 🔍 Zoom, Max hold, Reset, `more_spec_btn` « ⋯ » → `spec_more`
+    (repères, marqueurs, rémanence, capture, Scènes, légende, `ref_row`) ; config `spec_more`.
+  - Boutons secondaires de la liste sans emoji (`_plain_btns`, retirés APRÈS `_install_tips`).
+  - **Manuel** (`make_manual.py`) : couverture avec l'icône, CSS sobre (bloc `/*pro*/`), titres sans emoji
+    (`clean_title`), captures de la vraie appli `docs/img/<fr|en>/*.jpg` intégrées en base64 (`FIGS` / `SHOTS` ;
+    `python tests/make_manual.py --shots tests/captures tests/captures_en` après gui_reel + gui_en).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

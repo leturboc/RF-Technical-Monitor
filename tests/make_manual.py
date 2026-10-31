@@ -4,6 +4,7 @@ et le lexique généré depuis GLOSSARY (tinysa_monitor.py) / sa traduction (lan
 
     python tests/make_manual.py      # puis python tests/make_pdf.py
 """
+import base64
 import html
 import os
 import re
@@ -30,8 +31,94 @@ PARTS = [
     ("E", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees"]),
 ]
 DROP = {"limites"}          # chapitres retirés (« ce qui n'est pas vérifié » : suivi dans CLAUDE.md, pas dans le manuel)
-CSS = (".part { margin: 56px 0 0; padding: 10px 14px; border-radius: 8px; background: var(--accent); color: #fff; "
-       "font-weight: 700; letter-spacing: .03em; }\nnav .np { margin: 12px 0 2px; font-weight: 700; color: var(--accent); }\n")
+# mise en page sobre (7.28, Clément : « un manuel beaucoup plus pro ») : couverture, parties en intertitres,
+# numéros de chapitre en couleur, pas d'emoji dans les titres, captures d'écran de la vraie appli
+CSS = """/*pro*/
+body { font: 16px/1.65 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+.cover { display: flex; gap: 22px; align-items: center; max-width: 1148px; margin: 0 auto; padding: 34px 0 22px;
+  border-bottom: 3px solid var(--accent); }
+@media (max-width: 1180px) { .cover { margin: 0 16px; } }
+.cover img { width: 80px; height: 80px; flex: none; }
+.cover .kicker { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cover h1 { font-size: 2.5rem; line-height: 1.1; margin: 4px 0 6px; letter-spacing: -.01em; }
+.cover .sub { margin: 0; }
+.part { margin: 76px 0 0; padding: 0 0 8px; border-bottom: 2px solid var(--accent); background: none; color: var(--accent);
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; border-radius: 0; }
+h2 { font-size: 1.5rem; font-weight: 650; margin: 46px 0 12px; border-top: 0; padding-top: 0; }
+h2 .n { color: var(--accent); margin-right: .35em; font-variant-numeric: tabular-nums; }
+h3 { font-weight: 650; }
+.box { border-radius: 4px; }
+.box.ok, .box.warn, .box.bad { color: var(--text); font-weight: 400; }   /* seule la bordure est colorée */
+figure.shot { margin: 18px 0 22px; max-width: 900px; }
+figure.shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .14); }
+figure.shot figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
+nav .np { margin: 14px 0 2px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent); }
+@media print { .cover { margin: 0 0 18px; } .part { break-before: page; margin-top: 0; } figure.shot { break-inside: avoid; } h2 { break-after: avoid; } }
+/*/pro*/
+"""
+ICON = os.path.join(ROOT, "assets", "icone.png")
+IMG = os.path.join(ROOT, "docs", "img")
+# captures (tests/gui_reel.py en français, tests/gui_en.py en anglais) : chapitre → (fichier, légende fr, légende en)
+FIGS = {
+    "ecran": [("ecran", "L'écran principal en mode simple : barre du haut, parcours, spectre avec la barre des seuils, "
+                        "liste des fréquences à droite.",
+               "The main screen in simple mode: top bar, workflow, spectrum with the threshold bar, frequency list on the right.")],
+    "seuils": [("reglages", "⚙ Réglages › Seuils et alarmes.", "⚙ Settings › Thresholds and alarms.")],
+    "mur": [("mur", "Le mur de fréquences : une tuile par fréquence, lisible de loin.",
+             "The frequency wall: one tile per frequency, readable from a distance.")],
+    "coordination": [("plan", "Vérifier le plan : chaque problème expliqué, avec une fréquence de remplacement proposée.",
+                      "Check the plan: every problem explained, with a suggested replacement frequency.")],
+    "spectre": [("outils", "La barre du spectre avec les outils dépliés (⋯).",
+                 "The spectrum bar with the tools unfolded (⋯).")],
+}
+SHOTS = {   # fichier de docs/img → nom de la capture (sans le numéro) dans tests/captures (fr) / tests/captures_en (en)
+    "ecran": ("mode_simple", "mode_simple"), "reglages": ("reglages_seuils", "reglages_seuils"),
+    "mur": ("mur_en_panneau", "mur_en"), "plan": ("plan_proposition", "PlanCheckDialog"),
+    "outils": ("spectre_plus_outils", "spectre_plus_outils"),
+}
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
+
+
+def clean_title(t):
+    """Titres sans emoji (les boutons cités dans le texte gardent les leurs)."""
+    t = EMOJI.sub("", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return re.sub(r"\s*:$", "", t)
+
+
+def shots(fr_dir, en_dir, width=1400):
+    """Copie les captures choisies dans docs/img/<lang>/ (JPEG, largeur max width)."""
+    from PIL import Image
+    for lang, d in (("fr", fr_dir), ("en", en_dir)):
+        os.makedirs(os.path.join(IMG, lang), exist_ok=True)
+        for out, names in SHOTS.items():
+            name = names[lang == "en"]
+            found = sorted(f for f in os.listdir(d) if re.fullmatch(rf"\d+_{name}\.png", f)) if os.path.isdir(d) else []
+            if not found:
+                print("capture absente :", lang, name)
+                continue
+            im = Image.open(os.path.join(d, found[-1])).convert("RGB")
+            if im.width > width:
+                im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+            im.save(os.path.join(IMG, lang, out + ".jpg"), quality=82, optimize=True)
+            print("capture", lang, out, im.size)
+
+
+def data_uri(path, mime):
+    return f"data:{mime};base64," + base64.b64encode(open(path, "rb").read()).decode()
+
+
+def figure(lang, key):
+    out = []
+    for name, cap_fr, cap_en in FIGS.get(key, []):
+        path = os.path.join(IMG, lang, name + ".jpg")
+        if os.path.exists(path):
+            cap = html.escape(cap_en if lang == "en" else cap_fr)
+            out.append(f'<figure class="shot"><img src="{data_uri(path, "image/jpeg")}" alt="{cap}">'
+                       f'<figcaption>{cap}</figcaption></figure>\n')
+    return "".join(out)
 
 
 def build(lang):
@@ -39,8 +126,9 @@ def build(lang):
     path = os.path.join(ROOT, "docs", fn)
     doc = open(path, encoding="utf-8").read()
     head = doc[:doc.index("<nav>")]
-    if ".part {" not in head:
-        head = head.replace("</style>", CSS + "</style>")
+    head = re.sub(r"/\*pro\*/.*?/\*/pro\*/\n", "", head, flags=re.S)
+    head = re.sub(r"\.part \{ margin: 56px[^\n]*\nnav \.np[^\n]*\n", "", head)
+    head = head.replace("</style>", CSS + "</style>")
     main = doc[doc.index("<main>") + 6:doc.index("</main>")]
     tail = doc[doc.index("</main>"):]
     first = main.index("<h2 id=")
@@ -51,13 +139,15 @@ def build(lang):
     for c in chunks:
         if c.strip().startswith('<div class="part">'):
             continue
-        m = re.match(r'<h2 id="([^"]+)">(?:(\d+)\. )?([^<]*)</h2>', c)
+        m = re.match(r'<h2 id="([^"]+)">(?:<span class="n">(\d+)\.</span> |(\d+)\. )?([^<]*)</h2>', c)
         if not m:
             continue
+        key, old, title = m.group(1), m.group(2) or m.group(3), m.group(4)
         body = re.sub(r'\s*<div class="part">.*?</div>\s*$', "\n", c[m.end():], flags=re.S)
-        chap[m.group(1)] = [m.group(3), body]
-        if m.group(2):
-            old_num[m.group(2)] = m.group(1)
+        body = re.sub(r'<figure class="shot">.*?</figure>\n?', "", body, flags=re.S)
+        chap[key] = [title, body]
+        if old:
+            old_num[old] = key
     nouveaux = open(os.path.join(ROOT, "docs", "src", f"nouveaux_{lang}.html"), encoding="utf-8").read()
     for m in re.finditer(r"<!--CH ([\w-]+)\|([^>]*)-->(.*?)(?=<!--CH |\Z)", nouveaux, re.S):
         chap[m.group(1)] = [m.group(2), "\n" + m.group(3).strip() + "\n\n"]
@@ -90,19 +180,37 @@ def build(lang):
             n += 1
             num[k] = n
             title, body = chap[k]
-            out.append(f'<h2 id="{k}">{n}. {title}</h2>{body}')
+            title = clean_title(title)
+            body = re.sub(r"<h3>([^<]*)</h3>", lambda m3: f"<h3>{clean_title(m3.group(1))}</h3>", body)
+            fig = figure(lang, k)
+            if fig:                                   # la capture après le 1er paragraphe du chapitre
+                cut = body.find("</p>")
+                body = body[:cut + 4] + "\n" + fig + body[cut + 4:] if 0 <= cut < 1500 else "\n" + fig + body
+            out.append(f'<h2 id="{k}"><span class="n">{n}.</span> {title}</h2>{body}')
             nav.append(f'  <a href="#{k}">{n}. {title}</a>')
     nav.append("</nav>\n")
     body = "".join(out)
     word = "chapter" if lang == "en" else "chapitre"
     body = re.sub(rf"({word}s?) (\d+)\b", lambda m: f"{m.group(1)} {num.get(old_num.get(m.group(2), ''), m.group(2))}",
                   body)
-    top = re.sub(r"(Version|version) [\d.]+( ·)", rf"\g<1> {VER}\2", top, count=1)
+    sub = (f"Version {VER} · tinySA Ultra on Windows · RF coordination for festivals, concerts and events" if lang == "en"
+           else f"Version {VER} · tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel")
+    cover = (f'<header class="cover"><img src="{data_uri(ICON, "image/png")}" alt="">\n<div><div class="kicker">'
+             f'{"User manual" if lang == "en" else "Manuel d&#39;utilisation"}</div>\n<h1>TinySA Monitor</h1>\n'
+             f'<p class="sub">{sub}</p></div></header>\n')
+    top = re.sub(r'<header class="cover">.*?</header>\n', "", top, flags=re.S)
+    top = re.sub(r"<h1>.*?</h1>\s*<p class=\"sub\">.*?</p>\n", "", top, flags=re.S)
+    top = "\n" + top.lstrip("\n")
+    head = re.sub(r'<header class="cover">.*?</header>\n', "", head, flags=re.S)   # couverture au-dessus des colonnes
+    head = head.replace('<div class="wrap">', cover + '<div class="wrap">', 1)
     new = head + "\n".join(nav) + "<main>" + top + body + tail
     open(path, "w", encoding="utf-8").write(new)
     return n
 
 
 if __name__ == "__main__":
+    if "--shots" in sys.argv:          # python tests/make_manual.py --shots tests/captures tests/captures_en
+        i = sys.argv.index("--shots")
+        shots(sys.argv[i + 1], sys.argv[i + 2])
     for lg in ("fr", "en"):
         print(lg, build(lg), "chapitres")
