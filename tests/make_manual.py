@@ -27,8 +27,9 @@ PARTS = [
     ("D", "Référence des outils", "Tool reference",
      ["show", "seuils", "surveiller", "signal", "mur", "fenetres", "coordination", "filtre", "linecheck", "spectera",
       "deux", "alertes", "sessions", "journal", "apparence"]),
-    ("E", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees", "limites"]),
+    ("E", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees"]),
 ]
+DROP = {"limites"}          # chapitres retirés (« ce qui n'est pas vérifié » : suivi dans CLAUDE.md, pas dans le manuel)
 CSS = (".part { margin: 56px 0 0; padding: 10px 14px; border-radius: 8px; background: var(--accent); color: #fff; "
        "font-weight: 700; letter-spacing: .03em; }\nnav .np { margin: 12px 0 2px; font-weight: 700; color: var(--accent); }\n")
 
@@ -75,6 +76,8 @@ def build(lang):
                        f"{'Meaning' if lang == 'en' else 'Explication'}</th></tr>\n" + "\n".join(rows) + "\n</table>\n\n"]
     missing = [k for _p, _f, _e, ks in PARTS for k in ks if k not in chap]
     assert not missing, missing
+    for k in DROP:
+        chap.pop(k, None)
     extra = [k for k in chap if not any(k in ks for *_x, ks in PARTS)]
     assert not extra, extra
     num, out, nav = {}, [], ['<nav>\n  <b>' + ("Contents" if lang == "en" else "Sommaire") + "</b>"]

@@ -43,6 +43,8 @@ W.QFileDialog.getOpenFileNames = staticmethod(lambda *a, **k: (list(opened), "")
 W.QFileDialog.getExistingDirectory = staticmethod(lambda *a, **k: dirs.pop(0))
 W.QInputDialog.getItem = staticmethod(lambda *a, **k: ("Max hold (recommandé)", True))
 win = step("MainWindow()", m.MainWindow)
+win.sound.cfg.update(confirm=0, repeat=10)          # ces tests vérifient le CONFLIT immédiat et la répétition 10 s
+win.alarms.repeat_s = 10.0
 if win is None:
     sys.exit(1)
 win.log_dir = m.Path(tmp) / "journaux"
@@ -149,6 +151,27 @@ lg = [win.log_table.item(r, 4).text() for r in range(win.log_table.rowCount())]
 check("« Retour » dans le journal", any(x.startswith("Retour") for x in lg), str(lg))
 win._alarm_tick()          # le bouton est tenu à jour chaque seconde
 check("bouton 🔔 de nouveau neutre", win.alarm_btn.text() == "🔔", win.alarm_btn.text())
+# --- CONFLIT confirmé : un signal bref ne sonne pas, un signal qui dure (≥ 3 s) oui
+win.sound.cfg["confirm"] = 3
+sounds.clear()
+T[0] += 1
+sweep(tx=(500.0, 502.0), extra=(499.0,))
+check("CONFLIT : pas d'alarme au 1er balayage (en attente de confirmation)",
+      not any(a["kind"] == "CONFLIT" for a in win.alarms.active.values()) and not sounds, str(sounds))
+T[0] += 1
+sweep(tx=(500.0, 502.0))
+T[0] += 5
+sweep(tx=(500.0, 502.0))
+check("CONFLIT : signal de 1 s puis parti → jamais d'alarme", not any(a["kind"] == "CONFLIT" for a in win.alarms.active.values()))
+sweep(tx=(500.0, 502.0), extra=(499.0,))
+T[0] += 4
+sweep(tx=(500.0, 502.0), extra=(499.0,))
+check("CONFLIT : signal qui dure 4 s → alarme", any(a["kind"] == "CONFLIT" for a in win.alarms.active.values()))
+win.alarms.clear(("CONFLIT", int(round(499.0 * 1000))), T[0])
+win.alarms.done.clear()
+T[0] += 1
+sweep(tx=(500.0, 502.0))
+win.sound.cfg["confirm"] = 0
 # --- CONFLIT sur fréquence libre (prio normale)
 sounds.clear()
 T[0] += 1

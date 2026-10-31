@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.26.3"
+APP_VER = "7.27.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1773,53 +1773,108 @@ def pf_orders(tol):
 # MRK980 : profil complet ; Sennheiser evolution, Shure SLX / PSM : 16 MHz ; Shure AD / QLX-D : 32 MHz, d'après lui),
 # "guess" = valeur de départ NON vérifiée. Écart, pas et tolérances des profils autres que Wisycom : de départ aussi.
 # Les clés restent stables (enregistrées dans les listes et les shows : w["rx"]).
-_TOL_EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0}
-_TOL_LARGE = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.0, "7": 0.0}
-_TOL_IEM = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}
+_TOL_EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.0}      # la plupart des appareils EazyRF
+_TOL_LARGE = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}
+_TOL_IEM = {"2tx3": 0.150, "3tx3": 0.100, "5": 0.050, "7": 0.0}     # Shure PSM 1000 dans EazyRF
+_TOL_SLXD = {"2tx3": 0.200, "3tx3": 0.0, "5": 0.050, "7": 0.0}      # Shure SLX-D dans EazyRF (3 TX ignoré)
+_TOL_NONE = {"2tx3": 0.0, "3tx3": 0.0, "5": 0.0, "7": 0.0}          # Sennheiser EW-D / EW-DX : écart seulement
+_EZ = "Valeurs de la bibliothèque d'appareils EazyRF."
 RX_PROFILES = [
     ("wisycom", "Wisycom (MRK980, MTK952…) · filtre 32 MHz",
      dict(sep=0.500, filt=32.0, step=0.005, tol=_TOL_EZ, src="eazyrf"),
-     "Profil Wisycom d'EazyRF : filtre d'entrée 32 MHz (seuls les émetteurs à ±16 MHz comptent), séparation "
-     "500 kHz, pas 5 kHz (MTK952 : 25 kHz)."),
-    ("senn_evo", "Sennheiser evolution (EW G3 / G4) · filtre 16 MHz",
-     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_LARGE, src="eazyrf"),
-     "Filtre 16 MHz comme dans EazyRF (valeur de Clément, ex. une banque du groupe A). Écart, pas et tolérances : "
-     "valeurs de départ."),
+     _EZ + " MRK980 : écart 500 kHz (250 kHz en NB), filtre 32 MHz, pas 5 kHz ; MTK952 : pas 25 kHz."),
+    ("senn_evo", "Sennheiser ew G4 · filtre 32 MHz",
+     dict(sep=0.400, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     _EZ + " ew G4 : écart 400 kHz (450 kHz sur certaines gammes), filtre 32 MHz."),
     ("senn_ana", "Sennheiser analogique (2000, 3000, 5000)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
-     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz. "
-     "Mets la valeur de ton profil EazyRF dans un profil perso."),
-    ("senn_dig", "Sennheiser numérique (EW-DX, EW-D, 6000)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_EZ, src="guess"),
-     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; séparation 400 kHz."),
-    ("shure_ad", "Shure Axient Digital (AD) · filtre 32 MHz",
-     dict(sep=0.350, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
-     "Filtre 32 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ."),
-    ("shure_dig", "Shure QLX-D / ULX-D · filtre 32 MHz",
-     dict(sep=0.350, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
-     "Filtre 32 MHz comme dans EazyRF (valeur de Clément pour QLX-D ; ULX-D supposé pareil). Écart, pas et "
-     "tolérances : valeurs de départ."),
-    ("shure_slx", "Shure SLX / SLX-D · filtre 16 MHz",
-     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_LARGE, src="eazyrf"),
-     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Écart, pas et tolérances : valeurs de départ, plus prudentes "
-     "que Wisycom (150 / 75 kHz) : un SLX encaisse moins l'intermod qu'un Wisycom, même avec un filtre plus étroit."),
+     "Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton "
+     "modèle : 📚 Bibliothèque EazyRF."),
+    ("senn_dig", "Sennheiser EW-D / EW-DX · filtre 32 MHz",
+     dict(sep=0.600, filt=32.0, step=0.025, tol=_TOL_NONE, src="eazyrf"),
+     _EZ + " Numérique : pas d'intermodulation comptée, écart 600 kHz."),
+    ("shure_ad", "Shure Axient Digital (AD4D / AD4Q) · filtre 32 MHz",
+     dict(sep=0.400, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     _EZ + " Écart 400 kHz, filtre 32 MHz."),
+    ("shure_dig", "Shure ULX-D / QLX-D · filtre 16 MHz",
+     dict(sep=0.300, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     _EZ + " Écart 300 kHz, filtre 16 MHz."),
+    ("shure_slx", "Shure SLX (analogique) · filtre 16 MHz",
+     dict(sep=0.300, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     _EZ + " Écart 300 kHz, filtre 16 MHz."),
+    ("shure_slxd", "Shure SLX-D · filtre 50 MHz",
+     dict(sep=0.450, filt=50.0, step=0.025, tol=_TOL_SLXD, src="eazyrf"),
+     _EZ + " Écart 450 kHz, filtre 50 MHz, tolérance 2 TX 200 kHz, 3 TX non compté."),
     ("shure_ana", "Shure analogique (UR, BLX…)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
-     "Valeurs de départ (non vérifiées) : filtre inconnu → tous les émetteurs comptent ; tolérances 150 / 75 kHz."),
-    ("shure_psm", "Shure PSM (300 / 900 / 1000) · filtre 16 MHz",
-     dict(sep=0.400, filt=16.0, step=0.025, tol=_TOL_IEM, src="eazyrf"),
-     "Filtre 16 MHz comme dans EazyRF (valeur de Clément). Émetteurs souvent couplés sur un combineur → on compte "
-     "aussi le 5ᵉ ordre. Écart, pas et tolérances : valeurs de départ."),
-    ("shure_adt", "Shure Axient Digital PSM (ADTQ / ADTD) · à renseigner",
+     "Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton "
+     "modèle : 📚 Bibliothèque EazyRF."),
+    ("shure_psm", "Shure PSM 900 · filtre 16 MHz",
+     dict(sep=0.300, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     _EZ + " Écart 300 kHz, filtre 16 MHz."),
+    ("shure_psm1000", "Shure PSM 1000 · filtre 16 MHz",
+     dict(sep=0.500, filt=16.0, step=0.025, tol=_TOL_IEM, src="eazyrf"),
+     _EZ + " Écart 500 kHz, filtre 16 MHz, tolérances 150 / 100 / 50 kHz."),
+    ("shure_adt", "Shure Axient Digital PSM (ADTQ / ADTD)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
-     "Filtre pas encore connu → tous les émetteurs comptent (le plus prudent). Dès que tu as la valeur de ton "
-     "profil EazyRF, crée un profil perso (✏ Mes profils)."),
-    ("iem", "Autres ears / IEM (EW IEM…)",
-     dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
-     "Valeurs de départ (non vérifiées) : émetteurs souvent couplés sur un combineur → on compte aussi le 5ᵉ "
-     "ordre ; filtre inconnu."),
+     "Valeurs génériques prudentes. Pour les valeurs exactes : 📚 Bibliothèque EazyRF."),
+    ("iem", "Sennheiser ew IEM G4 · filtre 32 MHz",
+     dict(sep=0.450, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
+     _EZ + " Écart 450 kHz, filtre 32 MHz."),
 ]
 RX_CUSTOM = []          # profils perso (config et shows : « rx_custom »), même forme que RX_PROFILES
+
+
+RX_LIBRARY = []         # bibliothèque d'appareils importée d'EazyRF (.lst4) : [{name, type, lo, hi, sep, filt, step, tol}]
+
+
+def parse_lst4(data):
+    """Bibliothèque d'appareils EazyRF (« Appareils.lst4 », XML) -> [{name, type, lo, hi, sep, filt, step, tol, img}].
+    Séparation et tolérances en kHz dans le fichier -> MHz ici ; décimales à virgule ; tolérance 0 = type ignoré."""
+    import xml.etree.ElementTree as ET
+    raw = data.encode("utf-8") if isinstance(data, str) else bytes(data)
+    try:
+        root = ET.fromstring(raw.lstrip(b"\xef\xbb\xbf"))
+    except ET.ParseError as e:
+        raise ValueError(f"fichier illisible ({e})") from None
+    out = []
+    for d in root:
+        def g(k):
+            return (d.findtext(k) or "").strip()
+
+        def num(k, dft):
+            try:
+                return float(g(k).replace(",", ".")) if g(k) else dft
+            except ValueError:
+                return dft
+        name = re.sub(r"\s+", " ", g("Description"))[:80]
+        if not name:
+            continue
+        out.append(dict(name=name, type=g("Type")[:30], lo=num("Départ", 0.0), hi=num("Arrêt", 0.0),
+                        sep=num("Séparation", 300.0) / 1000.0, filt=num("Filtre", 0.0),
+                        step=num("Incrément", 0.025) or 0.025,
+                        tol={"2tx3": num("Tolérance", 100.0) / 1000.0, "3tx3": num("Tolérance3TX", 50.0) / 1000.0,
+                             "5": num("Tolérance5e", 50.0) / 1000.0, "7": 0.0},
+                        img=num("FréqImage", 0.0) if g("FréqImageDéfinie").lower() == "true" else 0.0))
+    if not out:
+        raise ValueError("aucun appareil dans ce fichier (est-ce bien Appareils.lst4 d'EazyRF ?)")
+    return out
+
+
+def rx_library_find(lib, text, limit=400):
+    """Recherche dans la bibliothèque : tous les mots tapés (sans accents / casse) dans le nom ou le type."""
+    def k(x):
+        return "".join(c for c in unicodedata.normalize("NFD", str(x).lower()) if unicodedata.category(c) != "Mn")
+    words = k(text).split()
+    hits = [d for d in lib or [] if all(w in k(d["name"] + " " + d["type"]) for w in words)]
+    return hits[:limit]
+
+
+def rx_from_library(dev):
+    """Appareil de la bibliothèque -> profil perso (rx_custom_norm), avec sa plage de fréquences."""
+    return dict(name=dev["name"], sep=dev["sep"], filt=dev["filt"], step=dev["step"], tol=dict(dev["tol"]),
+                lo=dev.get("lo", 0.0), hi=dev.get("hi", 0.0), src="eazyrf",
+                note=f"Bibliothèque EazyRF · {dev.get('type', '')} · {dev.get('lo', 0):g}–{dev.get('hi', 0):g} MHz")
 
 
 def rx_all():
@@ -1861,8 +1916,10 @@ def rx_custom_norm(lst):
         t = p.get("tol") if isinstance(p.get("tol"), dict) else {}
         tol = {k: _rx_num(t.get(k), 0.0, 2.0, d) for k, d in _TOL_EZ.items()}
         tol["7"] = 0.0
+        extra = {k_: _rx_num(p.get(k_), 0.0, 7000.0, 0.0) for k_ in ("lo", "hi") if p.get(k_)}
         out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 3.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
-                                    step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol, src="perso"),
+                                    step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol,
+                                    src="eazyrf" if p.get("src") == "eazyrf" else "perso", **extra),
                     str(p.get("note") or "Profil perso.")[:300]))
     return out
 
@@ -1873,11 +1930,11 @@ def rx_set_custom(lst):
 
 def rx_custom_dump():
     """Profils perso -> liste JSON (config, shows)."""
-    return [dict(key=k, name=n, sep=d["sep"], filt=d["filt"], step=d["step"], tol=dict(d["tol"]), note=w)
-            for k, n, d, w in RX_CUSTOM]
+    return [dict(key=k, name=n, sep=d["sep"], filt=d["filt"], step=d["step"], tol=dict(d["tol"]), note=w,
+                 src=d.get("src", "perso"), **{k_: d[k_] for k_ in ("lo", "hi") if d.get(k_)}) for k, n, d, w in RX_CUSTOM]
 
 
-RX_SRC_TXT = {"eazyrf": "EazyRF (Clément)", "guess": "valeur de départ", "perso": "ton profil"}
+RX_SRC_TXT = {"eazyrf": "EazyRF", "guess": "générique", "perso": "ton profil"}
 
 
 def rx_help_html():
@@ -1896,13 +1953,11 @@ def rx_help_html():
         "40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. "
         "Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
         "filtre de son récepteur</b> (à ± la moitié du filtre).</p>"
-        "<ul><li><b>Le chiffre du filtre ne dit pas si un récepteur est « bon »</b> : il dit seulement quelle tranche "
-        "du spectre entre dans le récepteur, donc combien d'émetteurs comptent dans le calcul. À règles égales, 16 MHz "
-        "fait compter moins d'émetteurs que 32 MHz.</li>"
-        "<li><b>La robustesse</b> d'un récepteur (fabriquer peu d'intermod, bien séparer les canaux voisins) se règle "
-        "avec l'<b>écart</b> et les <b>tolérances</b> du profil : un Wisycom encaisse des fréquences serrées (petites "
-        "tolérances), un modèle d'entrée de gamme (SLX…) demande plus de marge, même si son filtre est plus "
-        "étroit.</li>"
+        "<ul><li>Le chiffre du filtre dit seulement <b>quelle tranche du spectre entre dans le récepteur</b>, donc "
+        "combien d'émetteurs comptent dans le calcul (16 MHz en fait compter moins que 32 MHz). Il ne classe pas les "
+        "récepteurs entre eux.</li>"
+        "<li>L'<b>écart</b> (distance minimale entre deux porteuses) et les <b>tolérances</b> (marge autour d'un "
+        "produit, par type ; 0 = type ignoré) complètent le profil.</li>"
         "<li><b>Aucun</b> (0) = tous les émetteurs comptent : le plus prudent, à utiliser quand on ne connaît pas "
         "l'appareil.</li></ul>"
         "<p>Les produits fabriqués ailleurs (dans les <b>émetteurs</b> eux-mêmes, ex. des ears couplés sur un "
@@ -2666,7 +2721,7 @@ class AlarmBook:
         """Alarmes critiques toujours non acquittées dont le son doit être rejoué."""
         out = []
         for a in self.active.values():
-            if a["prio"] >= 2 and not a["acked"] and now - a["last_sound"] >= self.repeat_s:
+            if self.repeat_s > 0 and a["prio"] >= 2 and not a["acked"] and now - a["last_sound"] >= self.repeat_s:
                 a["last_sound"] = now
                 out.append(a)
         return out
@@ -3492,7 +3547,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
 <div id="login" class="hidden"><form class="card" id="lf">
  <div class="logo">📡</div><h1 id="lt">TinySA Monitor</h1><p>Surveillance HF en direct</p>
  <label for="ln">Ton nom (pour que la régie sache qui regarde)</label>
- <input class="in" id="ln" maxlength="32" placeholder="ex. Clément — FOH" autocomplete="name">
+ <input class="in" id="ln" maxlength="32" placeholder="ex. Alex — FOH" autocomplete="name">
  <div id="lpw"><label for="lp">Mot de passe</label><input class="in" id="lp" type="password" autocomplete="current-password"></div>
  <button class="btn pri" type="submit" id="lgo">Entrer</button><button class="btn hidden" type="button" id="lcancel" style="width:100%;margin-top:8px">Annuler</button>
  <div class="err" id="le"></div></form></div>
@@ -5029,7 +5084,10 @@ def auto_scan_step(total_mhz, rbw_khz=None, budget=4500, step_min=10.0):
 
 
 # ------------------------------------------------------------------ sons de l'appli (sortie audio au choix)
-SOUND_DEFAULT = dict(device="", volume=70, style="tones")      # device "" = sortie par défaut de Windows
+SOUND_DEFAULT = dict(device="", volume=70, style="tones",      # device "" = sortie par défaut de Windows
+                     repeat=30, confirm=3, occ_beep=False)      # critiques rejouées / CONFLIT confirmé après / bip « occupé »
+ALARM_REPEATS = ((10, "toutes les 10 s"), (30, "toutes les 30 s"), (60, "toutes les minutes"),
+                 (300, "toutes les 5 minutes"), (0, "jamais (un seul son)"))
 SOUND_STYLES = (("tones", "🎵 Sons de l'appli (sortie audio au choix)"), ("beep", "🔔 Bip de Windows"))
 ALARM_TONES = {2: [(1320, 140), (0, 60), (1320, 140), (0, 60), (1760, 260)],   # critique : 3 notes, aiguë à la fin
                1: [(990, 160), (0, 80), (990, 160)],                              # normale : 2 notes
@@ -5048,7 +5106,28 @@ def sound_cfg_norm(d):
         pass
     if d.get("style") in dict(SOUND_STYLES):
         out["style"] = d["style"]
+    if d.get("repeat") in dict(ALARM_REPEATS):
+        out["repeat"] = int(d["repeat"])
+    try:
+        out["confirm"] = min(60, max(0, int(d.get("confirm", out["confirm"]))))
+    except (TypeError, ValueError):
+        pass
+    out["occ_beep"] = bool(d.get("occ_beep", False))
     return out
+
+
+def net_text(nbytes, dt, rtt):
+    """🌐 Lien réseau d'un tinySA : « 🌐 12 Ko/s · 8 ms » (débit sur dt secondes, délai de réponse)."""
+    if dt <= 0:
+        return ""
+    kb = nbytes / dt / 1024.0
+    out = f"🌐 {kb:.0f} Ko/s" if kb >= 10 else f"🌐 {kb:.1f} Ko/s"
+    return out + (f" · {rtt * 1000:.0f} ms" if rtt is not None else "")
+
+
+def snooze_left(until, now):
+    """🔕 Silence en cours : secondes restantes (0 = pas de silence)."""
+    return max(0, int(round(until - now))) if until and until > now else 0
 
 
 def tone_pcm(seq, rate=22050, volume=0.7):
@@ -5485,6 +5564,8 @@ class TinySA:
         self.idle = self.NET_IDLE_MIN          # tinySA muet (réseau coupé, appareil figé) : erreur → reconnexion
         self.abort = None                      # fonction : True = abandonner la commande en cours (Arrêter)
         self.trace = trace                     # fonction(texte) : journal des échanges (diagnostic)
+        self.rx_bytes = self.tx_bytes = 0      # 🌐 compteur réseau : octets échangés
+        self.rtt = None                        # délai jusqu'au 1er octet de la dernière réponse (s)
         self.ser = serial.serial_for_url(port, int(baud), timeout=0.2)
         self.ser.reset_input_buffer()
         self.cmd("", timeout=5)
@@ -5511,9 +5592,11 @@ class TinySA:
 
     def _cmd(self, text, timeout=15.0):
         self.ser.reset_input_buffer()
-        self.ser.write((text + "\r").encode())
+        out_ = (text + "\r").encode()
+        self.ser.write(out_)
+        self.tx_bytes += len(out_)
         buf, t0 = b"", time.time()
-        t_rx = t0
+        t_rx, first = t0, True
         while True:
             now = time.time()
             if now - t0 > timeout:
@@ -5527,6 +5610,9 @@ class TinySA:
             chunk = self.ser.read(n if n else 1)
             if chunk:
                 t_rx = time.time()
+                if first:
+                    self.rtt, first = t_rx - t0, False
+                self.rx_bytes += len(chunk)
                 buf += chunk
                 if buf.rstrip().endswith(self.PROMPT):
                     break
@@ -7664,6 +7750,7 @@ class IntermodDialog(QtWidgets.QDialog):
         self.resize(1040, 720)
         R = owner._row
         lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(coord_note())
         info = QtWidgets.QLabel(
             "Calcule les produits d'intermodulation de tes émetteurs (les fréquences de la liste) : 2 TX → 2A − B ; "
             "3 TX → A + B − C ; 5 TX → A + B + C − D − E… Tu vois quelle combinaison peut retomber sur une de tes "
@@ -8089,6 +8176,7 @@ class RescueDialog(QtWidgets.QDialog):
         self.resize(900, 640)
         R = owner._row
         lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(coord_note())
         info = QtWidgets.QLabel(
             "Cherche des fréquences libres d'après ce que le tinySA a mesuré (max hold), à bonne distance de tes "
             "émetteurs et sans intermodulation de 3ᵉ ordre avec eux. Aide de dépannage : ça ne remplace pas ta "
@@ -8927,6 +9015,110 @@ class RxProfileEdit(QtWidgets.QDialog):
                     note=self.note.text().strip() or "Profil perso.")
 
 
+def coord_note():
+    """Rappel en tête des outils de coordination : TinySA Monitor fait une coordination SIMPLE (vérifier, dépanner sur
+    place) ; un vrai plan complet se construit dans un logiciel dédié (demande de Clément)."""
+    lab = QtWidgets.QLabel("ℹ Coordination simple, pour vérifier et dépanner sur place à partir du spectre mesuré. "
+                           "Pour construire un plan complet (beaucoup d'appareils, fréquences image, exports vers les "
+                           "récepteurs), utilise un logiciel de coordination dédié : EazyRF, Soundbase, Shure WWB, "
+                           "Sennheiser WSM.")
+    lab.setWordWrap(True)
+    lab.setStyleSheet("color: gray; font-size: 90%;")
+    lab.setToolTip("TinySA Monitor reste un moniteur : ses calculs reprennent les règles de base (écart, intermod "
+                   "3ᵉ / 5ᵉ ordre,\nfiltre du récepteur), pas tout ce que fait un logiciel de coordination.")
+    return lab
+
+
+class RxLibraryDialog(QtWidgets.QDialog):
+    """📚 Bibliothèque d'appareils EazyRF : importer « Appareils.lst4 », chercher un modèle, l'ajouter à mes profils
+    (il garde ses valeurs : écart, filtre, pas, tolérances, plage)."""
+    COLS = ["Appareil", "Type", "Plage MHz", "Écart", "Filtre", "2 TX", "3 TX", "5ᵉ", "Pas"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Bibliothèque d'appareils (EazyRF)")
+        lay = QtWidgets.QVBoxLayout(self)
+        self.head = QtWidgets.QLabel("")
+        self.head.setWordWrap(True)
+        b_imp = QtWidgets.QPushButton("📥 Importer Appareils.lst4…")
+        b_imp.setToolTip("Le fichier de la bibliothèque d'appareils d'EazyRF (dans le dossier d'EazyRF).")
+        b_imp.clicked.connect(lambda *_: self.import_file())
+        lay.addLayout(owner._row(self.head, None, b_imp))
+        self.q = QtWidgets.QLineEdit()
+        self.q.setPlaceholderText("🔎 Chercher : marque, modèle, gamme (ex. « slx-d g58 », « mrk980 », « psm 1000 »)…")
+        self.q.setToolTip("Tous les mots tapés doivent apparaître dans le nom ou le type.")
+        self.q.setClearButtonEnabled(True)
+        self.q.textChanged.connect(lambda *_: self.fill())
+        lay.addWidget(self.q)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setToolTip("Choisis un ou plusieurs appareils (Ctrl+clic), puis « Ajouter à mes profils ».")
+        self.table.cellDoubleClicked.connect(lambda *_: self.add())
+        lay.addWidget(self.table, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        b_add = QtWidgets.QPushButton("＋ Ajouter à mes profils")
+        b_add.setToolTip("Les appareils choisis deviennent des profils utilisables partout (vérifier le plan,\n"
+                         "trouver N fréquences, fréquence de secours), gardés dans ta config et tes shows.")
+        b_add.clicked.connect(lambda *_: self.add())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.accept)
+        lay.addLayout(owner._row(self.msg, None, b_add, close))
+        self.resize(980, 600)
+        self.rows = []
+        self.fill()
+
+    def fill(self):
+        lib = self.owner.rx_library()
+        self.head.setText(f"{len(lib)} appareils dans la bibliothèque." if lib else
+                          "Pas encore de bibliothèque : importe le fichier « Appareils.lst4 » d'EazyRF.")
+        self.rows = rx_library_find(lib, self.q.text())
+        self.table.setRowCount(len(self.rows))
+        for r, d in enumerate(self.rows):
+            vals = (d["name"], d["type"], f"{d['lo']:g} – {d['hi']:g}" if d["hi"] else "",
+                    f"{d['sep'] * 1000:.0f} kHz", f"{d['filt']:g} MHz" if d["filt"] else "aucun",
+                    *[(f"±{d['tol'][t] * 1000:.0f}" if d["tol"][t] else "ignoré") for t in ("2tx3", "3tx3", "5")],
+                    f"{d['step'] * 1000:g} kHz")
+            for c, v in enumerate(vals):
+                self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
+        self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+
+    def import_file(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Bibliothèque d'appareils EazyRF", "",
+                                                            "EazyRF (*.lst4 *.xml);;Tous les fichiers (*)")
+            if not path:
+                return
+        try:
+            lib = parse_lst4(Path(path).read_bytes())
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(f"Import impossible : {e}")
+            return
+        self.owner.set_rx_library(lib)
+        self.fill()
+        self.msg.setText(f"📚 {len(lib)} appareils importés.")
+
+    def add(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes()})
+        devs = [self.rows[r] for r in rows if r < len(self.rows)]
+        if not devs:
+            self.msg.setText("Choisis d'abord un appareil dans la liste.")
+            return
+        have = {n for _k, n, _d, _w in RX_CUSTOM}
+        new = [rx_from_library(d) for d in devs if d["name"] not in have]
+        if new:
+            rx_set_custom(rx_custom_dump() + new)
+            self.owner.rx_profiles_changed()
+        self.msg.setText(f"✔ {len(new)} profil(s) ajouté(s)" + (f", {len(devs) - len(new)} déjà là" if len(devs) > len(new)
+                                                                   else "") + ".")
+        self.added = [d["name"] for d in devs]
+
+
 class RxProfilesDialog(QtWidgets.QDialog):
     """Tous les profils d'appareil : intégrés (lecture seule) et perso (créer, copier, modifier, supprimer)."""
     COLS = ["Appareil", "Filtre", "Écart", "Pas", "2A − B", "A + B − C", "5ᵉ", "Source"]
@@ -8969,10 +9161,14 @@ class RxProfilesDialog(QtWidgets.QDialog):
         b_help = QtWidgets.QPushButton("❓ Le filtre, c'est quoi ?")
         b_help.setToolTip("Explication du filtre récepteur et de chaque réglage.")
         b_help.clicked.connect(lambda *_: show_filter_help(self))
+        b_lib = QtWidgets.QPushButton("📚 Bibliothèque EazyRF…")
+        b_lib.setToolTip("Importer la bibliothèque d'appareils d'EazyRF et y prendre les vraies valeurs de ton\n"
+                         "matériel (écart, filtre, tolérances, plage).")
+        b_lib.clicked.connect(lambda *_: (RxLibraryDialog(owner).exec(), self.refresh()))
         close = QtWidgets.QPushButton("Fermer")
         close.setToolTip("Ferme la fenêtre.")
         close.clicked.connect(self.accept)
-        lay.addLayout(owner._row(b_new, b_cur, b_edit, b_del, None, b_help, close))
+        lay.addLayout(owner._row(b_lib, b_new, b_cur, b_edit, b_del, None, b_help, close))
         self.resize(900, 520)
         self.refresh()
 
@@ -9048,6 +9244,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.resize(940, 660)
         self.ws, self.issues = [], []
         lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(coord_note())
         info = QtWidgets.QLabel(
             "Comme le calcul de plan d'EazyRF : pour chaque fréquence, est-elle trop près d'une autre (écart entre "
             "porteuses), et un produit d'intermod de tes émetteurs tombe-t-il dessus (selon les tolérances) ? C'est un "
@@ -9088,10 +9285,9 @@ class PlanCheckDialog(QtWidgets.QDialog):
                                   "appareils.\n5 kHz pour un Wisycom MRK980, 25 kHz pour un MTK952.")
         self.prof_combo = QtWidgets.QComboBox()
         fill_rx_combo(self.prof_combo, "✏ Réglages ci-dessous")
-        self.prof_combo.setToolTip("Appareil par défaut (comme un profil EazyRF) : remplit écart, filtre, pas et "
-                                   "tolérances.\nWisycom = très robuste (écart et tolérances serrés) ; Shure / Sennheiser / ears = "
-                                   "moins robustes.\nLes fréquences avec leur propre appareil (colonne « Appareil ») "
-                                   "gardent le leur.\nValeurs des profils autres que Wisycom : de départ, NON vérifiées.")
+        self.prof_combo.setToolTip("Appareil par défaut : remplit écart, filtre, pas et tolérances (valeurs de la "
+                                   "bibliothèque EazyRF).\nLes fréquences avec leur propre appareil (colonne « Appareil ») "
+                                   "gardent le leur.\nTous tes modèles : 🎛 Profils d'appareil › 📚 Bibliothèque EazyRF.")
         self.tol_combo = QtWidgets.QComboBox()
         fill_rules_combo(self.tol_combo)
         self.tol_combo.setToolTip("Quelle sévérité ? Survole chaque choix pour l'explication.\n"
@@ -10678,10 +10874,10 @@ class ScanConvertDialog(QtWidgets.QDialog):
         ol = QtWidgets.QVBoxLayout(ob)
         self.out_fmt = QtWidgets.QComboBox()
         self.out_fmt.addItem("Shure WWB (scan à importer)", "wwb")
-        self.out_fmt.addItem("Sennheiser WSM (format supposé, d'après les exports WSM)", "wsm")
+        self.out_fmt.addItem("Sennheiser WSM (comme ses exports)", "wsm")
         self.out_fmt.addItem("CSV personnalisé (EazyRF, tableur…)", "csv")
         self.out_fmt.setToolTip("WWB : « 470.000, -98 », MHz et dBm, sans en-tête.\n"
-                                "WSM : kHz et % comme ses exports (import dans WSM non vérifié).\n"
+                                "WSM : kHz et % comme ses exports.\n"
                                 "CSV : à toi de choisir séparateur, décimale, unités.")
         self.out_sep, self.out_dec = QtWidgets.QComboBox(), QtWidgets.QComboBox()
         for k, t in SCAN_SEPS[1:]:
@@ -11415,8 +11611,8 @@ class EmitDialog(QtWidgets.QDialog):
         self.f_spin.setSuffix(" MHz")
         rows = o._sel_rows()
         self.f_spin.setValue(o.watch[rows[0]]["freq"] if rows else 600.0)
-        self.f_spin.setToolTip("Fréquence émise. tinySA Ultra : jusqu'à ~800 MHz en sortie directe (au-delà : pas "
-                               "garanti, non vérifié).")
+        self.f_spin.setToolTip("Fréquence émise. tinySA Ultra : jusqu'à ~800 MHz en sortie directe (au-delà : niveau "
+                               "non garanti).")
         self.list_combo = QtWidgets.QComboBox()
         self.list_combo.addItem("— choisir dans ma liste —", None)
         for w in o.watch:
@@ -11941,7 +12137,7 @@ class SettingsDialog(QtWidgets.QDialog):
         c = o.sound.cfg
         self.alert_chk = QtWidgets.QCheckBox("Alarmes sonores")
         self.alert_chk.setChecked(o.alert_chk.isChecked())
-        self.alert_chk.setToolTip("Son quand une alarme arrive (les critiques sont rejouées toutes les 10 s).")
+        self.alert_chk.setToolTip("Son quand une alarme arrive (les critiques sont rejouées selon le réglage ci-dessous).")
         self.alert_chk.toggled.connect(lambda *_: o.alert_chk.setChecked(self.alert_chk.isChecked()))
         self.style_combo = QtWidgets.QComboBox()
         for k, t in SOUND_STYLES:
@@ -11970,6 +12166,23 @@ class SettingsDialog(QtWidgets.QDialog):
         for w_ in (self.style_combo, self.dev_combo):
             w_.currentIndexChanged.connect(lambda *_: self._apply_sound())
         self.vol.valueChanged.connect(lambda *_: self._apply_sound())
+        self.rep_combo = QtWidgets.QComboBox()
+        for v_, t_ in ALARM_REPEATS:
+            self.rep_combo.addItem(t_, v_)
+        self.rep_combo.setCurrentIndex(max(0, self.rep_combo.findData(c["repeat"])))
+        self.rep_combo.setToolTip("Tant qu'une alarme critique n'est pas acquittée, son son est rejoué à ce rythme.")
+        self.conf_spin = QtWidgets.QSpinBox()
+        self.conf_spin.setRange(0, 60)
+        self.conf_spin.setSuffix(" s")
+        self.conf_spin.setValue(c["confirm"])
+        self.conf_spin.setToolTip("Un signal sur une fréquence « doit rester libre » doit durer au moins ce temps avant\n"
+                                  "l'alarme CONFLIT : un pic d'une fraction de seconde ne sonne plus. 0 = tout de suite.")
+        self.occ_chk = QtWidgets.QCheckBox("Petit bip quand une fréquence sans alarme devient occupée")
+        self.occ_chk.setChecked(c["occ_beep"])
+        self.occ_chk.setToolTip("Décoché (conseillé) : seules les alarmes (CONFLIT, ABSENT, TROP FORT) font du bruit.")
+        self.rep_combo.currentIndexChanged.connect(lambda *_: self._apply_sound())
+        self.conf_spin.valueChanged.connect(lambda *_: self._apply_sound())
+        self.occ_chk.toggled.connect(lambda *_: self._apply_sound())
         self.snd_msg = QtWidgets.QLabel("" if SoundOut.devices() else
                                         "Aucune sortie audio trouvée : le bip de Windows sera utilisé.")
         self.snd_msg.setWordWrap(True)
@@ -11978,6 +12191,9 @@ class SettingsDialog(QtWidgets.QDialog):
         f.addRow("Sortie audio :", self.dev_combo)
         f.addRow("Volume :", self.vol)
         f.addRow(owner._row(t_crit, t_norm, None))
+        f.addRow("Rejouer les critiques :", self.rep_combo)
+        f.addRow("CONFLIT après :", self.conf_spin)
+        f.addRow(self.occ_chk)
         f.addRow(self.snd_msg)
         tabs.addTab(sw, "🔊 Son")
         # --- Fichiers
@@ -12030,7 +12246,10 @@ class SettingsDialog(QtWidgets.QDialog):
 
     def _apply_sound(self):
         self.owner.sound.cfg = sound_cfg_norm(dict(device=self.dev_combo.currentData() or "",
-                                                   volume=self.vol.value(), style=self.style_combo.currentData()))
+                                                   volume=self.vol.value(), style=self.style_combo.currentData(),
+                                                   repeat=self.rep_combo.currentData(), confirm=self.conf_spin.value(),
+                                                   occ_beep=self.occ_chk.isChecked()))
+        self.owner.alarms.repeat_s = float(self.owner.sound.cfg["repeat"])
         self.dev_combo.setEnabled(self.style_combo.currentData() == "tones")
 
     def _pick_sess(self):
@@ -12921,6 +13140,7 @@ class CoordDialog(QtWidgets.QDialog):
         self.found = []
         self.setWindowTitle("Trouver des fréquences compatibles")
         lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(coord_note())
         info = QtWidgets.QLabel(
             "Comme un logiciel de coordination : choisis l'appareil et combien de fréquences il te faut. L'appli "
             "cherche, de bas en haut de la plage, des fréquences <b>compatibles avec toute ta liste et entre elles</b> "
@@ -12934,7 +13154,9 @@ class CoordDialog(QtWidgets.QDialog):
         fill_rx_combo(self.prof, "✏ réglages de « Vérifier le plan »")
         ix = self.prof.findData("wisycom")
         self.prof.setCurrentIndex(max(0, ix))
-        self.prof.setToolTip("Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.")
+        self.prof.setToolTip("Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.\n"
+                             "Un appareil de la bibliothèque EazyRF règle aussi la plage « De … à ».")
+        self.prof.currentIndexChanged.connect(lambda *_: self._range_from_prof())
         self.n_spin = QtWidgets.QSpinBox()
         self.n_spin.setRange(1, 64)
         self.n_spin.setValue(8)
@@ -12993,6 +13215,12 @@ class CoordDialog(QtWidgets.QDialog):
         close.clicked.connect(self.close)
         lay.addLayout(o._row(add, None, close))
         self.resize(620, 640)
+
+    def _range_from_prof(self):
+        d = rx_profile(self.prof.currentData())
+        if d and d.get("hi", 0) > d.get("lo", 0) > 0:
+            self.lo.setValue(d["lo"])
+            self.hi.setValue(d["hi"])
 
     def _scene_from_spec(self):
         """Coordination pour une scène : les nouvelles fréquences y sont rangées (si une telle scène existe)."""
@@ -13850,6 +14078,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._im_dlg = self._rescue_dlg = self._replay = None
         self._linecheck = None          # appel des micros en cours (LineCheckDialog)
         self.alarms = AlarmBook()
+        self.snooze_until = 0.0                # 🔕 silence des alarmes jusqu'à (horodatage) ; 0 = pas de silence
+        self._info_base, self._net_txt = {}, {}  # version de chaque tinySA ; 🌐 débit / délai s'il est en réseau
         self.store = SweepStore(1800.0, 300.0)
         self.recorder = None
         self.session_cfg = dict(SESSION_DEFAULT)
@@ -13920,6 +14150,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
         self.sound = SoundOut()                # sons de l'appli sur la sortie audio choisie (⚙ Réglages › Son)
+        self.alarms.repeat_s = float(self.sound.cfg["repeat"])
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
         self.site_scans = []                   # 📍 scans gardés par lieu [{name, t, f, l}]
@@ -15505,6 +15736,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.planning = planning_norm(data.get("planning"))
             self._plan_next = 0.0
         self.sound.cfg = sound_cfg_norm(data.get("sound"))
+        self.alarms.repeat_s = float(self.sound.cfg["repeat"])
         if "festival" in data:
             self.festival = festival_cfg_norm(data.get("festival"))
         pc = data.get("plan_custom")
@@ -16049,7 +16281,38 @@ class MainWindow(QtWidgets.QMainWindow):
                         "démarrage échoue.")
         QtCore.QTimer.singleShot(3000, lambda: self.on_finished() if not self.is_running() else None)
 
+    def _net_tick(self, now):
+        """🌐 Toutes les 2 s : débit et délai de réponse de chaque tinySA en réseau, à côté de sa version."""
+        if now < getattr(self, "_net_next", 0):
+            return
+        self._net_next = now + 2.0
+        st = getattr(self, "_net_last", {})
+        for i, w in enumerate(self.workers):
+            d = getattr(w, "dev", None)
+            if d is None or not getattr(d, "net", False) or not w.isRunning():
+                self._net_txt[i] = ""
+                continue
+            tot = d.rx_bytes + d.tx_bytes
+            t0, b0 = st.get(i, (now, tot))
+            self._net_txt[i] = net_text(tot - b0, now - t0, d.rtt) if now > t0 else ""
+            st[i] = (now, tot)
+            self._show_info(i)
+        self._net_last = st
+
+    def _show_info(self, dev):
+        net = self._net_txt.get(dev, "")
+        txt = self._info_base.get(dev, "") + (f"  ·  {net}" if net else "")
+        if dev == 0:
+            self.info_lbl.setText(f"  {txt}")
+            self.info_lbl.setToolTip("Version du tinySA" + ("\n🌐 débit du lien réseau et délai de réponse du tinySA "
+                                                             "(Raspberry Pi, autre PC)" if net else ""))
+        else:
+            self.dev2_info = txt
+            self.update_dev2_label()
+
     def on_info(self, txt, dev=0):
+        self._info_base[dev] = txt
+        self._net_txt.pop(dev, None)
         if dev == 0:
             self.info_lbl.setText(f"  {txt}")
             self.seg_known = 450 if "tinysa4" in txt.lower() else 290
@@ -18466,7 +18729,10 @@ class MainWindow(QtWidgets.QMainWindow):
             w["state"] = new
             # ---- alarmes : CONFLIT (signal sur une fréquence « doit rester libre ») et ABSENT (« doit émettre » muette)
             fk = int(round(f * 1000))
-            if new == "occ" and keep_free:
+            confirm = float(self.sound.cfg.get("confirm", 0))
+            if new == "occ" and keep_free and now - (w.get("since") or now) < confirm:
+                pass                                # signal trop court pour l'instant : on attend la confirmation
+            elif new == "occ" and keep_free:
                 prio = self.freq_prio(w)
                 kind = "INTERMOD" if w.get("im") else "CONFLIT"
                 if self.alarms.raise_(("CONFLIT", fk), kind, w["name"], f, prio, now, lvl, self.layer_text(w),
@@ -18504,7 +18770,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if absent is not None:
             self.set_status(f"⚠ ABSENT : {absent['name']} ({absent['freq']:.3f} MHz) n'émet plus alors qu'elle "
                             f"doit émettre.")
-        if alert is not None and conflict is None and self.alert_chk.isChecked():
+        if alert is not None and conflict is None and self.alert_chk.isChecked() and self.sound.cfg.get("occ_beep") \
+                and not snooze_left(self.snooze_until, now):
             self.sound.alarm(0)
         if new_prio >= 0:
             self._alarm_sound(new_prio)
@@ -19650,6 +19917,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plan_dlg = PlanCheckDialog(self)
         self._plan_dlg.show()
 
+    LIB_PATH = CFG_PATH.parent / "appareils_eazyrf.json"
+
+    def rx_library(self):
+        """Bibliothèque d'appareils EazyRF importée (fichier à part : ~1 200 appareils, pas dans la config)."""
+        if not RX_LIBRARY and self.LIB_PATH.exists():
+            try:
+                RX_LIBRARY[:] = json.loads(self.LIB_PATH.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                pass
+        return RX_LIBRARY
+
+    def set_rx_library(self, lib):
+        RX_LIBRARY[:] = lib
+        try:
+            self.LIB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self.LIB_PATH.write_text(json.dumps(lib, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+
     def rx_profiles_changed(self):
         """Profils perso modifiés : listes d'appareils rafraîchies, config enregistrée."""
         d = getattr(self, "_plan_dlg", None)
@@ -20329,7 +20615,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dock_alarm.raise_()
             if not was:
                 QtCore.QTimer.singleShot(0, self._middle_sizes)
-        if prio < 1 or not self.alert_chk.isChecked():
+        if prio < 1 or not self.alert_chk.isChecked() or snooze_left(self.snooze_until, time.time()):
             return
         if self.sound.cfg.get("style") == "beep":
             QtWidgets.QApplication.beep()
@@ -20339,6 +20625,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.sound.alarm(prio)
 
+    def snooze(self, secs):
+        """🔕 Coupe le son des alarmes pendant secs secondes (0 = remettre le son tout de suite)."""
+        self.snooze_until = time.time() + secs if secs else 0.0
+        self.snooze_btn.setText(f"🔕 jusqu'à {datetime.fromtimestamp(self.snooze_until):%H:%M}" if secs else "🔕 Silence")
+        self.set_status(f"🔕 Alarmes muettes pendant {secs // 60} min (toujours affichées et envoyées au téléphone)."
+                        if secs else "🔔 Son des alarmes rétabli.")
+
     def _alarm_tick(self):
         """Chaque seconde : nettoie les alarmes de fréquences supprimées, rejoue les critiques, met l'écran à jour."""
         now = time.time()
@@ -20346,12 +20639,15 @@ class MainWindow(QtWidgets.QMainWindow):
             fks = {int(round(w["freq"] * 1000)) for w in self.watch}
             for key in [k for k in self.alarms.active if k[0] not in ("APPAREIL", "FORT") and k[1] not in fks]:
                 self.alarms.clear(key, now)
+        if self.snooze_until and now >= self.snooze_until:
+            self.snooze(0)
         for a in self.alarms.due_repeat(now):
             self._alarm_sound(a["prio"])
         self._notify_new_alarms()
         self._festival_tick(now)
         self._planning_tick(now)
         self._sites_tick(now)
+        self._net_tick(now)
         reason = getattr(self, "_diag_pending", None)
         if reason:
             self._diag_pending = None
@@ -20616,15 +20912,26 @@ class MainWindow(QtWidgets.QMainWindow):
         b_all.clicked.connect(lambda *_: self.ack_all_alarms())
         b_clr = QtWidgets.QPushButton("🗑 Effacer les terminées")
         b_clr.clicked.connect(lambda *_: self.purge_alarms())
+        self.snooze_btn = QtWidgets.QToolButton()
+        self.snooze_btn.setText("🔕 Silence")
+        self.snooze_btn.setToolTip("Coupe le son des alarmes un moment (elles restent affichées et partent toujours\n"
+                                   "sur le téléphone). Utile pendant un line check ou un changement de plateau.")
+        self.snooze_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        sm_ = QtWidgets.QMenu(self.snooze_btn)
+        for mins in (5, 15, 30, 60):
+            sm_.addAction(f"🔕 {mins} min").triggered.connect(lambda *_, mins=mins: self.snooze(mins * 60))
+        sm_.addSeparator()
+        sm_.addAction("🔔 Remettre le son").triggered.connect(lambda *_: self.snooze(0))
+        self.snooze_btn.setMenu(sm_)
         bar = QtWidgets.QHBoxLayout()
         bar.addWidget(self.alarm_lbl, 1)
-        bar.addLayout(self._flow(b_ack, b_all, b_clr), 2)
+        bar.addLayout(self._flow(b_ack, b_all, b_clr, self.snooze_btn), 2)
         lay.addLayout(bar)
         lay.addWidget(self.alarm_table, 1)
         tip = QtWidgets.QLabel("⚠ CONFLIT : un signal sur une fréquence « Doit rester libre » · ⚠ ABSENT : une fréquence "
                                "« Doit émettre » reste sans signal. Double-clic = voir sur le spectre. Priorité "
-                               "(Critique ❗ / Normale / Info 🔕) : clic droit sur un groupe. Critique = son répété "
-                               "toutes les 10 s jusqu'à acquittement.")
+                               "(Critique ❗ / Normale / Info 🔕) : clic droit sur un groupe. Critique = son rejoué "
+                               "jusqu'à acquittement (rythme : ⚙ Réglages › Son).")
         tip.setWordWrap(True)
         lay.addWidget(tip)
         return w
