@@ -53,6 +53,13 @@ def look(txt, where):
 def scan(w, where):
     objs = [w] + w.findChildren(QtCore.QObject)
     for o in objs:
+        try:
+            _scan1(o, where)
+        except RuntimeError:          # menu reconstruit par aboutToShow : ses anciennes actions sont détruites
+            pass
+
+def _scan1(o, where):
+    if True:
         if isinstance(o, W.QWidget):
             look(o.toolTip(), where + ":tip")
             look(o.windowTitle(), where + ":title")
@@ -135,9 +142,25 @@ for i, f in enumerate([470.2, 474.4, 480.3, 503.5, 525.25, 552.4]):
     win._append_watch(f"HF {i+1}", f, status="En service" if i < 4 else "Libre", scene="Main stage", group="Mics")
 win.rebuild_tree(); win.rebuild_watch_table()
 win.demo_chk.setChecked(True)
+win.toggle_run(); wait(300)             # 1er démarrage : la question « enregistrer la session ? » (scannée puis refusée)
+win.session_cfg.update(ask=False, rec=False)
+win.set_level("simple")
 win.toggle_run(); wait(6000)
 win.grab().save(os.path.join(OUT, "main.png"))
+win.grab().save(os.path.join(OUT, "90_mode_simple.png"))          # captures du manuel anglais (make_manual --shots)
 scan(win, "main")
+win.more_spec_btn.setChecked(True); wait(300)
+scan(win.spec_more, "main-more"); win.grab().save(os.path.join(OUT, "91_spectre_plus_outils.png"))
+win.more_spec_btn.setChecked(False)
+# ⚙ Réglages : chaque rubrique (dont les pages empruntées à la fenêtre principale)
+_sd = m.SettingsDialog(win); _sd.show(); wait(300)
+for _k in _sd.keys:
+    _sd.show_page(_k); wait(120); scan(_sd, f"Settings-{_k}")
+    if _k == "detect":
+        _sd.grab().save(os.path.join(OUT, "92_reglages_seuils.png"))
+_sd.reject(); wait(200)
+win.open_wall(); wait(800)
+win.dock_wall.grab().save(os.path.join(OUT, "93_mur_en.png"))
 # 🎓 tutos (chaque étape) et lexique
 win.start_tour(); wait(200); scan(win._tour_chooser, "TourChooser"); win._tour_chooser.close()
 for _k in m.TOUR_KEYS:

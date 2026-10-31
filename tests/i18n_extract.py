@@ -10,6 +10,7 @@ HTML_MIN = 400                       # au-delà : document HTML / CSS / JS trait
 
 
 CSS = re.compile(r"^\s*[.#@a-z*][^{}]*\{[^{}]*:[^{}]*\}")                   # .classe{prop:valeur}
+QSS = re.compile(r"^\s*Q[A-Za-z]+(::[a-z-]+)?\s*\{[^{}]*:[^{}]*\}")      # QListWidget::item{padding:…}
 CAMEL = re.compile(r"^[a-z]+[A-Z][A-Za-z0-9]*$")                           # showMessage, setText…
 
 
@@ -20,7 +21,7 @@ REGEXISH = re.compile(r"\[[^\]]*-[^\]]*\]|\(\?|\\[dswb]|\([a-z]+(\|[a-z ]+)+\)")
 
 def is_ui(s):
     st = s.strip()
-    if not LETTERS.search(st) or st.startswith(SKIP_PREFIX) or CSS.match(st) or CAMEL.match(st):
+    if not LETTERS.search(st) or st.startswith(SKIP_PREFIX) or CSS.match(st) or QSS.match(st) or CAMEL.match(st):
         return False
     if JS.search(st) or REGEXISH.search(st) or re.fullmatch(r"&\w+;", st):
         return False
