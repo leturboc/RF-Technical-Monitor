@@ -80,11 +80,13 @@ jobs:
 
       - name: Captures de l'interface
         if: always()
+        continue-on-error: true            # quota d'artefacts plein : ne doit jamais bloquer l'exe ni la release
         uses: actions/upload-artifact@v4
         with:
           name: captures-interface-windows
           path: tests/captures/
           if-no-files-found: ignore
+          retention-days: 3
 
       - name: Compilation
         shell: bash
@@ -125,10 +127,12 @@ jobs:
           EOF
 
       - name: Exe (artefact)
+        continue-on-error: true            # l'exe est aussi dans la (pré-)release
         uses: actions/upload-artifact@v4
         with:
           name: TinySA-Monitor
           path: dist/TinySA-Monitor.exe
+          retention-days: 3
 
       - name: Release (sur tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
