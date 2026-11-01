@@ -2825,6 +2825,17 @@ EXACT = {
     '📻 Appareil de ses groupes (coordination)': '📻 Device of its groups (coordination)',
     'Aucun (réglages par défaut)': 'None (default settings)',
     'aucun': 'none',
+    "Aucun lot : on cherche seulement pour l'appareil ci-dessus.": 'No batch: searching only for the device above.',
+    "Coordination entre appareils : chaque lot = un appareil, combien, sa plage et son nom. Les lots\nsont cherchés dans l'ordre et tous compatibles entre eux, chacun avec les règles de SON appareil.\nMets l'appareil le plus exigeant (le plus d'écart, les plus grandes tolérances) en premier.": 'Coordination between devices: each batch = one device, how many, its range and its name. Batches\nare searched in order and all compatible with each other, each with the rules of ITS device.\nPut the most demanding device (largest spacing, largest tolerances) first.',
+    "Garde les réglages ci-dessus comme un lot ; change d'appareil et ajoute le suivant.": 'Keeps the settings above as a batch; change device and add the next one.',
+    "Les lots sont cherchés dans l'ordre, tous compatibles entre eux et avec ta liste.": 'Batches are searched in order, all compatible with each other and with your list.',
+    'Plusieurs appareils (facultatif)': 'Several devices (optional)',
+    "Retire le lot choisi (tous si aucun n'est choisi).": 'Removes the chosen batch (all of them if none is chosen).',
+    'Retirer': 'Remove',
+    'réglages par défaut': 'default settings',
+    '＋ Ajouter ce lot (appareil, combien, plage, nom ci-dessus)': '＋ Add this batch (device, how many, range, name above)',
+    '📻 Appareils de ce groupe (coordination)': '📻 Devices of this group (coordination)',
+    '📻 Appareils de ses groupes (coordination)': '📻 Devices of its groups (coordination)',
 }
 
 TEMPLATES = {
@@ -3199,6 +3210,11 @@ TEMPLATES = {
     '📌 « {} » est dans sa propre fenêtre — cliquer pour le raccrocher': '📌 “{}” is in its own window — click to dock it back',
     '📱 {} alarme(s) acquittée(s) depuis la page web.': '📱 {} alarm(s) acknowledged from the web page.',
     '📻 Appareil de {} : {}. Il sert à la coordination (écart, filtre, tolérances) ; une fréquence qui a son propre appareil garde le sien.': '📻 Device of {}: {}. It is used for coordination (spacing, filter, tolerances); a frequency that has its own device keeps it.',
+    '✔ {} fréquence(s) trouvée(s), toutes compatibles entre elles.': '✔ {} frequency(ies) found, all compatible with each other.',
+    '⚠ Seulement {} : la plage est pleine pour ces règles. Élargis la plage, choisis un appareil plus robuste (écart et tolérances plus serrés) ou des règles plus souples.': '⚠ Only {}: the range is full for these rules. Widen the range, pick a more robust device (tighter spacing and tolerances) or looser rules.',
+    '📻 Appareils de {} : {}. Ils servent à la coordination (écart, filtre, tolérances) ; une fréquence qui a son propre appareil garde le sien.': '📻 Devices of {}: {}. They are used for coordination (spacing, filter, tolerances); a frequency that has its own device keeps it.',
+    '{} × {}   {}–{} MHz   « {} »': '{} × {}   {}–{} MHz   “{}”',
+    '{} / {} {}': '{} / {} {}',
 }
 
 SAME_TEMPLATES = [

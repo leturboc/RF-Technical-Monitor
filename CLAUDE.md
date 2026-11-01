@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.28.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.29.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -509,6 +509,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     nom court dans l'arbre ; `CoordDialog._prof_from_group` (scène + groupe choisis → leur appareil) et `add` ne
     pose `w["rx"]` que s'il diffère de celui du groupe. `group_row(scene, group)`.
   - make_manual : `clean_title` retire aussi les « () » vides laissés par un emoji.
+- **7.29.0 (Clément : « plusieurs profils dans un groupe, pour faire de la coord entre appareils »)** : un groupe a une
+  LISTE d'appareils (`g["rx"]` = liste ; ancien format chaîne relu par `group_rxs(g)`) ; `rx_of(w)` = le sien, sinon le
+  1er du groupe ; menu à cases « 📻 Appareils de ce groupe » (`toggle_group_rx`, `set_group_rx` = un seul / aucun,
+  `_cur_rxs`, `_set_rxs`). PURE `pf_fill_lots(lots, …)` : lots {n, sep, tol, filt, lo, hi, step} cherchés dans l'ordre,
+  chaque trouvée rejoint le plan avec les règles de son appareil (test : 5 QLX-D + 4 PSM 1000 + plan Wisycom = 0
+  problème). `CoordDialog` : encadré « Plusieurs appareils » (`lots`, `add_lot`, `del_lot`, `_show_lots`, `_lot_now`,
+  `_lot_profile`) ; groupe à plusieurs appareils → un lot par appareil préparé ; `found` = [(lot, MHz)] ; `add`
+  numérote par préfixe et ne pose `w["rx"]` que s'il diffère de `rx_of`.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

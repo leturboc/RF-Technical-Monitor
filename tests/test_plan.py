@@ -205,5 +205,22 @@ check("coordination : évite l'occupé", (len(got2), any(busy_(c) for c in got2)
 got3 = pf_fill(50, [], new_sep=0.5, new_tol=tolW, new_filt=0.0, lo=600.0, hi=602.0, step=0.025)
 check("coordination : plage pleine → moins que demandé", 0 < len(got3) < 50, True)
 
+# coordination entre appareils : 2 lots (QLX-D puis PSM 1000), chacun ses règles, tous compatibles entre eux
+rp = ns["rx_profile"]
+q_, p_ = rp("shure_dig"), rp("shure_psm1000")
+lots = [dict(n=5, sep=q_["sep"], tol=q_["tol"], filt=q_["filt"], lo=470.0, hi=520.0, step=q_["step"]),
+        dict(n=4, sep=p_["sep"], tol=p_["tol"], filt=p_["filt"], lo=490.0, hi=530.0, step=p_["step"])]
+gl = ns["pf_fill_lots"](lots, plan0, sep=0.5, tol=tolW, filt=32.0)
+check("lots : 5 QLX-D + 4 PSM trouvées, chacune dans sa plage",
+      (len(gl[0]), len(gl[1]), all(470 <= c <= 520 for c in gl[0]), all(490 <= c <= 530 for c in gl[1])),
+      (5, 4, True, True))
+F_ = plan0 + gl[0] + gl[1]
+iss, _ = ns["pf_check"](F_, sep=[0.5] * 8 + [q_["sep"]] * 5 + [p_["sep"]] * 4,
+                        tol=[tolW] * 8 + [q_["tol"]] * 5 + [p_["tol"]] * 4,
+                        filt=[32.0] * 8 + [q_["filt"]] * 5 + [p_["filt"]] * 4)
+check("lots : plan complet (3 appareils) sans aucun problème", sum(len(x) for x in iss), 0)
+check("lots : aucune fréquence en double", len(set(F_)), len(F_))
+check("lots : aucun lot -> rien", ns["pf_fill_lots"]([], plan0), [])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
