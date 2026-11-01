@@ -724,6 +724,44 @@ ok("fusion de scans à plusieurs bandes : rien d'inventé entre 520 et 2400 MHz"
    not np.any((Fm2_ > 520.1) & (Fm2_ < 2399.9)), str(Fm2_[(Fm2_ > 520.1) & (Fm2_ < 2399.9)][:5]))
 ok("fusion de scans à plusieurs bandes : le trou reste un trou au tracé", np.isnan(ns["gap_nan"](Fm2_, Lm2_)[1]).sum() == 1)
 check("trous : scan d'une seule bande -> aucun", list(ns["scan_gaps"](Fa_)), [])
+# --- 📍 gestion des scans gardés, comparaison, dans le temps, rapport d'étude de site
+sd_ = ns["site_scan_doc"]
+A_ = sd_("Grande scène", Fu_, Lu_, 1_700_000_000.0, dur=600)
+Lb2_ = Lu_.copy(); Lb2_[500] = -40.0                          # 495.000 MHz vu seulement au Club
+B_ = sd_("Club", Fu_, Lb2_, 1_700_003_600.0)
+C_ = sd_("Grande scène · soir", Fu_, np.where(np.arange(len(Fu_)) == 200, -45.0, Lu_), 1_700_020_000.0,
+         scene="Grande scène")
+sc_ = [A_, B_, C_]
+i_ = ns["site_scan_info"](A_)
+check("info : scène, plage, bandes, pas, durée", (i_["scene"], round(i_["lo"]), round(i_["hi"]), i_["bands"], i_["step"], i_["dur"]),
+      ("Grande scène", 470, 2480, 2, 50.0, 600.0))
+check("info : durée inconnue -> None", ns["site_scan_info"](B_)["dur"], None)
+check("durées lisibles", [ns["fmt_duration"](x) for x in (45, 720, 3900)], ["45 s", "12 min", "1 h 05"])
+check("durée gardée dans la config", ns["site_scans_norm"]([A_])[0].get("dur"), 600.0)
+r_, err_ = ns["site_rename"](sc_, "Grande scène · soir", "GS soir")
+check("renommer : reste rangé dans sa scène", (err_, [ns["site_doc_scene"](d) for d in r_]),
+      ("", ["Grande scène", "Club", "Grande scène"]))
+check("renommer : nom déjà pris refusé", ns["site_rename"](sc_, "Club", "Grande scène")[1] != "", True)
+m_ = ns["site_move"](sc_, "Club", "Grande scène")
+check("changer de scène", ns["site_doc_scene"](next(d for d in m_ if d["name"] == "Club")), "Grande scène")
+check("changer de scène : vide = son propre lieu", ns["site_doc_scene"](next(d for d in ns["site_move"](m_, "Club", "")
+                                                                             if d["name"] == "Club")), "Club")
+Fd_, Dd_ = ns["diff_spectra"](B_["f"], B_["l"], A_["f"], A_["l"])
+ok("différence Club − Grande scène : +60 dB à 495 MHz", abs(Dd_[500] - 60.0) < 0.01)
+ok("différence : 0 ailleurs, pas de valeur inventée", abs(np.nanmax(np.abs(np.delete(Dd_, 500)))) < 1e-6)
+Fd2_, Dd2_ = ns["diff_spectra"](np.linspace(470, 3000, 50), np.zeros(50), Fu_, Lu_)
+ok("différence : rien entre les bandes de B (NaN)", np.isnan(Dd2_[(Fd2_ > 521) & (Fd2_ < 2399)]).all())
+check("dans le temps : les scans d'une scène dans l'ordre", [d["name"] for d in ns["scene_timeline"](sc_, "Grande scène")],
+      ["Grande scène", "Grande scène · soir"])
+oh_ = ns["only_here"](sc_, "Club", -80.0)
+check("vu seulement ici : 495 MHz au Club", [round(x["f"], 3) for x in oh_], [495.0])
+check("vu seulement ici : rien de propre à la Grande scène (son scan du soir est la même scène)",
+      ns["only_here"](sc_, "Grande scène", -80.0), [])
+h_ = ns["site_report_html"](sc_, -80.0, "Étude", "Festival X", "01/11/2026")
+ok("rapport : chaque scan, la fusion, le temps", all(k in h_ for k in ("Club", "Tout le site", "Dans le temps", "Apparus",
+                                                                       "Vus seulement ici", "<svg")), "")
+ok("rapport : 480 MHz apparu le soir sur la Grande scène", "480.000 MHz" in h_.split("Dans le temps")[1])
+check("rapport : aucun scan", "Aucun scan gardé" in ns["site_report_html"]([], -80.0), True)
 d_ = ns["site_scan_doc"]("Grande scène", Fa_[:3], La_[:3], 1000.0)
 check("lieu : version compacte", (d_["name"], d_["f"], d_["l"]), ("Grande scène", [470.0, 470.025, 470.05], [-100.0, -100.0, -100.0]))
 check("lieux lus d'un fichier : invalides écartés, nom unique", [x["name"] for x in ns["site_scans_norm"](

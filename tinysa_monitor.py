@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.29.0"
+APP_VER = "7.30.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4627,13 +4627,15 @@ def merge_scans(scans, max_points=60000):
     return G[keep], out[keep]
 
 
-def site_scan_doc(name, F, L, t, scene=None):
+def site_scan_doc(name, F, L, t, scene=None, dur=None):
     """Scan d'un lieu en version compacte (config / show) : MHz à 4 décimales, dBm à 1 décimale. scene : la scène
     d'un scan gardé à la main (plusieurs par scène possibles, ex. « Grande scène · jardin ») ; sinon le nom."""
     d = dict(name=str(name).strip()[:60], t=float(t), f=[round(float(x), 4) for x in F],
              l=[round(float(x), 1) for x in L])
     if scene and str(scene).strip() != d["name"]:
         d["scene"] = str(scene).strip()[:60]
+    if dur:
+        d["dur"] = round(float(dur), 1)
     return d
 
 
@@ -4685,9 +4687,286 @@ def site_scans_norm(lst):
                 out[name] = dict(name=name[:60], t=float(d.get("t") or 0), f=[float(x) for x in f], l=[float(x) for x in l])
                 if d.get("scene"):
                     out[name]["scene"] = str(d["scene"]).strip()[:60]
+                if isinstance(d.get("dur"), (int, float)) and d["dur"] > 0:
+                    out[name]["dur"] = round(float(d["dur"]), 1)     # durée du scan (s), si connue
         except (KeyError, TypeError, ValueError):
             continue
     return list(out.values())
+
+# ------------------------------------------------- 📍 scans par lieu : gestion, comparaison, dans le temps, rapport
+def site_scan_info(d):
+    """Résumé d'un scan gardé -> dict(scene, t, lo, hi, n, step kHz, bands, dur s ou None)."""
+    F = np.asarray(d.get("f") or [], dtype=float)
+    steps = np.diff(F) if len(F) > 1 else np.array([0.0])
+    return dict(scene=site_doc_scene(d), t=float(d.get("t") or 0), lo=float(F[0]) if len(F) else 0.0,
+                hi=float(F[-1]) if len(F) else 0.0, n=int(len(F)),
+                step=round(float(np.median(steps)) * 1000.0, 1) if len(F) > 1 else 0.0,
+                bands=int(len(scan_gaps(F)) + 1) if len(F) else 0,
+                dur=float(d["dur"]) if isinstance(d.get("dur"), (int, float)) and d["dur"] > 0 else None)
+
+
+def _fmt_ts(t, fmt):
+    """Date d'un horodatage (s) ; « — » si inconnue (import local : la section PURE n'a pas datetime)."""
+    import datetime as _dt
+    return _dt.datetime.fromtimestamp(float(t)).strftime(fmt) if t else "—"
+
+
+def fmt_duration(s):
+    """Durée lisible : « 45 s », « 12 min », « 1 h 05 »."""
+    s = int(round(float(s or 0)))
+    if s < 60:
+        return f"{s} s"
+    if s < 3600:
+        return f"{s // 60} min"
+    return f"{s // 3600} h {(s % 3600) // 60:02d}"
+
+
+def site_rename(scans, old, new):
+    """Renomme un scan gardé. -> (nouvelle liste, message d'erreur ou "")."""
+    new = str(new).strip()[:60]
+    if not new:
+        return scans, "Donne un nom."
+    if new != old and any(d["name"] == new for d in scans):
+        return scans, f"« {new} » existe déjà."
+    out = []
+    for d in scans:
+        if d["name"] == old:
+            sc = site_doc_scene(d)
+            d = dict(d, name=new)
+            if sc and sc != new:
+                d["scene"] = sc               # il reste rangé dans sa scène
+            else:
+                d.pop("scene", None)
+        out.append(d)
+    return out, ""
+
+
+def site_move(scans, name, scene):
+    """Range un scan gardé dans une autre scène (scene "" = le scan redevient son propre lieu)."""
+    out = []
+    for d in scans:
+        if d["name"] == name:
+            d = dict(d)
+            if scene and scene != d["name"]:
+                d["scene"] = str(scene).strip()[:60]
+            else:
+                d.pop("scene", None)
+        out.append(d)
+    return out
+
+
+def diff_spectra(F1, L1, F2, L2):
+    """Différence A − B (dB) là où les deux scans ont mesuré (pas dans les trous entre bandes de B) -> (F, D) sur les
+    points de A, NaN ailleurs ; (None, None) si rien en commun."""
+    F1, L1 = _valid(F1, L1)
+    F2, L2 = _valid(F2, L2)
+    if len(F1) < 2 or len(F2) < 2:
+        return None, None
+    o1, o2 = np.argsort(F1), np.argsort(F2)
+    F1, L1, F2, L2 = F1[o1], L1[o1], F2[o2], L2[o2]
+    cuts = [0, *scan_gaps(F2), len(F2)]
+    cover = np.zeros(len(F1), dtype=bool)
+    for a, b in zip(cuts[:-1], cuts[1:]):
+        cover |= (F1 >= F2[a]) & (F1 <= F2[b - 1])
+    if not cover.any():
+        return None, None
+    D = np.where(cover, L1 - np.interp(F1, F2, L2), np.nan)
+    return F1, D
+
+
+def scene_timeline(scans, scene):
+    """Scans gardés d'une scène, du plus ancien au plus récent."""
+    return sorted((d for d in scans or [] if site_doc_scene(d) == scene), key=lambda d: float(d.get("t") or 0))
+
+
+def only_here(scans, name, thr, margin=10.0):
+    """Signaux vus dans le scan `name` et pas ailleurs (au moins margin dB au-dessus de la fusion des autres lieux) :
+    ce qui est propre à ce lieu (émetteur local, écran LED…)."""
+    me = next((d for d in scans if d["name"] == name), None)
+    others = [(d["f"], d["l"]) for d in scans if d["name"] != name and site_doc_scene(d) != site_doc_scene(me or {})]
+    if me is None:
+        return []
+    if not others:
+        return []
+    Fo, Lo = merge_scans(others)
+    if Fo is None:
+        return []
+    new, _gone = compare_spectra(me["f"], me["l"], Fo, Lo, thr, margin)
+    return new
+
+
+def _svg_multi(series, thr=None, width=1000, height=260, ylo=-120.0, yhi=None, unit="dBm", zero=False):
+    """Plusieurs courbes en SVG, coupées dans les trous entre bandes. series = [(F, L, couleur, pointillé, nom)]."""
+    series = [(np.asarray(F, dtype=float), np.asarray(L, dtype=float), c, dash, nm) for F, L, c, dash, nm in series
+              if F is not None and len(F) >= 2]
+    if not series:
+        return "<p class='muted'>Pas de mesure.</p>"
+    f0 = min(float(np.nanmin(F)) for F, *_ in series)
+    f1 = max(float(np.nanmax(F)) for F, *_ in series)
+    top = max(float(np.nanmax(L)) for _F, L, *_ in series if np.isfinite(L).any())
+    hi = yhi if yhi is not None else max(-20.0, top + 5.0)
+    lo = ylo
+    px, py = 46, 10
+    w, h = width - px - 8, height - py - 26
+    # axe coupé : chaque bande mesurée garde sa part de largeur (pas 1 700 MHz de vide entre l'UHF et le 2,4 GHz)
+    iv = []                                         # bandes de chaque courbe, puis réunies
+    for F, *_ in series:
+        Fs = np.sort(F[np.isfinite(F)])
+        cuts = [0, *scan_gaps(Fs), len(Fs)]
+        iv += [(float(Fs[a]), float(Fs[b - 1])) for a, b in zip(cuts[:-1], cuts[1:]) if b > a]
+    segs = []
+    for a, b in sorted(iv):
+        if segs and a <= segs[-1][1] + 1e-9:
+            segs[-1] = (segs[-1][0], max(segs[-1][1], b))
+        else:
+            segs.append((a, b))
+    segs = [(a, b) for a, b in segs if b > a] or [(f0, f1)]
+    span = sum(b - a for a, b in segs)
+    if len(segs) < 2 or span >= 0.7 * (f1 - f0):
+        segs = [(f0, f1)]
+    gapx = 14.0
+    usable = w - gapx * (len(segs) - 1)
+    raw = [max((b - a) / max(sum(y - x for x, y in segs), 1e-9), 0.12) for a, b in segs]
+    widths = [usable * r / sum(raw) for r in raw]
+    x0s = [px + sum(widths[:k]) + gapx * k for k in range(len(segs))]
+
+    def X(f):
+        for (a, b), x0, ww in zip(segs, x0s, widths):
+            if f <= b or (a, b) == segs[-1]:
+                return x0 + (min(max(f, a), b) - a) / max(b - a, 1e-9) * ww
+        return px
+
+    def Y(v):
+        return py + (hi - min(max(v, lo), hi)) / (hi - lo) * h
+
+    s = [f"<svg viewBox='0 0 {width} {height}' xmlns='http://www.w3.org/2000/svg' class='spec'>"]
+    stepy = 20 if hi - lo > 60 else 10
+    for v in range(int(math.ceil(lo / stepy) * stepy), int(hi) + 1, stepy):
+        s.append(f"<line x1='{px}' x2='{px + w}' y1='{Y(v):.1f}' y2='{Y(v):.1f}' class='grid'/>"
+                 f"<text x='{px - 6}' y='{Y(v) + 4:.1f}' class='ax' text-anchor='end'>{v}</text>")
+    for (a, b), x0, ww in zip(segs, x0s, widths):
+        nt = max(1, min(8, int(ww // 110)))
+        for i in range(nt + 1):
+            f = a + (b - a) * i / nt
+            anc = "start" if i == 0 and len(segs) > 1 else "end" if i == nt and len(segs) > 1 else "middle"
+            s.append(f"<text x='{X(f):.1f}' y='{height - 8}' class='ax' text-anchor='{anc}'>{f:.1f}</text>")
+        if x0 > px:                                 # coupure entre deux bandes
+            s.append(f"<rect x='{x0 - gapx + 2:.1f}' y='{py}' width='{gapx - 4:.1f}' height='{h}' fill='#eef1f7'/>")
+    if zero and lo < 0 < hi:
+        s.append(f"<line x1='{px}' x2='{px + w}' y1='{Y(0):.1f}' y2='{Y(0):.1f}' class='thr'/>")
+    if thr is not None and lo <= thr <= hi:
+        s.append(f"<line x1='{px}' x2='{px + w}' y1='{Y(thr):.1f}' y2='{Y(thr):.1f}' class='thr'/>")
+    for F, L, col, dash, nm in series:
+        o = np.argsort(F)
+        F, L = F[o], L[o]
+        cuts = [0, *scan_gaps(F), len(F)]
+        for a, b in zip(cuts[:-1], cuts[1:]):
+            Fa, La = F[a:b], L[a:b]
+            k = max(1, int(math.ceil(len(Fa) / 900)))
+            if k > 1:
+                m = (len(Fa) // k) * k
+                Fa, La = Fa[:m].reshape(-1, k).mean(axis=1), np.nanmax(La[:m].reshape(-1, k), axis=1)
+            pts = " ".join(f"{X(x):.1f},{Y(y):.1f}" for x, y in zip(Fa, La) if np.isfinite(y))
+            if pts.count(",") >= 2:
+                s.append(f"<polyline points='{pts}' fill='none' stroke='{col}' stroke-width='1.2'"
+                         f"{' stroke-dasharray=\"5 4\"' if dash else ''}><title>{html_esc(nm)}</title></polyline>")
+    s.append(f"<text x='{px + w}' y='{py + 12}' class='ax' text-anchor='end'>MHz · {unit}</text></svg>")
+    return "".join(s)
+
+
+SITE_COLORS = ["#2f6fdb", "#e08a1e", "#2e8b57", "#b03fbf", "#d33a2c", "#0f9aa8", "#8a6d1e", "#5a5fd6"]
+
+
+def site_report_html(scans, thr, title="Étude de site", venue="", generated="", margin=10.0):
+    """📄 Rapport d'étude de site autonome : chaque lieu (infos, spectre, signaux, ce qui n'est vu qu'ici), la fusion
+    du site, et l'évolution des scènes scannées plusieurs fois. À ouvrir dans un navigateur et imprimer en PDF."""
+    e = html_esc
+    scans = list(scans or [])
+    p = ["<!doctype html><html lang='fr'><head><meta charset='utf-8'>", f"<title>{e(title)}</title>",
+         "<meta name='viewport' content='width=device-width,initial-scale=1'><style>",
+         "body{font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif;color:#1d2433;max-width:1100px;margin:0 auto;padding:24px 18px}",
+         "h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:30px 0 8px;border-bottom:2px solid #d8dde8;padding-bottom:4px}",
+         "h3{font-size:15px;margin:18px 0 6px}.muted{color:#6b7488}",
+         "table{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0}th,td{border-bottom:1px solid #e3e7ef;"
+         "padding:4px 8px;text-align:left}th{background:#eef1f7}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}",
+         "svg.spec{width:100%;height:auto;border:1px solid #d8dde8;border-radius:8px;background:#fbfcfe}",
+         ".grid{stroke:#e3e7ef}.ax{font-size:11px;fill:#6b7488}.thr{stroke:#d33;stroke-dasharray:5 4}",
+         ".lg span{display:inline-block;margin-right:14px}.lg i{display:inline-block;width:14px;height:3px;"
+         "vertical-align:middle;margin-right:5px}",
+         "@media print{body{padding:0}h2{break-before:page}h2:first-of-type{break-before:auto}tr{break-inside:avoid}}",
+         "</style></head><body>", f"<h1>{e(title)}</h1>",
+         f"<div class='muted'>{e(venue) + ' · ' if venue else ''}{e(generated)} · {len(scans)} scan(s) gardé(s) · "
+         f"seuil « occupé » {thr:.0f} dBm</div>"]
+    if not scans:
+        p.append("<p>Aucun scan gardé.</p></body></html>")
+        return "".join(p)
+    col = {d["name"]: SITE_COLORS[i % len(SITE_COLORS)] for i, d in enumerate(scans)}
+    # --- sommaire
+    p.append("<h2>Les scans</h2><table><tr><th>Scan</th><th>Scène</th><th>Date</th><th class='n'>Plage (MHz)</th>"
+             "<th class='n'>Pas (kHz)</th><th class='n'>Bandes</th><th class='n'>Durée</th>"
+             "<th class='n'>Signaux</th></tr>")
+    for d in scans:
+        i_ = site_scan_info(d)
+        n_sig = len(scan_peaks(d["f"], d["l"], thr))
+        when = _fmt_ts(i_["t"], "%d/%m/%Y %H:%M")
+        p.append(f"<tr><td><b style='color:{col[d['name']]}'>{e(d['name'])}</b></td><td>{e(i_['scene'])}</td>"
+                 f"<td>{when}</td><td class='n'>{i_['lo']:.3f}–{i_['hi']:.3f}</td><td class='n'>{i_['step']:g}</td>"
+                 f"<td class='n'>{i_['bands']}</td><td class='n'>{fmt_duration(i_['dur']) if i_['dur'] else '—'}</td>"
+                 f"<td class='n'>{n_sig}</td></tr>")
+    p.append("</table>")
+    # --- fusion
+    Fm, Lm = merge_scans([(d["f"], d["l"]) for d in scans])
+    p.append("<h2>Tout le site</h2><p>Le plus fort de tous les scans en chaque fréquence (le pire cas) : c'est ce qui "
+             "compte pour une coordination de tout le site.</p>")
+    p.append(_svg_multi([(d["f"], d["l"], col[d["name"]], False, d["name"]) for d in scans]
+                        + [(Fm, Lm, "#1d2433", True, "Fusion")], thr))
+    p.append("<div class='lg muted'>" + "".join(f"<span><i style='background:{col[d['name']]}'></i>{e(d['name'])}</span>"
+                                                 for d in scans) + "<span><i style='background:#1d2433'></i>Fusion "
+             "(pointillés)</span></div>")
+    # --- chaque lieu
+    for d in scans:
+        i_ = site_scan_info(d)
+        p.append(f"<h2>{e(d['name'])}</h2><div class='muted'>Scène : {e(i_['scene'])} · {i_['lo']:.3f}–{i_['hi']:.3f} MHz · "
+                 f"{i_['n']} points</div>")
+        p.append(_svg_multi([(d["f"], d["l"], col[d["name"]], False, d["name"])], thr))
+        pk = scan_peaks(d["f"], d["l"], thr)
+        if pk:
+            p.append(f"<h3>Signaux au-dessus du seuil ({len(pk)})</h3><table><tr><th class='n'>MHz</th>"
+                     "<th class='n'>Niveau (dBm)</th><th class='n'>Largeur (kHz)</th><th>Type</th></tr>")
+            for x in pk[:60]:
+                p.append(f"<tr><td class='n'>{x['f']:.3f}</td><td class='n'>{x['level']:.1f}</td>"
+                         f"<td class='n'>{x['width']:.0f}</td><td>{'large (TNT, bloc numérique…)' if x['wide'] else 'porteuse'}"
+                         "</td></tr>")
+            p.append("</table>" + (f"<p class='muted'>… et {len(pk) - 60} autres.</p>" if len(pk) > 60 else ""))
+        else:
+            p.append("<p class='muted'>Aucun signal au-dessus du seuil.</p>")
+        oh = only_here(scans, d["name"], thr, margin)
+        if oh:
+            p.append(f"<h3>Vus seulement ici ({len(oh)})</h3><p class='muted'>Au moins {margin:.0f} dB plus forts que "
+                     "partout ailleurs : un émetteur proche de ce lieu.</p><p>"
+                     + ", ".join(f"{x['f']:.3f} MHz ({x['level']:.0f} dBm)" for x in oh[:30]) + "</p>")
+    # --- dans le temps
+    scenes = []
+    for d in scans:
+        sc = site_doc_scene(d)
+        if sc not in scenes and len(scene_timeline(scans, sc)) > 1:
+            scenes.append(sc)
+    if scenes:
+        p.append("<h2>Dans le temps</h2><p>Les scènes scannées plusieurs fois : ce qui est apparu ou a disparu entre le "
+                 "premier et le dernier scan.</p>")
+        for sc in scenes:
+            tl = scene_timeline(scans, sc)
+            a, b = tl[0], tl[-1]
+            new, gone = compare_spectra(b["f"], b["l"], a["f"], a["l"], thr, margin)
+            when = [_fmt_ts(x.get("t"), "%d/%m %H:%M") for x in (a, b)]
+            p.append(f"<h3>{e(sc)} : {len(tl)} scans, du {when[0]} au {when[1]}</h3>")
+            p.append(_svg_multi([(x["f"], x["l"], SITE_COLORS[k % len(SITE_COLORS)], False, x["name"])
+                                 for k, x in enumerate(tl)], thr))
+            p.append("<p><b>Apparus :</b> " + (", ".join(f"{x['f']:.3f} MHz ({x['level']:.0f} dBm)" for x in new[:30])
+                                                or "aucun") + "<br><b>Disparus :</b> "
+                     + (", ".join(f"{x['f']:.3f} MHz ({x['level']:.0f} dBm)" for x in gone[:30]) or "aucun") + "</p>")
+    p.append("</body></html>")
+    return "".join(p)
 
 
 def sites_for_scope(site_scans, scope):
@@ -9719,21 +9998,118 @@ class SitesDialog(QtWidgets.QDialog):
         b_dev.clicked.connect(lambda *_: o.open_devices())
         lay.addLayout(owner._row(b_dev, None))
         mid = QtWidgets.QHBoxLayout()
+        left = QtWidgets.QVBoxLayout()
         self.lst = QtWidgets.QListWidget()
-        self.lst.setMaximumWidth(270)
-        self.lst.setToolTip("Coche les lieux à afficher et à fusionner.")
+        self.lst.setMaximumWidth(300)
+        self.lst.setToolTip("Coche les scans à afficher et à fusionner ; clique un scan pour voir ses infos et ses signaux.")
         self.lst.itemChanged.connect(lambda *_: self.redraw())
-        mid.addWidget(self.lst)
+        self.lst.currentItemChanged.connect(lambda *_: self._sel_changed())
+        left.addWidget(self.lst, 1)
+        self.info = QtWidgets.QLabel("")
+        self.info.setWordWrap(True)
+        self.info.setMaximumWidth(300)
+        self.info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        left.addWidget(self.info)
+        b_ren = QtWidgets.QPushButton("Renommer…")
+        b_ren.setToolTip("Renomme le scan sélectionné (il reste rangé dans sa scène).")
+        b_ren.clicked.connect(lambda *_: self.rename())
+        b_mv = QtWidgets.QPushButton("Ranger dans une scène…")
+        b_mv.setToolTip("Range le scan sélectionné dans une autre scène (coordination par scène, évolution dans le temps).")
+        b_mv.clicked.connect(lambda *_: self.move())
+        b_del = QtWidgets.QPushButton("Supprimer")
+        b_del.setToolTip("Oublie le scan sélectionné.")
+        b_del.clicked.connect(lambda *_: self.delete())
+        left.addLayout(owner._row(b_ren, b_mv))
+        left.addWidget(b_del)
+        mid.addLayout(left)
+        self.tabs = QtWidgets.QTabWidget()
         self.plot = pg.PlotWidget()
         self.plot.showGrid(x=True, y=True, alpha=0.25)
         self.plot.setLabel("bottom", "Fréquence (MHz)")
         self.plot.setLabel("left", "Niveau (dBm)")
         self.plot.addLegend(offset=(10, 10))
-        mid.addWidget(self.plot, 1)
+        self.tabs.addTab(self.plot, "Spectres")
+        # --- comparer deux lieux
+        cw = QtWidgets.QWidget()
+        cv = QtWidgets.QVBoxLayout(cw)
+        self.cmp_a, self.cmp_b = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+        self.cmp_a.setToolTip("Le scan A (en bleu).")
+        self.cmp_b.setToolTip("Le scan B (en orange), comparé à A.")
+        for c_ in (self.cmp_a, self.cmp_b):
+            c_.currentIndexChanged.connect(lambda *_: self.cmp_draw())
+        cv.addLayout(owner._row("A :", self.cmp_a, "comparé à B :", self.cmp_b, None))
+        self.cmp_plot = pg.PlotWidget()
+        self.cmp_plot.showGrid(x=True, y=True, alpha=0.25)
+        self.cmp_plot.setLabel("left", "Niveau (dBm)")
+        self.diff_plot = pg.PlotWidget()
+        self.diff_plot.showGrid(x=True, y=True, alpha=0.25)
+        self.diff_plot.setLabel("left", "A − B (dB)")
+        self.diff_plot.setLabel("bottom", "Fréquence (MHz)")
+        self.diff_plot.setXLink(self.cmp_plot)
+        self.diff_plot.setMaximumHeight(170)
+        cv.addWidget(self.cmp_plot, 2)
+        cv.addWidget(self.diff_plot, 1)
+        self.cmp_txt = QtWidgets.QLabel("")
+        self.cmp_txt.setWordWrap(True)
+        self.cmp_txt.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        cv.addWidget(self.cmp_txt)
+        self.tabs.addTab(cw, "Comparer deux lieux")
+        # --- signaux du scan sélectionné
+        sw = QtWidgets.QWidget()
+        sv = QtWidgets.QVBoxLayout(sw)
+        self.pk_thr = QtWidgets.QDoubleSpinBox()
+        self.pk_thr.setRange(-130.0, 0.0)
+        self.pk_thr.setSuffix(" dBm")
+        self.pk_thr.setDecimals(1)
+        self.pk_thr.setValue(o.thr_spin.value())
+        self.pk_thr.setToolTip("Signaux au-dessus de ce niveau (au départ : ton seuil « occupé »).")
+        self.pk_only = QtWidgets.QCheckBox("Seulement ceux vus uniquement ici")
+        self.pk_only.setToolTip("Au moins 10 dB plus forts que dans tous les autres lieux : un émetteur proche de ce lieu.")
+        for w_ in (self.pk_thr.valueChanged, self.pk_only.toggled):
+            w_.connect(lambda *_: self.peaks_fill())
+        sv.addLayout(owner._row("Au-dessus de", self.pk_thr, self.pk_only, None))
+        self.pk_table = QtWidgets.QTableWidget(0, 5)
+        self.pk_table.setHorizontalHeaderLabels(["MHz", "Niveau (dBm)", "Largeur (kHz)", "Type", "Dans ma liste"])
+        self.pk_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.pk_table.verticalHeader().setVisible(False)
+        self.pk_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.pk_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.pk_table.setToolTip("Les signaux du scan sélectionné. Sélectionne des lignes puis ajoute-les à ta liste.")
+        sv.addWidget(self.pk_table, 1)
+        b_ext = QtWidgets.QPushButton("＋ Ajouter comme émetteurs extérieurs (la coordination les évite)")
+        b_ext.setToolTip("Ajoute les signaux choisis (tous si rien n'est choisi) à ta liste, sans statut : ce sont des\n"
+                         "émetteurs pour Vérifier le plan et Coordonner (écart et intermod), sans alarme.")
+        b_ext.clicked.connect(lambda *_: self.add_ext())
+        b_copy = QtWidgets.QPushButton("Copier")
+        b_copy.setToolTip("Copie la liste des signaux (MHz, niveau) pour un mail ou un tableur.")
+        b_copy.clicked.connect(lambda *_: self.copy_peaks())
+        sv.addLayout(owner._row(b_ext, None, b_copy))
+        self.tabs.addTab(sw, "Signaux du lieu")
+        # --- une scène dans le temps
+        tw = QtWidgets.QWidget()
+        tv = QtWidgets.QVBoxLayout(tw)
+        self.tl_scene = QtWidgets.QComboBox()
+        self.tl_scene.setToolTip("Une scène scannée plusieurs fois (après-midi, soir, jour 2…).")
+        self.tl_scene.currentIndexChanged.connect(lambda *_: self.tl_draw())
+        tv.addLayout(owner._row("Scène :", self.tl_scene, None))
+        self.tl_plot = pg.PlotWidget()
+        self.tl_plot.showGrid(x=True, y=True, alpha=0.25)
+        self.tl_plot.setLabel("bottom", "Fréquence (MHz)")
+        self.tl_plot.setLabel("left", "Niveau (dBm)")
+        self.tl_plot.addLegend(offset=(10, 10))
+        tv.addWidget(self.tl_plot, 1)
+        self.tl_txt = QtWidgets.QLabel("")
+        self.tl_txt.setWordWrap(True)
+        self.tl_txt.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        tv.addWidget(self.tl_txt)
+        self.tabs.addTab(tw, "Dans le temps")
+        self.tabs.currentChanged.connect(lambda *_: self.refresh_tab())
+        mid.addWidget(self.tabs, 1)
         lay.addLayout(mid, 1)
-        b_del = QtWidgets.QPushButton("🗑 Supprimer le lieu")
-        b_del.setToolTip("Oublie le scan du lieu sélectionné.")
-        b_del.clicked.connect(lambda *_: self.delete())
+        b_rep = QtWidgets.QPushButton("📄 Rapport d'étude de site…")
+        b_rep.setToolTip("Une page à imprimer en PDF : chaque lieu (infos, spectre, signaux, ce qui n'est vu qu'ici), la\n"
+                         "fusion du site et l'évolution des scènes scannées plusieurs fois. Pour la prod ou la coord.")
+        b_rep.clicked.connect(lambda *_: self.report())
         self.what = QtWidgets.QComboBox()
         self.what.addItem("la fusion (lieux cochés)", "merge")
         self.what.addItem("le lieu sélectionné", "one")
@@ -9748,7 +10124,7 @@ class SitesDialog(QtWidgets.QDialog):
         b_ref = QtWidgets.QPushButton("📏 Fusion = référence")
         b_ref.setToolTip("La fusion devient la courbe de référence (seuil = référence + marge possible).")
         b_ref.clicked.connect(lambda *_: self.as_ref())
-        lay.addLayout(owner._row(b_del, None, "Exporter", self.what, self.fmt, b_exp, b_ref))
+        lay.addLayout(owner._row(b_rep, None, "Exporter", self.what, self.fmt, b_exp, b_ref))
         self.coord_chk = QtWidgets.QCheckBox("🪄 Coordination et fréquence de secours : éviter ce qui est occupé sur "
                                              "TOUS les lieux (fusion)")
         self.coord_chk.setChecked(o.sites_coord)
@@ -9761,20 +10137,243 @@ class SitesDialog(QtWidgets.QDialog):
         lay.addWidget(self.msg)
         self.fill()
 
-    def fill(self):
+    def fill(self, select=None):
         o = self.owner
+        cur = select or self._cur_name()
+        hidden = getattr(self, "_hidden", set())
         self.lst.blockSignals(True)
         self.lst.clear()
         for i, d in enumerate(o.site_scans):
             when = datetime.fromtimestamp(d["t"]).strftime("%d/%m %H:%M") if d["t"] else ""
-            it = QtWidgets.QListWidgetItem(f"{d['name']}  ·  {when}  ·  {d['f'][0]:.0f}–{d['f'][-1]:.0f} MHz")
+            sc = site_doc_scene(d)
+            it = QtWidgets.QListWidgetItem(f"{d['name']}  ·  {when}" + (f"  ·  ({sc})" if sc != d["name"] else ""))
             it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            it.setCheckState(Qt.CheckState.Checked)
+            it.setCheckState(Qt.CheckState.Unchecked if d["name"] in hidden else Qt.CheckState.Checked)
             it.setData(Qt.ItemDataRole.UserRole, d["name"])
             it.setForeground(QtGui.QColor(GROUP_COLORS[i % len(GROUP_COLORS)]))
             self.lst.addItem(it)
+            if d["name"] == cur:
+                self.lst.setCurrentItem(it)
         self.lst.blockSignals(False)
+        names = [d["name"] for d in o.site_scans]
+        for c_, k in ((self.cmp_a, 0), (self.cmp_b, 1)):
+            old = c_.currentText()
+            c_.blockSignals(True)
+            c_.clear()
+            c_.addItems(names)
+            c_.setCurrentIndex(c_.findText(old) if old in names else min(k, len(names) - 1))
+            c_.blockSignals(False)
+        old = self.tl_scene.currentText()
+        scenes = [s_ for s_ in dict.fromkeys(site_doc_scene(d) for d in o.site_scans)
+                  if len(scene_timeline(o.site_scans, s_)) > 1]
+        self.tl_scene.blockSignals(True)
+        self.tl_scene.clear()
+        self.tl_scene.addItems(scenes)
+        if old in scenes:
+            self.tl_scene.setCurrentText(old)
+        self.tl_scene.blockSignals(False)
         self.redraw()
+        self._sel_changed()
+
+    def _cur_name(self):
+        it = self.lst.currentItem() if hasattr(self, "lst") else None
+        return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+
+    def _cur(self):
+        n_ = self._cur_name()
+        return next((d for d in self.owner.site_scans if d["name"] == n_), None)
+
+    def _sel_changed(self):
+        d = self._cur()
+        if d is None:
+            self.info.setText("Clique un scan pour voir ses infos." if self.owner.site_scans else "")
+        else:
+            i_ = site_scan_info(d)
+            when = datetime.fromtimestamp(i_["t"]).strftime("%d/%m/%Y %H:%M") if i_["t"] else "—"
+            self.info.setText(f"<b>{html_esc(d['name'])}</b><br>Scène : {html_esc(i_['scene'])}<br>Le {when}"
+                              + (f" · durée {fmt_duration(i_['dur'])}" if i_["dur"] else "")
+                              + f"<br>{i_['lo']:.3f}–{i_['hi']:.3f} MHz · {i_['bands']} bande(s)<br>"
+                              f"{i_['n']} points · pas {i_['step']:g} kHz")
+        self.refresh_tab()
+
+    def refresh_tab(self):
+        k = self.tabs.currentIndex()
+        if k == 1:
+            self.cmp_draw()
+        elif k == 2:
+            self.peaks_fill()
+        elif k == 3:
+            self.tl_draw()
+
+    def rename(self):
+        d = self._cur()
+        if d is None:
+            self.msg.setText("Choisis d'abord un scan dans la liste.")
+            return
+        new, ok = QtWidgets.QInputDialog.getText(self, "Renommer le scan", "Nouveau nom :", text=d["name"])
+        if ok:
+            self.do_rename(d["name"], new)
+
+    def do_rename(self, old, new):
+        o = self.owner
+        lst, err = site_rename(o.site_scans, old, new)
+        if err:
+            self.msg.setText(err)
+            return False
+        o.site_scans = lst
+        self.fill(select=new.strip()[:60])
+        o.update_site_curve()
+        self.msg.setText(f"« {old} » renommé en « {new.strip()[:60]} ».")
+        return True
+
+    def move(self):
+        d = self._cur()
+        if d is None:
+            self.msg.setText("Choisis d'abord un scan dans la liste.")
+            return
+        o = self.owner
+        none_ = TR("(aucune : le scan est son propre lieu)")
+        items = [none_] + [s_["name"] for s_ in o.scenes]
+        sc, ok = QtWidgets.QInputDialog.getItem(self, "Ranger dans une scène", f"Scène de « {d['name']} » :", items,
+                                                max(0, items.index(site_doc_scene(d))) if site_doc_scene(d) in items
+                                                else 0, True)
+        if ok:
+            self.do_move(d["name"], "" if sc == none_ else sc.strip())
+
+    def do_move(self, name, scene):
+        o = self.owner
+        o.site_scans = site_move(o.site_scans, name, scene)
+        self.fill(select=name)
+        o.update_site_curve()
+        self.msg.setText(f"« {name} » rangé dans « {scene or name} ».")
+
+    def _doc(self, name):
+        return next((d for d in self.owner.site_scans if d["name"] == name), None)
+
+    def cmp_draw(self):
+        a, b = self._doc(self.cmp_a.currentText()), self._doc(self.cmp_b.currentText())
+        self.cmp_plot.clear()
+        self.diff_plot.clear()
+        if a is None or b is None or a is b:
+            self.cmp_txt.setText("Choisis deux scans différents." if len(self.owner.site_scans) > 1 else
+                                 "Il faut au moins deux scans gardés pour comparer.")
+            return
+        for d, c_ in ((a, "#4f8ef7"), (b, "#f0a030")):
+            Fd, Ld = gap_nan(d["f"], d["l"])
+            self.cmp_plot.plot(Fd, Ld, pen=pg.mkPen(c_, width=1.2), connect="finite")
+        F, D = diff_spectra(a["f"], a["l"], b["f"], b["l"])
+        if F is not None:
+            Fg, Dg = gap_nan(F, D)
+            self.diff_plot.plot(Fg, Dg, pen=pg.mkPen("#e5e7eb", width=1.0), connect="finite")
+            self.diff_plot.addItem(pg.InfiniteLine(pos=0, angle=0, pen=pg.mkPen("#888", style=Qt.PenStyle.DashLine)))
+        thr = self.owner.thr_spin.value()
+        na, nb = compare_spectra(a["f"], a["l"], b["f"], b["l"], thr)
+
+        def lst_(x):
+            return ", ".join(f"{p['f']:.3f} ({p['level']:.0f} dBm)" for p in x[:12]) + (" …" if len(x) > 12 else "") \
+                or "rien"
+        self.cmp_txt.setText(f"<b>Seulement à « {html_esc(a['name'])} »</b> (≥ 10 dB de plus) : {lst_(na)}<br>"
+                             f"<b>Seulement à « {html_esc(b['name'])} »</b> : {lst_(nb)}")
+
+    def peaks_fill(self):
+        o = self.owner
+        d = self._cur()
+        self.pk_table.setRowCount(0)
+        self._peaks = []
+        if d is None:
+            return
+        thr = self.pk_thr.value()
+        pk = only_here(o.site_scans, d["name"], thr) if self.pk_only.isChecked() else scan_peaks(d["f"], d["l"], thr)
+        known = np.asarray(sorted(w["freq"] for w in o.watch), dtype=float)
+        self._peaks = pk
+        self.pk_table.setRowCount(len(pk))
+        for r, p in enumerate(pk):
+            hit = len(known) and float(np.min(np.abs(known - p["f"]))) * 1000.0 <= max(100.0, p["width"] / 2.0)
+            vals = (f"{p['f']:.3f}", f"{p['level']:.1f}", f"{p['width']:.0f}",
+                    "large (TNT, bloc numérique…)" if p["wide"] else "porteuse", "oui" if hit else "")
+            for c_, v in enumerate(vals):
+                self.pk_table.setItem(r, c_, QtWidgets.QTableWidgetItem(v))
+
+    def _sel_peaks(self):
+        rows = sorted({i.row() for i in self.pk_table.selectedIndexes()})
+        return [self._peaks[r] for r in rows if r < len(self._peaks)] or list(getattr(self, "_peaks", []))
+
+    def add_ext(self):
+        o = self.owner
+        d = self._cur()
+        pk = self._sel_peaks()
+        if d is None or not pk:
+            self.msg.setText("Aucun signal à ajouter.")
+            return 0
+        sc = site_doc_scene(d) if o.scene_by_name(site_doc_scene(d)) is not None else ""
+        for p in pk:
+            o._append_watch(f"Ext. {p['f']:.3f}", float(p["f"]), status="", scene=sc,
+                            bw=round(p["width"] / 1000.0, 3) if p["wide"] else 0.0)
+        o.sort_watch()
+        o.rebuild_tree()
+        o.rebuild_watch_table()
+        o._update_markers()
+        self.peaks_fill()
+        self.msg.setText(f"＋ {len(pk)} émetteur(s) extérieur(s) ajouté(s) à ta liste (sans statut, sans alarme) : "
+                         "Vérifier le plan et Coordonner en tiennent compte.")
+        return len(pk)
+
+    def copy_peaks(self):
+        d = self._cur()
+        txt = "\n".join(f"{p['f']:.3f}\t{p['level']:.1f}" for p in self._sel_peaks())
+        QtWidgets.QApplication.clipboard().setText(txt)
+        self.msg.setText(f"📋 {len(txt.splitlines())} signal(aux) copié(s)" + (f" ({d['name']})." if d else "."))
+
+    def tl_draw(self):
+        o = self.owner
+        self.tl_plot.clear()
+        sc = self.tl_scene.currentText()
+        tl = scene_timeline(o.site_scans, sc) if sc else []
+        if len(tl) < 2:
+            self.tl_txt.setText("Aucune scène n'a encore plusieurs scans : garde un scan de la même scène à un autre moment "
+                                "(📍 Garder, ou 💾 depuis la vue Terrain du téléphone).")
+            return
+        n = len(tl)
+        for k, d in enumerate(tl):                 # du plus ancien (bleu pâle) au plus récent (orange vif)
+            t_ = k / max(1, n - 1)
+            c_ = QtGui.QColor.fromRgbF(0.3 + 0.65 * t_, 0.55 - 0.05 * t_, 0.95 - 0.75 * t_)
+            Fd, Ld = gap_nan(d["f"], d["l"])
+            when = datetime.fromtimestamp(d["t"]).strftime("%d/%m %H:%M") if d["t"] else d["name"]
+            self.tl_plot.plot(Fd, Ld, pen=pg.mkPen(c_, width=1.2), connect="finite", name=when)
+        new, gone = compare_spectra(tl[-1]["f"], tl[-1]["l"], tl[0]["f"], tl[0]["l"], o.thr_spin.value())
+
+        def lst_(x):
+            return ", ".join(f"{p['f']:.3f} ({p['level']:.0f} dBm)" for p in x[:12]) + (" …" if len(x) > 12 else "") \
+                or "aucun"
+        self.tl_txt.setText(f"Du plus ancien au plus récent ({n} scans). <b>Apparus :</b> {lst_(new)}<br>"
+                            f"<b>Disparus :</b> {lst_(gone)}")
+
+    def report(self, path=None):
+        o = self.owner
+        if not o.site_scans:
+            self.msg.setText("Aucun scan gardé : rien à mettre dans le rapport.")
+            return None
+        meta = getattr(o, "show_meta", {}) or {}
+        html_ = TR.html(site_report_html(o.site_scans, o.thr_spin.value(),
+                                         title=TR("Étude de site") + (f" — {meta['name']}" if meta.get("name") else ""),
+                                         venue=meta.get("venue", ""), generated=datetime.now().strftime("%d/%m/%Y %H:%M")))
+        ask = path is None
+        if ask:
+            dflt = str(o.log_dir / "rapports" / f"etude_site_{datetime.now():%Y%m%d_%H%M}.html")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Enregistrer le rapport d'étude de site", dflt,
+                                                            "Page web (*.html)")
+            if not path:
+                return None
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(html_, encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(f"Rapport impossible : {e}")
+            return None
+        self.msg.setText(f"📄 Rapport enregistré : {path} (navigateur › Imprimer › Enregistrer en PDF)")
+        if ask:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(path)))
+        return path
 
     def checked(self):
         names = {self.lst.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.lst.count())
@@ -9786,6 +10385,8 @@ class SitesDialog(QtWidgets.QDialog):
 
     def redraw(self):
         o = self.owner
+        self._hidden = {self.lst.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.lst.count())
+                        if self.lst.item(i).checkState() != Qt.CheckState.Checked}
         self.plot.clear()
         for i, d in enumerate(o.site_scans):
             if d in self.checked():
@@ -9800,7 +10401,7 @@ class SitesDialog(QtWidgets.QDialog):
         n = len(o.site_scans)
         self.msg.setText(f"{n} lieu(x) gardé(s)." if n else "Aucun lieu encore : lance un scan, puis « 📍 Garder ».")
 
-    def _store(self, name, F, L):
+    def _store(self, name, F, L, dur=None):
         o = self.owner
         name = name.strip()
         if not name:
@@ -9809,7 +10410,10 @@ class SitesDialog(QtWidgets.QDialog):
         old = next((d for d in o.site_scans if d["name"] == name), None)
         if old is not None and self.merge_chk.isChecked():
             F, L = merge_scans([(old["f"], old["l"]), (F, L)])
-        o.site_scans = [d for d in o.site_scans if d["name"] != name] + [site_scan_doc(name, F, L, time.time())]
+            if dur and old.get("dur"):
+                dur += old["dur"]                   # le scan gardé cumule les deux passages
+        o.site_scans = [d for d in o.site_scans if d["name"] != name] + [
+            site_scan_doc(name, F, L, time.time(), scene=old.get("scene") if old else None, dur=dur)]
         if name in o._site_base:                   # la fusion continue (tinySA posé ici) repart de ce scan
             o._site_base[name] = o.site_scans[-1]
         self.fill()
@@ -9821,7 +10425,8 @@ class SitesDialog(QtWidgets.QDialog):
             self.msg.setText("Pas encore de scan : lance ▶ Démarrer et laisse tourner quelques minutes ici.")
             return
         name = self.site_combo.currentText()
-        if self._store(name, F, L):
+        t0 = self.owner._mh_t0
+        if self._store(name, F, L, dur=time.time() - t0 if t0 else None):
             self.msg.setText(f"📍 Scan gardé pour « {name.strip()} » ({len(F)} points).")
 
     def import_file(self):
@@ -9841,10 +10446,12 @@ class SitesDialog(QtWidgets.QDialog):
     def delete(self):
         it = self.lst.currentItem()
         if it is None:
+            self.msg.setText("Choisis d'abord un scan dans la liste.")
             return
         name = it.data(Qt.ItemDataRole.UserRole)
         self.owner.site_scans = [d for d in self.owner.site_scans if d["name"] != name]
         self.fill()
+        self.owner.update_site_curve()
 
     def _pick(self):
         if self.what.currentData() == "merge":
@@ -12206,6 +12813,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._devdlg = None
         self.site_live = {}                    # {lieu: {bande: (F, L, t)}} derniers balayages faits sur place
         self.site_mh = {}                      # {lieu: {bande: max hold}} depuis le lancement
+        self._site_mh_t0 = {}                  # {lieu: début de son max hold} (durée d'un scan gardé)
+        self._mh_t0 = None                     # début du max hold global (durée d'un scan gardé)
         self._site_base = {}                   # {lieu: scan gardé au 1er balayage de la séance} (fusion continue)
         self._sites_next = 0.0
         self.sites_coord = False               # coordination / secours : éviter l'occupé de TOUS les lieux
@@ -15281,6 +15890,8 @@ class MainWindow(QtWidgets.QMainWindow):
         now = time.time()
         for site in mine:                          # un tinySA peut couvrir plusieurs scènes : chacune reçoit le balayage
             self.site_live.setdefault(site, {})[bid] = (f, l, now)
+            if site not in self.site_mh:
+                self._site_mh_t0[site] = now
             mh = self.site_mh.setdefault(site, {})
             old = mh.get(bid)
             mh[bid] = (f, np.maximum(old[1], l) if old is not None and old[1].shape == l.shape else l.copy())
@@ -16647,6 +17258,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.recorder is not None:
                 self.recorder.add(bid, self.latest_t[bid], f, l)
         mh = self.maxhold.get(bid)
+        if not self.maxhold:
+            self._mh_t0 = time.time()            # le max hold repart : la durée d'un scan gardé se compte d'ici
         self.maxhold[bid] = np.maximum(mh, l) if (mh is not None and mh.shape == l.shape) else l.copy()
         self.update_watch_levels()
         self.check_strong(bid, f, l)
@@ -18843,7 +19456,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 empty.append(sc)
                 continue
             name = snapshot_name(sc, label, {d["name"] for d in self.site_scans}, hhmm)
-            self.site_scans.append(site_scan_doc(name, F, L, time.time(), scene=sc))
+            t0 = self._site_mh_t0.get(sc)
+            self.site_scans.append(site_scan_doc(name, F, L, time.time(), scene=sc,
+                                                 dur=time.time() - t0 if t0 else None))
             done.append(name)
         if done:
             self._bump()
@@ -18856,6 +19471,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """↺ Nouveau scan ici : le max hold de ces scènes repart de zéro (les scans gardés ne bougent pas)."""
         for sc in scenes:
             self.site_mh.pop(sc, None)
+            self._site_mh_t0.pop(sc, None)
             self._site_base[sc] = next((d for d in self.site_scans if d["name"] == sc), None)
         return f"↺ Nouveau scan pour : {', '.join(scenes)}" if scenes else "Aucune scène : dis d'abord où est ce tinySA."
 
