@@ -2821,6 +2821,10 @@ EXACT = {
     "Tout ce qu'on règle une fois : seuils et alarmes, bandes à balayer, mesure, 2ᵉ tinySA, pays, langue, son, dossiers, connexions.": 'Everything you set once: thresholds and alarms, bands to sweep, measurement, 2nd tinySA, country, language, sound, folders, connections.',
     '⚙ Réglages': '⚙ Settings',
     '⚙ Réglages (seuils, bandes, son, langue…)…  Ctrl+,': '⚙ Settings (thresholds, bands, sound, language…)…  Ctrl+,',
+    '📻 Appareil de ce groupe (coordination)': '📻 Device of this group (coordination)',
+    '📻 Appareil de ses groupes (coordination)': '📻 Device of its groups (coordination)',
+    'Aucun (réglages par défaut)': 'None (default settings)',
+    'aucun': 'none',
 }
 
 TEMPLATES = {
@@ -3194,6 +3198,7 @@ TEMPLATES = {
     '💾 Enregistrer « {} »  (Ctrl+S)': '💾 Save “{}”  (Ctrl+S)',
     '📌 « {} » est dans sa propre fenêtre — cliquer pour le raccrocher': '📌 “{}” is in its own window — click to dock it back',
     '📱 {} alarme(s) acquittée(s) depuis la page web.': '📱 {} alarm(s) acknowledged from the web page.',
+    '📻 Appareil de {} : {}. Il sert à la coordination (écart, filtre, tolérances) ; une fréquence qui a son propre appareil garde le sien.': '📻 Device of {}: {}. It is used for coordination (spacing, filter, tolerances); a frequency that has its own device keeps it.',
 }
 
 SAME_TEMPLATES = [
