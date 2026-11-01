@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.28.1"
+APP_VER = "7.29.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2181,6 +2181,35 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
         SP.append(new_sep)
         TL.append(new_tol)
         FL.append(new_filt)
+    return out
+
+
+def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=800):
+    """Coordination entre appareils : plusieurs lots {n, sep, tol, filt, lo, hi, step} (ex. 8 × QLX-D + 6 × PSM 1000),
+    cherchés l'un après l'autre ; chaque fréquence trouvée rejoint le plan avec les règles de SON appareil, donc les
+    lots suivants doivent lui être compatibles (et elle à eux : pf_suggest vérifie les deux sens).
+    -> une liste de MHz par lot (dans l'ordre des lots). Conseil : l'appareil le plus exigeant en premier."""
+    F = [float(x) for x in freqs]
+    m = len(F)
+    T = [True] * m if is_tx is None else [bool(x) for x in is_tx]
+    B = [0.0] * m if bws is None else [float(x or 0.0) for x in bws]
+
+    def per(x):
+        return list(x) if isinstance(x, (list, tuple)) else [x] * m
+    SP, TL, FL = per(sep), per(tol), per(filt)
+    out = []
+    for lot in lots:
+        got = pf_fill(int(lot.get("n", 0)), F, T, B, SP, TL, FL, lot.get("sep", PF_SEP), lot.get("tol"),
+                      lot.get("filt", 0.0), lot.get("lo", 470.0), lot.get("hi", 694.0), lot.get("step", 0.025), busy,
+                      max_check)
+        out.append(got)
+        for c in got:
+            F.append(c)
+            T.append(True)
+            B.append(0.0)
+            SP.append(lot.get("sep", PF_SEP))
+            TL.append(lot.get("tol"))
+            FL.append(lot.get("filt", 0.0))
     return out
 
 
@@ -11131,6 +11160,28 @@ class CoordDialog(QtWidgets.QDialog):
         for w_ in (self.scene.currentTextChanged, self.group.textChanged):
             w_.connect(lambda *_: self._prof_from_group())
         lay.addLayout(f)
+        # plusieurs appareils d'un coup (QLX-D + PSM 1000…) : des « lots », tous compatibles entre eux
+        self.lots = []
+        lbox = QtWidgets.QGroupBox("Plusieurs appareils (facultatif)")
+        lbox.setToolTip("Coordination entre appareils : chaque lot = un appareil, combien, sa plage et son nom. Les lots\n"
+                        "sont cherchés dans l'ordre et tous compatibles entre eux, chacun avec les règles de SON appareil.\n"
+                        "Mets l'appareil le plus exigeant (le plus d'écart, les plus grandes tolérances) en premier.")
+        lv = QtWidgets.QVBoxLayout(lbox)
+        self.lot_list = QtWidgets.QListWidget()
+        self.lot_list.setMaximumHeight(96)
+        self.lot_list.setToolTip(lbox.toolTip())
+        b_lot = QtWidgets.QPushButton("＋ Ajouter ce lot (appareil, combien, plage, nom ci-dessus)")
+        b_lot.setToolTip("Garde les réglages ci-dessus comme un lot ; change d'appareil et ajoute le suivant.")
+        b_lot.clicked.connect(lambda *_: self.add_lot())
+        b_unlot = QtWidgets.QPushButton("Retirer")
+        b_unlot.setToolTip("Retire le lot choisi (tous si aucun n'est choisi).")
+        b_unlot.clicked.connect(lambda *_: self.del_lot())
+        lv.addWidget(self.lot_list)
+        lv.addLayout(o._row(b_lot, b_unlot))
+        self.lot_hint = QtWidgets.QLabel("Aucun lot : on cherche seulement pour l'appareil ci-dessus.")
+        self.lot_hint.setWordWrap(True)
+        lv.addWidget(self.lot_hint)
+        lay.addWidget(lbox)
         go = QtWidgets.QPushButton("🪄 Chercher")
         go.setToolTip("Cherche les fréquences (quelques secondes avec beaucoup d'émetteurs).")
         go.clicked.connect(lambda *_: self.compute())
@@ -11151,12 +11202,47 @@ class CoordDialog(QtWidgets.QDialog):
         self.resize(620, 640)
 
     def _prof_from_group(self):
-        """Le groupe choisi a un appareil (📻, clic droit dans « Mes fréquences ») : il devient celui de la recherche."""
-        g = self.owner.group_row(self.scene.currentText().strip(), self.group.text().strip())
-        if g is not None and rx_profile(g.get("rx")) is not None:
-            ix = self.prof.findData(g["rx"])
-            if ix >= 0:
-                self.prof.setCurrentIndex(ix)
+        """Le groupe choisi a un ou des appareils (📻, clic droit dans « Mes fréquences ») : le 1er devient celui de la
+        recherche ; s'il y en a plusieurs, un lot par appareil est préparé (si aucun lot n'existe encore)."""
+        rxs = self.owner.group_rxs(self.owner.group_row(self.scene.currentText().strip(), self.group.text().strip()))
+        if not rxs:
+            return
+        ix = self.prof.findData(rxs[0])
+        if ix >= 0:
+            self.prof.setCurrentIndex(ix)
+        if len(rxs) > 1 and not self.lots:
+            for k in rxs:
+                d = rx_profile(k)
+                lo, hi = ((d["lo"], d["hi"]) if d.get("hi", 0) > d.get("lo", 0) > 0
+                          else (self.lo.value(), self.hi.value()))
+                nm = rx_short(k).split(" ", 1)          # « Shure PSM 900 » -> « PSM 900 » (nom des fréquences)
+                self.lots.append(dict(rx=k, n=self.n_spin.value(), lo=lo, hi=hi,
+                                      prefix=nm[1] if len(nm) > 1 else nm[0]))
+            self._show_lots()
+
+    def _lot_now(self):
+        return dict(rx=self.prof.currentData() or "", n=self.n_spin.value(), lo=self.lo.value(), hi=self.hi.value(),
+                    prefix=self.prefix.text().strip() or "HF")
+
+    def add_lot(self):
+        self.lots.append(self._lot_now())
+        self._show_lots()
+
+    def del_lot(self):
+        r = self.lot_list.currentRow()
+        if 0 <= r < len(self.lots):
+            self.lots.pop(r)
+        else:
+            self.lots = []
+        self._show_lots()
+
+    def _show_lots(self):
+        self.lot_list.clear()
+        for L_ in self.lots:
+            self.lot_list.addItem(f"{L_['n']} × {rx_short(L_['rx']) if L_['rx'] else 'réglages par défaut'}   "
+                                  f"{L_['lo']:.3f}–{L_['hi']:.3f} MHz   « {L_['prefix']} »")
+        self.lot_hint.setText("Les lots sont cherchés dans l'ordre, tous compatibles entre eux et avec ta liste."
+                              if self.lots else "Aucun lot : on cherche seulement pour l'appareil ci-dessus.")
 
     def _range_from_prof(self):
         d = rx_profile(self.prof.currentData())
@@ -11177,11 +11263,17 @@ class CoordDialog(QtWidgets.QDialog):
             d = dict(sep=po["sep"] / 1000.0, filt=po["filt"], step=po["step"] / 1000.0, tol=IM_TOL_PRESETS[0][1])
         return d
 
+    def _lot_profile(self, rx):
+        d = rx_profile(rx)
+        if d is None:
+            po = self.owner.plan_opts
+            d = dict(sep=po["sep"] / 1000.0, filt=po["filt"], step=po["step"] / 1000.0, tol=IM_TOL_PRESETS[0][1])
+        return d
+
     def compute(self):
         o = self.owner
         ws = list(o.watch)
         P = [rx_profile(o.rx_of(w)) or self._new_profile() for w in ws]
-        d = self._new_profile()
         busy = None
         if self.avoid.isChecked():
             Fm, Lm = o.coord_FL(self.spec_combo.currentData())
@@ -11190,19 +11282,30 @@ class CoordDialog(QtWidgets.QDialog):
                 win = max(0.05, o.win_spin.value() / 1000.0)
                 busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        lots = list(self.lots) or [self._lot_now()]
+        spec = []
+        for L_ in lots:
+            d = self._lot_profile(L_["rx"])
+            spec.append(dict(n=L_["n"], sep=d["sep"], tol=d["tol"], filt=d["filt"], lo=L_["lo"], hi=L_["hi"],
+                             step=d["step"]))
         try:
-            self.found = pf_fill(self.n_spin.value(), [w["freq"] for w in ws],
-                                 [not o.is_keep_free(w["status"]) for w in ws], [float(w.get("bw") or 0.0) for w in ws],
-                                 [q["sep"] for q in P], [q["tol"] for q in P], [q["filt"] for q in P],
-                                 d["sep"], d["tol"], d["filt"], self.lo.value(), self.hi.value(), d["step"], busy)
+            got = pf_fill_lots(spec, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
+                               [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P],
+                               [q["filt"] for q in P], busy)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
+        self.found = [(L_, c) for L_, cs in zip(lots, got) for c in cs]
         self.res.clear()
-        for k, c in enumerate(self.found, 1):
-            self.res.addItem(f"{self.prefix.text().strip() or 'HF'} {k}   {c:.3f} MHz")
-        n = self.n_spin.value()
-        self.msg.setText(f"✔ {len(self.found)} fréquence(s) trouvée(s)." if len(self.found) >= n else
-                         f"⚠ Seulement {len(self.found)} / {n} : la plage est pleine pour ces règles. Élargis la plage, "
+        for L_, cs in zip(lots, got):
+            for k, c in enumerate(cs, 1):
+                self.res.addItem(f"{L_['prefix']} {k}   {c:.3f} MHz" + (f"   ({rx_short(L_['rx'])})" if len(lots) > 1
+                                                                        and L_["rx"] else ""))
+        short = [f"{len(cs)} / {L_['n']} {L_['prefix']}" for L_, cs in zip(lots, got) if len(cs) < L_["n"]]
+        n_ = len(self.found)
+        self.msg.setText((f"✔ {n_} fréquence(s) trouvée(s), toutes compatibles entre elles." if len(lots) > 1 else
+                          f"✔ {n_} fréquence(s) trouvée(s).")
+                         if not short else
+                         f"⚠ Seulement {', '.join(short)} : la plage est pleine pour ces règles. Élargis la plage, "
                          "choisis un appareil plus robuste (écart et tolérances plus serrés) ou des règles plus souples.")
 
     def add(self):
@@ -11210,18 +11313,20 @@ class CoordDialog(QtWidgets.QDialog):
         if not self.found:
             self.msg.setText("Lance d'abord « 🪄 Chercher ».")
             return
-        pre = self.prefix.text().strip() or "HF"
         taken = {w["name"] for w in o.watch}
         st = next((s_["name"] for s_ in o.statuses if s_.get("on")), "")
-        k = 1
-        for c in self.found:
+        nums = {}
+        for L_, c in self.found:
+            pre = L_["prefix"] or "HF"
+            k = nums.get(pre, 1)
             while f"{pre} {k}" in taken:
                 k += 1
+            nums[pre] = k
             taken.add(f"{pre} {k}")
             o._append_watch(f"{pre} {k}", c, status=st, scene=self.scene.currentText().strip(),
                             group=self.group.text().strip())
-            if self.prof.currentData() and self.prof.currentData() != o.rx_of(o.watch[-1]):
-                o.watch[-1]["rx"] = self.prof.currentData()    # sinon : il hérite de l'appareil du groupe
+            if L_["rx"] and L_["rx"] != o.rx_of(o.watch[-1]):
+                o.watch[-1]["rx"] = L_["rx"]           # sinon : il hérite de l'appareil (du 1er) du groupe
         o.sort_watch()
         o.rebuild_tree()
         o.rebuild_watch_table()
@@ -13621,8 +13726,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         grow["color"] = g["color"]
                     if g.get("prio") in (0, 1, 2):
                         grow["prio"] = int(g["prio"])
-                    if isinstance(g.get("rx"), str) and g["rx"]:
-                        grow["rx"] = g["rx"]            # appareil du groupe (facultatif)
+                    rxs = self.group_rxs(g)             # appareil(s) du groupe (facultatif ; ancien format : 1 clé)
+                    if rxs:
+                        grow["rx"] = rxs
             except Exception:
                 pass
         for w in data.get("watch", []):
@@ -13840,7 +13946,8 @@ class MainWindow(QtWidgets.QMainWindow):
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1)),
-                                      **({"rx": g["rx"]} if g.get("rx") else {})) for g in s["groups"]])
+                                      **({"rx": self.group_rxs(g)} if self.group_rxs(g) else {}))
+                                 for g in s["groups"]])
                     for s in self.scenes],
             scope=[list(k) for k in self.scope] if self.scope else None,
             focus=self.focus_chk.isChecked(),
@@ -15125,7 +15232,8 @@ class MainWindow(QtWidgets.QMainWindow):
             top = mk(None, sc["name"], None, sc["name"] + self.dev_tag(sc["name"]), sc["color"])
             for g in sc["groups"]:
                 mk(top, sc["name"], g["name"], g["name"] + self.prio_mark(g)
-                   + (f"  · {rx_short(g['rx'])}" if rx_profile(g.get("rx")) is not None else ""), g["color"])
+                   + (f"  · {' + '.join(rx_short(k) for k in self.group_rxs(g))}" if self.group_rxs(g) else ""),
+                   g["color"])
         if self.scenes and any(w["scene"] == "" for w in self.watch):
             mk(None, "", None, "Sans scène", self.theme["st_none"])
         tree.expandAll()
@@ -15665,14 +15773,19 @@ class MainWindow(QtWidgets.QMainWindow):
                                           (1, "Normale : bip à l'apparition", self._cur_prio(key) == 1),
                                           (0, "🔕 Info : pas de son", self._cur_prio(key) == 0))}
             m.addMenu(sub)
-            rxm = m.addMenu("📻 Appareil de ce groupe (coordination)" if key[1] else "📻 Appareil de ses groupes (coordination)")
+            rxm = m.addMenu("📻 Appareils de ce groupe (coordination)" if key[1] else "📻 Appareils de ses groupes (coordination)")
             rxm.setToolTipsVisible(True)
-            cur_rx = self._cur_rx(key)
-            for k_, n_ in [("", "Aucun (réglages par défaut)")] + [(k, n) for k, n, _d, _w in rx_all()]:
+            cur_rx = self._cur_rxs(key)
+            a_ = rxm.addAction("Aucun (réglages par défaut)")
+            a_.setCheckable(True)
+            a_.setChecked(not cur_rx)
+            a_.triggered.connect(lambda *_, key_=key: self.set_group_rx(key_, ""))
+            rxm.addSeparator()
+            for k_, n_ in [(k, n) for k, n, _d, _w in rx_all()]:   # plusieurs possibles : coord entre appareils
                 a_ = rxm.addAction(n_)
                 a_.setCheckable(True)
-                a_.setChecked(cur_rx == k_)
-                a_.triggered.connect(lambda *_, k_=k_, key_=key: self.set_group_rx(key_, k_))
+                a_.setChecked(k_ in cur_rx)
+                a_.triggered.connect(lambda *_, k_=k_, key_=key, a_=a_: self.toggle_group_rx(key_, k_, a_.isChecked()))
             if self.expert and not key[1]:          # 📡 quel(s) tinySA surveille(nt) cette scène
                 dm = m.addMenu("📡 Surveillée par")
                 for d_ in range(self.ndev()):
@@ -18489,30 +18602,50 @@ class MainWindow(QtWidgets.QMainWindow):
         if rx_profile(w.get("rx")) is not None:
             return w["rx"]
         g = self.group_row(w.get("scene"), w.get("group"))
-        return g["rx"] if g is not None and rx_profile(g.get("rx")) is not None else ""
+        rxs = self.group_rxs(g)
+        return rxs[0] if rxs else ""             # plusieurs appareils dans le groupe : le 1er = celui par défaut
 
-    def set_group_rx(self, key, rx):
-        """📻 Appareil d'un groupe (ou de tous les groupes d'une scène) : rx "" = aucun."""
+    @staticmethod
+    def group_rxs(g):
+        """Appareils d'un groupe (liste de clés valides ; un groupe peut en avoir plusieurs : QLX-D + PSM 1000…)."""
+        if g is None:
+            return []
+        r = g.get("rx")
+        r = [r] if isinstance(r, str) else list(r or [])
+        return [k for k in r if rx_profile(k) is not None]
+
+    def _set_rxs(self, key, fn):
         sc = self.scene_by_name(key[0])
         if sc is None:
             return
         for g in sc["groups"]:
             if not key[1] or g["name"] == key[1]:
-                if rx:
-                    g["rx"] = rx
+                rxs = fn(self.group_rxs(g))
+                if rxs:
+                    g["rx"] = rxs
                 else:
                     g.pop("rx", None)
         self.rebuild_tree()
         what = f"« {key[1]} »" if key[1] else f"tous les groupes de « {key[0]} »"
-        self.set_status(f"📻 Appareil de {what} : {rx_short(rx) if rx else 'aucun'}. Il sert à la coordination "
-                        "(écart, filtre, tolérances) ; une fréquence qui a son propre appareil garde le sien.")
+        cur = self._cur_rxs(key)
+        self.set_status(f"📻 Appareils de {what} : {' + '.join(rx_short(k) for k in cur) if cur else 'aucun'}. Ils "
+                        "servent à la coordination (écart, filtre, tolérances) ; une fréquence qui a son propre appareil "
+                        "garde le sien.")
 
-    def _cur_rx(self, key):
+    def set_group_rx(self, key, rx):
+        """📻 Un seul appareil pour le groupe (ou tous les groupes d'une scène) ; rx "" = aucun."""
+        self._set_rxs(key, lambda _old: [rx] if rx else [])
+
+    def toggle_group_rx(self, key, rx, on):
+        """📻 Ajoute / retire un appareil d'un groupe (plusieurs possibles : coordination entre appareils)."""
+        self._set_rxs(key, lambda old: (old + [rx] if rx not in old else old) if on else [k for k in old if k != rx])
+
+    def _cur_rxs(self, key):
         sc = self.scene_by_name(key[0])
         if sc is None:
-            return None
-        rs = {g.get("rx") or "" for g in sc["groups"] if not key[1] or g["name"] == key[1]}
-        return rs.pop() if len(rs) == 1 else None
+            return []
+        rs = [self.group_rxs(g) for g in sc["groups"] if not key[1] or g["name"] == key[1]]
+        return rs[0] if rs and all(r == rs[0] for r in rs) else []
 
     @staticmethod
     def prio_mark(g):

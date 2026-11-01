@@ -1270,12 +1270,42 @@ check("📻 groupe : son propre appareil reste prioritaire", win.rx_of(dict(_wi,
 check("📻 groupe : sans groupe -> aucun", win.rx_of(dict(_wi, group="")) == "")
 check("📻 groupe : affiché dans l'arbre", any("PSM" in it.text(0) for it, _n in win._tree_items.values()),
       str([it.text(0) for it, _n in win._tree_items.values()]))
-check("📻 groupe : gardé dans la config", any(g.get("rx") == "shure_psm" for sc in win._collect_config()["scenes"]
+check("📻 groupe : gardé dans la config", any(g.get("rx") == ["shure_psm"] for sc in win._collect_config()["scenes"]
                                                for g in sc["groups"]))
 _cd = m.CoordDialog(win)
 _cd.scene.setEditText("Grande scène"); _cd.group.setText("IEM")
 check("📻 coord : l'appareil du groupe est repris", _cd.prof.currentData() == "shure_psm", str(_cd.prof.currentData()))
 _cd.close()
+# plusieurs appareils dans un groupe -> coordination entre appareils (un lot par appareil)
+win.toggle_group_rx(("Grande scène", "IEM"), "shure_dig", True)
+check("📻 groupe : deux appareils", win.group_rxs(win.group_row("Grande scène", "IEM")) == ["shure_psm", "shure_dig"])
+check("📻 groupe : les deux dans l'arbre", any("PSM" in it.text(0) and "QLX" in it.text(0)
+                                                 for it, _n in win._tree_items.values()))
+_cd = m.CoordDialog(win)
+_cd.n_spin.setValue(3)
+_cd.scene.setEditText("Grande scène"); _cd.group.setText("IEM")
+check("🪄 lots : un lot par appareil du groupe", [L["rx"] for L in _cd.lots] == ["shure_psm", "shure_dig"]
+      and _cd.lot_list.count() == 2, str(_cd.lots))
+_cd.avoid.setChecked(False)
+_saved_watch = win.watch                # liste de démo sans appareil (donc sans filtre) : on part d'une liste vide
+win.watch = []
+_cd.compute()
+_rx = {}
+for L_, c in _cd.found:
+    _rx.setdefault(L_["rx"], []).append(c)
+check("🪄 lots : des fréquences pour chaque appareil", len(_rx.get("shure_psm", [])) == 3 and len(_rx.get("shure_dig", [])) == 3,
+      _cd.msg.text())
+shot(_cd, "coord_lots")
+_n0 = 0
+_cd.add()
+_new = list(win.watch)
+check("🪄 lots : ajoutées avec le bon appareil (hérité ou propre)", len(_new) == 6
+      and sorted(win.rx_of(w) for w in _new) == ["shure_dig"] * 3 + ["shure_psm"] * 3,
+      str([(w["name"], win.rx_of(w)) for w in _new]))
+_cd.close()
+win.watch = _saved_watch
+win.rebuild_tree()
+win.rebuild_watch_table()
 win.set_group_rx(("Grande scène", "IEM"), "")
 check("📻 groupe : « aucun » efface", win.rx_of(_wi) == "")
 _rd = m.RescueDialog(win)
