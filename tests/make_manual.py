@@ -84,6 +84,7 @@ EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D
 def clean_title(t):
     """Titres sans emoji (les boutons cités dans le texte gardent les leurs)."""
     t = EMOJI.sub("", t)
+    t = re.sub(r"\(\s*\)", "", t)               # « Enregistrer le show (🎪) » -> pas de « () » vide
     t = re.sub(r"\s+", " ", t).strip()
     return re.sub(r"\s*:$", "", t)
 

@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.28.0"
+APP_VER = "7.28.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4541,6 +4541,28 @@ def hunt_request(req):
 
 
 # ------------------------------------------------------------------ 📍 scans par lieu (un tinySA promené de scène en scène)
+def scan_gaps(F, k=4.0):
+    """Trous d'un scan à plusieurs bandes : indices i où F[i] - F[i-1] dépasse k fois le pas des deux côtés (le pas
+    de la bande d'avant et de celle d'après : deux bandes à pas différents ne font pas de faux trous)."""
+    F = np.asarray(F, dtype=float)
+    if len(F) < 3:
+        return np.array([], dtype=int)
+    d = np.diff(F)
+    left = np.concatenate(([d[1]], d[:-1]))
+    right = np.concatenate((d[1:], [d[-2]]))
+    return np.nonzero(d > k * np.maximum(np.maximum(left, right), 1e-9))[0] + 1
+
+
+def gap_nan(F, L):
+    """(F, L) avec un NaN dans chaque trou entre bandes : une courbe tracée avec connect="finite" ne relie plus
+    la fin d'une bande au début de la suivante (bug 7.28, retour de Clément : « des traits entre les bandes »)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    g = scan_gaps(F)
+    if not len(g):
+        return F, L
+    return np.insert(F, g, np.nan), np.insert(L, g, np.nan)
+
+
 def merge_scans(scans, max_points=60000):
     """Fusion de scans [(F MHz, L dBm)] sur une grille commune : le MAX de tous (le pire cas du site) -> (F, L).
     Grille au pas le plus fin des scans (plafonnée à max_points) ; chaque scan est interpolé sur sa propre plage, et
@@ -4553,7 +4575,11 @@ def merge_scans(scans, max_points=60000):
         if len(F) < 2 or len(F) != len(L):
             continue
         o = np.argsort(F, kind="stable")
-        ok_.append((F[o], L[o]))
+        F, L = F[o], L[o]
+        cuts = [0, *scan_gaps(F), len(F)]          # une bande = un morceau : pas d'interpolation entre deux bandes
+        for a, b in zip(cuts[:-1], cuts[1:]):
+            if b - a >= 2:
+                ok_.append((F[a:b], L[a:b]))
     if not ok_:
         return None, None
     lo = min(F[0] for F, _L in ok_)
@@ -8529,7 +8555,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
 
     def _explain(self):
         why = self.tol_combo.itemData(self.tol_combo.currentIndex(), Qt.ItemDataRole.ToolTipRole) or ""
-        own = sum(1 for w in self.owner.watch if rx_profile(w.get("rx")) is not None)
+        own = sum(1 for w in self.owner.watch if self.owner.rx_of(w))
         self.rule_lbl.setText(f"<b>{self.tol_combo.currentText()}</b> — {why}<br>"
                               + im_rules_text(self.tolerances(), self.sep_spin.value() / 1000.0,
                                               self.filt_spin.value()) + "."
@@ -8547,7 +8573,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         ws = [w for w in o.watch if self.src_combo.currentData() == "all" or o.in_scope(w)]
         dflt = dict(sep=self.sep_spin.value() / 1000.0, filt=self.filt_spin.value(), tol=self.tolerances(),
                     step=self.step_spin.value() / 1000.0)
-        P = [rx_profile(w.get("rx")) or dflt for w in ws]           # profil d'appareil de chaque fréquence
+        P = [rx_profile(o.rx_of(w)) or dflt for w in ws]            # appareil de chaque fréquence (ou de son groupe)
         self._steps = [q["step"] for q in P]
         return (ws, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
                 [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P], None,
@@ -8572,7 +8598,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
             state = "✔ compatible" if not iss else f"✗ {len(iss)} problème{'s' if len(iss) > 1 else ''}"
             if not T[r] and not iss:
                 state = "✔ réserve libre"
-            vals = [state, names[r], f"{w['freq']:.3f}", rx_short(w.get("rx")),
+            vals = [state, names[r], f"{w['freq']:.3f}", rx_short(self.owner.rx_of(w)),
                     " · ".join(txts[:3]) + (" …" if len(txts) > 3 else "")]
             col = th["st_occ"] if iss else th["st_free"]
             for c, v in enumerate(vals):
@@ -9734,11 +9760,12 @@ class SitesDialog(QtWidgets.QDialog):
         self.plot.clear()
         for i, d in enumerate(o.site_scans):
             if d in self.checked():
-                self.plot.plot(d["f"], d["l"], pen=pg.mkPen(GROUP_COLORS[i % len(GROUP_COLORS)], width=1.2), name=d["name"])
+                Fd, Ld = gap_nan(d["f"], d["l"])             # pas de trait entre deux bandes
+                self.plot.plot(Fd, Ld, pen=pg.mkPen(GROUP_COLORS[i % len(GROUP_COLORS)], width=1.2), name=d["name"],
+                               connect="finite")
         F, L = self.merged()
         if F is not None and len(self.checked()) > 1:
-            gap = np.nonzero(np.diff(F) > 5 * float(np.median(np.diff(F))))[0] + 1   # pas de trait sur les trous
-            Fp, Lp = np.insert(F, gap, np.nan), np.insert(L, gap, np.nan)
+            Fp, Lp = gap_nan(F, L)
             self.plot.plot(Fp, Lp, pen=pg.mkPen("#ffffff", width=1.6, style=Qt.PenStyle.DashLine), name="Fusion",
                            connect="finite")
         n = len(o.site_scans)
@@ -11101,6 +11128,8 @@ class CoordDialog(QtWidgets.QDialog):
         self._scene_from_spec()
         f.addRow("Scène :", self.scene)
         f.addRow("Groupe :", self.group)
+        for w_ in (self.scene.currentTextChanged, self.group.textChanged):
+            w_.connect(lambda *_: self._prof_from_group())
         lay.addLayout(f)
         go = QtWidgets.QPushButton("🪄 Chercher")
         go.setToolTip("Cherche les fréquences (quelques secondes avec beaucoup d'émetteurs).")
@@ -11120,6 +11149,14 @@ class CoordDialog(QtWidgets.QDialog):
         close.clicked.connect(self.close)
         lay.addLayout(o._row(add, None, close))
         self.resize(620, 640)
+
+    def _prof_from_group(self):
+        """Le groupe choisi a un appareil (📻, clic droit dans « Mes fréquences ») : il devient celui de la recherche."""
+        g = self.owner.group_row(self.scene.currentText().strip(), self.group.text().strip())
+        if g is not None and rx_profile(g.get("rx")) is not None:
+            ix = self.prof.findData(g["rx"])
+            if ix >= 0:
+                self.prof.setCurrentIndex(ix)
 
     def _range_from_prof(self):
         d = rx_profile(self.prof.currentData())
@@ -11143,7 +11180,7 @@ class CoordDialog(QtWidgets.QDialog):
     def compute(self):
         o = self.owner
         ws = list(o.watch)
-        P = [rx_profile(w.get("rx")) or self._new_profile() for w in ws]
+        P = [rx_profile(o.rx_of(w)) or self._new_profile() for w in ws]
         d = self._new_profile()
         busy = None
         if self.avoid.isChecked():
@@ -11183,8 +11220,8 @@ class CoordDialog(QtWidgets.QDialog):
             taken.add(f"{pre} {k}")
             o._append_watch(f"{pre} {k}", c, status=st, scene=self.scene.currentText().strip(),
                             group=self.group.text().strip())
-            if self.prof.currentData():
-                o.watch[-1]["rx"] = self.prof.currentData()
+            if self.prof.currentData() and self.prof.currentData() != o.rx_of(o.watch[-1]):
+                o.watch[-1]["rx"] = self.prof.currentData()    # sinon : il hérite de l'appareil du groupe
         o.sort_watch()
         o.rebuild_tree()
         o.rebuild_watch_table()
@@ -13584,6 +13621,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         grow["color"] = g["color"]
                     if g.get("prio") in (0, 1, 2):
                         grow["prio"] = int(g["prio"])
+                    if isinstance(g.get("rx"), str) and g["rx"]:
+                        grow["rx"] = g["rx"]            # appareil du groupe (facultatif)
             except Exception:
                 pass
         for w in data.get("watch", []):
@@ -13800,7 +13839,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         **({"rx": w["rx"]} if w.get("rx") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
-                         groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1))) for g in s["groups"]])
+                         groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1)),
+                                      **({"rx": g["rx"]} if g.get("rx") else {})) for g in s["groups"]])
                     for s in self.scenes],
             scope=[list(k) for k in self.scope] if self.scope else None,
             focus=self.focus_chk.isChecked(),
@@ -15084,7 +15124,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for sc in self.scenes:
             top = mk(None, sc["name"], None, sc["name"] + self.dev_tag(sc["name"]), sc["color"])
             for g in sc["groups"]:
-                mk(top, sc["name"], g["name"], g["name"] + self.prio_mark(g), g["color"])
+                mk(top, sc["name"], g["name"], g["name"] + self.prio_mark(g)
+                   + (f"  · {rx_short(g['rx'])}" if rx_profile(g.get("rx")) is not None else ""), g["color"])
         if self.scenes and any(w["scene"] == "" for w in self.watch):
             mk(None, "", None, "Sans scène", self.theme["st_none"])
         tree.expandAll()
@@ -15305,8 +15346,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                                                                     np.asarray(docs[0]["l"]))
         if F is None:
             return
-        gap = np.nonzero(np.diff(F) > 5 * float(np.median(np.diff(F))))[0] + 1 if len(F) > 2 else []
-        F, L = np.insert(F, gap, np.nan), np.insert(L, gap, np.nan)
+        F, L = gap_nan(F, L)
         scs = {site_doc_scene(d) for d in docs}
         if self.scope and len(scs) == 1 and len(docs) > 1:      # une scène, plusieurs scans gardés : leur fusion
             sc = next(iter(scs))
@@ -15625,6 +15665,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                           (1, "Normale : bip à l'apparition", self._cur_prio(key) == 1),
                                           (0, "🔕 Info : pas de son", self._cur_prio(key) == 0))}
             m.addMenu(sub)
+            rxm = m.addMenu("📻 Appareil de ce groupe (coordination)" if key[1] else "📻 Appareil de ses groupes (coordination)")
+            rxm.setToolTipsVisible(True)
+            cur_rx = self._cur_rx(key)
+            for k_, n_ in [("", "Aucun (réglages par défaut)")] + [(k, n) for k, n, _d, _w in rx_all()]:
+                a_ = rxm.addAction(n_)
+                a_.setCheckable(True)
+                a_.setChecked(cur_rx == k_)
+                a_.triggered.connect(lambda *_, k_=k_, key_=key: self.set_group_rx(key_, k_))
             if self.expert and not key[1]:          # 📡 quel(s) tinySA surveille(nt) cette scène
                 dm = m.addMenu("📡 Surveillée par")
                 for d_ in range(self.ndev()):
@@ -18430,6 +18478,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.set_status(f"Priorité des alarmes pour {what} : {ALARM_PRIO[int(prio)]}."
                         + (" Critique = son répété toutes les 10 s jusqu'à acquittement." if prio == 2 else "")
                         + (" Info = pas de son." if prio == 0 else ""))
+
+    def group_row(self, scene, group):
+        sc = self.scene_by_name(scene) if scene else None
+        return next((g for g in sc["groups"] if g["name"] == group), None) if sc is not None and group else None
+
+    def rx_of(self, w):
+        """Appareil d'une fréquence (clé de profil) : le sien s'il en a un, sinon celui de son groupe, sinon "".
+        Facultatif partout : sans appareil, ce sont les réglages par défaut de la coordination qui comptent."""
+        if rx_profile(w.get("rx")) is not None:
+            return w["rx"]
+        g = self.group_row(w.get("scene"), w.get("group"))
+        return g["rx"] if g is not None and rx_profile(g.get("rx")) is not None else ""
+
+    def set_group_rx(self, key, rx):
+        """📻 Appareil d'un groupe (ou de tous les groupes d'une scène) : rx "" = aucun."""
+        sc = self.scene_by_name(key[0])
+        if sc is None:
+            return
+        for g in sc["groups"]:
+            if not key[1] or g["name"] == key[1]:
+                if rx:
+                    g["rx"] = rx
+                else:
+                    g.pop("rx", None)
+        self.rebuild_tree()
+        what = f"« {key[1]} »" if key[1] else f"tous les groupes de « {key[0]} »"
+        self.set_status(f"📻 Appareil de {what} : {rx_short(rx) if rx else 'aucun'}. Il sert à la coordination "
+                        "(écart, filtre, tolérances) ; une fréquence qui a son propre appareil garde le sien.")
+
+    def _cur_rx(self, key):
+        sc = self.scene_by_name(key[0])
+        if sc is None:
+            return None
+        rs = {g.get("rx") or "" for g in sc["groups"] if not key[1] or g["name"] == key[1]}
+        return rs.pop() if len(rs) == 1 else None
 
     @staticmethod
     def prio_mark(g):

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.28.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.28.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -498,6 +498,17 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **Manuel** (`make_manual.py`) : couverture avec l'icône, CSS sobre (bloc `/*pro*/`), titres sans emoji
     (`clean_title`), captures de la vraie appli `docs/img/<fr|en>/*.jpg` intégrées en base64 (`FIGS` / `SHOTS` ;
     `python tests/make_manual.py --shots tests/captures tests/captures_en` après gui_reel + gui_en).
+- **7.28.1 (retours de Clément sur 7.28)** :
+  - Bug « des traits entre les bandes » dans les scans par lieu : PURE `scan_gaps` (trou = écart > 4 × le pas des DEUX
+    côtés, donc deux bandes à pas différents ne font pas de faux trous) / `gap_nan` (NaN dans les trous, tracé
+    `connect="finite"`) ; `merge_scans` coupe chaque scan en morceaux par bande avant d'interpoler (avant : il
+    interpolait par-dessus le trou). Utilisé par `SitesDialog.redraw` (courbes par lieu + fusion) et `update_site_curve`.
+  - **📻 Appareil par groupe (facultatif)** : clé `rx` d'un groupe (config `scenes` + shows) ; `rx_of(w)` = appareil
+    de la fréquence sinon de son groupe sinon "" → Vérifier le plan (`_params`, colonne Appareil) et Coordonner
+    (`compute`) ; clic droit sur un groupe / une scène › « 📻 Appareil de ce groupe » (`set_group_rx`, `_cur_rx`) ;
+    nom court dans l'arbre ; `CoordDialog._prof_from_group` (scène + groupe choisis → leur appareil) et `add` ne
+    pose `w["rx"]` que s'il diffère de celui du groupe. `group_row(scene, group)`.
+  - make_manual : `clean_title` retire aussi les « () » vides laissés par un emoji.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

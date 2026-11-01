@@ -713,6 +713,17 @@ ok("fusion : le pic de la scène A est là", abs(ns["level_at"](Fm_, Lm_, 480.0,
 ok("fusion : le pic de la scène B est là", abs(ns["level_at"](Fm_, Lm_, 505.0, 0.05) + 50) < 0.01)
 ok("fusion : là où les deux se recouvrent, le plus fort (−95 de B)", abs(ns["level_at"](Fm_, Lm_, 495.0, 0.01) + 95) < 0.5)
 check("fusion : rien -> rien", ms_([]), (None, None))
+# un scan à plusieurs bandes (UHF au pas de 50 kHz + 2,4 GHz au pas de 500 kHz) : pas de trait entre les bandes
+Fu_ = np.concatenate([np.linspace(470, 520, 1001), np.linspace(2400, 2480, 161)])
+Lu_ = np.concatenate([np.full(1001, -100.0), np.full(161, -90.0)])
+check("trous : seulement entre les deux bandes (pas différents)", list(ns["scan_gaps"](Fu_)), [1001])
+Fg_, Lg_ = ns["gap_nan"](Fu_, Lu_)
+ok("trous : un NaN entre les bandes", len(Fg_) == 1163 and np.isnan(Fg_[1001]) and np.isnan(Lg_[1001]))
+Fm2_, Lm2_ = ms_([(Fu_, Lu_), (Fa_, La_)])
+ok("fusion de scans à plusieurs bandes : rien d'inventé entre 520 et 2400 MHz",
+   not np.any((Fm2_ > 520.1) & (Fm2_ < 2399.9)), str(Fm2_[(Fm2_ > 520.1) & (Fm2_ < 2399.9)][:5]))
+ok("fusion de scans à plusieurs bandes : le trou reste un trou au tracé", np.isnan(ns["gap_nan"](Fm2_, Lm2_)[1]).sum() == 1)
+check("trous : scan d'une seule bande -> aucun", list(ns["scan_gaps"](Fa_)), [])
 d_ = ns["site_scan_doc"]("Grande scène", Fa_[:3], La_[:3], 1000.0)
 check("lieu : version compacte", (d_["name"], d_["f"], d_["l"]), ("Grande scène", [470.0, 470.025, 470.05], [-100.0, -100.0, -100.0]))
 check("lieux lus d'un fichier : invalides écartés, nom unique", [x["name"] for x in ns["site_scans_norm"](
