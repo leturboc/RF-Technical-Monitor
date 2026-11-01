@@ -1258,6 +1258,55 @@ def _sites_act(d):
           _t[:60])
     d.coord_chk.setChecked(True)
     shot(d, "scans_par_lieu")
+    # gestion : infos, renommer, ranger dans une scène, masquer une courbe
+    d.lst.setCurrentRow(1)
+    check("lieux : infos du scan sélectionné", "Club" in d.info.text() and "MHz" in d.info.text(), d.info.text())
+    check("lieux : renommer", d.do_rename("Club", "Club · soir") and any(x["name"] == "Club · soir" for x in win.site_scans))
+    check("lieux : nom déjà pris refusé", not d.do_rename("Club · soir", "Grande scène"))
+    d.do_move("Club · soir", "Grande scène")
+    check("lieux : rangé dans une scène", m.site_doc_scene(next(x for x in win.site_scans if x["name"] == "Club · soir"))
+          == "Grande scène")
+    d.lst.item(0).setCheckState(Qt.CheckState.Unchecked)
+    check("lieux : courbe masquée = pas dans la fusion", len(d.checked()) == 1)
+    d.lst.item(0).setCheckState(Qt.CheckState.Checked)
+    # comparer deux lieux
+    _Fx, _Lx = win.fresh_FL(use_max=True, any_age=True)
+    _Ly = _Lx.copy(); _Ly[len(_Ly) // 2] = -30.0
+    win.site_scans.append(m.site_scan_doc("Jardin", _Fx, _Ly, time.time() + 60, scene="Grande scène"))
+    d.fill(select="Jardin")
+    d.tabs.setCurrentIndex(1)
+    d.cmp_a.setCurrentText("Jardin"); d.cmp_b.setCurrentText("Grande scène")
+    d.cmp_draw()
+    check("comparer : le signal propre au jardin est trouvé", "Seulement" in d.cmp_txt.text()
+          and f"{_Fx[len(_Fx) // 2]:.3f}" in d.cmp_txt.text(), d.cmp_txt.text())
+    shot(d, "lieux_comparer")
+    # signaux du lieu -> émetteurs extérieurs
+    d.tabs.setCurrentIndex(2)
+    d.pk_thr.setValue(-40.0)
+    d.peaks_fill()
+    check("signaux du lieu : le pic du jardin listé", d.pk_table.rowCount() >= 1 and d.pk_table.item(0, 0) is not None,
+          str(d.pk_table.rowCount()))
+    _nw = len(win.watch)
+    d.pk_table.selectRow(0)
+    _added = d.add_ext()
+    _ext = next((w_ for w_ in win.watch if w_["name"].startswith("Ext.")), {})
+    check("signaux du lieu : ajouté comme émetteur extérieur (sans statut)", _added >= 1 and _ext.get("status") == ""
+          and _ext.get("name", "").startswith("Ext."), str(_ext.get("name")))
+    check("signaux du lieu : maintenant « dans ma liste »", d.pk_table.item(0, 4).text() == "oui")
+    shot(d, "lieux_signaux")
+    win.watch = [w_ for w_ in win.watch if not w_["name"].startswith("Ext.")]
+    win.rebuild_watch_table()
+    # dans le temps
+    d.tabs.setCurrentIndex(3)
+    check("dans le temps : la Grande scène a plusieurs scans", d.tl_scene.findText("Grande scène") >= 0)
+    d.tl_scene.setCurrentText("Grande scène"); d.tl_draw()
+    check("dans le temps : apparus / disparus", "Apparus" in d.tl_txt.text(), d.tl_txt.text())
+    shot(d, "lieux_temps")
+    # rapport d'étude de site
+    _rp = d.report(str(m.Path(tmp) / "etude.html"))
+    _rh = m.Path(_rp).read_text(encoding="utf-8") if _rp else ""
+    check("rapport d'étude de site écrit", "Tout le site" in _rh and "Jardin" in _rh and "<svg" in _rh, str(_rp))
+    win.site_scans = [x for x in win.site_scans if x["name"] != "Jardin"]
     return "reject"
 DLG_ACTION[0] = _sites_act
 step("scans par lieu", win.open_sites)

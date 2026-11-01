@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.29.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.30.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -517,6 +517,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   problème). `CoordDialog` : encadré « Plusieurs appareils » (`lots`, `add_lot`, `del_lot`, `_show_lots`, `_lot_now`,
   `_lot_profile`) ; groupe à plusieurs appareils → un lot par appareil préparé ; `found` = [(lot, MHz)] ; `add`
   numérote par préfixe et ne pose `w["rx"]` que s'il diffère de `rx_of`.
+- **7.30.0 (Clément : « scans par lieu, ça manque de fonctionnalités » → tout sauf « le niveau d'une fréq partout »)** :
+  PURE `site_scan_info` (scène, date, plage, pas, bandes, `dur`), `fmt_duration`, `_fmt_ts` (import datetime LOCAL :
+  la section PURE n'a pas datetime), `site_rename` (reste rangé dans sa scène) / `site_move`, `diff_spectra` (A − B
+  seulement là où B a mesuré), `scene_timeline`, `only_here` (≥ 10 dB au-dessus de la fusion des AUTRES scènes),
+  `_svg_multi` (axe coupé : bandes réunies, côte à côte, coupure grise), `SITE_COLORS`, `site_report_html` (sommaire,
+  fusion, chaque lieu + signaux + « vus seulement ici », dans le temps). Durée des scans : `site_scan_doc(..., dur=)`
+  (gardée par `site_scans_norm`), `_mh_t0` (début du max hold global, posé au 1er balayage après remise à zéro),
+  `_site_mh_t0` (par scène, terrain). `SitesDialog` : liste (cases = afficher / fusionner, `_hidden`), `info`,
+  Renommer / Ranger dans une scène / Supprimer (`do_rename`, `do_move`), onglets `tabs` : Spectres, Comparer
+  (`cmp_a/b`, `cmp_plot`, `diff_plot`, `cmp_txt`), Signaux du lieu (`pk_thr`, `pk_only`, `pk_table`, `add_ext` =
+  émetteurs extérieurs « Ext. f » SANS statut → pris en compte par Vérifier le plan / Coordonner, sans alarme,
+  `copy_peaks`), Dans le temps (`tl_scene`, `tl_plot`, `tl_txt`) ; `report(path)` → `rapports/etude_site_*.html`.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
