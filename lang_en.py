@@ -2931,6 +2931,8 @@ EXACT = {
     'Préréglage :': 'Preset:',
     'Une bande toute prête (UHF micros, IEM, 1G4, 2,4 GHz, aéro…) ou ta propre plage.': 'A ready-made band (UHF mics, IEM, 1G4, 2.4 GHz, aero…) or your own range.',
     '＋ Nouvelle bande à balayer…': '＋ New band to sweep…',
+    'Courbes lissées (plus joli, mais plus gourmand en processeur)': 'Smoothed curves (nicer, but heavier on the processor)',
+    "Lissage (antialiasing) des courbes du spectre. Décoché (conseillé) : l'appli consomme\nbien moins de processeur, surtout avec beaucoup de points ou la rémanence.": 'Smoothing (antialiasing) of the spectrum curves. Unticked (recommended): the app uses\nmuch less processor, especially with many points or persistence.',
 }
 
 TEMPLATES = {

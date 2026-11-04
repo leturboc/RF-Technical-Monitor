@@ -10914,6 +10914,12 @@ class SettingsDialog(QtWidgets.QDialog):
         f.addRow("Unité des niveaux :", self.unit_combo)
         f.addRow(col_btn)
         f.addRow(lab_btn)
+        self.smooth_chk = QtWidgets.QCheckBox("Courbes lissées (plus joli, mais plus gourmand en processeur)")
+        self.smooth_chk.setChecked(bool(getattr(o, "smooth", False)))
+        self.smooth_chk.setToolTip("Lissage (antialiasing) des courbes du spectre. Décoché (conseillé) : l'appli consomme\n"
+                                   "bien moins de processeur, surtout avec beaucoup de points ou la rémanence.")
+        self.smooth_chk.toggled.connect(lambda *_: o.set_smooth(self.smooth_chk.isChecked()))
+        f.addRow(self.smooth_chk)
         tabs.addTab(g, "Général")
         self.keys.append("general")
         # --- Son
@@ -13490,7 +13496,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return c
 
     def _build_ui(self):
-        pg.setConfigOptions(antialias=True, background=self.theme["plot_bg"],
+        # courbes lissées (antialiasing) : joli mais gourmand (7.31.1 : 40 % de processeur chez Clément) -> coupé par
+        # défaut, ⚙ › Général › « Courbes lissées » (set_smooth)
+        pg.setConfigOptions(antialias=bool(getattr(self, "smooth", False)), background=self.theme["plot_bg"],
                             foreground=self.theme["plot_fg"])
         # --- barre du haut
         self.port_combo = QtWidgets.QComboBox()
@@ -14727,6 +14735,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logdir_lbl.setText(str(self.log_dir))
         ex = data.get("export")
         self.export_prefs = ex if isinstance(ex, dict) else {}
+        if "smooth" in data:
+            self.set_smooth(bool(data.get("smooth")))
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
             self.net_profiles = net_profiles_merge(self.net_profiles, data["net_profiles"])
         if "net_addr" in data:
@@ -14831,6 +14841,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
+            smooth=bool(getattr(self, "smooth", False)),
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
@@ -17631,7 +17642,10 @@ class MainWindow(QtWidgets.QMainWindow):
         name = next((b["name"] for b in self.scan_bands() if b["id"] == bid), "Zoom")
         self.set_status(f"Balayage « {name} » : segment {i}/{n}")
         if self.view_id in (-1, bid):
-            self.update_plot(hist=False)
+            now = time.monotonic()                 # fluidité (7.31.1) : 5 images / s au plus pendant un balayage
+            if now - getattr(self, "_partial_t", 0.0) >= 0.2:
+                self._partial_t = now
+                self.update_plot(hist=False)
 
     def on_cycle(self, dt, nb, dev=0):
         self.dev_cycle[dev] = dt
@@ -17831,6 +17845,25 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         return min(b["start"] for b in bs), max(b["stop"] for b in bs)
 
+    def set_smooth(self, on):
+        """Courbes lissées (antialiasing) du spectre, de la rémanence et des scans gardés : plus joli, plus lourd."""
+        self.smooth = bool(on)
+        pg.setConfigOptions(antialias=self.smooth)
+        items = [getattr(self, n_, None) for n_ in ("curve", "maxcurve", "refcurve")] + list(getattr(self, "_hist_items", []))
+        try:                                       # (objets factices dans les tests : rien à faire)
+            for it in items:
+                if it is None:
+                    continue
+                it.opts["antialias"] = self.smooth
+                it.curve.opts["antialias"] = self.smooth
+                it.curve.update()
+            sc = getattr(self, "sitecurve", None)
+            if sc is not None:
+                sc.opts["antialias"] = self.smooth
+                sc.update()
+        except (TypeError, AttributeError, KeyError):
+            pass
+
     def update_plot(self, hist=True):
         try:
             self._update_plot(hist)
@@ -17936,7 +17969,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         ys += [l, nan]
             if xs:
                 while len(self._hist_items) <= i:
-                    it = pg.PlotDataItem(connect="finite", antialias=False)
+                    it = pg.PlotDataItem(connect="finite", antialias=bool(getattr(self, "smooth", False)))
                     it.setClipToView(True)                 # fluidité (7.31.1) : seulement la partie visible,
                     it.setDownsampling(auto=True, method="peak")   # ~1 point par pixel, pics gardés
                     it.setZValue(-1)

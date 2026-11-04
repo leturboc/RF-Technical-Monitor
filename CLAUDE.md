@@ -543,6 +543,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   suppression ou nouveau show. `forget_site(scène)` (vide `site_mh`, `_site_mh_t0`, `_site_base`) appelé par
   `SitesDialog.delete` ; `_sites_tick` oublie les scènes qui n'existent plus ; `new_show` → `clear_show_data` : liste,
   scènes, scans par lieu, max hold des scènes, `dev_scenes`, référence (aussi `REF_PATH`) et max hold vidés.
+  Aussi en 7.31.1 : ⚙ Réglages ne fait plus `page.show()` sur les rubriques empruntées (elles s'empilaient sur
+  « Général », capture de Clément) ; **Vue** propose « ＋ Nouvelle bande à balayer… » (`NewBandDialog`,
+  `new_band_dialog`), « Gérer les bandes… » et les bandes non balayées « ○ … » (données `__add__` / `__manage__` /
+  `on:<id>` gérées en tête de `on_view_changed`, `_view_prev`, `show_band`). **Fluidité** (Clément : 40 % de processeur,
+  3 000 pts, rémanence 10) : mesuré en démo, ~80 % du temps = dessin (`drawPath`) → courbes NON lissées par défaut
+  (`self.smooth`, `set_smooth`, config `smooth`, case ⚙ › Général), rémanence en `PlotDataItem` clip + downsampling,
+  `on_partial` redessine au plus 5 fois / s ; démo : 113 % → 56 %. Clément : « ça le faisait pas avec mon autre écran »
+  et « j'ai relancé ça va mieux » (écran plus grand / mise à l'échelle = plus de pixels à dessiner).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
