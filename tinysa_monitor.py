@@ -2531,32 +2531,64 @@ def parse_scan_text(text):
     if text.startswith("//@ShureScan"):                       # .sdb3 lu par decode_text en latin-1
         return parse_sdb3(text.encode("latin-1"))
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    # --- export WSM : « Frequency;RF level (%);RF level;Memory (%);… », niveau en % de 0 (−120 dBm) à 100 (0 dBm)
+    # --- Wisycom Manager : « Freq2D;RFA;RFB;MaxRFA;MaxRFB », puis « N;début kHz;fin kHz;min;max », puis MHz et dBµV
+    #     (vrai fichier de Clément, 7.32.1) : le plus fort des 4 colonnes, converti en dBm (dBm = dBµV − 107)
+    head0 = lines[0].strip().lower().replace(" ", "") if lines else ""
+    if head0.startswith("freq2d;"):
+        F, L = [], []
+        for ln2 in lines[2:]:
+            cs = [_scan_float(c.strip().strip('"')) for c in ln2.split(";")]
+            if len(cs) < 2 or cs[0] is None:
+                continue
+            vals = [v for v in cs[1:] if v is not None]
+            if vals:
+                F.append(cs[0])
+                L.append(max(vals) - 107.0)
+        if len(F) < 5:
+            raise ValueError("fichier Wisycom reconnu, mais je ne trouve pas de points de mesure")
+        F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+        o = np.argsort(F, kind="stable")
+        return F[o], L[o], dict(fmt="wisycom", n=len(F), unit="MHz",
+                                note="scan Wisycom : le plus fort des voies A / B (et de leurs max), dBµV convertis en dBm "
+                                     "(dBm = dBµV − 107)")
+    # --- export WSM : métadonnées (RFUnit…), « Frequency;RF level (%);RF level », fréquences en kHz. Vrai fichier WSM
+    #     (Clément, 7.32.1) : colonne % vide, niveau en dB (dBµV, « RFUnit;dB ») ; ancien format : niveau en %
+    #     (0 % = −120 dBm, 100 % = 0 dBm)
+    rf_db = any(re.match(r"\s*rfunit\s*;\s*db", x.lower()) for x in lines[:40])
     for k, ln in enumerate(lines[:80]):
         cells = [c.strip().strip('"') for c in ln.split(";")]
         low = [c.lower() for c in cells]
-        if len(cells) >= 2 and low[0].startswith("freq") and any("(%)" in c for c in low[1:]):
-            cols = [i for i, c in enumerate(low) if i > 0 and "(%)" in c]
-            col = next((i for i in cols if "rf level" in low[i]), cols[0])
-            F, L = [], []
+        if len(cells) >= 2 and low[0].startswith("freq") and any("rf level" in c or "(%)" in c for c in low[1:]):
+            pcts = [i for i, c in enumerate(low) if i > 0 and "(%)" in c]
+            col_pct = next((i for i in pcts if "rf level" in low[i]), pcts[0] if pcts else None)
+            col_db = next((i for i, c in enumerate(low) if i > 0 and "rf level" in c and "(%)" not in c), None)
+            F, L, used = [], [], set()
             for ln2 in lines[k + 1:]:
                 cs = [c.strip().strip('"') for c in ln2.split(";")]
                 f = _scan_float(cs[0]) if cs else None
-                p = _scan_float(cs[col]) if len(cs) > col else None
-                if f is None or p is None:
+                v_db = _scan_float(cs[col_db]) if col_db is not None and len(cs) > col_db else None
+                v_pc = _scan_float(cs[col_pct]) if col_pct is not None and len(cs) > col_pct else None
+                if f is None or (v_db is None and v_pc is None):
                     if F:
                         break
                     continue
                 F.append(f)
-                L.append(p * 1.2 - 120.0)
+                if v_db is not None and (rf_db or v_pc is None):
+                    L.append(v_db - 107.0 if rf_db else v_db)
+                    used.add("db")
+                else:
+                    L.append(v_pc * 1.2 - 120.0)
+                    used.add("pct")
             if len(F) < 5:
                 raise ValueError("l'en-tête WSM est là, mais je ne trouve pas de points de mesure en dessous")
             F = np.asarray(F, dtype=float)
-            F = F * scan_unit_scale(F, _scan_unit_hint(ln))
+            F = F * scan_unit_scale(F, _scan_unit_hint(ln) or ("kHz" if float(np.median(F)) > 10000 else None))
             L = np.asarray(L, dtype=float)
             o = np.argsort(F, kind="stable")
-            return F[o], L[o], dict(fmt="wsm", n=len(F), unit="kHz",
-                                    note="export WSM : niveau en % converti en dBm (0 % = −120 dBm, 100 % = 0 dBm)")
+            note = ("export WSM : niveau en dB µV converti en dBm (dBm = dBµV − 107)" if "db" in used and rf_db else
+                    "export WSM : niveau lu tel quel (dBm)" if "db" in used else
+                    "export WSM : niveau en % converti en dBm (0 % = −120 dBm, 100 % = 0 dBm)")
+            return F[o], L[o], dict(fmt="wsm", n=len(F), unit="kHz", note=note)
     # --- fichier simple : « fréquence, niveau » (WWB), « fréquence;niveau », tabulations, avec ou sans en-tête
     F, L, hint, head = [], [], None, ""
     for ln in lines:
@@ -2596,13 +2628,44 @@ def parse_scan_text(text):
 
 
 def wwb_scan_text(F, L):
-    """Texte d'import de scan pour WWB : une ligne « 470.000, -98 » par point (MHz, dBm entier), sans en-tête."""
+    """Texte d'import de scan pour WWB, comme ses propres exports (vrai fichier de Clément, 7.32.1) : « 470.000,-104.531 »
+    (MHz à 3 décimales, virgule, dBm), sans en-tête."""
     out = []
     for f, l in zip(F, L):
         f, l = float(f), float(l)
         if math.isfinite(f) and math.isfinite(l):
-            out.append(f"{f:.3f}, {int(round(l))}")
-    return "\r\n".join(out) + "\r\n"
+            out.append(f"{f:.3f},{l:.3f}")
+    return "\n".join(out) + "\n"
+
+
+def scan_uniform(F, L, step):
+    """Scan remis sur une grille régulière au pas `step` MHz (WSM et Wisycom l'attendent) : le plus fort dans chaque
+    case ; une case vide prend la valeur interpolée dans une même bande, sinon (trou entre deux bandes) le plancher
+    du scan. -> (G, V)."""
+    F, L = _valid(F, L)
+    o = np.argsort(F, kind="stable")
+    F, L = F[o], L[o]
+    step = max(float(step), 1e-6)
+    lo = math.floor(F[0] / step + 1e-9) * step
+    n = int(round((F[-1] - lo) / step)) + 1
+    G = lo + np.arange(n) * step
+    V = np.full(n, -np.inf)
+    np.maximum.at(V, np.clip(np.round((F - lo) / step).astype(int), 0, n - 1), L)
+    empty = ~np.isfinite(V)
+    if empty.any():
+        cuts = [0, *scan_gaps(F), len(F)]
+        filled = np.full(n, float(np.min(L)))
+        for a, b in zip(cuts[:-1], cuts[1:]):
+            inside = (G >= F[a]) & (G <= F[b - 1])
+            filled[inside] = np.interp(G[inside], F[a:b], L[a:b])
+        V[empty] = filled[empty]
+    return G, V
+
+
+def _scan_step(F, default):
+    d = np.diff(np.sort(np.asarray(F, dtype=float)))
+    d = d[d > 1e-9]
+    return float(np.median(d)) if len(d) else default
 
 
 # ------------------------------------------------- convertisseur de scans (entrée / sortie au choix)
@@ -2703,18 +2766,32 @@ def scan_crop(F, *cols, lo=None, hi=None):
 
 
 def scan_write(F, L, fmt="wwb", sep=";", dec=",", funit="MHz", lunit="dbm", header=True, title=""):
-    """Écrit un scan : fmt « wwb » (Shure : « 470.000, -98 »), « wsm » (Sennheiser, format supposé d'après
-    les exports WSM : kHz et %), « csv » (personnalisé : séparateur, décimale, unités, en-tête)."""
+    """Écrit un scan comme les vrais exports (fichiers de Clément, 7.32) : « wwb », « wsm », « wisycom », « tti »,
+    ou « csv » (personnalisé : séparateur, décimale, unités, en-tête)."""
     if fmt == "wwb":
         return wwb_scan_text(F, L)
-    if fmt == "wsm":
-        out = ["Sennheiser Wireless Systems Manager", f"Scan : {title or 'TinySA Monitor'}", "Receiver : tinySA",
-               f"Start : {float(F[0]) * 1000:.0f} kHz", f"Stop : {float(F[-1]) * 1000:.0f} kHz", "",
-               "Frequency;RF level (%);RF level;Memory (%);Memory"]
-        for f, l in zip(F, L):
-            if math.isfinite(float(f)) and math.isfinite(float(l)):
-                pct = to_unit(float(l), "pct")
-                out.append(f"{float(f) * 1000:.0f};{pct:.1f};{float(l):.1f};{pct:.1f};{float(l):.1f}".replace(".", ","))
+    if fmt == "tti":                              # TTI (vrai fichier de Clément) : « 470.0000,-88.0 », CRLF
+        return "".join(f"{float(f):.4f},{float(l):.1f}\r\n" for f, l in zip(F, L)
+                       if math.isfinite(float(f)) and math.isfinite(float(l)))
+    if fmt == "wsm":                              # comme un vrai export WSM (Clément, 7.32.1) : kHz, niveau en dB µV
+        stp = max(1.0, round(_scan_step(F, 0.025) * 1000.0))          # pas entier en kHz
+        G, V = scan_uniform(F, L, stp / 1000.0)
+        now = title or "TinySA Monitor"
+        meta = [("Receiver", "tinySA"), ("Date/Time", ""), ("RFUnit", "dB"), ("Owner", ""), ("ScanCity", ""),
+                ("ScanComment", "TinySA Monitor"), ("ScanCountry", ""), ("ScanDescription", ""),
+                ("ScanInteriorExterior", ""), ("ScanLatitude", ""), ("ScanLongitude", ""), ("ScanName", now),
+                ("ScanPostalCode", "")]
+        out = [f"{k};{v}" for k, v in meta] + [
+            "", f"Frequency Range [kHz];{G[0] * 1000:.0f};{G[-1] * 1000:.0f};{stp:.0f}", "Frequency;RF level (%);RF level"]
+        out += [f"{g * 1000:.0f};;{int(round(v + 107.0))}" for g, v in zip(G, V)]
+        return "\r\n".join(out) + "\r\n"
+    if fmt == "wisycom":                          # comme Wisycom Manager (Clément) : MHz, 4 colonnes en dBµV
+        stp = max(0.01, math.floor(_scan_step(F, 0.1) * 100 + 1e-6) / 100)   # pas en 1/100 MHz (2 décimales)
+        G, V = scan_uniform(F, L, stp)
+        out = ["Freq2D;RFA;RFB;MaxRFA;MaxRFB", f"{len(G)};{G[0] * 1000:.2f};{G[-1] * 1000:.2f};-10.00;70.00"]
+        for g, v in zip(G, V):
+            u = f"{v + 107.0:.2f}"
+            out.append(f"{g:.2f};{u};{u};{u};{u}")
         return "\r\n".join(out) + "\r\n"
     div = {"Hz": 1e-6, "kHz": 1e-3, "MHz": 1.0, "GHz": 1e3}.get(funit, 1.0)
     nd = {"Hz": 0, "kHz": 3, "MHz": 6, "GHz": 9}.get(funit, 6)
@@ -11400,9 +11477,14 @@ class ScanConvertDialog(QtWidgets.QDialog):
         self.out_fmt = QtWidgets.QComboBox()
         self.out_fmt.addItem("Shure WWB (scan à importer)", "wwb")
         self.out_fmt.addItem("Sennheiser WSM (comme ses exports)", "wsm")
+        self.out_fmt.addItem("Wisycom Manager (comme ses exports)", "wisycom")
+        self.out_fmt.addItem("TTI (comme ses exports)", "tti")
         self.out_fmt.addItem("CSV personnalisé (EazyRF, tableur…)", "csv")
-        self.out_fmt.setToolTip("WWB : « 470.000, -98 », MHz et dBm, sans en-tête.\n"
-                                "WSM : kHz et % comme ses exports.\n"
+        self.out_fmt.setToolTip("Comme les vrais exports de chaque logiciel :\n"
+                                "WWB : « 470.000,-104.531 » (MHz, dBm), sans en-tête.\n"
+                                "WSM : en-tête du scan, kHz, niveau en dB µV.\n"
+                                "Wisycom : « Freq2D;RFA;RFB;MaxRFA;MaxRFB », MHz, dBµV.\n"
+                                "TTI : « 470.0000,-88.0 » (MHz, dBm).\n"
                                 "CSV : à toi de choisir séparateur, décimale, unités.")
         self.out_sep, self.out_dec = QtWidgets.QComboBox(), QtWidgets.QComboBox()
         for k, t in SCAN_SEPS[1:]:
@@ -12457,9 +12539,10 @@ class SitesDialog(QtWidgets.QDialog):
         self.what.addItem("le lieu sélectionné", "one")
         self.what.setToolTip("Quoi exporter.")
         self.fmt = QtWidgets.QComboBox()
-        for k, t in (("wwb", "Shure WWB (.csv)"), ("wsm", "Sennheiser WSM (.csv)"), ("csv", "CSV MHz ; dBm")):
+        for k, t in (("wwb", "Shure WWB (.csv)"), ("wsm", "Sennheiser WSM (.csv)"), ("wisycom", "Wisycom Manager (.csv)"),
+                     ("tti", "TTI (.csv)"), ("csv", "CSV MHz ; dBm")):
             self.fmt.addItem(t, k)
-        self.fmt.setToolTip("WWB : « 470.000, -98 » sans en-tête · WSM : kHz et % · CSV : pour EazyRF, Excel…")
+        self.fmt.setToolTip("Comme les exports de chaque logiciel : WWB, WSM, Wisycom Manager, TTI · CSV : EazyRF, Excel…")
         b_exp = QtWidgets.QPushButton("💾 Exporter…")
         b_exp.setToolTip("Enregistre le scan choisi pour un logiciel de coordination.")
         b_exp.clicked.connect(lambda *_: self.export())

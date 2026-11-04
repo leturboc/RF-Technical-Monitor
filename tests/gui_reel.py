@@ -5,7 +5,7 @@ dialogues, capture des PNG et relève les exceptions Qt. Complète les smoke_tes
 
 Sous Linux il faut PySide6 + libEGL/libGL (apt install libegl1 libgl1 libxkbcommon0 fonts-noto-color-emoji).
 Ne remplace pas un essai sur Windows : sons, vrai port série, double écran et rendu natif ne sont pas testés."""
-import os, sys, tempfile, traceback, importlib.util, time
+import os, re, sys, tempfile, traceback, importlib.util, time
 import numpy as np
 if sys.platform != "win32":       # Windows : vrai rendu (le mode offscreen n'y a aucune police)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -898,7 +898,7 @@ _cd = win._conv_dlg
 opened[:] = [wsm]
 step("conv : ouvrir l'export WSM", _cd.open_files)
 check("conv : WSM reconnu", "export WSM" in _cd.src_lbl.text(), _cd.src_lbl.text())
-check("conv : aperçu WWB", _cd.preview.toPlainText().splitlines()[0].count(", ") == 1, _cd.preview.toPlainText()[:60])
+check("conv : aperçu WWB (comme un vrai export : « 470.000,-74.400 »)", re.fullmatch(r"\d+\.\d{3},-?\d+\.\d{3}", _cd.preview.toPlainText().splitlines()[0]) is not None, _cd.preview.toPlainText()[:60])
 _cd.out_fmt.setCurrentIndex(_cd.out_fmt.findData("csv"))
 _cd.out_sep.setCurrentIndex(_cd.out_sep.findData("\t"))
 _cd.out_lunit.setCurrentIndex(_cd.out_lunit.findData("dbuv"))
@@ -1382,7 +1382,7 @@ def _sites_act(d):
     d.fmt.setCurrentIndex(d.fmt.findData("wwb"))
     p_ = d.export(str(_exp))
     _t = _exp.read_text(encoding="utf-8") if p_ else ""
-    check("lieux : fusion exportée au format WWB (sans en-tête)", p_ and _t[:3].isdigit() and ", -" in _t.splitlines()[0],
+    check("lieux : fusion exportée au format WWB (sans en-tête)", p_ and _t[:3].isdigit() and ",-" in _t.splitlines()[0],
           _t[:60])
     d.range.select(480.0, 520.0)                 # plage exportée : seulement 480–520 MHz
     _p2 = d.export(str(m.Path(tmp) / "fusion_480_520.csv"))
