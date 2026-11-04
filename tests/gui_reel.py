@@ -674,13 +674,17 @@ check("diagnostic : fichier écrit avec versions, réglages, bandes", bool(_df)
       and m.APP_VER in _df[-1].read_text(encoding="utf-8") and "Bandes :" in _df[-1].read_text(encoding="utf-8"))
 check("vitesse série dans la config", win._collect_config()["baud"] == 115200)
 # 🌐 1er tinySA en réseau (kit Raspberry Pi) : choix dans la liste des ports, adresse demandée, retenue
-_gt = W.QInputDialog.getText
-W.QInputDialog.getText = staticmethod(lambda *a, **k: ("tinysa-sac.local", True))
+def _net_act(d):                         # la fenêtre des adresses : on ajoute le Pi et on le prend pour le 1er tinySA
+    d.add_row("Pi", "tinysa-sac.local")
+    d.table.setCurrentCell(d.table.rowCount() - 1, 1)
+    d.use(0)
+    return "reject"
 _ni = win.port_combo.findData(win.NET_ITEM)
 check("ports : entrée « 🌐 tinySA en réseau… » en bas", _ni == win.port_combo.count() - 1, str(_ni))
 win.port_combo.setCurrentIndex(_ni)
+DLG_ACTION[0] = _net_act
 step("choisir « tinySA en réseau »", lambda: win._port_chosen())
-W.QInputDialog.getText = _gt
+DLG_ACTION[0] = "reject"
 check("réseau : adresse du Pi = 1er tinySA", win.port1() == "socket://tinysa-sac.local:5025" and win.port_net
       and "tinysa-sac.local" in win.port_combo.currentText(), str(win.port1()))
 check("réseau : gardé dans la config", win._collect_config()["net_addr"] == "tinysa-sac.local"
@@ -688,7 +692,7 @@ check("réseau : gardé dans la config", win._collect_config()["net_addr"] == "t
 shot(win, "port_reseau")
 win.refresh_ports()
 check("réseau : toujours en tête après ⟳", win.port1() == "socket://tinysa-sac.local:5025")
-win.port_net, win.net_addr = False, ""
+win.port_net, win.net_addr, win.net_profiles = False, "", []
 win.refresh_ports()
 check("réseau : retour à l'USB", not str(win.port1() or "").startswith("socket://"), str(win.port1()))
 check("version affichée (barre d'état)", m.APP_VER in win.ver_lbl.text() and win.ver_lbl.isVisible())
@@ -1055,6 +1059,51 @@ if win._rescue_dlg:
     _rd.im_combo.setCurrentIndex(_rd.im_combo.findData("2tx")); _rd.search(); wait(200)
     check("secours : « 2 TX seulement » cherche aussi", _rd.table.rowCount() >= 1, _rd.msg.text())
     shot(_rd, "rescue")
+# 🌐 adresses réseau enregistrées (le Pi change d'IP selon le Wi-Fi) : test sur un vrai serveur TCP local
+import socket as _so
+_srv = _so.socket(); _srv.bind(("127.0.0.1", 0)); _srv.listen(4)
+_port = _srv.getsockname()[1]
+_old_net = (win.net_addr, win.port_net, list(win.net_profiles), dict(win.dev2))
+win.net_profiles = []
+_nd = m.NetProfilesDialog(win)
+_nd.add_row("Pi · maison", f"127.0.0.1:{_port}")
+_nd.add_row("Pi · festival", "127.0.0.1:1")              # rien n'écoute sur le port 1
+_nd.add_row("", "pas une adresse !")
+_nd.show(); wait(200)
+_nd.test(); wait(200)
+check("réseau : le relais qui répond est vu", _nd.table.item(0, 2).text().startswith("✔"), _nd.table.item(0, 2).text())
+check("réseau : celui qui ne répond pas aussi", _nd.table.item(1, 2).text().startswith("✖"), _nd.table.item(1, 2).text())
+_nd.table.setCurrentCell(0, 1)
+check("réseau : utilisé pour le 1er tinySA", _nd.use(0) and win.port_net and win.net_addr == f"127.0.0.1:{_port}"
+      and win.port1() == f"socket://127.0.0.1:{_port}", str(win.port1()))
+_nd.table.setCurrentCell(1, 1)
+check("réseau : utilisé pour le 2ᵉ tinySA", _nd.use(1) and win.dev2["addr"] == "127.0.0.1:1" and win.dev2["on"])
+shot(_nd, "tinysa_reseau")
+_nd.accept(); wait(200)
+check("réseau : adresses valides gardées (l'illisible écartée)", [p_["name"] for p_ in win.net_profiles]
+      == ["Pi · maison", "Pi · festival"], str(win.net_profiles))
+_items = [win.port_combo.itemText(i) for i in range(win.port_combo.count())]
+check("réseau : chaque adresse dans la liste des ports, la choisie en tête", _items[0].startswith("🌐 Pi · maison")
+      and any("Pi · festival" in t for t in _items), str(_items))
+win.port_combo.setCurrentIndex(next(i for i, t in enumerate(_items) if "Pi · festival" in t))
+win._port_chosen()
+check("réseau : choisir une adresse dans la liste suffit", win.net_addr == "127.0.0.1:1" and win.port_net)
+check("réseau : dans la liste du 2ᵉ tinySA", any("Pi · maison" in win.dev2_addr.itemText(i)
+                                                for i in range(win.dev2_addr.count())))
+_cfg = win._collect_config()
+_doc = m.show_doc(_cfg, {}, None, m.APP_VER)
+check("réseau : adresses + tinySA choisis dans le show", len(_doc["show"]["net_profiles"]) == 2
+      and _doc["show"]["net_addr"] == "127.0.0.1:1" and _doc["show"]["dev2"]["addr"] == "127.0.0.1:1")
+win.net_profiles = [dict(name="Pi · maison", addr="10.9.9.9")]
+win._apply_config(m.show_apply(win._collect_config(), _doc))
+check("réseau : ouvrir le show remet ses adresses (fusionnées avec celles du PC)",
+      [(p_["name"], p_["addr"]) for p_ in win.net_profiles] == [("Pi · maison", f"127.0.0.1:{_port}"),
+                                                                 ("Pi · festival", "127.0.0.1:1")], str(win.net_profiles))
+_srv.close()
+win.net_addr, win.port_net, win.net_profiles = _old_net[0], _old_net[1], _old_net[2]
+win.dev2_addr.setEditText(_old_net[3]["addr"]); win.dev2_chk.setChecked(_old_net[3]["on"]); win._read_dev2()
+win.refresh_ports(); win._dev2_ports(); win.port_combo.setCurrentIndex(0)
+
 # ⚙ Réglages : onglets, sortie audio, volume (appliqué tout de suite), sons joués sans planter
 def _set_act(d):
     check("⚙ réglages : 9 rubriques (seuils, bandes, mesure, 2ᵉ tinySA, pays, général, son, fichiers, connexions)",

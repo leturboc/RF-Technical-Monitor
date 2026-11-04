@@ -344,7 +344,8 @@ doc = ns["show_doc"](cfg_full, meta, [([470.0, 471.0], [-100.04, -99.0])], "7.1"
 check("show : format", (doc["format"], doc["version"], doc["app"]), ("tinysa-show", 1, "7.1"))
 check("show : contient les fréquences, scènes, bandes, seuils, noms de position",
       all(k in doc["show"] for k in ("watch", "scenes", "bands", "thr", "country", "dev_names")), True)
-check("show : PAS les préférences du logiciel", [k for k in ("theme", "log_dir", "web", "dev2", "markers") if k in doc["show"]], [])
+check("show : PAS les préférences du logiciel", [k for k in ("theme", "log_dir", "web", "markers") if k in doc["show"]], [])
+check("show : le 2ᵉ tinySA (adresse réseau) suit le show (demande de Clément 7.31)", "dev2" in doc["show"], True)
 check("show : courbe de référence arrondie", doc["ref"], [dict(f=[470.0, 471.0], l=[-100.0, -99.0])])
 back = ns["read_show"](_json.dumps(doc))
 check("show : relu à l'identique", (back["meta"], back["show"], back["ref"]),
@@ -724,6 +725,20 @@ ok("fusion de scans à plusieurs bandes : rien d'inventé entre 520 et 2400 MHz"
    not np.any((Fm2_ > 520.1) & (Fm2_ < 2399.9)), str(Fm2_[(Fm2_ > 520.1) & (Fm2_ < 2399.9)][:5]))
 ok("fusion de scans à plusieurs bandes : le trou reste un trou au tracé", np.isnan(ns["gap_nan"](Fm2_, Lm2_)[1]).sum() == 1)
 check("trous : scan d'une seule bande -> aucun", list(ns["scan_gaps"](Fa_)), [])
+# --- 🌐 adresses réseau enregistrées (le Pi change d'IP selon le Wi-Fi)
+np_ = ns["net_profiles_norm"]([dict(name="Pi maison", addr="192.168.1.20"), dict(name="", addr="1.2.3.4"),
+                               dict(name="Pi festival", addr="10.0.0.5:6000"), dict(name="USB", addr="COM4"),
+                               dict(name="Pi maison", addr="tinysa-sac.local"), "x"])
+check("adresses : valides, noms uniques (le dernier gagne)", [(d["name"], d["addr"]) for d in np_],
+      [("Pi festival", "10.0.0.5:6000"), ("Pi maison", "tinysa-sac.local")])
+mg_ = ns["net_profiles_merge"](np_, [dict(name="Pi festival", addr="10.0.0.9"), dict(name="Pi hotspot", addr="172.20.10.2")])
+check("adresses du show fusionnées (le show gagne à nom égal)", [(d["name"], d["addr"]) for d in mg_],
+      [("Pi maison", "tinysa-sac.local"), ("Pi festival", "10.0.0.9"), ("Pi hotspot", "172.20.10.2")])
+check("hôte et port", [ns["net_host_port"](x) for x in ("192.168.1.20", "pi.local:6000", "socket://10.0.0.1:5025", "COM4")],
+      [("192.168.1.20", 5025), ("pi.local", 6000), ("10.0.0.1", 5025), None])
+check("nom d'une adresse enregistrée", (ns["net_profile_name"](mg_, "10.0.0.9:5025"), ns["net_profile_name"](mg_, "1.1.1.1")),
+      ("Pi festival", ""))
+check("adresses et tinySA en réseau dans les shows", all(k in ns["SHOW_KEYS"] for k in ("net_profiles", "net_addr", "dev2")), True)
 # --- 📍 gestion des scans gardés, comparaison, dans le temps, rapport d'étude de site
 sd_ = ns["site_scan_doc"]
 A_ = sd_("Grande scène", Fu_, Lu_, 1_700_000_000.0, dur=600)

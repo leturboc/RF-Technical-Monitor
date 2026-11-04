@@ -2894,6 +2894,32 @@ EXACT = {
     'Étude de site': 'Site survey',
     '＋ Ajouter comme émetteurs extérieurs (la coordination les évite)': '＋ Add as outside transmitters (coordination avoids them)',
     "📄 Rapport d'étude de site…": '📄 Site survey report…',
+    'Adresse': 'Address',
+    'Choisis une ligne avec une adresse réseau valide (ex. 192.168.1.42).': 'Pick a row with a valid network address (e.g. 192.168.1.42).',
+    "Double-clic pour modifier le nom ou l'adresse (ex. 192.168.1.42, 10.0.0.5:5025, tinysa-sac.local).": 'Double-click to edit the name or the address (e.g. 192.168.1.42, 10.0.0.5:5025, tinysa-sac.local).',
+    'Essaie de joindre le relais à chaque adresse (celles choisies, ou toutes) : « répond » = le\nPi est allumé, sur ce réseau, et son relais tourne.': 'Tries to reach the relay at each address (the chosen ones, or all): “answers” = the\nPi is on, on this network, and its relay is running.',
+    'Le 1er tinySA (liste des ports en haut) passe sur cette adresse.': 'The 1st tinySA (port list at the top) switches to this address.',
+    'Le 1er tinySA est en USB (ou pas encore choisi).': 'The 1st tinySA is on USB (or not chosen yet).',
+    'Le 2ᵉ tinySA (⚙ Réglages › 2ᵉ tinySA) passe sur cette adresse et est activé.': 'The 2nd tinySA (⚙ Settings › 2nd tinySA) switches to this address and is turned on.',
+    "Le Raspberry Pi (ou l'autre PC) n'a pas la même adresse sur chaque Wi-Fi : enregistre-en une par réseau (« Pi · maison », « Pi · festival », « Pi · partage du téléphone »…) et choisis la bonne en un clic, dans la liste des ports en haut ou ici. Astuce : le nom": 'The Raspberry Pi (or the other PC) does not have the same address on every Wi-Fi: save one per network (“Pi · home”, “Pi · festival”, “Pi · phone hotspot”…) and pick the right one in one click, in the port list at the top or here. Tip: the name',
+    "marche sur la plupart des réseaux, quelle que soit l'IP (pas sur tous : certains Wi-Fi d'événement le bloquent, d'où les adresses de secours).": 'works on most networks, whatever the IP (not on all of them: some event Wi-Fi networks block it, hence the backup addresses).',
+    "Le Raspberry Pi change d'adresse selon le Wi-Fi : une adresse par réseau, à tester et choisir en un clic.": 'The Raspberry Pi changes address with the Wi-Fi: one address per network, to test and pick in one click.',
+    'Les adresses réseau du relais (Raspberry Pi, autre PC), une par Wi-Fi : ajouter, tester,\nchoisir pour le 1er ou le 2ᵉ tinySA.': 'The network addresses of the relay (Raspberry Pi, other PC), one per Wi-Fi: add, test,\npick for the 1st or the 2nd tinySA.',
+    'Nouvelle adresse (le Pi sur un autre Wi-Fi).': 'New address (the Pi on another Wi-Fi).',
+    'Pi': 'Pi',
+    "Supprime l'adresse sélectionnée.": 'Deletes the selected address.',
+    'Test': 'Test',
+    'Utiliser pour le 1er tinySA': 'Use for the 1st tinySA',
+    'Utiliser pour le 2ᵉ tinySA': 'Use for the 2nd tinySA',
+    'adresse illisible': 'unreadable address',
+    'ne répond pas': 'no answer',
+    'nom introuvable sur ce réseau': 'name not found on this network',
+    'répond': 'answers',
+    '🌐 Adresses enregistrées…': '🌐 Saved addresses…',
+    '🌐 tinySA en réseau : adresses enregistrées…': '🌐 Network tinySA: saved addresses…',
+    '🔌 Tester': '🔌 Test',
+    "Arrête puis relance la surveillance pour s'y connecter.": 'Stop then restart monitoring to connect to it.',
+    "▶ Démarrer pour s'y connecter.": '▶ Start to connect to it.',
 }
 
 TEMPLATES = {
@@ -3293,6 +3319,10 @@ TEMPLATES = {
     'Au moins {} dB plus forts que partout ailleurs : un émetteur proche de ce lieu.': 'At least {} dB stronger than anywhere else: a transmitter close to this place.',
     '{} : {} scans, du {} au {}': '{}: {} scans, from {} to {}',
     '… et {} autres.': '… and {} more.',
+    '1er tinySA en ce moment : {}': '1st tinySA right now: {}',
+    "🌐 1er tinySA : {} ({}). ▶ Démarrer pour s'y connecter.": '🌐 1st tinySA: {} ({}). ▶ Start to connect to it.',
+    '1er tinySA → {} ({}).': '1st tinySA → {} ({}).',
+    '2ᵉ tinySA → {} ({}).': '2nd tinySA → {} ({}).',
 }
 
 SAME_TEMPLATES = [
@@ -3372,6 +3402,9 @@ SAME_TEMPLATES = [
     'etude_site_{}.html',
     "<rect x='{}' y='{}' width='{}' height='{}' fill='#eef1f7'/>",
     "<text x='{}' y='{}' class='ax' text-anchor='{}'>{}</text>",
+    ' ({} ms)',
+    'Pi {}',
+    '{} / {} {}',
 ]
 
 # Page web (téléphone) : remplacements de morceaux exacts dans WEB_PAGE (HTML + JavaScript), dans l'ordre.
