@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.31.0"
+APP_VER = "7.31.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -10485,6 +10485,7 @@ class SitesDialog(QtWidgets.QDialog):
             return
         name = it.data(Qt.ItemDataRole.UserRole)
         self.owner.site_scans = [d for d in self.owner.site_scans if d["name"] != name]
+        self.owner.forget_site(name)               # sinon le max hold en mémoire de cette scène le recrée 30 s après
         self.fill()
         self.owner.update_site_curve()
 
@@ -14931,14 +14932,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def new_show(self):
         r = QtWidgets.QMessageBox.question(
-            self, APP_NAME, "Nouveau show : la liste de fréquences, les scènes et les groupes sont vidés.\n"
+            self, APP_NAME, "Nouveau show : la liste de fréquences, les scènes, les groupes, les scans par lieu, la courbe "
+                            "de référence et le max hold sont vidés.\n"
                             "Les bandes, statuts et seuils sont gardés comme point de départ.\n"
                             "Pense à enregistrer le show en cours avant (Ctrl+S). Continuer ?")
         if r != QtWidgets.QMessageBox.StandardButton.Yes:
             return
+        self.clear_show_data()
+
+    def clear_show_data(self):
+        """Nouveau show : tout ce qui appartient au show précédent part (liste, scènes, scans par lieu ET leur max hold
+        en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
+        sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False)
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[])
+        for k in list(self.site_mh):
+            self.forget_site(k)
+        self.dev_scenes = {d: [] for d in self.dev_scenes}
+        data["dev_scenes"] = {}
         self._apply_config(data)
+        self.site_scans = []
+        self._set_ref([])
+        try:
+            REF_PATH.unlink()
+        except Exception:  # noqa: BLE001
+            pass
+        self.reset_max()
+        self.reeval()
+        self.update_site_curve()
         self.show_meta = {k: "" for k in SHOW_META}
         self.show_path = ""
         self.update_title()
@@ -16139,11 +16160,19 @@ class MainWindow(QtWidgets.QMainWindow):
         o = np.argsort(F)
         return F[o], L[o]
 
+    def forget_site(self, site):
+        """Oublie le max hold EN MÉMOIRE d'une scène (sinon _sites_tick recrée son scan gardé 30 s plus tard)."""
+        self.site_mh.pop(site, None)
+        self._site_mh_t0.pop(site, None)
+        self._site_base.pop(site, None)
+
     def _sites_tick(self, now):
         """Toutes les 30 s : le max hold de chaque lieu est gardé tout seul (fusionné au scan déjà gardé)."""
         if now < self._sites_next or not self.site_mh:
             return
         self._sites_next = now + 30.0
+        for site in [s_ for s_ in self.site_mh if self.scene_by_name(s_) is None]:
+            self.forget_site(site)               # scène supprimée (ou nouveau show) : son scan ne revient pas
         for site, bands in self.site_mh.items():
             segs = sorted(bands.values(), key=lambda x: float(x[0][0]))
             F, L = np.concatenate([x[0] for x in segs]), np.concatenate([x[1] for x in segs])

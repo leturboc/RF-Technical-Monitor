@@ -1104,6 +1104,29 @@ win.net_addr, win.port_net, win.net_profiles = _old_net[0], _old_net[1], _old_ne
 win.dev2_addr.setEditText(_old_net[3]["addr"]); win.dev2_chk.setChecked(_old_net[3]["on"]); win._read_dev2()
 win.refresh_ports(); win._dev2_ports(); win.port_combo.setCurrentIndex(0)
 
+# 🧹 retour de Clément 7.31 : « nouveau show, un scan reste sur le spectre alors que Scans par lieu est vide »
+win.ensure_group("Plateau X", "")
+_Fz, _Lz = np.linspace(470.0, 694.0, 500), np.full(500, -95.0)
+win.site_mh["Plateau X"] = {999: (np.asarray(_Fz), np.asarray(_Lz))}       # max hold en mémoire d'une scène
+win.site_scans.append(m.site_scan_doc("Plateau X", _Fz, _Lz, time.time()))
+_sdz = m.SitesDialog(win)
+_sdz.fill(select="Plateau X"); _sdz.delete(); _sdz.reject()
+win._sites_next = 0; win._sites_tick(time.time() + 1)
+check("scan supprimé : il ne revient pas 30 s plus tard", not any(d_["name"] == "Plateau X" for d_ in win.site_scans),
+      str([d_["name"] for d_ in win.site_scans]))
+win.site_mh["Plateau X"] = {999: (np.asarray(_Fz), np.asarray(_Lz))}
+_saved_show = (list(win.watch), [dict(s_) for s_ in win.scenes], list(win.site_scans), win._ref_F, win._ref_L)
+win.site_scans.append(m.site_scan_doc("Ancien lieu", _Fz, _Lz, time.time()))
+win._set_ref([(_Fz, _Lz)])
+win.update_site_curve()
+win.clear_show_data()
+win._sites_next = 0; win._sites_tick(time.time() + 1)
+check("nouveau show : plus aucun scan par lieu, ni en mémoire", not win.site_scans and not win.site_mh, str(win.site_scans))
+check("nouveau show : courbe des scans et référence effacées du spectre",
+      (win.sitecurve.getData()[0] is None or len(win.sitecurve.getData()[0]) == 0) and win._ref_F is None)
+win.watch, win.scenes, win.site_scans = _saved_show[0], _saved_show[1], _saved_show[2]
+win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
+
 # ⚙ Réglages : onglets, sortie audio, volume (appliqué tout de suite), sons joués sans planter
 def _set_act(d):
     check("⚙ réglages : 9 rubriques (seuils, bandes, mesure, 2ᵉ tinySA, pays, général, son, fichiers, connexions)",

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.31.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.31.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -538,6 +538,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   sur `finished`), `open_net_profiles` (entrée `NET_ITEM` des ports, ⚙ › Connexions, ☰ Plus › 🔗, bouton à côté de
   l'adresse du 2ᵉ), `use_net_addr`. `refresh_ports` liste chaque adresse « 🌐 nom — adresse » (la choisie en tête),
   `_dev2_ports` aussi (« adresse  · nom », relu par `_read_dev2`). L'ancienne saisie QInputDialog a disparu.
+- **7.31.1 (Clément : « nouveau show, un scan reste sur le spectre alors que Scans par lieu est vide »)** : `_sites_tick`
+  réenregistrait toutes les 30 s le max hold EN MÉMOIRE (`site_mh`) de chaque scène comme scan gardé, même après
+  suppression ou nouveau show. `forget_site(scène)` (vide `site_mh`, `_site_mh_t0`, `_site_base`) appelé par
+  `SitesDialog.delete` ; `_sites_tick` oublie les scènes qui n'existent plus ; `new_show` → `clear_show_data` : liste,
+  scènes, scans par lieu, max hold des scènes, `dev_scenes`, référence (aussi `REF_PATH`) et max hold vidés.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
