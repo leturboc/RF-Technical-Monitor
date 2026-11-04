@@ -1,0 +1,37 @@
+Receiver;RF 1
+Date/Time;03-06-2026 08-26-19 AM
+RFUnit;dB
+Owner;
+ScanCity;Ville
+ScanComment;
+ScanCountry;FR
+ScanDescription;
+ScanInteriorExterior;Indoor
+ScanLatitude;
+ScanLongitude;
+ScanName;Essai
+ScanPostalCode;
+
+Frequency Range [kHz];470200;470700;25
+Frequency;RF level (%);RF level
+470200;;6
+470225;;6
+470250;;6
+470275;;6
+470300;;6
+470325;;6
+470350;;6
+470375;;6
+470400;;6
+470425;;6
+470450;;40
+470475;;6
+470500;;6
+470525;;6
+470550;;6
+470575;;6
+470600;;6
+470625;;6
+470650;;6
+470675;;6
+470700;;6

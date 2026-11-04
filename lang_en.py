@@ -2953,6 +2953,31 @@ EXACT = {
     '↶ Annulé': '↶ Undone',
     '↷ Rétabli': '↷ Redone',
     '↷ Rétablir\tCtrl+Y': '↷ Redo\tCtrl+Y',
+    'Date/Time': 'Date/Time',
+    'Freq2D;RFA;RFB;MaxRFA;MaxRFB': 'Freq2D;RFA;RFB;MaxRFA;MaxRFB',
+    'Owner': 'Owner',
+    'RFUnit': 'RFUnit',
+    'Receiver': 'Receiver',
+    'ScanCity': 'ScanCity',
+    'ScanComment': 'ScanComment',
+    'ScanCountry': 'ScanCountry',
+    'ScanDescription': 'ScanDescription',
+    'ScanInteriorExterior': 'ScanInteriorExterior',
+    'ScanLatitude': 'ScanLatitude',
+    'ScanLongitude': 'ScanLongitude',
+    'ScanName': 'ScanName',
+    'ScanPostalCode': 'ScanPostalCode',
+    'freq2d;': 'freq2d;',
+    'TTI (.csv)': 'TTI (.csv)',
+    'TTI (comme ses exports)': 'TTI (like its exports)',
+    'Wisycom Manager (.csv)': 'Wisycom Manager (.csv)',
+    'Wisycom Manager (comme ses exports)': 'Wisycom Manager (like its exports)',
+    'export WSM : niveau en dB µV converti en dBm (dBm = dBµV − 107)': 'WSM export: level in dBµV converted to dBm (dBm = dBµV − 107)',
+    'export WSM : niveau lu tel quel (dBm)': 'WSM export: level read as is (dBm)',
+    'fichier Wisycom reconnu, mais je ne trouve pas de points de mesure': 'Wisycom file recognised, but I find no measurement points',
+    'scan Wisycom : le plus fort des voies A / B (et de leurs max), dBµV convertis en dBm (dBm = dBµV − 107)': 'Wisycom scan: the strongest of channels A / B (and their max), dBµV converted to dBm (dBm = dBµV − 107)',
+    'Comme les vrais exports de chaque logiciel :\nWWB : « 470.000,-104.531 » (MHz, dBm), sans en-tête.\nWSM : en-tête du scan, kHz, niveau en dB µV.\nWisycom : « Freq2D;RFA;RFB;MaxRFA;MaxRFB », MHz, dBµV.\nTTI : « 470.0000,-88.0 » (MHz, dBm).\nCSV : à toi de choisir séparateur, décimale, unités.': "Like each software's real exports:\nWWB: “470.000,-104.531” (MHz, dBm), no header.\nWSM: scan header, kHz, level in dBµV.\nWisycom: “Freq2D;RFA;RFB;MaxRFA;MaxRFB”, MHz, dBµV.\nTTI: “470.0000,-88.0” (MHz, dBm).\nCSV: you choose separator, decimal mark, units.",
+    'Comme les exports de chaque logiciel : WWB, WSM, Wisycom Manager, TTI · CSV : EazyRF, Excel…': "Like each software's exports: WWB, WSM, Wisycom Manager, TTI · CSV: EazyRF, Excel…",
 }
 
 TEMPLATES = {
@@ -3447,6 +3472,7 @@ SAME_TEMPLATES = [
     ' ({} ms)',
     'Pi {}',
     '{} / {} {}',
+    'Frequency Range [kHz];{};{};{}',
 ]
 
 # Page web (téléphone) : remplacements de morceaux exacts dans WEB_PAGE (HTML + JavaScript), dans l'ordre.

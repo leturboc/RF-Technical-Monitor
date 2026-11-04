@@ -600,6 +600,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   int16 **big-endian** / 10 = dBm), `@Extended:` (Band, Channel, Creator), `@End`. PURE `parse_sdb3` (plusieurs
   balayages → max), appelé par `parse_scan_text` (decode_text lit ce fichier en latin-1 pour retrouver les octets).
   CRC non vérifié ; un fichier à plusieurs courbes / plusieurs balayages jamais vu en vrai.
+- **Vrais scans envoyés par Clément (7.32, fichiers PAS dans le dépôt, structures recopiées dans `tests/data/*_essai.csv`)** :
+  WWB `470.000,-104.531` (LF, sans en-tête) ; TTI `470.0000,-88.0` (CRLF) ; **WSM réel** = métadonnées (`Receiver;…`,
+  `Date/Time;…`, `RFUnit;dB`, Owner, ScanCity…, `ScanName`, `ScanPostalCode`), ligne vide, `Frequency Range [kHz];début;
+  fin;pas`, `Frequency;RF level (%);RF level`, puis `kHz;;dBµV entier` (colonne % VIDE — l'ancien format nikharju en %
+  est toujours lu) ; **Wisycom Manager** = `Freq2D;RFA;RFB;MaxRFA;MaxRFB`, `N;début kHz;fin kHz;-10.00;70.00`, puis
+  `MHz(2 déc);4 niveaux dBµV` (on lit le max des 4, dBm = dBµV − 107). Un « WSM » peut aussi être un simple
+  `470.2,-105`. `scan_write` : wwb / wsm / wisycom / tti identiques aux originaux (lignes de données identiques pour
+  TTI, WWB, WSM) ; `scan_uniform` (grille régulière, max par case) pour WSM (pas entier en kHz) et Wisycom (1/100 MHz).
+  **Import dans les logiciels pas vérifié** (seulement relu par nous).
 - Les formats « EazyRF / WWB / WSM » pour l'**export de listes de fréquences** sont des suppositions génériques :
   demander à Clément un vrai fichier d'import avant de les « corriger ».
 

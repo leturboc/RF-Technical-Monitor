@@ -61,14 +61,14 @@ def original_converter(text):
 
 ref = original_converter(wsm)
 mine, info = wsm_to_wwb_text(wsm)
-rl, ml = ref.split("\r\n")[:-1], mine.split("\r\n")[:-1]
+rl, ml = ref.split("\r\n")[:-1], mine.split("\n")[:-1]     # 7.32.1 : WWB comme ses vrais exports (« 470.000,-104.531 »)
 check("WSM : même nombre de lignes que le converter", len(ml), len(rl))
 check("WSM : 2721 points", len(ml), n_pts)
-check("WSM : mêmes fréquences (texte identique)", [x.split(", ")[0] for x in ml], [x.split(", ")[0] for x in rl])
-dl = [abs(int(x.split(", ")[1]) - int(y.split(", ")[1])) for x, y in zip(ml, rl)]
+check("WSM : mêmes fréquences (texte identique)", [x.split(",")[0] for x in ml], [x.split(", ")[0] for x in rl])
+dl = [abs(float(x.split(",")[1]) - int(y.split(", ")[1])) for x, y in zip(ml, rl)]
 ok(f"WSM : niveaux à ±1 dB du converter (écart max {max(dl)})", max(dl) <= 1)
-check("WSM : format de ligne", ml[0].split(", ")[0], "470.000")
-ok("WSM : la ligne a bien « 470.000, -N »", re.fullmatch(r"\d{3}\.\d{3}, -?\d+", ml[0]) is not None, ml[0])
+check("WSM : format de ligne", ml[0].split(",")[0], "470.000")
+ok("WSM : la ligne a bien « 470.000,-N.NNN » (comme un vrai export WWB)", re.fullmatch(r"\d{3}\.\d{3},-?\d+\.\d{3}", ml[0]) is not None, ml[0])
 ok("WSM : info", info["fmt"] == "wsm" and info["n"] == n_pts and "dBm" in info["note"])
 F, L, inf = parse_scan_text(wsm)
 ok("WSM : fréquences en MHz", abs(F[0] - 470.0) < 1e-9 and abs(F[-1] - (470000 + 82 * (n_pts - 1)) / 1000.0) < 1e-9, str((F[0], F[-1])))
@@ -91,13 +91,13 @@ ok("WSM : colonne « RF level (%) » choisie même en 3ᵉ position", len(Fc) ==
 
 # ================================================================ WWB : relecture de ce qu'on écrit
 w_text = wwb_scan_text(F, L)
-check("WWB : 1ʳᵉ ligne", w_text.split("\r\n")[0], f"470.000, {int(round(L[0]))}")
-check("WWB : fin de ligne CRLF", w_text.endswith("\r\n") and "\n\n" not in w_text.replace("\r\n", ""), True)
+check("WWB : 1ʳᵉ ligne (comme un vrai export WWB)", w_text.split("\n")[0], f"470.000,{L[0]:.3f}")
+check("WWB : une ligne par point, sans ligne vide", w_text.endswith("\n") and "\n\n" not in w_text, True)
 F2, L2, i2 = parse_scan_text(w_text)
-ok("WWB : relecture", len(F2) == n_pts and np.allclose(F2, F, atol=5e-4) and np.max(np.abs(L2 - L)) <= 0.5 + 1e-9, str(np.max(np.abs(L2 - L))))
+ok("WWB : relecture", len(F2) == n_pts and np.allclose(F2, F, atol=5e-4) and np.max(np.abs(L2 - L)) <= 0.001, str(np.max(np.abs(L2 - L))))
 check("WWB : format détecté simple", i2["fmt"], "simple")
 Fn, Ln = wwb_scan_text([470.0, float("nan"), 471.0], [-90.4, -80.0, float("inf")]), None
-check("WWB : valeurs invalides ignorées", Fn, "470.000, -90\r\n")
+check("WWB : valeurs invalides ignorées", Fn, "470.000,-90.400\n")
 
 # ================================================================ autres variantes de fichiers
 base = "\n".join(f"{470 + 0.2 * i:.3f}, {-100 + (i % 7)}" for i in range(50))
@@ -446,10 +446,10 @@ sw_, psc_, pst_ = ns["scan_write"], ns["parse_scan_custom"], ns["parse_scan_text
 Fc = np.array([470.0, 470.025, 470.05, 470.075, 470.1, 470.125])
 Lc = np.array([-98.0, -97.5, -60.2, -95.0, -99.9, -101.0])
 t_ = sw_(Fc, Lc, "wwb")
-ok("conv : WWB = « 470.000, -98 »", t_.splitlines()[0] == "470.000, -98", t_.splitlines()[0])
+ok("conv : WWB = « 470.000,-98.000 »", t_.splitlines()[0] == "470.000,-98.000", t_.splitlines()[0])
 F2_, L2_, i2_ = pst_(sw_(Fc, Lc, "wsm", title="Test"))
-ok("conv : WSM écrit → relu comme un export WSM, niveaux à 0,1 dB près", i2_["fmt"] == "wsm"
-   and np.allclose(F2_, Fc) and np.allclose(L2_, Lc, atol=0.15), str((i2_, L2_)))
+ok("conv : WSM écrit → relu comme un export WSM, niveaux à 0,5 dB près (dB µV entiers, comme WSM)", i2_["fmt"] == "wsm"
+   and np.allclose(F2_, Fc) and np.allclose(L2_, Lc, atol=0.51), str((i2_, L2_)))
 t3_ = sw_(Fc, Lc, "csv", sep="\t", dec=",", funit="kHz", lunit="dbuv", header=True)
 ok("conv : CSV kHz, dBµV, tabulation, virgule", t3_.splitlines()[1] == "470000,000\t9,0", t3_.splitlines()[:2])
 F3_, L3_, _ = psc_(t3_, sep="\t", fcol=0, lcol=1, funit="kHz", lunit="dbuv", dec=",")
@@ -725,6 +725,34 @@ ok("fusion de scans à plusieurs bandes : rien d'inventé entre 520 et 2400 MHz"
    not np.any((Fm2_ > 520.1) & (Fm2_ < 2399.9)), str(Fm2_[(Fm2_ > 520.1) & (Fm2_ < 2399.9)][:5]))
 ok("fusion de scans à plusieurs bandes : le trou reste un trou au tracé", np.isnan(ns["gap_nan"](Fm2_, Lm2_)[1]).sum() == 1)
 check("trous : scan d'une seule bande -> aucun", list(ns["scan_gaps"](Fa_)), [])
+# --- vrais formats de scan envoyés par Clément (7.32.1) : WSM (dB µV), Wisycom (4 colonnes dBµV), TTI, WWB
+DD_ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+pst_ = ns["parse_scan_text"]
+Fw_, Lw_, iw_ = pst_(open(os.path.join(DD_, "wsm_reel_essai.csv"), encoding="utf-8").read())
+check("WSM réel : kHz -> MHz, dB µV -> dBm, pic à 470,450", (iw_["fmt"], round(Fw_[0], 3), round(float(Lw_[10]), 1), len(Fw_)),
+      ("wsm", 470.2, -67.0, 21))
+Fy_, Ly_, iy_ = pst_(open(os.path.join(DD_, "wisycom_essai.csv"), encoding="utf-8").read())
+check("Wisycom : ligne d'infos sautée, le plus fort des 4 colonnes, dBµV -> dBm", (iy_["fmt"], len(Fy_), round(float(Ly_[5]), 1),
+      round(float(Ly_[0]), 1)), ("wisycom", 11, -87.0, -110.0))
+Ft_, Lt_, it_ = pst_(open(os.path.join(DD_, "tti_essai.csv"), encoding="utf-8").read())
+check("TTI : MHz, dBm", (len(Ft_), float(Lt_[3])), (20, -42.0))
+F2_, L2_, _ = pst_(ns["scan_write"](Fw_, Lw_, "wisycom"))      # grille au 1/100 MHz : le pic et la plage restent
+check("écrire puis relire en wisycom : pic et plage gardés", (round(float(L2_.max()), 1), round(F2_[0], 2), round(F2_[-1], 2)),
+      (round(float(Lw_.max()), 1), 470.2, 470.7))
+for fm_ in ("wwb", "wsm", "tti", "csv"):
+    txt_ = ns["scan_write"](Fw_, Lw_, fm_, title="x")
+    F2_, L2_, i2_ = pst_(txt_)
+    ok(f"écrire puis relire en {fm_} : rien de perdu", len(F2_) == len(Fw_) and np.allclose(np.interp(Fw_, F2_, L2_), Lw_, atol=0.51),
+       f"{len(F2_)} {np.max(np.abs(np.interp(Fw_, F2_, L2_) - Lw_))}")
+check("WWB comme ses exports : « 470.000,-104.531 »", ns["scan_write"]([470.0, 470.5], [-104.531, -98.0], "wwb"),
+      "470.000,-104.531\n470.500,-98.000\n")
+check("TTI comme ses exports : « 470.0000,-88.0 » CRLF", ns["scan_write"]([470.0], [-88.0], "tti"), "470.0000,-88.0\r\n")
+wsm_ = ns["scan_write"](Fw_, Lw_, "wsm").split("\r\n")
+check("WSM comme ses exports : RFUnit dB, plage, en-tête, « kHz;;dBµV »", ("RFUnit;dB" in wsm_, wsm_[14], wsm_[15], wsm_[16]),
+      (True, "Frequency Range [kHz];470200;470700;25", "Frequency;RF level (%);RF level", "470200;;6"))
+G_, V_ = ns["scan_uniform"]([470.0, 470.1, 470.3, 600.0, 600.1], [-90, -80, -70, -60, -65], 0.1)
+ok("grille régulière : trou entre bandes au plancher, case vide interpolée", abs(V_[2] + 75) < 1e-6 and V_[100] == -90.0,
+   f"{V_[:4]} {V_[100]}")
 # --- ↶ / ↷ annuler / rétablir par instantanés
 U_ = ns["UndoStack"](limit=3)
 check("annuler : rien au départ", (U_.track("A", "a"), U_.back()), (False, None))
