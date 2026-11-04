@@ -2933,6 +2933,16 @@ EXACT = {
     '＋ Nouvelle bande à balayer…': '＋ New band to sweep…',
     'Courbes lissées (plus joli, mais plus gourmand en processeur)': 'Smoothed curves (nicer, but heavier on the processor)',
     "Lissage (antialiasing) des courbes du spectre. Décoché (conseillé) : l'appli consomme\nbien moins de processeur, surtout avec beaucoup de points ou la rémanence.": 'Smoothing (antialiasing) of the spectrum curves. Unticked (recommended): the app uses\nmuch less processor, especially with many points or persistence.',
+    'Avant tout : balayer le lieu pour voir ce qui est déjà occupé (TNT, autres\néquipes, brouilleurs). Démarre le balayage (max hold remis à zéro), ou les scans par lieu (plusieurs scènes).': 'First of all: sweep the venue to see what is already busy (DTT, other\nteams, interferers). Starts the sweep (max hold reset), or the scans by place (several stages).',
+    'Début et fin de la plage exportée.': 'Start and end of the exported range.',
+    'Plage :': 'Range:',
+    'Plage exportée :': 'Exported range:',
+    "Quelle partie du scan exporter. Une bande, la zone affichée sur le spectre, la plage d'un\nappareil (bibliothèque EazyRF), ou des valeurs à la main.": "Which part of the scan to export. A band, the area shown on the spectrum, a device's\nrange (EazyRF library), or values by hand.",
+    'Rien de mesuré dans cette plage.': 'Nothing measured in this range.',
+    'Tout le scan': 'The whole scan',
+    'À la main…': 'By hand…',
+    '▶ Scanner ici (max hold remis à zéro)': '▶ Scan here (max hold reset)',
+    '📍 Scans par lieu (plusieurs scènes, comparer, rapport)…': '📍 Scans by place (several stages, compare, report)…',
 }
 
 TEMPLATES = {
@@ -3338,6 +3348,9 @@ TEMPLATES = {
     '2ᵉ tinySA → {} ({}).': '2nd tinySA → {} ({}).',
     '＋ Bande « {} » ajoutée ({}–{} MHz) et affichée.': '＋ Band “{}” added ({}–{} MHz) and shown.',
     '○ {} (pas balayée)': '○ {} (not swept)',
+    'Bande « {} » ({}–{} MHz)': 'Band “{}” ({}–{} MHz)',
+    'Appareil {} ({}–{} MHz)': 'Device {} ({}–{} MHz)',
+    'Zone affichée sur le spectre ({}–{} MHz)': 'Area shown on the spectrum ({}–{} MHz)',
 }
 
 SAME_TEMPLATES = [

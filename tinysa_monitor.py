@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.31.1"
+APP_VER = "7.31.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2645,6 +2645,21 @@ def parse_scan_custom(text, sep="auto", fcol=0, lcol=1, funit="auto", lunit="dbm
     return F[o], L[o], dict(fmt="custom", n=len(F), unit=funit, note="")
 
 
+def scan_crop(F, *cols, lo=None, hi=None):
+    """Garde seulement [lo, hi] MHz d'un scan (et de ses colonnes de niveaux) : pour n'exporter vers EazyRF / WWB /
+    WSM que la bande utile. lo / hi None = pas de limite ; bornes inversées remises dans l'ordre.
+    -> (F, *cols) en tableaux numpy (vides si rien dans la plage)."""
+    F = np.asarray(F, dtype=float)
+    if lo is not None and hi is not None and lo > hi:
+        lo, hi = hi, lo
+    m = np.ones(len(F), dtype=bool)
+    if lo is not None:
+        m &= F >= float(lo) - 1e-9
+    if hi is not None:
+        m &= F <= float(hi) + 1e-9
+    return (F[m], *[np.asarray(c, dtype=float)[m] for c in cols])
+
+
 def scan_write(F, L, fmt="wwb", sep=";", dec=",", funit="MHz", lunit="dbm", header=True, title=""):
     """Écrit un scan : fmt « wwb » (Shure : « 470.000, -98 »), « wsm » (Sennheiser, format supposé d'après
     les exports WSM : kHz et %), « csv » (personnalisé : séparateur, décimale, unités, en-tête)."""
@@ -4266,7 +4281,9 @@ UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
 # étape, texte du bouton, bulle, menu [(texte, méthode)] (vide = clic direct sur STEP_DEFAULT)
 STEPS = (
     ("scan", "① Scanner le lieu", "Avant tout : balayer le lieu pour voir ce qui est déjà occupé (TNT, autres\n"
-     "équipes, brouilleurs). Démarre le balayage, max hold remis à zéro.", ()),
+     "équipes, brouilleurs). Démarre le balayage (max hold remis à zéro), ou les scans par lieu (plusieurs scènes).",
+     (("▶ Scanner ici (max hold remis à zéro)", "step_scan"),
+      ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"))),
     ("list", "② Mes fréquences", "Ta liste de fréquences : importer ton plan (EazyRF, WWB, WSM, Excel…), en ajouter,\n"
      "et dire pour chacune si elle doit émettre ou rester libre.",
      (("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
@@ -4276,7 +4293,6 @@ STEPS = (
     ("plan", "③ Coordonner le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
      "une remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.",
      (("🪄 Trouver N fréquences compatibles…", "open_coord"), ("🧮 Vérifier le plan…", "open_plan_check"),
-      ("📍 Scans par lieu (plusieurs scènes, fusion, export)…", "open_sites"),
       ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"))),
     ("im", "④ Intermod", "Produits d'intermodulation de tes émetteurs, ou d'où vient un signal gênant\n"
      "(d'après le spectre mesuré).", ()),
@@ -6950,11 +6966,82 @@ class PlanDialog(QtWidgets.QDialog):
 # --------------------------------------------------------------------------
 # Dialogue : export du scan en CSV
 # --------------------------------------------------------------------------
+class RangeBox(QtWidgets.QWidget):
+    """Plage de fréquences à exporter (vers EazyRF, WWB, WSM…) : tout, la zone affichée, une de mes bandes, la plage
+    d'un appareil de la bibliothèque, ou « de … à … » à la main. values() -> (lo, hi) en MHz, ou (None, None) = tout."""
+
+    def __init__(self, owner, extent=None):
+        super().__init__()
+        self.owner = owner
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.preset = QtWidgets.QComboBox()
+        self.preset.setToolTip("Quelle partie du scan exporter. Une bande, la zone affichée sur le spectre, la plage d'un\n"
+                               "appareil (bibliothèque EazyRF), ou des valeurs à la main.")
+        self.preset.addItem("Tout le scan", None)
+        try:
+            vr = owner.spec.getPlotItem().vb.viewRange()[0]
+            self.preset.addItem(f"Zone affichée sur le spectre ({vr[0]:.1f}–{vr[1]:.1f} MHz)", (float(vr[0]), float(vr[1])))
+        except Exception:  # noqa: BLE001 — pas de spectre (tests)
+            pass
+        for b in getattr(owner, "bands", []):
+            self.preset.addItem(f"Bande « {b['name']} » ({b['start']:g}–{b['stop']:g} MHz)",
+                                (float(b["start"]), float(b["stop"])))
+        for k, n, d, _w in rx_all():
+            if d.get("hi", 0) > d.get("lo", 0) > 0:
+                self.preset.addItem(f"Appareil {n} ({d['lo']:g}–{d['hi']:g} MHz)", (float(d["lo"]), float(d["hi"])))
+        self.preset.addItem("À la main…", "custom")
+        self.lo, self.hi = QtWidgets.QDoubleSpinBox(), QtWidgets.QDoubleSpinBox()
+        ext = extent or (470.0, 694.0)
+        for sp_, v in ((self.lo, ext[0]), (self.hi, ext[1])):
+            sp_.setDecimals(3)
+            sp_.setRange(0.0, 7000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setValue(v)
+            sp_.setToolTip("Début et fin de la plage exportée.")
+        self.preset.currentIndexChanged.connect(lambda *_: self._sync())
+        for sp_ in (self.lo, self.hi):
+            sp_.valueChanged.connect(lambda *_: self._manual())
+        lay.addWidget(self.preset, 1)
+        lay.addWidget(self.lo)
+        lay.addWidget(QtWidgets.QLabel("à"))
+        lay.addWidget(self.hi)
+        self._sync()
+
+    def _sync(self):
+        d = self.preset.currentData()
+        if isinstance(d, tuple):
+            for sp_, v in ((self.lo, d[0]), (self.hi, d[1])):
+                sp_.blockSignals(True)
+                sp_.setValue(v)
+                sp_.blockSignals(False)
+        for sp_ in (self.lo, self.hi):
+            sp_.setEnabled(d is not None)
+
+    def _manual(self):
+        ix = self.preset.findData("custom")
+        if self.preset.currentIndex() != ix:
+            self.preset.blockSignals(True)
+            self.preset.setCurrentIndex(ix)
+            self.preset.blockSignals(False)
+
+    def values(self):
+        if self.preset.currentData() is None:
+            return None, None
+        return self.lo.value(), self.hi.value()
+
+    def select(self, lo, hi):
+        """Choisit une plage à la main (tests, préférences)."""
+        self.preset.setCurrentIndex(self.preset.findData("custom"))
+        self.lo.setValue(lo)
+        self.hi.setValue(hi)
+
+
 class ExportScanDialog(QtWidgets.QDialog):
     def __init__(self, parent, prefs):
         super().__init__(parent)
         self.setWindowTitle("Exporter le scan en CSV")
-        self.resize(420, 300)
+        self.resize(560, 320)
         p = prefs or {}
         form = QtWidgets.QFormLayout(self)
 
@@ -6974,8 +7061,10 @@ class ExportScanDialog(QtWidgets.QDialog):
         self.dec = combo([(". (point)", "."), (", (virgule)", ",")], p.get("dec", ","))
         self.header = QtWidgets.QCheckBox("Ligne d'en-tête")
         self.header.setChecked(p.get("header", True))
+        self.range = RangeBox(parent)
         form.addRow("Contenu :", self.src)
         form.addRow("Bandes :", self.scope)
+        form.addRow("Plage :", self.range)
         form.addRow("Unité des fréquences :", self.unit)
         form.addRow("Séparateur de colonnes :", self.delim)
         form.addRow("Séparateur décimal :", self.dec)
@@ -6992,9 +7081,10 @@ class ExportScanDialog(QtWidgets.QDialog):
         form.addRow(bb)
 
     def values(self):
+        lo, hi = self.range.values()
         return dict(src=self.src.currentData(), scope=self.scope.currentData(), unit=self.unit.currentData(),
                     delim=self.delim.currentData(), dec=self.dec.currentData(),
-                    header=self.header.isChecked())
+                    header=self.header.isChecked(), lo=lo, hi=hi)
 
 
 # --------------------------------------------------------------------------
@@ -9132,6 +9222,11 @@ class ScanConvertDialog(QtWidgets.QDialog):
         xb.addLayout(R("Fréquences en :", self.out_funit, "Niveaux en :", self.out_lunit, None))
         ol.addWidget(self.out_fmt)
         ol.addWidget(self.csv_box)
+        self.range = RangeBox(owner)               # seulement la bande utile (ex. 470–608 pour EazyRF)
+        self.range.preset.currentIndexChanged.connect(lambda *_: self.reload())
+        for sp_ in (self.range.lo, self.range.hi):
+            sp_.valueChanged.connect(lambda *_: self.reload())
+        ol.addLayout(R("Plage :", self.range))
         lay.addWidget(ob)
         self.preview = QtWidgets.QPlainTextEdit()
         self.preview.setReadOnly(True)
@@ -9163,6 +9258,8 @@ class ScanConvertDialog(QtWidgets.QDialog):
         return parse_scan_text(text)
 
     def _write(self, F, L, title=""):
+        lo, hi = self.range.values() if hasattr(self, "range") else (None, None)
+        F, L = scan_crop(F, L, lo=lo, hi=hi)
         return scan_write(F, L, self.out_fmt.currentData(), self.out_sep.currentData(), self.out_dec.currentData(),
                           self.out_funit.currentData(), self.out_lunit.currentData(), self.out_hdr.isChecked(), title)
 
@@ -10160,6 +10257,8 @@ class SitesDialog(QtWidgets.QDialog):
         b_ref.setToolTip("La fusion devient la courbe de référence (seuil = référence + marge possible).")
         b_ref.clicked.connect(lambda *_: self.as_ref())
         lay.addLayout(owner._row(b_rep, None, "Exporter", self.what, self.fmt, b_exp, b_ref))
+        self.range = RangeBox(owner)
+        lay.addLayout(owner._row(None, "Plage exportée :", self.range))
         self.coord_chk = QtWidgets.QCheckBox("🪄 Coordination et fréquence de secours : éviter ce qui est occupé sur "
                                              "TOUS les lieux (fusion)")
         self.coord_chk.setChecked(o.sites_coord)
@@ -10502,6 +10601,11 @@ class SitesDialog(QtWidgets.QDialog):
         F, L, label = self._pick()
         if F is None:
             self.msg.setText("Rien à exporter (coche des lieux, ou sélectionne-en un).")
+            return None
+        lo, hi = self.range.values()
+        F, L = scan_crop(F, L, lo=lo, hi=hi)        # seulement la plage choisie (ex. la bande de tes appareils)
+        if not len(F):
+            self.msg.setText("Rien de mesuré dans cette plage.")
             return None
         fmt = self.fmt.currentData()
         if path is None:
@@ -18703,7 +18807,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not dlg.exec():
             return
         v = dlg.values()
-        self.export_prefs = v
+        self.export_prefs = {k: x for k, x in v.items() if k not in ("lo", "hi")}
         if v["scope"] == "view" and self.view_id in self.latest:
             keys = [self.view_id]
         else:
@@ -18718,7 +18822,10 @@ class MainWindow(QtWidgets.QMainWindow):
             mxs.append(mh if (mh is not None and mh.shape == l.shape) else l)
         F, LV, MX = np.concatenate(fs), np.concatenate(live), np.concatenate(mxs)
         o = np.argsort(F, kind="stable")
-        F, LV, MX = F[o], LV[o], MX[o]
+        F, LV, MX = scan_crop(F[o], LV[o], MX[o], lo=v.get("lo"), hi=v.get("hi"))     # plage choisie
+        if not len(F):
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Rien de mesuré dans cette plage.")
+            return
         cols, names = [], []
         if v["src"] in ("live", "both"):
             cols.append(LV)
