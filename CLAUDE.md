@@ -608,9 +608,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `MHz(2 déc);4 niveaux dBµV` (on lit le max des 4, dBm = dBµV − 107). Un « WSM » peut aussi être un simple
   `470.2,-105`. `scan_write` : wwb / wsm / wisycom / tti identiques aux originaux (lignes de données identiques pour
   TTI, WWB, WSM) ; `scan_uniform` (grille régulière, max par case) pour WSM (pas entier en kHz) et Wisycom (1/100 MHz).
-  **Import dans les logiciels pas vérifié** (seulement relu par nous).
+  **Retour de Clément (04/11/2026) : nos exports WWB et Wisycom s'importent bien dans EazyRF** ; import de nos WSM / TTI
+  pas vérifié.
 - Les formats « EazyRF / WWB / WSM » pour l'**export de listes de fréquences** sont des suppositions génériques :
   demander à Clément un vrai fichier d'import avant de les « corriger ».
+  Clément a envoyé un résumé d'IA Google sur les colonnes EazyRF (Zone > Groupe > Section > Appareil > Fréquence ;
+  séparateur selon la langue de Windows) et un mail de Régis (EazyRF) sur les Snapshots (4.81) : **pas des sources
+  fiables**, eazyrf.com bloqué par le proxy. Idée en attente de son feu vert : « 📸 États » façon Snapshots.
 
 ## Tests (`tests/`, à lancer depuis la racine du dépôt)
 ```
