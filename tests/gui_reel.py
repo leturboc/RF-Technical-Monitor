@@ -1127,6 +1127,34 @@ check("nouveau show : courbe des scans et référence effacées du spectre",
 win.watch, win.scenes, win.site_scans = _saved_show[0], _saved_show[1], _saved_show[2]
 win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
 
+# Vue : créer / réactiver une bande sans passer par ⚙ (demande de Clément 7.31)
+_vi = [win.view_combo.itemData(i) for i in range(win.view_combo.count())]
+check("Vue : « ＋ Nouvelle bande » et « Gérer les bandes » proposés", "__add__" in _vi and "__manage__" in _vi, str(_vi))
+def _nb_act(d):
+    d.preset.setCurrentIndex(d.preset.findText("Radio FM 87,5–108 MHz"))
+    return "accept"
+DLG_ACTION[0] = _nb_act
+_nbefore = len(win.bands)
+win.view_combo.setCurrentIndex(win.view_combo.findData("__add__"))
+DLG_ACTION[0] = "reject"
+_nb = win.bands[-1] if len(win.bands) > _nbefore else {}
+check("Vue : nouvelle bande ajoutée, balayée et affichée", _nb.get("start") == 87.5 and _nb.get("enabled")
+      and win.view_id == _nb.get("id"), f"{_nb} vue={win.view_id}")
+win.set_band_enabled(_nb["id"], False); win.refresh_view_combo()
+_ix = win.view_combo.findData(f"on:{_nb['id']}")
+check("Vue : bande pas balayée proposée « ○ … (pas balayée) »", _ix >= 0)
+win.view_combo.setCurrentIndex(_ix)
+check("Vue : la choisir la réactive et l'affiche", _nb["enabled"] and win.view_id == _nb["id"])
+_sdv = m.SettingsDialog(win); _sdv.show(); wait(200)
+_vis = [k for k, pg_ in win.set_pages.items() if pg_.isVisible()]
+check("⚙ : une seule rubrique visible à la fois (bug « Bandes » par-dessus « Général »)", _vis == ["detect"], str(_vis))
+_sdv.show_page("general"); wait(150)
+check("⚙ › Général : aucune rubrique empruntée par-dessus", not [k for k, pg_ in win.set_pages.items() if pg_.isVisible()])
+shot(_sdv, "reglages_general")
+_sdv.reject(); wait(200)
+win.bands = [b_ for b_ in win.bands if b_["id"] != _nb["id"]]; win._bands_changed(); win.refresh_view_combo()
+win.view_combo.setCurrentIndex(0)
+
 # ⚙ Réglages : onglets, sortie audio, volume (appliqué tout de suite), sons joués sans planter
 def _set_act(d):
     check("⚙ réglages : 9 rubriques (seuils, bandes, mesure, 2ᵉ tinySA, pays, général, son, fichiers, connexions)",

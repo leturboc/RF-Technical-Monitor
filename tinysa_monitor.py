@@ -10545,6 +10545,58 @@ def net_test(addr, timeout=1.5):
     return True, TR("répond") + f" ({(time.time() - t0) * 1000:.0f} ms)"
 
 
+class NewBandDialog(QtWidgets.QDialog):
+    """＋ Nouvelle bande à balayer (depuis la liste « Vue ») : un préréglage ou une plage à la main."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.setWindowTitle("Nouvelle bande à balayer")
+        lay = QtWidgets.QVBoxLayout(self)
+        f = QtWidgets.QFormLayout()
+        self.preset = QtWidgets.QComboBox()
+        self.preset.addItem("Plage à la main", None)
+        for p in BAND_PRESETS:
+            self.preset.addItem(p[0], p)
+        self.preset.setToolTip("Une bande toute prête (UHF micros, IEM, 1G4, 2,4 GHz, aéro…) ou ta propre plage.")
+        self.name = QtWidgets.QLineEdit("Ma bande")
+        self.name.setToolTip("Nom de la bande (affiché dans « Vue »).")
+        self.lo, self.hi = QtWidgets.QDoubleSpinBox(), QtWidgets.QDoubleSpinBox()
+        for sp_, v in ((self.lo, 470.0), (self.hi, 608.0)):
+            sp_.setDecimals(3)
+            sp_.setRange(0.1, 6000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setValue(v)
+            sp_.setToolTip("Début et fin de la bande.")
+        self.preset.currentIndexChanged.connect(lambda *_: self._from_preset())
+        f.addRow("Préréglage :", self.preset)
+        f.addRow("Nom :", self.name)
+        f.addRow("De :", owner._row(self.lo, "à", self.hi))
+        lay.addLayout(f)
+        note = QtWidgets.QLabel("Le pas suit le réglage ⚡ Points (Auto conseillé). La bande est balayée tout de suite.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self._step = 200.0
+
+    def _from_preset(self):
+        p = self.preset.currentData()
+        if p:
+            self.name.setText(p[0])
+            self.lo.setValue(p[1])
+            self.hi.setValue(p[2])
+            self._step = float(p[3])
+
+    def values(self):
+        lo, hi = sorted((self.lo.value(), self.hi.value()))
+        if hi - lo < 0.01:
+            hi = lo + 1.0
+        return (self.name.text().strip() or "Ma bande"), lo, hi, self._step
+
+
 class NetProfilesDialog(QtWidgets.QDialog):
     """🌐 tinySA en réseau : les adresses du relais (Raspberry Pi, autre PC) enregistrées, une par Wi-Fi ou par lieu
     (l'IP change d'un réseau à l'autre) ; chacune se choisit en un clic pour le 1er ou le 2ᵉ tinySA. Gardées sur ce PC ET
@@ -10825,8 +10877,7 @@ class SettingsDialog(QtWidgets.QDialog):
         for key, title in SETTINGS_PAGES:
             page = getattr(o, "set_pages", {}).get(key)
             if page is not None:
-                tabs.addTab(page, title)
-                page.show()
+                tabs.addTab(page, title)            # surtout pas page.show() : la page s'affichait par-dessus les autres
                 self.keys.append(key)
                 self._borrowed.append(page)
         self.finished.connect(lambda *_: self._give_back())
@@ -15669,6 +15720,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_view_combo()
         self.update_estimate()
 
+    def show_band(self, bid):
+        """Vue sur une bande (réactivée si elle n'était pas balayée)."""
+        b = next((x for x in self.bands if x["id"] == bid), None)
+        if b is None:
+            return
+        if not b["enabled"]:
+            self.set_band_enabled(bid, True)
+        self.refresh_view_combo()
+        ix = self.view_combo.findData(bid)
+        if ix >= 0:
+            self.view_combo.setCurrentIndex(ix)
+
+    def new_band_dialog(self):
+        """＋ Nouvelle bande à balayer depuis « Vue » : un préréglage ou une plage à la main, puis on l'affiche."""
+        d = NewBandDialog(self)
+        if not d.exec():
+            return None
+        name, lo, hi, step = d.values()
+        self.add_band(name, lo, hi, step)
+        bid = self.bands[-1]["id"]
+        self.show_band(bid)
+        self.set_status(f"＋ Bande « {name} » ajoutée ({lo:g}–{hi:g} MHz) et affichée.")
+        return bid
+
     def add_band(self, name, start, stop, step, enabled=True):
         self._append_band(name, start, stop, step, enabled)
         self._bands_changed()
@@ -15883,15 +15958,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view_combo.addItem("Toutes les bandes", -1)
         for b in self.scan_bands():
             self.view_combo.addItem(b["name"], b["id"])
+        off = [b for b in self.bands if not b["enabled"]]
+        if off:
+            self.view_combo.insertSeparator(self.view_combo.count())
+            for b in off:                            # bandes pas balayées : les choisir les réactive
+                self.view_combo.addItem(f"○ {b['name']} (pas balayée)", f"on:{b['id']}")
+        self.view_combo.insertSeparator(self.view_combo.count())
+        self.view_combo.addItem("＋ Nouvelle bande à balayer…", "__add__")
+        self.view_combo.addItem("Gérer les bandes…", "__manage__")
         idx = self.view_combo.findData(cur)
         self.view_combo.setCurrentIndex(max(idx, 0))
+        self._view_prev = self.view_combo.currentIndex()
         self.view_combo.blockSignals(False)
         self.on_view_changed()
 
     def on_view_changed(self, *_):
+        v = self.view_combo.currentData()
+        if isinstance(v, str):                       # entrées d'action de la liste « Vue »
+            self.view_combo.blockSignals(True)
+            self.view_combo.setCurrentIndex(max(0, getattr(self, "_view_prev", 0)))
+            self.view_combo.blockSignals(False)
+            if v == "__add__":
+                self.new_band_dialog()
+            elif v == "__manage__":
+                self.open_settings("bands")
+            elif v.startswith("on:"):
+                self.show_band(int(v[3:]))
+            return
+        self._view_prev = self.view_combo.currentIndex()
         if self._zoom is not None:
             return
-        v = self.view_combo.currentData()
         self.view_id = -1 if v is None else v
         if self.scan_follow:
             self._bump()
@@ -17840,7 +17936,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         ys += [l, nan]
             if xs:
                 while len(self._hist_items) <= i:
-                    it = pg.PlotCurveItem(connect="finite")
+                    it = pg.PlotDataItem(connect="finite", antialias=False)
+                    it.setClipToView(True)                 # fluidité (7.31.1) : seulement la partie visible,
+                    it.setDownsampling(auto=True, method="peak")   # ~1 point par pixel, pics gardés
                     it.setZValue(-1)
                     self.spec.getPlotItem().addItem(it)
                     self._hist_items.append(it)

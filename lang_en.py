@@ -2921,6 +2921,16 @@ EXACT = {
     "Arrête puis relance la surveillance pour s'y connecter.": 'Stop then restart monitoring to connect to it.',
     "▶ Démarrer pour s'y connecter.": '▶ Start to connect to it.',
     'Nouveau show : la liste de fréquences, les scènes, les groupes, les scans par lieu, la courbe de référence et le max hold sont vidés.\nLes bandes, statuts et seuils sont gardés comme point de départ.\nPense à enregistrer le show en cours avant (Ctrl+S). Continuer ?': 'New show: the frequency list, the scenes, the groups, the scans by place, the reference curve and the max hold are cleared.\nBands, statuses and thresholds are kept as a starting point.\nRemember to save the current show first (Ctrl+S). Continue?',
+    'Début et fin de la bande.': 'Start and end of the band.',
+    'Gérer les bandes…': 'Manage bands…',
+    'Le pas suit le réglage ⚡ Points (Auto conseillé). La bande est balayée tout de suite.': 'The step follows the ⚡ Points setting (Auto recommended). The band is swept right away.',
+    'Ma bande': 'My band',
+    'Nom de la bande (affiché dans « Vue »).': 'Name of the band (shown in “View”).',
+    'Nouvelle bande à balayer': 'New band to sweep',
+    'Plage à la main': 'Range by hand',
+    'Préréglage :': 'Preset:',
+    'Une bande toute prête (UHF micros, IEM, 1G4, 2,4 GHz, aéro…) ou ta propre plage.': 'A ready-made band (UHF mics, IEM, 1G4, 2.4 GHz, aero…) or your own range.',
+    '＋ Nouvelle bande à balayer…': '＋ New band to sweep…',
 }
 
 TEMPLATES = {
@@ -3324,6 +3334,8 @@ TEMPLATES = {
     "🌐 1er tinySA : {} ({}). ▶ Démarrer pour s'y connecter.": '🌐 1st tinySA: {} ({}). ▶ Start to connect to it.',
     '1er tinySA → {} ({}).': '1st tinySA → {} ({}).',
     '2ᵉ tinySA → {} ({}).': '2nd tinySA → {} ({}).',
+    '＋ Bande « {} » ajoutée ({}–{} MHz) et affichée.': '＋ Band “{}” added ({}–{} MHz) and shown.',
+    '○ {} (pas balayée)': '○ {} (not swept)',
 }
 
 SAME_TEMPLATES = [
