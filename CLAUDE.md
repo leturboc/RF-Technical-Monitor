@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.31.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.32.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -556,6 +556,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   bibliothèque avec `lo`/`hi` / à la main ; `values()` → (lo, hi) ou (None, None) ; `select`) dans `ExportScanDialog`
   (`lo`/`hi` pas gardés dans `export_prefs`), `SitesDialog.export` (« Plage exportée ») et `ScanConvertDialog._write`.
   Parcours : ① Scanner le lieu devient un menu (« ▶ Scanner ici », « 📍 Scans par lieu ») ; retiré de ③.
+- **7.32.0 (Clément : « Suppr pour enlever partout, et un undo / redo »)** : PURE `UndoStack` (track(état, sig) / back
+  / fwd / resync, limite 60). MainWindow : `undo_stack`, `UNDO_KEYS` (watch, scenes, bands, statuses), `_undo_state`
+  (JSON de `_collect_config(True)` + `site_scans` en liste ; signature = JSON + (nom, scène) des scans, PAS leurs
+  données : le scan continu des scènes ne crée pas de retour toutes les 30 s), `undo_track` (chaque seconde dans
+  `_alarm_tick`, et juste après une suppression), `_undo_restore` (collect → update → `_apply_config`, `_undo_busy`),
+  `undo` / `redo` (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z ; ☰ Plus en tête ; aussi dans `SitesDialog`). **Suppr** :
+  `del_key(widget, fn)` = filtre d'événements `_DelKeyFilter` (un QShortcut Delete n'est jamais déclenché sur les
+  vues d'éléments) sur la liste (`del_watch`), l'arbre (`delete_selected_layer`), les bandes (`del_band`, garde une
+  bande), Scans par lieu, adresses réseau. gui_reel : envoyer les touches au tableau (une fenêtre non modale laissée
+  ouverte par un test précédent peut être la fenêtre active).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

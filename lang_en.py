@@ -2943,6 +2943,16 @@ EXACT = {
     'À la main…': 'By hand…',
     '▶ Scanner ici (max hold remis à zéro)': '▶ Scan here (max hold reset)',
     '📍 Scans par lieu (plusieurs scènes, comparer, rapport)…': '📍 Scans by place (several stages, compare, report)…',
+    'Ctrl+Shift+Z': 'Ctrl+Shift+Z',
+    'Ctrl+Y': 'Ctrl+Y',
+    'Ctrl+Z': 'Ctrl+Z',
+    'Il faut garder au moins une bande.': 'At least one band must be kept.',
+    'Rien à annuler.': 'Nothing to undo.',
+    'Rien à rétablir.': 'Nothing to redo.',
+    '↶ Annuler la dernière modification\tCtrl+Z': '↶ Undo the last change\tCtrl+Z',
+    '↶ Annulé': '↶ Undone',
+    '↷ Rétabli': '↷ Redone',
+    '↷ Rétablir\tCtrl+Y': '↷ Redo\tCtrl+Y',
 }
 
 TEMPLATES = {
@@ -3351,6 +3361,10 @@ TEMPLATES = {
     'Bande « {} » ({}–{} MHz)': 'Band “{}” ({}–{} MHz)',
     'Appareil {} ({}–{} MHz)': 'Device {} ({}–{} MHz)',
     'Zone affichée sur le spectre ({}–{} MHz)': 'Area shown on the spectrum ({}–{} MHz)',
+    '{} fréquence(s) supprimée(s) · Ctrl+Z pour annuler.': '{} frequency(ies) deleted · Ctrl+Z to undo.',
+    '« {} » supprimé · Ctrl+Z pour annuler.': '“{}” deleted · Ctrl+Z to undo.',
+    '{} · encore {} retour(s) possible(s), {} à rétablir (Ctrl+Y).': '{} · {} more undo(s) possible, {} to redo (Ctrl+Y).',
+    'Bande « {} » supprimée · Ctrl+Z pour annuler.': 'Band “{}” deleted · Ctrl+Z to undo.',
 }
 
 SAME_TEMPLATES = [

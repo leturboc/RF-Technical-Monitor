@@ -1127,6 +1127,34 @@ check("nouveau show : courbe des scans et référence effacées du spectre",
 win.watch, win.scenes, win.site_scans = _saved_show[0], _saved_show[1], _saved_show[2]
 win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
 
+# ↶ / ↷ et Suppr (demande de Clément 7.32)
+win.undo_track()
+_n_w = len(win.watch)
+_names0 = [w_["name"] for w_ in win.watch]
+win.activateWindow(); win.raise_(); wait(200)
+win.watch_table.setFocus(); win.watch_table.selectRow(0); wait(100)
+QtTest.QTest.keyClick(win.watch_table, Qt.Key.Key_Delete); wait(200)
+check("Suppr dans la liste : la fréquence est supprimée", len(win.watch) == _n_w - 1, f"{_n_w} -> {len(win.watch)}")
+QtTest.QTest.keyClick(win.watch_table, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier); wait(300)
+check("Ctrl+Z : elle revient", [w_["name"] for w_ in win.watch] == _names0, str(len(win.watch)))
+QtTest.QTest.keyClick(win.watch_table, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier); wait(300)
+check("Ctrl+Y : supprimée à nouveau", len(win.watch) == _n_w - 1)
+win.undo(); wait(200)
+check("Ctrl+Z à nouveau : revenue", [w_["name"] for w_ in win.watch] == _names0)
+_st0 = win.watch[0]["status"]
+win.watch[0]["status"] = "Libre" if _st0 != "Libre" else ""
+win.undo_track()
+win.undo()
+check("annuler : un changement de statut aussi", win.watch[0]["status"] == _st0, win.watch[0]["status"])
+_nb0 = len(win.bands)
+win.add_band("Test undo", 1000.0, 1010.0, 200.0); win.undo_track()
+win.band_table.setFocus(); win.band_table.selectRow(len(win.bands) - 1)
+QtTest.QTest.keyClick(win.band_table, Qt.Key.Key_Delete); wait(200)
+check("Suppr dans les bandes", len(win.bands) == _nb0, str(len(win.bands)))
+win.undo(); wait(200)
+check("Ctrl+Z : la bande revient", len(win.bands) == _nb0 + 1 and win.bands[-1]["name"] == "Test undo")
+win.bands = [b_ for b_ in win.bands if b_["name"] != "Test undo"]; win._bands_changed(); win.undo_track()
+
 # Vue : créer / réactiver une bande sans passer par ⚙ (demande de Clément 7.31)
 _vi = [win.view_combo.itemData(i) for i in range(win.view_combo.count())]
 check("Vue : « ＋ Nouvelle bande » et « Gérer les bandes » proposés", "__add__" in _vi and "__manage__" in _vi, str(_vi))

@@ -725,6 +725,20 @@ ok("fusion de scans à plusieurs bandes : rien d'inventé entre 520 et 2400 MHz"
    not np.any((Fm2_ > 520.1) & (Fm2_ < 2399.9)), str(Fm2_[(Fm2_ > 520.1) & (Fm2_ < 2399.9)][:5]))
 ok("fusion de scans à plusieurs bandes : le trou reste un trou au tracé", np.isnan(ns["gap_nan"](Fm2_, Lm2_)[1]).sum() == 1)
 check("trous : scan d'une seule bande -> aucun", list(ns["scan_gaps"](Fa_)), [])
+# --- ↶ / ↷ annuler / rétablir par instantanés
+U_ = ns["UndoStack"](limit=3)
+check("annuler : rien au départ", (U_.track("A", "a"), U_.back()), (False, None))
+U_.track("A", "a"); U_.track("B", "b"); U_.track("C", "c")
+check("annuler : même signature = rien de nouveau", U_.track("C2", "c"), False)
+check("annuler : on revient en arrière dans l'ordre", (U_.back(), U_.back(), U_.back()), ("B", "A", None))
+check("rétablir : dans l'autre sens", (U_.fwd(), U_.fwd(), U_.fwd()), ("B", "C", None))
+U_.back(); U_.track("D", "d")
+check("une nouvelle modification efface les rétablissements", U_.fwd(), None)
+for k_ in "efghij":
+    U_.track(k_, k_)
+check("annuler : limité (pas de mémoire infinie)", len(U_.undo), 3)
+U_.resync("autre")
+check("annuler : resync ne crée pas de retour", (U_.track("j", "autre"), len(U_.undo)), (False, 3))
 # --- plage d'export d'un scan (vers EazyRF, WWB, WSM…)
 cr_ = ns["scan_crop"]
 Fc_, Lc_, Mc_ = cr_(np.linspace(400, 800, 401), np.arange(401.0), -np.arange(401.0), lo=470, hi=608)

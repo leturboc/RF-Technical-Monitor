@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.31.2"
+APP_VER = "7.32.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2643,6 +2643,46 @@ def parse_scan_custom(text, sep="auto", fcol=0, lcol=1, funit="auto", lunit="dbm
     L = np.asarray([from_unit(float(v), lunit) for v in L], dtype=float)
     o = np.argsort(F, kind="stable")
     return F[o], L[o], dict(fmt="custom", n=len(F), unit=funit, note="")
+
+
+class UndoStack:
+    """↶ / ↷ Annuler / rétablir par instantanés : track(état, signature) est appelé régulièrement ; quand la signature
+    change, l'état d'avant est mis de côté. back() / fwd() -> l'état à remettre (ou None). Après une remise, resync(sig)
+    recale la signature (l'état relu peut s'écrire un peu autrement) sans créer de nouveau retour."""
+
+    def __init__(self, limit=60):
+        self.limit = int(limit)
+        self.undo, self.redo, self.cur = [], [], None
+
+    def track(self, state, sig):
+        if self.cur is None:
+            self.cur = (sig, state)
+            return False
+        if sig == self.cur[0]:
+            return False
+        self.undo.append(self.cur)
+        del self.undo[:-self.limit]
+        self.redo.clear()
+        self.cur = (sig, state)
+        return True
+
+    def back(self):
+        if not self.undo:
+            return None
+        self.redo.append(self.cur)
+        self.cur = self.undo.pop()
+        return self.cur[1]
+
+    def fwd(self):
+        if not self.redo:
+            return None
+        self.undo.append(self.cur)
+        self.cur = self.redo.pop()
+        return self.cur[1]
+
+    def resync(self, sig):
+        if self.cur is not None:
+            self.cur = (sig, self.cur[1])
 
 
 def scan_crop(F, *cols, lo=None, hi=None):
@@ -6966,6 +7006,32 @@ class PlanDialog(QtWidgets.QDialog):
 # --------------------------------------------------------------------------
 # Dialogue : export du scan en CSV
 # --------------------------------------------------------------------------
+class _DelKeyFilter(QtCore.QObject):
+    """Suppr (ou Retour arrière) sur une liste / un tableau, hors saisie dans une cellule : appelle fn. Un filtre plutôt
+    qu'un QShortcut : les vues d'éléments gardent la touche pour elles (raccourci jamais déclenché)."""
+
+    def __init__(self, view, fn):
+        super().__init__(view)
+        self.view, self.fn = view, fn
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.Type.KeyPress and ev.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace) \
+                and not ev.modifiers() & ~Qt.KeyboardModifier.KeypadModifier:
+            st = getattr(self.view, "state", None)
+            if st is None or st() != QtWidgets.QAbstractItemView.State.EditingState:
+                self.fn()
+                return True
+        return False
+
+
+def del_key(widget, fn):
+    """Touche Suppr sur une liste / un tableau : appelle fn (seulement quand ce widget a le focus)."""
+    f = _DelKeyFilter(widget, fn)
+    widget.installEventFilter(f)
+    widget._del_filter = f                       # gardé en vie avec le widget
+    return f
+
+
 class RangeBox(QtWidgets.QWidget):
     """Plage de fréquences à exporter (vers EazyRF, WWB, WSM…) : tout, la zone affichée, une de mes bandes, la plage
     d'un appareil de la bibliothèque, ou « de … à … » à la main. values() -> (lo, hi) en MHz, ou (None, None) = tout."""
@@ -10136,6 +10202,10 @@ class SitesDialog(QtWidgets.QDialog):
         self.lst.setToolTip("Coche les scans à afficher et à fusionner ; clique un scan pour voir ses infos et ses signaux.")
         self.lst.itemChanged.connect(lambda *_: self.redraw())
         self.lst.currentItemChanged.connect(lambda *_: self._sel_changed())
+        del_key(self.lst, self.delete)             # Suppr = supprimer le scan sélectionné
+        for seq, fn in (("Ctrl+Z", o.undo), ("Ctrl+Y", o.redo), ("Ctrl+Shift+Z", o.redo)):
+            QtGui.QShortcut(QtGui.QKeySequence(seq), self).activated.connect(
+                lambda *_, fn=fn: (fn(), self.fill(), self.msg.setText(o.stat_lbl.text())))
         left.addWidget(self.lst, 1)
         self.info = QtWidgets.QLabel("")
         self.info.setWordWrap(True)
@@ -10587,6 +10657,8 @@ class SitesDialog(QtWidgets.QDialog):
         self.owner.forget_site(name)               # sinon le max hold en mémoire de cette scène le recrée 30 s après
         self.fill()
         self.owner.update_site_curve()
+        self.owner.undo_track()
+        self.msg.setText(f"« {name} » supprimé · Ctrl+Z pour annuler.")
 
     def _pick(self):
         if self.what.currentData() == "merge":
@@ -10730,6 +10802,7 @@ class NetProfilesDialog(QtWidgets.QDialog):
         self.table.setToolTip("Double-clic pour modifier le nom ou l'adresse (ex. 192.168.1.42, 10.0.0.5:5025, "
                               "tinysa-sac.local).")
         lay.addWidget(self.table, 1)
+        del_key(self.table, self.del_row)
         b_add = QtWidgets.QPushButton("＋ Ajouter")
         b_add.setToolTip("Nouvelle adresse (le Pi sur un autre Wi-Fi).")
         b_add.clicked.connect(lambda *_: self.add_row())
@@ -13155,6 +13228,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sel_items = None                 # surbrillance des fréquences choisies dans la liste
         self.scan_follow = False               # ne balayer que la bande affichée dans « Vue »
         self.sound = SoundOut()                # sons de l'appli sur la sortie audio choisie (⚙ Réglages › Son)
+        self.undo_stack = UndoStack()            # ↶ / ↷ (Ctrl+Z / Ctrl+Y) : liste, scènes, bandes, statuts, scans
         self.alarms.repeat_s = float(self.sound.cfg["repeat"])
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
@@ -13636,6 +13710,9 @@ class MainWindow(QtWidgets.QMainWindow):
         sc_save.activated.connect(lambda *_: self.save_show())
         sc_lc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
         sc_lc.activated.connect(lambda *_: self.open_linecheck())
+        for seq, fn in (("Ctrl+Z", lambda *_: self.undo()), ("Ctrl+Y", lambda *_: self.redo()),
+                        ("Ctrl+Shift+Z", lambda *_: self.redo())):
+            QtGui.QShortcut(QtGui.QKeySequence(seq), self).activated.connect(fn)
         sc_set = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+,"), self)
         sc_set.activated.connect(lambda *_: self.open_settings())
         prof_btn.setMenu(pmenu)
@@ -13674,6 +13751,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.more_menu = QtWidgets.QMenu(more_btn)
         more_btn.setMenu(self.more_menu)
         mm = self.more_menu
+        mm.addAction("↶ Annuler la dernière modification\tCtrl+Z").triggered.connect(lambda *_: self.undo())
+        mm.addAction("↷ Rétablir\tCtrl+Y").triggered.connect(lambda *_: self.redo())
         mm.addSection("① Préparer : liste, plan, intermod")
         submenu(mm, "📋 Liste de fréquences", (
             ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", lambda *_: self.open_scan_add()),
@@ -14479,6 +14558,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
         self._build_docks(ftab, ltab, self.wf_box, center)
+        for wd_, fn_ in ((self.watch_table, self.del_watch), (self.layer_tree, self.delete_selected_layer),
+                         (self.band_table, self.del_band)):
+            del_key(wd_, fn_)                      # Suppr = supprimer la sélection (Ctrl+Z pour revenir)
         self._install_tips()
         # emojis seulement sur les boutons clés (7.28, Clément : « trop fouillis ») : les secondaires en texte seul
         for b in getattr(self, "_plain_btns", []):
@@ -15873,11 +15955,16 @@ class MainWindow(QtWidgets.QMainWindow):
         r = self.band_table.currentRow()
         if r < 0 or r >= len(self.bands):
             return
+        if len(self.bands) <= 1:
+            self.set_status("Il faut garder au moins une bande.")
+            return
         with self.lock:
             b = self.bands.pop(r)
         for d in (self.latest, self.maxhold, self.partial_data):
             d.pop(b["id"], None)
         self._bands_changed()
+        self.undo_track()
+        self.set_status(f"Bande « {b['name']} » supprimée · Ctrl+Z pour annuler.")
 
     def points_auto(self):
         """Points par cycle visés en ⚡ Auto, ou None si un nombre fixe est choisi."""
@@ -17497,10 +17584,74 @@ class MainWindow(QtWidgets.QMainWindow):
             self._update_markers()
 
     def del_watch(self):
-        for r in reversed(self._sel_rows()):
+        rows = self._sel_rows()
+        for r in reversed(rows):
             self.watch.pop(r)
         self.rebuild_watch_table()
         self._update_markers()
+        if rows:
+            self.undo_track()
+            self.set_status(f"{len(rows)} fréquence(s) supprimée(s) · Ctrl+Z pour annuler.")
+
+    # ------------------------------------------------------- ↶ annuler / ↷ rétablir (7.32, demande de Clément)
+    UNDO_KEYS = ("watch", "scenes", "bands", "statuses")
+
+    def _undo_state(self):
+        """Ce qu'on peut annuler : liste, scènes / groupes, bandes, statuts (en JSON) + scans par lieu."""
+        c = self._collect_config(True)
+        txt = json.dumps({k: c.get(k) for k in self.UNDO_KEYS}, ensure_ascii=False, sort_keys=True, default=str)
+        sites = list(self.site_scans)
+        sig = txt + "|" + json.dumps([(d["name"], d.get("scene", "")) for d in sites], ensure_ascii=False)
+        return (txt, sites), sig
+
+    def undo_track(self):
+        """Appelé chaque seconde (et après une suppression) : met de côté l'état d'avant s'il a changé."""
+        if getattr(self, "_undo_busy", False):
+            return
+        try:
+            st, sig = self._undo_state()
+        except Exception:  # noqa: BLE001 — jamais bloquant
+            return
+        self.undo_stack.track(st, sig)
+
+    def _undo_restore(self, st, what):
+        txt, sites = st
+        self._undo_busy = True
+        try:
+            data = self._collect_config(True)
+            data.update(json.loads(txt))
+            data["site_scans"] = list(sites)
+            self._apply_config(data)
+            self.site_scans = list(sites)
+            self.update_site_curve()
+            self.undo_stack.resync(self._undo_state()[1])
+        finally:
+            self._undo_busy = False
+        self._bump()
+        n_u, n_r = len(self.undo_stack.undo), len(self.undo_stack.redo)
+        self.set_status(f"{what} · encore {n_u} retour(s) possible(s), {n_r} à rétablir (Ctrl+Y).")
+
+    def undo(self):
+        self.undo_track()                          # le dernier changement, même de moins d'une seconde
+        st = self.undo_stack.back()
+        if st is None:
+            self.set_status("Rien à annuler.")
+            return False
+        self._undo_restore(st, "↶ Annulé")
+        return True
+
+    def redo(self):
+        st = self.undo_stack.fwd()
+        if st is None:
+            self.set_status("Rien à rétablir.")
+            return False
+        self._undo_restore(st, "↷ Rétabli")
+        return True
+
+    def delete_selected_layer(self):
+        k = self._sel_layer_key()
+        if k is not None and self.scene_by_name(k[0]) is not None:
+            self.delete_layer(k)
 
     def edit_statuses(self):
         dlg = StatusDialog(self, self.statuses)
@@ -19816,6 +19967,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._web_ack_pending()
         self._web_hunt_pending()
         self._web_terrain_pending()
+        self.undo_track()                          # ↶ : met de côté l'état d'avant chaque changement
         if self.web is not None:
             self._web_json = self.web_json()
             if self.web_cfg["views"].get("spectre") or self.web_cfg["views"].get("waterfall"):
