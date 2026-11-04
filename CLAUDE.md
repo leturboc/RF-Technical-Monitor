@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.31.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.31.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -551,6 +551,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`self.smooth`, `set_smooth`, config `smooth`, case ⚙ › Général), rémanence en `PlotDataItem` clip + downsampling,
   `on_partial` redessine au plus 5 fois / s ; démo : 113 % → 56 %. Clément : « ça le faisait pas avec mon autre écran »
   et « j'ai relancé ça va mieux » (écran plus grand / mise à l'échelle = plus de pixels à dessiner).
+- **7.31.2 (Clément : « choisir la bande de fréq à exporter vers EazyRF », « scans par lieu dans ① ou ②, pas ③ »)** :
+  PURE `scan_crop(F, *cols, lo, hi)` ; widget `RangeBox` (tout / zone affichée / chaque bande / appareil de la
+  bibliothèque avec `lo`/`hi` / à la main ; `values()` → (lo, hi) ou (None, None) ; `select`) dans `ExportScanDialog`
+  (`lo`/`hi` pas gardés dans `export_prefs`), `SitesDialog.export` (« Plage exportée ») et `ScanConvertDialog._write`.
+  Parcours : ① Scanner le lieu devient un menu (« ▶ Scanner ici », « 📍 Scans par lieu ») ; retiré de ③.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

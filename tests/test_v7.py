@@ -725,6 +725,13 @@ ok("fusion de scans à plusieurs bandes : rien d'inventé entre 520 et 2400 MHz"
    not np.any((Fm2_ > 520.1) & (Fm2_ < 2399.9)), str(Fm2_[(Fm2_ > 520.1) & (Fm2_ < 2399.9)][:5]))
 ok("fusion de scans à plusieurs bandes : le trou reste un trou au tracé", np.isnan(ns["gap_nan"](Fm2_, Lm2_)[1]).sum() == 1)
 check("trous : scan d'une seule bande -> aucun", list(ns["scan_gaps"](Fa_)), [])
+# --- plage d'export d'un scan (vers EazyRF, WWB, WSM…)
+cr_ = ns["scan_crop"]
+Fc_, Lc_, Mc_ = cr_(np.linspace(400, 800, 401), np.arange(401.0), -np.arange(401.0), lo=470, hi=608)
+check("export : seulement 470–608 MHz", (Fc_[0], Fc_[-1], len(Fc_), Lc_[0], Mc_[-1]), (470.0, 608.0, 139, 70.0, -208.0))
+check("export : bornes inversées remises dans l'ordre", len(cr_([1, 2, 3, 4], lo=3, hi=2)[0]), 2)
+check("export : sans limite = tout", len(cr_([1, 2, 3])[0]), 3)
+check("export : rien dans la plage = vide", len(cr_([1, 2, 3], [5, 6, 7], lo=10, hi=20)[1]), 0)
 # --- 🌐 adresses réseau enregistrées (le Pi change d'IP selon le Wi-Fi)
 np_ = ns["net_profiles_norm"]([dict(name="Pi maison", addr="192.168.1.20"), dict(name="", addr="1.2.3.4"),
                                dict(name="Pi festival", addr="10.0.0.5:6000"), dict(name="USB", addr="COM4"),

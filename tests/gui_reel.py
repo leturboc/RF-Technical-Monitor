@@ -1356,6 +1356,14 @@ def _sites_act(d):
     _t = _exp.read_text(encoding="utf-8") if p_ else ""
     check("lieux : fusion exportée au format WWB (sans en-tête)", p_ and _t[:3].isdigit() and ", -" in _t.splitlines()[0],
           _t[:60])
+    d.range.select(480.0, 520.0)                 # plage exportée : seulement 480–520 MHz
+    _p2 = d.export(str(m.Path(tmp) / "fusion_480_520.csv"))
+    _fs = [float(x.split(",")[0]) for x in m.Path(_p2).read_text(encoding="utf-8").splitlines() if x.strip()] if _p2 else []
+    check("lieux : export limité à la plage choisie", _fs and min(_fs) >= 480.0 and max(_fs) <= 520.0,
+          f"{min(_fs) if _fs else None}–{max(_fs) if _fs else None}")
+    check("lieux : plages proposées (zone affichée, bandes…)", d.range.preset.count() >= 3,
+          str([d.range.preset.itemText(i) for i in range(d.range.preset.count())]))
+    d.range.preset.setCurrentIndex(0)
     d.coord_chk.setChecked(True)
     shot(d, "scans_par_lieu")
     # gestion : infos, renommer, ranger dans une scène, masquer une courbe
