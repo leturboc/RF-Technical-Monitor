@@ -292,7 +292,7 @@ check("zone couvre les 3 fréquences", fb["start"] <= 506.0 and fb["stop"] >= 50
 check("zone étroite", (fb["stop"] - fb["start"]) < 10, str(fb))
 check("version incrémentée (le cycle en cours s'arrête)", win.get_ver() > v0)
 check("estimation ciblée", "Scan ciblé" in win.est_lbl.text(), win.est_lbl.text())
-check("vue = zones ciblées", win.view_combo.count() == 1 + len(win._focus_bands))
+check("vue = zones ciblées (+ « Nouvelle bande » et « Gérer »)", sum(1 for i in range(win.view_combo.count()) if not isinstance(win.view_combo.itemData(i), str) and win.view_combo.itemData(i) is not None) == 1 + len(win._focus_bands))
 check("anciennes données purgées", b0["id"] not in win.latest, str(list(win.latest)))
 # balayage d'une zone ciblée
 ff = np.linspace(fb["start"], fb["stop"], m.MainWindow._npts(fb))

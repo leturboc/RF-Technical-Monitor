@@ -56,10 +56,11 @@ Si `tinysa-sac.local` ne répond pas, utilise l'adresse IP du Pi (visible dans l
 1. Branche le tinySA sur le Pi (câble USB-C), allume le tinySA, alimente le Pi. Le relais démarre tout seul,
    retrouve le tinySA même débranché / rebranché.
 2. Dans TinySA Monitor (PC) :
-   - **un seul tinySA** : liste des ports en haut › **🌐 tinySA en réseau (Raspberry Pi, autre PC)…** › adresse
-     `tinysa-sac.local` (ou l'IP). L'appli s'en souvient la fois suivante. Puis ▶ Démarrer ;
-   - **deux tinySA** : ⚙ Réglages › 2ᵉ tinySA › « Utiliser un 2ᵉ tinySA », adresse `tinysa-sac.local`, nom de
-     position « Sac à dos ». Puis ▶ Démarrer.
+   - liste des ports en haut › **🌐 tinySA en réseau : adresses enregistrées…** › **＋ Ajouter** (`tinysa-sac.local`
+     ou l'IP du Pi) › **🔌 Tester** › **Utiliser pour le 1er tinySA** (un seul tinySA) ou **pour le 2ᵉ** (deux
+     tinySA). Puis ▶ Démarrer ;
+   - **le Pi change d'IP selon le Wi-Fi** : enregistre une adresse par réseau (« Pi · maison », « Pi · festival »,
+     « Pi · téléphone »…) ; chacune apparaît dans la liste des ports, et elles sont gardées avec le show (🎪).
 3. Sur le téléphone : page web de l'appli (📣 Alertes et page web), vue **🔎 Chasse** : choisis le tinySA du sac,
    la fréquence, ▶ Chasser (code PIN de la page web). Le téléphone bippe de plus en plus vite en approchant.
 

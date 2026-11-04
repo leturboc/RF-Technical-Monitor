@@ -82,7 +82,8 @@ check("show : 2 fréquences, bloc, priorité, seuil, noms, référence",
       len(doc["show"]["watch"]) == 2 and doc["show"]["watch"][1]["bw"] == 8.0
       and doc["show"]["scenes"][0]["groups"][0]["prio"] == 2 and doc["show"]["thr"] == -77
       and doc["show"]["dev_names"][0] == "Plateau" and len(doc["ref"]) == 1, str(doc["show"].keys()))
-check("show : pas de préférences", not any(k in doc["show"] for k in ("theme", "web", "dev2", "markers", "log_dir")))
+check("show : pas de préférences", not any(k in doc["show"] for k in ("theme", "web", "markers", "log_dir")))
+check("show : le 2ᵉ tinySA et les adresses réseau suivent le show (7.31)", "dev2" in doc["show"] and "net_profiles" in doc["show"])
 check("récents", win.recent_shows == [p1])
 # Ctrl+S : réenregistre au même endroit sans redemander
 win.thr_spin.setValue(-78)
@@ -105,9 +106,9 @@ check("rouvert : fréquences et bloc", set(ws) == {"HF 1", "Spectera ch 38"} and
 check("rouvert : scène, groupe, priorité", win.freq_prio(ws["HF 1"]) == 2)
 check("rouvert : seuil", win.thr_spin.value() == -78)
 check("rouvert : courbe de référence du lieu", win._ref_F is not None and len(win._ref_F) == 50)
-check("rouvert : préférences intactes (couleurs, 2e tinySA, journaux)",
-      win.theme["ui_base"] == "#abcdef" and win.dev2["addr"] == "10.0.0.9:5025" and win.dev2["on"]
-      and str(win.log_dir).endswith("journaux2026"), f'{win.theme["ui_base"]} {win.dev2} {win.log_dir}')
+check("rouvert : préférences intactes (couleurs, journaux)",
+      win.theme["ui_base"] == "#abcdef" and str(win.log_dir).endswith("journaux2026"), f'{win.theme["ui_base"]} {win.log_dir}')
+check("rouvert : le 2ᵉ tinySA revient comme dans le show", not win.dev2["on"], str(win.dev2))
 check("rouvert : infos du show", win.show_meta["name"] == "Fest" and win.show_meta["notes"] == "câble FOH")
 answers["q"] = W.QMessageBox.StandardButton.No
 win.watch.clear()

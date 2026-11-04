@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.30.0"
+APP_VER = "7.31.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2866,7 +2866,7 @@ SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
              "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
-             "country", "plan_custom", "dev_names", "rx_custom")
+             "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -3150,6 +3150,41 @@ def parse_device_addr(s, default_port=RELAY_PORT):
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-]*", host) or not 0 < port < 65536:
         return None, s
     return "net", f"socket://{host}:{port}"
+
+
+def net_profiles_norm(lst, limit=30):
+    """🌐 Adresses réseau enregistrées (Raspberry Pi, autre PC : une par Wi-Fi / lieu) -> [{name, addr}] valides, noms
+    uniques (le dernier gagne), dans l'ordre, `limit` au plus."""
+    out = {}
+    for d in lst if isinstance(lst, list) else []:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("name") or "").strip()[:40]
+        addr = str(d.get("addr") or "").strip()[:120]
+        if name and parse_device_addr(addr)[0] == "net":
+            out.pop(name, None)
+            out[name] = dict(name=name, addr=addr)
+    return list(out.values())[-limit:]
+
+
+def net_profiles_merge(old, new):
+    """Adresses du PC + celles d'un show : celles du show gagnent à nom égal, les autres restent (ordre : PC puis show)."""
+    return net_profiles_norm(list(old or []) + list(new or []))
+
+
+def net_host_port(addr, default_port=RELAY_PORT):
+    """(hôte, port) d'une adresse réseau (« 192.168.1.20 », « tinysa-sac.local:6000 », « socket://… ») ; None sinon."""
+    kind, url = parse_device_addr(addr, default_port)
+    if kind != "net":
+        return None
+    m = re.fullmatch(r"[a-z0-9]+://([^:/]+):(\d+).*", url)
+    return (m.group(1), int(m.group(2))) if m else None
+
+
+def net_profile_name(profiles, addr):
+    """Nom de l'adresse enregistrée qui pointe au même endroit que addr ("" si aucune)."""
+    u = parse_device_addr(addr)[1]
+    return next((p["name"] for p in profiles or [] if parse_device_addr(p["addr"])[1] == u), "") if u else ""
 
 
 def assign_bands(items, ndev=2, live=None):
@@ -12590,6 +12625,7 @@ class SitesDialog(QtWidgets.QDialog):
             return
         name = it.data(Qt.ItemDataRole.UserRole)
         self.owner.site_scans = [d for d in self.owner.site_scans if d["name"] != name]
+        self.owner.forget_site(name)               # sinon le max hold en mémoire de cette scène le recrée 30 s après
         self.fill()
         self.owner.update_site_curve()
 
@@ -12631,6 +12667,210 @@ class SitesDialog(QtWidgets.QDialog):
         o.showref_chk.setChecked(True)
         o.reeval()
         self.msg.setText("📏 La fusion est la nouvelle courbe de référence.")
+
+
+def net_test(addr, timeout=1.5):
+    """🔌 Le relais (Raspberry Pi, autre PC) répond-il à cette adresse ? -> (bool, texte court)."""
+    hp = net_host_port(addr)
+    if hp is None:
+        return False, TR("adresse illisible")
+    t0 = time.time()
+    try:
+        with socket.create_connection(hp, timeout=timeout):
+            pass
+    except socket.gaierror:
+        return False, TR("nom introuvable sur ce réseau")
+    except OSError:
+        return False, TR("ne répond pas")
+    return True, TR("répond") + f" ({(time.time() - t0) * 1000:.0f} ms)"
+
+
+class NewBandDialog(QtWidgets.QDialog):
+    """＋ Nouvelle bande à balayer (depuis la liste « Vue ») : un préréglage ou une plage à la main."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.setWindowTitle("Nouvelle bande à balayer")
+        lay = QtWidgets.QVBoxLayout(self)
+        f = QtWidgets.QFormLayout()
+        self.preset = QtWidgets.QComboBox()
+        self.preset.addItem("Plage à la main", None)
+        for p in BAND_PRESETS:
+            self.preset.addItem(p[0], p)
+        self.preset.setToolTip("Une bande toute prête (UHF micros, IEM, 1G4, 2,4 GHz, aéro…) ou ta propre plage.")
+        self.name = QtWidgets.QLineEdit("Ma bande")
+        self.name.setToolTip("Nom de la bande (affiché dans « Vue »).")
+        self.lo, self.hi = QtWidgets.QDoubleSpinBox(), QtWidgets.QDoubleSpinBox()
+        for sp_, v in ((self.lo, 470.0), (self.hi, 608.0)):
+            sp_.setDecimals(3)
+            sp_.setRange(0.1, 6000.0)
+            sp_.setSuffix(" MHz")
+            sp_.setValue(v)
+            sp_.setToolTip("Début et fin de la bande.")
+        self.preset.currentIndexChanged.connect(lambda *_: self._from_preset())
+        f.addRow("Préréglage :", self.preset)
+        f.addRow("Nom :", self.name)
+        f.addRow("De :", owner._row(self.lo, "à", self.hi))
+        lay.addLayout(f)
+        note = QtWidgets.QLabel("Le pas suit le réglage ⚡ Points (Auto conseillé). La bande est balayée tout de suite.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self._step = 200.0
+
+    def _from_preset(self):
+        p = self.preset.currentData()
+        if p:
+            self.name.setText(p[0])
+            self.lo.setValue(p[1])
+            self.hi.setValue(p[2])
+            self._step = float(p[3])
+
+    def values(self):
+        lo, hi = sorted((self.lo.value(), self.hi.value()))
+        if hi - lo < 0.01:
+            hi = lo + 1.0
+        return (self.name.text().strip() or "Ma bande"), lo, hi, self._step
+
+
+class NetProfilesDialog(QtWidgets.QDialog):
+    """🌐 tinySA en réseau : les adresses du relais (Raspberry Pi, autre PC) enregistrées, une par Wi-Fi ou par lieu
+    (l'IP change d'un réseau à l'autre) ; chacune se choisit en un clic pour le 1er ou le 2ᵉ tinySA. Gardées sur ce PC ET
+    dans le show (🎪)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("tinySA en réseau")
+        self.resize(720, 460)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel(
+            "Le Raspberry Pi (ou l'autre PC) n'a pas la même adresse sur chaque Wi-Fi : enregistre-en une par réseau "
+            "(« Pi · maison », « Pi · festival », « Pi · partage du téléphone »…) et choisis la bonne en un clic, dans la "
+            "liste des ports en haut ou ici. Astuce : le nom <b>tinysa-sac.local</b> marche sur la plupart des réseaux, "
+            "quelle que soit l'IP (pas sur tous : certains Wi-Fi d'événement le bloquent, d'où les adresses de secours).")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 4)
+        lay.addWidget(info)
+        self.table = QtWidgets.QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Nom", "Adresse", "Test"])
+        self.table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(0, 200)
+        self.table.setColumnWidth(1, 220)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setToolTip("Double-clic pour modifier le nom ou l'adresse (ex. 192.168.1.42, 10.0.0.5:5025, "
+                              "tinysa-sac.local).")
+        lay.addWidget(self.table, 1)
+        b_add = QtWidgets.QPushButton("＋ Ajouter")
+        b_add.setToolTip("Nouvelle adresse (le Pi sur un autre Wi-Fi).")
+        b_add.clicked.connect(lambda *_: self.add_row())
+        b_del = QtWidgets.QPushButton("Supprimer")
+        b_del.setToolTip("Supprime l'adresse sélectionnée.")
+        b_del.clicked.connect(lambda *_: self.del_row())
+        b_test = QtWidgets.QPushButton("🔌 Tester")
+        b_test.setToolTip("Essaie de joindre le relais à chaque adresse (celles choisies, ou toutes) : « répond » = le\n"
+                          "Pi est allumé, sur ce réseau, et son relais tourne.")
+        b_test.clicked.connect(lambda *_: self.test())
+        lay.addLayout(o._row(b_add, b_del, None, b_test))
+        b_1 = QtWidgets.QPushButton("Utiliser pour le 1er tinySA")
+        b_1.setToolTip("Le 1er tinySA (liste des ports en haut) passe sur cette adresse.")
+        b_1.clicked.connect(lambda *_: self.use(0))
+        b_2 = QtWidgets.QPushButton("Utiliser pour le 2ᵉ tinySA")
+        b_2.setToolTip("Le 2ᵉ tinySA (⚙ Réglages › 2ᵉ tinySA) passe sur cette adresse et est activé.")
+        b_2.clicked.connect(lambda *_: self.use(1))
+        lay.addLayout(o._row(b_1, b_2, None))
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        for p in o.net_profiles:
+            self.add_row(p["name"], p["addr"])
+        cur = o.net_addr if o.port_net else ""
+        self.msg.setText((f"1er tinySA en ce moment : {cur}" + (f" ({net_profile_name(o.net_profiles, cur)})"
+                                                                 if net_profile_name(o.net_profiles, cur) else ""))
+                         if cur else "Le 1er tinySA est en USB (ou pas encore choisi).")
+        self.finished.connect(lambda *_: self.save())
+
+    def add_row(self, name="", addr=""):
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        if not name:
+            n = r + 1
+            names = {self.table.item(i, 0).text() for i in range(r) if self.table.item(i, 0)}
+            while f"Pi {n}" in names:
+                n += 1
+            name = f"Pi {n}"
+        for c_, v in enumerate((name, addr or "192.168.1.", "")):
+            it = QtWidgets.QTableWidgetItem(v)
+            if c_ == 2:
+                it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(r, c_, it)
+        self.table.setCurrentCell(r, 1)
+
+    def del_row(self):
+        r = self.table.currentRow()
+        if r >= 0:
+            self.table.removeRow(r)
+
+    def rows(self):
+        out = []
+        for r in range(self.table.rowCount()):
+            n, a = self.table.item(r, 0), self.table.item(r, 1)
+            out.append(dict(name=n.text().strip() if n else "", addr=a.text().strip() if a else ""))
+        return out
+
+    def values(self):
+        return net_profiles_norm(self.rows())
+
+    def save(self):
+        o = self.owner
+        o.net_profiles = self.values()
+        o.refresh_ports()
+        o._dev2_ports()
+        o._bump()
+
+    def _sel(self):
+        rs = sorted({i.row() for i in self.table.selectedIndexes()})
+        return rs or list(range(self.table.rowCount()))
+
+    def test(self):
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            for r in self._sel():
+                a = self.table.item(r, 1).text().strip() if self.table.item(r, 1) else ""
+                ok, txt = net_test(a)
+                self.table.item(r, 2).setText(("✔ " if ok else "✖ ") + txt)
+                QtWidgets.QApplication.processEvents()
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+    def use(self, dev):
+        o = self.owner
+        r = self.table.currentRow()
+        rows = self.rows()
+        if not 0 <= r < len(rows) or parse_device_addr(rows[r]["addr"])[0] != "net":
+            self.msg.setText("Choisis une ligne avec une adresse réseau valide (ex. 192.168.1.42).")
+            return False
+        self.save()
+        p = rows[r]
+        if dev == 0:
+            o.use_net_addr(p["addr"])
+        else:
+            o.dev2_addr.setEditText(p["addr"])
+            o.dev2_chk.setChecked(True)
+            o._dev2_changed()
+        self.msg.setText((f"1er tinySA → {p['name']} ({p['addr']})." if dev == 0 else
+                          f"2ᵉ tinySA → {p['name']} ({p['addr']}).")
+                         + " " + TR("Arrête puis relance la surveillance pour s'y connecter." if o.is_running() else
+                                    "▶ Démarrer pour s'y connecter."))
+        return True
 
 
 class DevicesDialog(QtWidgets.QDialog):
@@ -12777,8 +13017,7 @@ class SettingsDialog(QtWidgets.QDialog):
         for key, title in SETTINGS_PAGES:
             page = getattr(o, "set_pages", {}).get(key)
             if page is not None:
-                tabs.addTab(page, title)
-                page.show()
+                tabs.addTab(page, title)            # surtout pas page.show() : la page s'affichait par-dessus les autres
                 self.keys.append(key)
                 self._borrowed.append(page)
         self.finished.connect(lambda *_: self._give_back())
@@ -12815,6 +13054,12 @@ class SettingsDialog(QtWidgets.QDialog):
         f.addRow("Unité des niveaux :", self.unit_combo)
         f.addRow(col_btn)
         f.addRow(lab_btn)
+        self.smooth_chk = QtWidgets.QCheckBox("Courbes lissées (plus joli, mais plus gourmand en processeur)")
+        self.smooth_chk.setChecked(bool(getattr(o, "smooth", False)))
+        self.smooth_chk.setToolTip("Lissage (antialiasing) des courbes du spectre. Décoché (conseillé) : l'appli consomme\n"
+                                   "bien moins de processeur, surtout avec beaucoup de points ou la rémanence.")
+        self.smooth_chk.toggled.connect(lambda *_: o.set_smooth(self.smooth_chk.isChecked()))
+        f.addRow(self.smooth_chk)
         tabs.addTab(g, "Général")
         self.keys.append("general")
         # --- Son
@@ -12918,6 +13163,8 @@ class SettingsDialog(QtWidgets.QDialog):
                 ("📣 Alertes téléphone et page web…", "ntfy / Telegram, page web pour l'équipe, vue Régie.", o.open_alerts),
                 ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "Reprise auto, pas de veille, bilan du jour.",
                  o.open_festival),
+                ("🌐 tinySA en réseau : adresses enregistrées…", "Le Raspberry Pi change d'adresse selon le Wi-Fi : une "
+                 "adresse par réseau, à tester et choisir en un clic.", o.open_net_profiles),
                 ("📡 Relais réseau : partager le tinySA de CE PC…", "Pour brancher un 2ᵉ tinySA par le réseau.",
                  o.open_relay),
                 ("🩺 Diagnostic tinySA (fichier pour le support)…", "Le fichier à m'envoyer en cas de souci.",
@@ -14907,6 +15154,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker = None              # 1er tinySA (compatibilité) ; tous les appareils : self.workers
         self.workers = []
         self.net_addr, self.port_net = "", False   # 🌐 1er tinySA en réseau (Raspberry Pi…) : adresse, choisi ou non
+        self.net_profiles = []                     # 🌐 adresses enregistrées [{name, addr}] (une par Wi-Fi / lieu)
         self.dev2 = dict(on=False, addr="", offset=0.0)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
         self.dev_live = [True, True]    # liaison de chaque appareil (False = perdue, ses bandes passent sur l'autre)
         self.dev_cycle = {}
@@ -15389,7 +15637,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return c
 
     def _build_ui(self):
-        pg.setConfigOptions(antialias=True, background=self.theme["plot_bg"],
+        # courbes lissées (antialiasing) : joli mais gourmand (7.31.1 : 40 % de processeur chez Clément) -> coupé par
+        # défaut, ⚙ › Général › « Courbes lissées » (set_smooth)
+        pg.setConfigOptions(antialias=bool(getattr(self, "smooth", False)), background=self.theme["plot_bg"],
                             foreground=self.theme["plot_fg"])
         # --- barre du haut
         self.port_combo = QtWidgets.QComboBox()
@@ -15499,6 +15749,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("⚙ Réglages (seuils, bandes, son, langue…)…  Ctrl+,").triggered.connect(lambda *_: self.open_settings())
         submenu(mm, "🔗 Connexions", (
             ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
+            ("🌐 tinySA en réseau : adresses enregistrées…", lambda *_: self.open_net_profiles()),
             ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
             ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag())))
         for title, items in self.EXTRA_MENUS:      # sous-menus ajoutés par une autre version (V8 : SDR)
@@ -16638,6 +16889,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logdir_lbl.setText(str(self.log_dir))
         ex = data.get("export")
         self.export_prefs = ex if isinstance(ex, dict) else {}
+        if "smooth" in data:
+            self.set_smooth(bool(data.get("smooth")))
+        if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
+            self.net_profiles = net_profiles_merge(self.net_profiles, data["net_profiles"])
         if "net_addr" in data:
             self.net_addr = str(data.get("net_addr") or "")[:120]
             self.port_net = bool(data.get("port_net")) and bool(self.net_addr)
@@ -16739,7 +16994,8 @@ class MainWindow(QtWidgets.QMainWindow):
             occ_minutes=self.occ_combo.currentData(), ref_rel=self.ref_chk.isChecked(),
             ref_margin=self.ref_margin.value(), show_ref=self.showref_chk.isChecked(),
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
-            net_addr=self.net_addr, port_net=self.port_net,
+            net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
+            smooth=bool(getattr(self, "smooth", False)),
             dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
@@ -16893,14 +17149,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def new_show(self):
         r = QtWidgets.QMessageBox.question(
-            self, APP_NAME, "Nouveau show : la liste de fréquences, les scènes et les groupes sont vidés.\n"
+            self, APP_NAME, "Nouveau show : la liste de fréquences, les scènes, les groupes, les scans par lieu, la courbe "
+                            "de référence et le max hold sont vidés.\n"
                             "Les bandes, statuts et seuils sont gardés comme point de départ.\n"
                             "Pense à enregistrer le show en cours avant (Ctrl+S). Continuer ?")
         if r != QtWidgets.QMessageBox.StandardButton.Yes:
             return
+        self.clear_show_data()
+
+    def clear_show_data(self):
+        """Nouveau show : tout ce qui appartient au show précédent part (liste, scènes, scans par lieu ET leur max hold
+        en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
+        sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False)
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[])
+        for k in list(self.site_mh):
+            self.forget_site(k)
+        self.dev_scenes = {d: [] for d in self.dev_scenes}
+        data["dev_scenes"] = {}
         self._apply_config(data)
+        self.site_scans = []
+        self._set_ref([])
+        try:
+            REF_PATH.unlink()
+        except Exception:  # noqa: BLE001
+            pass
+        self.reset_max()
+        self.reeval()
+        self.update_site_curve()
         self.show_meta = {k: "" for k in SHOW_META}
         self.show_path = ""
         self.update_title()
@@ -16966,21 +17242,30 @@ class MainWindow(QtWidgets.QMainWindow):
         ports = list(serial.tools.list_ports.comports())
         ports.sort(key=lambda p: not (p.vid == TINYSA_VID and p.pid == TINYSA_PID))
         net = parse_device_addr(self.net_addr)[1] if self.net_addr else None
-        if net and self.port_net:                      # tinySA en réseau choisi la dernière fois : en tête
-            self.port_combo.addItem(f"🌐 {self.net_addr} (réseau)", net)
+        # 🌐 adresses réseau : celle choisie la dernière fois en tête, puis les ports USB, puis les autres enregistrées
+        nets = [(p["name"], p["addr"]) for p in getattr(self, "net_profiles", [])]
+        if net and not any(parse_device_addr(a)[1] == net for _n, a in nets):
+            nets.insert(0, ("", self.net_addr))
+
+        def add_net(name, addr):
+            self.port_combo.addItem(f"🌐 {name} — {addr}" if name else f"🌐 {addr} (réseau)", parse_device_addr(addr)[1])
+        first = [x for x in nets if self.port_net and parse_device_addr(x[1])[1] == net][:1]
+        for x in first:
+            add_net(*x)
         for p in ports:
             tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
             self.port_combo.addItem(f"{p.device} — {p.description}{tag}", p.device)
-        if net and not self.port_net:
-            self.port_combo.addItem(f"🌐 {self.net_addr} (réseau)", net)
-        if not ports and not net:
+        for x in nets:
+            if x not in first:
+                add_net(*x)
+        if not ports and not nets:
             self.port_combo.addItem("Aucun port détecté", None)
         for k, sp in SDR_KINDS.items():                 # V8 : SDR par leur outil de balayage
             self.port_combo.addItem(f"📡 {sp['name']} ({sp['tool']})", k)
         ix = self.port_combo.findData(getattr(self, "_want_port", None))
         if ix >= 0:
             self.port_combo.setCurrentIndex(ix)
-        self.port_combo.addItem("🌐 tinySA en réseau (Raspberry Pi, autre PC)…", self.NET_ITEM)
+        self.port_combo.addItem("🌐 tinySA en réseau : adresses enregistrées…", self.NET_ITEM)
         self.port_combo.blockSignals(False)
 
     def port1(self):
@@ -16994,24 +17279,40 @@ class MainWindow(QtWidgets.QMainWindow):
         d = self.port_combo.currentData()
         if d != self.NET_ITEM:
             self.port_net = bool(d) and str(d).startswith("socket://")
-            return
-        addr, ok_ = QtWidgets.QInputDialog.getText(
-            self, "tinySA en réseau", "Adresse du relais (Raspberry Pi ou autre PC) :\n"
-            "ex. tinysa-sac.local  ·  192.168.1.42  ·  192.168.1.42:5025", text=self.net_addr or "tinysa-sac.local")
-        addr = (addr or "").strip()
-        if ok_ and addr:
-            kind, url = parse_device_addr(addr)
-            if kind != "net":
-                QtWidgets.QMessageBox.warning(self, APP_NAME, "Adresse réseau illisible.\nExemples : tinysa-sac.local · "
-                                              "192.168.1.42 · 192.168.1.42:5025")
-            else:
-                self.net_addr, self.port_net = addr, True
+            if self.port_net:                       # une adresse enregistrée : elle devient l'adresse du 1er tinySA
+                p = next((x for x in self.net_profiles if parse_device_addr(x["addr"])[1] == d), None)
+                if p is not None:
+                    self.net_addr = p["addr"]
+                    self.set_status(f"🌐 1er tinySA : {p['name']} ({p['addr']}). ▶ Démarrer pour s'y connecter.")
                 self._bump()
+            return
+        self.open_net_profiles()
+
+    def open_net_profiles(self):
+        """🌐 Adresses réseau des tinySA (une par Wi-Fi / lieu) : ajouter, tester, choisir pour le 1er ou le 2ᵉ."""
+        if not self.net_profiles and self.net_addr:          # la 1re fois : l'adresse déjà utilisée devient une entrée
+            self.net_profiles = net_profiles_norm([dict(name="Pi", addr=self.net_addr)])
+        NetProfilesDialog(self).exec()
         self.refresh_ports()
-        self.port_combo.setCurrentIndex(0)
-        if self.port_net:
-            self.set_status(f"🌐 1er tinySA en réseau : {self.net_addr} (relais sur le port {RELAY_PORT} par défaut). "
-                            "▶ Démarrer pour s'y connecter.")
+        if not self.port_net:
+            ix = self.port_combo.findData(self.NET_ITEM)
+            if self.port_combo.currentIndex() == ix:
+                self.port_combo.setCurrentIndex(0)
+        self._save_config()
+
+    def use_net_addr(self, addr):
+        """Le 1er tinySA passe sur cette adresse réseau (choisie dans la liste des ports)."""
+        kind, url = parse_device_addr(addr)
+        if kind != "net":
+            return False
+        self.net_addr, self.port_net = addr.strip(), True
+        self.refresh_ports()
+        ix = self.port_combo.findData(url)
+        self.port_combo.setCurrentIndex(max(0, ix))
+        self._bump()
+        self.set_status(f"🌐 1er tinySA en réseau : {addr} (relais sur le port {RELAY_PORT} par défaut). "
+                        "▶ Démarrer pour s'y connecter.")
+        return True
 
     # ----------------------------------------------------------- run / stop
     def is_running(self):
@@ -17267,7 +17568,11 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addRow("Nom du 1er :", self.dev1_name)
         f.addRow(self.dev2_chk)
         f.addRow("Nom du 2ᵉ :", self.dev2_name)
-        f.addRow("Adresse :", self.dev2_addr)
+        net_btn = QtWidgets.QPushButton("🌐 Adresses enregistrées…")
+        net_btn.setToolTip("Les adresses réseau du relais (Raspberry Pi, autre PC), une par Wi-Fi : ajouter, tester,\n"
+                           "choisir pour le 1er ou le 2ᵉ tinySA.")
+        net_btn.clicked.connect(lambda *_: self.open_net_profiles())
+        f.addRow("Adresse :", self._row(self.dev2_addr, net_btn))
         f.addRow("Offset :", self.dev2_off)
         self.calib_btn = QtWidgets.QPushButton("⚖ Calibrer le 2ᵉ sur le 1er…")
         self.calib_btn.setToolTip("Les deux tinySA doivent recevoir le MÊME signal (même antenne via un splitter, ou\n"
@@ -17291,11 +17596,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dev2_addr.addItem(f"{p.device}{tag}", p.device)
         for k in SDR_KINDS:
             self.dev2_addr.addItem(k, k)                 # V8 : « hackrf », « rtlsdr » (ou « hackrf:n° de série »)
+        for p in getattr(self, "net_profiles", []):     # 🌐 adresses enregistrées (Raspberry Pi…)
+            self.dev2_addr.addItem(f"{p['addr']}  · {p['name']}", p["addr"])
         self.dev2_addr.setEditText(cur)
         self.dev2_addr.blockSignals(False)
 
     def _read_dev2(self):
-        txt = self.dev2_addr.currentText().replace("✔ tinySA", "").strip()   # « COM4  ✔ tinySA » -> « COM4 »
+        txt = self.dev2_addr.currentText().replace("✔ tinySA", "").split("  · ")[0].strip()   # « COM4  ✔ tinySA » -> « COM4 »
         self.dev2.update(on=self.dev2_chk.isChecked(), addr=txt, offset=float(self.dev2_off.value()))
 
     def _dev2_changed(self):
@@ -17589,6 +17896,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_view_combo()
         self.update_estimate()
 
+    def show_band(self, bid):
+        """Vue sur une bande (réactivée si elle n'était pas balayée)."""
+        b = next((x for x in self.bands if x["id"] == bid), None)
+        if b is None:
+            return
+        if not b["enabled"]:
+            self.set_band_enabled(bid, True)
+        self.refresh_view_combo()
+        ix = self.view_combo.findData(bid)
+        if ix >= 0:
+            self.view_combo.setCurrentIndex(ix)
+
+    def new_band_dialog(self):
+        """＋ Nouvelle bande à balayer depuis « Vue » : un préréglage ou une plage à la main, puis on l'affiche."""
+        d = NewBandDialog(self)
+        if not d.exec():
+            return None
+        name, lo, hi, step = d.values()
+        self.add_band(name, lo, hi, step)
+        bid = self.bands[-1]["id"]
+        self.show_band(bid)
+        self.set_status(f"＋ Bande « {name} » ajoutée ({lo:g}–{hi:g} MHz) et affichée.")
+        return bid
+
     def add_band(self, name, start, stop, step, enabled=True):
         self._append_band(name, start, stop, step, enabled)
         self._bands_changed()
@@ -17803,15 +18134,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view_combo.addItem("Toutes les bandes", -1)
         for b in self.scan_bands():
             self.view_combo.addItem(b["name"], b["id"])
+        off = [b for b in self.bands if not b["enabled"]]
+        if off:
+            self.view_combo.insertSeparator(self.view_combo.count())
+            for b in off:                            # bandes pas balayées : les choisir les réactive
+                self.view_combo.addItem(f"○ {b['name']} (pas balayée)", f"on:{b['id']}")
+        self.view_combo.insertSeparator(self.view_combo.count())
+        self.view_combo.addItem("＋ Nouvelle bande à balayer…", "__add__")
+        self.view_combo.addItem("Gérer les bandes…", "__manage__")
         idx = self.view_combo.findData(cur)
         self.view_combo.setCurrentIndex(max(idx, 0))
+        self._view_prev = self.view_combo.currentIndex()
         self.view_combo.blockSignals(False)
         self.on_view_changed()
 
     def on_view_changed(self, *_):
+        v = self.view_combo.currentData()
+        if isinstance(v, str):                       # entrées d'action de la liste « Vue »
+            self.view_combo.blockSignals(True)
+            self.view_combo.setCurrentIndex(max(0, getattr(self, "_view_prev", 0)))
+            self.view_combo.blockSignals(False)
+            if v == "__add__":
+                self.new_band_dialog()
+            elif v == "__manage__":
+                self.open_settings("bands")
+            elif v.startswith("on:"):
+                self.show_band(int(v[3:]))
+            return
+        self._view_prev = self.view_combo.currentIndex()
         if self._zoom is not None:
             return
-        v = self.view_combo.currentData()
         self.view_id = -1 if v is None else v
         if self.scan_follow:
             self._bump()
@@ -18080,11 +18432,19 @@ class MainWindow(QtWidgets.QMainWindow):
         o = np.argsort(F)
         return F[o], L[o]
 
+    def forget_site(self, site):
+        """Oublie le max hold EN MÉMOIRE d'une scène (sinon _sites_tick recrée son scan gardé 30 s plus tard)."""
+        self.site_mh.pop(site, None)
+        self._site_mh_t0.pop(site, None)
+        self._site_base.pop(site, None)
+
     def _sites_tick(self, now):
         """Toutes les 30 s : le max hold de chaque lieu est gardé tout seul (fusionné au scan déjà gardé)."""
         if now < self._sites_next or not self.site_mh:
             return
         self._sites_next = now + 30.0
+        for site in [s_ for s_ in self.site_mh if self.scene_by_name(s_) is None]:
+            self.forget_site(site)               # scène supprimée (ou nouveau show) : son scan ne revient pas
         for site, bands in self.site_mh.items():
             segs = sorted(bands.values(), key=lambda x: float(x[0][0]))
             F, L = np.concatenate([x[0] for x in segs]), np.concatenate([x[1] for x in segs])
@@ -19453,7 +19813,10 @@ class MainWindow(QtWidgets.QMainWindow):
         name = next((b["name"] for b in self.scan_bands() if b["id"] == bid), "Zoom")
         self.set_status(f"Balayage « {name} » : segment {i}/{n}")
         if self.view_id in (-1, bid):
-            self.update_plot(hist=False)
+            now = time.monotonic()                 # fluidité (7.31.1) : 5 images / s au plus pendant un balayage
+            if now - getattr(self, "_partial_t", 0.0) >= 0.2:
+                self._partial_t = now
+                self.update_plot(hist=False)
 
     def on_cycle(self, dt, nb, dev=0):
         self.dev_cycle[dev] = dt
@@ -19653,6 +20016,25 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         return min(b["start"] for b in bs), max(b["stop"] for b in bs)
 
+    def set_smooth(self, on):
+        """Courbes lissées (antialiasing) du spectre, de la rémanence et des scans gardés : plus joli, plus lourd."""
+        self.smooth = bool(on)
+        pg.setConfigOptions(antialias=self.smooth)
+        items = [getattr(self, n_, None) for n_ in ("curve", "maxcurve", "refcurve")] + list(getattr(self, "_hist_items", []))
+        try:                                       # (objets factices dans les tests : rien à faire)
+            for it in items:
+                if it is None:
+                    continue
+                it.opts["antialias"] = self.smooth
+                it.curve.opts["antialias"] = self.smooth
+                it.curve.update()
+            sc = getattr(self, "sitecurve", None)
+            if sc is not None:
+                sc.opts["antialias"] = self.smooth
+                sc.update()
+        except (TypeError, AttributeError, KeyError):
+            pass
+
     def update_plot(self, hist=True):
         try:
             self._update_plot(hist)
@@ -19758,7 +20140,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         ys += [l, nan]
             if xs:
                 while len(self._hist_items) <= i:
-                    it = pg.PlotCurveItem(connect="finite")
+                    it = pg.PlotDataItem(connect="finite", antialias=bool(getattr(self, "smooth", False)))
+                    it.setClipToView(True)                 # fluidité (7.31.1) : seulement la partie visible,
+                    it.setDownsampling(auto=True, method="peak")   # ~1 point par pixel, pics gardés
                     it.setZValue(-1)
                     self.spec.getPlotItem().addItem(it)
                     self._hist_items.append(it)

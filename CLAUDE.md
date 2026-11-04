@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.30.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.31.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -529,6 +529,28 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`cmp_a/b`, `cmp_plot`, `diff_plot`, `cmp_txt`), Signaux du lieu (`pk_thr`, `pk_only`, `pk_table`, `add_ext` =
   émetteurs extérieurs « Ext. f » SANS statut → pris en compte par Vérifier le plan / Coordonner, sans alarme,
   `copy_peaks`), Dans le temps (`tl_scene`, `tl_plot`, `tl_txt`) ; `report(path)` → `rapports/etude_site_*.html`.
+- **7.31.0 (Clément : « des profils IP pour les tiny en réseau, le Pi change d'IP selon le Wi-Fi, et que ça s'enregistre
+  avec le show »)** : PURE `net_profiles_norm` ({name, addr} réseau valides, noms uniques, ≤ 30), `net_profiles_merge`
+  (PC + show, le show gagne à nom égal), `net_host_port`, `net_profile_name`. `self.net_profiles` (config
+  `net_profiles` ; **SHOW_KEYS + `net_profiles`, `net_addr`, `port_net`, `dev2`** : le 2ᵉ tinySA suit maintenant le
+  show, test_v7 mis à jour). `net_test(addr)` (connexion TCP 1,5 s : répond / nom introuvable / ne répond pas).
+  `NetProfilesDialog` (table Nom / Adresse / Test, Ajouter, Supprimer, 🔌 Tester, Utiliser pour le 1er / 2ᵉ ; `save`
+  sur `finished`), `open_net_profiles` (entrée `NET_ITEM` des ports, ⚙ › Connexions, ☰ Plus › 🔗, bouton à côté de
+  l'adresse du 2ᵉ), `use_net_addr`. `refresh_ports` liste chaque adresse « 🌐 nom — adresse » (la choisie en tête),
+  `_dev2_ports` aussi (« adresse  · nom », relu par `_read_dev2`). L'ancienne saisie QInputDialog a disparu.
+- **7.31.1 (Clément : « nouveau show, un scan reste sur le spectre alors que Scans par lieu est vide »)** : `_sites_tick`
+  réenregistrait toutes les 30 s le max hold EN MÉMOIRE (`site_mh`) de chaque scène comme scan gardé, même après
+  suppression ou nouveau show. `forget_site(scène)` (vide `site_mh`, `_site_mh_t0`, `_site_base`) appelé par
+  `SitesDialog.delete` ; `_sites_tick` oublie les scènes qui n'existent plus ; `new_show` → `clear_show_data` : liste,
+  scènes, scans par lieu, max hold des scènes, `dev_scenes`, référence (aussi `REF_PATH`) et max hold vidés.
+  Aussi en 7.31.1 : ⚙ Réglages ne fait plus `page.show()` sur les rubriques empruntées (elles s'empilaient sur
+  « Général », capture de Clément) ; **Vue** propose « ＋ Nouvelle bande à balayer… » (`NewBandDialog`,
+  `new_band_dialog`), « Gérer les bandes… » et les bandes non balayées « ○ … » (données `__add__` / `__manage__` /
+  `on:<id>` gérées en tête de `on_view_changed`, `_view_prev`, `show_band`). **Fluidité** (Clément : 40 % de processeur,
+  3 000 pts, rémanence 10) : mesuré en démo, ~80 % du temps = dessin (`drawPath`) → courbes NON lissées par défaut
+  (`self.smooth`, `set_smooth`, config `smooth`, case ⚙ › Général), rémanence en `PlotDataItem` clip + downsampling,
+  `on_partial` redessine au plus 5 fois / s ; démo : 113 % → 56 %. Clément : « ça le faisait pas avec mon autre écran »
+  et « j'ai relancé ça va mieux » (écran plus grand / mise à l'échelle = plus de pixels à dessiner).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
