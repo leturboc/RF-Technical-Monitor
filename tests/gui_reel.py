@@ -1824,6 +1824,19 @@ wait(800)
 shot(win, "tinysa2_perdu")
 step("retour du 2e", lambda: win.on_link(1, True))
 wait(1500)
+# 🔀 diversity maison (7.34) : les deux balayent les MÊMES bandes, on garde le meilleur
+win.div_chk.setChecked(True)
+seen[0].clear(); seen[1].clear()
+wait(7000)
+_en = {b_["id"] for b_ in win.bands if b_["enabled"]}
+check("🔀 diversity : les deux tinySA balayent toutes les bandes", seen[0] >= _en and seen[1] >= _en,
+      f"{seen[0]} {seen[1]} {_en}")
+check("🔀 diversity : meilleur niveau suivi par bande", win.div_src and all(len(v[1]) for v in win.div_src.values()))
+win.update_dev2_label()
+check("🔀 diversity : part de chaque tinySA affichée", "🔀 Diversity" in win.dev2_lbl.text() and "%" in win.dev2_lbl.text(),
+      win.dev2_lbl.text())
+win.div_chk.setChecked(False)
+wait(1500)
 # noms de position + calibration (démo : pas de porteuse commune → base « bruit de fond »)
 win.dev1_name.setText("Plateau")
 win.dev2_name.setText("FOH")

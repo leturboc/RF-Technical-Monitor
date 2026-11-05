@@ -170,6 +170,41 @@ win.watch[:] = [w for w in win.watch if w["name"] != "Libre X"]
 for k in [k for k in win.alarms.active if k[0] == "CONFLIT"]:
     win.alarms.clear(k, 0)
 
+# ------------------------------------------------------------- 🔀 diversity maison (demande de Clément 7.34)
+check("diversity : coupé par défaut (partage des bandes)", not win.diversity_on()
+      and -1 not in win.band_devices().values())
+win.div_chk.setChecked(True)
+check("diversity : réglage lu", win.dev2.get("div") is True and win.diversity_on())
+check("diversity : les deux tinySA balayent toutes les bandes", set(win.band_devices().values()) == {-1},
+      str(win.band_devices()))
+win.update_band_dev_col()
+check("diversity : colonne tinySA « 1 + 2 »", win.band_table.item(0, 5).text() == "1 + 2", win.band_table.item(0, 5).text())
+win._append_watch("Micro D", 520.0, status=[s_["name"] for s_ in win.statuses if s_.get("on")][0])
+win.rebuild_watch_table()
+iD = int(np.argmin(abs(F - 520.0)))
+La, Lb = -100 + 0 * F, -100 + 0 * F
+La[iD] = -95                                   # antenne du 1er dans un creux
+Lb[iD] = -45                                   # le 2ᵉ voit bien le micro
+win.band_src[ids[0]] = 0
+win.on_sweep(ids[0], F, La)
+win.band_src[ids[0]] = 1
+win.on_sweep(ids[0], F, Lb)
+wD = next(w_ for w_ in win.watch if w_["name"] == "Micro D")
+check("diversity : le meilleur des deux est gardé", abs(win.latest[ids[0]][1][iD] + 45) < 1e-6, str(win.latest[ids[0]][1][iD]))
+win.band_src[ids[0]] = 0
+win.on_sweep(ids[0], F, La)                     # nouveau balayage du 1er, toujours dans le creux
+check("diversity : le 1er dans un creux ne fait pas tomber le micro", abs(win.latest[ids[0]][1][iD] + 45) < 1e-6
+      and wD["level"] is not None and wD["level"] > -60, f"{win.latest[ids[0]][1][iD]} {wD['level']}")
+check("diversity : « meilleur : FOH »", win.seen_by(520.0) == "meilleur : FOH", win.seen_by(520.0))
+win.update_dev2_label()
+check("diversity : part de chaque tinySA affichée", "🔀 Diversity" in win.dev2_lbl.text(), win.dev2_lbl.text())
+check("config : diversity enregistré", win._collect_config(False)["dev2"].get("div") is True)
+win.div_chk.setChecked(False)
+check("diversity décoché : partage des bandes", not win.diversity_on() and -1 not in win.band_devices().values())
+win.watch[:] = [w_ for w_ in win.watch if w_["name"] != "Micro D"]
+win.div_buf.clear(); win.div_src.clear()
+win.alarms.reset()
+
 # ------------------------------------------------------------- calibration entre les deux tinySA
 infos = []
 W.QMessageBox.information = staticmethod(lambda p, t, x, *a, **k: infos.append(x))
@@ -238,11 +273,11 @@ check("sans sélection : rien", len(win.bands) == 4)
 # ------------------------------------------------------------- config
 win.bands[3]["dev"] = 1
 data = win._collect_config(full=False)
-check("config : dev2 enregistré", data["dev2"] == dict(on=True, addr="192.168.1.20", offset=2.5), str(data["dev2"]))
+check("config : dev2 enregistré", data["dev2"] == dict(on=True, addr="192.168.1.20", offset=2.5, div=False), str(data["dev2"]))
 check("config : appareil de la bande", data["bands"][3]["dev"] == 1)
 win2 = step("MainWindow() #2", m.MainWindow)
 step("apply_config", lambda: win2._apply_config(data))
-check("config relue : 2e tinySA", win2.dev2 == dict(on=True, addr="192.168.1.20", offset=2.5), str(win2.dev2))
+check("config relue : 2e tinySA", win2.dev2 == dict(on=True, addr="192.168.1.20", offset=2.5, div=False), str(win2.dev2))
 check("config relue : noms de position", win2.dev_names == ["Plateau", "FOH"], str(win2.dev_names))
 check("config relue : bande fixée", win2.bands[3]["dev"] == 1 and win2.bands[0]["dev"] is None,
       str([b.get("dev") for b in win2.bands]))

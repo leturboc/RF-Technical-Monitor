@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.33.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.34.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -566,6 +566,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   vues d'éléments) sur la liste (`del_watch`), l'arbre (`delete_selected_layer`), les bandes (`del_band`, garde une
   bande), Scans par lieu, adresses réseau. gui_reel : envoyer les touches au tableau (une fenêtre non modale laissée
   ouverte par un test précédent peut être la fenêtre active).
+- **7.33.0** : import des plans EazyRF (`.ezrf3` / copier-coller) et règles de calcul d'EazyRF (voir « Formats de
+  fichiers »). Filtre = ± la valeur (avant : ± filtre / 2) → plus sévère qu'en 7.32.
+- **7.34.0 (Clément, en plein show : « je suis pas en diversity, ça décroche sur le soft alors qu'aux récepteurs c'est
+  ok »)** : **🔀 Diversity maison** : `dev2["div"]` (case `div_chk` dans ⚙ › 2ᵉ tinySA, config + shows via `dev2`),
+  `diversity_on()` (2 tinySA ET case ET pas `multi_site`) → `band_devices` renvoie −1 (les deux balayent tout, colonne
+  « 1 + 2 ») ; `on_sweep` → `_div_feed` : `div_buf` {bande: {tinySA: (F, L, t)}} → PURE `diversity_merge` (meilleur
+  niveau point par point des balayages récents, `stale` = max(10 s, 2,5 cycles), grilles différentes interpolées,
+  `src` = gagnant) ; `div_src` → `seen_by` « meilleur : nom » ; `update_dev2_label` : part de chaque tinySA (PURE
+  `diversity_share`). Testé en faux Qt (smoke_test5) et en démo à 2 tinySA simulés (gui_reel) ; **jamais avec deux
+  vrais tinySA sur deux antennes** (Clément n'avait qu'un tinySA au 05/11/2026).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

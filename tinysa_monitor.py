@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.33.0"
+APP_VER = "7.34.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -6122,6 +6122,45 @@ def multi_site(dev_scenes, ndev, live=None):
         if d < len(live) and live[d] and v:
             sets.append(frozenset(v))
     return ndev > 1 and len(set(sets)) > 1
+
+
+def diversity_merge(entries, now, stale):
+    """🔀 Diversity maison : deux tinySA sur deux antennes balayent la MÊME bande ; on garde, point par point, le
+    meilleur niveau des balayages récents (comme un récepteur diversity choisit la meilleure antenne).
+    entries = {n° appareil: (F, L, t)} ; un balayage plus vieux que `stale` s'il n'est pas le dernier reçu est ignoré.
+    -> (F, L, src) : grille du balayage le plus récent, niveaux max, src = n° de l'appareil gagnant par point ;
+    ou None si rien."""
+    items = sorted(((t, d, F, L) for d, (F, L, t) in entries.items() if len(F)), key=lambda x: -x[0])
+    if not items:
+        return None
+    t0, d0, F, L = items[0]
+    F = np.asarray(F, dtype=float)
+    best = np.asarray(L, dtype=float).copy()
+    src = np.full(len(F), d0, dtype=int)
+    for t, d, F2, L2 in items[1:]:
+        if now - t > stale:
+            continue
+        F2, L2 = np.asarray(F2, dtype=float), np.asarray(L2, dtype=float)
+        if F2.shape == F.shape and np.allclose(F2, F, atol=1e-6):
+            l2 = L2
+        else:                                      # grilles différentes : niveau de l'autre lu sur notre grille
+            inside = (F >= F2[0] - 1e-9) & (F <= F2[-1] + 1e-9)
+            l2 = np.where(inside, np.interp(F, F2, L2), -np.inf)
+        win = l2 > best
+        best = np.where(win, l2, best)
+        src = np.where(win, d, src)
+    return F, best, src
+
+
+def diversity_share(srcs, ndev=2):
+    """Part des points gagnés par chaque appareil (en %) -> [p0, p1…], pour voir que le diversity sert."""
+    tot = np.zeros(ndev)
+    for s_ in srcs:
+        s_ = np.asarray(s_, dtype=int)
+        for d in range(ndev):
+            tot[d] += np.count_nonzero(s_ == d)
+    n = tot.sum()
+    return [round(float(x) * 100.0 / n) for x in tot] if n else [0] * ndev
 
 
 def dev_scenes_norm(d):
@@ -15746,11 +15785,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.workers = []
         self.net_addr, self.port_net = "", False   # 🌐 1er tinySA en réseau (Raspberry Pi…) : adresse, choisi ou non
         self.net_profiles = []                     # 🌐 adresses enregistrées [{name, addr}] (une par Wi-Fi / lieu)
-        self.dev2 = dict(on=False, addr="", offset=0.0)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
+        self.dev2 = dict(on=False, addr="", offset=0.0, div=False)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
         self.dev_live = [True, True]    # liaison de chaque appareil (False = perdue, ses bandes passent sur l'autre)
         self.dev_cycle = {}
         self.dev_names = ["tinySA 1", "tinySA 2"]   # noms de position (« Plateau », « FOH »…)
         self.band_src = {}              # id bande -> n° du tinySA qui a fourni le dernier balayage
+        self.div_buf, self.div_src = {}, {}   # 🔀 diversity : {bande: {tinySA: (F, L, t)}}, {bande: (F, gagnant, t)}
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
         self._strong_src = {}           # alarmes « trop fort » en cours -> bande qui les a vues
         self.sig_labels = {}            # tes mots pour la colonne Signal (clé SIGNAL_LABELS -> texte)
@@ -17197,13 +17237,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def ndev(self):
         return 2 if self.dev2["on"] else 1
 
+    def diversity_on(self):
+        """🔀 Diversity : 2 tinySA (deux antennes) balayent les mêmes bandes, on garde le meilleur niveau. Pas quand ils
+        sont posés à deux scènes différentes (là, chacun juge sa scène)."""
+        return (self.ndev() == 2 and bool(self.dev2.get("div"))
+                and not multi_site(self.dev_scenes, self.ndev(), self.dev_live))
+
     def band_devices(self):
         """{id bande: n° du tinySA qui la balaye} (tout sur le 1er quand il n'y en a qu'un)."""
         bs = [b for b in self.scan_bands() if self._scan_now(b)]
         if self.ndev() == 1:
             return {b["id"]: 0 for b in bs}
-        if multi_site(self.dev_scenes, self.ndev(), self.dev_live):
-            return {b["id"]: -1 for b in bs}          # -1 = chaque tinySA balaye la bande, chez lui
+        if multi_site(self.dev_scenes, self.ndev(), self.dev_live) or self.diversity_on():
+            return {b["id"]: -1 for b in bs}          # -1 = chaque tinySA balaye la bande (chez lui / 🔀 diversity)
         return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
                             2, self.dev_live)
 
@@ -17501,6 +17547,7 @@ class MainWindow(QtWidgets.QMainWindow):
         d2 = data.get("dev2")
         if isinstance(d2, dict):
             self.dev2_chk.setChecked(bool(d2.get("on")))
+            self.div_chk.setChecked(bool(d2.get("div")))
             self.dev2_addr.setEditText(str(d2.get("addr", "")))
             try:
                 self.dev2_off.setValue(float(d2.get("offset", 0.0)))
@@ -17953,6 +18000,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_live = [True, True]
         self.dev_cycle = {}
         self.band_src = {}
+        self.div_buf, self.div_src = {}, {}
         self.workers = []
         for i, (addr, label) in enumerate(targets):
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
@@ -18140,6 +18188,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                  "(colonne « tinySA » des bandes). Cycle deux fois plus court, et si l'un décroche,\n"
                                  "l'autre reprend toutes les bandes (alarme ⚠ APPAREIL).")
         self.dev2_chk.toggled.connect(lambda *_: self._dev2_changed())
+        self.div_chk = QtWidgets.QCheckBox("🔀 Diversity : les deux balayent tout, on garde le meilleur")
+        self.div_chk.setToolTip("Deux antennes espacées, une par tinySA : les deux balayent les MÊMES bandes et, pour\n"
+                                "chaque fréquence, on garde le plus fort des deux (comme un récepteur diversity).\n"
+                                "Fini les « absent » quand une antenne tombe dans un creux. Cycle pas plus court\n"
+                                "qu'avec un seul tinySA. Calibre d'abord le 2ᵉ sur le 1er (⚖, même antenne).\n"
+                                "Décoché : les deux se partagent les bandes (cycle deux fois plus court).")
+        self.div_chk.toggled.connect(lambda *_: self._dev2_changed())
         self.dev2_addr = QtWidgets.QComboBox()
         self.dev2_addr.setEditable(True)
         self.dev2_addr.setToolTip("USB : choisis le port (COM4…).\nRéseau : adresse du PC où le tinySA est branché, "
@@ -18167,6 +18222,7 @@ class MainWindow(QtWidgets.QMainWindow):
             e.textChanged.connect(lambda *_: self._dev_names_changed())
         f.addRow("Nom du 1er :", self.dev1_name)
         f.addRow(self.dev2_chk)
+        f.addRow(self.div_chk)
         f.addRow("Nom du 2ᵉ :", self.dev2_name)
         net_btn = QtWidgets.QPushButton("🌐 Adresses enregistrées…")
         net_btn.setToolTip("Les adresses réseau du relais (Raspberry Pi, autre PC), une par Wi-Fi : ajouter, tester,\n"
@@ -18203,7 +18259,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _read_dev2(self):
         txt = self.dev2_addr.currentText().replace("✔ tinySA", "").split("  · ")[0].strip()   # « COM4  ✔ tinySA » -> « COM4 »
-        self.dev2.update(on=self.dev2_chk.isChecked(), addr=txt, offset=float(self.dev2_off.value()))
+        self.dev2.update(on=self.dev2_chk.isChecked(), addr=txt, offset=float(self.dev2_off.value()),
+                         div=self.div_chk.isChecked())
 
     def _dev2_changed(self):
         self._read_dev2()
@@ -18227,8 +18284,15 @@ class MainWindow(QtWidgets.QMainWindow):
         run = self.is_running()
         st = ("✔ en ligne" if self.dev_live[1] else "⚠ liaison perdue (nouvel essai…)") if run else "prêt"
         cyc = "  ·  ".join(f"{self.dev_name(k)} : {v:.1f} s" for k, v in sorted(self.dev_cycle.items())) if run else ""
+        div = ""
+        if self.diversity_on():
+            now = time.time()
+            srcs = [s_ for _F, s_, t in self.div_src.values() if now - t < 60]
+            sh = diversity_share(srcs)
+            div = "\n🔀 Diversity" + (f" · meilleur niveau : {self.dev_name(0)} {sh[0]} % · {self.dev_name(1)} {sh[1]} %"
+                                     if run and srcs else " : les deux balayent toutes les bandes")
         self.dev2_lbl.setText(f"{where} · {st}" + (f" · {self.dev2_info}" if run and self.dev2_info else "")
-                              + (f"\nCycle  {cyc}" if cyc else ""))
+                              + (f"\nCycle  {cyc}" if cyc else "") + div)
 
     def start_calib(self):
         """Les deux tinySA balayent la même bande quelques cycles ; l'offset du 2e est ajusté sur le 1er."""
@@ -18409,6 +18473,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """« vu par <nom> » : le tinySA qui a mesuré la fréquence f (MHz) en dernier, si deux appareils ; sinon ""."""
         if self.ndev() < 2:
             return ""
+        if self.diversity_on():                    # 🔀 : le tinySA qui a donné le meilleur niveau à cette fréquence
+            for bid, (F, src, t) in self.div_src.items():
+                if len(F) and F[0] - 0.05 <= f <= F[-1] + 0.05 and time.time() - t < 60:
+                    return f"meilleur : {self.dev_name(int(src[int(np.argmin(np.abs(F - f)))]))}"
         best = None
         for bid, (F, _L) in self.latest.items():
             if len(F) and F[0] - 0.05 <= f <= F[-1] + 0.05 and bid in self.band_src:
@@ -18442,7 +18510,9 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 real = asg.get(b["id"])
                 txt = "Auto" if d is None else f"{d + 1}"
-                if real is not None and (d is None or real != d):
+                if real == -1:
+                    txt = "1 + 2"                     # les deux la balayent (🔀 diversity, ou deux scènes)
+                elif real is not None and (d is None or real != d):
                     txt += f" → {real + 1}"
             self.band_table.setItem(r, 5, self._item(txt))
         self._updating = False
@@ -19026,6 +19096,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 if s_ not in mine and x is not None and now - x[2] <= stale and x[1].shape == l.shape:
                     l = np.maximum(l, x[1])
         return f, l
+
+    def _div_feed(self, bid, f, l):
+        """🔀 Garde le dernier balayage de chaque tinySA pour cette bande -> meilleur des deux, point par point."""
+        now = time.time()
+        buf = self.div_buf.setdefault(bid, {})
+        buf[self.band_src.get(bid, 0)] = (f, l, now)
+        r = diversity_merge(buf, now, max(10.0, 2.5 * self.last_cycle))
+        if r is None:
+            return f, l
+        F, L, src = r
+        self.div_src[bid] = (F, src, now)
+        return F, L
 
     def site_fresh(self, site):
         """Direct d'un lieu (bandes récentes) -> (F, L) trié, ou (None, None)."""
@@ -20575,6 +20657,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.partial_data.pop(bid, None)
         if bid != ZOOM_ID:
             f, l = self._site_feed(bid, f, l)
+            if self.diversity_on():
+                f, l = self._div_feed(bid, f, l)
         old = self.latest.get(bid)
         if (old is not None and old[0].shape == f.shape and abs(old[0][0] - f[0]) < 1e-6
                 and abs(old[0][-1] - f[-1]) < 1e-6):

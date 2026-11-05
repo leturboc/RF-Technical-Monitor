@@ -1004,5 +1004,18 @@ check("ezrf3 : 5ᵉ ordre coupé dans les options du document -> pas compté (Te
       _t5(_raw5.replace("</EazyRFds>", "<OptionsDt><Eval5eOrdre>false</Eval5eOrdre></OptionsDt></EazyRFds>")), [0.0])
 check("profil perso : séparation jusqu'à 10 MHz", ns["rx_custom_norm"]([dict(name="x", sep=4.0)])[0][2]["sep"], 4.0)
 
+# --- 🔀 diversity maison : deux tinySA sur deux antennes, meilleur niveau point par point
+_dm = ns["diversity_merge"]
+_F = np.array([500.0, 500.5, 501.0])
+_r = _dm({0: (_F, np.array([-90.0, -50.0, -80.0]), 100.0), 1: (_F, np.array([-60.0, -70.0, -80.0]), 101.0)}, 101.0, 10.0)
+check("diversity : max point par point + gagnant", (list(_r[1]), list(_r[2])), ([-60.0, -50.0, -80.0], [1, 0, 1]))
+_r = _dm({0: (_F, np.array([-90.0, -50.0, -80.0]), 80.0), 1: (_F, np.array([-60.0, -70.0, -80.0]), 101.0)}, 101.0, 10.0)
+check("diversity : balayage trop vieux de l'autre ignoré", list(_r[1]), [-60.0, -70.0, -80.0])
+_r = _dm({0: (np.array([500.0, 501.0]), np.array([-40.0, -40.0]), 100.0),
+          1: (_F, np.array([-60.0, -70.0, -80.0]), 101.0)}, 101.0, 10.0)
+check("diversity : grilles différentes (interpolées)", list(_r[1]), [-40.0, -40.0, -40.0])
+check("diversity : rien", _dm({}, 0, 10), None)
+check("diversity : part des points", ns["diversity_share"]([np.array([0, 0, 1, 1]), np.array([0])]), [60, 40])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
