@@ -3038,6 +3038,10 @@ EXACT = {
     ' : les deux balayent toutes les bandes': ': both sweep all the bands',
     "Deux antennes espacées, une par tinySA : les deux balayent les MÊMES bandes et, pour\nchaque fréquence, on garde le plus fort des deux (comme un récepteur diversity).\nFini les « absent » quand une antenne tombe dans un creux. Cycle pas plus court\nqu'avec un seul tinySA. Calibre d'abord le 2ᵉ sur le 1er (⚖, même antenne).\nDécoché : les deux se partagent les bandes (cycle deux fois plus court).": 'Two spaced antennas, one per tinySA: both sweep the SAME bands and, for\neach frequency, the stronger of the two is kept (like a diversity receiver).\nNo more “absent” when one antenna falls into a dip. The cycle is not shorter\nthan with a single tinySA. First calibrate the 2nd on the 1st (⚖, same antenna).\nUnticked: the two share the bands (cycle twice as short).',
     '🔀 Diversity : les deux balayent tout, on garde le meilleur': '🔀 Diversity: both sweep everything, the best is kept',
+    'manque': 'missing',
+    'manquent': 'missing',
+    ' · manque : ': ' · missing: ',
+    ' · manquent : ': ' · missing: ',
 }
 
 TEMPLATES = {
@@ -3186,12 +3190,10 @@ TEMPLATES = {
     '  ·  ⚠ {} alarme(s)': '  ·  ⚠ {} alarm(s)',
     ' (+ {} autre(s) fichier(s))': ' (+ {} other file(s))',
     ' (dont {} bloc(s))': ' (including {} block(s))',
-    ' (dont {} faible{})': ' (including {} weak{})',
     ' (sur {})': ' (out of {})',
     ' (à {} kHz)': ' ({} kHz away)',
     ' {} TX': ' {} TX',
     ' · RBW {} · entrée {}': ' · RBW {} · input {}',
-    ' · manque{} : ': ' · missing{}: ',
     ' · occ. {} %': ' · occ. {} %',
     ' · vu il y a {} min': ' · seen {} min ago',
     ' · {} ignorée(s)': ' · {} skipped',
@@ -3467,6 +3469,12 @@ TEMPLATES = {
     ', scan « {} » gardé dans Scans par lieu': ', scan “{}” kept in Scans by place',
     'meilleur : {}': 'best: {}',
     ' · meilleur niveau : {} {} % · {} {} %': ' · best level: {} {} % · {} {} %',
+    ' (dont {} faibles)': ' (including {} weak)',
+    ' (dont {} faible)': ' (including {} weak)',
+    '{} / {} OK (dont {} faibles)': '{} / {} OK (including {} weak)',
+    '{} / {} OK (dont {} faible)': '{} / {} OK (including {} weak)',
+    'Tout est là ✓ ({} / {}) (dont {} faibles)': 'All present ✓ ({} / {}) (including {} weak)',
+    'Tout est là ✓ ({} / {}) (dont {} faible)': 'All present ✓ ({} / {}) (including {} weak)',
 }
 
 SAME_TEMPLATES = [
