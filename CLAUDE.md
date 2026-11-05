@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.32.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.33.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -612,9 +612,28 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   pas vérifié.
 - Les formats « EazyRF / WWB / WSM » pour l'**export de listes de fréquences** sont des suppositions génériques :
   demander à Clément un vrai fichier d'import avant de les « corriger ».
-  Clément a envoyé un résumé d'IA Google sur les colonnes EazyRF (Zone > Groupe > Section > Appareil > Fréquence ;
-  séparateur selon la langue de Windows) et un mail de Régis (EazyRF) sur les Snapshots (4.81) : **pas des sources
-  fiables**, eazyrf.com bloqué par le proxy. Idée en attente de son feu vert : « 📸 États » façon Snapshots.
+  Mail de Régis (EazyRF) sur les Snapshots (4.81, résumé d'IA, pas une doc) : idée « 📸 États » en attente du feu
+  vert de Clément. eazyrf.com est bloqué par le proxy.
+- **Document EazyRF `.ezrf3` (7.33, 7 vrais fichiers de Clément, PAS dans le dépôt ; essai inventé
+  `tests/data/eazyrf_essai.ezrf3` + `eazyrf_collage_essai.txt`)** : XML `EazyRFds`, éléments À PLAT dans l'ordre
+  `GroupeDt` (NbSect, ZoneNo, HorsFonction) / `SectionDt` (NbApp) / `AppareilDt` (AppareilName, AppDescription « #n »,
+  NbreFréqDésiré, Tolérance / Tolérance3TX / Tolérance5e / Séparation en kHz, Filtre MHz, Incrément, Départ / Arrêt,
+  Eval5eOrdre, FréqImage, AppNbIM) / `FréquenceDt` (Valeur « 558,200 » parfois VIDE = pas encore attribuée,
+  Description, Rayé, Libéré) ; `ZonesDt` (NoZone, Title), `InterférencesDt`, `ParamsDt/ZipScanData` (gzip + base64 de
+  paires float64 MHz / dBm), `OptionsDt/Eval5eOrdre` (interrupteur général du 5ᵉ ordre), `RésuméDt/NbIM`
+  (« Nbre Intermodulation: N »), `InformsDt` (Titre, Date, Version). PURE `parse_ezrf3`, `parse_ezrf_paste` /
+  `is_ezrf_paste` (copier-coller du plan : titres empilés après chaque ligne vide, `#n - Appareil`, `nom<TAB>MHz`),
+  `ezrf_entries` (scène = groupe EazyRF, préfixé de la zone si plusieurs ; groupe = section), `ezrf_profile_names`,
+  `ezrf_dev_key`. `EzrfImportDialog`, `MainWindow.import_ezrf_file` / `open_ezrf` / `apply_ezrf` /
+  `_ezrf_profiles` (profils perso créés ou réutilisés, posés sur les groupes), branchés sur `import_watch`,
+  `open_import` (collage) et le glisser-déposer.
+- **Règles de calcul d'EazyRF (doc officielle envoyée par Clément, § 2.4, + vérifié sur ses 7 plans)** : Filtre =
+  **± la valeur** (« 16 MHz : porteuse à 500 → émetteurs de 484 à 516 »), PAS ± filtre / 2 comme avant 7.33 ;
+  tolérance = « au-delà de laquelle les IM sont acceptées » → **limite stricte** (produit pile à 50 kHz = OK ; marge
+  1e-6) ; 5ᵉ ordre = case de l'appareil ET option du document ; **chaque zone est calculée à part**. Résultat
+  (`pf_check` par zone, réglages par appareil) : Roc d'Azur 0/0, Maalouf 0/0, Isabelle 0/0, PlaneR Samedi 0/0,
+  TechFest 6/6, PlaneR complet 104 (EazyRF) / 110 (nous, même détail appareil par appareil ; façon de compter
+  différente). Image (10,7 MHz : deux fréquences séparées de 10,7 MHz) : PAS encore calculée.
 
 ## Tests (`tests/`, à lancer depuis la racine du dépôt)
 ```

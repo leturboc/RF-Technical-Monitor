@@ -1155,6 +1155,62 @@ win.undo(); wait(200)
 check("Ctrl+Z : la bande revient", len(win.bands) == _nb0 + 1 and win.bands[-1]["name"] == "Test undo")
 win.bands = [b_ for b_ in win.bands if b_["name"] != "Test undo"]; win._bands_changed(); win.undo_track()
 
+# 📥 Plan EazyRF (.ezrf3 / copier-coller) — fichiers INVENTÉS de même structure (demande de Clément 7.33)
+_ez_saved = (list(win.watch), [dict(sc_, groups=[dict(g_) for g_ in sc_["groups"]]) for sc_ in win.scenes],
+             list(win.site_scans), m.rx_custom_dump())
+_ezp = os.path.join(HERE, "data", "eazyrf_essai.ezrf3")
+def _ez_act(d):
+    _ez_dlg.append(d)
+    check("EazyRF : aperçu (arbre scènes › groupes, statut « doit émettre » proposé, scan coché)",
+          d.tree.topLevelItemCount() == 3 and d.scan.isChecked() and d.interf.isVisibleTo(d)
+          and any(st_["name"] == d.status.currentData() and st_.get("on") for st_ in win.statuses),
+          f"{d.tree.topLevelItemCount()} {d.status.currentData()}")
+    d.interf.setChecked(True)
+    d.replace.setChecked(True)
+    return "accept"
+_ez_dlg = []
+DLG_ACTION[0] = _ez_act
+_n_ez = win.import_ezrf_file(_ezp)
+DLG_ACTION[0] = "reject"
+check("EazyRF : 5 fréquences importées (rayée et hors fonction ignorées)", _n_ez == 5 and
+      len([w_ for w_ in win.watch if not w_["name"].startswith("Ext.")]) == 5, f"{_n_ez} {len(win.watch)}")
+check("EazyRF : scènes / groupes créés", win.group_row("Zone Nord · Plateau A", "Ears") is not None
+      and win.group_row("Zone Sud · Loge", "Micros") is not None)
+_gA = win.group_row("Zone Nord · Plateau A", "Micros")
+_rxA = [m.rx_profile(k_) for k_ in win.group_rxs(_gA)]
+check("EazyRF : 2 appareils posés sur le groupe, avec leurs réglages",
+      len(_rxA) == 2 and sorted((round(r_["sep"], 3), r_["filt"]) for r_ in _rxA) == [(0.3, 16.0), (0.5, 32.0)],
+      str(_rxA))
+_w512 = next(w_ for w_ in win.watch if abs(w_["freq"] - 512.0) < 1e-6)
+_w500 = next(w_ for w_ in win.watch if abs(w_["freq"] - 500.1) < 1e-6)
+check("EazyRF : appareil de chaque fréquence (le 2ᵉ du groupe gardé sur sa ligne)",
+      m.rx_profile(win.rx_of(_w512))["filt"] == 16.0 and m.rx_profile(win.rx_of(_w500))["filt"] == 32.0
+      and "rx" not in _w500)
+check("EazyRF : interférences en émetteurs extérieurs + scan dans Scans par lieu",
+      sum(1 for w_ in win.watch if w_["name"].startswith("Ext.")) == 2
+      and any(d_["name"].startswith("EazyRF ·") and len(d_["f"]) == 201 for d_ in win.site_scans))
+_nprof = len(m.RX_CUSTOM)
+DLG_ACTION[0] = "accept"
+win.import_ezrf_file(_ezp)
+DLG_ACTION[0] = "reject"
+check("EazyRF : réimporter ne recrée pas les profils", len(m.RX_CUSTOM) == _nprof, f"{_nprof} -> {len(m.RX_CUSTOM)}")
+win.undo(); wait(200)
+win.undo(); wait(200)
+check("EazyRF : Ctrl+Z annule l'import", [w_["name"] for w_ in win.watch] == [w_["name"] for w_ in _ez_saved[0]],
+      str(len(win.watch)))
+_ez_txt = open(os.path.join(HERE, "data", "eazyrf_collage_essai.txt"), encoding="utf-8").read()
+DLG_ACTION[0] = "accept"
+_n_wb = len(win.watch)
+_have = {int(round(w_["freq"] * 1000)) for w_ in win.watch}
+_n_new = sum(1 for f_ in (500.1, 503.45, 512.0, 530.25, 534.875, 540.0) if int(round(f_ * 1000)) not in _have)
+win.open_import(_ez_txt, "Texte collé")
+DLG_ACTION[0] = "reject"
+check("EazyRF : le copier-coller passe par le même import", len(win.watch) == _n_wb + _n_new
+      and win.group_row("Zone Sud · Loge", "Micros") is not None, f"{_n_wb} -> {len(win.watch)}")
+win.watch, win.scenes, win.site_scans = _ez_saved[0], _ez_saved[1], _ez_saved[2]
+m.rx_set_custom(_ez_saved[3])
+win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers(); win.update_site_curve(); win.undo_track()
+
 # Vue : créer / réactiver une bande sans passer par ⚙ (demande de Clément 7.31)
 _vi = [win.view_combo.itemData(i) for i in range(win.view_combo.count())]
 check("Vue : « ＋ Nouvelle bande » et « Gérer les bandes » proposés", "__add__" in _vi and "__manage__" in _vi, str(_vi))

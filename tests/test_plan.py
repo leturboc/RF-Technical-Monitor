@@ -171,7 +171,7 @@ ns["rx_set_custom"]([dict(name="EW G4 bande A", filt=16, sep=0.4, step=0.025, to
                      dict(name="", filt=8), "bancal", dict(name="Mon IEM", key="perso_x", filt="abc", sep=99)])
 cu = ns["rx_custom_dump"]()
 check("profils perso : lus et nettoyés", [(p_["key"], p_["name"], p_["filt"], p_["sep"]) for p_ in cu],
-      [("perso_1", "EW G4 bande A", 16.0, 0.4), ("perso_x", "Mon IEM", 0.0, 3.0)])
+      [("perso_1", "EW G4 bande A", 16.0, 0.4), ("perso_x", "Mon IEM", 0.0, 10.0)])
 check("profil perso utilisable comme les autres", (rp("perso_1")["filt"], rp("perso_1")["src"]), (16.0, "perso"))
 check("profil perso : relu tel quel", ns["rx_custom_dump"]() == cu or None, True)
 ns["rx_set_custom"](cu)

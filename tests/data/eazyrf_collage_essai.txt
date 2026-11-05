@@ -1,0 +1,24 @@
+Zone Nord		
+Plateau A		
+Micros		
+#1 - Essai RX Alpha		
+Chant 1	500,100	
+Chant 2	503,450	
+		
+#1 - Essai RX Beta		
+	512,000	
+		
+Ears		
+#1 - Essai IEM		
+Ear 1	530,250	
+		
+Plateau B		
+Micros		
+#2 - Essai RX Alpha		
+	534,875	
+		
+Zone Sud		
+Loge		
+Micros		
+#2 - Essai RX Beta		
+Loge 1	540,000	

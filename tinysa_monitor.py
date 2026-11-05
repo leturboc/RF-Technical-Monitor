@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.32.0"
+APP_VER = "7.33.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1532,7 +1532,7 @@ def im_rules_text(tol, sep_mhz=None, filt=0.0):
     parts = ([f"écart d'au moins {sep_mhz * 1000:.0f} kHz entre deux porteuses"] if sep_mhz is not None else [])
     parts += [one("2tx3", "2A − B (2 émetteurs)"), one("3tx3", "A + B − C (3 émetteurs)"), one("5", "5ᵉ ordre")]
     if filt and filt > 0:
-        parts.append(f"seuls comptent les émetteurs à ±{filt / 2:g} MHz de la fréquence touchée (filtre {filt:g} MHz)")
+        parts.append(f"seuls comptent les émetteurs à ±{filt:g} MHz de la fréquence touchée (filtre {filt:g} MHz)")
     return "On vérifie : " + " · ".join(parts)
 
 
@@ -1875,6 +1875,228 @@ def rx_from_library(dev):
                 note=f"Bibliothèque EazyRF · {dev.get('type', '')} · {dev.get('lo', 0):g}–{dev.get('hi', 0):g} MHz")
 
 
+def _ez_num(x, dft=0.0):
+    try:
+        return float(str(x).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return dft
+
+
+def _ez_dev_params(name, g, eval5=True):
+    """Réglages d'un appareil d'un document EazyRF (mêmes champs que la bibliothèque .lst4)."""
+    return dict(name=name, lo=_ez_num(g("Départ")), hi=_ez_num(g("Arrêt")),
+                sep=_ez_num(g("Séparation"), 300.0) / 1000.0, filt=_ez_num(g("Filtre")),
+                step=_ez_num(g("Incrément"), 0.025) or 0.025,
+                tol={"2tx3": _ez_num(g("Tolérance"), 100.0) / 1000.0, "3tx3": _ez_num(g("Tolérance3TX"), 50.0) / 1000.0,
+                     "5": (_ez_num(g("Tolérance5e"), 50.0) / 1000.0 if eval5 and g("Eval5eOrdre").lower() == "true" else 0.0),
+                     "7": 0.0},     # 5ᵉ ordre : interrupteur du document (Options) ET case de l'appareil
+                img=_ez_num(g("FréqImage")) if g("FréqImageDéfinie").lower() == "true" else 0.0)
+
+
+def ezrf_dev_key(p):
+    """Clé d'un appareil : nom + réglages (deux « AKG DMS700 » réglés différemment = deux profils)."""
+    t = p.get("tol") or {}
+    return (p["name"], round(p.get("sep", 0), 4), round(p.get("filt", 0), 3), round(p.get("step", 0), 4),
+            round(t.get("2tx3", 0), 4), round(t.get("3tx3", 0), 4), round(t.get("5", 0), 4))
+
+
+def parse_ezrf3(data):
+    """Document EazyRF (.ezrf3, XML « EazyRFds ») -> dict(title, date, version, rows, devices, interf, scan, scan_title,
+    tv, warn). Les éléments sont À PLAT dans le fichier, dans l'ordre : GroupeDt (NbSect sections), SectionDt (NbApp
+    appareils), AppareilDt (NbreFréqDésiré fréquences), FréquenceDt -> on reconstruit Zone > Groupe > Section >
+    Appareil > Fréquence avec ces nombres. Lu sur un vrai fichier EazyRF 4.81 (Roc d'Azur 2026) ; si les nombres ne
+    tombent pas juste, les fréquences sont gardées sans classement (warn)."""
+    import xml.etree.ElementTree as ET
+    raw = data.encode("utf-8") if isinstance(data, str) else bytes(data)
+    try:
+        root = ET.fromstring(raw.lstrip(b"\xef\xbb\xbf"))
+    except ET.ParseError as e:
+        raise ValueError(f"fichier illisible ({e})") from None
+    if root.tag != "EazyRFds":
+        raise ValueError("ce n'est pas un document EazyRF (.ezrf3)")
+
+    def getter(e):
+        return lambda k: (e.findtext(k) or "").strip()
+
+    def yes(e, k):
+        return (e.findtext(k) or "").strip().lower() == "true"
+    zones = {}
+    for z in root.findall("ZonesDt"):
+        zones[(z.findtext("NoZone") or "").strip()] = (z.findtext("Title") or "").strip()
+    groups, sects, apps, freqs = (root.findall(t) for t in ("GroupeDt", "SectionDt", "AppareilDt", "FréquenceDt"))
+    warn = ""
+
+    def cnt(e, k):
+        try:
+            return max(0, int(_ez_num(e.findtext(k))))
+        except (TypeError, ValueError):
+            return 0
+    ok = (sum(cnt(g, "NbSect") for g in groups) == len(sects) and sum(cnt(s, "NbApp") for s in sects) == len(apps)
+          and sum(cnt(a, "NbreFréqDésiré") for a in apps) == len(freqs))
+    devices, rows = {}, []
+    op = root.find("OptionsDt")
+    eval5 = op is None or (op.findtext("Eval5eOrdre") or "true").strip().lower() == "true"
+
+    def add_row(fr, zone, scene, group, dev, devno, off):
+        g = getter(fr)
+        f = _ez_num(g("Valeur"))
+        if not 1.0 <= f <= 7000.0:
+            return
+        rows.append(dict(zone=zone, scene=scene, group=group, dev=dev, devno=devno, name=g("Description")[:60],
+                         note=g("Commentaire")[:200], freq=round(f, 5),
+                         off=off or yes(fr, "Rayé") or yes(fr, "Libéré")))
+    if ok:
+        si = ai = fi = 0
+        for gr in groups:
+            gg = getter(gr)
+            zone, scene, goff = zones.get(gg("ZoneNo"), ""), gg("Title"), yes(gr, "HorsFonction")
+            for _ in range(cnt(gr, "NbSect")):
+                se = sects[si]
+                si += 1
+                group, soff = getter(se)("Title"), yes(se, "HorsFonction")
+                for _ in range(cnt(se, "NbApp")):
+                    ap = apps[ai]
+                    ai += 1
+                    ga = getter(ap)
+                    p = _ez_dev_params(ga("AppareilName")[:60] or "Appareil", ga, eval5)
+                    k = ezrf_dev_key(p)
+                    devices.setdefault(k, p)
+                    aoff = yes(ap, "HorsFonction") or yes(ap, "Rayé")
+                    for _ in range(cnt(ap, "NbreFréqDésiré")):
+                        add_row(freqs[fi], zone, scene, group, k, ga("AppDescription")[:20],
+                                goff or soff or aoff)
+                        fi += 1
+    else:
+        warn = "structure inattendue : fréquences importées sans scène / groupe / appareil"
+        for fr in freqs:
+            add_row(fr, "", "", "", None, "", False)
+    pa = root.find("ParamsDt")
+    gp = getter(pa) if pa is not None else (lambda k: "")
+    interf = sorted({round(_ez_num(i.findtext("Départ")), 4) for i in root.findall("InterférencesDt")
+                     if _ez_num(i.findtext("Départ")) > 1.0})
+    scan = None
+    if gp("ZipScanData"):
+        try:
+            import base64
+            import gzip
+            buf = gzip.decompress(base64.b64decode(gp("ZipScanData")))
+            a = np.frombuffer(buf[:len(buf) // 16 * 16], dtype="<f8").reshape(-1, 2)
+            a = a[np.isfinite(a).all(axis=1) & (a[:, 0] > 1.0) & (a[:, 0] < 7000.0) & (a[:, 1] > -200.0)
+                  & (a[:, 1] < 50.0)]
+            if len(a) >= 2:
+                o = np.argsort(a[:, 0], kind="stable")
+                scan = (a[o, 0].copy(), a[o, 1].copy())
+        except Exception:                          # scan illisible : le reste du document reste bon
+            scan = None
+    tv = []
+    for g in groups[:1]:
+        for ln in (g.findtext("ChTVActifList") or "").splitlines():
+            a, _, b = ln.partition(";")
+            if b.strip().lower() == "true" and a.strip().isdigit():
+                tv.append(int(a))
+    info = root.find("InformsDt")
+    gi = getter(info) if info is not None else (lambda k: "")
+    if not rows:
+        raise ValueError("aucune fréquence dans ce document EazyRF")
+    return dict(title=gi("Titre")[:80], date=gi("Date")[:40], version=gi("Version")[:60], rows=rows, devices=devices,
+                interf=interf, scan=scan, scan_title=(gp("ScanTitle") or gp("ScanFilenamesList")).strip()[:60], tv=tv,
+                warn=warn)
+
+
+_EZ_DEV_RE = re.compile(r"^#\s*(\d+)\s*-\s*(.+)$")
+
+
+def is_ezrf_paste(text):
+    """Texte copié depuis le plan de fréquences d'EazyRF (Ctrl+C) : lignes « #7 - Appareil » + fréquences."""
+    lines = [ln.rstrip("\t \r") for ln in str(text).splitlines()]
+    return any(_EZ_DEV_RE.match(ln.strip()) and "\t" not in ln.strip() for ln in lines) and any(
+        "\t" in ln and re.fullmatch(r"\d{2,4}[,.]\d+", (ln.split("\t") + [""])[1].strip()) for ln in lines)
+
+
+def parse_ezrf_paste(text):
+    """Plan copié depuis EazyRF -> dict comme parse_ezrf3 (sans réglages d'appareils ni scan). Après chaque ligne vide,
+    les lignes de titre remplacent les niveaux les plus bas : 1 = appareil, 2 = section + appareil, 3 = groupe + …,
+    4 = zone + groupe + section + appareil. Fréquence = « nom<TAB>MHz » (nom facultatif), décimale à virgule."""
+    zone = scene = group = ""
+    dev, devno, heads, rows = None, "", [], []
+
+    def flush():
+        nonlocal zone, scene, group, dev, devno
+        if not heads:
+            return
+        h = list(heads)
+        m = _EZ_DEV_RE.match(h[-1])
+        if m:
+            devno, dev = f"#{m.group(1)}", m.group(2).strip()[:60]
+            h = h[:-1]
+        if len(h) >= 3:
+            zone, scene, group = h[-3:]
+        elif len(h) == 2:
+            scene, group = h
+        elif len(h) == 1:
+            group = h[0]
+        heads.clear()
+    for ln in str(text).splitlines():
+        cells = ln.rstrip("\r").split("\t")
+        first = cells[0].strip()
+        rest = [c.strip() for c in cells[1:]]
+        if not first and not any(rest):
+            heads.clear()
+            continue
+        fr = next((c for c in rest if re.fullmatch(r"\d{2,4}(?:[,.]\d+)?", c)), "")
+        if fr:
+            flush()
+            f = _ez_num(fr)
+            if 1.0 <= f <= 7000.0:
+                rows.append(dict(zone=zone, scene=scene, group=group, dev=(dev,) if dev else None, devno=devno,
+                                 name=first[:60], note="", freq=round(f, 5), off=False))
+        elif first and not any(rest):
+            heads.append(first[:60])
+    if not rows:
+        raise ValueError("aucune fréquence dans le texte collé")
+    devices = {(r["dev"][0],): dict(name=r["dev"][0]) for r in rows if r["dev"]}
+    return dict(title="", date="", version="", rows=rows, devices=devices, interf=[], scan=None, scan_title="", tv=[],
+                warn="")
+
+
+def ezrf_profile_names(devices):
+    """Appareils d'un document -> {clé: nom de profil}. Même nom, réglages différents -> « nom (sép. 300 kHz) »."""
+    by_name = {}
+    for k, p in devices.items():
+        by_name.setdefault(p["name"], []).append(k)
+    out = {}
+    for name, ks in by_name.items():
+        for k in ks:
+            p = devices[k]
+            if len(ks) == 1 or "sep" not in p:
+                out[k] = name
+            else:
+                out[k] = f"{name} (sép. {p['sep'] * 1000:g} kHz · filtre {p['filt']:g} MHz)"[:60]
+    return out
+
+
+def ezrf_entries(doc, skip_off=True):
+    """Lignes à importer -> [(nom, MHz, scène, groupe, clé appareil, note)]. Scène = groupe EazyRF (préfixé de la zone
+    s'il y en a plusieurs), groupe = section ; nom vide -> « Appareil #n · k »."""
+    multi = len({r["zone"] for r in doc["rows"]}) > 1
+    out, seen = [], {}
+    for r in doc["rows"]:
+        if skip_off and r["off"]:
+            continue
+        sc = r["scene"]
+        if multi and r["zone"]:
+            sc = f"{r['zone']} · {sc}" if sc else r["zone"]
+        name = r["name"]
+        if not name:
+            dn = (doc["devices"].get(r["dev"]) or {}).get("name", "") if r["dev"] else ""
+            base = " ".join(x for x in (dn, r["devno"]) if x) or (r["group"] or sc or "EazyRF")
+            k = (sc, r["group"], base)
+            seen[k] = seen.get(k, 0) + 1
+            name = f"{base} · {seen[k]}"
+        out.append((name[:60], r["freq"], sc[:60], r["group"][:60], r["dev"], r["note"]))
+    return out
+
+
 def rx_all():
     """Profils intégrés puis profils perso."""
     return RX_PROFILES + RX_CUSTOM
@@ -1915,7 +2137,7 @@ def rx_custom_norm(lst):
         tol = {k: _rx_num(t.get(k), 0.0, 2.0, d) for k, d in _TOL_EZ.items()}
         tol["7"] = 0.0
         extra = {k_: _rx_num(p.get(k_), 0.0, 7000.0, 0.0) for k_ in ("lo", "hi") if p.get(k_)}
-        out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 3.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
+        out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 10.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
                                     step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol,
                                     src="eazyrf" if p.get("src") == "eazyrf" else "perso", **extra),
                     str(p.get("note") or "Profil perso.")[:300]))
@@ -1945,12 +2167,12 @@ def rx_help_html():
         "<h3>Le filtre récepteur, c'est quoi ?</h3>"
         "<p>Chaque récepteur a, juste après l'antenne, un <b>filtre d'entrée</b> (présélection) : il ne laisse passer "
         "qu'une tranche du spectre autour de la fréquence réglée. Un Wisycom MRK980 a un filtre de <b>32 MHz</b> : "
-        "il « voit » ±16 MHz autour de sa fréquence, le reste est fortement atténué.</p>"
+        "EazyRF prend en compte les émetteurs à <b>±32 MHz</b> autour de la fréquence (avec 16 MHz, pour une porteuse à 500 MHz : de 484 à 516 MHz).</p>"
         "<p><b>Pourquoi ça compte pour l'intermod ?</b> Un produit d'intermodulation (ex. 2A − B) est fabriqué "
         "dans l'<b>étage d'entrée du récepteur</b> à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à "
         "40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. "
         "Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
-        "filtre de son récepteur</b> (à ± la moitié du filtre).</p>"
+        "filtre de son récepteur</b> (à ± la valeur du filtre, comme l'explique la doc d'EazyRF).</p>"
         "<ul><li>Le chiffre du filtre dit seulement <b>quelle tranche du spectre entre dans le récepteur</b>, donc "
         "combien d'émetteurs comptent dans le calcul (16 MHz en fait compter moins que 32 MHz). Il ne classe pas les "
         "récepteurs entre eux.</li>"
@@ -2026,10 +2248,10 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
             used = {k for k, _c in src}
             tv = TV.get(im_class(r["order"], r["ntx"]), TV["5"])
             g_ = np.abs(F - r["f"]) - r["hw"] - B / 2.0
-            for v in np.nonzero((tv > 0) & (g_ <= tv + 1e-9))[0].tolist():
+            for v in np.nonzero((tv > 0) & (g_ < tv - 1e-6))[0].tolist():   # « au-delà » = accepté (doc EazyRF)
                 if v in used:
                     continue
-                if FL[v] > 0 and any(abs(F[k] - F[v]) > FL[v] / 2.0 + 1e-9 for k in used):
+                if FL[v] > 0 and any(abs(F[k] - F[v]) > FL[v] + 1e-9 for k in used):
                     continue                    # émetteur hors du filtre du récepteur : filtré
                 issues[v].append(dict(kind="im", others=sorted(used), gap=float(g_[v]), order=r["order"],
                                       ntx=r["ntx"], terms=src, f=r["f"], hw=r["hw"]))
@@ -2074,9 +2296,9 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
     base_n = sum(len(x) for x in base)
     grid = np.round(np.arange(math.ceil(lo / step - 1e-9) * step, hi + 1e-9, step), 6)
     grid = grid[np.abs(grid - f0) > 1e-9]
-    half = FL[i] / 2.0 + 1e-9 if FL[i] > 0 else np.inf                    # filtre de la candidate
+    half = FL[i] + 1e-9 if FL[i] > 0 else np.inf                    # filtre de la candidate
     Fa, Ba = np.asarray(Fo, dtype=float), np.asarray(Bo, dtype=float)
-    Ha = np.where(np.asarray(FLo) > 0, np.asarray(FLo) / 2.0 + 1e-9, np.inf) if len(Fo) else np.zeros(0)
+    Ha = np.where(np.asarray(FLo) > 0, np.asarray(FLo) + 1e-9, np.inf) if len(Fo) else np.zeros(0)
     ok = np.ones(len(grid), dtype=bool)
     if len(Fa):                                                  # écart entre porteuses (le plus grand des deux)
         sp_ = np.maximum(SP[i], np.asarray(SPo))
@@ -2099,7 +2321,7 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
             for k0 in range(0, len(grid), 2000):
                 g = grid[k0:k0 + 2000]
                 if len(pv):
-                    hit = np.abs(g[:, None] - pv[None, :]) - ph[None, :] - bi / 2.0 <= pt[None, :] + 1e-9
+                    hit = np.abs(g[:, None] - pv[None, :]) - ph[None, :] - bi / 2.0 < pt[None, :] - 1e-6
                     hit &= (g[:, None] - pmin[None, :] <= half) & (pmax[None, :] - g[:, None] <= half)
                     ok[k0:k0 + 2000] &= ~np.any(hit, axis=1)
     T2 = np.array([t.get("2tx3", 0.0) for t in TLo])[None, None, :] if len(Fo) else None
@@ -2114,7 +2336,7 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
             if (T2 > 0).any():
                 for val, hw in ((2 * g - Ft[None, :, None], (2 * bi + Bt[None, :, None]) / 2.0),
                                 (2 * Ft[None, :, None] - g, (bi + 2 * Bt[None, :, None]) / 2.0)):
-                    hit = (np.abs(val - vic) - hw - bv / 2.0 <= T2 + 1e-9) & (T2 > 0)
+                    hit = (np.abs(val - vic) - hw - bv / 2.0 < T2 - 1e-6) & (T2 > 0)
                     hit &= np.abs(Ft[None, :, None] - vic) > 1e-9          # pas sur un émetteur du produit
                     hit &= (np.abs(g - vic) <= Hv) & (np.abs(Ft[None, :, None] - vic) <= Hv)   # filtre
                     bad |= hit.any(axis=(1, 2))
@@ -2125,7 +2347,7 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
                 bj, bk = Bt[J.ravel()[m]], Bt[K.ravel()[m]]
                 for val, hw in ((g + fj[None, :, None] - fk[None, :, None], (bi + bj + bk)[None, :, None] / 2.0),
                                 (fj[None, :, None] + fk[None, :, None] - g, (bi + bj + bk)[None, :, None] / 2.0)):
-                    hit = (np.abs(val - vic) - hw - bv / 2.0 <= T3 + 1e-9) & (T3 > 0)
+                    hit = (np.abs(val - vic) - hw - bv / 2.0 < T3 - 1e-6) & (T3 > 0)
                     hit &= (np.abs(fj[None, :, None] - vic) > 1e-9) & (np.abs(fk[None, :, None] - vic) > 1e-9)
                     hit &= ((np.abs(g - vic) <= Hv) & (np.abs(fj[None, :, None] - vic) <= Hv)
                             & (np.abs(fk[None, :, None] - vic) <= Hv))
@@ -2295,7 +2517,7 @@ def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guar
             return []
         e = np.concatenate([ema, np.array(chosen, dtype=float)])
         if filt and filt > 0:
-            e = e[np.abs(e - c) <= filt / 2.0]
+            e = e[np.abs(e - c) <= filt]
         return im3_clash(c, e, guard, g3)
 
     order = [i for i in np.nonzero(quiet)[0]]
@@ -5261,7 +5483,7 @@ GLOSSARY = [
     ("Écart (séparation)", "La distance minimale entre deux porteuses pour qu'elles ne se gênent pas (ex. 300 à "
      "500 kHz selon les appareils)."),
     ("Filtre récepteur", "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. "
-     "32 MHz = ±16 MHz). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans "
+     "16 MHz : les émetteurs à ±16 MHz comptent, comme dans EazyRF). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans "
      "ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et "
      "les tolérances du profil."),
     ("Profil d'appareil", "Les réglages de coordination d'une marque / gamme (écart, filtre, tolérances, pas). "
@@ -7493,7 +7715,7 @@ class IntermodDialog(QtWidgets.QDialog):
         self.filt_spin.setSpecialValueText("aucun")
         self.filt_spin.setValue(float(owner.plan_opts["filt"]))
         self.filt_spin.setToolTip("Filtre d'entrée du récepteur (« Filtre » d'EazyRF, 32 MHz pour un Wisycom) : un "
-                                  "produit ne compte sur une fréquence\nque si tous ses émetteurs sont à ± la moitié du "
+                                  "produit ne compte sur une fréquence\nque si tous ses émetteurs sont à ± la valeur du "
                                   "filtre autour d'elle. aucun = tous comptent.\nSans effet en « aucune cible ».")
         self._tol_preset()
         for sp in self.tol_spins.values():
@@ -7695,7 +7917,7 @@ class IntermodDialog(QtWidgets.QDialog):
         o.plan_opts["filt"] = filt
         if filt > 0:                    # émetteurs hors du filtre du récepteur visé : produit coupé
             rows = [r for r in rows if r["target"] is None
-                    or all(abs(freqs[i] - r["target"]) <= filt / 2.0 + 1e-9 for i, _c in r["terms"])]
+                    or all(abs(freqs[i] - r["target"]) <= filt + 1e-9 for i, _c in r["terms"])]
         F, L = o.fresh_FL()
         win = max(0.05, o.win_spin.value() / 1000.0)
         thr, weak = o.thr_spin.value(), o.weak_spin.value()
@@ -7909,7 +8131,7 @@ class RescueDialog(QtWidgets.QDialog):
         self.filt_spin.setValue(float(owner.plan_opts.get("filt", 32.0)))
         self.filt_spin.setSuffix(" MHz")
         self.filt_spin.setSpecialValueText("aucun")
-        self.filt_spin.setToolTip("Filtre du récepteur (comme EazyRF) : seuls les émetteurs à ± filtre / 2 de la\n"
+        self.filt_spin.setToolTip("Filtre du récepteur (comme EazyRF) : seuls les émetteurs à ± la valeur du filtre\nautour de la "
                                   "fréquence comptent pour l'intermod. 0 = aucun filtre (tous comptent).")
         self.src_combo = QtWidgets.QComboBox()
         self.src_combo.addItem("Éviter : toute la liste", "all")
@@ -8632,6 +8854,115 @@ def filter_help_btn(parent):
     return b
 
 
+class EzrfImportDialog(QtWidgets.QDialog):
+    """📥 Plan EazyRF (document .ezrf3 ou copier-coller du plan de fréquences) -> Mes fréquences : scènes (groupes
+    EazyRF), groupes (sections), appareils (profils perso avec les réglages du document), interférences notées,
+    scan de fond."""
+
+    def __init__(self, owner, doc, source):
+        super().__init__(owner)
+        self.owner, self.doc = owner, doc
+        self.setWindowTitle("Importer un plan EazyRF")
+        self.resize(640, 600)
+        lay = QtWidgets.QVBoxLayout(self)
+        ent = ezrf_entries(doc, False)
+        n_off = sum(1 for r in doc["rows"] if r["off"])
+        head = f"<b>{source}</b>"
+        if doc["title"]:
+            head += f"<br>« {doc['title']} »" + (f" · {doc['date']}" if doc["date"] else "") + (
+                f" · EazyRF {doc['version'].replace('Version', '').strip()}" if doc["version"] else "")
+        scenes = []
+        for _n, _f, sc, gr, _d, _x in ent:
+            if sc not in scenes:
+                scenes.append(sc)
+        head += (f"<br>{len(ent)} fréquence(s) · {len([x for x in scenes if x])} scène(s) · "
+                 f"{len(doc['devices'])} appareil(s)")
+        info = QtWidgets.QLabel(head)
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        if doc["warn"]:
+            w = QtWidgets.QLabel("⚠ " + doc["warn"])
+            w.setWordWrap(True)
+            lay.addWidget(w)
+        self.tree = QtWidgets.QTreeWidget()
+        self.tree.setHeaderLabels(["Scène › groupe › fréquence", "MHz", "Appareil"])
+        self.tree.setToolTip("Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe.")
+        names = ezrf_profile_names(doc["devices"])
+        nodes = {}
+        for name, f, sc, gr, dk, _note in ent:
+            top = nodes.get((sc,))
+            if top is None:
+                top = nodes[(sc,)] = QtWidgets.QTreeWidgetItem(self.tree, [sc or "Sans scène", "", ""])
+                top.setExpanded(True)
+            par = top
+            if gr:
+                par = nodes.get((sc, gr))
+                if par is None:
+                    par = nodes[(sc, gr)] = QtWidgets.QTreeWidgetItem(top, [gr, "", ""])
+                    par.setExpanded(True)
+            QtWidgets.QTreeWidgetItem(par, [name, f"{f:.3f}", names.get(dk, "")])
+        self.tree.resizeColumnToContents(0)
+        lay.addWidget(self.tree, 1)
+
+        form = QtWidgets.QFormLayout()
+        self.status = QtWidgets.QComboBox()
+        self.status.addItem("(aucun)", "")
+        for st in owner.statuses:
+            self.status.addItem(st["name"], st["name"])
+        on = next((st["name"] for st in owner.statuses if st.get("on")), "")
+        self.status.setCurrentIndex(max(0, self.status.findData(on)))
+        self.status.setToolTip("Statut donné à chaque fréquence du plan. « Doit émettre » : alarme ABSENT si elle "
+                               "disparaît, et c'est un émetteur pour Vérifier le plan.")
+        form.addRow("Statut :", self.status)
+        lay.addLayout(form)
+        self.prof = QtWidgets.QCheckBox("Créer les profils d'appareil avec les réglages du plan (écart, filtre, "
+                                        "tolérances, pas)")
+        self.prof.setChecked(True)
+        self.prof.setToolTip("Chaque appareil d'EazyRF devient un profil perso, posé sur son groupe : Vérifier le "
+                             "plan et Coordonner jugent alors avec les mêmes règles qu'EazyRF.")
+        if not any("sep" in p for p in doc["devices"].values()):
+            self.prof.setText("Relier les appareils à mes profils ou à la bibliothèque EazyRF (même nom)")
+        lay.addWidget(self.prof)
+        self.skip = QtWidgets.QCheckBox(f"Ignorer les fréquences rayées / hors fonction ({n_off})")
+        self.skip.setChecked(True)
+        self.skip.setToolTip("Fréquences barrées, libérées ou dont l'appareil / la section est hors fonction "
+                             "dans EazyRF.")
+        self.skip.setVisible(n_off > 0)
+        lay.addWidget(self.skip)
+        self.interf = QtWidgets.QCheckBox(f"Ajouter les interférences notées dans EazyRF ({len(doc['interf'])}) "
+                                          "comme émetteurs extérieurs")
+        self.interf.setToolTip("Sans statut ni alarme, nommées « Ext. … » : Vérifier le plan et Coordonner en "
+                               "tiennent compte.")
+        self.interf.setVisible(bool(doc["interf"]))
+        lay.addWidget(self.interf)
+        sc_n = len(doc["scan"][0]) if doc["scan"] else 0
+        self.scan = QtWidgets.QCheckBox(f"Garder le scan du document dans Scans par lieu ({sc_n} points)")
+        self.scan.setChecked(bool(sc_n))
+        self.scan.setToolTip("Le scan de fond enregistré dans le document EazyRF : affiché en pointillés sur le "
+                             "spectre, utilisable par Coordonner.")
+        self.scan.setVisible(bool(sc_n))
+        lay.addWidget(self.scan)
+        self.replace = QtWidgets.QCheckBox("Remplacer ma liste (sinon : ajouter)")
+        self.replace.setToolTip("Coché : la liste actuelle est vidée avant l'import (Ctrl+Z pour revenir).")
+        lay.addWidget(self.replace)
+        if doc["tv"]:
+            tv = QtWidgets.QLabel("Canaux TV actifs dans le document : " + ", ".join(map(str, doc["tv"]))
+                                  + " (pas importés : le scan les montre).")
+            tv.setWordWrap(True)
+            lay.addWidget(tv)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                        | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText("Importer")
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def options(self):
+        return dict(status=self.status.currentData() or "", profiles=self.prof.isChecked(),
+                    skip_off=self.skip.isChecked(), interf=self.interf.isChecked() and self.interf.isVisibleTo(self),
+                    scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked())
+
+
 class RxProfileEdit(QtWidgets.QDialog):
     """Un profil perso : nom, filtre, écart, pas, tolérances, note."""
 
@@ -8657,7 +8988,7 @@ class RxProfileEdit(QtWidgets.QDialog):
             return sp
         self.filt = spin(prof.get("filt", 16.0), 0, 400, 4, " MHz", "Filtre d'entrée du récepteur (« Filtre » d'EazyRF). "
                          "0 = aucun : tous les émetteurs comptent.", "aucun")
-        self.sep = spin(prof.get("sep", 0.4) * 1000, 0, 3000, 25, " kHz", "Écart minimal entre deux porteuses "
+        self.sep = spin(prof.get("sep", 0.4) * 1000, 0, 10000, 25, " kHz", "Écart minimal entre deux porteuses "
                         "(« Séparation » d'EazyRF).")
         self.step = spin(prof.get("step", 0.025) * 1000, 1, 1000, 5, " kHz", "Pas de réglage de l'appareil "
                          "(« Incrément » d'EazyRF).")
@@ -8933,7 +9264,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.src_combo.addItem("Plan : la couche active", "scope")
         self.src_combo.setToolTip("Les fréquences vérifiées ensemble (celles qui émettent en même temps au même endroit).")
         self.sep_spin = QtWidgets.QSpinBox()
-        self.sep_spin.setRange(0, 3000)
+        self.sep_spin.setRange(0, 10000)
         self.sep_spin.setSingleStep(25)
         po = owner.plan_opts
         self.sep_spin.setValue(int(po["sep"]))
@@ -8949,7 +9280,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.filt_spin.setValue(float(po["filt"]))
         self.filt_spin.setToolTip("Largeur du filtre d'entrée du récepteur (« Filtre » dans un profil EazyRF : 32 MHz "
                                   "pour un Wisycom MRK980).\nUn produit d'intermod ne gêne une fréquence que si TOUS ses "
-                                  "émetteurs sont à ± la moitié du filtre\nautour d'elle : les émetteurs plus loin sont "
+                                  "émetteurs sont à ± la valeur du filtre\nautour d'elle : les émetteurs plus loin sont "
                                   "coupés par le filtre du récepteur.\naucun (0) = tous les émetteurs comptent (plus strict).")
         self.step_spin = QtWidgets.QSpinBox()
         self.step_spin.setRange(1, 1000)
@@ -17776,8 +18107,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def import_watch(self):
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Importer des fréquences", "", "CSV / texte (*.csv *.txt *.tsv);;Tous les fichiers (*)")
+            self, "Importer des fréquences", "", "CSV / texte / EazyRF (*.csv *.txt *.tsv *.ezrf3);;"
+            "Plan EazyRF (*.ezrf3);;Tous les fichiers (*)")
         for p in paths:
+            if Path(p).suffix.lower() == ".ezrf3":
+                self.import_ezrf_file(p)
+                continue
             self.open_import(decode_text(Path(p).read_bytes()), os.path.basename(p), preset=self._scope_preset())
 
     def paste_watch(self):
@@ -17786,7 +18121,133 @@ class MainWindow(QtWidgets.QMainWindow):
         if ok and txt.strip():
             self.open_import(txt, "Texte collé", preset=self._scope_preset())
 
+    def import_ezrf_file(self, path):
+        try:
+            doc = parse_ezrf3(Path(path).read_bytes())
+        except (OSError, ValueError) as e:
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Impossible de lire « {os.path.basename(path)} » : {e}")
+            return None
+        return self.open_ezrf(doc, os.path.basename(path))
+
+    def open_ezrf(self, doc, source, opts=None):
+        """Plan EazyRF -> fenêtre d'aperçu puis import (opts donné = sans fenêtre, pour les tests)."""
+        if opts is None:
+            dlg = EzrfImportDialog(self, doc, source)
+            if not dlg.exec():
+                return None
+            opts = dlg.options()
+        return self.apply_ezrf(doc, opts, source)
+
+    def _ezrf_profiles(self, doc):
+        """Appareils du plan -> {clé appareil: clé de profil}. Réglages connus (.ezrf3) : profil perso créé ou
+        réutilisé (même nom ET mêmes réglages) ; copier-coller : profil perso ou bibliothèque du même nom."""
+        names = ezrf_profile_names(doc["devices"])
+
+        def same(d, p):
+            return (abs(d["sep"] - p["sep"]) < 1e-6 and abs(d["filt"] - p["filt"]) < 1e-6
+                    and abs(d["step"] - p["step"]) < 1e-6
+                    and all(abs(d["tol"].get(k, 0) - p["tol"].get(k, 0)) < 1e-6 for k in ("2tx3", "3tx3", "5")))
+        new, want = [], {}
+        have = {n: (k, d) for k, n, d, _w in RX_CUSTOM}
+        low = lambda x: str(x).strip().lower()
+        for dk, p in doc["devices"].items():
+            name = names[dk]
+            if "sep" in p:
+                k = 2
+                while name in have and not same(have[name][1], p):
+                    name, k = f"{names[dk][:55]} ({k})", k + 1
+                if name not in have and name not in [x["name"] for x in new]:
+                    d = rx_from_library(dict(p, type=""))
+                    d["name"] = name
+                    d["note"] = (f"Plan EazyRF « {doc['title'] or 'sans titre'} » · {p['lo']:g}–{p['hi']:g} MHz"
+                                 + (f" · fréquence image {p['img']:g} MHz (pas prise en compte)" if p.get("img") else ""))
+                    new.append(d)
+                want[dk] = name
+            else:
+                hit = next((n for n in have if low(n) == low(name)), None)
+                if hit is None:
+                    lib = next((d for d in RX_LIBRARY if low(d["name"]) == low(name)), None)
+                    if lib is not None and lib["name"] not in [x["name"] for x in new]:
+                        new.append(rx_from_library(lib))
+                    hit = lib["name"] if lib is not None else None
+                if hit:
+                    want[dk] = hit
+        if new:
+            rx_set_custom(rx_custom_dump() + new)
+            self.rx_profiles_changed()
+        by_name = {n: k for k, n, _d, _w in RX_CUSTOM}
+        return {dk: by_name[n] for dk, n in want.items() if n in by_name}
+
+    def apply_ezrf(self, doc, opts, source="EazyRF"):
+        """Importe le plan : fréquences (scène = groupe EazyRF, groupe = section), appareils posés sur les groupes,
+        interférences en émetteurs extérieurs, scan de fond dans Scans par lieu. -> nombre de fréquences ajoutées."""
+        entries = ezrf_entries(doc, opts.get("skip_off", True))
+        keymap = self._ezrf_profiles(doc) if opts.get("profiles", True) else {}
+        if opts.get("replace"):
+            self.watch.clear()
+        by_key = {int(round(w["freq"] * 1000)): w for w in self.watch}
+        st = self._resolve_status(opts["status"]) if opts.get("status") else ""
+        added, groups = 0, {}
+        for name, f, sc, gr, dk, _note in entries:
+            rx = keymap.get(dk, "")
+            if rx and gr:
+                lst = groups.setdefault((sc or DEFAULT_SCENE, gr), [])
+                if rx not in lst:
+                    lst.append(rx)
+            k = int(round(f * 1000))
+            if k in by_key:
+                continue
+            self._append_watch(name, f, st, None, sc, gr)
+            if rx:
+                self.watch[-1]["rx"] = rx
+            by_key[k] = self.watch[-1]
+            added += 1
+        for (sc, gr), rxs in groups.items():
+            g = self.group_row(sc, gr)
+            if g is not None:
+                old = self.group_rxs(g)
+                g["rx"] = old + [r for r in rxs if r not in old]
+        for w in self.watch:                     # appareil = celui du groupe par défaut : inutile de le répéter
+            if w.get("rx") and w["rx"] == self.rx_of(dict(w, rx="")):
+                w.pop("rx", None)
+        n_ext = 0
+        if opts.get("interf"):
+            for f in doc["interf"]:
+                k = int(round(f * 1000))
+                if k not in by_key:
+                    self._append_watch(f"Ext. {f:.3f}", f, "", None, "", "")
+                    by_key[k] = self.watch[-1]
+                    n_ext += 1
+        scan_name = ""
+        if opts.get("scan") and doc["scan"] is not None:
+            names = {d["name"] for d in self.site_scans}
+            scan_name = snapshot_name("EazyRF", doc["scan_title"] or doc["title"], names, time.strftime("%H:%M"))
+            self.site_scans.append(site_scan_doc(scan_name, doc["scan"][0], doc["scan"][1], time.time()))
+        self.sort_watch()
+        self.rebuild_tree()
+        self.rebuild_watch_table()
+        self._update_markers()
+        if scan_name:
+            self.update_site_curve()
+        self.undo_track()
+        msg = f"📥 Plan EazyRF : {added} fréquence(s) importée(s)"
+        if len(entries) > added:
+            msg += f" ({len(entries) - added} déjà présente(s))"
+        if keymap:
+            msg += f", {len(set(keymap.values()))} appareil(s) posé(s) sur leurs groupes"
+        if n_ext:
+            msg += f", {n_ext} émetteur(s) extérieur(s)"
+        if scan_name:
+            msg += f", scan « {scan_name} » gardé dans Scans par lieu"
+        self.set_status(msg + ".")
+        return added
+
     def open_import(self, text, source, preset=("", "")):
+        if is_ezrf_paste(text):
+            try:
+                return self.open_ezrf(parse_ezrf_paste(text), source)
+            except ValueError:
+                pass
         dlg = ImportDialog(self, text, source, self.scenes, preset)
         if not dlg.an["data"]:
             QtWidgets.QMessageBox.information(self, APP_NAME, f"Aucune fréquence reconnue dans « {source} ».")
@@ -17826,7 +18287,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def dropEvent(self, e):
         for u in e.mimeData().urls():
             p = u.toLocalFile()
-            if p and Path(p).suffix.lower() in (".csv", ".txt", ".tsv"):
+            if p and Path(p).suffix.lower() == ".ezrf3":
+                self.import_ezrf_file(p)
+            elif p and Path(p).suffix.lower() in (".csv", ".txt", ".tsv"):
                 self.open_import(decode_text(Path(p).read_bytes()), os.path.basename(p),
                                  preset=self._scope_preset())
 

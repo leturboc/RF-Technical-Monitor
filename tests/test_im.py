@@ -244,7 +244,7 @@ ok("règles : chaque niveau est expliqué", all(len(w_) > 40 for _t, _d, w_ in _
 ok("règles : phrase « on vérifie »", ns["im_rules_text"](_P[1][1], 0.3) ==
    "On vérifie : écart d'au moins 300 kHz entre deux porteuses · 2A − B (2 émetteurs) à moins de 100 kHz d'une "
    "fréquence · A + B − C (3 émetteurs) : non vérifié · 5ᵉ ordre : non vérifié")
-ok("règles : phrase avec le filtre", "à ±16 MHz de la fréquence touchée (filtre 32 MHz)"
+ok("règles : phrase avec le filtre", "à ±32 MHz de la fréquence touchée (filtre 32 MHz)"
    in ns["im_rules_text"](_P[0][1], 0.5, 32.0))
 ok("plan Wisycom de Clément : compatible en 2A − B seul",
    not any(ns["pf_check"]([558.0, 574.0, 606.0, 614.0, 646.0, 478.0], tol=_P[1][1])[0]))
@@ -258,7 +258,28 @@ ok("même plan sans filtre : des A + B − C (émetteurs loin les uns des autres
 ok("même plan, écart 500 kHz pile (661.45 − 660.95) : accepté", not any(it["kind"] == "sep" for x in _w0 for it in x))
 _w2 = ns["pf_check"](WIS, sep=0.6, tol=_P[0][1], filt=32.0)[0]
 ok("écart 600 kHz : 660.95 / 661.45 trop près", _w2[8] and _w2[8][0]["kind"] == "sep")
-# filtre : 2A − B avec un émetteur à 20 MHz de la victime → coupé par un filtre de 32 MHz (±16), pas par 64
+# filtre (doc EazyRF 2.4.5 : 16 MHz -> porteuse à 500 MHz, émetteurs de 484 à 516) : ± la valeur du filtre
+ok("filtre 16 : émetteurs à 7 et 14 MHz comptés (2×507 − 514)", ns["pf_check"]([500.0, 507.0, 514.0], sep=0.3, tol=_P[0][1], filt=16.0)[0][0])
+ok("filtre 16 : émetteur à 18 MHz coupé (2×509 − 518)", not ns["pf_check"]([500.0, 509.0, 518.0], sep=0.3, tol=_P[0][1], filt=16.0)[0][0])
+# tolérance « au-delà de laquelle les IM sont acceptées » : pile 50 kHz = accepté, 45 kHz = gênant
+ok("3 TX pile à 50 kHz : accepté", not ns["pf_check"]([500.0, 503.0, 510.0, 493.05], sep=0.3, tol=_P[0][1])[0][3])
+ok("3 TX à 45 kHz : gênant", ns["pf_check"]([500.0, 503.0, 510.0, 493.045], sep=0.3, tol=_P[0][1])[0][3])
+# 2ᵉ vrai plan de Clément (Roc d'Azur 2026, EazyRF 4.81 : « Nbre Intermodulation: 0 ») : réglages PAR APPAREIL
+# (MRK980 / MTK952 filtre 32, AKG DMS700 filtre 16 ; séparations 2000 / 4000 / 1000 / 300 kHz ; 5ᵉ ordre coupé)
+_RA = [(558.2, 2.0, 32), (578.05, 2.0, 32), (602.8, 2.0, 32), (612.85, 2.0, 32), (522.85, 2.0, 32), (681.45, 2.0, 32),
+       (610.3, 2.0, 32), (575.8, 2.0, 32), (645.65, 2.0, 32), (671.25, 2.0, 32), (566.0, 2.0, 32), (597.65, 2.0, 32),
+       (684.2, 2.0, 32), (534.85, 2.0, 32), (538.25, 2.0, 32), (527.45, 2.0, 32), (529.65, 2.0, 32), (627.05, 1.0, 16),
+       (679.45, 1.0, 16), (554.2, 4.0, 32), (570.6, 4.0, 32), (491.55, 4.0, 32), (497.15, 4.0, 32), (624.0, 0.3, 16),
+       (635.85, 0.3, 16), (629.2, 0.3, 16), (640.3, 0.3, 16), (608.2, 2.0, 32), (658.5, 2.0, 32)]
+_T0 = {"2tx3": 0.1, "3tx3": 0.05, "5": 0.0, "7": 0.0}
+_ra = ns["pf_check"]([x[0] for x in _RA], sep=[0.3] * len(_RA), tol=_T0, filt=[x[2] for x in _RA])[0]
+ok("plan Roc d'Azur (filtres par appareil) : 0 problème, comme EazyRF", not any(_ra), str([x for x in _ra if x]))
+_ra2 = ns["pf_check"]([x[0] for x in _RA], tol={"2tx3": 0.1, "3tx3": 0.0501, "5": 0.0, "7": 0.0},
+                      filt=[x[2] for x in _RA])[0]
+_g2 = [it["gap"] for x in _ra2 for it in x]
+ok("plan Roc d'Azur : des produits pile à 50 kHz (d'où la limite stricte)",
+   _g2 and all(abs(g - 0.05) < 1e-6 for g in _g2), str(_g2))
+# filtre : 2A − B avec un émetteur à 40 MHz de la victime → coupé par un filtre de 32 MHz (±32), pas par 100
 _fx = [500.0, 520.0, 540.0]                    # 2×520 − 500 = 540 : A = 520 (20 MHz), B = 500 (40 MHz)
 ok("filtre 32 : produit coupé", not ns["pf_check"](_fx, sep=0.3, tol=_P[0][1], filt=32.0)[0][2])
 ok("filtre 100 : produit compté", ns["pf_check"](_fx, sep=0.3, tol=_P[0][1], filt=100.0)[0][2])

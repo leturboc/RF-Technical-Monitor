@@ -951,5 +951,58 @@ check("répétition « jamais » : la critique ne resonne pas", _ab.due_repeat(1
 
 check("🌐 texte du lien réseau", (ns["net_text"](24 * 1024, 2.0, 0.008), ns["net_text"](1024, 2.0, None),
                                     ns["net_text"](10, 0, 0.1)), ("🌐 12 Ko/s · 8 ms", "🌐 0.5 Ko/s", ""))
+# --- 📥 plan EazyRF (.ezrf3 et copier-coller) : fichiers INVENTÉS, même structure qu'un vrai document EazyRF 4.81
+_ez = ns["parse_ezrf3"](open(os.path.join(DD_, "eazyrf_essai.ezrf3"), "rb").read())
+check("ezrf3 : titre, 7 fréquences, 5 appareils, 2 interférences, canaux TV",
+      (_ez["title"], len(_ez["rows"]), len(_ez["devices"]), _ez["interf"], _ez["tv"], _ez["warn"]),
+      ("Festival d'essai", 7, 5, [521.35, 526.0], [23, 41], ""))
+check("ezrf3 : hiérarchie Zone > Groupe > Section", [(r["zone"], r["scene"], r["group"], r["freq"]) for r in _ez["rows"]],
+      [("Zone Nord", "Plateau A", "Micros", 500.1), ("Zone Nord", "Plateau A", "Micros", 503.45),
+       ("Zone Nord", "Plateau A", "Micros", 512.0), ("Zone Nord", "Plateau A", "Ears", 530.25),
+       ("Zone Nord", "Plateau B", "Micros", 534.875), ("Zone Sud", "Loge", "Micros", 540.0),
+       ("Zone Sud", "Loge", "Talk", 455.5)])
+check("ezrf3 : rayée / section hors fonction", [r["off"] for r in _ez["rows"]],
+      [False, False, False, False, True, False, True])
+_d0 = _ez["devices"][_ez["rows"][0]["dev"]]
+check("ezrf3 : réglages d'appareil (kHz -> MHz, virgules)", (_d0["sep"], _d0["filt"], _d0["step"], _d0["tol"]["2tx3"],
+                                                              _d0["tol"]["5"], _d0["img"]), (0.5, 32.0, 0.025, 0.1, 0.0, 0.0))
+check("ezrf3 : fréquence image", _ez["devices"][_ez["rows"][2]["dev"]]["img"], 10.7)
+check("ezrf3 : scan embarqué", (len(_ez["scan"][0]), float(_ez["scan"][0][60]), float(_ez["scan"][1].max())),
+      (201, 500.0, -70.0))
+_pn = ns["ezrf_profile_names"](_ez["devices"])
+check("ezrf3 : même appareil, réglages différents -> 2 profils",
+      sorted(n for n in _pn.values() if n.startswith("Essai RX Alpha")),
+      ["Essai RX Alpha (sép. 2000 kHz · filtre 32 MHz)", "Essai RX Alpha (sép. 500 kHz · filtre 32 MHz)"])
+_en = ns["ezrf_entries"](_ez)
+check("ezrf3 -> lignes (zone en préfixe car 2 zones, nom vide -> appareil #n · k, hors fonction ignoré)",
+      [e[:4] for e in _en],
+      [("Chant 1", 500.1, "Zone Nord · Plateau A", "Micros"), ("Chant 2", 503.45, "Zone Nord · Plateau A", "Micros"),
+       ("Essai RX Beta #1 · 1", 512.0, "Zone Nord · Plateau A", "Micros"),
+       ("Ear 1", 530.25, "Zone Nord · Plateau A", "Ears"), ("Loge 1", 540.0, "Zone Sud · Loge", "Micros")])
+check("ezrf3 : sans ignorer les hors fonction", len(ns["ezrf_entries"](_ez, False)), 7)
+for _bad in (b"<x/>", b"pas du xml", b"<EazyRFds></EazyRFds>"):
+    try:
+        ns["parse_ezrf3"](_bad)
+        ok(f"ezrf3 refusé : {_bad[:12]!r}", False)
+    except ValueError:
+        ok(f"ezrf3 refusé : {_bad[:12]!r}", True)
+_ptx = open(os.path.join(DD_, "eazyrf_collage_essai.txt"), encoding="utf-8").read()
+ok("collage EazyRF reconnu", ns["is_ezrf_paste"](_ptx))
+ok("tableau ordinaire pas pris pour EazyRF", not ns["is_ezrf_paste"]("Nom;MHz\nA;500,1\n")
+   and not ns["is_ezrf_paste"]("Chant 1\t500,100\n"))
+_pp = ns["parse_ezrf_paste"](_ptx)
+check("collage EazyRF : mêmes lignes que le document (sauf la rayée, que le collage ne dit pas)",
+      [e[:4] for e in ns["ezrf_entries"](_pp)],
+      [e[:4] for e in ns["ezrf_entries"](_ez, False) if e[2] != "Zone Sud · Loge" or e[3] != "Talk"])
+check("collage EazyRF : appareils par nom", sorted(d["name"] for d in _pp["devices"].values()),
+      ["Essai IEM", "Essai RX Alpha", "Essai RX Beta"])
+_raw5 = open(os.path.join(DD_, "eazyrf_essai.ezrf3"), "rb").read().decode("utf-8").replace(
+    "<Tolérance5e>0</Tolérance5e>", "<Tolérance5e>50</Tolérance5e><Eval5eOrdre>true</Eval5eOrdre>")
+_t5 = lambda txt: sorted({d["tol"]["5"] for d in ns["parse_ezrf3"](txt.encode("utf-8"))["devices"].values()})
+check("ezrf3 : 5ᵉ ordre coché sur l'appareil, document sans option -> compté", _t5(_raw5), [0.05])
+check("ezrf3 : 5ᵉ ordre coupé dans les options du document -> pas compté (TechFest : 6 IM comme EazyRF)",
+      _t5(_raw5.replace("</EazyRFds>", "<OptionsDt><Eval5eOrdre>false</Eval5eOrdre></OptionsDt></EazyRFds>")), [0.0])
+check("profil perso : séparation jusqu'à 10 MHz", ns["rx_custom_norm"]([dict(name="x", sep=4.0)])[0][2]["sep"], 4.0)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
