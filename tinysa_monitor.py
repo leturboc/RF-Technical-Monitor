@@ -1404,12 +1404,13 @@ def lc_summary(lc):
     weak = sum(1 for e in es if e["res"] == "weak")
     miss = [e["name"] or f"{e['freq']:.3f}" for e in es if e["res"] is None]
     skipped = sum(1 for e in es if e["res"] == "skip")
+    wk = (f" (dont {weak} faibles)" if weak > 1 else f" (dont {weak} faible)") if weak else ""   # mots entiers : traduisibles
     if not n:
         text = "Rien à appeler"
     elif not miss:
-        text = f"Tout est là ✓ ({ok + weak} / {n})" + (f" (dont {weak} faible{'s' if weak > 1 else ''})" if weak else "")
+        text = f"Tout est là ✓ ({ok + weak} / {n})" + wk
     else:
-        text = (f"{ok + weak} / {n} OK" + (f" (dont {weak} faible{'s' if weak > 1 else ''})" if weak else "") + f" · manque{'nt' if len(miss) > 1 else ''} : "
+        text = (f"{ok + weak} / {n} OK" + wk + (" · manquent : " if len(miss) > 1 else " · manque : ")
                 + ", ".join(miss[:8]) + (f" … (+{len(miss) - 8})" if len(miss) > 8 else ""))
     if skipped:
         text += f" · {skipped} ignorée(s)"
