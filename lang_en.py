@@ -3034,6 +3034,10 @@ EXACT = {
     'sans titre': 'untitled',
     '±32 MHz': '±32 MHz',
     'OptionsDt': 'OptionsDt',
+    '\n🔀 Diversity': '\n🔀 Diversity',
+    ' : les deux balayent toutes les bandes': ': both sweep all the bands',
+    "Deux antennes espacées, une par tinySA : les deux balayent les MÊMES bandes et, pour\nchaque fréquence, on garde le plus fort des deux (comme un récepteur diversity).\nFini les « absent » quand une antenne tombe dans un creux. Cycle pas plus court\nqu'avec un seul tinySA. Calibre d'abord le 2ᵉ sur le 1er (⚖, même antenne).\nDécoché : les deux se partagent les bandes (cycle deux fois plus court).": 'Two spaced antennas, one per tinySA: both sweep the SAME bands and, for\neach frequency, the stronger of the two is kept (like a diversity receiver).\nNo more “absent” when one antenna falls into a dip. The cycle is not shorter\nthan with a single tinySA. First calibrate the 2nd on the 1st (⚖, same antenna).\nUnticked: the two share the bands (cycle twice as short).',
+    '🔀 Diversity : les deux balayent tout, on garde le meilleur': '🔀 Diversity: both sweep everything, the best is kept',
 }
 
 TEMPLATES = {
@@ -3461,6 +3465,8 @@ TEMPLATES = {
     ', {} appareil(s) posé(s) sur leurs groupes': ', {} device(s) set on their groups',
     ', {} émetteur(s) extérieur(s)': ', {} external transmitter(s)',
     ', scan « {} » gardé dans Scans par lieu': ', scan “{}” kept in Scans by place',
+    'meilleur : {}': 'best: {}',
+    ' · meilleur niveau : {} {} % · {} {} %': ' · best level: {} {} % · {} {} %',
 }
 
 SAME_TEMPLATES = [
