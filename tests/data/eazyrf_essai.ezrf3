@@ -1,0 +1,234 @@
+<?xml version="1.0" standalone="yes"?>
+<EazyRFds>
+  <GroupeDt>
+    <Title>Plateau A</Title>
+    <NbSect>2</NbSect>
+    <HorsFonction>false</HorsFonction>
+    <ZoneNo>1</ZoneNo>
+    <ChTVActifList>23;True
+24;False
+41;True</ChTVActifList>
+  </GroupeDt>
+  <GroupeDt>
+    <Title>Plateau B</Title>
+    <NbSect>1</NbSect>
+    <HorsFonction>false</HorsFonction>
+    <ZoneNo>1</ZoneNo>
+    <ChTVActifList>23;True
+24;False
+41;True</ChTVActifList>
+  </GroupeDt>
+  <GroupeDt>
+    <Title>Loge</Title>
+    <NbSect>2</NbSect>
+    <HorsFonction>false</HorsFonction>
+    <ZoneNo>2</ZoneNo>
+    <ChTVActifList>23;True
+24;False
+41;True</ChTVActifList>
+  </GroupeDt>
+  <SectionDt>
+    <Title>Micros</Title>
+    <NbApp>2</NbApp>
+    <HorsFonction>false</HorsFonction>
+  </SectionDt>
+  <SectionDt>
+    <Title>Ears</Title>
+    <NbApp>1</NbApp>
+    <HorsFonction>false</HorsFonction>
+  </SectionDt>
+  <SectionDt>
+    <Title>Micros</Title>
+    <NbApp>1</NbApp>
+    <HorsFonction>false</HorsFonction>
+  </SectionDt>
+  <SectionDt>
+    <Title>Micros</Title>
+    <NbApp>1</NbApp>
+    <HorsFonction>false</HorsFonction>
+  </SectionDt>
+  <SectionDt>
+    <Title>Talk</Title>
+    <NbApp>1</NbApp>
+    <HorsFonction>true</HorsFonction>
+  </SectionDt>
+  <AppareilDt>
+    <AppareilName>Essai RX Alpha</AppareilName>
+    <AppDescription>#1</AppDescription>
+    <NbreFréqDésiré>2</NbreFréqDésiré>
+    <Tolérance>100</Tolérance>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>0</Tolérance5e>
+    <Séparation>500</Séparation>
+    <Départ>470,000</Départ>
+    <Arrêt>608,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Filtre>32</Filtre>
+    <FréqImageDéfinie>false</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <HorsFonction>false</HorsFonction>
+    <Rayé>false</Rayé>
+  </AppareilDt>
+  <AppareilDt>
+    <AppareilName>Essai RX Beta</AppareilName>
+    <AppDescription>#1</AppDescription>
+    <NbreFréqDésiré>1</NbreFréqDésiré>
+    <Tolérance>100</Tolérance>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>0</Tolérance5e>
+    <Séparation>300</Séparation>
+    <Départ>470,000</Départ>
+    <Arrêt>608,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Filtre>16</Filtre>
+    <FréqImageDéfinie>true</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <HorsFonction>false</HorsFonction>
+    <Rayé>false</Rayé>
+  </AppareilDt>
+  <AppareilDt>
+    <AppareilName>Essai IEM</AppareilName>
+    <AppDescription>#1</AppDescription>
+    <NbreFréqDésiré>1</NbreFréqDésiré>
+    <Tolérance>100</Tolérance>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>0</Tolérance5e>
+    <Séparation>400</Séparation>
+    <Départ>470,000</Départ>
+    <Arrêt>608,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Filtre>24</Filtre>
+    <FréqImageDéfinie>false</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <HorsFonction>false</HorsFonction>
+    <Rayé>false</Rayé>
+  </AppareilDt>
+  <AppareilDt>
+    <AppareilName>Essai RX Alpha</AppareilName>
+    <AppDescription>#2</AppDescription>
+    <NbreFréqDésiré>1</NbreFréqDésiré>
+    <Tolérance>100</Tolérance>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>0</Tolérance5e>
+    <Séparation>2000</Séparation>
+    <Départ>470,000</Départ>
+    <Arrêt>608,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Filtre>32</Filtre>
+    <FréqImageDéfinie>false</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <HorsFonction>false</HorsFonction>
+    <Rayé>false</Rayé>
+  </AppareilDt>
+  <AppareilDt>
+    <AppareilName>Essai RX Beta</AppareilName>
+    <AppDescription>#2</AppDescription>
+    <NbreFréqDésiré>1</NbreFréqDésiré>
+    <Tolérance>100</Tolérance>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>0</Tolérance5e>
+    <Séparation>300</Séparation>
+    <Départ>470,000</Départ>
+    <Arrêt>608,000</Arrêt>
+    <Incrément>0,025</Incrément>
+    <Filtre>16</Filtre>
+    <FréqImageDéfinie>true</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <HorsFonction>false</HorsFonction>
+    <Rayé>false</Rayé>
+  </AppareilDt>
+  <AppareilDt>
+    <AppareilName>Essai Talk</AppareilName>
+    <AppDescription>#1</AppDescription>
+    <NbreFréqDésiré>1</NbreFréqDésiré>
+    <Tolérance>100</Tolérance>
+    <Tolérance3TX>50</Tolérance3TX>
+    <Tolérance5e>0</Tolérance5e>
+    <Séparation>300</Séparation>
+    <Départ>470,000</Départ>
+    <Arrêt>608,000</Arrêt>
+    <Incrément>0,0125</Incrément>
+    <Filtre>0</Filtre>
+    <FréqImageDéfinie>false</FréqImageDéfinie>
+    <FréqImage>10,7</FréqImage>
+    <HorsFonction>false</HorsFonction>
+    <Rayé>false</Rayé>
+  </AppareilDt>
+  <FréquenceDt>
+    <Valeur>500,100</Valeur>
+    <Description>Chant 1</Description>
+    <Commentaire />
+    <Rayé>false</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <FréquenceDt>
+    <Valeur>503,450</Valeur>
+    <Description>Chant 2</Description>
+    <Commentaire />
+    <Rayé>false</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <FréquenceDt>
+    <Valeur>512,000</Valeur>
+    <Description />
+    <Commentaire />
+    <Rayé>false</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <FréquenceDt>
+    <Valeur>530,250</Valeur>
+    <Description>Ear 1</Description>
+    <Commentaire />
+    <Rayé>false</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <FréquenceDt>
+    <Valeur>534,875</Valeur>
+    <Description />
+    <Commentaire />
+    <Rayé>true</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <FréquenceDt>
+    <Valeur>540,000</Valeur>
+    <Description>Loge 1</Description>
+    <Commentaire />
+    <Rayé>false</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <FréquenceDt>
+    <Valeur>455,500</Valeur>
+    <Description>Talk 1</Description>
+    <Commentaire />
+    <Rayé>false</Rayé>
+    <Libéré>false</Libéré>
+  </FréquenceDt>
+  <InformsDt>
+    <Titre>Festival d'essai</Titre>
+    <Date>01 janvier 2026</Date>
+    <Version>Version 4.81.000000, 2026</Version>
+  </InformsDt>
+  <InterférencesDt>
+    <Départ>521,350</Départ>
+    <Arrêt>521,350</Arrêt>
+    <Commentaire />
+  </InterférencesDt>
+  <InterférencesDt>
+    <Départ>526,000</Départ>
+    <Arrêt>526,000</Arrêt>
+    <Commentaire />
+  </InterférencesDt>
+  <ParamsDt>
+    <ScanTitle> Scan d'essai</ScanTitle>
+    <ZipScanData>H4sIAL3K62oC/13TEXAjARgF4IWDQCFQCBQChUAhUAgUAoVAITdTyM0UFgoLhYVCoHe3N1NYKCwUFgoLhYXCQmGhsFBYKAQOAgeBg8BB4CBwcDedztz0e/LPNw/f/EHwL+HncfCaT83riXCM5zjBKc5wjgtc4grXuMEtXuAlXuE13uAtDr68dwd3cQ/38QAP8QiP8QRP8QyHOMIxnuMEpzjDOS5wiStc4wa3eIGXeIXXeIO3OPjK/riLe7iPB3iIR3j85uTj2/70UzzDIY5wjOc4wSnOcI4LXOIK17jBLV7gJV7hNd7gLQ6S9/6AO3gHd/Eu7uE93Mf7eIAP8BAf4hE+wmN8jCf4BE/xKZ7hMxzicxzhCxzjSzzHVzjB1zjFNzjDtzjHd7jA97jED7jCj7jGT7jBz7jFL3iBv+Ml/oFX+Cde4194g3/jLf6Dg2/8P+7gHdzFu7iH93Af7+MBPsBDfIhH+AiP8TGe4BM8xad4hs9wiM9xhC9wjC/xHF/hBF/jFN/gDN/iHN/hAt/jEj/gCj/iGj/hBj/jFr/gxX//BSwtXWWQDAAA</ZipScanData>
+    <ZipScanDataCount>201</ZipScanDataCount>
+  </ParamsDt>
+  <ZonesDt>
+    <Title>Zone Nord</Title>
+    <NoZone>1</NoZone>
+  </ZonesDt>
+  <ZonesDt>
+    <Title>Zone Sud</Title>
+    <NoZone>2</NoZone>
+  </ZonesDt>
+</EazyRFds>
