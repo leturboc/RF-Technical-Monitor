@@ -1937,6 +1937,46 @@ def _emit_act(d):
 DLG_ACTION[0] = _emit_act
 step("mode émission", win.open_emit)
 DLG_ACTION[0] = "reject"
+# 4 tinySA (démo, demande de Clément 7.35 : « une multitude de scènes ») : 2 ajoutés dans le tableau
+win.devx_add()
+win.devx_add()
+win.devx_table.item(0, 1).setText("Scène B")
+win.devx_table.item(0, 2).setText("192.168.1.23:5025")
+win.devx_table.item(1, 1).setText("Club")
+win.devx_table.item(1, 2).setText("COM9")
+check("tableau : 3ᵉ et 4ᵉ tinySA lus", win.dev_list() == [0, 1, 2, 3] and win.devx[0]["addr"] == "192.168.1.23:5025"
+      and win.dev_name(3) == "Club", str(win.devx))
+seen4 = {d: set() for d in range(4)}
+_nb4 = len(win.bands)
+win.add_band("Test 4a", 520.0, 540.0, 100.0)
+win.add_band("Test 4b", 600.0, 620.0, 100.0)
+step("Démarrer x4", win.toggle_run)
+check("quatre workers lancés", len(win.workers) == 4 and all(w.isRunning() for w in win.workers))
+for w in win.workers:
+    w.sweep.connect(lambda bid, f, l, d=w.slot: seen4[d].add(bid))
+wait(7000)
+check("4 tinySA : chacun balaye des bandes, sans doublon", all(seen4[d] for d in range(4))
+      and sum(len(v) for v in seen4.values()) == len(set().union(*seen4.values())), str(seen4))
+win.set_dev_scenes(2, ["Grande scène"])
+win.set_dev_scenes(3, ["Club"])
+for v in seen4.values():
+    v.clear()
+wait(7000)
+_en4 = {b_["id"] for b_ in win.bands if b_["enabled"]}
+check("4 tinySA, 2 rattachés à des scènes : chacun balaye tout", all(seen4[d] >= _en4 for d in range(4)), str(seen4))
+win.update_dev2_label()
+shot(win, "quatre_tinysa")
+step("Arrêter x4", win.toggle_run)
+wait(3000)
+win.set_dev_scenes(2, [])
+win.set_dev_scenes(3, [])
+win.devx_table.setCurrentCell(1, 0)
+win.devx_del()
+win.devx_table.setCurrentCell(0, 0)
+win.devx_del()
+check("3ᵉ / 4ᵉ retirés", win.dev_list() == [0, 1] and not win.devx)
+win.bands = win.bands[:_nb4]
+win._bands_changed()
 win.dev2_chk.setChecked(False)
 step("open_relay", win.open_relay)
 wait(600)

@@ -847,7 +847,7 @@ ok("multi-scènes : scènes différentes", msi_({0: ["A", "B"], 1: ["C"]}, 2))
 ok("multi-scènes : le 2ᵉ sans scène", not msi_({0: ["A"], 1: []}, 2))
 dsn_ = ns["dev_scenes_norm"]
 check("scènes des tinySA : ancien réglage à 1 lieu", dsn_({"0": "Grande scène", "1": ""}), {0: ["Grande scène"]})
-check("scènes des tinySA : listes, doublons, clés inconnues", dsn_({"0": ["A", "A", " B "], "1": ["C"], "7": ["X"]}),
+check("scènes des tinySA : listes, doublons, clés inconnues", dsn_({"0": ["A", "A", " B "], "1": ["C"], "8": ["X"]}),
       {0: ["A", "B"], 1: ["C"]})
 check("scènes des tinySA : config abîmée", dsn_("n'importe quoi"), {})
 pc_ = ns["palette_color"]
@@ -1016,6 +1016,21 @@ _r = _dm({0: (np.array([500.0, 501.0]), np.array([-40.0, -40.0]), 100.0),
 check("diversity : grilles différentes (interpolées)", list(_r[1]), [-40.0, -40.0, -40.0])
 check("diversity : rien", _dm({}, 0, 10), None)
 check("diversity : part des points", ns["diversity_share"]([np.array([0, 0, 1, 1]), np.array([0])]), [60, 40])
+
+# --- plusieurs tinySA (jusqu'à 8)
+check("rang des tinySA", [ns["dev_ord"](d) for d in (0, 1, 2, 7)], ["1er", "2ᵉ", "3ᵉ", "8ᵉ"])
+_dx = ns["devx_norm"]([dict(addr=" COM5 ", name="Scène B", offset=99), "bancal", dict(on=False, addr="1.2.3.4:5025")] * 4)
+check("tinySA 3 à 8 : nettoyés, 6 au plus", (len(_dx), _dx[0], _dx[1]["on"]),
+      (6, dict(on=True, addr="COM5", name="Scène B", offset=40.0), False))
+check("scènes : jusqu'au 8ᵉ tinySA", dsn_({"7": ["Club"]}), {7: ["Club"]})
+_lm = [True, True, True, False, False, False, False, False]
+check("répartition sur 3 tinySA", sorted(set(ns["assign_bands"]([dict(id=i, pts=100, dev=None) for i in range(6)], 8, _lm).values())),
+      [0, 1, 2])
+ok("4 tinySA, 4 scènes : chacun chez lui", msi_({0: ["A"], 1: ["B"], 2: ["C"], 3: ["D"]}, 8, [True] * 4 + [False] * 4))
+_r = ns["diversity_merge"]({0: (np.array([1.0, 2.0]), np.array([-90.0, -50.0]), 10.0),
+                            2: (np.array([1.0, 2.0]), np.array([-40.0, -80.0]), 10.5),
+                            5: (np.array([1.0, 2.0]), np.array([-60.0, -30.0]), 11.0)}, 11.0, 10.0)
+check("diversity à 3 tinySA : le meilleur des trois", (list(_r[1]), list(_r[2])), ([-40.0, -30.0], [2, 5]))
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

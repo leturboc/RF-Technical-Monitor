@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.34.0"
+APP_VER = "7.35.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -90,7 +90,8 @@ RBW_LIST = [0.3, 1, 3, 10, 30, 100, 300, 600, 850]
 WF_ROWS = 150                # profondeur du waterfall
 WF_MAX_COLS = 3000           # colonnes max du waterfall (réduction par maximum)
 ZOOM_ID = -2                 # identifiant interne de la "bande" de zoom live
-CALIB_IDS = (-3, -4)         # bandes internes de la calibration entre deux tinySA (1er, 2e)
+MAX_DEVS = 8                 # tinySA en même temps au plus (1er, 2ᵉ, puis 3ᵉ à 8ᵉ : « devx »)
+CALIB_IDS = tuple(-3 - d for d in range(MAX_DEVS))   # bandes internes de la calibration (une par tinySA)
 CALIB_SWEEPS = 3             # balayages par appareil pour calibrer
 CALIB_TIMEOUT = 180.0
 MAX_LABELS = 30              # nb max de noms affichés sur le graphe
@@ -3219,7 +3220,7 @@ SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
              "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
-             "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2")
+             "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -5421,11 +5422,33 @@ def diversity_share(srcs, ndev=2):
     return [round(float(x) * 100.0 / n) for x in tot] if n else [0] * ndev
 
 
+def dev_ord(d):
+    """Rang d'un tinySA : « 1er », « 2ᵉ », « 3ᵉ »…"""
+    return "1er" if int(d) == 0 else f"{int(d) + 1}ᵉ"
+
+
+def devx_norm(lst, max_devs=8):
+    """tinySA 3 à 8 lus (config / show) -> [{on, addr, name, offset}] (au plus max_devs − 2)."""
+    out = []
+    for x in (lst if isinstance(lst, list) else []):
+        if not isinstance(x, dict):
+            continue
+        if len(out) >= max(0, max_devs - 2):
+            break
+        try:
+            off = max(-40.0, min(40.0, float(x.get("offset", 0.0) or 0.0)))
+        except (TypeError, ValueError):
+            off = 0.0
+        out.append(dict(on=bool(x.get("on", True)), addr=str(x.get("addr") or "").strip()[:120],
+                        name=str(x.get("name") or "").strip()[:40], offset=round(off, 1)))
+    return out
+
+
 def dev_scenes_norm(d):
-    """Scènes de chaque tinySA lues de la config -> {0: [..], 1: [..]} (accepte l'ancien « dev_sites » à 1 lieu)."""
+    """Scènes de chaque tinySA lues de la config -> {0: [..], 1: [..], …} (accepte l'ancien « dev_sites »)."""
     out = {}
     for k, v in (d.items() if isinstance(d, dict) else []):
-        if str(k) not in ("0", "1"):
+        if str(k) not in [str(i) for i in range(8)]:
             continue
         v = [v] if isinstance(v, str) else (v if isinstance(v, list) else [])
         v = list(dict.fromkeys(str(x).strip()[:60] for x in v if str(x).strip()))
@@ -10175,9 +10198,9 @@ class HuntDialog(QtWidgets.QDialog):
         self.mute_chk = QtWidgets.QCheckBox("Muet")
         self.mute_chk.setToolTip("Coupe le bip (l'affichage continue).")
         self.dev_combo = QtWidgets.QComboBox()
-        for d_ in range(o.ndev()):
-            self.dev_combo.addItem(f"{'1er' if d_ == 0 else '2ᵉ'} tinySA · {o.dev_name(d_)}", d_)
-        self.dev_combo.setCurrentIndex(o.ndev() - 1)          # le 2ᵉ (portable, sur un Pi) par défaut
+        for d_ in o.dev_list():
+            self.dev_combo.addItem(f"{dev_ord(d_)} tinySA · {o.dev_name(d_)}", d_)
+        self.dev_combo.setCurrentIndex(o.ndev() - 1)          # le dernier (portable, sur un Pi) par défaut
         self.dev_combo.setToolTip("Le tinySA qui chasse. Avec 2 tinySA : le portable (2ᵉ, ex. sur un Raspberry Pi\n"
                                   "dans un sac) chasse, le 1er continue de surveiller toutes les bandes.")
         self.dev_combo.setVisible(o.ndev() > 1)
@@ -11402,14 +11425,14 @@ class DevicesDialog(QtWidgets.QDialog):
             if it.widget() is not None:
                 it.widget().deleteLater()
         self.checks = {}
-        nd = o.ndev()
-        for d in range(nd):
-            col = d + 1
+        nd = o.dev_list()
+        for ci, d in enumerate(nd):
+            col = ci + 1
             live = o.is_running() and d < len(o.dev_live) and o.dev_live[d]
             addr = ("démo" if o.demo_chk.isChecked() else (o.port1() or "—")) if d == 0 \
-                else (o.dev2.get("addr") or "—")
+                else (next((a for d_, a, _o in o.dev_slots() if d_ == d), "") or "—")
             n_ = o.dev_ids.get(d)
-            head = QtWidgets.QLabel(f"<b>{'1er' if d == 0 else '2ᵉ'} tinySA · {o.dev_name(d)}</b><br>"
+            head = QtWidgets.QLabel(f"<b>{dev_ord(d)} tinySA · {o.dev_name(d)}</b><br>"
                                     f"{'● en ligne' if live else '○ pas connecté'} · {addr}"
                                     + (f"<br>n° {n_}" if n_ else ""))
             head.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -11436,24 +11459,24 @@ class DevicesDialog(QtWidgets.QDialog):
             self.grid.addWidget(sm, 4, col)
         names = list(dict.fromkeys([x["name"] for x in o.scenes] + [x for v in o.dev_scenes.values() for x in v]))
         if not names:
-            self.grid.addWidget(QtWidgets.QLabel("Crée d'abord tes scènes (« Classer par scène › groupe »)."), 5, 0, 1, nd + 1)
+            self.grid.addWidget(QtWidgets.QLabel("Crée d'abord tes scènes (« Classer par scène › groupe »)."), 5, 0, 1, len(nd) + 1)
         for r, name in enumerate(names, start=5):
             lab = QtWidgets.QLabel(name)
             sc = o.scene_by_name(name)
             if sc is not None:
                 lab.setStyleSheet(f"color:{sc['color']};font-weight:bold")
             self.grid.addWidget(lab, r, 0)
-            for d in range(nd):
+            for ci, d in enumerate(nd):
                 cb = QtWidgets.QCheckBox("")
                 cb.setChecked(name in o.dev_scenes.get(d, []))
-                cb.setToolTip(f"Le {'1er' if d == 0 else '2ᵉ'} tinySA surveille « {name} ».")
+                cb.setToolTip(f"Le {dev_ord(d)} tinySA surveille « {name} ».")
                 cb.toggled.connect(lambda *_, d=d, name=name, cb=cb: self._toggle(d, name, cb.isChecked()))
-                self.grid.addWidget(cb, r, d + 1, alignment=Qt.AlignmentFlag.AlignCenter)
+                self.grid.addWidget(cb, r, ci + 1, alignment=Qt.AlignmentFlag.AlignCenter)
                 self.checks[(d, name)] = cb
-        if nd < 2:
+        if len(nd) < 2:
             tip = QtWidgets.QLabel("Un 2ᵉ tinySA ? Réglages › 2ᵉ tinySA (USB ou réseau, ex. un Raspberry Pi).")
             tip.setStyleSheet("color:gray")
-            self.grid.addWidget(tip, len(names) + 5, 0, 1, nd + 1)
+            self.grid.addWidget(tip, len(names) + 5, 0, 1, len(nd) + 1)
 
     def _toggle(self, d, name, on):
         self.owner.toggle_dev_scene(d, name, on)
@@ -11479,7 +11502,7 @@ class DevicesDialog(QtWidgets.QDialog):
 
 
 SETTINGS_PAGES = (("detect", "Seuils et alarmes"), ("bands", "Bandes à balayer"), ("measure", "Mesure"),
-                  ("dev2", "2ᵉ tinySA et noms"), ("country", "Pays et plan"))
+                  ("dev2", "Plusieurs tinySA et noms"), ("country", "Pays et plan"))
 
 
 class SettingsDialog(QtWidgets.QDialog):
@@ -13647,9 +13670,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.net_addr, self.port_net = "", False   # 🌐 1er tinySA en réseau (Raspberry Pi…) : adresse, choisi ou non
         self.net_profiles = []                     # 🌐 adresses enregistrées [{name, addr}] (une par Wi-Fi / lieu)
         self.dev2 = dict(on=False, addr="", offset=0.0, div=False)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
-        self.dev_live = [True, True]    # liaison de chaque appareil (False = perdue, ses bandes passent sur l'autre)
+        self.devx = []                  # tinySA 3 à 8 : [{on, addr, name, offset}] (le 2ᵉ reste dans dev2)
+        self.dev_live = [True] * MAX_DEVS   # liaison de chaque appareil (False = perdue, ses bandes passent aux autres)
         self.dev_cycle = {}
-        self.dev_names = ["tinySA 1", "tinySA 2"]   # noms de position (« Plateau », « FOH »…)
+        self.dev_names = ["tinySA 1", "tinySA 2"]   # noms de position (« Plateau », « FOH »…) ; 3ᵉ… : dans devx
         self.band_src = {}              # id bande -> n° du tinySA qui a fourni le dernier balayage
         self.div_buf, self.div_src = {}, {}   # 🔀 diversity : {bande: {tinySA: (F, L, t)}}, {bande: (F, gagnant, t)}
         self._calib = None              # calibration en cours : {band, t0, data:{0:[], 1:[]}}
@@ -15094,35 +15118,61 @@ class MainWindow(QtWidgets.QMainWindow):
             txt += "\n⚠ Cycle long : réduis les points ou la largeur des bandes."
         self.est_lbl.setText(txt)
 
+    def dev_slots(self):
+        """tinySA en service -> [(n°, adresse, offset)] ; n° fixe : 0 = 1er, 1 = 2ᵉ, 2… = 3ᵉ… (devx)."""
+        out = [(0, None, 0.0)]
+        if self.dev2.get("on"):
+            out.append((1, self.dev2.get("addr", ""), float(self.dev2.get("offset", 0.0))))
+        for k, x in enumerate(getattr(self, "devx", [])[:MAX_DEVS - 2]):
+            if x.get("on"):
+                out.append((k + 2, x.get("addr", ""), float(x.get("offset", 0.0))))
+        return out
+
+    def dev_list(self):
+        """N° des tinySA en service (0 = le 1er toujours)."""
+        return [d for d, _a, _o in self.dev_slots()]
+
     def ndev(self):
-        return 2 if self.dev2["on"] else 1
+        """Nombre de tinySA en service."""
+        return len(self.dev_list())
+
+    def dev_offset(self, d):
+        return next((o for d_, _a, o in self.dev_slots() if d_ == d), 0.0)
+
+    def live_mask(self):
+        """[bool] × MAX_DEVS : tinySA en service ET en ligne."""
+        ids = set(self.dev_list())
+        return [d in ids and (d >= len(self.dev_live) or bool(self.dev_live[d])) for d in range(MAX_DEVS)]
+
+    def multi_site_on(self):
+        return multi_site(self.dev_scenes, MAX_DEVS, self.live_mask())
 
     def diversity_on(self):
         """🔀 Diversity : 2 tinySA (deux antennes) balayent les mêmes bandes, on garde le meilleur niveau. Pas quand ils
         sont posés à deux scènes différentes (là, chacun juge sa scène)."""
-        return (self.ndev() == 2 and bool(self.dev2.get("div"))
-                and not multi_site(self.dev_scenes, self.ndev(), self.dev_live))
+        return (self.ndev() >= 2 and bool(self.dev2.get("div"))
+                and not self.multi_site_on())
 
     def band_devices(self):
         """{id bande: n° du tinySA qui la balaye} (tout sur le 1er quand il n'y en a qu'un)."""
         bs = [b for b in self.scan_bands() if self._scan_now(b)]
         if self.ndev() == 1:
             return {b["id"]: 0 for b in bs}
-        if multi_site(self.dev_scenes, self.ndev(), self.dev_live) or self.diversity_on():
+        if self.multi_site_on() or self.diversity_on():
             return {b["id"]: -1 for b in bs}          # -1 = chaque tinySA balaye la bande (chez lui / 🔀 diversity)
         return assign_bands([dict(id=b["id"], pts=self._npts(b), dev=b.get("dev")) for b in bs],
-                            2, self.dev_live)
+                            MAX_DEVS, self.live_mask())
 
     def get_cfg(self, dev=0):
         with self.lock:
             c = self._cfg
             cal = self._calib
-            if cal is not None and dev < 2:
+            if cal is not None and dev in cal["data"]:
                 b = cal["band"]
                 return dict(bands=[dict(id=CALIB_IDS[dev], name="Calibration", start_hz=b["start"] * 1e6,
                                         stop_hz=b["stop"] * 1e6, n=self._npts(b), enabled=True)],
                             rbw=c["rbw"], input=c["input"], lna=c["lna"], att=c["att"],
-                            offset=c["offset"] + (float(self.dev2.get("offset", 0.0)) if dev == 1 else 0.0),
+                            offset=c["offset"] + self.dev_offset(dev),
                             seg=c["seg"], demo_freqs=[w["freq"] for w in self.watch], ver=self._ver)
             if self._zoom:
                 a, b = self._zoom
@@ -15130,8 +15180,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 step_khz = (b - a) * 1000.0 / (n - 1)
                 bands = [dict(id=ZOOM_ID, name="Zoom", start_hz=a * 1e6, stop_hz=b * 1e6, n=n, enabled=True)]
                 rbw = c["zrbw"] if c["zrbw"] is not None else auto_rbw(step_khz)
-                pref = self.zoom_dev if self.ndev() > 1 else 0     # chasse : le tinySA choisi (ex. celui du Pi)
-                zdev = pref if (self.ndev() == 1 or self.dev_live[pref] or not self.dev_live[1 - pref]) else 1 - pref
+                ids, lm = self.dev_list(), self.live_mask()
+                pref = self.zoom_dev if self.zoom_dev in ids else 0     # chasse : le tinySA choisi (ex. celui du Pi)
+                zdev = pref if (len(ids) == 1 or lm[pref] or not any(lm)) else next(d for d in ids if lm[d])
                 if dev != zdev:
                     # le zoom live est fait par un seul tinySA ; l'autre continue de surveiller toutes les bandes
                     bands = [dict(id=b["id"], name=b["name"], start_hz=b["start"] * 1e6, stop_hz=b["stop"] * 1e6,
@@ -15145,7 +15196,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 rbw = c["rbw"]
             freqs = [w["freq"] for w in self.watch if not w.get("bw")]
             blocks = [(w["freq"], w["bw"]) for w in self.watch if w.get("bw") and self.is_keep_on(w["status"])]
-            off = c["offset"] + (float(self.dev2.get("offset", 0.0)) if dev == 1 else 0.0)
+            off = c["offset"] + self.dev_offset(dev)
             return dict(bands=bands, rbw=rbw, input=c["input"], lna=c["lna"], att=c["att"],
                         offset=off, seg=c["seg"], demo_freqs=freqs, demo_blocks=blocks, ver=self._ver)
 
@@ -15407,6 +15458,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 d.update({k: v[k] for k in d if k in v and isinstance(v[k], type(d[k]))})
         self.web_cfg["views"] = web_views_norm(self.web_cfg.get("views"))
         QtCore.QTimer.singleShot(0, self.apply_web)
+        if "devx" in data:                       # tinySA 3 à 8
+            self.devx = devx_norm(data.get("devx"), MAX_DEVS)
+            self._devx_fill()
         dn = data.get("dev_names")
         if isinstance(dn, list) and len(dn) == 2:
             self.dev1_name.setText("" if dn[0] == "tinySA 1" else str(dn[0]))
@@ -15490,7 +15544,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            dev2=dict(self.dev2), dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
+            dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts),
@@ -15826,24 +15880,29 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self._session_prompt(auto):
             return
         self._read_dev2()
-        targets = [(port, "")]
-        if self.dev2["on"]:
-            kind, url = parse_device_addr(self.dev2["addr"])
-            if not demo and kind is None:
-                QtWidgets.QMessageBox.warning(self, APP_NAME, "Adresse du 2ᵉ tinySA illisible.\nExemples : COM4 "
-                                              "(USB) · 192.168.1.20:5025 (réseau, relais lancé sur l'autre PC).")
-                return
-            if not demo and url == port:
-                QtWidgets.QMessageBox.warning(self, APP_NAME, "Les deux tinySA ont le même port.")
-                return
-            targets = [(port, self.dev_name(0)), (url, self.dev_name(1))]
-        self.dev_live = [True, True]
+        targets = [(0, port, "")]
+        if self.ndev() > 1:
+            targets = [(0, port, self.dev_name(0))]
+            seen_addr = {port}
+            for d, addr, _off in self.dev_slots()[1:]:
+                kind, url = parse_device_addr(self.resolve_addr(addr))
+                if not demo and kind is None:
+                    QtWidgets.QMessageBox.warning(self, APP_NAME, f"Adresse du {dev_ord(d)} tinySA illisible.\nExemples : "
+                                                  "COM4 (USB) · 192.168.1.20:5025 (réseau, relais lancé sur l'autre PC).")
+                    return
+                if not demo and url in seen_addr:
+                    QtWidgets.QMessageBox.warning(self, APP_NAME, f"Le {dev_ord(d)} tinySA a la même adresse qu'un autre.")
+                    return
+                seen_addr.add(url)
+                targets.append((d, url, self.dev_name(d)))
+        self.dev_live = [d in self.dev_list() for d in range(MAX_DEVS)]
         self.dev_cycle = {}
         self.band_src = {}
         self.div_buf, self.div_src = {}, {}
         self.workers = []
-        for i, (addr, label) in enumerate(targets):
+        for i, addr, label in targets:
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
+            w.slot = i                                    # n° fixe du tinySA (0 = 1er, 1 = 2ᵉ, 2… = 3ᵉ…)
             w.retry_first = i > 0 or str(addr).startswith("socket://")   # en réseau, il peut arriver après
             w.baud = int(self.baud_combo.currentData() or 115200)
             w.sweep.connect(lambda bid, f, l, d=i: self.band_src.__setitem__(bid, d))
@@ -15864,7 +15923,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._style_start(True)
         self.port_combo.setEnabled(False)
         self.demo_chk.setEnabled(False)
-        for wd in (self.dev2_chk, self.dev2_addr):
+        for wd in (self.dev2_chk, self.dev2_addr, self.devx_table, self.devx_add_btn, self.devx_del_btn):
             wd.setEnabled(False)
         self.update_dev2_label()
 
@@ -15938,6 +15997,7 @@ class MainWindow(QtWidgets.QMainWindow):
             out.append(f"  [{'x' if b['enabled'] else ' '}] {b['name']} : {b['start']:g}–{b['stop']:g} MHz, "
                        f"pas {b['step']:g} kHz, {self._npts(b)} points")
         for k, w in enumerate(list(self.workers)):
+            k = getattr(w, "slot", k)
             tr = getattr(w, "trace", None)
             out += ["", f"Échanges avec {self.dev_name(k)} (plus récents en bas) :"] + [str(x) for x in list(tr or [])]
         try:
@@ -15970,6 +16030,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_link(self, dev, ok):
         """Un tinySA décroche (câble, réseau, relais) ou revient : alarme + répartition des bandes."""
         with self.lock:
+            if len(self.dev_live) < MAX_DEVS:
+                self.dev_live = list(self.dev_live) + [True] * (MAX_DEVS - len(self.dev_live))
             self.dev_live[dev] = bool(ok)
         if not ok and self._calib is not None:
             self._calib_end("⚠ Calibration annulée : un tinySA a décroché.")
@@ -15985,8 +16047,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_status(f"✔ {name} de nouveau en ligne : bandes réparties à nouveau.")
         else:
             self._diag_pending = f"liaison perdue avec {self.dev_name(dev)}"     # écrit par _alarm_tick
-            other = f"{self.dev_name(1 - dev)} reprend ses bandes" if self.ndev() > 1 and any(self.dev_live) else \
-                "plus aucune mesure"
+            alive = [self.dev_name(d) for d in self.dev_list() if d != dev and self.live_mask()[d]]
+            other = (f"{' + '.join(alive)} reprend ses bandes" if len(alive) == 1 else
+                     f"{' + '.join(alive)} reprennent ses bandes") if alive else "plus aucune mesure"
             if self.alarms.raise_(key, "APPAREIL", name, 0.0, 2, now, layer="",
                                   info=f"liaison perdue — {other}"):
                 self._alarm_sound(2)
@@ -16003,14 +16066,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.start_btn.setEnabled(True)
         self.port_combo.setEnabled(True)
         self.demo_chk.setEnabled(True)
-        for wd in (self.dev2_chk, self.dev2_addr):
+        for wd in (self.dev2_chk, self.dev2_addr, self.devx_table, self.devx_add_btn, self.devx_del_btn):
             wd.setEnabled(True)
         self.partial_data.clear()
         if self._calib is not None:
             self._calib_end("Calibration annulée (balayage arrêté).", popup=False)
-        for d in (0, 1):
+        for d in range(MAX_DEVS):
             self.alarms.clear(("APPAREIL", -(d + 1)), time.time())
-        self.dev_live = [True, True]
+        self.dev_live = [True] * MAX_DEVS
         self.update_dev2_label()
         self.set_status("Arrêté.")
         if self._session is not None:
@@ -16018,7 +16081,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ 2ᵉ tinySA
     def _build_dev2_box(self):
-        box = QtWidgets.QGroupBox("2ᵉ tinySA (USB ou réseau) · noms")
+        box = QtWidgets.QGroupBox("Plusieurs tinySA (USB ou réseau) · noms")
         self.dev2_box = box
         f = QtWidgets.QFormLayout(box)
         self.dev2_chk = QtWidgets.QCheckBox("Utiliser un 2ᵉ tinySA")
@@ -16068,7 +16131,7 @@ class MainWindow(QtWidgets.QMainWindow):
         net_btn.clicked.connect(lambda *_: self.open_net_profiles())
         f.addRow("Adresse :", self._row(self.dev2_addr, net_btn))
         f.addRow("Offset :", self.dev2_off)
-        self.calib_btn = QtWidgets.QPushButton("⚖ Calibrer le 2ᵉ sur le 1er…")
+        self.calib_btn = QtWidgets.QPushButton("⚖ Calibrer les autres tinySA sur le 1er…")
         self.calib_btn.setToolTip("Les deux tinySA doivent recevoir le MÊME signal (même antenne via un splitter, ou\n"
                                   "antennes côte à côte). Pendant ~20 s ils balayent la même bande, puis l'offset du\n"
                                   "2ᵉ est réglé pour qu'il lise comme le 1er. La surveillance reprend ensuite.")
@@ -16076,10 +16139,114 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addRow(self.dev2_lbl)
         f.addRow(self.calib_btn)
         f.addRow(relay_btn)
+        # tinySA 3 à 8 (une scène chacun, un Pi chacun…)
+        self.devx_table = QtWidgets.QTableWidget(0, 4)
+        self.devx_table.setHorizontalHeaderLabels(["Actif", "Nom", "Adresse", "Offset dB"])
+        self.devx_table.verticalHeader().setVisible(False)
+        self.devx_table.horizontalHeader().setStretchLastSection(False)
+        self.devx_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.devx_table.setMinimumHeight(110)
+        self.devx_table.setToolTip("Les tinySA en plus (3ᵉ à 8ᵉ) : un par scène, ou plusieurs sur une même scène.\n"
+                                   "Adresse : port USB (COM5…), adresse réseau (192.168.1.21:5025) ou le NOM d'une "
+                                   "adresse enregistrée.\nIl faut d'abord le 2ᵉ tinySA. Suppr retire la ligne choisie.")
+        self.devx_table.itemChanged.connect(lambda *_: self._devx_from_table())
+        del_key(self.devx_table, self.devx_del)
+        self.devx_add_btn = QtWidgets.QPushButton("＋ Ajouter un tinySA")
+        self.devx_add_btn.setToolTip("Un tinySA de plus (jusqu'à 8 en tout) : branché en USB sur ce PC (hub) ou en\n"
+                                     "réseau (un Raspberry Pi par tinySA). Rattache-le ensuite à sa scène (📡 Scènes).")
+        self.devx_add_btn.clicked.connect(lambda *_: self.devx_add())
+        self.devx_del_btn = QtWidgets.QPushButton("Retirer")
+        self.devx_del_btn.setToolTip("Retire le tinySA choisi dans le tableau.")
+        self.devx_del_btn.clicked.connect(lambda *_: self.devx_del())
+        f.addRow(QtWidgets.QLabel("<b>Autres tinySA (3ᵉ à 8ᵉ)</b>"))
+        f.addRow(self.devx_table)
+        f.addRow(self._row(self.devx_add_btn, self.devx_del_btn, None))
         self._dev2_form, self.relay_btn = f, relay_btn
         self.dev2_info = ""
         self._dev2_ports()
         return box
+
+    def _devx_fill(self):
+        t = getattr(self, "devx_table", None)
+        if t is None:
+            return
+        t.blockSignals(True)
+        t.setRowCount(len(self.devx))
+        for r, x in enumerate(self.devx):
+            on = QtWidgets.QTableWidgetItem(dev_ord(r + 2))
+            on.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            on.setCheckState(Qt.CheckState.Checked if x.get("on") else Qt.CheckState.Unchecked)
+            t.setItem(r, 0, on)
+            t.setItem(r, 1, QtWidgets.QTableWidgetItem(x.get("name", "")))
+            t.setItem(r, 2, QtWidgets.QTableWidgetItem(x.get("addr", "")))
+            t.setItem(r, 3, QtWidgets.QTableWidgetItem(f"{float(x.get('offset', 0.0)):+.1f}"))
+        t.resizeColumnToContents(0)
+        t.blockSignals(False)
+
+    def _devx_from_table(self):
+        t = self.devx_table
+        out = []
+        for r in range(t.rowCount()):
+            def txt(c):
+                it = t.item(r, c)
+                return it.text().strip() if it is not None else ""
+            try:
+                off = float(txt(3).replace(",", ".") or 0)
+            except ValueError:
+                off = self.devx[r].get("offset", 0.0) if r < len(self.devx) else 0.0
+            it0 = t.item(r, 0)
+            out.append(dict(on=it0 is not None and it0.checkState() == Qt.CheckState.Checked, name=txt(1),
+                            addr=txt(2), offset=off))
+        self.devx = devx_norm(out, MAX_DEVS)
+        self._dev2_changed()
+
+    def devx_add(self):
+        if self.is_running():
+            self.set_status("Arrête d'abord la surveillance pour ajouter un tinySA.")
+            return
+        if len(self.devx) >= MAX_DEVS - 2:
+            self.set_status(f"Au plus {MAX_DEVS} tinySA en même temps.")
+            return
+        if not self.dev2.get("on"):
+            self.dev2_chk.setChecked(True)          # le 2ᵉ d'abord
+        self.devx.append(dict(on=True, addr="", name="", offset=0.0))
+        self._devx_fill()
+        self.devx_table.setCurrentCell(len(self.devx) - 1, 2)
+        self._dev2_changed()
+        self.set_status(f"{dev_ord(len(self.devx) + 1)} tinySA ajouté : saisis son adresse (COM5, 192.168.1.21:5025 ou le "
+                        "nom d'une adresse enregistrée), puis rattache-le à sa scène (📡 Scènes).")
+
+    def devx_del(self):
+        if self.is_running():
+            self.set_status("Arrête d'abord la surveillance pour retirer un tinySA.")
+            return
+        r = self.devx_table.currentRow()
+        if not 0 <= r < len(self.devx):
+            return
+        d = r + 2
+        self.devx.pop(r)
+        # les n° suivants descendent d'un cran : leurs scènes suivent
+        sc = {}
+        for k, v in self.dev_scenes.items():
+            if k == d:
+                continue
+            sc[k - 1 if k > d else k] = v
+        self.dev_scenes = sc
+        self._devx_fill()
+        self._dev2_changed()
+
+    def set_dev_offset(self, d, v):
+        if d == 1:
+            self.dev2_off.setValue(v)
+        elif d >= 2 and d - 2 < len(self.devx):
+            self.devx[d - 2]["offset"] = round(float(v), 1)
+            self._devx_fill()
+            self._bump()
+
+    def resolve_addr(self, a):
+        """Adresse d'un tinySA : telle quelle, ou celle d'une adresse enregistrée portant ce nom."""
+        a = str(a or "").strip()
+        return next((p["addr"] for p in getattr(self, "net_profiles", []) if p["name"].lower() == a.lower()), a)
 
     def _dev2_ports(self):
         cur = self.dev2_addr.currentText()
@@ -16119,14 +16286,20 @@ class MainWindow(QtWidgets.QMainWindow):
             where = "démo"
         run = self.is_running()
         st = ("✔ en ligne" if self.dev_live[1] else "⚠ liaison perdue (nouvel essai…)") if run else "prêt"
+        more = [d for d in self.dev_list() if d >= 2]
+        if more:
+            lm = self.live_mask()
+            st += "\n" + " · ".join(f"{self.dev_name(d)} : " + (("✔" if lm[d] else "⚠ perdu") if run else "prêt")
+                                    for d in more)
         cyc = "  ·  ".join(f"{self.dev_name(k)} : {v:.1f} s" for k, v in sorted(self.dev_cycle.items())) if run else ""
         div = ""
         if self.diversity_on():
             now = time.time()
             srcs = [s_ for _F, s_, t in self.div_src.values() if now - t < 60]
-            sh = diversity_share(srcs)
-            div = "\n🔀 Diversity" + (f" · meilleur niveau : {self.dev_name(0)} {sh[0]} % · {self.dev_name(1)} {sh[1]} %"
-                                     if run and srcs else " : les deux balayent toutes les bandes")
+            sh = diversity_share(srcs, MAX_DEVS)
+            div = "\n🔀 Diversity" + (" · meilleur niveau : " + " · ".join(f"{self.dev_name(d)} {sh[d]} %"
+                                                                          for d in self.dev_list())
+                                     if run and srcs else " : tous balayent toutes les bandes")
         self.dev2_lbl.setText(f"{where} · {st}" + (f" · {self.dev2_info}" if run and self.dev2_info else "")
                               + (f"\nCycle  {cyc}" if cyc else "") + div)
 
@@ -16135,9 +16308,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._calib is not None:
             self._calib_end("Calibration annulée.", popup=False)
             return
-        if self.ndev() < 2 or not self.is_running() or not all(self.dev_live):
-            QtWidgets.QMessageBox.information(self, APP_NAME, "Calibration : lance d'abord le balayage avec les deux "
-                                              "tinySA en ligne (et le même signal sur les deux antennes).")
+        if self.ndev() < 2 or not self.is_running() or not all(self.live_mask()[d] for d in self.dev_list()):
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Calibration : lance d'abord le balayage avec tous les "
+                                              "tinySA en ligne (et le même signal sur toutes les antennes).")
             return
         if self._zoom is not None:
             QtWidgets.QMessageBox.information(self, APP_NAME, "Coupe le zoom live avant de calibrer.")
@@ -16147,10 +16320,10 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         band = max(bs, key=lambda b: sum(1 for w in self.watch if b["start"] <= w["freq"] <= b["stop"]))
         with self.lock:
-            self._calib = dict(band=dict(band), t0=time.time(), data={0: [], 1: []})
+            self._calib = dict(band=dict(band), t0=time.time(), data={d: [] for d in self.dev_list()})
         self._bump()
         self.calib_btn.setText("⚖ Calibration en cours… (clic = annuler)")
-        self.set_status(f"⚖ Calibration : les deux tinySA balayent « {band['name']} » ({CALIB_SWEEPS} fois chacun)…")
+        self.set_status(f"⚖ Calibration : les tinySA balayent tous « {band['name']} » ({CALIB_SWEEPS} fois chacun)…")
 
     def _calib_add(self, dev, f, l):
         cal = self._calib
@@ -16160,28 +16333,36 @@ class MainWindow(QtWidgets.QMainWindow):
         if time.time() - cal["t0"] > CALIB_TIMEOUT:
             self._calib_end("⚠ Calibration abandonnée : trop long.")
             return
-        if all(len(cal["data"][d]) >= CALIB_SWEEPS for d in (0, 1)):
+        if all(len(v) >= CALIB_SWEEPS for v in cal["data"].values()):
             def maxhold(lst):
                 f0 = lst[0][0]
                 ls = [l_ for f_, l_ in lst if f_.shape == f0.shape]
                 return f0, np.max(np.vstack(ls), axis=0)
             F1, L1 = maxhold(cal["data"][0])
-            F2, L2 = maxhold(cal["data"][1])
-            res = calib_offset(F1, L1, F2, L2)
-            if res is None:
+            msgs, bad = [], []
+            for d in sorted(cal["data"]):
+                if d == 0:
+                    continue
+                F2, L2 = maxhold(cal["data"][d])
+                res = calib_offset(F1, L1, F2, L2)
+                if res is None:
+                    bad.append(self.dev_name(d))
+                    continue
+                delta, n, kind = res
+                new = max(-40.0, min(40.0, round(self.dev_offset(d) + delta, 1)))
+                self.set_dev_offset(d, new)
+                msgs.append(f"{self.dev_name(d)} {delta:+.1f} dB → offset {new:+.1f} dB (sur {n} points, base : {kind})")
+            if not msgs:
                 self._calib_end("⚠ Calibration impossible : pas assez de points communs.")
                 return
-            delta, n, kind = res
-            new = round(float(self.dev2.get("offset", 0.0)) + delta, 1)
-            self.dev2_off.setValue(max(-40.0, min(40.0, new)))
-            self._calib_end(f"⚖ Calibration faite : {self.dev_name(1)} {delta:+.1f} dB → offset {new:+.1f} dB "
-                            f"(sur {n} points, base : {kind}).")
+            self._calib_end("⚖ Calibration faite : " + " · ".join(msgs)
+                            + (f" · ⚠ pas assez de points communs : {', '.join(bad)}" if bad else "") + ".")
 
     def _calib_end(self, msg, popup=True):
         with self.lock:
             self._calib = None
         self._bump()
-        self.calib_btn.setText("⚖ Calibrer le 2ᵉ sur le 1er…")
+        self.calib_btn.setText("⚖ Calibrer les autres tinySA sur le 1er…")
         self.calib_msg = msg
         self.set_status(msg)
         if popup:                                  # la barre d'état est vite réécrite par le balayage
@@ -16302,6 +16483,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return "Adresse à ouvrir sur le téléphone : " + "  ou  ".join(f"http://{ip}:{self.web.port}" for ip in ips)
 
     def dev_name(self, d):
+        if d >= 2:
+            x = self.devx[d - 2] if d - 2 < len(self.devx) else {}
+            return (x.get("name") or "").strip() or f"tinySA {d + 1}"
         n = (self.dev_names[d] if d < len(self.dev_names) else "").strip()
         return n or f"tinySA {d + 1}"
 
@@ -16346,8 +16530,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 real = asg.get(b["id"])
                 txt = "Auto" if d is None else f"{d + 1}"
-                if real == -1:
-                    txt = "1 + 2"                     # les deux la balayent (🔀 diversity, ou deux scènes)
+                if real == -1:                        # tous la balayent (🔀 diversity, ou tinySA à des scènes)
+                    txt = " + ".join(str(d + 1) for d in self.dev_list())
                 elif real is not None and (d is None or real != d):
                     txt += f" → {real + 1}"
             self.band_table.setItem(r, 5, self._item(txt))
@@ -16357,7 +16541,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if col != 5 or row >= len(self.bands):
             return
         b = self.bands[row]
-        cyc = [None, 0, 1]
+        cyc = [None] + self.dev_list()
         with self.lock:
             b["dev"] = cyc[(cyc.index(b.get("dev")) + 1) % len(cyc)] if b.get("dev") in cyc else None
         self._bands_changed()
@@ -16925,7 +17109,7 @@ class MainWindow(QtWidgets.QMainWindow):
             mh[bid] = (f, np.maximum(old[1], l) if old is not None and old[1].shape == l.shape else l.copy())
             if site not in self._site_base:
                 self._site_base[site] = next((d for d in self.site_scans if d["name"] == site), None)
-        if multi_site(self.dev_scenes, self.ndev(), self.dev_live):
+        if self.multi_site_on():
             stale = max(15.0, 4 * self.last_cycle)
             for s_, bands in self.site_live.items():
                 x = bands.get(bid)
@@ -17016,10 +17200,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rebuild_tree()
         self.update_site_curve()
         self.update_plot()
-        who = f"{'1er' if dev == 0 else '2ᵉ'} tinySA ({self.dev_name(dev)})"
+        who = f"{dev_ord(dev)} tinySA ({self.dev_name(dev)})"
         self.set_status(f"📡 {who} : " + (", ".join(scenes) if scenes else "aucune scène")
                         + (" · scènes différentes : chaque tinySA balaye toutes les bandes chez lui"
-                           if multi_site(self.dev_scenes, self.ndev(), self.dev_live) else ""))
+                           if self.multi_site_on() else ""))
 
     def dev_tag(self, scene):
         """« 📡 Plateau » : quel(s) tinySA surveille(nt) cette scène (dans l'arbre, dès qu'un rattachement existe : il
@@ -17042,7 +17226,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.dev_scenes.pop(dev, None)
             self._bump()
             self.rebuild_tree()
-            self.set_status(f"🔁 tinySA n° {n} reconnu en {'1er' if dev == 0 else '2ᵉ'} : ses scènes le suivent "
+            self.set_status(f"🔁 tinySA n° {n} reconnu en {dev_ord(dev)} : ses scènes le suivent "
                             f"({', '.join(want) or 'aucune'}).")
         elif want is None and self.dev_scenes.get(dev):
             self.devid_scenes[int(n)] = list(self.dev_scenes[dev])
@@ -17051,25 +17235,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def identify_device(self, dev):
         """👋 Fait clignoter l'écran du tinySA n° dev (pour savoir lequel est lequel)."""
-        ws = [w for i, w in enumerate(self.workers) if i == dev and w.isRunning()]
+        ws = [w for i, w in enumerate(self.workers) if getattr(w, "slot", i) == dev and w.isRunning()]
         if not ws:
             self.set_status("👋 Lance d'abord ▶ Démarrer : il faut être connecté au tinySA pour le faire clignoter.")
             return False
         ws[0].cmdq.put(("identify",))
         self.set_status(f"👋 Regarde les tinySA : celui dont l'écran clignote en orange est le "
-                        f"{'1er' if dev == 0 else '2ᵉ'} ({self.dev_name(dev)}).")
+                        f"{dev_ord(dev)} ({self.dev_name(dev)}).")
         return True
 
     def number_device(self, dev, n):
         """🔢 Grave un numéro dans le tinySA (gardé même débranché, même sur un autre PC)."""
-        ws = [w for i, w in enumerate(self.workers) if i == dev and w.isRunning()]
+        ws = [w for i, w in enumerate(self.workers) if getattr(w, "slot", i) == dev and w.isRunning()]
         if not ws:
             self.set_status("🔢 Lance d'abord ▶ Démarrer : il faut être connecté au tinySA pour le numéroter.")
             return False
         ws[0].cmdq.put(("setid", int(n)))
         if self.dev_scenes.get(dev):
             self.devid_scenes[int(n)] = list(self.dev_scenes[dev])
-        self.set_status(f"🔢 Numéro {n} gravé dans le {'1er' if dev == 0 else '2ᵉ'} tinySA.")
+        self.set_status(f"🔢 Numéro {n} gravé dans le {dev_ord(dev)} tinySA.")
         return True
 
     def open_devices(self):
@@ -17085,8 +17269,8 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction("📡 Mes tinySA et leurs scènes…").triggered.connect(lambda *_: self.open_devices())
         names = list(dict.fromkeys([x["name"] for x in self.scenes] + [d["name"] for d in self.site_scans]
                                    + [x for v in self.dev_scenes.values() for x in v]))
-        for d_ in range(self.ndev()):
-            sm = m.addMenu(f"📡 {'1er' if d_ == 0 else '2ᵉ'} tinySA ({self.dev_name(d_)}) surveille…")
+        for d_ in self.dev_list():
+            sm = m.addMenu(f"📡 {dev_ord(d_)} tinySA ({self.dev_name(d_)}) surveille…")
             for n_ in names:
                 a = sm.addAction(n_)
                 a.setCheckable(True)
@@ -17161,11 +17345,11 @@ class MainWindow(QtWidgets.QMainWindow):
             bar.setVisible(False)
             return
         sc = lost[0]
-        where = " · ".join(f"{'1er' if d == 0 else '2ᵉ'} tinySA ({self.dev_name(d)}) : {', '.join(self.dev_scenes[d])}"
+        where = " · ".join(f"{dev_ord(d)} tinySA ({self.dev_name(d)}) : {', '.join(self.dev_scenes[d])}"
                            for d in sorted(self.dev_scenes) if self.dev_scenes[d])
         self.site_bar_lbl.setText(f"📡 Aucun tinySA ne surveille « {sc} » : pas de direct ici. Actuellement : {where}.")
-        for d in range(self.ndev()):
-            b = QtWidgets.QPushButton(f"📡 Le {'1er' if d == 0 else '2ᵉ'} tinySA ({self.dev_name(d)}) est ici")
+        for d in self.dev_list():
+            b = QtWidgets.QPushButton(f"📡 Le {dev_ord(d)} tinySA ({self.dev_name(d)}) est ici")
             b.setToolTip(f"Ce tinySA surveille désormais « {sc} » (à la place de ses scènes actuelles).")
             b.clicked.connect(lambda *_, d=d, sc=sc: self.set_dev_scenes(d, [sc]))
             self.site_bar_btns.addWidget(b)
@@ -17447,8 +17631,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 a_.triggered.connect(lambda *_, k_=k_, key_=key, a_=a_: self.toggle_group_rx(key_, k_, a_.isChecked()))
             if self.expert and not key[1]:          # 📡 quel(s) tinySA surveille(nt) cette scène
                 dm = m.addMenu("📡 Surveillée par")
-                for d_ in range(self.ndev()):
-                    a_ = dm.addAction(f"{'1er' if d_ == 0 else '2ᵉ'} tinySA ({self.dev_name(d_)})")
+                for d_ in self.dev_list():
+                    a_ = dm.addAction(f"{dev_ord(d_)} tinySA ({self.dev_name(d_)})")
                     a_.setCheckable(True)
                     a_.setChecked(key[0] in self.dev_scenes.get(d_, []))
                     a_.triggered.connect(lambda *_, d_=d_, a_=a_, n_=key[0]: self.toggle_dev_scene(d_, n_, a_.isChecked()))
@@ -18572,7 +18756,7 @@ class MainWindow(QtWidgets.QMainWindow):
         F0, L0 = F[o], L[o]
         # 📍 deux tinySA à deux lieux : une fréquence de la scène X est jugée par le tinySA posé à X
         per_site = {}
-        if multi_site(self.dev_scenes, self.ndev(), self.dev_live):
+        if self.multi_site_on():
             for site in {x for v in self.dev_scenes.values() for x in v}:
                 Fs, Ls = self.site_fresh(site)
                 if Fs is not None:
@@ -20072,7 +20256,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fest_log_mark = self._log_n
         running = self.is_running()
         devs = self.ndev()
-        devs_ok = sum(1 for d in range(devs) if d < len(self.dev_live) and self.dev_live[d]) if running else 0
+        devs_ok = sum(self.live_mask()) if running else 0
         run_h = (time.time() - self._t_start) / 3600.0 if running and self._t_start else 0.0
         stats = alarm_stats(self.alarms.listing(), time.time() - 86400.0)
         title, body, ok = festival_text(site, stats, len(self.alarms.active), len(self.alarms.unacked()),
@@ -20698,7 +20882,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 h.f_spin.setValue(c["f"])
                 h.span_spin.setValue(c["span"])
                 h.follow_chk.setChecked(c["follow"])
-                h.dev_combo.setCurrentIndex(max(0, h.dev_combo.findData(c["dev"])))
+                ids = self.dev_list()                    # la page envoie le rang dans la liste des tinySA
+                h.dev_combo.setCurrentIndex(max(0, h.dev_combo.findData(ids[max(0, min(int(c["dev"]), len(ids) - 1))])))
                 h.mute_chk.setChecked(True)
                 h.best = None
                 h.go_btn.setChecked(True)
@@ -20756,7 +20941,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 c = self._web_terrain.get_nowait()
             except queue.Empty:
                 return
-            dev = min(c["dev"], self.ndev() - 1)
+            ids = self.dev_list()
+            dev = ids[max(0, min(int(c["dev"]), len(ids) - 1))]     # la page envoie le rang dans la liste
             mine = list(self.dev_scenes.get(dev, []))
             if c["action"] == "assign":
                 self.set_dev_scenes(dev, c["scenes"])
@@ -20781,9 +20967,9 @@ class MainWindow(QtWidgets.QMainWindow):
         """État de la vue Terrain pour la page web."""
         now = time.time()
         names = list(dict.fromkeys([x["name"] for x in self.scenes] + [x for v in self.dev_scenes.values() for x in v]))
-        devs = [dict(label=f"{'1er' if d == 0 else '2ᵉ'} tinySA · {self.dev_name(d)}",
+        devs = [dict(label=f"{dev_ord(d)} tinySA · {self.dev_name(d)}",
                      live=bool(self.is_running() and d < len(self.dev_live) and self.dev_live[d]),
-                     scenes=list(self.dev_scenes.get(d, []))) for d in range(self.ndev())]
+                     scenes=list(self.dev_scenes.get(d, []))) for d in self.dev_list()]
         assigned = {x for v in self.dev_scenes.values() for x in v}
         live = {}
         for sc, bands in self.site_live.items():
@@ -20797,12 +20983,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def hunt_state(self):
         """État de la chasse pour la page web (vue Chasse)."""
         h = self._hunt
-        devs = [f"{'1er' if d == 0 else '2ᵉ'} tinySA · {self.dev_name(d)}" for d in range(self.ndev())]
+        ids = self.dev_list()
+        devs = [f"{dev_ord(d)} tinySA · {self.dev_name(d)}" for d in ids]
         if h is None:
-            return dict(on=False, f=None, span=2.0, follow=False, dev=self.ndev() - 1, devs=devs, level=None)
+            return dict(on=False, f=None, span=2.0, follow=False, dev=len(ids) - 1, devs=devs, level=None)
         on = h.go_btn.isChecked()
         return dict(on=on, f=round(h.f_spin.value(), 4), span=h.span_spin.value(), follow=h.follow_chk.isChecked(),
-                    dev=int(h.dev_combo.currentData() or 0), devs=devs,
+                    dev=ids.index(int(h.dev_combo.currentData() or 0))
+                    if int(h.dev_combo.currentData() or 0) in ids else 0, devs=devs,
                     level=None if (h.level is None or not on) else round(h.level, 1),
                     level_txt="" if h.level is None else self.lvl(h.level, suffix=True),
                     best=None if h.best is None else round(h.best, 1),

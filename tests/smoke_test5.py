@@ -205,6 +205,34 @@ win.watch[:] = [w_ for w_ in win.watch if w_["name"] != "Micro D"]
 win.div_buf.clear(); win.div_src.clear()
 win.alarms.reset()
 
+# ------------------------------------------------------------- 4 tinySA (demande de Clément 7.35 : « plein de scènes »)
+win.devx = m.devx_norm([dict(addr="COM8", name="Scène B"), dict(addr="192.168.1.23:5025", name="Club")])
+win._dev2_changed()
+check("4 tinySA en service", win.dev_list() == [0, 1, 2, 3] and win.ndev() == 4, str(win.dev_list()))
+check("noms des 3ᵉ / 4ᵉ", (win.dev_name(2), win.dev_name(3)) == ("Scène B", "Club"))
+asg4 = win.band_devices()
+check("bandes réparties sur les 4", set(asg4.values()) <= {0, 1, 2, 3} and len(set(asg4.values())) == min(4, len(asg4)),
+      str(asg4))
+cf3 = win.get_cfg(3)["bands"]
+check("le 4ᵉ ne reçoit que ses bandes", all(asg4[b["id"]] == 3 for b in cf3), str(cf3))
+win.devx[0]["offset"] = 1.5
+check("offset du 3ᵉ appliqué", abs(win.get_cfg(2)["offset"] - (win._cfg["offset"] + 1.5)) < 1e-6)
+win.dev_scenes = {0: ["A"], 1: ["B"], 2: ["C"], 3: ["D"]}
+check("4 tinySA à 4 scènes : chacun balaye tout chez lui", win.multi_site_on() and set(win.band_devices().values()) == {-1})
+win.dev_live = [True, True, True, False] + [False] * 4
+win.dev_scenes = {}
+check("4ᵉ perdu : ses bandes passent aux autres", 3 not in set(win.band_devices().values()))
+win.dev_live = [True] * 8
+win.dev_scenes = {2: ["C"], 3: ["D"]}
+win.devx_table.setCurrentCell(0, 0) if hasattr(win.devx_table, "setCurrentCell") else None
+win.devx_table.currentRow = lambda: 0
+win.devx_del()
+check("3ᵉ retiré : le 4ᵉ devient 3ᵉ avec ses scènes", win.dev_list() == [0, 1, 2] and win.dev_scenes == {2: ["D"]}
+      and win.dev_name(2) == "Club", f"{win.dev_list()} {win.dev_scenes}")
+win.devx = []
+win.dev_scenes = {}
+win._dev2_changed()
+
 # ------------------------------------------------------------- calibration entre les deux tinySA
 infos = []
 W.QMessageBox.information = staticmethod(lambda p, t, x, *a, **k: infos.append(x))
@@ -229,7 +257,7 @@ check("calibration lancée", win._calib is not None and win.get_ver() > v0)
 c0, c1 = win.get_cfg(0)["bands"], win.get_cfg(1)["bands"]
 check("calibration : même bande pour les deux, ids distincts",
       len(c0) == len(c1) == 1 and c0[0]["start_hz"] == c1[0]["start_hz"] and c0[0]["stop_hz"] == c1[0]["stop_hz"]
-      and (c0[0]["id"], c1[0]["id"]) == m.CALIB_IDS, f"{c0} / {c1}")
+      and (c0[0]["id"], c1[0]["id"]) == m.CALIB_IDS[:2], f"{c0} / {c1}")
 Fc = np.linspace(c0[0]["start_hz"] / 1e6, c0[0]["stop_hz"] / 1e6, c0[0]["n"])
 Lc = -100 + 0 * Fc
 for fc in Fc[[50, 200, 400]]:
@@ -308,7 +336,7 @@ check("adresse illisible : refus", msgs and "illisible" in msgs[-1] and not win.
 win.dev2_addr.setEditText("COM3")
 msgs.clear()
 step("toggle_run même port", win.toggle_run)
-check("même port : refus", msgs and "même port" in msgs[-1], str(msgs))
+check("même port : refus", msgs and "même adresse" in msgs[-1], str(msgs))
 win.dev2_addr.setEditText("192.168.1.20:5025")
 created = []
 real = m.ScanWorker

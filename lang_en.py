@@ -3042,6 +3042,28 @@ EXACT = {
     'manquent': 'missing',
     ' · manque : ': ' · missing: ',
     ' · manquent : ': ' · missing: ',
+    ' : tous balayent toutes les bandes': ': all sweep all the bands',
+    ' · meilleur niveau : ': ' · best level: ',
+    "Arrête d'abord la surveillance pour ajouter un tinySA.": 'Stop monitoring first to add a tinySA.',
+    "Arrête d'abord la surveillance pour retirer un tinySA.": 'Stop monitoring first to remove a tinySA.',
+    'Autres tinySA (3ᵉ à 8ᵉ)': 'Other tinySAs (3rd to 8th)',
+    "Calibration : lance d'abord le balayage avec tous les tinySA en ligne (et le même signal sur toutes les antennes).": 'Calibration: first start sweeping with all tinySAs online (and the same signal on all antennas).',
+    "Les tinySA en plus (3ᵉ à 8ᵉ) : un par scène, ou plusieurs sur une même scène.\nAdresse : port USB (COM5…), adresse réseau (192.168.1.21:5025) ou le NOM d'une adresse enregistrée.\nIl faut d'abord le 2ᵉ tinySA. Suppr retire la ligne choisie.": 'The extra tinySAs (3rd to 8th): one per scene, or several on the same scene.\nAddress: USB port (COM5…), network address (192.168.1.21:5025) or the NAME of a saved address.\nThe 2nd tinySA comes first. Delete removes the chosen row.',
+    'Offset dB': 'Offset dB',
+    'Plusieurs tinySA (USB ou réseau) · noms': 'Several tinySAs (USB or network) · names',
+    'Plusieurs tinySA et noms': 'Several tinySAs and names',
+    'Retire le tinySA choisi dans le tableau.': 'Removes the tinySA chosen in the table.',
+    "Un tinySA de plus (jusqu'à 8 en tout) : branché en USB sur ce PC (hub) ou en\nréseau (un Raspberry Pi par tinySA). Rattache-le ensuite à sa scène (📡 Scènes).": 'One more tinySA (up to 8 in all): plugged into this PC by USB (hub) or on the\nnetwork (one Raspberry Pi per tinySA). Then attach it to its scene (📡 Scenes).',
+    '⚖ Calibration faite : ': '⚖ Calibration done: ',
+    '⚖ Calibrer les autres tinySA sur le 1er…': '⚖ Calibrate the other tinySAs against the 1st…',
+    '⚠ perdu': '⚠ lost',
+    '＋ Ajouter un tinySA': '＋ Add a tinySA',
+    '3ᵉ': '3rd',
+    '4ᵉ': '4th',
+    '5ᵉ': '5th',
+    '6ᵉ': '6th',
+    '7ᵉ': '7th',
+    '8ᵉ': '8th',
 }
 
 TEMPLATES = {
@@ -3475,6 +3497,14 @@ TEMPLATES = {
     '{} / {} OK (dont {} faible)': '{} / {} OK (including {} weak)',
     'Tout est là ✓ ({} / {}) (dont {} faibles)': 'All present ✓ ({} / {}) (including {} weak)',
     'Tout est là ✓ ({} / {}) (dont {} faible)': 'All present ✓ ({} / {}) (including {} weak)',
+    "Le {} tinySA a la même adresse qu'un autre.": 'The {} tinySA has the same address as another one.',
+    'Au plus {} tinySA en même temps.': 'At most {} tinySAs at the same time.',
+    '{} {} dB → offset {} dB (sur {} points, base : {})': '{} {} dB → offset {} dB (on {} points, basis: {})',
+    "{} tinySA ajouté : saisis son adresse (COM5, 192.168.1.21:5025 ou le nom d'une adresse enregistrée), puis rattache-le à sa scène (📡 Scènes).": '{} tinySA added: type its address (COM5, 192.168.1.21:5025 or the name of a saved address), then attach it to its scene (📡 Scenes).',
+    ' · ⚠ pas assez de points communs : {}': ' · ⚠ not enough common points: {}',
+    "Adresse du {} tinySA illisible.\nExemples : COM4 (USB) · 192.168.1.20:5025 (réseau, relais lancé sur l'autre PC).": 'Address of the {} tinySA unreadable.\nExamples: COM4 (USB) · 192.168.1.20:5025 (network, relay running on the other PC).',
+    '⚖ Calibration : les tinySA balayent tous « {} » ({} fois chacun)…': '⚖ Calibration: all tinySAs sweep “{}” ({} times each)…',
+    '{} reprennent ses bandes': '{} take over its bands',
 }
 
 SAME_TEMPLATES = [
