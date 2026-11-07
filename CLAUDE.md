@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.34.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.35.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -576,6 +576,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `src` = gagnant) ; `div_src` → `seen_by` « meilleur : nom » ; `update_dev2_label` : part de chaque tinySA (PURE
   `diversity_share`). Testé en faux Qt (smoke_test5) et en démo à 2 tinySA simulés (gui_reel) ; **jamais avec deux
   vrais tinySA sur deux antennes** (Clément n'avait qu'un tinySA au 05/11/2026).
+- **7.35.0 (Clément : « une multitude de scènes, il faut pouvoir mettre beaucoup de tiny, pas que 2 »)** : **jusqu'à
+  8 tinySA** (`MAX_DEVS`). N° FIXES : 0 = 1er (`port1()`), 1 = 2ᵉ (`dev2`, inchangé pour la V8 et les configs), 2… =
+  `self.devx` [{on, addr, name, offset}] (PURE `devx_norm`, config + SHOW_KEYS « devx »). `dev_slots()` → [(n°, adresse,
+  offset)] des tinySA en service, `dev_list()` (n°), `ndev()` = combien, `dev_offset(d)`, `set_dev_offset`, `live_mask()`
+  ([bool] × 8 : en service ET en ligne ; n° inconnu de `dev_live` = en ligne), `multi_site_on()` (= `multi_site(...,
+  MAX_DEVS, live_mask())`), `resolve_addr` (nom d'adresse enregistrée → adresse). PURE `dev_ord(d)` (« 1er », « 2ᵉ »,
+  « 3ᵉ »… ; lang_en « 3ᵉ »→« 3rd »…). `dev_live` = 8 cases. Workers : `w.slot` = n° (⚠ `w.dev` = l'objet TinySA) ;
+  `identify_device` / `number_device` cherchent par `slot`. `CALIB_IDS` = un id par tinySA (−3…−10) : la calibration
+  cale TOUS les autres sur le 1er. Zoom : `zoom_dev` sinon le 1er vivant. Web Terrain / Chasse : la page envoie le
+  RANG dans `dev_list()` (pas le n°). UI : tableau `devx_table` (Actif, Nom, Adresse, Offset) + `devx_add` /
+  `devx_del` (Suppr ; les n° suivants descendent, leurs `dev_scenes` aussi), désactivés pendant la surveillance ;
+  rubrique « Plusieurs tinySA et noms ». Testé : faux Qt (smoke_test5 : 4 tinySA, répartition, offsets, scènes, retrait)
+  et démo à 4 tinySA simulés (gui_reel) ; **jamais avec plusieurs vrais tinySA**. Le relais Pi sert UN tinySA.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
