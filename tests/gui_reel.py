@@ -1313,9 +1313,18 @@ _rd = win.open_ready()
 wait(300)
 check("prêt ? : fenêtre avec un résumé et des vérifications", _rd.table.rowCount() >= 6 and _rd.head.text() != "",
       _rd.head.text())
-check("prêt ? : chaque « Régler » mène à une vraie méthode", all(hasattr(win, c["fix"]) for c in _rd.checks if c["fix"])
-      and all(hasattr(win, c["fix"]) for c in m.ready_checks({}) if c["fix"]),
-      str([c["fix"] for c in _rd.checks if c["fix"] and not hasattr(win, c["fix"])]))
+import inspect
+def _no_arg(name):                            # « Régler » appelle la méthode SANS argument (bug 7.39 : open_import)
+    f = getattr(win, name, None)
+    return f is not None and all(p_.default is not p_.empty or p_.kind in (p_.VAR_POSITIONAL, p_.VAR_KEYWORD)
+                                 for p_ in inspect.signature(f).parameters.values())
+_allfix = {c["fix"] for i_ in ({}, dict(watch_n=0), dict(running=True, devs=[dict(name="x", live=False)]),
+                                dict(running=True, sweep_age=999), dict(running=True, demo=True), dict(watch_n=3, uncovered=1),
+                                dict(watch_n=3, plan_issues=2), dict(snooze=60), dict(sound_device_missing=True),
+                                dict(notify_mode="all"), dict(web_on=True), dict(windows=True))
+           for c in m.ready_checks(i_) if c["fix"]}
+check("prêt ? : chaque « Régler » mène à une vraie méthode, appelable sans argument",
+      all(_no_arg(f_) for f_ in _allfix), str([f_ for f_ in _allfix if not _no_arg(f_)]))
 check("prêt ? : démo signalée", any(c["key"] == "demo" and c["level"] == "bad" for c in _rd.checks)
       or not win.demo_chk.isChecked())
 shot(_rd, "pret_pour_le_show")

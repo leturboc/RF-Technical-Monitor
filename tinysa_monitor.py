@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.41.0"
+APP_VER = "7.41.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -5818,7 +5818,7 @@ def ready_checks(i):
         add("demo", "bad", "Mode démo", "Le mode démo est coché : ce n'est pas le vrai spectre !", "toggle_demo_off")
     n, unc = int(i.get("watch_n") or 0), int(i.get("uncovered") or 0)
     if not n:
-        add("watch", "bad", "Mes fréquences", "La liste est vide : rien n'est surveillé.", "open_import")
+        add("watch", "bad", "Mes fréquences", "La liste est vide : rien n'est surveillé.", "import_watch")
     elif unc:
         add("watch", "bad", "Mes fréquences", f"{unc} fréquence(s) hors des bandes balayées : pas surveillées.",
             "new_band_dialog")
@@ -12435,6 +12435,25 @@ class SettingsDialog(QtWidgets.QDialog):
             self.sess_lbl.setText(d)
 
 
+def free_plot_menus(widget):
+    """Les graphiques pyqtgraph créent des menus « clic droit » SANS parent (ViewBox.menu, PlotItem.ctrlMenu) : ils
+    survivent à la fenêtre détruite (fuite vue au test du singe 7.41). À appeler avant de détruire la fenêtre."""
+    n = 0
+    for gv in widget.findChildren(pg.GraphicsView):
+        sc = gv.scene()
+        for it in (sc.items() if sc is not None else []):
+            for attr in ("menu", "ctrlMenu"):
+                mn = getattr(it, attr, None)
+                if isinstance(mn, QtWidgets.QMenu):
+                    try:
+                        mn.deleteLater()
+                        setattr(it, attr, None)
+                        n += 1
+                    except RuntimeError:
+                        pass
+    return n
+
+
 def _hesc(x):
     import html
     return html.escape(str(x))
@@ -12446,6 +12465,7 @@ class ShowModeWindow(QtWidgets.QWidget):
 
     def __init__(self, owner):
         super().__init__(None, Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)      # fermée = détruite (sinon elle reste en mémoire)
         self.owner = o = owner
         self.setWindowTitle(f"{APP_NAME} — Mode Show")
         self.setStyleSheet(f"background:{o.theme['ui_bg']}; color:{o.theme['ui_text']}")
@@ -21487,6 +21507,32 @@ class MainWindow(QtWidgets.QMainWindow):
         d.exec()
         self._save_config()
 
+    def _reap_dialogs(self, now, after=10.0):
+        """Libère les fenêtres fermées. Chaque QDialog(self) restait en mémoire après sa fermeture (≈ 4 Mo à chaque
+        ouverture de Réglages, Vérifier le plan… : test du singe 7.41). Une fenêtre cachée depuis `after` s et que la
+        fenêtre principale ne garde pas (attribut, liste ou dict : _legend, _ready, _tech_boxes…) est détruite."""
+        keep = set()
+        for v in self.__dict__.values():
+            for x in (v if isinstance(v, (list, tuple, set)) else v.values() if isinstance(v, dict) else (v,)):
+                if isinstance(x, QtWidgets.QDialog):
+                    keep.add(id(x))
+        seen = self.__dict__.setdefault("_hidden_since", {})
+        alive = set()
+        for d in self.findChildren(QtWidgets.QDialog, "", Qt.FindChildOption.FindDirectChildrenOnly):
+            k = id(d)
+            if d.isVisible() or k in keep:
+                continue
+            alive.add(k)
+            t = seen.setdefault(k, now)
+            if now - t >= after:
+                free_plot_menus(d)
+                d.setParent(None)
+                d.deleteLater()
+                alive.discard(k)
+        for k in list(seen):
+            if k not in alive:
+                seen.pop(k, None)
+
     # ---------------------------------------------------------------- ✅ prêt pour le show ?
     def ready_info(self):
         """État de l'appli pour ready_checks (PURE)."""
@@ -22231,6 +22277,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if now >= getattr(self, "_beat_next", 0.0):
             self._beat_next = now + GUARD_BEAT_S
             guard_beat()
+            self._reap_dialogs(now)
         self._planning_tick(now)
         self._ezrf_tick(now)
         self._sites_tick(now)
