@@ -7,16 +7,23 @@ Sur le PC de régie, dans TinySA Monitor : « 2ᵉ tinySA » = l'adresse du Pi, 
 
     python3 tinysa_relais.py                 # trouve le tinySA tout seul, port 5025
     python3 tinysa_relais.py --serial /dev/ttyACM0 --port 5025
+    python3 tinysa_relais.py --multi         # PLUSIEURS tinySA sur ce Pi : 5025, 5026, 5027…
+
+En --multi, chaque tinySA est reconnu par son numéro de série USB : le même tinySA garde toujours le même port
+réseau (quelle que soit la prise), retenu dans ~/.tinysa_relais_ports.json. Un tinySA branché plus tard reçoit le
+port suivant.
 
 Même protocole que « TinySA-Monitor.exe --relais » : les octets passent tels quels, un seul client à la fois
 (un nouveau remplace l'ancien : reconnexion après une coupure Wi-Fi), réouverture du port USB s'il est débranché.
 """
 import argparse
 import glob
+import json
 import os
 import select
 import socket
 import sys
+import threading
 import time
 
 try:
@@ -40,6 +47,19 @@ def find_tinysa():
             return p.device
     acm = sorted(glob.glob("/dev/ttyACM*"))       # pyserial ne voit pas tout (ex. /sys incomplet)
     return acm[0] if acm else None
+
+
+def device_key(p):
+    """Ce qui reconnaît UN tinySA : son numéro de série USB, sinon la prise USB, sinon le nom du port."""
+    return str(getattr(p, "serial_number", None) or getattr(p, "location", None) or p.device)
+
+
+def find_all_tinysa():
+    """Tous les tinySA branchés -> [(clé, port)] triés par clé (voir device_key)."""
+    out = [(device_key(p), p.device) for p in list_ports.comports() if (p.vid, p.pid) in TINYSA_IDS]
+    if not out:                                   # pyserial ne voit pas tout : les ttyACM, par leur nom
+        out = [(a, a) for a in sorted(glob.glob("/dev/ttyACM*"))]
+    return sorted(out)
 
 
 def _read(path):
@@ -114,32 +134,35 @@ def log(msg):
     print(time.strftime("%H:%M:%S"), msg, flush=True)
 
 
-def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, on_ready=None):
-    """Boucle du relais. serial_port None = détection automatique (et à chaque réouverture)."""
+def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, on_ready=None, finder=None,
+          name=""):
+    """Boucle du relais. serial_port None = détection automatique (et à chaque réouverture) ; finder() = port à ouvrir
+    (mode --multi : le port de CE tinySA-là, None s'il est débranché)."""
     opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05))
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((host, int(tcp_port)))
     srv.listen(2)
     port = srv.getsockname()[1]
-    log(f"Relais prêt sur le port {port} · adresse(s) du Pi : {', '.join(local_ips())}")
+    tag = f"[{name}] " if name else ""
+    log(f"{tag}Relais prêt sur le port {port} · adresse(s) du Pi : {', '.join(local_ips())}")
     if on_ready:
         on_ready(port)
     ser, conn, last_err = None, None, ""
     try:
         while not (stop and stop()):
             if ser is None:
-                path = serial_port or find_tinysa()
+                path = serial_port or (finder() if finder else find_tinysa())
                 try:
                     if not path:
                         raise OSError("aucun tinySA vu en USB")
                     ser = opener(path)
-                    log(f"tinySA ouvert : {path}")
+                    log(f"{tag}tinySA ouvert : {path}")
                     last_err = ""
                 except Exception as e:  # noqa: BLE001
                     if str(e) != last_err:
-                        log(f"En attente du tinySA ({e})")
-                        if serial_port is None:
+                        log(f"{tag}En attente du tinySA ({e})")
+                        if serial_port is None and finder is None:
                             for ln in diagnose():
                                 log("   " + ln)
                         last_err = str(e)
@@ -153,7 +176,7 @@ def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, open
                 if conn is not None:
                     conn.close()
                 conn = new
-                log(f"Client connecté : {addr[0]}")
+                log(f"{tag}Client connecté : {addr[0]}")
                 try:
                     ser.reset_input_buffer()
                 except Exception:  # noqa: BLE001
@@ -162,7 +185,7 @@ def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, open
                 if conn is not None and conn in rd:
                     data = conn.recv(4096)
                     if not data:
-                        log("Client parti")
+                        log(f"{tag}Client parti")
                         conn.close()
                         conn = None
                     else:
@@ -174,11 +197,11 @@ def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, open
                         conn.sendall(data)
             except (OSError, socket.error) as e:
                 if conn is not None and isinstance(e, (ConnectionError, socket.timeout)):
-                    log("Client coupé")
+                    log(f"{tag}Client coupé")
                     conn.close()
                     conn = None
                 else:                              # erreur côté USB : on rouvre le port
-                    log(f"tinySA perdu ({e}) : nouvel essai")
+                    log(f"{tag}tinySA perdu ({e}) : nouvel essai")
                     try:
                         ser.close()
                     except Exception:  # noqa: BLE001
@@ -193,20 +216,99 @@ def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, open
                 pass
 
 
+PORTS_FILE = os.path.join(os.path.expanduser("~"), ".tinysa_relais_ports.json")
+
+
+def load_ports(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        return {str(k): int(v) for k, v in d.items()} if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_ports(path, ports):
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(ports, f, indent=1)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def next_port(ports, base):
+    """Port réseau pour un nouveau tinySA : le premier libre à partir de base."""
+    used = set(ports.values())
+    p = base
+    while p in used:
+        p += 1
+    return p
+
+
+def serve_multi(base_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, lister=None, ports_file=PORTS_FILE,
+                scan_s=5.0, on_ready=None):
+    """--multi : un relais (un port TCP) par tinySA branché sur ce Pi. Le même tinySA (même numéro de série) garde son
+    port, retenu dans ports_file ; un nouveau prend le premier port libre. base_port 0 = ports au hasard (tests)."""
+    lister = lister or find_all_tinysa
+    stop = stop or (lambda: False)
+    ports = load_ports(ports_file) if ports_file else {}
+    running, waiting_logged = {}, False
+    log(f"Mode plusieurs tinySA · adresse(s) du Pi : {', '.join(local_ips())}")
+    while not stop():
+        cur = dict(lister())
+        for key in sorted(cur):
+            if key in running:
+                continue
+            if base_port:
+                if key not in ports:
+                    ports[key] = next_port(ports, base_port)
+                    if ports_file:
+                        save_ports(ports_file, ports)
+                port = ports[key]
+            else:
+                port = 0
+            th = threading.Thread(target=serve, daemon=True, kwargs=dict(
+                tcp_port=port, host=host, stop=stop, opener=opener, name=key[-12:],
+                finder=(lambda k=key: dict(lister()).get(k)),
+                on_ready=(lambda p, k=key: on_ready(k, p)) if on_ready else None))
+            th.start()
+            running[key] = th
+            log(f"tinySA {key} → port {port or '(auto)'}")
+        if not running and not waiting_logged:
+            log("En attente d'un tinySA en USB…")
+            for ln in diagnose():
+                log("   " + ln)
+            waiting_logged = True
+        t0 = time.time()
+        while time.time() - t0 < scan_s and not stop():
+            time.sleep(0.1)
+    for th in running.values():
+        th.join(2)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Relais réseau du tinySA (TinySA Monitor)")
     ap.add_argument("--serial", help="port du tinySA (défaut : trouvé tout seul)")
     ap.add_argument("--port", type=int, default=int(os.environ.get("TSM_RELAY_PORT", RELAY_PORT)),
                     help=f"port TCP (défaut {RELAY_PORT})")
     ap.add_argument("--diag", action="store_true", help="dit pourquoi le tinySA n'est pas trouvé, puis quitte")
+    ap.add_argument("--multi", action="store_true",
+                    help="plusieurs tinySA sur ce Pi : un port réseau chacun (5025, 5026…), retenu par numéro de série")
     a = ap.parse_args(argv)
     if a.diag:
         print("tinySA trouvé :", find_tinysa() or "NON")
+        for k, dev in find_all_tinysa():
+            print(f"   {dev}  (n° {k})")
         for ln in diagnose():
             print(ln)
         return
     try:
-        serve(a.serial, a.port)
+        if a.multi and not a.serial:
+            serve_multi(a.port)
+        else:
+            serve(a.serial, a.port)
     except KeyboardInterrupt:
         log("Arrêt")
 

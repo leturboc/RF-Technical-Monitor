@@ -64,6 +64,23 @@ Si `tinysa-sac.local` ne répond pas, utilise l'adresse IP du Pi (visible dans l
 3. Sur le téléphone : page web de l'appli (📣 Alertes et page web), vue **🔎 Chasse** : choisis le tinySA du sac,
    la fréquence, ▶ Chasser (code PIN de la page web). Le téléphone bippe de plus en plus vite en approchant.
 
+## 4. Plusieurs tinySA sur le même Pi
+
+Un Pi peut partager jusqu'à 8 tinySA (un réseau, une boîte, plusieurs antennes) :
+
+1. Installe le relais en mode « multi » : `sh install_pi.sh multi` (si le relais simple est déjà installé, relance
+   simplement cette commande : elle remplace le réglage).
+2. Branche les tinySA (sur un **hub USB alimenté** au-delà de deux : les prises du Pi ne fournissent pas assez de
+   courant pour charger plusieurs tinySA).
+3. Chaque tinySA a son port réseau : le premier vu **5025**, le suivant **5026**, puis 5027… Il est reconnu par son
+   numéro de série USB : le même tinySA garde **toujours** le même port, quelle que soit la prise (souvenir gardé
+   dans `~/.tinysa_relais_ports.json`). Pour voir qui est sur quel port : `journalctl -u tinysa-relais -f`
+   (« tinySA … → port 5026 ») ou `python3 /opt/tinysa-relais/tinysa_relais.py --diag`.
+4. Dans TinySA Monitor : une adresse enregistrée par tinySA, avec le port : `tinysa-sac.local:5025`,
+   `tinysa-sac.local:5026`… puis ⚙ › Plusieurs tinySA (le 2ᵉ, puis le tableau des 3ᵉ à 8ᵉ).
+
+Astuce : colle une étiquette « 5025 », « 5026 »… sur chaque tinySA une fois les ports attribués.
+
 ## Dépannage
 
 ### « En attente du tinySA (aucun tinySA vu en USB) »

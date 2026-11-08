@@ -3145,6 +3145,25 @@ EXACT = {
     "📸 État actif (comme les Snapshots d'EazyRF) : un clic pour basculer de plan.\nLes fréquences hors de l'état passent en pause (pas d'alarme, pas d'intermod).": '📸 Active state (like EazyRF Snapshots): one click to switch plan.\nFrequencies outside the state are paused (no alarm, no intermod).',
     '📸 tout actif': '📸 all active',
     '📸 État': '📸 State',
+    'Ajoute, déplace ou retire les fréquences cochées (Ctrl+Z pour revenir).': 'Adds, moves or removes the ticked frequencies (Ctrl+Z to go back).',
+    'Appliquer les changements cochés': 'Apply the ticked changes',
+    'Arrête de surveiller ce fichier EazyRF.': 'Stops watching this EazyRF file.',
+    'Arrêter de suivre': 'Stop following',
+    'Aucun plan EazyRF suivi. Pour en suivre un : 📥 Importer une liste, choisis le .ezrf3 et coche « 🔗 Suivre ce fichier ».': 'No EazyRF plan followed. To follow one: 📥 Import a list, choose the .ezrf3 and tick “🔗 Follow this file”.',
+    'Décoche ce que tu ne veux pas reprendre.': 'Untick what you do not want to take.',
+    "L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences ajoutées,\nmodifiées ou retirées dans EazyRF et tu choisis ce que tu reprends.": 'The app looks at the file every 5 s; if it changes, it lists the frequencies added,\nmoved or removed in EazyRF and you choose what you take.',
+    "Le .ezrf3 importé avec « Suivre ce fichier » : à chaque réenregistrement dans EazyRF,\nl'appli propose les fréquences ajoutées, modifiées ou retirées.": 'The .ezrf3 imported with “Follow this file”: each time it is saved again in EazyRF,\nthe app offers the frequencies added, moved or removed.',
+    'Ne change rien maintenant (☰ Plus › 📋 Liste › 🔗 Plan EazyRF suivi › Vérifier maintenant).': 'Changes nothing now (☰ More › 📋 List › 🔗 Followed EazyRF plan › Check now).',
+    'Ne plus suivre ce fichier': 'Stop following this file',
+    'Plan EazyRF modifié': 'EazyRF plan changed',
+    'Plan EazyRF suivi': 'Followed EazyRF plan',
+    'Plus tard': 'Later',
+    'Vérifier maintenant': 'Check now',
+    '🔗 Fichier introuvable ou illisible.': '🔗 File not found or unreadable.',
+    "🔗 Le plan EazyRF n'est plus suivi.": '🔗 The EazyRF plan is no longer followed.',
+    '🔗 Plan EazyRF suivi': '🔗 Followed EazyRF plan',
+    '🔗 Plan EazyRF suivi…': '🔗 Followed EazyRF plan…',
+    '🔗 Suivre ce fichier : quand tu le réenregistres dans EazyRF, proposer les changements': '🔗 Follow this file: when you save it again in EazyRF, offer the changes',
 }
 
 TEMPLATES = {
@@ -3609,6 +3628,17 @@ TEMPLATES = {
     '📸 {}  ({})': '📸 {}  ({})',
     '{}  ({})': '{}  ({})',
     '{} ({})': '{} ({})',
+    '🔗 « {} » a été réenregistré dans EazyRF. Coche ce que tu reprends dans ta liste :': '🔗 “{}” was saved again in EazyRF. Tick what you take into your list:',
+    '🔗 Plan EazyRF : {} ajoutée(s), {} modifiée(s), {} retirée(s).': '🔗 EazyRF plan: {} added, {} moved, {} removed.',
+    '＋ {}  {} MHz': '＋ {}  {} MHz',
+    "🔗 Plan EazyRF « {} » réenregistré : rien n'a changé dans la liste.": '🔗 EazyRF plan “{}” saved again: nothing changed in the list.',
+    '🔗 Plan EazyRF « {} » illisible : {}': '🔗 EazyRF plan “{}” unreadable: {}',
+    '✏ {} : {} → {} MHz': '✏ {}: {} → {} MHz',
+    "🔗 Suivi : « {} »\n{}\n\nÀ chaque réenregistrement dans EazyRF, l'appli te propose les fréquences ajoutées, modifiées ou retirées.": '🔗 Following: “{}”\n{}\n\nEach time it is saved again in EazyRF, the app offers the frequencies added, moved or removed.',
+    '🗑 {}  {} MHz': '🗑 {}  {} MHz',
+    '  ({}{})': '  ({}{})',
+    '🗑 {}{}': '🗑 {}{}',
+    '＋ {}  {} MHz{}': '＋ {}  {} MHz{}',
 }
 
 SAME_TEMPLATES = [

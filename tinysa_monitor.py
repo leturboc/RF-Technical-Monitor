@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.37.0"
+APP_VER = "7.38.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2063,6 +2063,23 @@ def parse_ezrf_paste(text):
                 warn="")
 
 
+def ezrf_id(scene, group, name):
+    """Identifiant stable d'une fréquence venue d'un plan EazyRF (pour suivre le fichier : w["ez"])."""
+    return f"{scene}|{group}|{name}"
+
+
+def ezrf_diff(entries, cur):
+    """🔗 Plan EazyRF réenregistré : entries = ezrf_entries(nouveau document) ; cur = [(id, MHz)] des fréquences de la liste
+    venues du plan -> dict(add=[entrée], change=[(id, ancienne MHz, nouvelle MHz, entrée)], remove=[id])."""
+    new = {}
+    for e in entries:
+        new.setdefault(ezrf_id(e[2], e[3], e[0]), e)
+    old = dict(cur)
+    return dict(add=[e for i, e in new.items() if i not in old],
+                change=[(i, old[i], new[i][1], new[i]) for i in new if i in old and abs(new[i][1] - old[i]) > 1e-6],
+                remove=[i for i in old if i not in new])
+
+
 def ezrf_profile_names(devices):
     """Appareils d'un document -> {clé: nom de profil}. Même nom, réglages différents -> « nom (sép. 300 kHz) »."""
     by_name = {}
@@ -3223,7 +3240,7 @@ SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_o
              "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx", "states",
-             "state_cur")
+             "state_cur", "ezrf_link")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -10112,9 +10129,9 @@ class EzrfImportDialog(QtWidgets.QDialog):
     EazyRF), groupes (sections), appareils (profils perso avec les réglages du document), interférences notées,
     scan de fond."""
 
-    def __init__(self, owner, doc, source):
+    def __init__(self, owner, doc, source, path=None):
         super().__init__(owner)
-        self.owner, self.doc = owner, doc
+        self.owner, self.doc, self.path = owner, doc, path
         self.setWindowTitle("Importer un plan EazyRF")
         self.resize(640, 600)
         lay = QtWidgets.QVBoxLayout(self)
@@ -10195,6 +10212,13 @@ class EzrfImportDialog(QtWidgets.QDialog):
                              "spectre, utilisable par Coordonner.")
         self.scan.setVisible(bool(sc_n))
         lay.addWidget(self.scan)
+        self.follow = QtWidgets.QCheckBox("🔗 Suivre ce fichier : quand tu le réenregistres dans EazyRF, proposer les "
+                                          "changements")
+        self.follow.setToolTip("L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences "
+                               "ajoutées,\nmodifiées ou retirées dans EazyRF et tu choisis ce que tu reprends.")
+        self.follow.setChecked(bool(path))
+        self.follow.setVisible(bool(path))
+        lay.addWidget(self.follow)
         self.replace = QtWidgets.QCheckBox("Remplacer ma liste (sinon : ajouter)")
         self.replace.setToolTip("Coché : la liste actuelle est vidée avant l'import (Ctrl+Z pour revenir).")
         lay.addWidget(self.replace)
@@ -10213,7 +10237,8 @@ class EzrfImportDialog(QtWidgets.QDialog):
     def options(self):
         return dict(status=self.status.currentData() or "", profiles=self.prof.isChecked(),
                     skip_off=self.skip.isChecked(), interf=self.interf.isChecked() and self.interf.isVisibleTo(self),
-                    scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked())
+                    scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked(),
+                    follow=self.follow.isChecked() and bool(self.path))
 
 
 class RxProfileEdit(QtWidgets.QDialog):
@@ -12717,6 +12742,63 @@ class HuntDialog(QtWidgets.QDialog):
         if self.owner._hunt is self:
             self.owner._hunt = None
         super().done(r)
+
+
+class EzrfSyncDialog(QtWidgets.QDialog):
+    """🔗 Le plan EazyRF suivi a été réenregistré : liste des changements, tu coches ceux que tu reprends."""
+
+    def __init__(self, owner, d):
+        super().__init__(owner)
+        self.owner, self.d = owner, d
+        self.setWindowTitle("Plan EazyRF modifié")
+        self.resize(560, 460)
+        lay = QtWidgets.QVBoxLayout(self)
+        lk = owner.ezrf_link or {}
+        head = QtWidgets.QLabel(f"🔗 « {lk.get('name', '')} » a été réenregistré dans EazyRF. Coche ce que tu reprends "
+                                "dans ta liste :")
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setToolTip("Décoche ce que tu ne veux pas reprendre.")
+        by_ez = {w["ez"]: w for w in owner.watch if w.get("ez")}
+        for e in d["add"]:
+            self._item(f"＋ {e[0]}  {e[1]:.3f} MHz" + (f"  ({e[2]}{' › ' + e[3] if e[3] else ''})" if e[2] else ""),
+                       ("add", e))
+        for c in d["change"]:
+            w = by_ez.get(c[0])
+            self._item(f"✏ {w['name'] if w else c[3][0]} : {c[1]:.3f} → {c[2]:.3f} MHz", ("change", c))
+        for i in d["remove"]:
+            w = by_ez.get(i)
+            self._item(f"🗑 {w['name'] if w else i}" + (f"  {w['freq']:.3f} MHz" if w else ""), ("remove", i))
+        lay.addWidget(self.lst, 1)
+        b_ok = QtWidgets.QPushButton("Appliquer les changements cochés")
+        b_ok.setToolTip("Ajoute, déplace ou retire les fréquences cochées (Ctrl+Z pour revenir).")
+        b_ok.clicked.connect(lambda *_: self.apply())
+        b_later = QtWidgets.QPushButton("Plus tard")
+        b_later.setToolTip("Ne change rien maintenant (☰ Plus › 📋 Liste › 🔗 Plan EazyRF suivi › Vérifier maintenant).")
+        b_later.clicked.connect(lambda *_: self.reject())
+        b_stop = QtWidgets.QPushButton("Ne plus suivre ce fichier")
+        b_stop.setToolTip("Arrête de surveiller ce fichier EazyRF.")
+        b_stop.clicked.connect(lambda *_: (setattr(owner, "ezrf_link", None), self.reject()))
+        lay.addLayout(owner._row(b_ok, b_later, None, b_stop))
+
+    def _item(self, txt, data):
+        it = QtWidgets.QListWidgetItem(txt)
+        it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        it.setCheckState(Qt.CheckState.Checked)
+        it.setData(Qt.ItemDataRole.UserRole, data)
+        self.lst.addItem(it)
+
+    def apply(self):
+        add, change, remove = [], [], []
+        for r in range(self.lst.count()):
+            it = self.lst.item(r)
+            if it.checkState() != Qt.CheckState.Checked:
+                continue
+            kind, v = it.data(Qt.ItemDataRole.UserRole)
+            {"add": add, "change": change, "remove": remove}[kind].append(v)
+        self.result_n = self.owner.apply_ezrf_diff(self.d, add, change, remove)
+        self.accept()
 
 
 class StatesDialog(QtWidgets.QDialog):
@@ -16292,6 +16374,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.net_profiles = []                     # 🌐 adresses enregistrées [{name, addr}] (une par Wi-Fi / lieu)
         self.dev2 = dict(on=False, addr="", offset=0.0, div=False)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
         self.states, self.state_cur = [], ""    # 📸 états (plans à basculer) ; "" = tout actif
+        self.ezrf_link, self._ezrf_next, self._ezrf_dlg = None, 0.0, None   # 🔗 plan EazyRF suivi
         self.devx = []                  # tinySA 3 à 8 : [{on, addr, name, offset}] (le 2ᵉ reste dans dev2)
         self.dev_live = [True] * MAX_DEVS   # liaison de chaque appareil (False = perdue, ses bandes passent aux autres)
         self.dev_cycle = {}
@@ -16523,6 +16606,8 @@ class MainWindow(QtWidgets.QMainWindow):
     EXTRA_MENUS = []          # [(titre, [(texte, nom de méthode)])] : sous-menus ajoutés au ☰ Plus (V8 : SDR)
 
     TIPS_MENU = {
+        "🔗 Plan EazyRF suivi": "Le .ezrf3 importé avec « Suivre ce fichier » : à chaque réenregistrement dans EazyRF,\n"
+                               "l'appli propose les fréquences ajoutées, modifiées ou retirées.",
         "📸 États": "Comme les Snapshots d'EazyRF : plusieurs plans (artistes, scènes, jours) dans le même show ;\n"
                    "un clic bascule de l'un à l'autre, les fréquences hors de l'état passent en pause.",
         "📖 Manuel": "Le manuel complet (s'ouvre dans ton navigateur, marche hors ligne).",
@@ -16864,6 +16949,7 @@ class MainWindow(QtWidgets.QMainWindow):
         submenu(mm, "📋 Liste de fréquences", (
             ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", lambda *_: self.open_scan_add()),
             ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", lambda *_: self.import_watch()),
+            ("🔗 Plan EazyRF suivi…", lambda *_: self.ezrf_follow_info()),
             ("＋ Ajouter une fréquence…", lambda *_: self.add_watch_dialog()),
             ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
             ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
@@ -17944,8 +18030,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.watch[-1]["rx"] = w["rx"]          # profil d'appareil (🧮 Vérifier le plan)
                 if w.get("iso"):
                     self.watch[-1]["iso"] = True             # 📸 toujours active, quel que soit l'état
+                if w.get("ez"):
+                    self.watch[-1]["ez"] = str(w["ez"])[:200]   # 🔗 venue d'un plan EazyRF suivi
             except Exception:
                 pass
+        if "ezrf_link" in data:                  # 🔗 plan EazyRF suivi
+            lk = data.get("ezrf_link")
+            self.ezrf_link = dict(lk) if isinstance(lk, dict) and lk.get("path") else None
         if "states" in data:                     # 📸 états (après la liste : l'état met ses fréquences en pause)
             self.states = states_norm(data.get("states"))
             cur = str(data.get("state_cur") or "")
@@ -18168,7 +18259,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         **({"bw": w["bw"]} if w.get("bw") else {}),
                         **({"hide_wall": True} if w.get("hide_wall") else {}),
                         **({"rx": w["rx"]} if w.get("rx") else {}),
-                        **({"iso": True} if w.get("iso") else {}))
+                        **({"iso": True} if w.get("iso") else {}),
+                        **({"ez": w["ez"]} if w.get("ez") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1)),
@@ -18205,7 +18297,7 @@ class MainWindow(QtWidgets.QMainWindow):
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
             dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], states=[dict(x) for x in self.states],
-            state_cur=self.state_cur, dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
+            state_cur=self.state_cur, ezrf_link=dict(self.ezrf_link) if self.ezrf_link else None, dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts), sdr=dict(self.sdr_cfg),
@@ -18372,7 +18464,7 @@ class MainWindow(QtWidgets.QMainWindow):
         en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="")
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None)
         for k in list(self.site_mh):
             self.forget_site(k)
         self.dev_scenes = {d: [] for d in self.dev_scenes}
@@ -21085,16 +21177,16 @@ class MainWindow(QtWidgets.QMainWindow):
         except (OSError, ValueError) as e:
             QtWidgets.QMessageBox.warning(self, APP_NAME, f"Impossible de lire « {os.path.basename(path)} » : {e}")
             return None
-        return self.open_ezrf(doc, os.path.basename(path))
+        return self.open_ezrf(doc, os.path.basename(path), path=path)
 
-    def open_ezrf(self, doc, source, opts=None):
+    def open_ezrf(self, doc, source, opts=None, path=None):
         """Plan EazyRF -> fenêtre d'aperçu puis import (opts donné = sans fenêtre, pour les tests)."""
         if opts is None:
-            dlg = EzrfImportDialog(self, doc, source)
+            dlg = EzrfImportDialog(self, doc, source, path)
             if not dlg.exec():
                 return None
             opts = dlg.options()
-        return self.apply_ezrf(doc, opts, source)
+        return self.apply_ezrf(doc, opts, source, path)
 
     def _ezrf_profiles(self, doc):
         """Appareils du plan -> {clé appareil: clé de profil}. Réglages connus (.ezrf3) : profil perso créé ou
@@ -21136,7 +21228,7 @@ class MainWindow(QtWidgets.QMainWindow):
         by_name = {n: k for k, n, _d, _w in RX_CUSTOM}
         return {dk: by_name[n] for dk, n in want.items() if n in by_name}
 
-    def apply_ezrf(self, doc, opts, source="EazyRF"):
+    def apply_ezrf(self, doc, opts, source="EazyRF", path=None):
         """Importe le plan : fréquences (scène = groupe EazyRF, groupe = section), appareils posés sur les groupes,
         interférences en émetteurs extérieurs, scan de fond dans Scans par lieu. -> nombre de fréquences ajoutées."""
         entries = ezrf_entries(doc, opts.get("skip_off", True))
@@ -21154,8 +21246,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     lst.append(rx)
             k = int(round(f * 1000))
             if k in by_key:
+                by_key[k].setdefault("ez", ezrf_id(sc, gr, name))   # 🔗 déjà là : reliée au plan quand même
                 continue
             self._append_watch(name, f, st, None, sc, gr)
+            self.watch[-1]["ez"] = ezrf_id(sc, gr, name)
             if rx:
                 self.watch[-1]["rx"] = rx
             by_key[k] = self.watch[-1]
@@ -21188,6 +21282,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if scan_name:
             self.update_site_curve()
         self.undo_track()
+        if opts.get("follow") and path:            # 🔗 suivre le fichier
+            try:
+                self.ezrf_link = dict(path=str(path), mtime=os.path.getmtime(path), name=os.path.basename(str(path)),
+                                      status=opts.get("status", ""), skip_off=bool(opts.get("skip_off", True)))
+            except OSError:
+                self.ezrf_link = None
         msg = f"📥 Plan EazyRF : {added} fréquence(s) importée(s)"
         if len(entries) > added:
             msg += f" ({len(entries) - added} déjà présente(s))"
@@ -22895,6 +22995,93 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_states(self):
         StatesDialog(self).exec()
 
+    # ------------------------------------------------------------- 🔗 plan EazyRF suivi
+    def _ezrf_tick(self, now, force=False):
+        """Toutes les 5 s : le fichier EazyRF suivi a-t-il été réenregistré ? -> fenêtre des changements."""
+        lk = self.ezrf_link
+        if not lk or (now < self._ezrf_next and not force):
+            return None
+        self._ezrf_next = now + 5.0
+        try:
+            mt = os.path.getmtime(lk["path"])
+        except OSError:
+            return None
+        if mt == lk.get("mtime") and not force:
+            return None
+        if now - mt < 1.0 and not force:            # EazyRF est peut-être encore en train d'écrire
+            return None
+        lk["mtime"] = mt
+        try:
+            doc = parse_ezrf3(Path(lk["path"]).read_bytes())
+        except (OSError, ValueError) as e:
+            self.set_status(f"🔗 Plan EazyRF « {lk.get('name', '')} » illisible : {e}")
+            return None
+        d = ezrf_diff(ezrf_entries(doc, lk.get("skip_off", True)),
+                      [(w["ez"], w["freq"]) for w in self.watch if w.get("ez")])
+        if not (d["add"] or d["change"] or d["remove"]):
+            self.set_status(f"🔗 Plan EazyRF « {lk.get('name', '')} » réenregistré : rien n'a changé dans la liste.")
+            return d
+        if self._ezrf_dlg is not None:
+            try:
+                self._ezrf_dlg.close()
+            except RuntimeError:
+                pass
+        self._ezrf_dlg = EzrfSyncDialog(self, d)
+        self._ezrf_dlg.show()
+        self._alarm_sound(1)
+        return d
+
+    def apply_ezrf_diff(self, d, add, change, remove):
+        """Applique les changements cochés -> (ajoutées, modifiées, retirées)."""
+        st = self._resolve_status(self.ezrf_link.get("status", "")) if self.ezrf_link and self.ezrf_link.get("status") else ""
+        by_ez = {w["ez"]: w for w in self.watch if w.get("ez")}
+        n = [0, 0, 0]
+        for e in add:
+            name, f, sc, gr, _dk, _note = e
+            if any(abs(w["freq"] - f) < 1e-6 for w in self.watch):
+                continue
+            self._append_watch(name, f, st, None, sc, gr)
+            self.watch[-1]["ez"] = ezrf_id(sc, gr, name)
+            n[0] += 1
+        for i, _old, new_f, _e in change:
+            w = by_ez.get(i)
+            if w is not None:
+                self.set_watch_freq(w, new_f)
+                n[1] += 1
+        for i in remove:
+            w = by_ez.get(i)
+            if w is not None and w in self.watch:
+                self.watch.remove(w)
+                n[2] += 1
+        self.sort_watch()
+        self.rebuild_tree()
+        self.rebuild_watch_table()
+        self._update_markers()
+        self.undo_track()
+        self.set_status(f"🔗 Plan EazyRF : {n[0]} ajoutée(s), {n[1]} modifiée(s), {n[2]} retirée(s).")
+        return tuple(n)
+
+    def ezrf_follow_info(self):
+        lk = self.ezrf_link
+        if not lk:
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Aucun plan EazyRF suivi. Pour en suivre un : 📥 Importer "
+                                              "une liste, choisis le .ezrf3 et coche « 🔗 Suivre ce fichier ».")
+            return
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Plan EazyRF suivi")
+        box.setText(f"🔗 Suivi : « {lk.get('name', '')} »\n{lk.get('path', '')}\n\nÀ chaque réenregistrement dans EazyRF, "
+                    "l'appli te propose les fréquences ajoutées, modifiées ou retirées.")
+        b_now = box.addButton("Vérifier maintenant", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        b_stop = box.addButton("Arrêter de suivre", QtWidgets.QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is b_now:
+            if self._ezrf_tick(time.time(), force=True) is None:
+                self.set_status("🔗 Fichier introuvable ou illisible.")
+        elif box.clickedButton() is b_stop:
+            self.ezrf_link = None
+            self.set_status("🔗 Le plan EazyRF n'est plus suivi.")
+
     def open_planning(self):
         d = PlanningDialog(self)
         if not d.exec():
@@ -23573,6 +23760,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._notify_new_alarms()
         self._festival_tick(now)
         self._planning_tick(now)
+        self._ezrf_tick(now)
         self._sites_tick(now)
         self._net_tick(now)
         reason = getattr(self, "_diag_pending", None)

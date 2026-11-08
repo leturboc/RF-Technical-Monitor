@@ -104,6 +104,43 @@ _dg = R.diagnose(_fake_sys([("0483", "5720", "Mass Storage")]), _none)
 check("diag : STM32 sans port série = disque USB ?", any("disque USB" in x for x in _dg), str(_dg))
 _dg = R.diagnose(_fake_sys([("0483", "5740", "tinySA4")]), _none)
 check("diag : tinySA vu sans ttyACM -> redémarrer", any("redémarre le Pi" in x for x in _dg), str(_dg))
+# --- --multi : plusieurs tinySA sur le même Pi, un port réseau chacun, retenu par numéro de série
+class _Q(_P):
+    def __init__(self, dev, sn, loc):
+        super().__init__(dev, 0x0483, 0x5740)
+        self.serial_number, self.location = sn, loc
+
+
+R.list_ports.comports = lambda: [_Q("/dev/ttyACM1", "B222", "1-1.3"), _P("/dev/ttyAMA0"), _Q("/dev/ttyACM0", "A111", "1-1.2")]
+check("multi : tous les tinySA, reconnus par numéro de série", R.find_all_tinysa()
+      == [("A111", "/dev/ttyACM0"), ("B222", "/dev/ttyACM1")], str(R.find_all_tinysa()))
+R.list_ports.comports = _orig
+check("multi : prochain port libre", (R.next_port({}, 5025), R.next_port({"a": 5025, "b": 5026}, 5025),
+                                      R.next_port({"a": 5026}, 5025)) == (5025, 5027, 5025))
+_pf = os.path.join(tempfile.mkdtemp(), "ports.json")
+R.save_ports(_pf, {"A111": 5025, "B222": 5026})
+check("multi : ports retenus d'un démarrage à l'autre", R.load_ports(_pf) == {"A111": 5025, "B222": 5026})
+fake2, slave2 = open_fake()
+fake3, slave3 = open_fake()
+stop2 = threading.Event()
+ready = {}
+_lst = [("SN-A", slave2), ("SN-B", slave3)]
+thm = threading.Thread(target=R.serve_multi, kwargs=dict(base_port=0, host="127.0.0.1", stop=stop2.is_set,
+                                                         lister=lambda: list(_lst), ports_file=None, scan_s=0.2,
+                                                         on_ready=lambda k, p: ready.__setitem__(k, p)), daemon=True)
+thm.start()
+t0 = time.time()
+while len(ready) < 2 and time.time() - t0 < 6:
+    time.sleep(0.05)
+check("multi : un relais par tinySA", set(ready) == {"SN-A", "SN-B"} and ready["SN-A"] != ready["SN-B"], str(ready))
+if len(ready) == 2:
+    for k in ("SN-A", "SN-B"):
+        d_ = TinySA(ns["parse_device_addr"](f"127.0.0.1:{ready[k]}")[1])
+        check(f"multi : {k} répond sur son port", d_.version() == "tinySA4_v1.4-fake")
+        d_.close()
+stop2.set()
+thm.join(4)
+check("multi : arrêt propre", not thm.is_alive())
 stop.set()
 th.join(3)
 check("relais arrêté proprement", not th.is_alive())

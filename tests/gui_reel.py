@@ -1292,6 +1292,32 @@ win.open_import(_ez_txt, "Texte collé")
 DLG_ACTION[0] = "reject"
 check("EazyRF : le copier-coller passe par le même import", len(win.watch) == _n_wb + _n_new
       and win.group_row("Zone Sud · Loge", "Micros") is not None, f"{_n_wb} -> {len(win.watch)}")
+# 🔗 suivre le fichier EazyRF : il est réenregistré (une fréquence change) → fenêtre → changement appliqué
+import shutil as _sh
+_ezf = os.path.join(tmp, "plan_suivi.ezrf3")
+_sh.copy(_ezp, _ezf)
+win.watch = []
+win.apply_ezrf(m.parse_ezrf3(open(_ezf, "rb").read()),
+               dict(status="", profiles=False, skip_off=True, interf=False, scan=False, replace=False, follow=True),
+               "plan_suivi.ezrf3", _ezf)
+check("EazyRF suivi : fichier retenu, fréquences reliées", win.ezrf_link and win.ezrf_link["path"] == _ezf
+      and all(w_.get("ez") for w_ in win.watch), str(win.ezrf_link))
+_txt = open(_ezf, encoding="utf-8").read().replace("<Valeur>503,450</Valeur>", "<Valeur>504,000</Valeur>")
+open(_ezf, "w", encoding="utf-8").write(_txt)
+os.utime(_ezf, (time.time() - 5, time.time() - 5))
+win._ezrf_next = 0.0                              # la vérification auto (toutes les 5 s) a pu passer juste avant
+_dd = win._ezrf_tick(time.time())
+check("EazyRF suivi : réenregistrement vu, changement proposé", _dd and len(_dd["change"]) == 1
+      and win._ezrf_dlg is not None and win._ezrf_dlg.lst.count() == 1, str(_dd))
+if win._ezrf_dlg is not None:
+    wait(300)
+    shot(win._ezrf_dlg, "ezrf_suivi")
+    win._ezrf_dlg.apply()
+check("EazyRF suivi : fréquence déplacée dans la liste", any(abs(w_["freq"] - 504.0) < 1e-6 for w_ in win.watch)
+      and not any(abs(w_["freq"] - 503.45) < 1e-6 for w_ in win.watch))
+check("EazyRF suivi : gardé dans la config", (win._collect_config(False).get("ezrf_link") or {}).get("path") == _ezf
+      and any(x.get("ez") for x in win._collect_config(False)["watch"]))
+win.ezrf_link = None
 win.watch, win.scenes, win.site_scans = _ez_saved[0], _ez_saved[1], _ez_saved[2]
 m.rx_set_custom(_ez_saved[3])
 win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers(); win.update_site_curve(); win.undo_track()
