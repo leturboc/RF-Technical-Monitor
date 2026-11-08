@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.40.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.41.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -653,6 +653,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   🔔). « Prêt pour le show ? » rappelle les fréquences éteintes (`muted`, info).
   **Suivi en direct WWB / WSM / Wisycom Manager** (idée de Clément) : en attente de vrais fichiers de LISTE / projet
   (ses fichiers reçus sont des SCANS) — WWB .shw / export « Frequency report », WSM projet, Wisycom Manager.
+- **7.41.0 (Clément : « ai-je le droit de citer EazyRF ? Je fais son taf gratuit… bien rappeler que c'est une coord
+  basique »)** : choix de Clément = **mentions neutres + avertissement, bibliothèque .lst4 gardée mais CACHÉE**. Règle
+  désormais : EazyRF / WWB / WSM / Wisycom ne sont cités QUE pour la compatibilité de fichiers (import .ezrf3, suivi,
+  export de scans) ; plus de « comme EazyRF » (préréglage 1 = « 🟢 Standard (2 TX ±100 · 3 TX ±50 kHz) », test_im
+  adapté), plus de « Snapshots » / « mode ISO » dans les textes. `COORD_NOTE` (« ⚠ Coordination BASIQUE… ne remplace pas
+  un logiciel de coordination ») + `TRADEMARKS` (pas affilié ni approuvé, marques de leurs propriétaires) : `coord_note()`
+  en orange, « À propos », manuel (intro, Vérifier le plan, « Où sont mes fichiers ? »), README. Profils intégrés :
+  `_EZ` = « Réglages de coordination courants pour ce modèle. », `RX_SRC_TXT["eazyrf"]` = « courant » (la clé `src`
+  reste "eazyrf" dans les données). Bibliothèque : bouton « 📚 Bibliothèque (.lst4)… » visible SEULEMENT en mode expert,
+  aucun texte « EazyRF » dans sa fenêtre, retirée du manuel. **Ne pas réintroduire de comparaison « comme EazyRF ».**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
