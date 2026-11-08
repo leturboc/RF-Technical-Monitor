@@ -72,11 +72,16 @@ FIGS = {
                       "Check the plan: every problem explained, with a suggested replacement frequency.")],
     "spectre": [("outils", "La barre du spectre avec les outils dépliés (⋯).",
                  "The spectrum bar with the tools unfolded (⋯).")],
+    "portes": [("pret", "✅ Prêt pour le show ? : chaque point vérifié, « Régler » ouvre le bon réglage.",
+                "✅ Ready for the show?: every point checked, “Fix” opens the right setting.")],
+    "reagir": [("showmode", "Le mode Show (F10) : alarmes en très gros, une tuile par fréquence.",
+                "Show mode (F10): alarms in very large text, one tile per frequency.")],
 }
 SHOTS = {   # fichier de docs/img → nom de la capture (sans le numéro) dans tests/captures (fr) / tests/captures_en (en)
     "ecran": ("mode_simple", "mode_simple"), "reglages": ("reglages_seuils", "reglages_seuils"),
     "mur": ("mur_en_panneau", "mur_en"), "plan": ("plan_proposition", "PlanCheckDialog"),
     "outils": ("spectre_plus_outils", "spectre_plus_outils"),
+    "pret": ("pret_pour_le_show", "ReadyDialog"), "showmode": ("mode_show", "ShowModeWindow"),
 }
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
 

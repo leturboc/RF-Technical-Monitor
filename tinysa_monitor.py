@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.38.0"
+APP_VER = "7.39.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -5472,7 +5472,9 @@ STEPS = (
      "(d'après le spectre mesuré).", ()),
     ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
      "alertes sur téléphone.",
-     (("▶ Démarrer la surveillance", "step_monitor"), ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
+     (("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"), ("▶ Démarrer la surveillance", "step_monitor"),
+      ("🖥 Mode Show (plein écran, l'essentiel)", "open_show_mode"),
+      ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
       ("📸 États (basculer de plan d'un clic)…", "open_states"),
       ("🎤 Appel des micros (line check)…", "open_linecheck"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
@@ -5513,14 +5515,15 @@ def zoom_points(span_mhz, want=None, most=1000, step_khz=10.0, cap=290):
 
 
 # ------------------------------------------------------------------ mode festival (nuit complète)
-FESTIVAL_DEFAULT = dict(on=False, autostart=True, nosleep=True, daily=True, hour=9, last="", was_running=False)
+FESTIVAL_DEFAULT = dict(on=False, autostart=True, nosleep=True, daily=True, hour=9, last="", was_running=False,
+                        guard=True)
 
 
 def festival_cfg_norm(d):
     """Réglages du mode festival lus de la config (valeurs manquantes ou bancales -> défaut)."""
     d = d if isinstance(d, dict) else {}
     out = dict(FESTIVAL_DEFAULT)
-    for k in ("on", "autostart", "nosleep", "daily", "was_running"):
+    for k in ("on", "autostart", "nosleep", "daily", "was_running", "guard"):
         if k in d:
             out[k] = bool(d[k])
     try:
@@ -5529,6 +5532,30 @@ def festival_cfg_norm(d):
         pass
     out["last"] = str(d.get("last", "") or "")[:10]
     return out
+
+
+# ------------------------------------------------------------------ garde (relance si l'appli plante ou se fige)
+GUARD_HANG_S = 90.0      # plus de battement de cœur depuis 90 s = appli figée -> on la ferme et on la relance
+GUARD_GRACE_S = 180.0    # au démarrage, le 1er battement peut tarder (gros show, PC lent)
+GUARD_BEAT_S = 5.0       # l'appli écrit son battement toutes les 5 s
+
+
+def guard_action(code, hb_age, up_s, hang_s=GUARD_HANG_S, grace_s=GUARD_GRACE_S):
+    """Que fait la garde ? code = code de sortie de l'appli (None = tourne encore), hb_age = âge du dernier
+    battement (s, None = pas encore battu), up_s = depuis quand elle tourne.
+    -> "stop" (fermée exprès, code 0), "restart" (plantée), "kill" (figée), "wait"."""
+    if code is not None:
+        return "stop" if code == 0 else "restart"
+    if hb_age is None:
+        return "kill" if up_s >= grace_s else "wait"
+    return "kill" if hb_age >= hang_s else "wait"
+
+
+def guard_delay(starts, now, burst=5, window=600.0, pause=300.0):
+    """Attente avant une relance : 3 s, sauf si elle a déjà été relancée `burst` fois dans les `window` dernières
+    secondes (elle plante en boucle : config abîmée, tinySA qui fait tout tomber…) -> pause de 5 min."""
+    recent = [t for t in starts if now - t < window]
+    return pause if len(recent) >= burst else 3.0
 
 
 def festival_due(ymd, hour_now, cfg):
@@ -6500,6 +6527,111 @@ def glossary_find(text):
         return "".join(c for c in unicodedata.normalize("NFD", str(x).lower()) if unicodedata.category(c) != "Mn")
     q = k(text).strip()
     return [g for g in GLOSSARY if not q or q in k(g[0]) or q in k(g[1])]
+
+
+# ------------------------------------------------------------------ ✅ prêt pour le show ?
+READY_ICONS = {"ok": "✅", "warn": "⚠️", "bad": "❌", "info": "ℹ️"}
+
+
+def ready_checks(i):
+    """Vérification avant le show. i = état de l'appli (dict, clés facultatives). -> liste de dict(key, level
+    ok|warn|bad|info, title, text, fix) ; fix = nom d'une méthode de MainWindow qui ouvre le bon réglage (ou "")."""
+    out = []
+
+    def add(key, level, title, text, fix=""):
+        out.append(dict(key=key, level=level, title=title, text=text, fix=fix))
+
+    devs = i.get("devs") or []
+    dead = [d["name"] for d in devs if not d.get("live", True)]
+    age = i.get("sweep_age")
+    if not i.get("running"):
+        add("run", "bad", "Surveillance", "La surveillance est arrêtée : clique ▶ Démarrer.", "toggle_run")
+    elif dead:
+        add("run", "bad", "Surveillance", "Liaison perdue : " + ", ".join(dead) + ".", "open_devices")
+    elif age is None or age > max(30.0, 3 * float(i.get("cycle") or 0)):
+        add("run", "warn", "Surveillance", "Démarrée mais aucun balayage récent : le tinySA répond-il ?", "dump_diag")
+    else:
+        nd, cy = len(devs) or 1, float(i.get("cycle") or 0)
+        add("run", "ok", "Surveillance", f"{nd} tinySA, cycle de {cy:.1f} s (démo : pas de vrai tinySA)."
+            if i.get("demo") else f"{nd} tinySA, cycle de {cy:.1f} s.")
+    if i.get("demo") and i.get("running"):
+        add("demo", "bad", "Mode démo", "Le mode démo est coché : ce n'est pas le vrai spectre !", "toggle_demo_off")
+    n, unc = int(i.get("watch_n") or 0), int(i.get("uncovered") or 0)
+    if not n:
+        add("watch", "bad", "Mes fréquences", "La liste est vide : rien n'est surveillé.", "open_import")
+    elif unc:
+        add("watch", "bad", "Mes fréquences", f"{unc} fréquence(s) hors des bandes balayées : pas surveillées.",
+            "new_band_dialog")
+    else:
+        add("watch", "ok", "Mes fréquences", f"{n} fréquence(s), toutes dans les bandes balayées.")
+    nost = int(i.get("no_status") or 0)
+    if n and nost:
+        add("status", "warn", "Statuts", f"{nost} fréquence(s) sans statut : pas d'alarme CONFLIT ni ABSENT pour elles.",
+            "")
+    pi = i.get("plan_issues")
+    if pi is not None and n:
+        if pi:
+            add("plan", "warn", "Plan de fréquences", f"{pi} fréquence(s) avec un problème (écart ou intermod).",
+                "open_plan_check")
+        else:
+            add("plan", "ok", "Plan de fréquences", "Aucun problème d'écart ni d'intermod.")
+    if i.get("conflicts"):
+        add("alarms", "bad", "Alarmes", f"{i['conflicts']} alarme(s) en cours.", "")
+    snz = float(i.get("snooze") or 0)
+    if snz > 0:
+        add("snooze", "warn", "Son", f"Alarmes en silence encore {int(snz // 60) + 1} min.", "snooze_off")
+    elif i.get("sound_device_missing"):
+        add("sound", "bad", "Son", "La sortie audio choisie n'est pas branchée : les alarmes ne s'entendront pas.",
+            "open_sound")
+    elif int(i.get("volume", 70)) < 20:
+        add("sound", "warn", "Son", "Volume des alarmes très bas.", "open_sound")
+    else:
+        add("sound", "ok", "Son", "Sortie audio prête. Clique « 🔊 Tester le son » pour l'entendre.")
+    if i.get("notify_mode", "off") == "off":
+        add("notify", "info", "Alertes téléphone", "Pas d'alertes sur le téléphone (ntfy / Telegram).", "open_alerts")
+    elif not i.get("notify_ready"):
+        add("notify", "bad", "Alertes téléphone", "Activées mais incomplètes (sujet ntfy ou jeton Telegram manquant).",
+            "open_alerts")
+    else:
+        add("notify", "ok", "Alertes téléphone", "Prêtes. « 📨 Alerte test » pour vérifier sur le téléphone.")
+    if i.get("web_on"):
+        add("web", "ok" if i.get("web_up") else "bad", "Page web",
+            i.get("web_url") or "Le serveur web ne répond pas (port déjà pris ?).", "" if i.get("web_up") else "open_alerts")
+        if not i.get("web_pin"):
+            add("pin", "info", "Page web", "Pas de code PIN : personne ne peut acquitter depuis un téléphone.",
+                "open_alerts")
+    if not i.get("show_path"):
+        add("show", "warn", "Show", "Le show n'est enregistré dans aucun fichier (Ctrl+S).", "save_show")
+    else:
+        add("show", "ok", "Show", f"Enregistré : {i['show_path']}")
+    if not i.get("session_rec"):
+        add("rec", "info", "Enregistrement", "La session n'est pas enregistrée : pas de relecture après coup.",
+            "open_settings_files")
+    disk = i.get("disk_gb")
+    if disk is not None:
+        if disk < 1.0:
+            add("disk", "bad", "Disque", f"Plus que {disk:.1f} Go libres pour les journaux et les enregistrements.")
+        elif disk < 5.0:
+            add("disk", "warn", "Disque", f"{disk:.1f} Go libres pour les journaux et les enregistrements.")
+        else:
+            add("disk", "ok", "Disque", f"{disk:.0f} Go libres.")
+    if i.get("windows") and not i.get("guarded"):
+        add("guard", "info", "Garde", "L'appli ne se relancera pas toute seule si elle plante (🌙 Mode festival › Garde).",
+            "open_festival")
+    elif i.get("guarded"):
+        add("guard", "ok", "Garde", "L'appli se relance toute seule si elle plante ou se fige.")
+    return out
+
+
+def ready_summary(checks):
+    """-> (niveau global, texte) : le plus grave des points."""
+    bad = sum(c["level"] == "bad" for c in checks)
+    warn = sum(c["level"] == "warn" for c in checks)
+    if bad:
+        return "bad", f"❌ {bad} problème(s) à régler avant le show"
+    if warn:
+        return "warn", f"⚠️ Presque prêt : {warn} point(s) à regarder"
+    return "ok", "✅ Prêt pour le show !"
 
 
 # ===== PURE-END
@@ -14431,6 +14563,298 @@ class SettingsDialog(QtWidgets.QDialog):
             self.sess_lbl.setText(d)
 
 
+def _hesc(x):
+    import html
+    return html.escape(str(x))
+
+
+class ShowModeWindow(QtWidgets.QWidget):
+    """🖥 Mode Show : plein écran, l'essentiel en très gros. Alarmes en haut (sinon « Tout va bien »), une tuile par
+    fréquence (rouge / orange / vert…), et seulement les boutons utiles pendant le show."""
+
+    def __init__(self, owner):
+        super().__init__(None, Qt.WindowType.Window)
+        self.owner = o = owner
+        self.setWindowTitle(f"{APP_NAME} — Mode Show")
+        self.setStyleSheet(f"background:{o.theme['ui_bg']}; color:{o.theme['ui_text']}")
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(10, 8, 10, 8)
+        bar = QtWidgets.QHBoxLayout()
+        big = "font-size:20px; padding:6px 14px"
+        self.run_lbl = QtWidgets.QLabel("")
+        self.run_lbl.setStyleSheet("font-size:22px; font-weight:bold")
+        self.run_btn = QtWidgets.QPushButton("")
+        self.run_btn.setStyleSheet(big)
+        self.run_btn.setToolTip("Démarrer / arrêter la surveillance.")
+        self.run_btn.clicked.connect(lambda *_: (o.toggle_run(), self.refresh()))
+        self.ack_btn = QtWidgets.QPushButton("✔ Tout acquitter")
+        self.ack_btn.setStyleSheet(big)
+        self.ack_btn.setToolTip("Coupe le son de toutes les alarmes en cours (elles restent affichées). Touche Espace.")
+        self.ack_btn.clicked.connect(lambda *_: (o.ack_all_alarms(), self.refresh()))
+        self.snz_btn = QtWidgets.QToolButton()
+        self.snz_btn.setText("🔕 Silence")
+        self.snz_btn.setStyleSheet(big)
+        self.snz_btn.setToolTip("Couper le son des alarmes pendant quelques minutes.")
+        self.snz_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        sm = QtWidgets.QMenu(self.snz_btn)
+        for mn in (5, 15, 30, 60):
+            sm.addAction(f"🔕 {mn} min").triggered.connect(lambda *_, s_=mn * 60: (o.snooze(s_), self.refresh()))
+        sm.addAction("🔔 Remettre le son").triggered.connect(lambda *_: (o.snooze(0), self.refresh()))
+        self.snz_btn.setMenu(sm)
+        self.state_btn = QtWidgets.QToolButton()
+        self.state_btn.setStyleSheet(big)
+        self.state_btn.setToolTip("📸 État actif : quelles fréquences sont surveillées en ce moment.")
+        self.state_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.state_menu = QtWidgets.QMenu(self.state_btn)
+        self.state_menu.aboutToShow.connect(self._fill_states)
+        self.state_btn.setMenu(self.state_menu)
+        self.ready_btn = QtWidgets.QPushButton("✅ Prêt ?")
+        self.ready_btn.setStyleSheet(big)
+        self.ready_btn.setToolTip("Vérifie tout ce qui peut faire rater une alarme.")
+        self.ready_btn.clicked.connect(lambda *_: o.open_ready())
+        self.scr_btn = QtWidgets.QPushButton("🖥")
+        self.scr_btn.setStyleSheet(big)
+        self.scr_btn.setToolTip("Passer sur l'écran suivant.")
+        self.scr_btn.clicked.connect(lambda *_: self.next_screen())
+        self.scr_btn.setVisible(len(QtGui.QGuiApplication.screens()) > 1)
+        self.clock = QtWidgets.QLabel("")
+        self.clock.setStyleSheet("font-size:22px; font-weight:bold")
+        self.quit_btn = QtWidgets.QPushButton("✖ Quitter")
+        self.quit_btn.setStyleSheet(big)
+        self.quit_btn.setToolTip("Revenir à l'écran normal (Échap). La surveillance continue.")
+        self.quit_btn.clicked.connect(self.close)
+        bar.addWidget(self.run_lbl)
+        bar.addWidget(self.run_btn)
+        bar.addStretch(1)
+        for w_ in (self.ack_btn, self.snz_btn, self.state_btn, self.ready_btn, self.scr_btn):
+            bar.addWidget(w_)
+        bar.addStretch(1)
+        bar.addWidget(self.clock)
+        bar.addWidget(self.quit_btn)
+        lay.addLayout(bar)
+        self.banner = QtWidgets.QLabel("")
+        self.banner.setWordWrap(True)
+        self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.banner.setTextFormat(Qt.TextFormat.RichText)
+        lay.addWidget(self.banner)
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.inner = QtWidgets.QWidget()
+        self.grid = QtWidgets.QGridLayout(self.inner)
+        self.grid.setSpacing(8)
+        self.scroll.setWidget(self.inner)
+        lay.addWidget(self.scroll, 1)
+        self.tiles, self._sig, self._cols = [], None, 0
+        for k, fn in ((Qt.Key.Key_Escape, self.close), (Qt.Key.Key_Space, lambda: (o.ack_all_alarms(), self.refresh())),
+                      (Qt.Key.Key_F10, self.close), (Qt.Key.Key_F11, self.toggle_full)):
+            QtGui.QShortcut(QtGui.QKeySequence(k), self, activated=fn)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(1000)
+        self.refresh()
+
+    def _fill_states(self):
+        o = self.owner
+        m = self.state_menu
+        m.clear()
+        a = m.addAction("Tout actif (aucun état)")
+        a.setCheckable(True)
+        a.setChecked(not o.state_cur)
+        a.triggered.connect(lambda *_: (o.apply_state(""), self.refresh()))
+        for st in o.states:
+            a = m.addAction(f"📸 {st['name']}")
+            a.setCheckable(True)
+            a.setChecked(st["name"] == o.state_cur)
+            a.triggered.connect(lambda *_, n=st["name"]: (o.apply_state(n), self.refresh()))
+
+    def toggle_full(self):
+        self.showNormal() if self.isFullScreen() else self.showFullScreen()
+
+    def next_screen(self):
+        scr = QtGui.QGuiApplication.screens()
+        cur = self.screen()
+        i = (scr.index(cur) + 1) % len(scr) if cur in scr else 0
+        full = self.isFullScreen()
+        self.showNormal()
+        self.setGeometry(scr[i].availableGeometry())
+        if full:
+            self.showFullScreen()
+
+    def alarm_line(self, a):
+        o = self.owner
+        f = a.get("freq") or 0
+        parts = [a["kind"], a.get("name") or ""]
+        if f and f > 0:
+            parts.append(f"{f:.3f} MHz")
+        if a.get("level") is not None:
+            parts.append(o.lvl(a["level"], True))
+        return " · ".join(p for p in parts if p)
+
+    def refresh(self):
+        o = self.owner
+        th = o.theme
+        run = o.is_running()
+        self.run_lbl.setText("● SURVEILLANCE" if run else "■ ARRÊTÉE")
+        self.run_lbl.setStyleSheet(f"font-size:22px; font-weight:bold; color:{th['st_free'] if run else th['st_occ']}")
+        self.run_btn.setText("■ Arrêter" if run else "▶ Démarrer")
+        self.clock.setText(time.strftime("%H:%M:%S"))
+        left = snooze_left(o.snooze_until, time.time()) if o.snooze_until else 0
+        self.snz_btn.setText(f"🔕 {int(left // 60) + 1} min" if left else "🔕 Silence")
+        self.state_btn.setText(f"📸 {o.state_cur}" if o.state_cur else "📸 Tout actif")
+        self.state_btn.setVisible(bool(o.states))
+        cur = [a for a in o.alarms.listing() if a.get("t_end") is None]
+        if cur:
+            rows = "".join(
+                f"<div style='font-size:30px; font-weight:bold; margin:4px'>{'🔔' if not a['acked'] else '🔕'} "
+                f"{_hesc(self.alarm_line(a))}</div>" for a in cur[:6])
+            more = f"<div style='font-size:18px'>+ {len(cur) - 6} autre(s)</div>" if len(cur) > 6 else ""
+            self.banner.setText(rows + more)
+            self.banner.setStyleSheet(f"background:{th['st_occ']}; color:white; border-radius:10px; padding:10px")
+        else:
+            self.banner.setText("<div style='font-size:30px; font-weight:bold'>✔ Tout va bien</div>")
+            self.banner.setStyleSheet(f"background:{th['st_free']}; color:white; border-radius:10px; padding:8px")
+        ws = [w for w in o.scope_ws() if not w.get("off")]
+        sig = tuple((w["name"], round(w["freq"], 4)) for w in ws)
+        cols = max(1, self.scroll.viewport().width() // 260)
+        if sig != self._sig or cols != self._cols:
+            self._sig, self._cols = sig, cols
+            for t in self.tiles:
+                t.deleteLater()
+            self.tiles = []
+            for i in range(len(ws)):
+                t = QtWidgets.QLabel()
+                t.setTextFormat(Qt.TextFormat.RichText)
+                t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                t.setMinimumHeight(96)
+                self.grid.addWidget(t, i // cols, i % cols)
+                self.tiles.append(t)
+        for t, w in zip(self.tiles, ws):
+            txt, tone, col = o.sig_view(w)
+            lv = o.lvl(w["level"], True) if w.get("level") is not None else ""
+            fg = "black" if tone in ("warn",) else "white"
+            t.setText(f"<div style='font-size:22px; font-weight:bold'>{_hesc(w['name'] or '')}</div>"
+                      f"<div style='font-size:18px'>{w['freq']:.3f} MHz</div>"
+                      f"<div style='font-size:16px'>{_hesc(txt)}{(' · ' + lv) if lv else ''}</div>")
+            t.setStyleSheet(f"background:{col}; color:{fg}; border-radius:8px; padding:6px")
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        QtCore.QTimer.singleShot(0, self.refresh)
+
+    def closeEvent(self, e):
+        self.timer.stop()
+        if getattr(self.owner, "_show_mode", None) is self:
+            self.owner._show_mode = None
+        super().closeEvent(e)
+
+
+class ReadyDialog(QtWidgets.QDialog):
+    """✅ Prêt pour le show ? Tout ce qui peut faire rater une alarme, vérifié d'un coup d'œil, avec « Régler »."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Prêt pour le show ?")
+        self.setModal(False)
+        self.resize(640, 560)
+        lay = QtWidgets.QVBoxLayout(self)
+        self.head = QtWidgets.QLabel("")
+        self.head.setStyleSheet("font-size:18px; font-weight:bold; padding:6px")
+        lay.addWidget(self.head)
+        self.table = QtWidgets.QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["", "Point", "Détail"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setWordWrap(True)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Chaque ligne = une vérification. « Régler » ouvre le bon réglage.")
+        lay.addWidget(self.table, 1)
+        row = QtWidgets.QHBoxLayout()
+        self.snd_btn = QtWidgets.QPushButton("🔊 Tester le son")
+        self.snd_btn.setToolTip("Joue le son d'une alarme critique sur la sortie audio choisie.")
+        self.snd_btn.clicked.connect(lambda *_: owner.sound.alarm(2))
+        self.ntf_btn = QtWidgets.QPushButton("📨 Alerte test")
+        self.ntf_btn.setToolTip("Envoie un message de test sur le téléphone (ntfy / Telegram).")
+        self.ntf_btn.clicked.connect(lambda *_: self.notify_test())
+        self.again_btn = QtWidgets.QPushButton("↻ Revérifier")
+        self.again_btn.setToolTip("Refait toutes les vérifications (elles se refont aussi toutes seules).")
+        self.again_btn.clicked.connect(lambda *_: self.refresh())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme cette fenêtre.")
+        close.clicked.connect(self.close)
+        for b in (self.snd_btn, self.ntf_btn, self.again_btn):
+            row.addWidget(b)
+        row.addStretch(1)
+        row.addWidget(close)
+        lay.addLayout(row)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(3000)
+        self.checks = []
+        self.refresh()
+
+    def notify_test(self):
+        o = self.owner
+        if o.notify_cfg.get("mode", "off") == "off":
+            self.msg.setText("Alertes téléphone désactivées : règle-les d'abord (📣 Alertes).")
+            return
+        err = o.send_notify("✅ Test de TinySA Monitor", "Les alertes arrivent bien sur ce téléphone.", 0)
+        self.msg.setText(err or "Message de test envoyé : vérifie le téléphone.")
+
+    def refresh(self):
+        o = self.owner
+        try:
+            self.checks = ready_checks(o.ready_info())
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(f"Vérification impossible : {e}")
+            return
+        lvl, txt = ready_summary(self.checks)
+        col = {"ok": o.theme.get("st_free", "#3fb950"), "warn": o.theme.get("st_weak", "#d29922"),
+               "bad": o.theme.get("st_occ", "#f85149")}
+        self.head.setText(txt)
+        self.head.setStyleSheet(f"font-size:18px; font-weight:bold; padding:6px; color:{col.get(lvl, '')}")
+        t = self.table
+        t.setRowCount(len(self.checks))
+        for r, c in enumerate(self.checks):
+            t.setItem(r, 0, QtWidgets.QTableWidgetItem(READY_ICONS.get(c["level"], "")))
+            t.setItem(r, 1, QtWidgets.QTableWidgetItem(c["title"]))
+            if c["fix"] and c["level"] != "ok" and hasattr(o, c["fix"]):
+                w = QtWidgets.QWidget()
+                hl = QtWidgets.QHBoxLayout(w)
+                hl.setContentsMargins(4, 0, 4, 0)
+                lb = QtWidgets.QLabel(c["text"])
+                lb.setWordWrap(True)
+                b = QtWidgets.QPushButton("Régler")
+                b.setToolTip("Ouvre le réglage qui corrige ce point.")
+                b.clicked.connect(lambda *_, f=c["fix"]: self.fix(f))
+                hl.addWidget(lb, 1)
+                hl.addWidget(b)
+                t.setItem(r, 2, QtWidgets.QTableWidgetItem(""))
+                t.setCellWidget(r, 2, w)
+            else:
+                t.removeCellWidget(r, 2)
+                t.setItem(r, 2, QtWidgets.QTableWidgetItem(c["text"]))
+        t.resizeRowsToContents()
+
+    def fix(self, name):
+        getattr(self.owner, name)()
+        self.refresh()
+
+    def closeEvent(self, e):
+        self.timer.stop()
+        if getattr(self.owner, "_ready", None) is self:
+            self.owner._ready = None
+        super().closeEvent(e)
+
+
 class FestivalDialog(QtWidgets.QDialog):
     """🌙 Mode festival : faire tourner la surveillance toute la nuit, toute la semaine, sans y penser."""
 
@@ -14464,6 +14888,22 @@ class FestivalDialog(QtWidgets.QDialog):
                                  "(Le PC doit ouvrir la session tout seul, et le BIOS se rallumer après une coupure.)")
         self.sleep_chk = QtWidgets.QCheckBox("Empêcher Windows de se mettre en veille pendant la surveillance")
         self.sleep_chk.setChecked(c["nosleep"])
+        self.guard_chk = QtWidgets.QCheckBox("🛡 Garde : relancer l'appli toute seule si elle plante ou se fige")
+        self.guard_chk.setChecked(c.get("guard", True))
+        self.guard_chk.setToolTip("Un petit programme sans fenêtre lance l'appli et la surveille : si elle plante, ou ne\n"
+                                  "répond plus depuis 90 s, il la ferme et la relance, et la surveillance reprend.\n"
+                                  "Utilisée au démarrage de Windows (case du dessus), ou tout de suite avec le bouton.")
+        self.guard_lbl = QtWidgets.QLabel("")
+        self.guard_lbl.setWordWrap(True)
+        self.guard_btn = QtWidgets.QPushButton("🛡 Relancer maintenant sous garde")
+        self.guard_btn.setToolTip("Ferme l'appli et la rouvre aussitôt sous garde (la surveillance reprend si elle tournait).")
+        self.guard_btn.clicked.connect(lambda *_: self.relaunch())
+        if o.guarded():
+            self.guard_lbl.setText("✔ L'appli tourne en ce moment sous garde.")
+            self.guard_btn.hide()
+        else:
+            self.guard_lbl.setText("L'appli ne tourne pas sous garde en ce moment.")
+        self.guard_lbl.setStyleSheet("color:gray")
         self.daily_chk = QtWidgets.QCheckBox("Bilan chaque jour à")
         self.daily_chk.setChecked(c["daily"])
         self.hour_spin = QtWidgets.QSpinBox()
@@ -14479,8 +14919,12 @@ class FestivalDialog(QtWidgets.QDialog):
                               "des dernières 24 h.")
         dl.setWordWrap(True)
         dl.setStyleSheet("color:gray")
-        for w_ in (self.auto_chk, self.boot_chk, self.sleep_chk):
+        for w_ in (self.auto_chk, self.boot_chk, self.sleep_chk, self.guard_chk):
             f.addWidget(w_)
+        gl = QtWidgets.QHBoxLayout()
+        gl.addWidget(self.guard_lbl, 1)
+        gl.addWidget(self.guard_btn)
+        f.addLayout(gl)
         f.addLayout(hl)
         f.addWidget(dl)
         lay.addWidget(self.box)
@@ -14508,7 +14952,16 @@ class FestivalDialog(QtWidgets.QDialog):
 
     def values(self):
         return dict(self.owner.festival, on=self.on_chk.isChecked(), autostart=self.auto_chk.isChecked(),
-                    nosleep=self.sleep_chk.isChecked(), daily=self.daily_chk.isChecked(), hour=self.hour_spin.value())
+                    nosleep=self.sleep_chk.isChecked(), daily=self.daily_chk.isChecked(), hour=self.hour_spin.value(),
+                    guard=self.guard_chk.isChecked())
+
+    def relaunch(self):
+        o = self.owner
+        o.festival = festival_cfg_norm(self.values())
+        if sys.platform == "win32" and self.boot_chk.isChecked():
+            o.set_windows_startup(True)                 # la commande suit la case « Garde »
+        self.accept()
+        o.relaunch_guarded()
 
     def test(self):
         self.msg.setText(self.owner.festival_bilan(test=True))
@@ -16487,7 +16940,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(120, self._late_layout)    # la fenêtre a alors sa vraie taille
 
     def _late_layout(self):
-        if self.festival["on"] and self.festival["autostart"] and self.festival["was_running"]:
+        guarded = "1" in (os.environ.get("TSM_GUARD_RESTART"), os.environ.get("TSM_RESUME"))   # relancée par la garde
+        if self.festival["was_running"] and (guarded or (self.festival["on"] and self.festival["autostart"])):
             QtCore.QTimer.singleShot(4000, self._festival_autostart)
         self.panel_restore(getattr(self, "_panel_cfg", None))
         self.set_level(self.ui_level)
@@ -16902,6 +17356,7 @@ class MainWindow(QtWidgets.QMainWindow):
         sc_save.activated.connect(lambda *_: self.save_show())
         sc_lc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
         sc_lc.activated.connect(lambda *_: self.open_linecheck())
+        QtGui.QShortcut(QtGui.QKeySequence("F10"), self).activated.connect(lambda *_: self.open_show_mode())
         for seq, fn in (("Ctrl+Z", lambda *_: self.undo()), ("Ctrl+Y", lambda *_: self.redo()),
                         ("Ctrl+Shift+Z", lambda *_: self.redo())):
             QtGui.QShortcut(QtGui.QKeySequence(seq), self).activated.connect(fn)
@@ -16965,6 +17420,8 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("📍 Scans par lieu (plusieurs scènes, fusion, export)…").triggered.connect(lambda *_: self.open_sites())
         mm.addAction("⚡ Intermodulation (2 / 3 / 5 TX)…").triggered.connect(lambda *_: self.open_intermod())
         mm.addSection("② Pendant le show")
+        mm.addAction("✅ Prêt pour le show ? (tout vérifier)…").triggered.connect(lambda *_: self.open_ready())
+        mm.addAction("🖥 Mode Show (plein écran, l'essentiel)  F10").triggered.connect(lambda *_: self.open_show_mode())
         mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
         mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
@@ -18279,7 +18736,8 @@ class MainWindow(QtWidgets.QMainWindow):
             devid_scenes={str(k): v for k, v in self.devid_scenes.items()},
             planning=self.planning,
             sound=dict(self.sound.cfg),
-            festival=dict(self.festival, was_running=bool(self.is_running() and not self._closing)),
+            festival=dict(self.festival, was_running=bool(getattr(self, "_relaunch_resume", False)
+                                                          or (self.is_running() and not self._closing))),
             points=c["points"], points_auto=bool(c.get("points_auto")),
             points_sel=self.points_combo.currentData(), rbw=c["rbw"], zrbw=c["zrbw"], zpts=c.get("zpts"), input=c["input"], lna=c["lna"],
             att=c["att"], seg=c["seg"], offset=c["offset"], mark=self.mark_combo.currentData(),
@@ -23139,13 +23597,106 @@ class MainWindow(QtWidgets.QMainWindow):
         d.exec()
         self._save_config()
 
+    # ---------------------------------------------------------------- ✅ prêt pour le show ?
+    def ready_info(self):
+        """État de l'appli pour ready_checks (PURE)."""
+        now = time.time()
+        bands = [b for b in self.scan_bands() if self._scan_now(b)]
+        ws = [w for w in self.watch if not w.get("off")]
+
+        def covered(w):
+            hw = float(w.get("bw") or 0.0) / 2.0
+            return any(b["start"] - 1e-6 <= w["freq"] - hw and w["freq"] + hw <= b["stop"] + 1e-6 for b in bands)
+        devs = [dict(name=self.dev_name(d), live=bool(self.dev_live[d]) if d < len(self.dev_live) else True)
+                for d in self.dev_list()]
+        ts = [t for k, t in self.latest_t.items() if k != ZOOM_ID]
+        plan = None
+        try:
+            tx = [w for w in ws if not self.is_keep_free(w["status"])]
+            if 0 < len(ws) <= 80:
+                dflt = dict(sep=self.plan_opts.get("sep", 300) / 1000.0, filt=float(self.plan_opts.get("filt", 32.0)),
+                            tol=IM_TOL_PRESETS[0][1])
+                P = [rx_profile(self.rx_of(w)) or dflt for w in ws]
+                iss, _ = pf_check([w["freq"] for w in ws], [not self.is_keep_free(w["status"]) for w in ws],
+                                  [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P],
+                                  [q["tol"] for q in P], None, [q["filt"] for q in P])
+                plan = sum(1 for x in iss if x) if tx else 0
+        except Exception:  # noqa: BLE001
+            plan = None
+        disk = None
+        try:
+            import shutil
+            d = Path(self.log_dir)
+            while not d.exists() and d != d.parent:
+                d = d.parent
+            disk = shutil.disk_usage(str(d)).free / 1e9
+        except Exception:  # noqa: BLE001
+            pass
+        snd = self.sound.cfg
+        dev_missing = False
+        if snd.get("style", "tones") == "tones" and snd.get("device"):
+            outs = SoundOut.devices()
+            dev_missing = bool(outs) and snd["device"] not in [i for i, _ in outs] + [n for _, n in outs]
+        nc = self.notify_cfg
+        ready = bool(nc.get("topic")) if nc.get("service") == "ntfy" else bool(nc.get("tg_token") and nc.get("tg_chat"))
+        return dict(running=self.is_running(), demo=self.demo_chk.isChecked(), devs=devs,
+                    sweep_age=(now - max(ts)) if ts else None, cycle=getattr(self, "last_cycle", 0.0) or 0.0,
+                    watch_n=len(ws), uncovered=sum(1 for w in ws if not covered(w)),
+                    no_status=sum(1 for w in ws if not w.get("status")), plan_issues=plan,
+                    conflicts=sum(1 for a in self.alarms.active.values() if a.get("kind") != "APPAREIL")
+                    if isinstance(self.alarms.active, dict) else len(self.alarms.active),
+                    snooze=max(0.0, self.snooze_until - now) if self.snooze_until else 0.0,
+                    sound_device_missing=dev_missing, volume=snd.get("volume", 70),
+                    notify_mode=nc.get("mode", "off"), notify_ready=ready,
+                    web_on=bool(self.web_cfg.get("on")), web_up=self.web is not None,
+                    web_url=self.web_urls_text() if self.web is not None else "",
+                    web_pin=bool(self.web_cfg.get("pin")), show_path=self.show_path,
+                    session_rec=bool(self.session_cfg.get("rec")), disk_gb=disk,
+                    windows=sys.platform == "win32", guarded=self.guarded())
+
+    def open_show_mode(self):
+        """🖥 Mode Show plein écran (sur l'écran de la fenêtre principale)."""
+        if getattr(self, "_show_mode", None) is not None:
+            self._show_mode.close()
+            return None
+        self._show_mode = w = ShowModeWindow(self)
+        scr = self.screen() or QtGui.QGuiApplication.primaryScreen()
+        if scr is not None:
+            w.setGeometry(scr.availableGeometry())
+        w.showFullScreen()
+        return w
+
+    def open_ready(self):
+        if getattr(self, "_ready", None) is not None:
+            self._ready.refresh()
+            self._ready.raise_()
+            self._ready.activateWindow()
+            return self._ready
+        self._ready = ReadyDialog(self)
+        self._ready.show()
+        return self._ready
+
+    def toggle_demo_off(self):
+        if self.is_running():
+            self.toggle_run()
+        self.demo_chk.setChecked(False)
+
+    def snooze_off(self):
+        self.snooze(0)
+
+    def open_sound(self):
+        self.open_settings("sound")
+
+    def open_settings_files(self):
+        self.open_settings("files")
+
     # ---------------------------------------------------------------- 🌙 mode festival
     def open_festival(self):
         d = FestivalDialog(self)
         if not d.exec():
             return
         self.festival = festival_cfg_norm(d.values())
-        if sys.platform == "win32" and d.boot_chk.isChecked() != self.windows_startup_on():
+        if sys.platform == "win32" and (d.boot_chk.isChecked() or self.windows_startup_on()):   # suit aussi « Garde »
             err = self.set_windows_startup(d.boot_chk.isChecked())
             if err:
                 QtWidgets.QMessageBox.warning(self, APP_NAME, f"Lancement avec Windows impossible :\n{err}")
@@ -23181,9 +23732,36 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
     def _startup_cmd(self):
+        g = " --garde" if self.festival.get("guard") else ""
         if getattr(sys, "frozen", False):
-            return f'"{sys.executable}"'
-        return f'"{sys.executable}" "{Path(__file__).resolve()}"'
+            return f'"{sys.executable}"{g}'
+        return f'"{sys.executable}" "{Path(__file__).resolve()}"{g}'
+
+    @staticmethod
+    def guarded():
+        """L'appli a-t-elle été lancée par la garde (--garde) ?"""
+        return bool(os.environ.get("TSM_HEARTBEAT"))
+
+    def relaunch_guarded(self):
+        """Ferme l'appli et la relance sous garde ; la surveillance reprend si elle tournait."""
+        import subprocess
+        frozen = getattr(sys, "frozen", False)
+        cmd = [sys.executable] + ([] if frozen else [str(Path(__file__).resolve())]) + ["--garde"]
+        env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k not in ("_MEIPASS2", "_MEIPASS")}
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        running = self.is_running()
+        env["TSM_RESUME"] = "1" if running else "0"
+        try:
+            flags = 0x00000008 | 0x00000200 if sys.platform == "win32" else 0     # DETACHED + NEW_PROCESS_GROUP
+            subprocess.Popen(cmd, env=env, creationflags=flags, close_fds=True,
+                             cwd=str(Path(sys.executable).parent if frozen else Path.cwd()))
+        except OSError as e:
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Relance impossible :\n{e}")
+            return False
+        self._closing = not running                     # elle tournait : la garde la fera reprendre
+        self._relaunch_resume = running
+        self.close()
+        return True
 
     def windows_startup_on(self):
         if sys.platform != "win32":
@@ -23759,6 +24337,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._alarm_sound(a["prio"])
         self._notify_new_alarms()
         self._festival_tick(now)
+        if now >= getattr(self, "_beat_next", 0.0):
+            self._beat_next = now + GUARD_BEAT_S
+            guard_beat()
         self._planning_tick(now)
         self._ezrf_tick(now)
         self._sites_tick(now)
@@ -24882,6 +25463,114 @@ def restart_app():
     return bool(ok[0] if isinstance(ok, tuple) else ok)
 
 
+GUARD_LOG = CFG_PATH.parent / "garde.log"
+
+
+def _guard_env(beat, restarted):
+    """Environnement de l'appli lancée par la garde (exe PyInstaller : dossier _MEI… à elle, cf. restart_app)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k not in ("_MEIPASS2", "_MEIPASS")}
+    env.update(PYINSTALLER_RESET_ENVIRONMENT="1", TSM_HEARTBEAT=str(beat), TSM_GUARD_RESTART="1" if restarted else "0")
+    return env
+
+
+def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_GRACE_S, poll_s=2.0,
+              max_runs=None, stop=None):
+    """TinySA-Monitor.exe --garde : petit processus SANS fenêtre qui lance l'appli et la surveille. Elle plante
+    (code ≠ 0) -> relancée ; elle ne bat plus depuis `hang_s` (figée) -> fermée de force puis relancée ; fermée
+    exprès (code 0) -> la garde s'arrête aussi. Relancée, l'appli reprend la surveillance si elle tournait.
+    -> nombre de relances."""
+    import subprocess
+    frozen = getattr(sys, "frozen", False)
+    if cmd is None:
+        args = [a for a in sys.argv[1:] if a != "--garde"]
+        cmd = [sys.executable] + ([] if frozen else [str(Path(__file__).resolve())]) + args
+    beat = Path(beat or (CFG_PATH.parent / "battement.txt"))
+    log = Path(log or GUARD_LOG)
+
+    def note(msg):
+        try:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
+        except OSError:
+            pass
+
+    starts, runs, restarts = [], 0, 0
+    note(f"garde démarrée ({APP_NAME} {APP_VER})")
+    while True:
+        try:
+            beat.unlink()
+        except OSError:
+            pass
+        t0 = time.time()
+        starts.append(t0)
+        runs += 1
+        try:
+            pr = subprocess.Popen(cmd, env=_guard_env(beat, runs > 1),
+                                  cwd=str(Path(sys.executable).parent if frozen else Path.cwd()))
+        except OSError as e:
+            note(f"lancement impossible : {e}")
+            return restarts
+        last_loop, ref = time.time(), t0
+        why = ""
+        while True:
+            if stop is not None and stop.is_set():
+                pr.kill()
+                pr.wait()
+                note("garde arrêtée")
+                return restarts
+            time.sleep(poll_s)
+            now = time.time()
+            if now - last_loop > max(30.0, 10 * poll_s):     # le PC dormait : on ne compte pas ce temps
+                ref = now
+            last_loop = now
+            try:
+                hb = max(beat.stat().st_mtime, ref)
+                age = now - hb
+            except OSError:
+                age = None if ref == t0 else now - ref
+            act = guard_action(pr.poll(), age, now - t0, hang_s, grace_s)
+            if act == "wait":
+                continue
+            if act == "stop":
+                note("appli fermée normalement : fin de la garde")
+                return restarts
+            if act == "kill":
+                why = f"figée (plus de signe de vie depuis {int(age if age is not None else now - t0)} s) : fermée de force"
+                try:
+                    pr.kill()
+                    pr.wait(15)
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                why = f"arrêtée avec le code {pr.returncode} (plantage)"
+            break
+        restarts += 1
+        if max_runs is not None and runs >= max_runs:
+            note(f"appli {why} ; nombre maximal de lancements atteint")
+            return restarts
+        wait_s = guard_delay(starts, time.time())
+        note(f"appli {why} ; relance dans {int(wait_s)} s")
+        log_crash("garde", f"L'appli s'est {why}. Relancée automatiquement par la garde.")
+        end = time.time() + wait_s
+        while time.time() < end:
+            if stop is not None and stop.is_set():
+                return restarts
+            time.sleep(min(1.0, poll_s))
+
+
+def guard_beat(path=None):
+    """Battement de cœur pour la garde (rien si l'appli n'a pas été lancée par la garde)."""
+    path = path or os.environ.get("TSM_HEARTBEAT")
+    if not path:
+        return False
+    try:
+        Path(path).write_text(str(time.time()), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
 def read_language():
     """Langue choisie (config.json « lang »), sinon celle du système : français si Windows est en français,
     anglais sinon. TSM_LANG (variable d'environnement) l'impose (tests)."""
@@ -24998,6 +25687,9 @@ def main():
     if "--selftest" in sys.argv:            # CI : contrôle de l'exe, sans fenêtre
         i = sys.argv.index("--selftest")
         sys.exit(1 if self_test(sys.argv[i + 1] if i + 1 < len(sys.argv) else "selftest.txt") else 0)
+    if "--garde" in sys.argv:               # garde : lance l'appli et la relance si elle plante / se fige
+        run_guard()
+        sys.exit(0)
     app = QtWidgets.QApplication(sys.argv)
     app._gc_timer = install_gc_main_thread(app)
     app._lang = read_language()

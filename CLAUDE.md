@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.38.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.39.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -620,6 +620,30 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   par tinySA, rescan 5 s), ports retenus dans `~/.tinysa_relais_ports.json` (`load_ports` / `save_ports` /
   `next_port`). Sans `--multi` : comportement inchangé. Testé avec deux faux tinySA (pty) ; **jamais sur un vrai Pi
   avec plusieurs tinySA** (numéro de série USB du tinySA supposé présent, sinon la prise USB sert de clé).
+- **7.39.0 (Clément : « on fortifie ? » → « Touuuut !! »)** :
+  - **🛡 Garde** : `TinySA-Monitor.exe --garde` (`main()` → `run_guard`, sans Qt) lance l'appli (`_guard_env` : env
+    PyInstaller remis à zéro, `TSM_HEARTBEAT` = fichier battement, `TSM_GUARD_RESTART` = 1 sur une relance) et la
+    surveille : PURE `guard_action(code, âge du battement, durée)` → stop (code 0 = fermée exprès) / restart (plantée) /
+    kill (pas de battement depuis `GUARD_HANG_S` 90 s, ou jamais après `GUARD_GRACE_S` 180 s) ; `guard_delay` (3 s,
+    5 min si 5 relances en 10 min) ; PC en veille (boucle en retard) = battement remis à neuf ; journal `garde.log`
+    + `log_crash`. Battement `guard_beat()` toutes les `GUARD_BEAT_S` dans `_alarm_tick` (appli figée = plus de tick).
+    Relancée → `_late_layout` reprend la surveillance si `festival.was_running` (même sans mode festival ; aussi
+    `TSM_RESUME` posé par `relaunch_guarded`, bouton « 🛡 Relancer maintenant sous garde » du `FestivalDialog`).
+    `festival["guard"]` (défaut True) → `_startup_cmd` ajoute `--garde`. Test `tests/test_garde.py` (vrai processus
+    enfant : plante, se fige, se ferme ; dans la CI). **Jamais essayée dans l'exe Windows ni sur un vrai plantage.**
+  - **✅ Prêt pour le show ?** : PURE `ready_checks(info)` (liste {key, level ok|warn|bad|info, title, text, fix =
+    méthode de MainWindow}) / `ready_summary` ; `MainWindow.ready_info()` (devs, dernier balayage, fréquences hors des
+    bandes balayées, `pf_check` si ≤ 80 fréquences, son, ntfy / Telegram, web, show, `session_cfg["rec"]`, disque,
+    garde) ; `ReadyDialog` non modal (`self._ready`, rafraîchi toutes les 3 s, « Régler », 🔊 test, 📨 alerte test) ;
+    `open_ready` (⑤, ☰ Plus ②, bouton du mode Show). Petites méthodes pour « Régler » : `toggle_demo_off`,
+    `snooze_off`, `open_sound`, `open_settings_files`. gui_reel vérifie que chaque `fix` existe.
+  - **🖥 Mode Show** : `ShowModeWindow` (plein écran, `self._show_mode`, `open_show_mode` = ouvre / referme, F10) :
+    barre (● SURVEILLANCE / ■ ARRÊTÉE, ▶ / ■, ✔ Tout acquitter = Espace, 🔕 5–60 min, 📸 état, ✅ Prêt ?, 🖥 écran
+    suivant, heure, ✖ / Échap), bandeau des alarmes en cours (sinon « ✔ Tout va bien »), tuiles `sig_view` des
+    fréquences de `scope_ws()` non en pause (colonnes = largeur / 260, refaites si la liste change). `_hesc` = html.escape.
+  - **Endurance** : `tests/endurance.py [minutes]` (vraie appli hors écran, 4 tinySA simulés, page web avec 3 clients,
+    états, zoom ; relevés RSS / CPU / objets / tailles toutes les 30 s → CSV ; verdict sur la pente de la mémoire HORS
+    relecture (`SweepStore` garde 30 min, voulu) et brute après 35 min). PAS dans la CI (long).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

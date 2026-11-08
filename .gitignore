@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 tests/captures/
 tests/captures_en/
+tests/endurance.csv

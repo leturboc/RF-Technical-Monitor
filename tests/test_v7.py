@@ -1051,5 +1051,35 @@ check("EazyRF suivi : ajout / changement / retrait", ([e[0] for e in _d["add"]],
       (["HF 3"], [("A|Micros|HF 2", 503.45, 504.0)], ["A|Ears|Ear"]))
 check("EazyRF suivi : rien n'a changé", ns["ezrf_diff"](_e1, _cur), dict(add=[], change=[], remove=[]))
 
+# --- ✅ prêt pour le show ?
+_rc = ns["ready_checks"]
+_lv = lambda i: {c["key"]: c["level"] for c in _rc(i)}
+_good = dict(running=True, devs=[dict(name="tinySA 1", live=True)], sweep_age=2.0, cycle=1.5, watch_n=12, uncovered=0,
+             no_status=0, plan_issues=0, volume=70, notify_mode="all", notify_ready=True, web_on=True, web_up=True,
+             web_url="http://192.168.1.10:8080", web_pin=True, show_path="C:/show.tsashow", session_rec=True,
+             disk_gb=120.0, windows=True, guarded=True)
+check("prêt : tout bon", ns["ready_summary"](_rc(_good))[0], "ok")
+check("prêt : arrêté = problème", _lv(dict(_good, running=False))["run"], "bad")
+check("prêt : liaison perdue", (_lv(dict(_good, devs=[dict(name="Plateau", live=False)]))["run"],
+                                [c["text"] for c in _rc(dict(_good, devs=[dict(name="Plateau", live=False)]))][0]),
+      ("bad", "Liaison perdue : Plateau."))
+check("prêt : plus de balayage", _lv(dict(_good, sweep_age=200.0))["run"], "warn")
+check("prêt : démo pendant le show", _lv(dict(_good, demo=True))["demo"], "bad")
+check("prêt : fréquence hors bandes", _lv(dict(_good, uncovered=2))["watch"], "bad")
+check("prêt : liste vide", _lv(dict(_good, watch_n=0))["watch"], "bad")
+check("prêt : plan à problème", _lv(dict(_good, plan_issues=3))["plan"], "warn")
+check("prêt : silence en cours", _lv(dict(_good, snooze=300))["snooze"], "warn")
+check("prêt : sortie audio débranchée", _lv(dict(_good, sound_device_missing=True))["sound"], "bad")
+check("prêt : alertes incomplètes", _lv(dict(_good, notify_ready=False))["notify"], "bad")
+check("prêt : web en panne", _lv(dict(_good, web_up=False))["web"], "bad")
+check("prêt : show pas enregistré", _lv(dict(_good, show_path=""))["show"], "warn")
+check("prêt : disque presque plein", (_lv(dict(_good, disk_gb=0.5))["disk"], _lv(dict(_good, disk_gb=3))["disk"]),
+      ("bad", "warn"))
+check("prêt : pas de garde (Windows)", _lv(dict(_good, guarded=False))["guard"], "info")
+check("prêt : résumé", (ns["ready_summary"](_rc(dict(_good, show_path="")))[0],
+                        ns["ready_summary"](_rc(dict(_good, running=False, show_path="")))), 
+      ("warn", ("bad", "❌ 1 problème(s) à régler avant le show")))
+ok("prêt : chaque correction est un nom de méthode", all(re.fullmatch(r"[a-z_]*", c["fix"]) for c in _rc({})))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
