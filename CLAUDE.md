@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.41.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.41.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -663,6 +663,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `_EZ` = « Réglages de coordination courants pour ce modèle. », `RX_SRC_TXT["eazyrf"]` = « courant » (la clé `src`
   reste "eazyrf" dans les données). Bibliothèque : bouton « 📚 Bibliothèque (.lst4)… » visible SEULEMENT en mode expert,
   aucun texte « EazyRF » dans sa fenêtre, retirée du manuel. **Ne pas réintroduire de comparaison « comme EazyRF ».**
+- **7.41.1 (Clément : « un tour du code pour l'alléger ou corriger les bugs »)** : pyflakes propre à 3 variables près ;
+  vulture : ~130 lignes mortes sur 23 600 (laissées : gain nul, risque de conflit V8). **`tests/monkey.py [n] [graine]`**
+  (« test du singe » : vraie appli en démo, clics au hasard sur boutons / menus / clics droits / fenêtres ; QMenu et
+  QMessageBox remplacés par des sous-classes, car affecter `.exec` sur la classe C++ ne suffit pas et bloque hors écran)
+  → 0 exception sur 2 × 1 500 actions, mais une **fuite** : chaque `QDialog(self)` restait vivant après fermeture
+  (≈ 4 Mo par ouverture) + les menus sans parent de pyqtgraph (`ViewBox.menu`, `PlotItem.ctrlMenu`). Corrigé :
+  `_reap_dialogs` (dans `_alarm_tick`, avec le battement : enfant QDialog direct caché depuis 10 s et non gardé par un
+  attribut / liste / dict de MainWindow → `free_plot_menus` + `deleteLater`), `ShowModeWindow` en `WA_DeleteOnClose`.
+  Mesure (16 fenêtres × 4) : +60 Mo / tour → ≈ +10 Mo / tour. **Garder une fenêtre réutilisée = la ranger dans un
+  attribut de MainWindow** (sinon elle est détruite 10 s après fermeture). monkey.py PAS dans la CI (long).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
