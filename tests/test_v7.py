@@ -1041,5 +1041,15 @@ check("états : en pause = hors état sauf « toujours »", sorted(ns["state_off
       [3000])
 check("tech : changer d'état", ns["tech_request"](dict(action="state", name="  Artiste A ")), dict(action="state", name="Artiste A"))
 
+# --- 🔗 plan EazyRF suivi : différences entre deux enregistrements
+_e1 = [("HF 1", 500.1, "A", "Micros", None, ""), ("HF 2", 503.45, "A", "Micros", None, ""), ("Ear", 530.25, "A", "Ears", None, "")]
+_e2 = [("HF 1", 500.1, "A", "Micros", None, ""), ("HF 2", 504.0, "A", "Micros", None, ""), ("HF 3", 507.2, "A", "Micros", None, "")]
+_cur = [(ns["ezrf_id"](e[2], e[3], e[0]), e[1]) for e in _e1]
+_d = ns["ezrf_diff"](_e2, _cur)
+check("EazyRF suivi : ajout / changement / retrait", ([e[0] for e in _d["add"]], [(c[0], c[1], c[2]) for c in _d["change"]],
+                                                      _d["remove"]),
+      (["HF 3"], [("A|Micros|HF 2", 503.45, 504.0)], ["A|Ears|Ear"]))
+check("EazyRF suivi : rien n'a changé", ns["ezrf_diff"](_e1, _cur), dict(add=[], change=[], remove=[]))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

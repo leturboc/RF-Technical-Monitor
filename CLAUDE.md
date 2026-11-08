@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.37.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.38.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -610,6 +610,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `clear_show_data` vide les états. UI : bouton `state_btn` (menu `_build_state_menu`) dans « Mes fréquences »,
   `StatesDialog` (liste + tableau Dans l'état / 🔒 Toujours, cocher une scène, dupliquer, Suppr), ⑤ + ☰ Plus ②.
   Tech : action « state » + `states` / `state_cur` dans `tech_state`, liste 📸 dans la page.
+- **7.38.0** : **🔗 Suivre le plan EazyRF** : case `follow` d'`EzrfImportDialog` (fichier seulement) → `self.ezrf_link`
+  {path, mtime, name, status, skip_off} (config + SHOW_KEYS « ezrf_link »), `w["ez"]` = PURE `ezrf_id(scène, groupe,
+  nom)` (gardé dans `watch`) ; `_ezrf_tick` (dans `_alarm_tick`, toutes les 5 s, attend 1 s après l'écriture) →
+  PURE `ezrf_diff` (add / change / remove) → `EzrfSyncDialog` non modale (cases, Appliquer → `apply_ezrf_diff`, Plus
+  tard, Ne plus suivre) ; ☰ Plus › 📋 Liste › « 🔗 Plan EazyRF suivi… » (`ezrf_follow_info` : vérifier maintenant /
+  arrêter). **Plusieurs tinySA sur un Pi** : `relais/tinysa_relais.py --multi` (`install_pi.sh multi`) :
+  `find_all_tinysa` / `device_key` (n° de série USB, sinon prise), `serve_multi` (un thread `serve(..., finder=, name=)`
+  par tinySA, rescan 5 s), ports retenus dans `~/.tinysa_relais_ports.json` (`load_ports` / `save_ports` /
+  `next_port`). Sans `--multi` : comportement inchangé. Testé avec deux faux tinySA (pty) ; **jamais sur un vrai Pi
+  avec plusieurs tinySA** (numéro de série USB du tinySA supposé présent, sinon la prise USB sert de clé).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
