@@ -18,13 +18,13 @@ English Windows). User manual: [`docs/manual_en.pdf`](docs/manual_en.pdf) (PDF) 
 - **Couches Scènes › Groupes** : un clic = on ne surveille / ne scanne que le groupe voulu ; bouton Global pour tout voir
 - **Statuts** : « doit rester libre » (⚠ CONFLIT si un signal apparaît) et « doit émettre » (⚠ ABSENT si un TX se tait)
 - **Alarmes** : panneau dédié, acquittement, priorité par groupe (Critique ❗ = son répété jusqu'à acquittement)
-- **Intermodulation** 2 / 3 / 5 TX (ordres 3, 5, 7), tolérances par type de produit comme EazyRF (2 TX 100 kHz,
+- **Intermodulation** 2 / 3 / 5 TX (ordres 3, 5, 7), tolérances par type de produit (2 TX 100 kHz,
   3 TX 50 kHz par défaut), et « d'où ça peut venir ? » pour un signal inconnu
 - **🔁 Convertisseur de scans** : WSM, WWB ou CSV au choix (colonnes, unités, séparateur), en entrée comme en sortie
 - **🩺 Diagnostic tinySA** : fichier avec les derniers échanges avec le tinySA, à envoyer en cas de bug
-- **🧮 Vérifier le plan de fréquences** (Outils), comme EazyRF : écart entre porteuses et intermod selon tes
+- **🧮 Vérifier le plan de fréquences** (Outils, coordination basique) : écart entre porteuses et intermod selon tes
   tolérances, filtre du récepteur et pas, avec un **profil d'appareil par fréquence** (Wisycom très sélectif,
-  Shure, Sennheiser, ears… comme dans EazyRF), ✔ / ✗ par fréquence avec le
+  Shure, Sennheiser, ears…), ✔ / ✗ par fréquence avec le
   détail, et une fréquence de remplacement compatible en un clic
 - **🎤 Appel des micros** (Ctrl+L) : allume tes émetteurs, chaque fréquence passe ✓ ; résumé au journal, pack mal
   réglé repéré (signal inconnu tout près d'une fréquence qui manque)
@@ -200,4 +200,6 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 Le format des exports de scan **Sennheiser WSM** et l'import de scans **Shure WWB** s'appuient sur le fonctionnement du
 projet [nikharju/WSM-WWB-csv-converter](https://github.com/nikharju/WSM-WWB-csv-converter) (MIT) ; le code de ce dépôt
 est une réécriture indépendante.
-WSM, WWB, EazyRF, tinySA sont des marques de leurs propriétaires respectifs ; ce projet n'est affilié à aucun d'eux.
+WSM, WWB, EazyRF, Wisycom Manager, Soundbase, tinySA sont des marques de leurs propriétaires respectifs ; ce projet n'est ni affilié
+à aucun d'eux ni approuvé par eux. **Coordination basique seulement** : pour construire un plan de fréquences, utilise un
+logiciel de coordination dédié (EazyRF, WWB, WSM, Soundbase…).

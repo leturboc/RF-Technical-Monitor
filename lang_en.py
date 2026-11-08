@@ -4066,3 +4066,98 @@ TEMPLATES.update({
 WEB += [
     ('title="${w.muted?"Rallumer":"Éteint (je sais) : pas d’alarme ABSENT"}"', 'title="${w.muted?"Back on":"Off (I know): no ABSENT alarm"}"'),
 ]
+
+# ---- 7.41 : mentions neutres (coordination basique, pas affilié)
+EXACT.update({
+    "\nUn produit plus loin que ça de ta fréquence est accepté (comme les tolérances des logiciels de coordination).\n0 = « ignoré » : ce type de produit n'est pas compté du tout.":
+        "\nA product further than this from your frequency is accepted (like coordination software tolerances).\n0 = “ignored”: this product type is not counted at all.",
+    '(à ± la valeur du filtre).': '(within ± the filter value).',
+    ': on prend en compte les émetteurs à': ': transmitters within',
+    "Appareil par défaut : remplit écart, filtre, pas et tolérances.\nLes fréquences avec leur propre appareil (colonne « Appareil ») gardent le leur.\nTous tes modèles : 🎛 Profils d'appareil.":
+        "Default device: fills in spacing, filter, step and tolerances.\nFrequencies with their own device (“Device” column) keep theirs.\nAll your models: 🎛 Device profiles.",
+    "Bibliothèque d'appareils (.lst4)": 'Device library (.lst4)',
+    'Chaque appareil du plan devient un profil perso, posé sur son groupe : Vérifier le plan et Coordonner utilisent alors ses réglages (écart, filtre, tolérances).':
+        "Each device of the plan becomes a custom profile, set on its group: Check the plan and Coordinate then use its settings (spacing, filter, tolerances).",
+    "Cherche des fréquences libres d'après ce que le tinySA a mesuré (max hold), à bonne distance de tes émetteurs et sans intermodulation de 3ᵉ ordre avec eux. Aide de dépannage : ça ne remplace pas ta coordination (logiciel dédié). Vérifie que la fréquence est autorisée et compatible avec ton matériel avant de l'utiliser. Scanne bien la zone un moment avant de chercher.":
+        "Looks for free frequencies from what the tinySA measured (max hold), well away from your transmitters and with no 3rd-order intermod with them. A troubleshooting aid: it does not replace your coordination (dedicated software). Check that the frequency is allowed and suits your equipment before using it. Scan the area for a while before searching.",
+    'Compatibilité du plan (coordination simple) : écart entre porteuses et intermod,\nune remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.':
+        'Plan compatibility (simple coordination): carrier spacing and intermod,\na replacement suggested for each problem frequency; or find N compatible frequencies.',
+    "Coordination simple : pour chaque fréquence, est-elle trop près d'une autre (écart entre porteuses), et un produit d'intermod de tes émetteurs tombe-t-il dessus (selon les tolérances) ? C'est un calcul, sans mesure. Les « doit rester libre » (réserves) sont protégées mais ne comptent pas comme émetteurs. Choisis une fréquence ✗ puis « Proposer » pour une remplaçante compatible.":
+        "Simple coordination: for each frequency, is it too close to another one (carrier spacing), and does an intermod product of your transmitters land on it (according to the tolerances)? It is a calculation, with no measurement. “Must stay free” ones (reserves) are protected but do not count as transmitters. Pick a ✗ frequency then “Suggest” for a compatible replacement.",
+    'Coordination simple : écart entre porteuses et intermod selon des tolérances, un verdict\npar fréquence, et une fréquence de remplacement compatible.':
+        'Simple coordination: carrier spacing and intermod against tolerances, a verdict\nper frequency, and a compatible replacement frequency.',
+    "Filtre d'entrée du récepteur (32 MHz pour un Wisycom) : un produit ne compte sur une fréquence\nque si tous ses émetteurs sont à ± la valeur du filtre autour d'elle. aucun = tous comptent.\nSans effet en « aucune cible ».":
+        "Receiver input filter (32 MHz for a Wisycom): a product only counts on a frequency\nif all its transmitters are within ± the filter value around it. none = all count.\nNo effect with “no target”.",
+    "Filtre d'entrée du récepteur. 0 = aucun : tous les émetteurs comptent.": 'Receiver input filter. 0 = none: all transmitters count.',
+    "Filtre du récepteur : seuls les émetteurs à ± la valeur du filtre\nautour de la fréquence comptent pour l'intermod. 0 = aucun filtre (tous comptent).":
+        'Receiver filter: only transmitters within ± the filter value\naround the frequency count for intermod. 0 = no filter (all count).',
+    "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. 16 MHz : les émetteurs à ±16 MHz comptent). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et les tolérances du profil.":
+        "The slice of spectrum that enters the receiver around its frequency (preselection, e.g. 16 MHz: transmitters within ±16 MHz count). For the calculation, only transmitters in this slice can create intermod in this receiver. This number alone does not say whether a receiver is good: its robustness is set by the profile's spacing and tolerances.",
+    "Largeur du filtre d'entrée du récepteur (« Filtre » d'un profil d'appareil : 32 MHz pour un Wisycom MRK980).\nUn produit d'intermod ne gêne une fréquence que si TOUS ses émetteurs sont à ± la valeur du filtre\nautour d'elle : les émetteurs plus loin sont coupés par le filtre du récepteur.\naucun (0) = tous les émetteurs comptent (plus strict).":
+        "Width of the receiver input filter (“Filter” of a device profile: 32 MHz for a Wisycom MRK980).\nAn intermod product only disturbs a frequency if ALL its transmitters are within ± the filter value\naround it: transmitters further away are cut by the receiver filter.\nnone (0) = all transmitters count (stricter).",
+    "Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.\nUn profil d'appareil avec une plage règle aussi « De … à ».":
+        'The device profile (filter, spacing, step, tolerances) of the new frequencies.\nA device profile with a range also sets “From … to”.',
+    'Les tolérances les plus courantes en coordination : produits à 2 émetteurs (2A − B) à ±100 kHz et à 3 émetteurs (A + B − C) à ±50 kHz, avec le filtre du récepteur.':
+        'The most common coordination tolerances: 2-transmitter products (2A − B) at ±100 kHz and 3-transmitter products (A + B − C) at ±50 kHz, with the receiver filter.',
+    "Mode expert : lire un fichier de bibliothèque d'appareils (.lst4) déjà présent sur ce PC.": 'Expert mode: read a device library file (.lst4) already on this PC.',
+    "Pas de réglage de l'appareil (« Incrément »).": "Device tuning step (“Increment”).",
+    'Pas des fréquences proposées (« Incrément ») : le pas réglable de tes appareils.\n5 kHz pour un Wisycom MRK980, 25 kHz pour un MTK952.':
+        'Step of the suggested frequencies (“Increment”): your devices’ tuning step.\n5 kHz for a Wisycom MRK980, 25 kHz for an MTK952.',
+    'Pas encore de bibliothèque : importe un fichier .lst4.': 'No library yet: import a .lst4 file.',
+    "Plusieurs plans (artistes, scènes, jours) dans le même show ;\nun clic bascule de l'un à l'autre, les fréquences hors de l'état passent en pause.":
+        'Several plans (artists, stages, days) in the same show;\none click switches from one to another, frequencies outside the state are paused.',
+    "Préparer : vérifier le plan (coordination simple), intermodulation, profils d'appareil,\nblocs Spectera / WMAS.":
+        'Prepare: check the plan (simple coordination), intermodulation, device profiles,\nSpectera / WMAS blocks.',
+    "Quelle partie du scan exporter. Une bande, la zone affichée sur le spectre, la plage d'un\nappareil, ou des valeurs à la main.":
+        "Which part of the scan to export. A band, the area shown on the spectrum, a device's\nrange, or values by hand.",
+    "Quelle sévérité ? Survole chaque choix pour l'explication.\nStandard = les tolérances les plus courantes (2 TX 100 kHz, 3 TX 50 kHz).":
+        'How strict? Hover each choice for the explanation.\nStandard = the most common tolerances (2 TX 100 kHz, 3 TX 50 kHz).',
+    'Quels produits comptent, et à quelle distance de ta fréquence (survole chaque choix).\nStandard = les tolérances les plus courantes (2 TX 100 kHz, 3 TX 50 kHz).':
+        'Which products count, and how far from your frequency (hover each choice).\nStandard = the most common tolerances (2 TX 100 kHz, 3 TX 50 kHz).',
+    'Relier les appareils à mes profils (même nom)': 'Link the devices to my profiles (same name)',
+    'Réglages de coordination courants pour ce modèle.': 'Common coordination settings for this model.',
+    "TinySA Monitor n'est ni affilié ni approuvé par les éditeurs de ces logiciels ; leurs noms (marques de leurs propriétaires) servent seulement à dire avec quels fichiers il est compatible.":
+        'TinySA Monitor is neither affiliated with nor endorsed by the publishers of this software; their names (trademarks of their owners) are only used to say which files it is compatible with.',
+    'TinySA Monitor reste un moniteur : ses calculs reprennent les règles de base (écart, intermod 3ᵉ / 5ᵉ ordre,\nfiltre du récepteur), pas tout ce que fait un logiciel de coordination.\n':
+        'TinySA Monitor is a monitor: its calculations follow the basic rules (spacing, 3rd / 5th order intermod,\nreceiver filter), not everything coordination software does.\n',
+    "Tolérance d'intermodulation 3ᵉ ordre 2 TX (2A − B) avec tes fréquences ;\nla moitié pour les 3 TX (A + B − C). 100 kHz = valeur courante pour les 2 TX.":
+        '3rd-order 2 TX intermod tolerance (2A − B) with your frequencies;\nhalf for 3 TX (A + B − C). 100 kHz = common value for 2 TX.',
+    "Un fichier de bibliothèque d'appareils (.lst4) déjà présent sur ce PC.": 'A device library file (.lst4) already on this PC.',
+    'Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton modèle : crée un profil perso.':
+        'Cautious generic values: without a filter, all transmitters count. For the exact values of your model: create a custom profile.',
+    'Valeurs génériques prudentes. Pour les valeurs exactes : crée un profil perso.': 'Cautious generic values. For the exact values: create a custom profile.',
+    'aucun appareil dans ce fichier (est-ce bien une bibliothèque .lst4 ?)': 'no device in this file (is it really a .lst4 library?)',
+    'color:#d29922; font-size: 90%;': 'color:#d29922; font-size: 90%;',
+    'ex. valeurs de mon logiciel de coordination': 'e.g. values from my coordination software',
+    '« Valeur de départ » = pas vérifiée : si tu connais la valeur (ton logiciel de coordination, doc du fabricant), crée un':
+        '“Starting value” = not checked: if you know the value (your coordination software, manufacturer docs), create a',
+    "Écart minimal avec tes autres fréquences (souvent 300 à 500 kHz selon l'appareil).": 'Minimum spacing from your other frequencies (often 300 to 500 kHz depending on the device).',
+    "Écart minimal entre deux porteuses (bord à bord pour un bloc large).\n« Séparation » d'un profil d'appareil (500 kHz pour un Wisycom MRK980).":
+        'Minimum spacing between two carriers (edge to edge for a wide block).\n“Separation” of a device profile (500 kHz for a Wisycom MRK980).',
+    'Écart minimal entre deux porteuses (« Séparation »).': 'Minimum spacing between two carriers (“Separation”).',
+    "à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à 40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. Donc :":
+        "from the transmitters it receives strongly. If transmitter A is 40 MHz away, the filter has already cut it: it can no longer create a product in this receiver. So:",
+    '⚠ Coordination BASIQUE, pour vérifier et dépanner sur place à partir du spectre mesuré : elle ne remplace pas un logiciel de coordination. Pour construire ton plan, utilise un outil dédié, bien plus complet (EazyRF, Shure WWB, Sennheiser WSM, Soundbase…), puis importe-le ici pour le surveiller.':
+        '⚠ BASIC coordination, to check and troubleshoot on site from the measured spectrum: it does not replace coordination software. To build your plan, use a dedicated tool, far more complete (EazyRF, Shure WWB, Sennheiser WSM, Soundbase…), then import it here to monitor it.',
+    '📚 Bibliothèque (.lst4)…': '📚 Library (.lst4)…',
+    "📸 État actif : un clic pour basculer de plan.\nLes fréquences hors de l'état passent en pause (pas d'alarme, pas d'intermod).":
+        '📸 Active state: one click to switch plan.\nFrequencies outside the state are paused (no alarm, no intermod).',
+    '🟢 Standard (2 TX ±100 · 3 TX ±50 kHz)': '🟢 Standard (2 TX ±100 · 3 TX ±50 kHz)',
+    'courant': 'common',
+})
+TEMPLATES.update({
+    '<b>{}</b> version <b>{}</b><br>Python {} · Qt {}<br><br>tinySA : {}{}<br><br>Config : {}<br>Journaux : {}<br><br><small>{}<br>{}</small>':
+        '<b>{}</b> version <b>{}</b><br>Python {} · Qt {}<br><br>tinySA: {}{}<br><br>Config: {}<br>Logs: {}<br><br><small>{}<br>{}</small>',
+    'Bibliothèque · {} · {}–{} MHz': 'Library · {} · {}–{} MHz',
+})
+EXACT.update({
+    'Réglages de coordination courants pour ce modèle.': 'Common coordination settings for this model.',
+    'Réglages de coordination courants pour ce modèle. MRK980 : écart 500 kHz (250 kHz en NB), filtre 32 MHz, pas 5 kHz ; MTK952 : pas 25 kHz.': 'Common coordination settings for this model. MRK980: spacing 500 kHz (250 kHz in NB), filter 32 MHz, step 5 kHz; MTK952: step 25 kHz.',
+    "Réglages de coordination courants pour ce modèle. Numérique : pas d'intermodulation comptée, écart 600 kHz.": 'Common coordination settings for this model. Digital: no intermodulation counted, spacing 600 kHz.',
+    'Réglages de coordination courants pour ce modèle. ew G4 : écart 400 kHz (450 kHz sur certaines gammes), filtre 32 MHz.': 'Common coordination settings for this model. ew G4: spacing 400 kHz (450 kHz on some ranges), filter 32 MHz.',
+    'Réglages de coordination courants pour ce modèle. Écart 300 kHz, filtre 16 MHz.': 'Common coordination settings for this model. Spacing 300 kHz, filter 16 MHz.',
+    'Réglages de coordination courants pour ce modèle. Écart 400 kHz, filtre 32 MHz.': 'Common coordination settings for this model. Spacing 400 kHz, filter 32 MHz.',
+    'Réglages de coordination courants pour ce modèle. Écart 450 kHz, filtre 32 MHz.': 'Common coordination settings for this model. Spacing 450 kHz, filter 32 MHz.',
+    'Réglages de coordination courants pour ce modèle. Écart 450 kHz, filtre 50 MHz, tolérance 2 TX 200 kHz, 3 TX non compté.': 'Common coordination settings for this model. Spacing 450 kHz, filter 50 MHz, 2 TX tolerance 200 kHz, 3 TX not counted.',
+    'Réglages de coordination courants pour ce modèle. Écart 500 kHz, filtre 16 MHz, tolérances 150 / 100 / 50 kHz.': 'Common coordination settings for this model. Spacing 500 kHz, filter 16 MHz, tolerances 150 / 100 / 50 kHz.',
+})

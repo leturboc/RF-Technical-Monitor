@@ -237,7 +237,7 @@ ok("classes de produits", [ns["im_class"](3, 2), ns["im_class"](3, 3), ns["im_cl
    == ["2tx3", "3tx3", "5", "5"])
 EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.050}      # tolérances EazyRF complètes (2 / 3 TX + 5ᵉ)
 _P = ns["IM_TOL_PRESETS"]
-ok("règles : « Comme EazyRF » d'abord = 2 TX 100 / 3 TX 50 kHz", _P[0][0].startswith("🟢 Comme EazyRF")
+ok("règles : « Standard » d'abord = 2 TX 100 / 3 TX 50 kHz", _P[0][0].startswith("🟢 Standard")
    and _P[0][1]["3tx3"] == 0.05 and _P[0][1]["5"] == 0 and _P[0][1]["2tx3"] == 0.1)
 ok("règles : « Simple » = 2A − B seulement", _P[1][1]["3tx3"] == 0 and _P[1][1]["5"] == 0 and _P[1][1]["2tx3"] == 0.1)
 ok("règles : chaque niveau est expliqué", all(len(w_) > 40 for _t, _d, w_ in _P))

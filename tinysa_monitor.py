@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.40.0"
+APP_VER = "7.41.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1514,9 +1514,9 @@ IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
 # Le 1er réglage (comme EazyRF : 2 TX 100 / 3 TX 50 kHz) est celui par défaut ; avec le FILTRE du récepteur
 # (32 MHz dans le profil Wisycom d'EazyRF de Clément), son plan Wisycom donne 0 IM, comme dans EazyRF.
 IM_TOL_PRESETS = [
-    ("🟢 Comme EazyRF (2 TX ±100 · 3 TX ±50 kHz)", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0},
-     "Les tolérances par défaut d'EazyRF : produits à 2 émetteurs (2A − B) à ±100 kHz et à 3 émetteurs "
-     "(A + B − C) à ±50 kHz. Avec le filtre du récepteur réglé comme dans EazyRF, le verdict est le même."),
+    ("🟢 Standard (2 TX ±100 · 3 TX ±50 kHz)", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0},
+     "Les tolérances les plus courantes en coordination : produits à 2 émetteurs (2A − B) à ±100 kHz et à "
+     "3 émetteurs (A + B − C) à ±50 kHz, avec le filtre du récepteur."),
     ("⚪ Simple : 2A − B seulement", {"2tx3": 0.100, "3tx3": 0.0, "5": 0.0, "7": 0.0},
      "Seulement les produits à 2 émetteurs (2A − B), les plus forts, à ±100 kHz. Le contrôle minimum."),
     ("🟠 Prudent : + 5ᵉ ordre", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.0},
@@ -1780,7 +1780,7 @@ _TOL_LARGE = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}
 _TOL_IEM = {"2tx3": 0.150, "3tx3": 0.100, "5": 0.050, "7": 0.0}     # Shure PSM 1000 dans EazyRF
 _TOL_SLXD = {"2tx3": 0.200, "3tx3": 0.0, "5": 0.050, "7": 0.0}      # Shure SLX-D dans EazyRF (3 TX ignoré)
 _TOL_NONE = {"2tx3": 0.0, "3tx3": 0.0, "5": 0.0, "7": 0.0}          # Sennheiser EW-D / EW-DX : écart seulement
-_EZ = "Valeurs de la bibliothèque d'appareils EazyRF."
+_EZ = "Réglages de coordination courants pour ce modèle."
 RX_PROFILES = [
     ("wisycom", "Wisycom (MRK980, MTK952…) · filtre 32 MHz",
      dict(sep=0.500, filt=32.0, step=0.005, tol=_TOL_EZ, src="eazyrf"),
@@ -1791,7 +1791,7 @@ RX_PROFILES = [
     ("senn_ana", "Sennheiser analogique (2000, 3000, 5000)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
      "Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton "
-     "modèle : 📚 Bibliothèque EazyRF."),
+     "modèle : crée un profil perso."),
     ("senn_dig", "Sennheiser EW-D / EW-DX · filtre 32 MHz",
      dict(sep=0.600, filt=32.0, step=0.025, tol=_TOL_NONE, src="eazyrf"),
      _EZ + " Numérique : pas d'intermodulation comptée, écart 600 kHz."),
@@ -1810,7 +1810,7 @@ RX_PROFILES = [
     ("shure_ana", "Shure analogique (UR, BLX…)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_LARGE, src="guess"),
      "Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton "
-     "modèle : 📚 Bibliothèque EazyRF."),
+     "modèle : crée un profil perso."),
     ("shure_psm", "Shure PSM 900 · filtre 16 MHz",
      dict(sep=0.300, filt=16.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
      _EZ + " Écart 300 kHz, filtre 16 MHz."),
@@ -1819,7 +1819,7 @@ RX_PROFILES = [
      _EZ + " Écart 500 kHz, filtre 16 MHz, tolérances 150 / 100 / 50 kHz."),
     ("shure_adt", "Shure Axient Digital PSM (ADTQ / ADTD)",
      dict(sep=0.400, filt=0.0, step=0.025, tol=_TOL_IEM, src="guess"),
-     "Valeurs génériques prudentes. Pour les valeurs exactes : 📚 Bibliothèque EazyRF."),
+     "Valeurs génériques prudentes. Pour les valeurs exactes : crée un profil perso."),
     ("iem", "Sennheiser ew IEM G4 · filtre 32 MHz",
      dict(sep=0.450, filt=32.0, step=0.025, tol=_TOL_EZ, src="eazyrf"),
      _EZ + " Écart 450 kHz, filtre 32 MHz."),
@@ -1859,7 +1859,7 @@ def parse_lst4(data):
                              "5": num("Tolérance5e", 50.0) / 1000.0, "7": 0.0},
                         img=num("FréqImage", 0.0) if g("FréqImageDéfinie").lower() == "true" else 0.0))
     if not out:
-        raise ValueError("aucun appareil dans ce fichier (est-ce bien Appareils.lst4 d'EazyRF ?)")
+        raise ValueError("aucun appareil dans ce fichier (est-ce bien une bibliothèque .lst4 ?)")
     return out
 
 
@@ -1876,7 +1876,7 @@ def rx_from_library(dev):
     """Appareil de la bibliothèque -> profil perso (rx_custom_norm), avec sa plage de fréquences."""
     return dict(name=dev["name"], sep=dev["sep"], filt=dev["filt"], step=dev["step"], tol=dict(dev["tol"]),
                 lo=dev.get("lo", 0.0), hi=dev.get("hi", 0.0), src="eazyrf",
-                note=f"Bibliothèque EazyRF · {dev.get('type', '')} · {dev.get('lo', 0):g}–{dev.get('hi', 0):g} MHz")
+                note=f"Bibliothèque · {dev.get('type', '')} · {dev.get('lo', 0):g}–{dev.get('hi', 0):g} MHz")
 
 
 def _ez_num(x, dft=0.0):
@@ -2175,7 +2175,7 @@ def rx_custom_dump():
                  src=d.get("src", "perso"), **{k_: d[k_] for k_ in ("lo", "hi") if d.get(k_)}) for k, n, d, w in RX_CUSTOM]
 
 
-RX_SRC_TXT = {"eazyrf": "EazyRF", "guess": "générique", "perso": "ton profil"}
+RX_SRC_TXT = {"eazyrf": "courant", "guess": "générique", "perso": "ton profil"}
 
 
 def rx_help_html():
@@ -2188,12 +2188,12 @@ def rx_help_html():
         "<h3>Le filtre récepteur, c'est quoi ?</h3>"
         "<p>Chaque récepteur a, juste après l'antenne, un <b>filtre d'entrée</b> (présélection) : il ne laisse passer "
         "qu'une tranche du spectre autour de la fréquence réglée. Un Wisycom MRK980 a un filtre de <b>32 MHz</b> : "
-        "EazyRF prend en compte les émetteurs à <b>±32 MHz</b> autour de la fréquence (avec 16 MHz, pour une porteuse à 500 MHz : de 484 à 516 MHz).</p>"
+        "on prend en compte les émetteurs à <b>±32 MHz</b> autour de la fréquence (avec 16 MHz, pour une porteuse à 500 MHz : de 484 à 516 MHz).</p>"
         "<p><b>Pourquoi ça compte pour l'intermod ?</b> Un produit d'intermodulation (ex. 2A − B) est fabriqué "
         "dans l'<b>étage d'entrée du récepteur</b> à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à "
         "40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. "
-        "Donc, comme dans EazyRF : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
-        "filtre de son récepteur</b> (à ± la valeur du filtre, comme l'explique la doc d'EazyRF).</p>"
+        "Donc : <b>un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le "
+        "filtre de son récepteur</b> (à ± la valeur du filtre).</p>"
         "<ul><li>Le chiffre du filtre dit seulement <b>quelle tranche du spectre entre dans le récepteur</b>, donc "
         "combien d'émetteurs comptent dans le calcul (16 MHz en fait compter moins que 32 MHz). Il ne classe pas les "
         "récepteurs entre eux.</li>"
@@ -2209,7 +2209,7 @@ def rx_help_html():
         "<h3>Profils disponibles</h3>"
         "<table border=1 cellspacing=0 cellpadding=4><tr><th>Appareil</th><th>Filtre</th><th>Écart mini</th>"
         "<th>Pas</th><th>Source du filtre</th></tr>" + rows + "</table>"
-        "<p>« Valeur de départ » = pas vérifiée : si tu connais la valeur (profil EazyRF, doc du fabricant), crée un "
+        "<p>« Valeur de départ » = pas vérifiée : si tu connais la valeur (ton logiciel de coordination, doc du fabricant), crée un "
         "<b>profil perso</b> avec « ✏ Mes profils ». Le filtre d'un même appareil peut dépendre de sa bande "
         "(ex. groupe / banque A d'un evolution) : un profil perso par bande si besoin.</p>")
 
@@ -5465,7 +5465,7 @@ STEPS = (
       ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"), (None, None),
       ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
-    ("plan", "③ Coordonner le plan", "Compatibilité du plan comme EazyRF : écart entre porteuses et intermod,\n"
+    ("plan", "③ Coordonner le plan", "Compatibilité du plan (coordination simple) : écart entre porteuses et intermod,\n"
      "une remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.",
      (("🪄 Trouver N fréquences compatibles…", "open_coord"), ("🧮 Vérifier le plan…", "open_plan_check"),
       ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"))),
@@ -6491,7 +6491,7 @@ GLOSSARY = [
     ("Écart (séparation)", "La distance minimale entre deux porteuses pour qu'elles ne se gênent pas (ex. 300 à "
      "500 kHz selon les appareils)."),
     ("Filtre récepteur", "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. "
-     "16 MHz : les émetteurs à ±16 MHz comptent, comme dans EazyRF). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans "
+     "16 MHz : les émetteurs à ±16 MHz comptent). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans "
      "ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et "
      "les tolérances du profil."),
     ("Profil d'appareil", "Les réglages de coordination d'une marque / gamme (écart, filtre, tolérances, pas). "
@@ -8751,7 +8751,7 @@ class RangeBox(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         self.preset = QtWidgets.QComboBox()
         self.preset.setToolTip("Quelle partie du scan exporter. Une bande, la zone affichée sur le spectre, la plage d'un\n"
-                               "appareil (bibliothèque EazyRF), ou des valeurs à la main.")
+                               "appareil, ou des valeurs à la main.")
         self.preset.addItem("Tout le scan", None)
         try:
             vr = owner.spec.getPlotItem().vb.viewRange()[0]
@@ -9109,12 +9109,12 @@ class IntermodDialog(QtWidgets.QDialog):
             sp.setPrefix("± ")
             sp.setSpecialValueText("ignoré")            # 0 = ce type de produit n'est pas compté (comme EazyRF)
             sp.setToolTip(tip + "\nUn produit plus loin que ça de ta fréquence est accepté (comme les tolérances "
-                                "d'EazyRF).\n0 = « ignoré » : ce type de produit n'est pas compté du tout.")
+                                "des logiciels de coordination).\n0 = « ignoré » : ce type de produit n'est pas compté du tout.")
             self.tol_spins[key] = sp
         self.tol_combo = QtWidgets.QComboBox()
         fill_rules_combo(self.tol_combo)
         self.tol_combo.setToolTip("Quels produits comptent, et à quelle distance de ta fréquence (survole chaque choix).\n"
-                                  "Comme EazyRF = ses tolérances par défaut (2 TX 100 kHz, 3 TX 50 kHz).")
+                                  "Standard = les tolérances les plus courantes (2 TX 100 kHz, 3 TX 50 kHz).")
         self.tol_combo.currentIndexChanged.connect(lambda *_: self._tol_preset())
         self.filt_spin = QtWidgets.QDoubleSpinBox()
         self.filt_spin.setRange(0, 400)
@@ -9123,7 +9123,7 @@ class IntermodDialog(QtWidgets.QDialog):
         self.filt_spin.setSuffix(" MHz")
         self.filt_spin.setSpecialValueText("aucun")
         self.filt_spin.setValue(float(owner.plan_opts["filt"]))
-        self.filt_spin.setToolTip("Filtre d'entrée du récepteur (« Filtre » d'EazyRF, 32 MHz pour un Wisycom) : un "
+        self.filt_spin.setToolTip("Filtre d'entrée du récepteur (32 MHz pour un Wisycom) : un "
                                   "produit ne compte sur une fréquence\nque si tous ses émetteurs sont à ± la valeur du "
                                   "filtre autour d'elle. aucun = tous comptent.\nSans effet en « aucune cible ».")
         self._tol_preset()
@@ -9485,7 +9485,7 @@ class RescueDialog(QtWidgets.QDialog):
         info = QtWidgets.QLabel(
             "Cherche des fréquences libres d'après ce que le tinySA a mesuré (max hold), à bonne distance de tes "
             "émetteurs et sans intermodulation de 3ᵉ ordre avec eux. Aide de dépannage : ça ne remplace pas ta "
-            "coordination (EazyRF / WWB…). Vérifie que la fréquence est autorisée et compatible avec ton matériel "
+            "coordination (logiciel dédié). Vérifie que la fréquence est autorisée et compatible avec ton matériel "
             "avant de l'utiliser. Scanne bien la zone un moment avant de chercher.")
         info.setWordWrap(True)
         lay.addWidget(info)
@@ -9513,7 +9513,7 @@ class RescueDialog(QtWidgets.QDialog):
         self.sep_spin.setSingleStep(0.05)
         self.sep_spin.setValue(0.30)
         self.sep_spin.setSuffix(" MHz")
-        self.sep_spin.setToolTip("Écart minimal avec tes autres fréquences (300 kHz EazyRF · 350 kHz WWB).")
+        self.sep_spin.setToolTip("Écart minimal avec tes autres fréquences (souvent 300 à 500 kHz selon l'appareil).")
         self.guard_spin = QtWidgets.QDoubleSpinBox()
         self.guard_spin.setDecimals(3)
         self.guard_spin.setRange(0.005, 5.0)
@@ -9522,7 +9522,7 @@ class RescueDialog(QtWidgets.QDialog):
         self.guard_spin.setPrefix("± ")
         self.guard_spin.setSuffix(" MHz")
         self.guard_spin.setToolTip("Tolérance d'intermodulation 3ᵉ ordre 2 TX (2A − B) avec tes fréquences ;\n"
-                                   "la moitié pour les 3 TX (A + B − C). 100 kHz = défaut 2 TX d'EazyRF.")
+                                   "la moitié pour les 3 TX (A + B − C). 100 kHz = valeur courante pour les 2 TX.")
         self.thr_spin = QtWidgets.QDoubleSpinBox()
         self.thr_spin.setRange(-130, 0)
         self.thr_spin.setValue(owner.weak_spin.value() if owner.weak_chk.isChecked() else owner.thr_spin.value() - 10)
@@ -9540,7 +9540,7 @@ class RescueDialog(QtWidgets.QDialog):
         self.filt_spin.setValue(float(owner.plan_opts.get("filt", 32.0)))
         self.filt_spin.setSuffix(" MHz")
         self.filt_spin.setSpecialValueText("aucun")
-        self.filt_spin.setToolTip("Filtre du récepteur (comme EazyRF) : seuls les émetteurs à ± la valeur du filtre\nautour de la "
+        self.filt_spin.setToolTip("Filtre du récepteur : seuls les émetteurs à ± la valeur du filtre\nautour de la "
                                   "fréquence comptent pour l'intermod. 0 = aucun filtre (tous comptent).")
         self.src_combo = QtWidgets.QComboBox()
         self.src_combo.addItem("Éviter : toute la liste", "all")
@@ -10327,10 +10327,10 @@ class EzrfImportDialog(QtWidgets.QDialog):
         self.prof = QtWidgets.QCheckBox("Créer les profils d'appareil avec les réglages du plan (écart, filtre, "
                                         "tolérances, pas)")
         self.prof.setChecked(True)
-        self.prof.setToolTip("Chaque appareil d'EazyRF devient un profil perso, posé sur son groupe : Vérifier le "
-                             "plan et Coordonner jugent alors avec les mêmes règles qu'EazyRF.")
+        self.prof.setToolTip("Chaque appareil du plan devient un profil perso, posé sur son groupe : Vérifier le "
+                             "plan et Coordonner utilisent alors ses réglages (écart, filtre, tolérances).")
         if not any("sep" in p for p in doc["devices"].values()):
-            self.prof.setText("Relier les appareils à mes profils ou à la bibliothèque EazyRF (même nom)")
+            self.prof.setText("Relier les appareils à mes profils (même nom)")
         lay.addWidget(self.prof)
         self.skip = QtWidgets.QCheckBox(f"Ignorer les fréquences rayées / hors fonction ({n_off})")
         self.skip.setChecked(True)
@@ -10403,12 +10403,12 @@ class RxProfileEdit(QtWidgets.QDialog):
             sp.setValue(v)
             sp.setToolTip(tip)
             return sp
-        self.filt = spin(prof.get("filt", 16.0), 0, 400, 4, " MHz", "Filtre d'entrée du récepteur (« Filtre » d'EazyRF). "
+        self.filt = spin(prof.get("filt", 16.0), 0, 400, 4, " MHz", "Filtre d'entrée du récepteur. "
                          "0 = aucun : tous les émetteurs comptent.", "aucun")
         self.sep = spin(prof.get("sep", 0.4) * 1000, 0, 10000, 25, " kHz", "Écart minimal entre deux porteuses "
-                        "(« Séparation » d'EazyRF).")
+                        "(« Séparation »).")
         self.step = spin(prof.get("step", 0.025) * 1000, 1, 1000, 5, " kHz", "Pas de réglage de l'appareil "
-                         "(« Incrément » d'EazyRF).")
+                         "(« Incrément »).")
         t = prof.get("tol") or _TOL_EZ
         self.tol = {k: spin(t.get(k, 0.0) * 1000, 0, 2000, 10, " kHz", tip, "ignoré")
                     for k, tip in (("2tx3", "Tolérance 2 TX (2A − B). 0 = ignoré."),
@@ -10421,7 +10421,7 @@ class RxProfileEdit(QtWidgets.QDialog):
         f.addRow("A + B − C :", self.tol["3tx3"])
         f.addRow("5ᵉ ordre :", self.tol["5"])
         self.note = QtWidgets.QLineEdit(prof.get("note", ""))
-        self.note.setPlaceholderText("ex. valeurs de mon profil EazyRF")
+        self.note.setPlaceholderText("ex. valeurs de mon logiciel de coordination")
         self.note.setToolTip("Note affichée en bulle dans les listes.")
         f.addRow("Note :", self.note)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -10437,17 +10437,22 @@ class RxProfileEdit(QtWidgets.QDialog):
                     note=self.note.text().strip() or "Profil perso.")
 
 
+COORD_NOTE = ("⚠ Coordination BASIQUE, pour vérifier et dépanner sur place à partir du spectre mesuré : elle ne "
+              "remplace pas un logiciel de coordination. Pour construire ton plan, utilise un outil dédié, bien plus "
+              "complet (EazyRF, Shure WWB, Sennheiser WSM, Soundbase…), puis importe-le ici pour le surveiller.")
+TRADEMARKS = ("TinySA Monitor n'est ni affilié ni approuvé par les éditeurs de ces logiciels ; leurs noms (marques de "
+              "leurs propriétaires) servent seulement à dire avec quels fichiers il est compatible.")
+
+
 def coord_note():
     """Rappel en tête des outils de coordination : TinySA Monitor fait une coordination SIMPLE (vérifier, dépanner sur
     place) ; un vrai plan complet se construit dans un logiciel dédié (demande de Clément)."""
-    lab = QtWidgets.QLabel("ℹ Coordination simple, pour vérifier et dépanner sur place à partir du spectre mesuré. "
-                           "Pour construire un plan complet (beaucoup d'appareils, fréquences image, exports vers les "
-                           "récepteurs), utilise un logiciel de coordination dédié : EazyRF, Soundbase, Shure WWB, "
-                           "Sennheiser WSM.")
+    lab = QtWidgets.QLabel(COORD_NOTE)
     lab.setWordWrap(True)
-    lab.setStyleSheet("color: gray; font-size: 90%;")
+    lab.setStyleSheet("color:#d29922; font-size: 90%;")
     lab.setToolTip("TinySA Monitor reste un moniteur : ses calculs reprennent les règles de base (écart, intermod "
-                   "3ᵉ / 5ᵉ ordre,\nfiltre du récepteur), pas tout ce que fait un logiciel de coordination.")
+                   "3ᵉ / 5ᵉ ordre,\nfiltre du récepteur), pas tout ce que fait un logiciel de coordination.\n"
+                   + TRADEMARKS)
     return lab
 
 
@@ -10459,12 +10464,12 @@ class RxLibraryDialog(QtWidgets.QDialog):
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
-        self.setWindowTitle("Bibliothèque d'appareils (EazyRF)")
+        self.setWindowTitle("Bibliothèque d'appareils (.lst4)")
         lay = QtWidgets.QVBoxLayout(self)
         self.head = QtWidgets.QLabel("")
         self.head.setWordWrap(True)
         b_imp = QtWidgets.QPushButton("📥 Importer Appareils.lst4…")
-        b_imp.setToolTip("Le fichier de la bibliothèque d'appareils d'EazyRF (dans le dossier d'EazyRF).")
+        b_imp.setToolTip("Un fichier de bibliothèque d'appareils (.lst4) déjà présent sur ce PC.")
         b_imp.clicked.connect(lambda *_: self.import_file())
         lay.addLayout(owner._row(self.head, None, b_imp))
         self.q = QtWidgets.QLineEdit()
@@ -10497,7 +10502,7 @@ class RxLibraryDialog(QtWidgets.QDialog):
     def fill(self):
         lib = self.owner.rx_library()
         self.head.setText(f"{len(lib)} appareils dans la bibliothèque." if lib else
-                          "Pas encore de bibliothèque : importe le fichier « Appareils.lst4 » d'EazyRF.")
+                          "Pas encore de bibliothèque : importe un fichier .lst4.")
         self.rows = rx_library_find(lib, self.q.text())
         self.table.setRowCount(len(self.rows))
         for r, d in enumerate(self.rows):
@@ -10512,8 +10517,8 @@ class RxLibraryDialog(QtWidgets.QDialog):
 
     def import_file(self, path=None):
         if path is None:
-            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Bibliothèque d'appareils EazyRF", "",
-                                                            "EazyRF (*.lst4 *.xml);;Tous les fichiers (*)")
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Bibliothèque d'appareils (.lst4)", "",
+                                                            "Bibliothèque (*.lst4 *.xml);;Tous les fichiers (*)")
             if not path:
                 return
         try:
@@ -10583,9 +10588,9 @@ class RxProfilesDialog(QtWidgets.QDialog):
         b_help = QtWidgets.QPushButton("❓ Le filtre, c'est quoi ?")
         b_help.setToolTip("Explication du filtre récepteur et de chaque réglage.")
         b_help.clicked.connect(lambda *_: show_filter_help(self))
-        b_lib = QtWidgets.QPushButton("📚 Bibliothèque EazyRF…")
-        b_lib.setToolTip("Importer la bibliothèque d'appareils d'EazyRF et y prendre les vraies valeurs de ton\n"
-                         "matériel (écart, filtre, tolérances, plage).")
+        b_lib = QtWidgets.QPushButton("📚 Bibliothèque (.lst4)…")
+        b_lib.setToolTip("Mode expert : lire un fichier de bibliothèque d'appareils (.lst4) déjà présent sur ce PC.")
+        b_lib.setVisible(bool(getattr(owner, "expert", False)))          # caché sauf en mode expert
         b_lib.clicked.connect(lambda *_: (RxLibraryDialog(owner).exec(), self.refresh()))
         close = QtWidgets.QPushButton("Fermer")
         close.setToolTip("Ferme la fenêtre.")
@@ -10668,7 +10673,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         lay = QtWidgets.QVBoxLayout(self)
         lay.addWidget(coord_note())
         info = QtWidgets.QLabel(
-            "Comme le calcul de plan d'EazyRF : pour chaque fréquence, est-elle trop près d'une autre (écart entre "
+            "Coordination simple : pour chaque fréquence, est-elle trop près d'une autre (écart entre "
             "porteuses), et un produit d'intermod de tes émetteurs tombe-t-il dessus (selon les tolérances) ? C'est un "
             "calcul, sans mesure. Les « doit rester libre » (réserves) sont protégées mais ne comptent pas comme "
             "émetteurs. Choisis une fréquence ✗ puis « Proposer » pour une remplaçante compatible.")
@@ -10687,7 +10692,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.sep_spin.setValue(int(po["sep"]))
         self.sep_spin.setSuffix(" kHz")
         self.sep_spin.setToolTip("Écart minimal entre deux porteuses (bord à bord pour un bloc large).\n"
-                                 "« Séparation » dans un profil d'appareil EazyRF (500 kHz pour un Wisycom MRK980).")
+                                 "« Séparation » d'un profil d'appareil (500 kHz pour un Wisycom MRK980).")
         self.filt_spin = QtWidgets.QDoubleSpinBox()
         self.filt_spin.setRange(0, 400)
         self.filt_spin.setDecimals(0)
@@ -10695,7 +10700,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.filt_spin.setSuffix(" MHz")
         self.filt_spin.setSpecialValueText("aucun")
         self.filt_spin.setValue(float(po["filt"]))
-        self.filt_spin.setToolTip("Largeur du filtre d'entrée du récepteur (« Filtre » dans un profil EazyRF : 32 MHz "
+        self.filt_spin.setToolTip("Largeur du filtre d'entrée du récepteur (« Filtre » d'un profil d'appareil : 32 MHz "
                                   "pour un Wisycom MRK980).\nUn produit d'intermod ne gêne une fréquence que si TOUS ses "
                                   "émetteurs sont à ± la valeur du filtre\nautour d'elle : les émetteurs plus loin sont "
                                   "coupés par le filtre du récepteur.\naucun (0) = tous les émetteurs comptent (plus strict).")
@@ -10703,17 +10708,17 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.step_spin.setRange(1, 1000)
         self.step_spin.setSuffix(" kHz")
         self.step_spin.setValue(int(po["step"]))
-        self.step_spin.setToolTip("Pas des fréquences proposées (« Incrément » dans EazyRF) : le pas réglable de tes "
+        self.step_spin.setToolTip("Pas des fréquences proposées (« Incrément ») : le pas réglable de tes "
                                   "appareils.\n5 kHz pour un Wisycom MRK980, 25 kHz pour un MTK952.")
         self.prof_combo = QtWidgets.QComboBox()
         fill_rx_combo(self.prof_combo, "✏ Réglages ci-dessous")
-        self.prof_combo.setToolTip("Appareil par défaut : remplit écart, filtre, pas et tolérances (valeurs de la "
-                                   "bibliothèque EazyRF).\nLes fréquences avec leur propre appareil (colonne « Appareil ») "
-                                   "gardent le leur.\nTous tes modèles : 🎛 Profils d'appareil › 📚 Bibliothèque EazyRF.")
+        self.prof_combo.setToolTip("Appareil par défaut : remplit écart, filtre, pas et tolérances.\nLes fréquences "
+                                   "avec leur propre appareil (colonne « Appareil ») gardent le leur.\nTous tes "
+                                   "modèles : 🎛 Profils d'appareil.")
         self.tol_combo = QtWidgets.QComboBox()
         fill_rules_combo(self.tol_combo)
         self.tol_combo.setToolTip("Quelle sévérité ? Survole chaque choix pour l'explication.\n"
-                                  "Comme EazyRF = ses tolérances par défaut (2 TX 100 kHz, 3 TX 50 kHz).")
+                                  "Standard = les tolérances les plus courantes (2 TX 100 kHz, 3 TX 50 kHz).")
         self.tol_spins = {}
         for key in ("2tx3", "3tx3", "5"):
             sp = QtWidgets.QSpinBox()
@@ -15801,7 +15806,7 @@ class CoordDialog(QtWidgets.QDialog):
         ix = self.prof.findData("wisycom")
         self.prof.setCurrentIndex(max(0, ix))
         self.prof.setToolTip("Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.\n"
-                             "Un appareil de la bibliothèque EazyRF règle aussi la plage « De … à ».")
+                             "Un profil d'appareil avec une plage règle aussi « De … à ».")
         self.prof.currentIndexChanged.connect(lambda *_: self._range_from_prof())
         self.n_spin = QtWidgets.QSpinBox()
         self.n_spin.setRange(1, 64)
@@ -17087,12 +17092,12 @@ class MainWindow(QtWidgets.QMainWindow):
     TIPS_MENU = {
         "🔗 Plan EazyRF suivi": "Le .ezrf3 importé avec « Suivre ce fichier » : à chaque réenregistrement dans EazyRF,\n"
                                "l'appli propose les fréquences ajoutées, modifiées ou retirées.",
-        "📸 États": "Comme les Snapshots d'EazyRF : plusieurs plans (artistes, scènes, jours) dans le même show ;\n"
+        "📸 États": "Plusieurs plans (artistes, scènes, jours) dans le même show ;\n"
                    "un clic bascule de l'un à l'autre, les fréquences hors de l'état passent en pause.",
         "📖 Manuel": "Le manuel complet (s'ouvre dans ton navigateur, marche hors ligne).",
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
-        "🧮 Vérifier le plan": "Comme EazyRF : écart entre porteuses et intermod selon des tolérances, un verdict\n"
+        "🧮 Vérifier le plan": "Coordination simple : écart entre porteuses et intermod selon des tolérances, un verdict\n"
                                "par fréquence, et une fréquence de remplacement compatible.",
         "🎛 Profils d'appareil": "Filtre récepteur, écart, pas et tolérances par appareil (Wisycom, Shure, Sennheiser…),\n"
                                 "et tes profils perso. ❓ explique ce que change le filtre.",
@@ -17119,7 +17124,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
-        "📐 Plan de fréquences": "Préparer : vérifier le plan (comme EazyRF), intermodulation, profils d'appareil,\n"
+        "📐 Plan de fréquences": "Préparer : vérifier le plan (coordination simple), intermodulation, profils d'appareil,\n"
                                 "blocs Spectera / WMAS.",
         "📋 Liste de fréquences": "Nommer, numéroter, vocabulaire, exporter la liste par scène / groupe.",
         "📊 Scans et rapports": "Rapport de show, scans WSM / WWB (référence, conversion, export).",
@@ -18100,7 +18105,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.state_btn = QtWidgets.QToolButton()
         self.state_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         self.state_btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, self.state_btn.sizePolicy().verticalPolicy())
-        self.state_btn.setToolTip("📸 État actif (comme les Snapshots d'EazyRF) : un clic pour basculer de plan.\n"
+        self.state_btn.setToolTip("📸 État actif : un clic pour basculer de plan.\n"
                                   "Les fréquences hors de l'état passent en pause (pas d'alarme, pas d'intermod).")
         self.state_menu = QtWidgets.QMenu(self.state_btn)
         self.state_menu.aboutToShow.connect(self._build_state_menu)
@@ -23318,7 +23323,8 @@ class MainWindow(QtWidgets.QMainWindow):
             f"<b>{APP_NAME}</b> version <b>{APP_VER}</b><br>"
             f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()}<br><br>"
             f"tinySA : {fw}{fw2}<br><br>"
-            f"Config : {CFG_PATH}<br>Journaux : {self.log_dir}")
+            f"Config : {CFG_PATH}<br>Journaux : {self.log_dir}<br><br>"
+            f"<small>{COORD_NOTE}<br>{TRADEMARKS}</small>")
 
     def set_watch_freq(self, w, v):
         """Change la fréquence d'une ligne (mesures remises à zéro, liste retriée)."""
