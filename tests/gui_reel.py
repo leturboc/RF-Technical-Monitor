@@ -1296,6 +1296,49 @@ win.watch, win.scenes, win.site_scans = _ez_saved[0], _ez_saved[1], _ez_saved[2]
 m.rx_set_custom(_ez_saved[3])
 win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers(); win.update_site_curve(); win.undo_track()
 
+# 📸 États (Snapshots d'EazyRF, demande de Clément 7.37)
+_sv = (list(win.states), win.state_cur)
+_on = [s_["name"] for s_ in win.statuses if s_.get("on")][0]
+_w_all = list(win.watch)
+_kA = {int(round(w_["freq"] * 1000)) for w_ in _w_all[:2]}
+win.apply_state("")
+win.new_state("Artiste A")
+check("état : créé avec toutes les fréquences actives", win.state_cur == "Artiste A"
+      and len(win.states[-1]["keys"]) == len(win.watch))
+win.states[-1]["keys"] = sorted(_kA)
+_w_all[-1]["iso"] = True
+_noff = win.apply_state("Artiste A")
+check("état : les autres en pause, sauf la « toujours »", _noff == len(_w_all) - 3
+      and not _w_all[0].get("off") and not _w_all[-1].get("off") and _w_all[2].get("off"), str(_noff))
+check("état : « 💤 en pause (état) » dans la liste", win.sig_view(_w_all[2])[0] == "💤 en pause (état)")
+check("état : bouton « 📸 Artiste A »", win.state_btn.text() == "📸 Artiste A", win.state_btn.text())
+_cf = win._collect_config(False)
+check("état : enregistré dans le show", _cf["state_cur"] == "Artiste A" and any(x["name"] == "Artiste A" for x in _cf["states"])
+      and any(x.get("iso") for x in _cf["watch"]))
+_k_old = int(round(_w_all[0]["freq"] * 1000))
+win.set_watch_freq(_w_all[0], _w_all[0]["freq"] + 0.0125)
+check("état : une fréquence déplacée reste dans son état", int(round(_w_all[0]["freq"] * 1000)) in win.states[-1]["keys"]
+      and _k_old not in win.states[-1]["keys"])
+win.set_watch_freq(_w_all[0], _k_old / 1000.0)
+def _st_act(d):
+    check("états : fenêtre (liste + tableau)", d.lst.count() >= 1 and d.tbl.rowCount() == len(win.watch))
+    d.check_all(True)
+    check("états : tout cocher → plus rien en pause", not any(w_.get("off") for w_ in win.watch))
+    d.duplicate()
+    check("états : dupliquer", win.state_by_name("Artiste A (2)") is not None)
+    d.lst.setCurrentRow(len(win.states) - 1)
+    d.delete()
+    check("états : supprimer", win.state_by_name("Artiste A (2)") is None)
+    return "reject"
+DLG_ACTION[0] = _st_act
+step("fenêtre des états", win.open_states)
+DLG_ACTION[0] = "reject"
+check("tech : basculer d'état", win.tech_do(dict(action="state", name="")) == "📸 tout actif" and win.state_cur == "")
+check("tech : état inconnu refusé", "inconnu" in win.tech_do(dict(action="state", name="Nope")))
+_w_all[-1].pop("iso", None)
+win.states, win.state_cur = _sv[0], ""
+win.apply_state(_sv[1])
+
 # Vue : créer / réactiver une bande sans passer par ⚙ (demande de Clément 7.31)
 _vi = [win.view_combo.itemData(i) for i in range(win.view_combo.count())]
 check("Vue : « ＋ Nouvelle bande » et « Gérer les bandes » proposés", "__add__" in _vi and "__manage__" in _vi, str(_vi))

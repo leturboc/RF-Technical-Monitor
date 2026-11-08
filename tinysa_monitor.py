@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.36.0"
+APP_VER = "7.37.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3222,7 +3222,8 @@ SHOW_EXT = ".tsashow"
 SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_on", "strong_thr",
              "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
-             "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx")
+             "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx", "states",
+             "state_cur")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -4105,7 +4106,7 @@ function mount(v){const el=$("#view");
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
   $("#hrs").onclick=()=>hunt("reset");return}
- if(v==="tech"){el.innerHTML=`<div id="tlog" class="hb hidden"><b>🛠 Accès Tech</b><div class="sub">Réservé à l’équipe HF : mot de passe Tech, puis accord sur le PC de surveillance.</div><div class="tools"><input class="in" id="tpw" type="password" placeholder="Mot de passe Tech" autocomplete="current-password"><button class="btn pri" id="tgo" style="width:auto;margin:0">Demander l’accès</button></div><div class="sub" id="terr"></div></div><div id="twait" class="hb hidden"><b>⏳ En attente</b><div class="sub">Accepte la demande sur le PC de surveillance (fenêtre « Accès Tech »).</div></div><div id="toff" class="hb hidden"><div class="sub">Page Tech désactivée : règle un mot de passe Tech sur le PC (🔔 Alertes et page web).</div></div><div id="tapp" class="hidden"><div class="tools"><b id="trun"></b><button class="btn pri" id="tstart" style="width:auto;margin:0">▶ Démarrer</button><button class="btn" id="tstop">■ Arrêter</button><button class="btn" id="tsnz">🔕 Silence 15 min</button><button class="btn" id="tack">✔ Tout acquitter</button><button class="btn" id="tsave">💾 Enregistrer</button><button class="btn" id="tout">Quitter Tech</button></div><div class="mut" id="tmsg2" style="margin-bottom:12px"></div><div class="tools"><b>Seuils</b><label class="sw">Occupé au-dessus de <input class="in" id="tocc" type="number" step="1" style="width:90px;min-width:0;flex:none"> dBm</label><label class="sw"><input type="checkbox" id="twon"> Faible dès</label><input class="in" id="twk" type="number" step="1" style="width:90px;min-width:0;flex:none"><label class="sw">TX absent après <input class="in" id="tabs" type="number" step="1" style="width:80px;min-width:0;flex:none"> s</label><button class="btn" id="tthr">Appliquer</button></div><div class="tools"><b>📡 Mes tinySA</b></div><div class="alist" id="tdevs"></div><div class="tools"><b>📋 Fréquences</b><input class="in" id="tq" placeholder="Chercher…"></div><div class="alist" id="tws"></div><div class="tools"><b>＋ Ajouter</b><input class="in" id="tan" placeholder="Nom"><input class="in" id="taf" type="text" inputmode="decimal" placeholder="MHz" style="max-width:130px"><select class="in" id="tast"></select><input class="in" id="tasc" placeholder="Scène"><input class="in" id="tagr" placeholder="Groupe"><button class="btn pri" id="tadd" style="width:auto;margin:0">Ajouter</button></div><div class="tools"><b>👥 Connectés</b></div><div class="alist" id="tcl"></div></div>`;
+ if(v==="tech"){el.innerHTML=`<div id="tlog" class="hb hidden"><b>🛠 Accès Tech</b><div class="sub">Réservé à l’équipe HF : mot de passe Tech, puis accord sur le PC de surveillance.</div><div class="tools"><input class="in" id="tpw" type="password" placeholder="Mot de passe Tech" autocomplete="current-password"><button class="btn pri" id="tgo" style="width:auto;margin:0">Demander l’accès</button></div><div class="sub" id="terr"></div></div><div id="twait" class="hb hidden"><b>⏳ En attente</b><div class="sub">Accepte la demande sur le PC de surveillance (fenêtre « Accès Tech »).</div></div><div id="toff" class="hb hidden"><div class="sub">Page Tech désactivée : règle un mot de passe Tech sur le PC (🔔 Alertes et page web).</div></div><div id="tapp" class="hidden"><div class="tools"><b id="trun"></b><button class="btn pri" id="tstart" style="width:auto;margin:0">▶ Démarrer</button><button class="btn" id="tstop">■ Arrêter</button><button class="btn" id="tsnz">🔕 Silence 15 min</button><button class="btn" id="tack">✔ Tout acquitter</button><button class="btn" id="tsave">💾 Enregistrer</button><button class="btn" id="tout">Quitter Tech</button></div><div class="tools hidden" id="tstb"><b>📸 État</b><select class="in" id="tstate"></select></div><div class="mut" id="tmsg2" style="margin-bottom:12px"></div><div class="tools"><b>Seuils</b><label class="sw">Occupé au-dessus de <input class="in" id="tocc" type="number" step="1" style="width:90px;min-width:0;flex:none"> dBm</label><label class="sw"><input type="checkbox" id="twon"> Faible dès</label><input class="in" id="twk" type="number" step="1" style="width:90px;min-width:0;flex:none"><label class="sw">TX absent après <input class="in" id="tabs" type="number" step="1" style="width:80px;min-width:0;flex:none"> s</label><button class="btn" id="tthr">Appliquer</button></div><div class="tools"><b>📡 Mes tinySA</b></div><div class="alist" id="tdevs"></div><div class="tools"><b>📋 Fréquences</b><input class="in" id="tq" placeholder="Chercher…"></div><div class="alist" id="tws"></div><div class="tools"><b>＋ Ajouter</b><input class="in" id="tan" placeholder="Nom"><input class="in" id="taf" type="text" inputmode="decimal" placeholder="MHz" style="max-width:130px"><select class="in" id="tast"></select><input class="in" id="tasc" placeholder="Scène"><input class="in" id="tagr" placeholder="Groupe"><button class="btn pri" id="tadd" style="width:auto;margin:0">Ajouter</button></div><div class="tools"><b>👥 Connectés</b></div><div class="alist" id="tcl"></div></div>`;
   techMount();return}
  if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📈 Ce que voit le tinySA</b><label class="sw"><input type="checkbox" id="rm" checked> Rémanence</label><label class="sw"><input type="checkbox" id="mk"> Mes fréquences</label><select class="in" id="tmh"></select></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
   $("#td").onchange=()=>{$("#tsc").dataset.k="";$("#tsc").dataset.dirty="";update(v)};
@@ -4190,7 +4191,8 @@ function techMount(){$("#tgo").onclick=tlogin;$("#tpw").onkeydown=e=>{if(e.key==
  $("#tthr").onclick=()=>{$("#tthr").dataset.dirty="";tcmd({action:"thr",occ:+$("#tocc").value,weak:+$("#twk").value,weak_on:$("#twon").checked,absent:+$("#tabs").value})};
  $("#tadd").onclick=()=>{const f=parseFloat(($("#taf").value||"").replace(",","."));if(!f){alert("Fréquence en MHz ?");return}
   tcmd({action:"watch_add",name:$("#tan").value,freq:f,status:$("#tast").value,scene:$("#tasc").value,group:$("#tagr").value});$("#tan").value="";$("#taf").value=""};
- $("#tq").oninput=()=>{$("#tws").dataset.k="";techUpdate()}}
+ $("#tq").oninput=()=>{$("#tws").dataset.k="";techUpdate()};
+ $("#tstate").onchange=()=>{const v=$("#tstate").value;$("#tstate").dataset.k="";tcmd({action:"state",name:v})}}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-tdel],[data-ted],[data-tid]");if(!b||mounted!=="tech")return;
  if(b.dataset.tdel){if(confirm("Retirer « "+b.dataset.n+" » de la liste ?"))tcmd({action:"watch_del",key:+b.dataset.tdel})}
  else if(b.dataset.ted){const n=prompt("Nom :",b.dataset.n);if(n==null)return;const f=prompt("Fréquence (MHz) :",b.dataset.f);if(f==null)return;
@@ -4205,6 +4207,8 @@ function techUpdate(){const sh=(id,on)=>$(id).classList.toggle("hidden",!on);
  const T=TJ,act=(document.activeElement||{}).id||"",inside=id=>document.activeElement&&$(id).contains(document.activeElement);
  $("#trun").textContent=(T.running?"● en surveillance":"○ arrêté")+(T.snooze?" · 🔕 "+Math.ceil(T.snooze/60)+" min":"")+(T.show?" · "+T.show:"");
  $("#tmsg2").textContent=T.msg||"";
+ const sts=T.states||[],sk=JSON.stringify([sts,T.state_cur]);$("#tstb").classList.toggle("hidden",!sts.length);
+ if($("#tstate").dataset.k!==sk&&act!=="tstate"){$("#tstate").dataset.k=sk;$("#tstate").innerHTML=`<option value="">Tout actif</option>`+sts.map(x=>`<option${x===T.state_cur?" selected":""}>${esc(x)}</option>`).join("")}
  if(!$("#tthr").dataset.dirty&&!["tocc","twk","tabs"].includes(act)){$("#tocc").value=Math.round(T.thr.occ);$("#twk").value=Math.round(T.thr.weak);$("#twon").checked=T.thr.weak_on;$("#tabs").value=T.thr.absent}
  const so=`<option value="">(aucun statut)</option>`+T.statuses.map(x=>`<option>${esc(x.name)}</option>`).join("");
  const ta=$("#tast");if(ta.dataset.k!==so){const v=ta.value;ta.innerHTML=so;ta.dataset.k=so;ta.value=v}
@@ -5452,6 +5456,7 @@ STEPS = (
     ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
      "alertes sur téléphone.",
      (("▶ Démarrer la surveillance", "step_monitor"), ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
+      ("📸 États (basculer de plan d'un clic)…", "open_states"),
       ("🎤 Appel des micros (line check)…", "open_linecheck"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🆘 Fréquence de secours…", "open_rescue"),
@@ -5868,7 +5873,7 @@ def snapshot_name(scene, label, existing, hhmm):
 
 
 TECH_ACTIONS = ("run", "snooze", "ack_all", "thr", "watch_add", "watch_edit", "watch_del", "dev_scenes", "identify",
-                "save")
+                "save", "state")
 
 
 def tech_request(req):
@@ -5908,6 +5913,8 @@ def tech_request(req):
         if a == "watch_edit":
             out.update(freq=num("freq", 1, 7000, True), name=txt("name", 40) if "name" in req else None,
                        status=txt("status", 30) if "status" in req else None)
+    elif a == "state":
+        out["name"] = txt("name", 40)
     elif a in ("dev_scenes", "identify"):
         out["dev"] = int(num("dev", 0, 7))
         if a == "dev_scenes":
@@ -6281,6 +6288,36 @@ def diversity_share(srcs, ndev=2):
             tot[d] += np.count_nonzero(s_ == d)
     n = tot.sum()
     return [round(float(x) * 100.0 / n) for x in tot] if n else [0] * ndev
+
+
+def states_norm(lst):
+    """📸 États (façon Snapshots d'EazyRF) lus de la config / d'un show -> [{name, keys}] : noms uniques, clés = fréquences
+    actives en kHz (entiers), 30 états au plus."""
+    out, seen = [], set()
+    for x in (lst if isinstance(lst, list) else []):
+        if not isinstance(x, dict):
+            continue
+        name = re.sub(r"\s+", " ", str(x.get("name") or "")).strip()[:40]
+        if not name or name.lower() in seen:
+            continue
+        keys = set()
+        for k in (x.get("keys") if isinstance(x.get("keys"), list) else []):
+            try:
+                k = int(k)
+            except (TypeError, ValueError):
+                continue
+            if 1000 <= k <= 7000000:
+                keys.add(k)
+        seen.add(name.lower())
+        out.append(dict(name=name, keys=sorted(keys)))
+        if len(out) >= 30:
+            break
+    return out
+
+
+def state_off(state_keys, all_keys, iso_keys=()):
+    """Fréquences mises en pause par un état : toutes sauf celles de l'état et les « toujours actives » (ISO)."""
+    return set(all_keys) - set(state_keys) - set(iso_keys)
 
 
 def dev_ord(d):
@@ -10693,7 +10730,8 @@ class PlanCheckDialog(QtWidgets.QDialog):
     def _params(self):
         o = self.owner
         o.plan_opts.update(sep=self.sep_spin.value(), filt=self.filt_spin.value(), step=self.step_spin.value())
-        ws = [w for w in o.watch if self.src_combo.currentData() == "all" or o.in_scope(w)]
+        ws = [w for w in o.watch if (self.src_combo.currentData() == "all" or o.in_scope(w))
+              and not w.get("off")]                  # 📸 en pause dans l'état actif : n'émet pas
         dflt = dict(sep=self.sep_spin.value() / 1000.0, filt=self.filt_spin.value(), tol=self.tolerances(),
                     step=self.step_spin.value() / 1000.0)
         P = [rx_profile(o.rx_of(w)) or dflt for w in ws]            # appareil de chaque fréquence (ou de son groupe)
@@ -12679,6 +12717,224 @@ class HuntDialog(QtWidgets.QDialog):
         if self.owner._hunt is self:
             self.owner._hunt = None
         super().done(r)
+
+
+class StatesDialog(QtWidgets.QDialog):
+    """📸 États (comme les Snapshots d'EazyRF) : plusieurs plans dans le même show (artistes, scènes, jours). Un état =
+    les fréquences actives ; les autres passent en pause (pas d'alarme, hors du calcul d'intermod). « 🔒 Toujours » =
+    active dans tous les états (mode ISO d'EazyRF : intercom, talkies…)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("📸 États")
+        self.resize(820, 560)
+        lay = QtWidgets.QVBoxLayout(self)
+        hint = QtWidgets.QLabel("Un état = les fréquences qui jouent ensemble (un artiste, une scène, un jour). ▶ Activer : "
+                                "celles de l'état sont surveillées, les autres passent en pause (pas d'alarme, pas comptées "
+                                "dans l'intermod). « 🔒 Toujours » : active quel que soit l'état (intercom, talkies…).")
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+        sp = QtWidgets.QSplitter()
+        left = QtWidgets.QWidget()
+        ll = QtWidgets.QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setToolTip("Les états du show. Double-clic = l'activer. Suppr = le supprimer.")
+        self.lst.currentRowChanged.connect(lambda *_: self.fill_table())
+        self.lst.itemDoubleClicked.connect(lambda *_: self.activate())
+        del_key(self.lst, self.delete)
+        ll.addWidget(self.lst, 1)
+        bn = QtWidgets.QPushButton("＋ Nouveau (fréquences actives)")
+        bn.setToolTip("Crée un état avec les fréquences surveillées en ce moment.")
+        bn.clicked.connect(lambda *_: self.new())
+        bd = QtWidgets.QPushButton("⧉ Dupliquer")
+        bd.setToolTip("Copie l'état choisi (pratique pour un artiste proche du précédent).")
+        bd.clicked.connect(lambda *_: self.duplicate())
+        br = QtWidgets.QPushButton("Renommer…")
+        br.setToolTip("Renomme l'état choisi.")
+        br.clicked.connect(lambda *_: self.rename())
+        bx = QtWidgets.QPushButton("Supprimer")
+        bx.setToolTip("Supprime l'état choisi (les fréquences restent dans la liste).")
+        bx.clicked.connect(lambda *_: self.delete())
+        ba = QtWidgets.QPushButton("▶ Activer")
+        ba.setToolTip("Bascule sur l'état choisi.")
+        ba.clicked.connect(lambda *_: self.activate())
+        b0 = QtWidgets.QPushButton("Tout actif")
+        b0.setToolTip("Plus d'état : toutes les fréquences sont surveillées.")
+        b0.clicked.connect(lambda *_: (owner.apply_state(""), self.fill()))
+        for b_ in (bn, bd, br, bx, ba, b0):
+            ll.addWidget(b_)
+        sp.addWidget(left)
+        right = QtWidgets.QWidget()
+        rl = QtWidgets.QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+        self.tbl = QtWidgets.QTableWidget(0, 5)
+        self.tbl.setHorizontalHeaderLabels(["Dans l'état", "🔒 Toujours", "Nom", "MHz", "Scène › groupe"])
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tbl.setToolTip("Coche les fréquences qui jouent dans l'état choisi à gauche.")
+        self.tbl.itemChanged.connect(self._changed)
+        rl.addWidget(self.tbl, 1)
+        ball = QtWidgets.QPushButton("Tout cocher")
+        ball.setToolTip("Toutes les fréquences dans l'état choisi.")
+        ball.clicked.connect(lambda *_: self.check_all(True))
+        bnone = QtWidgets.QPushButton("Tout décocher")
+        bnone.setToolTip("Aucune fréquence dans l'état choisi (sauf les « toujours »).")
+        bnone.clicked.connect(lambda *_: self.check_all(False))
+        self.scene_combo = QtWidgets.QComboBox()
+        self.scene_combo.setToolTip("Ne cocher que les fréquences d'une scène (ou d'un groupe).")
+        self.scene_combo.addItem("Cocher une scène / un groupe…", None)
+        for sc in owner.scenes:
+            self.scene_combo.addItem(sc["name"], (sc["name"], ""))
+            for g in sc["groups"]:
+                self.scene_combo.addItem(f"   {sc['name']} › {g['name']}", (sc["name"], g["name"]))
+        self.scene_combo.activated.connect(lambda *_: self.check_layer())
+        rl.addLayout(owner._row(ball, bnone, self.scene_combo, None))
+        sp.addWidget(right)
+        sp.setSizes([240, 560])
+        lay.addWidget(sp, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self.fill()
+
+    def _cur(self):
+        r = self.lst.currentRow()
+        return self.owner.states[r] if 0 <= r < len(self.owner.states) else None
+
+    def fill(self, keep=None):
+        o = self.owner
+        keep = keep if keep is not None else (self._cur() or {}).get("name") or o.state_cur
+        self.lst.blockSignals(True)
+        self.lst.clear()
+        for st in o.states:
+            it = QtWidgets.QListWidgetItem(("▶ " if st["name"] == o.state_cur else "") + f"{st['name']}  ({len(st['keys'])})")
+            self.lst.addItem(it)
+        idx = next((i for i, st in enumerate(o.states) if st["name"] == keep), 0 if o.states else -1)
+        self.lst.setCurrentRow(idx)
+        self.lst.blockSignals(False)
+        self.fill_table()
+        self.msg.setText(f"Actif : « {o.state_cur} »." if o.state_cur else "Actif : tout (aucun état).")
+
+    def fill_table(self):
+        o, st = self.owner, self._cur()
+        keys = set(st["keys"]) if st else set()
+        self.tbl.blockSignals(True)
+        self.tbl.setRowCount(len(o.watch))
+        for r, w in enumerate(o.watch):
+            k = int(round(w["freq"] * 1000))
+            a = QtWidgets.QTableWidgetItem("")
+            a.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            a.setCheckState(Qt.CheckState.Checked if (k in keys or w.get("iso")) else Qt.CheckState.Unchecked)
+            if st is None or w.get("iso"):
+                a.setFlags(Qt.ItemFlag.ItemIsUserCheckable)          # grisée : pas d'état choisi / toujours active
+            a.setData(Qt.ItemDataRole.UserRole, k)
+            self.tbl.setItem(r, 0, a)
+            b = QtWidgets.QTableWidgetItem("")
+            b.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            b.setCheckState(Qt.CheckState.Checked if w.get("iso") else Qt.CheckState.Unchecked)
+            b.setData(Qt.ItemDataRole.UserRole, k)
+            self.tbl.setItem(r, 1, b)
+            for c, txt in ((2, w["name"]), (3, f"{w['freq']:.3f}"), (4, o.layer_text(w))):
+                it = QtWidgets.QTableWidgetItem(txt)
+                it.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.tbl.setItem(r, c, it)
+        self.tbl.resizeColumnsToContents()
+        self.tbl.blockSignals(False)
+
+    def _w(self, k):
+        return next((w for w in self.owner.watch if int(round(w["freq"] * 1000)) == k), None)
+
+    def _changed(self, it):
+        o, st = self.owner, self._cur()
+        k = it.data(Qt.ItemDataRole.UserRole)
+        on = it.checkState() == Qt.CheckState.Checked
+        if it.column() == 1:
+            w = self._w(k)
+            if w is not None:
+                w["iso"] = on
+                if not on:
+                    w.pop("iso", None)
+        elif st is not None:
+            ks = set(st["keys"])
+            st["keys"] = sorted(ks | {k} if on else ks - {k})
+        self._reapply()
+        self.fill()
+
+    def _reapply(self):
+        o = self.owner
+        o.apply_state(o.state_cur, quiet=False)
+
+    def check_all(self, on):
+        st = self._cur()
+        if st is None:
+            return
+        st["keys"] = sorted(int(round(w["freq"] * 1000)) for w in self.owner.watch) if on else []
+        self._reapply()
+        self.fill()
+
+    def check_layer(self):
+        st, sel = self._cur(), self.scene_combo.currentData()
+        self.scene_combo.setCurrentIndex(0)
+        if st is None or sel is None:
+            return
+        sc, gr = sel
+        add = {int(round(w["freq"] * 1000)) for w in self.owner.watch if w["scene"] == sc and (not gr or w["group"] == gr)}
+        st["keys"] = sorted(set(st["keys"]) | add)
+        self._reapply()
+        self.fill()
+
+    def new(self):
+        name = self.owner.new_state()
+        if name:
+            self.owner.apply_state(name)
+            self.fill(name)
+
+    def duplicate(self):
+        st = self._cur()
+        if st is None:
+            return
+        o, n, base = self.owner, 2, st["name"][:34]
+        name = f"{base} ({n})"
+        while o.state_by_name(name) is not None:
+            n += 1
+            name = f"{base} ({n})"
+        o.states.append(dict(name=name, keys=list(st["keys"])))
+        self.fill(name)
+
+    def rename(self):
+        st = self._cur()
+        if st is None:
+            return
+        name, ok = QtWidgets.QInputDialog.getText(self, "Renommer l'état", "Nouveau nom :", text=st["name"])
+        name = re.sub(r"\s+", " ", name or "").strip()[:40]
+        if not ok or not name or (name != st["name"] and self.owner.state_by_name(name) is not None):
+            return
+        if self.owner.state_cur == st["name"]:
+            self.owner.state_cur = name
+        st["name"] = name
+        self.owner._update_state_btn()
+        self.fill(name)
+
+    def delete(self):
+        st = self._cur()
+        if st is None:
+            return
+        o = self.owner
+        o.states.remove(st)
+        if o.state_cur == st["name"]:
+            o.apply_state("")
+        self.fill()
+
+    def activate(self):
+        st = self._cur()
+        if st is not None:
+            self.owner.apply_state(st["name"])
+            self.fill(st["name"])
 
 
 class PlanningDialog(QtWidgets.QDialog):
@@ -16035,6 +16291,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.net_addr, self.port_net = "", False   # 🌐 1er tinySA en réseau (Raspberry Pi…) : adresse, choisi ou non
         self.net_profiles = []                     # 🌐 adresses enregistrées [{name, addr}] (une par Wi-Fi / lieu)
         self.dev2 = dict(on=False, addr="", offset=0.0, div=False)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
+        self.states, self.state_cur = [], ""    # 📸 états (plans à basculer) ; "" = tout actif
         self.devx = []                  # tinySA 3 à 8 : [{on, addr, name, offset}] (le 2ᵉ reste dans dev2)
         self.dev_live = [True] * MAX_DEVS   # liaison de chaque appareil (False = perdue, ses bandes passent aux autres)
         self.dev_cycle = {}
@@ -16266,6 +16523,8 @@ class MainWindow(QtWidgets.QMainWindow):
     EXTRA_MENUS = []          # [(titre, [(texte, nom de méthode)])] : sous-menus ajoutés au ☰ Plus (V8 : SDR)
 
     TIPS_MENU = {
+        "📸 États": "Comme les Snapshots d'EazyRF : plusieurs plans (artistes, scènes, jours) dans le même show ;\n"
+                   "un clic bascule de l'un à l'autre, les fréquences hors de l'état passent en pause.",
         "📖 Manuel": "Le manuel complet (s'ouvre dans ton navigateur, marche hors ligne).",
         "🎤 Appel des micros": "Line check : allume tes émetteurs un par un, chaque fréquence passe ✓ quand son\n"
                                "signal arrive ; résumé « 14 / 16 OK, manquent… » noté au journal (Ctrl+L).",
@@ -16625,6 +16884,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
         mm.addAction("🔎 Chasse au brouilleur (bip qui suit le niveau)…").triggered.connect(lambda *_: self.open_hunt())
         mm.addAction("🎬 Planning des plateaux (qui joue quand)…").triggered.connect(lambda *_: self.open_planning())
+        mm.addAction("📸 États (basculer de plan d'un clic)…").triggered.connect(lambda *_: self.open_states())
         mm.addAction("📡 Mode émission (générateur : tester un récepteur)…").triggered.connect(lambda *_: self.open_emit())
         mm.addAction("🌙 Mode festival (nuit complète, bilan chaque jour)…").triggered.connect(
             lambda *_: self.open_festival())
@@ -17269,6 +17529,16 @@ class MainWindow(QtWidgets.QMainWindow):
             b.clicked.connect(fn)
             lay.addWidget(b)
             self._plain_btns.append(b)
+        self.state_btn = QtWidgets.QToolButton()
+        self.state_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.state_btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, self.state_btn.sizePolicy().verticalPolicy())
+        self.state_btn.setToolTip("📸 État actif (comme les Snapshots d'EazyRF) : un clic pour basculer de plan.\n"
+                                  "Les fréquences hors de l'état passent en pause (pas d'alarme, pas d'intermod).")
+        self.state_menu = QtWidgets.QMenu(self.state_btn)
+        self.state_menu.aboutToShow.connect(self._build_state_menu)
+        self.state_btn.setMenu(self.state_menu)
+        r1.addWidget(self.state_btn)
+        self._update_state_btn()
         fl.addLayout(r1)
         fl.addLayout(r2)
         self.watch_table = QtWidgets.QTableWidget(0, len(WATCH_HEADERS))
@@ -17672,8 +17942,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.watch[-1]["hide_wall"] = True
                 if rx_profile(w.get("rx")) is not None:
                     self.watch[-1]["rx"] = w["rx"]          # profil d'appareil (🧮 Vérifier le plan)
+                if w.get("iso"):
+                    self.watch[-1]["iso"] = True             # 📸 toujours active, quel que soit l'état
             except Exception:
                 pass
+        if "states" in data:                     # 📸 états (après la liste : l'état met ses fréquences en pause)
+            self.states = states_norm(data.get("states"))
+            cur = str(data.get("state_cur") or "")
+            self.state_cur = ""
+            self.apply_state(cur if any(x["name"] == cur for x in self.states) else "", quiet=True)
         sp = data.get("scope")
         if isinstance(sp, list):
             ks = []
@@ -17890,7 +18167,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         scene=w["scene"], group=w["group"], **({"hide_mk": True} if w.get("hide_mk") else {}),
                         **({"bw": w["bw"]} if w.get("bw") else {}),
                         **({"hide_wall": True} if w.get("hide_wall") else {}),
-                        **({"rx": w["rx"]} if w.get("rx") else {}))
+                        **({"rx": w["rx"]} if w.get("rx") else {}),
+                        **({"iso": True} if w.get("iso") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1)),
@@ -17926,7 +18204,8 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
+            dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], states=[dict(x) for x in self.states],
+            state_cur=self.state_cur, dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts), sdr=dict(self.sdr_cfg),
@@ -18093,7 +18372,7 @@ class MainWindow(QtWidgets.QMainWindow):
         en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[])
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="")
         for k in list(self.site_mh):
             self.forget_site(k)
         self.dev_scenes = {d: [] for d in self.dev_scenes}
@@ -20116,6 +20395,9 @@ class MainWindow(QtWidgets.QMainWindow):
             scene = DEFAULT_SCENE
         self.ensure_group(scene, group)
         band, cat = spectrum_info(freq, self.plan, self.tv)
+        st_ = self.state_by_name(self.state_cur) if getattr(self, "state_cur", "") else None
+        if st_ is not None and int(round(freq * 1000)) not in st_["keys"]:     # 📸 nouvelle = active dans l'état
+            st_["keys"] = sorted(st_["keys"] + [int(round(freq * 1000))])
         self.watch.append(dict(name=name, freq=freq, status=status, level=None, max=None,
                                state=None, peak=None, since=0.0, sig=None, thr=thr,
                                occw=OccWindow(self.occ_combo.currentData() or 60), t_acc=None,
@@ -20294,12 +20576,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.wall.rebuild()
 
     def w_paused(self, w):
-        """🎬 Groupe pas sur scène en ce moment (planning) : pas d'alarme ABSENT."""
+        """🎬 Groupe pas sur scène en ce moment (planning), ou 📸 fréquence hors de l'état actif : pas d'alarme ABSENT."""
+        if w.get("off"):
+            return True
         act, planned = self._plan_state
         return planning_paused(w.get("scene", ""), w.get("group", ""), act, planned)
 
     def sig_view(self, w):
         """(texte, ton, couleur) du signal de w selon son statut (voir signal_view)."""
+        if w.get("off"):
+            return "💤 en pause (état)", "none", self.theme["st_none"]
         if w["state"] in (None, "free") and self.is_keep_on(w["status"]) and self.w_paused(w):
             return "💤 pas sur scène", "none", self.theme["st_none"]
         key, tone = signal_key(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
@@ -21228,7 +21514,7 @@ class MainWindow(QtWidgets.QMainWindow):
             confirm = float(self.sound.cfg.get("confirm", 0))
             if new == "occ" and keep_free and now - (w.get("since") or now) < confirm:
                 pass                                # signal trop court pour l'instant : on attend la confirmation
-            elif new == "occ" and keep_free:
+            elif new == "occ" and keep_free and not w.get("off"):      # 📸 en pause : pas d'alarme
                 prio = self.freq_prio(w)
                 kind = "INTERMOD" if w.get("im") else "CONFLIT"
                 if self.alarms.raise_(("CONFLIT", fk), kind, w["name"], f, prio, now, lvl, self.layer_text(w),
@@ -22386,6 +22672,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_watch_freq(self, w, v):
         """Change la fréquence d'une ligne (mesures remises à zéro, liste retriée)."""
+        k0, k1 = int(round(w["freq"] * 1000)), int(round(float(v) * 1000))
+        for st in self.states:                     # 📸 elle reste dans ses états
+            if k0 in st["keys"]:
+                st["keys"] = sorted((set(st["keys"]) - {k0}) | {k1})
         w.update(freq=float(v), level=None, max=None, state=None, t_acc=None)
         w["occw"].clear()
         self.sort_watch()
@@ -22533,6 +22823,77 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_markers()
         if self.wall is not None and self.wall.isVisible():
             self.wall.rebuild()
+
+    # ------------------------------------------------------------- 📸 états (Snapshots)
+    def _update_state_btn(self):
+        if hasattr(self, "state_btn"):
+            self.state_btn.setText(f"📸 {self.state_cur}" if self.state_cur else "📸 Tout")
+
+    def _build_state_menu(self):
+        m = self.state_menu
+        m.clear()
+        a = m.addAction("Tout actif (aucun état)")
+        a.setCheckable(True)
+        a.setChecked(not self.state_cur)
+        a.triggered.connect(lambda *_: self.apply_state(""))
+        for st in self.states:
+            a = m.addAction(f"📸 {st['name']}  ({len(st['keys'])})")
+            a.setCheckable(True)
+            a.setChecked(st["name"] == self.state_cur)
+            a.triggered.connect(lambda *_, n=st["name"]: self.apply_state(n))
+        m.addSeparator()
+        m.addAction("＋ Nouvel état avec les fréquences actives…").triggered.connect(lambda *_: self.new_state())
+        m.addAction("Gérer les états…").triggered.connect(lambda *_: self.open_states())
+
+    def state_by_name(self, name):
+        return next((x for x in self.states if x["name"] == name), None)
+
+    def apply_state(self, name, quiet=False):
+        """📸 Active un état : ses fréquences (et les « toujours actives ») surveillées, les autres en pause."""
+        st = self.state_by_name(name) if name else None
+        self.state_cur = st["name"] if st else ""
+        keys = set(st["keys"]) if st else None
+        now = time.time()
+        n_off = 0
+        for w in self.watch:
+            k = int(round(w["freq"] * 1000))
+            off = keys is not None and k not in keys and not w.get("iso")
+            w["off"] = off
+            if off:
+                n_off += 1
+                for kind in ("CONFLIT", "ABSENT"):
+                    self.alarms.clear((kind, k), now)
+                w["absent"] = False
+        self._update_state_btn()
+        if not quiet:
+            self.rebuild_watch_table()
+            self._update_markers()
+            self.refresh_alarms()
+            self.set_status(f"📸 État « {self.state_cur} » : {len(self.watch) - n_off} fréquence(s) surveillée(s), "
+                            f"{n_off} en pause." if self.state_cur else "📸 Tout actif : toutes les fréquences sont surveillées.")
+        return n_off
+
+    def new_state(self, name=None):
+        if name is None:
+            name, ok = QtWidgets.QInputDialog.getText(self, "Nouvel état", "Nom (artiste, scène, jour…) :")
+            if not ok:
+                return None
+        name = re.sub(r"\s+", " ", str(name)).strip()[:40]
+        if not name:
+            return None
+        if self.state_by_name(name) is not None:
+            self.set_status(f"Un état « {name} » existe déjà.")
+            return None
+        keys = sorted(int(round(w["freq"] * 1000)) for w in self.watch if not w.get("off"))
+        self.states.append(dict(name=name, keys=keys))
+        self.state_cur = name
+        self._update_state_btn()
+        self.set_status(f"📸 État « {name} » créé avec {len(keys)} fréquence(s) : décoche celles qui ne jouent pas "
+                        "dans « Gérer les états ».")
+        return name
+
+    def open_states(self):
+        StatesDialog(self).exec()
 
     def open_planning(self):
         d = PlanningDialog(self)
@@ -23494,6 +23855,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 return f"👋 {self.dev_name(d)} clignote" if self.identify_device(d) else "lance d'abord la surveillance"
             self.set_dev_scenes(d, c["scenes"])
             return f"📡 {self.dev_name(d)} : " + (", ".join(c["scenes"]) or "tout le site")
+        if a == "state":
+            if c["name"] and self.state_by_name(c["name"]) is None:
+                return f"état « {c['name']} » inconnu"
+            n_off = self.apply_state(c["name"])
+            return f"📸 état « {c['name']} » ({n_off} en pause)" if c["name"] else "📸 tout actif"
         if a == "save":
             if self.show_path:
                 self.save_show_to(self.show_path)
@@ -23530,7 +23896,8 @@ class MainWindow(QtWidgets.QMainWindow):
                               for st in self.statuses],
                     scenes=[dict(name=sc["name"], groups=[g["name"] for g in sc["groups"]]) for sc in self.scenes],
                     devs=devs, watch=rows, clients=clients, alarms=len(self.alarms.active),
-                    show=self.show_meta.get("name", ""), saved=bool(self.show_path))
+                    show=self.show_meta.get("name", ""), saved=bool(self.show_path),
+                    states=[x["name"] for x in self.states], state_cur=self.state_cur)
 
     def _web_terrain_pending(self):
         """🎒 Commandes de la vue Terrain (téléphone) : où est le tinySA volant, garder / effacer des scans."""

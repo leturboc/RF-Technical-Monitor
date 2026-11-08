@@ -1032,5 +1032,14 @@ _r = ns["diversity_merge"]({0: (np.array([1.0, 2.0]), np.array([-90.0, -50.0]), 
                             5: (np.array([1.0, 2.0]), np.array([-60.0, -30.0]), 11.0)}, 11.0, 10.0)
 check("diversity à 3 tinySA : le meilleur des trois", (list(_r[1]), list(_r[2])), ([-40.0, -30.0], [2, 5]))
 
+# --- 📸 états (Snapshots)
+_sn = ns["states_norm"]([dict(name=" Artiste  A ", keys=[606500, "614000", 1, "x", 606500]), dict(name="artiste a", keys=[]),
+                         "bancal", dict(name="", keys=[1])] + [dict(name=f"S{i}") for i in range(40)])
+check("états : nettoyés (noms uniques, clés kHz valides, 30 au plus)", (_sn[0], len(_sn)),
+      (dict(name="Artiste A", keys=[606500, 614000]), 30))
+check("états : en pause = hors état sauf « toujours »", sorted(ns["state_off"]([1000, 2000], [1000, 2000, 3000, 4000], [4000])),
+      [3000])
+check("tech : changer d'état", ns["tech_request"](dict(action="state", name="  Artiste A ")), dict(action="state", name="Artiste A"))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
