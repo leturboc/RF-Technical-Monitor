@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.36.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.37.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -601,6 +601,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   « 🛠 Retirer l'accès Tech », marques 🛠 / ⏳ dans les connectés. Testé : HTTP (test_alertes, 16 cas dont refus,
   blocage, autre navigateur), Chromium (page Tech, captures `web_tech.png`), vraie appli (gui_reel : accord par la
   fenêtre du PC, commandes appliquées). Pas de HTTPS (réseau de prod seulement).
+- **7.37.0 (Clément, après le mail de Régis d'EazyRF : « 📸 États » façon Snapshots)** : PURE `states_norm` ({name, keys
+  = fréquences actives en kHz}, ≤ 30), `state_off`. `self.states` / `self.state_cur` (config + SHOW_KEYS « states »,
+  « state_cur » ; appliqués APRÈS la liste dans `_apply_config`), `w["iso"]` (🔒 toujours active, mode ISO d'EazyRF,
+  gardé dans `watch`) ; `apply_state(nom)` pose `w["off"]` (+ efface CONFLIT / ABSENT), `w_paused` le respecte (pas
+  d'ABSENT), CONFLIT sauté si `off`, `sig_view` « 💤 en pause (état) », `PlanCheckDialog._params` ignore les `off`.
+  `_append_watch` ajoute la nouvelle à l'état actif ; `set_watch_freq` garde la fréquence dans ses états ;
+  `clear_show_data` vide les états. UI : bouton `state_btn` (menu `_build_state_menu`) dans « Mes fréquences »,
+  `StatesDialog` (liste + tableau Dans l'état / 🔒 Toujours, cocher une scène, dupliquer, Suppr), ⑤ + ☰ Plus ②.
+  Tech : action « state » + `states` / `state_cur` dans `tech_state`, liste 📸 dans la page.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
