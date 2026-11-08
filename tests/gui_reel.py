@@ -1862,6 +1862,52 @@ if win.web is not None:
     DLG_ACTION[0] = _clients_act
     step("dialogue alertes (connectés)", win.open_alerts)
     DLG_ACTION[0] = "reject"
+    # 🛠 page Tech de la vraie appli : mot de passe Tech → fenêtre d'accord sur le PC → commandes appliquées
+    win.web_cfg.update(tech="hf-2026!", tech_approve=True)
+    win.web_cfg["views"]["tech"] = True
+    def _tpost(path, obj):
+        try:
+            r_ = _op.open(_ur.Request(base + path, data=_json.dumps(obj).encode(),
+                                      headers={"Content-Type": "application/json"}, method="POST"), timeout=5)
+            return r_.status, _json.loads(r_.read() or b"{}")
+        except _ur.HTTPError as e_:
+            return e_.code, {}
+    check("tech (appli) : mot de passe Tech → en attente", _tpost("/tech/login", dict(password="hf-2026!"))
+          == (200, dict(state="pending")))
+    win._alarm_tick()
+    _bx = list(win._tech_boxes)
+    check("tech (appli) : le PC demande l'accord", len(_bx) == 1 and "Tablette régie" in _bx[0].text(), str([b_.text() for b_ in _bx]))
+    if _bx:
+        shot(_bx[0], "tech_accord_pc")
+        _bx[0].button(W.QMessageBox.StandardButton.Yes).click()
+        wait(200)
+    _op.open(base + "/etat.json?v=tech", timeout=5).read()
+    win._alarm_tick()
+    _tj = _json.loads(_op.open(base + "/tech.json", timeout=5).read())
+    check("tech (appli) : accordé → état complet", _tj.get("devs") and len(_tj["watch"]) == len(win.watch)
+          and _tj["thr"]["occ"] == win.thr_spin.value(), str(list(_tj)[:6]))
+    _n0 = len(win.watch)
+    for _c in (dict(action="thr", occ=-77, weak=-93, absent=9, weak_on=True),
+               dict(action="watch_add", name="Tech 1", freq=623.375, status=win.statuses[0]["name"], scene="Club",
+                    group="HF"),
+               dict(action="snooze", min=5)):
+        check(f"tech (appli) : {_c['action']} accepté", _tpost("/tech", _c)[0] == 200)
+    win._alarm_tick()
+    _wt = next((w_ for w_ in win.watch if w_["name"] == "Tech 1"), None)
+    check("tech (appli) : seuils, fréquence et silence appliqués sur le PC", abs(win.thr_spin.value() + 77) < 0.6
+          and win.absent_spin.value() == 9 and _wt is not None and _wt["scene"] == "Club" and win.snooze_until > time.time()
+          and "Tablette régie" in win._tech_msg, f"{win.thr_spin.value()} {win._tech_msg}")
+    _tpost("/tech", dict(action="watch_edit", key=623375, name="Tech 1 bis", freq=623.4))
+    win._alarm_tick()
+    check("tech (appli) : fréquence modifiée", _wt is not None and _wt["name"] == "Tech 1 bis" and abs(_wt["freq"] - 623.4) < 1e-6)
+    _tpost("/tech", dict(action="watch_del", key=623400))
+    win._alarm_tick()
+    check("tech (appli) : fréquence retirée", len(win.watch) == _n0, str(len(win.watch)))
+    win.snooze(0)
+    win.web.revoke_tech()
+    check("tech (appli) : accès retiré", _tpost("/tech", dict(action="ack_all"))[0] == 403)
+    win.web_cfg.update(tech="")
+    win.web_cfg["views"]["tech"] = False
     check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
     # acquitter depuis le téléphone (code PIN)
     import json as _js

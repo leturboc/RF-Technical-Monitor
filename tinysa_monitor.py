@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.35.0"
+APP_VER = "7.36.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3741,9 +3741,10 @@ WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par 
              ("alarmes", "🔔", "Alarmes", "Conflits et émetteurs absents, à acquitter"),
              ("regie", "🎛", "Régie", "Gros voyants par groupe, alarmes en haut : pour l'écran de la régie"),
              ("chasse", "🔎", "Chasse", "Chasser un brouilleur en se déplaçant : niveau en gros et bip sur le téléphone"),
-             ("terrain", "🎒", "Terrain", "tinySA volant : dire à quelle(s) scène(s) il est et garder des scans pour la coordination")]
+             ("terrain", "🎒", "Terrain", "tinySA volant : dire à quelle(s) scène(s) il est et garder des scans pour la coordination"),
+             ("tech", "🛠", "Tech", "Gérer le serveur : surveillance, seuils, fréquences, tinySA (accès protégé)")]
 WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
-WEB_VIEWS_HIDDEN = ("terrain",)             # cachées tant qu'on ne les coche pas (outils de l'équipe HF)
+WEB_VIEWS_HIDDEN = ("terrain", "tech")             # cachées tant qu'on ne les coche pas (outils de l'équipe HF)
 
 
 def web_views_norm(v):
@@ -3793,6 +3794,28 @@ class ClientBook:
 
     def revoke_all(self):
         self.c.clear()
+
+    def set_tech(self, token, state, now):
+        """🛠 Accès Tech d'un navigateur : None (aucun), « pending » (en attente du PC) ou « ok »."""
+        e = self.c.get(token)
+        if e is None:
+            return None
+        if state:
+            e["tech"], e["tech_t"] = state, now
+        else:
+            e.pop("tech", None)
+            e.pop("tech_t", None)
+        return e
+
+    def tech_state(self, token, now, max_age=43200.0):
+        """État Tech du navigateur ; un accès accordé expire au bout de max_age s (12 h)."""
+        e = self.c.get(token)
+        if e is None or not e.get("tech"):
+            return None
+        if now - e.get("tech_t", now) > max_age:
+            e.pop("tech", None)
+            return None
+        return e["tech"]
 
     def watching(self, views, now):
         """Quelqu'un regarde-t-il une de ces vues en ce moment ?"""
@@ -4013,6 +4036,7 @@ async function tick(){if(busy)return;busy=true;try{
  if(d.me&&d.me!==LS.get("name",""))LS.set("name",d.me);       // renommé depuis le PC
  $("#ident").classList.toggle("hidden",!d.ident);$("#identn").textContent=d.me||"";
  if((v==="spectre"||v==="waterfall"||v==="terrain")&&d.views.includes(v)){try{const s=await api("spectre.json");if(s.ok){spec=await s.json()}}catch(e){}}
+ if(v==="tech"&&d.views.includes(v)){try{const t=await api("tech.json");TS=t.status;TJ=await t.json()}catch(e){}}
  render()}finally{busy=false;$("#stale").style.display=(last&&Date.now()-last>8000)?"block":"none"}}
 function clock(){const n=new Date();$("#clock").textContent=n.toLocaleTimeString("fr-FR",{hour12:false})}
 setInterval(clock,500);clock();setInterval(tick,1000);tick();
@@ -4077,6 +4101,8 @@ function mount(v){const el=$("#view");
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
   $("#hrs").onclick=()=>hunt("reset");return}
+ if(v==="tech"){el.innerHTML=`<div id="tlog" class="hb hidden"><b>🛠 Accès Tech</b><div class="sub">Réservé à l’équipe HF : mot de passe Tech, puis accord sur le PC de surveillance.</div><div class="tools"><input class="in" id="tpw" type="password" placeholder="Mot de passe Tech" autocomplete="current-password"><button class="btn pri" id="tgo" style="width:auto;margin:0">Demander l’accès</button></div><div class="sub" id="terr"></div></div><div id="twait" class="hb hidden"><b>⏳ En attente</b><div class="sub">Accepte la demande sur le PC de surveillance (fenêtre « Accès Tech »).</div></div><div id="toff" class="hb hidden"><div class="sub">Page Tech désactivée : règle un mot de passe Tech sur le PC (🔔 Alertes et page web).</div></div><div id="tapp" class="hidden"><div class="tools"><b id="trun"></b><button class="btn pri" id="tstart" style="width:auto;margin:0">▶ Démarrer</button><button class="btn" id="tstop">■ Arrêter</button><button class="btn" id="tsnz">🔕 Silence 15 min</button><button class="btn" id="tack">✔ Tout acquitter</button><button class="btn" id="tsave">💾 Enregistrer</button><button class="btn" id="tout">Quitter Tech</button></div><div class="mut" id="tmsg2" style="margin-bottom:12px"></div><div class="tools"><b>Seuils</b><label class="sw">Occupé au-dessus de <input class="in" id="tocc" type="number" step="1" style="width:90px;min-width:0;flex:none"> dBm</label><label class="sw"><input type="checkbox" id="twon"> Faible dès</label><input class="in" id="twk" type="number" step="1" style="width:90px;min-width:0;flex:none"><label class="sw">TX absent après <input class="in" id="tabs" type="number" step="1" style="width:80px;min-width:0;flex:none"> s</label><button class="btn" id="tthr">Appliquer</button></div><div class="tools"><b>📡 Mes tinySA</b></div><div class="alist" id="tdevs"></div><div class="tools"><b>📋 Fréquences</b><input class="in" id="tq" placeholder="Chercher…"></div><div class="alist" id="tws"></div><div class="tools"><b>＋ Ajouter</b><input class="in" id="tan" placeholder="Nom"><input class="in" id="taf" type="text" inputmode="decimal" placeholder="MHz" style="max-width:130px"><select class="in" id="tast"></select><input class="in" id="tasc" placeholder="Scène"><input class="in" id="tagr" placeholder="Groupe"><button class="btn pri" id="tadd" style="width:auto;margin:0">Ajouter</button></div><div class="tools"><b>👥 Connectés</b></div><div class="alist" id="tcl"></div></div>`;
+  techMount();return}
  if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📈 Ce que voit le tinySA</b><label class="sw"><input type="checkbox" id="rm" checked> Rémanence</label><label class="sw"><input type="checkbox" id="mk"> Mes fréquences</label><select class="in" id="tmh"></select></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
   $("#td").onchange=()=>{$("#tsc").dataset.k="";$("#tsc").dataset.dirty="";update(v)};
   $("#tsc").onchange=()=>{$("#tsc").dataset.dirty="1"};
@@ -4119,6 +4145,7 @@ function update(v){const st=D.state;
   if(!h.on&&h.msg)$("#hsub").textContent=h.msg;
   if(h.on)$("#hsub").textContent=(h.level==null?"Attends le premier balayage…":"Pic à "+h.fpk.toFixed(3)+" MHz"+(h.best!=null?" · max vu "+h.best_txt+" ("+(h.level-h.best).toFixed(1)+" dB)":""))+" · "+(h.devs&&h.devs[h.dev]||"");
   huntBeep(h.on&&!$("#hmu").checked?h.level:null);return}
+ if(v==="tech"){techUpdate();return}
  if(v==="terrain"){const T=st.terrain||{},ds=T.devs||[],td=$("#td"),box=$("#tsc"),scs=T.scenes||[];
   const dk=ds.map(d=>d.label).join("|");
   if(td.dataset.k!==dk){td.innerHTML=ds.map((d,i)=>`<option value="${i}">${esc(d.label)}</option>`).join("");td.dataset.k=dk;td.value=String(Math.max(0,ds.length-1));td.classList.toggle("hidden",ds.length<2);box.dataset.k=""}
@@ -4142,6 +4169,48 @@ function update(v){const st=D.state;
   const opts='<option value="*">Toutes les bandes</option>'+bs.map(x=>`<option${x.name===want?" selected":""}>${esc(x.name)}</option>`).join("");
   if(b.dataset.o!==opts){b.innerHTML=opts;b.dataset.o=opts;b.value=bs.some(x=>x.name===want)?want:"*"}
   if(spec&&spec.t!==specT){specT=spec.t;if(v==="waterfall")wfAdd()}draw()}}
+// ---------- 🛠 Tech : gérer le serveur (mot de passe Tech, puis accord sur le PC)
+let TS=0,TJ=null;
+async function tcmd(b){let r;try{r=await post("tech",b)}catch(e){alert("PC injoignable");return}
+ if(r.status===403){TS=403;TJ={login:true};techUpdate();return}
+ if(!r.ok){alert("Refusé ("+r.status+")");return}setTimeout(tick,400)}
+async function tlogin(){const pw=$("#tpw").value;if(!pw)return;let r;try{r=await post("tech/login",{password:pw})}catch(e){$("#terr").textContent="PC injoignable";return}
+ $("#tpw").value="";if(r.ok){$("#terr").textContent="";tick();return}
+ $("#terr").textContent=r.status===429?"Trop d’essais : attends 5 minutes.":r.status===403?"Mot de passe Tech incorrect.":"Refusé."}
+function techMount(){$("#tgo").onclick=tlogin;$("#tpw").onkeydown=e=>{if(e.key==="Enter")tlogin()};
+ $("#tstart").onclick=()=>tcmd({action:"run",on:true});
+ $("#tstop").onclick=()=>{if(confirm("Arrêter la surveillance ?"))tcmd({action:"run",on:false})};
+ $("#tsnz").onclick=()=>tcmd({action:"snooze",min:15});$("#tack").onclick=()=>tcmd({action:"ack_all"});
+ $("#tsave").onclick=()=>tcmd({action:"save"});$("#tout").onclick=async()=>{await post("tech/logout",{});tick()};
+ ["tocc","twk","tabs","twon"].forEach(k=>{$("#"+k).oninput=()=>{$("#tthr").dataset.dirty="1"}});
+ $("#tthr").onclick=()=>{$("#tthr").dataset.dirty="";tcmd({action:"thr",occ:+$("#tocc").value,weak:+$("#twk").value,weak_on:$("#twon").checked,absent:+$("#tabs").value})};
+ $("#tadd").onclick=()=>{const f=parseFloat(($("#taf").value||"").replace(",","."));if(!f){alert("Fréquence en MHz ?");return}
+  tcmd({action:"watch_add",name:$("#tan").value,freq:f,status:$("#tast").value,scene:$("#tasc").value,group:$("#tagr").value});$("#tan").value="";$("#taf").value=""};
+ $("#tq").oninput=()=>{$("#tws").dataset.k="";techUpdate()}}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tdel],[data-ted],[data-tid]");if(!b||mounted!=="tech")return;
+ if(b.dataset.tdel){if(confirm("Retirer « "+b.dataset.n+" » de la liste ?"))tcmd({action:"watch_del",key:+b.dataset.tdel})}
+ else if(b.dataset.ted){const n=prompt("Nom :",b.dataset.n);if(n==null)return;const f=prompt("Fréquence (MHz) :",b.dataset.f);if(f==null)return;
+  tcmd({action:"watch_edit",key:+b.dataset.ted,name:n,freq:parseFloat(f.replace(",","."))})}
+ else if(b.dataset.tid)tcmd({action:"identify",dev:+b.dataset.tid})});
+document.addEventListener("change",e=>{const s=e.target;if(mounted!=="tech")return;
+ if(s.dataset.tst!==undefined)tcmd({action:"watch_edit",key:+s.dataset.tst,status:s.value});
+ if(s.dataset.tsc!==undefined)tcmd({action:"dev_scenes",dev:+s.dataset.tsc,scenes:s.value?[s.value]:[]})});
+function techUpdate(){const sh=(id,on)=>$(id).classList.toggle("hidden",!on);
+ const off=TS===403&&TJ&&TJ.off,pend=TJ&&TJ.pending,ok=TS===200&&TJ&&TJ.devs;
+ sh("#toff",!!off);sh("#twait",!!pend&&!ok);sh("#tlog",!off&&!pend&&!ok);sh("#tapp",!!ok);if(!ok)return;
+ const T=TJ,act=(document.activeElement||{}).id||"",inside=id=>document.activeElement&&$(id).contains(document.activeElement);
+ $("#trun").textContent=(T.running?"● en surveillance":"○ arrêté")+(T.snooze?" · 🔕 "+Math.ceil(T.snooze/60)+" min":"")+(T.show?" · "+T.show:"");
+ $("#tmsg2").textContent=T.msg||"";
+ if(!$("#tthr").dataset.dirty&&!["tocc","twk","tabs"].includes(act)){$("#tocc").value=Math.round(T.thr.occ);$("#twk").value=Math.round(T.thr.weak);$("#twon").checked=T.thr.weak_on;$("#tabs").value=T.thr.absent}
+ const so=`<option value="">(aucun statut)</option>`+T.statuses.map(x=>`<option>${esc(x.name)}</option>`).join("");
+ const ta=$("#tast");if(ta.dataset.k!==so){const v=ta.value;ta.innerHTML=so;ta.dataset.k=so;ta.value=v}
+ const scn=T.scenes.map(x=>x.name),dk=JSON.stringify([T.devs,scn]);
+ if($("#tdevs").dataset.k!==dk&&!inside("#tdevs")){$("#tdevs").dataset.k=dk;
+  $("#tdevs").innerHTML=T.devs.map(d=>`<div class="row" style="border-left-color:${d.live?"var(--ok)":"var(--none)"}"><div class="x"><b>${esc(d.ord)} tinySA · ${esc(d.name)}</b><div class="mut">${d.live?"● en ligne":"○ pas connecté"} · ${esc(d.addr)}${d.cycle?" · cycle "+d.cycle+" s":""}</div></div><select class="in" data-tsc="${d.rank}" style="width:auto;flex:0 1 auto"><option value="">Tout le site</option>${scn.map(x=>`<option${d.scenes.length===1&&d.scenes[0]===x?" selected":""}>${esc(x)}</option>`).join("")}${d.scenes.length>1?`<option disabled selected>${esc(d.scenes.join(" + "))}</option>`:""}</select><button class="btn" data-tid="${d.rank}" title="Identifier">👋</button></div>`).join("")}
+ const q=($("#tq").value||"").toLowerCase(),rows=T.watch.filter(w=>!q||(w.name+" "+w.freq+" "+w.scene+" "+w.group).toLowerCase().includes(q)),wk=JSON.stringify(rows)+so;
+ if($("#tws").dataset.k!==wk&&!inside("#tws")){$("#tws").dataset.k=wk;
+  $("#tws").innerHTML=rows.map(w=>`<div class="row" style="border-left-color:${esc(w.color)}"><div class="x"><b>${esc(w.name)}</b> <span class="mut">${w.freq.toFixed(3)} MHz</span><div class="mut">${esc(w.sig)}${w.level?" · "+esc(w.level):""}${w.scene?" · "+esc(w.scene+(w.group?" › "+w.group:"")):""}</div></div><select class="in" data-tst="${w.key}" style="width:auto;flex:0 1 auto">${w.status?so.replace(`<option>${esc(w.status)}</option>`,`<option selected>${esc(w.status)}</option>`):so}</select><button class="btn" data-ted="${w.key}" data-n="${esc(w.name)}" data-f="${w.freq}" title="Modifier">✏</button><button class="btn" data-tdel="${w.key}" data-n="${esc(w.name)}" title="Retirer">🗑</button></div>`).join("")||`<div class="empty">Aucune fréquence</div>`}
+ $("#tcl").innerHTML=T.clients.map(c=>`<div class="row" style="border-left-color:${c.online?"var(--ok)":"var(--none)"}"><div class="x"><b>${esc(c.name)}</b>${c.tech==="ok"?" 🛠":c.tech==="pending"?" ⏳":""}<div class="mut">${esc(c.addr)}${c.view?" · "+esc(c.view):""}</div></div></div>`).join("")||`<div class="empty">—</div>`}
 // ---------- spectre / waterfall
 function segs(){const bs=(spec&&spec.bands)||[],k=$("#band")?$("#band").value:"*";return bs.filter(x=>k==="*"||x.name===k)}
 function span(ss){let a=1e9,b=-1e9;ss.forEach(s=>{if(s.f.length){a=Math.min(a,s.f[0]);b=Math.max(b,s.f[s.f.length-1])}});return b>a?[a,b]:null}
@@ -5053,6 +5122,55 @@ def snapshot_name(scene, label, existing, hhmm):
     while name in existing:
         name, k = f"{base} ({k})", k + 1
     return name
+
+
+TECH_ACTIONS = ("run", "snooze", "ack_all", "thr", "watch_add", "watch_edit", "watch_del", "dev_scenes", "identify",
+                "save")
+
+
+def tech_request(req):
+    """🛠 Commande de la page Tech -> dict propre (ValueError si bancale). Rien n'est exécuté ici."""
+    if not isinstance(req, dict) or req.get("action") not in TECH_ACTIONS:
+        raise ValueError("action")
+    a = req["action"]
+    out = dict(action=a)
+
+    def num(k, lo, hi, opt=False):
+        v = req.get(k)
+        if v is None or v == "":
+            if opt:
+                return None
+            raise ValueError(k)
+        if isinstance(v, bool):
+            raise ValueError(k)
+        v = float(v)
+        if not (lo <= v <= hi):                    # NaN aussi
+            raise ValueError(k)
+        return v
+
+    def txt(k, n):
+        return re.sub(r"\s+", " ", str(req.get(k) or "")).strip()[:n]
+    if a == "run":
+        out["on"] = bool(req.get("on"))
+    elif a == "snooze":
+        out["min"] = int(num("min", 0, 240))
+    elif a == "thr":
+        out.update(occ=num("occ", -140, 0), weak=num("weak", -150, 0, True), absent=num("absent", 1, 600, True),
+                   weak_on=bool(req.get("weak_on", True)))
+    elif a == "watch_add":
+        out.update(freq=num("freq", 1, 7000), name=txt("name", 40), status=txt("status", 30), scene=txt("scene", 60),
+                   group=txt("group", 60))
+    elif a in ("watch_edit", "watch_del"):
+        out["key"] = int(num("key", 1000, 7000000))
+        if a == "watch_edit":
+            out.update(freq=num("freq", 1, 7000, True), name=txt("name", 40) if "name" in req else None,
+                       status=txt("status", 30) if "status" in req else None)
+    elif a in ("dev_scenes", "identify"):
+        out["dev"] = int(num("dev", 0, 7))
+        if a == "dev_scenes":
+            sc = req.get("scenes")
+            out["scenes"] = [str(x).strip()[:60] for x in (sc if isinstance(sc, list) else []) if str(x).strip()][:50]
+    return out
 
 
 def terrain_request(req):
@@ -6137,7 +6255,8 @@ class WebServer(threading.Thread):
     COOKIE = "tsm"
 
     def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
-                 get_page=None, default_lang="fr", on_hunt=None, on_terrain=None):
+                 get_page=None, default_lang="fr", on_hunt=None, on_terrain=None, on_tech=None, on_tech_req=None,
+                 get_tech=None):
         super().__init__(daemon=True)
         self.port, self.host, self.get_json = int(port), host, get_json
         # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
@@ -6146,6 +6265,9 @@ class WebServer(threading.Thread):
         self.get_pin, self.on_ack = get_pin or (lambda: ""), on_ack
         self.on_hunt = on_hunt                     # 🔎 chasse lancée / arrêtée depuis un téléphone (code PIN)
         self.on_terrain = on_terrain               # 🎒 tinySA volant : scènes, scans gardés (code PIN)
+        self.on_tech, self.on_tech_req = on_tech, on_tech_req   # 🛠 commandes Tech, demandes d'accès à valider
+        self.get_tech = get_tech or (lambda: b"{}")
+        self.tech_guard = PinGuard(tries=5, lock_s=300.0)       # mot de passe Tech : 5 essais puis 5 min
         self.get_spec = get_spec or (lambda: b'{"bands":[]}')
         self.get_cfg = get_cfg or (lambda: {})
         self.guard, self.login_guard, self._lock = PinGuard(), PinGuard(), threading.Lock()
@@ -6155,7 +6277,19 @@ class WebServer(threading.Thread):
 
     def cfg(self):
         c = dict(self.get_cfg() or {})
-        return dict(password=str(c.get("password", "") or ""), views=web_views_norm(c.get("views")))
+        return dict(password=str(c.get("password", "") or ""), views=web_views_norm(c.get("views")),
+                    tech=str(c.get("tech", "") or ""), tech_approve=bool(c.get("tech_approve", True)))
+
+    def tech_decide(self, token, ok):
+        """Réponse du PC à une demande d'accès Tech."""
+        with self._lock:
+            return self.clients.set_tech(token, "ok" if ok else None, time.time()) is not None
+
+    def revoke_tech(self, token=None):
+        """Retire l'accès Tech d'un navigateur (ou de tous)."""
+        with self._lock:
+            for t in ([token] if token else list(self.clients.c)):
+                self.clients.set_tech(t, None, time.time())
 
     def client_list(self):
         with self._lock:
@@ -6210,6 +6344,11 @@ class WebServer(threading.Thread):
                     e = dict(e) if e else None
                 return (e is not None or not cfg["password"]), e
 
+            def _tech(self):
+                tok = self._token()
+                with owner._lock:
+                    return owner.clients.tech_state(tok, time.time()) if tok else None
+
             def _body(self):
                 n = int(self.headers.get("Content-Length", 0) or 0)
                 req = json.loads(self.rfile.read(min(max(n, 0), 4096)).decode("utf-8")) if n > 0 else {}
@@ -6247,13 +6386,22 @@ class WebServer(threading.Thread):
                         if chosen else []
                     self._send(200, owner.get_page(lang), "text/html; charset=utf-8", extra)
                     return
-                if path not in ("/etat.json", "/spectre.json"):
+                if path not in ("/etat.json", "/spectre.json", "/tech.json"):
                     self.send_error(404)
                     return
                 ok, me = self._who(view)
                 cfg = owner.cfg()
                 if not ok:
                     self._json(401, dict(login=True, password=True))
+                    return
+                if path == "/tech.json":
+                    st = self._tech()
+                    if not cfg["views"]["tech"] or len(cfg["tech"]) < 6:
+                        self._json(403, dict(off=True))
+                    elif st == "ok":
+                        self._send(200, owner.get_tech(), "application/json; charset=utf-8")
+                    else:
+                        self._json(200 if st == "pending" else 403, dict(pending=st == "pending", login=st is None))
                     return
                 if path == "/spectre.json":
                     if not (cfg["views"]["spectre"] or cfg["views"]["waterfall"]):
@@ -6306,6 +6454,9 @@ class WebServer(threading.Thread):
                         return
                     self._json(200, dict(ok=True, name=name))
                     return
+                if path in ("/tech/login", "/tech/logout", "/tech"):
+                    self._tech_post(path)
+                    return
                 pin_routes = {"/chasse": (hunt_request, owner.on_hunt), "/terrain": (terrain_request, owner.on_terrain)}
                 if path in pin_routes and pin_routes[path][1] is not None:
                     parse_, cb_ = pin_routes[path]
@@ -6348,6 +6499,54 @@ class WebServer(threading.Thread):
                     self._json(429 if res == "locked" else 403, dict(error=res))
                     return
                 owner.on_ack(target)
+                self._json(200, dict(ok=True))
+
+            def _tech_post(self, path):
+                """🛠 Accès Tech : mot de passe Tech (≥ 6 caractères, séparé de celui de la page) PUIS, si coché sur le
+                PC, accord donné sur le PC pour chaque nouveau navigateur. Accès valable 12 h, retirable du PC."""
+                cfg = owner.cfg()
+                tok = self._token()
+                ok, me = self._who()
+                if not ok or me is None or not tok:
+                    self._json(401, dict(login=True))
+                    return
+                if not cfg["views"]["tech"] or len(cfg["tech"]) < 6:
+                    self._json(403, dict(error="off"))
+                    return
+                try:
+                    req = self._body()
+                except (ValueError, UnicodeDecodeError):
+                    self._json(400, dict(error="requête invalide"))
+                    return
+                now = time.time()
+                if path == "/tech/logout":
+                    with owner._lock:
+                        owner.clients.set_tech(tok, None, now)
+                    self._json(200, dict(ok=True))
+                    return
+                if path == "/tech/login":
+                    with owner._lock:
+                        res = owner.tech_guard.check(cfg["tech"], req.get("password"), self.client_address[0], now)
+                    if res != "ok":
+                        self._json(429 if res == "locked" else 403, dict(error=res))
+                        return
+                    state = "pending" if cfg["tech_approve"] else "ok"
+                    with owner._lock:
+                        owner.clients.set_tech(tok, state, now)
+                    if state == "pending" and owner.on_tech_req is not None:
+                        owner.on_tech_req(dict(token=tok, name=me["name"], addr=self.client_address[0]))
+                    self._json(200, dict(state=state))
+                    return
+                if self._tech() != "ok" or owner.on_tech is None:
+                    self._json(403, dict(error="tech"))
+                    return
+                try:
+                    cmd = tech_request(req)
+                except (ValueError, TypeError, OverflowError):
+                    self._json(400, dict(error="requête invalide"))
+                    return
+                cmd["by"] = me["name"]
+                owner.on_tech(cmd)
                 self._json(200, dict(ok=True))
 
             def log_message(self, *a):
@@ -6448,6 +6647,17 @@ class AlertsDialog(QtWidgets.QDialog):
         self.web_pw.setMaxLength(40)
         self.web_pw.setToolTip("Mot de passe demandé pour ouvrir la page (en plus du nom de la personne).\n"
                                "Le changer déconnecte tout le monde.")
+        self.web_tech = QtWidgets.QLineEdit(str(w.get("tech", "")))
+        self.web_tech.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.web_tech.setPlaceholderText("6 caractères ou plus · vide = pas de page Tech")
+        self.web_tech.setMaxLength(40)
+        self.web_tech.setToolTip("Mot de passe de la page 🛠 Tech (gérer le serveur depuis un téléphone : démarrer,\n"
+                                 "seuils, fréquences, tinySA). Différent du mot de passe de la page, à ne donner qu'à\n"
+                                 "l'équipe HF. 5 essais faux → bloqué 5 min. Accès valable 12 h.")
+        self.web_tech_ok = QtWidgets.QCheckBox("Valider chaque nouvel appareil sur ce PC")
+        self.web_tech_ok.setChecked(bool(w.get("tech_approve", True)))
+        self.web_tech_ok.setToolTip("Coché (conseillé) : même avec le bon mot de passe, un téléphone n'a l'accès Tech\n"
+                                    "qu'après ton accord sur ce PC (une fenêtre te le demande).")
         self.view_chks = {}
         vbox = QtWidgets.QWidget()
         vfl = FlowLayout(vbox)
@@ -6471,6 +6681,9 @@ class AlertsDialog(QtWidgets.QDialog):
         self.id_btn.setToolTip("Fait clignoter l'écran du client choisi pendant 8 s : pratique pour savoir quelle\n"
                                "tablette / quel téléphone est lequel.")
         self.id_btn.clicked.connect(lambda *_: self.identify_client())
+        self.untech_btn = QtWidgets.QPushButton("🛠 Retirer l'accès Tech")
+        self.untech_btn.setToolTip("Retire l'accès Tech du client choisi (il garde la page en lecture).")
+        self.untech_btn.clicked.connect(lambda *_: self.untech_client())
         self.kick_btn = QtWidgets.QPushButton("Déconnecter tout le monde")
         self.kick_btn.setToolTip("Oublie toutes les connexions : avec un mot de passe, chacun doit se reconnecter.")
         self.kick_btn.clicked.connect(lambda *_: (owner.web.revoke_all() if owner.web is not None else None,
@@ -6498,11 +6711,13 @@ class AlertsDialog(QtWidgets.QDialog):
         wf.addRow("Port :", self.web_port)
         wf.addRow("Mot de passe :", self.web_pw)
         wf.addRow("Code PIN (acquitter) :", self.web_pin)
+        wf.addRow("🛠 Mot de passe Tech :", self.web_tech)
+        wf.addRow("", self.web_tech_ok)
         wf.addRow("Vues partagées :", vbox)
         wf.addRow(self.w_lbl)
         wf.addRow("Connectés :", self.clients)
         cr = QtWidgets.QHBoxLayout()
-        for b_ in (self.ren_btn, self.id_btn, self.kick_btn):
+        for b_ in (self.ren_btn, self.id_btn, self.untech_btn, self.kick_btn):
             cr.addWidget(b_)
         wf.addRow(cr)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
@@ -6530,7 +6745,8 @@ class AlertsDialog(QtWidgets.QDialog):
                      tg_token=self.tg_token.text().strip(), tg_chat=self.tg_chat.text().strip(),
                      site=self.site.text().strip(), lang=self.n_lang.currentData() or "app"),
                 dict(on=self.web_on.isChecked(), port=self.web_port.value(), pin=self.web_pin.text().strip(),
-                     password=self.web_pw.text(), views={k: c.isChecked() for k, c in self.view_chks.items()}))
+                     password=self.web_pw.text(), views={k: c.isChecked() for k, c in self.view_chks.items()},
+                     tech=self.web_tech.text(), tech_approve=self.web_tech_ok.isChecked()))
 
     def show_tuto(self):
         d = QtWidgets.QDialog(self)
@@ -6615,7 +6831,8 @@ class AlertsDialog(QtWidgets.QDialog):
         lst = ws.client_list()
         for e in lst:
             ago = int(time.time() - e["last"])
-            it = QtWidgets.QListWidgetItem(("🟢 " if e["online"] else "⚪ ") + f"{e['name']} · {e['addr']}"
+            tech = {"ok": " · 🛠 Tech", "pending": " · ⏳ demande Tech"}.get(e.get("tech") or "", "")
+            it = QtWidgets.QListWidgetItem(("🟢 " if e["online"] else "⚪ ") + f"{e['name']} · {e['addr']}{tech}"
                                            + (f" · {names.get(e['view'], 'Accueil')}" if e["online"]
                                               else f" · vu il y a {ago // 60} min"))
             it.setData(Qt.ItemDataRole.UserRole, (e["token"], e["name"]))
@@ -6643,6 +6860,14 @@ class AlertsDialog(QtWidgets.QDialog):
         if ok and name.strip():
             self.owner.web.rename(d[0], name.strip())
             self.refresh_clients()
+
+    def untech_client(self):
+        d = self._picked()
+        if d is None:
+            return
+        self.owner.web.revoke_tech(d[0])
+        self.n_lbl.setText(f"🛠 « {d[1]} » n'a plus l'accès Tech.")
+        self.refresh_clients()
 
     def identify_client(self):
         d = self._picked()
@@ -13689,11 +13914,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                tg_chat="", site="", lang="app")
         self.notifier = None
         self._notified = set()          # id des alarmes déjà traitées pour l'envoi sur téléphone
-        self.web_cfg = dict(on=False, port=WEB_PORT, pin="", password="", views=web_views_norm(None))
+        self.web_cfg = dict(on=False, port=WEB_PORT, pin="", password="", views=web_views_norm(None), tech="",
+                            tech_approve=True)          # 🛠 mot de passe Tech + accord sur le PC pour chaque appareil
         self._web_spec = b'{"t":0,"bands":[]}'
         self._web_acks = queue.Queue()      # acquittements reçus de la page web (fil du serveur → fil Qt)
         self._web_hunts = queue.Queue()     # 🔎 chasse commandée depuis un téléphone
         self._web_terrain = queue.Queue()   # 🎒 tinySA volant : scènes / scans gardés depuis un téléphone
+        self._web_tech, self._web_techreq = queue.Queue(), queue.Queue()   # 🛠 commandes Tech / demandes d'accès
+        self._tech_msg, self._tech_json, self._tech_boxes = "", b"{}", []
         self._terrain_msg = ""
         self.web = None
         self._web_json = {"fr": b"{}", "en": b"{}"}
@@ -15544,7 +15772,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password")},
+            dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts),
@@ -15559,6 +15787,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["notify"] = dict(self.notify_cfg)     # pas dans les profils partagés (jeton Telegram)
             data["web"]["pin"] = self.web_cfg.get("pin", "")          # code PIN : idem
             data["web"]["password"] = self.web_cfg.get("password", "")
+            data["web"]["tech"] = self.web_cfg.get("tech", "")       # 🛠 mot de passe Tech : jamais dans un show
             data["show_meta"] = dict(self.show_meta)
             data["show_path"] = self.show_path
             data["recent_shows"] = list(self.recent_shows)
@@ -16375,9 +16604,12 @@ class MainWindow(QtWidgets.QMainWindow):
             n, w = dlg.values()
             self.notify_cfg.update(n)
             pw_changed = w.get("password", "") != self.web_cfg.get("password", "")
+            tech_changed = w.get("tech", "") != self.web_cfg.get("tech", "")
             self.web_cfg.update(w)
             if pw_changed and self.web is not None:
                 self.web.revoke_all()              # nouveau mot de passe : tout le monde se reconnecte
+            elif tech_changed and self.web is not None:
+                self.web.revoke_tech()             # nouveau mot de passe Tech : plus personne n'a l'accès
             self.apply_web()
 
     def send_notify(self, title, body, prio, cfg=None):
@@ -16466,6 +16698,8 @@ class MainWindow(QtWidgets.QMainWindow):
             ws = WebServer(self.web_cfg["port"], lambda lang="fr": self._web_json.get(lang, self._web_json["fr"]),
                            get_pin=lambda: self.web_cfg.get("pin", ""), on_ack=self._web_acks.put,
                            on_hunt=self._web_hunts.put, on_terrain=self._web_terrain.put,
+                           on_tech=self._web_tech.put, on_tech_req=self._web_techreq.put,
+                           get_tech=lambda: self._tech_json,
                            get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
                            default_lang=self.lang)
             ws.start()
@@ -20782,9 +21016,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self._web_ack_pending()
         self._web_hunt_pending()
         self._web_terrain_pending()
+        self._web_techreq_pending()
+        self._web_tech_pending()
         self.undo_track()                          # ↶ : met de côté l'état d'avant chaque changement
         if self.web is not None:
             self._web_json = self.web_json()
+            if self.web_cfg["views"].get("tech") and self.web.watching(("tech",)):
+                try:
+                    self._tech_json = json.dumps(self.tech_state(), ensure_ascii=False).encode("utf-8")
+                except Exception:  # noqa: BLE001 — la page Tech ne doit jamais faire tomber l'appli
+                    pass
             if self.web_cfg["views"].get("spectre") or self.web_cfg["views"].get("waterfall"):
                 if self.web.watching(("spectre", "waterfall", "terrain")):   # seulement si quelqu'un regarde
                     self._web_spec = self.web_spec_json()
@@ -20933,6 +21174,155 @@ class MainWindow(QtWidgets.QMainWindow):
             self._site_mh_t0.pop(sc, None)
             self._site_base[sc] = next((d for d in self.site_scans if d["name"] == sc), None)
         return f"↺ Nouveau scan pour : {', '.join(scenes)}" if scenes else "Aucune scène : dis d'abord où est ce tinySA."
+
+    # ------------------------------------------------- 🛠 page web Tech (gérer le serveur depuis un téléphone)
+    def _web_techreq_pending(self):
+        """Demandes d'accès Tech : le PC demande l'accord (fenêtre non bloquante)."""
+        while True:
+            try:
+                r = self._web_techreq.get_nowait()
+            except queue.Empty:
+                return
+            box = QtWidgets.QMessageBox(self)
+            box.setIcon(QtWidgets.QMessageBox.Icon.Question)
+            box.setWindowTitle("Accès Tech")
+            box.setText(f"🛠 « {r['name']} » ({r['addr']}) demande l'accès Tech : démarrer / arrêter, changer les seuils, "
+                        "les fréquences et les tinySA depuis la page web.\n\nL'autoriser ?")
+            box.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+            box.setDefaultButton(QtWidgets.QMessageBox.StandardButton.No)
+            box.setModal(False)
+
+            def done(btn, r=r, box=box):
+                ok = box.standardButton(btn) == QtWidgets.QMessageBox.StandardButton.Yes
+                if self.web is not None:
+                    self.web.tech_decide(r["token"], ok)
+                self.set_status(f"🛠 Accès Tech {'accordé à' if ok else 'refusé pour'} « {r['name']} » ({r['addr']}).")
+                if box in self._tech_boxes:
+                    self._tech_boxes.remove(box)
+            box.buttonClicked.connect(done)
+            self._tech_boxes.append(box)
+            box.show()
+            self._alarm_sound(1)
+
+    def _web_tech_pending(self):
+        while True:
+            try:
+                c = self._web_tech.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                msg = self.tech_do(c)
+            except Exception as e:  # noqa: BLE001 — une commande ratée ne doit pas faire tomber l'appli
+                msg = f"⚠ impossible : {e}"
+            self._tech_msg = f"{time.strftime('%H:%M:%S')} · {c.get('by', '?')} : {msg}"
+            self.set_status(f"🛠 {self._tech_msg}")
+
+    def _tech_w(self, key):
+        return next((w for w in self.watch if int(round(w["freq"] * 1000)) == key), None)
+
+    def tech_do(self, c):
+        """Exécute une commande Tech (déjà vérifiée par tech_request) -> message pour la page."""
+        a = c["action"]
+        names = [st["name"] for st in self.statuses]
+        if a == "run":
+            if c["on"] and not self.is_running():
+                self.toggle_run(auto=True)
+                return "▶ surveillance lancée" if self.is_running() else "⚠ démarrage impossible (voir le PC)"
+            if not c["on"] and self.is_running():
+                self.toggle_run()
+                return "■ surveillance arrêtée"
+            return "rien à faire"
+        if a == "snooze":
+            self.snooze(c["min"] * 60)
+            return f"🔕 silence {c['min']} min" if c["min"] else "🔔 son rétabli"
+        if a == "ack_all":
+            n = self.alarms.ack_all()
+            self.refresh_alarms()
+            return f"✔ {n} alarme(s) acquittée(s)"
+        if a == "thr":
+            self.thr_spin.setValue(c["occ"])
+            self.weak_chk.setChecked(c["weak_on"])
+            if c["weak"] is not None:
+                self.weak_spin.setValue(c["weak"])
+            if c["absent"] is not None:
+                self.absent_spin.setValue(int(c["absent"]))
+            return "seuils appliqués"
+        if a == "watch_add":
+            if self._tech_w(int(round(c["freq"] * 1000))) is not None:
+                return f"{c['freq']:.3f} MHz déjà dans la liste"
+            st = c["status"] if c["status"] in names else ""
+            self._append_watch(c["name"] or f"{c['freq']:.3f}", c["freq"], st, None, c["scene"], c["group"])
+            self.sort_watch()
+            self.rebuild_tree()
+            self.rebuild_watch_table()
+            self._update_markers()
+            return f"＋ {c['name'] or c['freq']} ({c['freq']:.3f} MHz) ajoutée"
+        if a in ("watch_edit", "watch_del"):
+            w = self._tech_w(c["key"])
+            if w is None:
+                return "fréquence introuvable (liste changée entre-temps ?)"
+            if a == "watch_del":
+                self.watch.remove(w)
+                self.rebuild_watch_table()
+                self._update_markers()
+                return f"🗑 {w['name']} retirée"
+            if c["name"]:
+                w["name"] = c["name"]
+            if c["status"] is not None:
+                w["status"] = c["status"] if c["status"] in names else ""
+            if c["freq"] is not None and abs(c["freq"] - w["freq"]) > 1e-6:
+                if self._tech_w(int(round(c["freq"] * 1000))) is not None:
+                    return f"{c['freq']:.3f} MHz déjà dans la liste"
+                self.set_watch_freq(w, c["freq"])
+            self.rebuild_watch_table()
+            self._update_markers()
+            return f"✏ {w['name']} modifiée"
+        if a in ("dev_scenes", "identify"):
+            ids = self.dev_list()
+            if c["dev"] >= len(ids):
+                return "tinySA inconnu"
+            d = ids[c["dev"]]
+            if a == "identify":
+                return f"👋 {self.dev_name(d)} clignote" if self.identify_device(d) else "lance d'abord la surveillance"
+            self.set_dev_scenes(d, c["scenes"])
+            return f"📡 {self.dev_name(d)} : " + (", ".join(c["scenes"]) or "tout le site")
+        if a == "save":
+            if self.show_path:
+                self.save_show_to(self.show_path)
+                return f"💾 show enregistré ({os.path.basename(self.show_path)})"
+            self._save_config()
+            return "💾 réglages enregistrés (pas encore de fichier show : enregistre-le une fois sur le PC)"
+        return "commande inconnue"
+
+    def tech_state(self):
+        """État complet pour la page Tech."""
+        ids, lm, run = self.dev_list(), self.live_mask(), self.is_running()
+        demo = self.demo_chk.isChecked()
+        devs = []
+        for i, (d, addr, _o) in enumerate(self.dev_slots()):
+            a_ = ("démo" if demo else (self.port1() or "—")) if d == 0 else (self.resolve_addr(addr) or "—")
+            devs.append(dict(rank=i, ord=dev_ord(d), name=self.dev_name(d), addr=a_, live=bool(run and lm[d]),
+                             cycle=round(float(self.dev_cycle.get(d, 0.0)), 1), scenes=list(self.dev_scenes.get(d, []))))
+        rows = []
+        for w in self.watch:
+            txt, _tone, col = self.sig_view(w)
+            rows.append(dict(key=int(round(w["freq"] * 1000)), name=w["name"], freq=round(w["freq"], 4),
+                             status=w["status"] or "", scene=w["scene"], group=w["group"], sig=txt, color=col,
+                             level=self.lvl(w["level"], suffix=True) if w["level"] is not None else ""))
+        clients = []
+        if self.web is not None:
+            for e in self.web.client_list():
+                clients.append(dict(name=e["name"], addr=e["addr"], view=e.get("view", ""), online=e["online"],
+                                    tech=e.get("tech") or ""))
+        return dict(ver=APP_VER, running=run, demo=demo, msg=self._tech_msg, ndev=len(ids),
+                    snooze=int(snooze_left(self.snooze_until, time.time())),
+                    thr=dict(occ=self.thr_spin.value(), weak=self.weak_spin.value(), weak_on=self.weak_chk.isChecked(),
+                             absent=self.absent_spin.value()),
+                    statuses=[dict(name=st["name"], on=bool(st.get("on")), free=bool(st.get("free")))
+                              for st in self.statuses],
+                    scenes=[dict(name=sc["name"], groups=[g["name"] for g in sc["groups"]]) for sc in self.scenes],
+                    devs=devs, watch=rows, clients=clients, alarms=len(self.alarms.active),
+                    show=self.show_meta.get("name", ""), saved=bool(self.show_path))
 
     def _web_terrain_pending(self):
         """🎒 Commandes de la vue Terrain (téléphone) : où est le tinySA volant, garder / effacer des scans."""

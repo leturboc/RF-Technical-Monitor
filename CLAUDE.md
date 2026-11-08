@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.35.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.36.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -589,6 +589,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `devx_del` (Suppr ; les n° suivants descendent, leurs `dev_scenes` aussi), désactivés pendant la surveillance ;
   rubrique « Plusieurs tinySA et noms ». Testé : faux Qt (smoke_test5 : 4 tinySA, répartition, offsets, scènes, retrait)
   et démo à 4 tinySA simulés (gui_reel) ; **jamais avec plusieurs vrais tinySA**. Le relais Pi sert UN tinySA.
+- **7.36.0 (Clément : « une page web spéciale tech où on peut manager le serveur, comme sur Ontime, mais pas l'accès
+  à tous »)** : vue web **🛠 Tech** (`WEB_VIEWS` « tech », cachée par défaut). Sécurité : mot de passe Tech
+  `web_cfg["tech"]` (≥ 6, jamais dans les shows, `tech_guard` 5 essais → 5 min) PUIS accord sur le PC si
+  `web_cfg["tech_approve"]` (défaut) : `ClientBook.set_tech` / `tech_state` (« pending » / « ok », expire 12 h),
+  `WebServer.tech_decide` / `revoke_tech`, routes POST `/tech/login`, `/tech/logout`, `/tech` (PURE `tech_request` :
+  run, snooze, ack_all, thr, watch_add / edit / del (clé = kHz), dev_scenes / identify (RANG dans `dev_list()`),
+  save), GET `/tech.json` (`get_tech` = `_tech_json`, refait chaque seconde seulement si quelqu'un regarde « tech »).
+  MainWindow : files `_web_tech` / `_web_techreq` → `_web_techreq_pending` (QMessageBox NON modale, `_tech_boxes`) et
+  `_web_tech_pending` → `tech_do` (message `_tech_msg`) ; `tech_state()`. AlertsDialog : `web_tech`, `web_tech_ok`,
+  « 🛠 Retirer l'accès Tech », marques 🛠 / ⏳ dans les connectés. Testé : HTTP (test_alertes, 16 cas dont refus,
+  blocage, autre navigateur), Chromium (page Tech, captures `web_tech.png`), vraie appli (gui_reel : accord par la
+  fenêtre du PC, commandes appliquées). Pas de HTTPS (réseau de prod seulement).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

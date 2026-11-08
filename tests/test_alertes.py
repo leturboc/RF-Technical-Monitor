@@ -211,9 +211,9 @@ def opener():
     return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
 
-def get(op, path):
+def get(op, path, port=None):
     try:
-        r = op.open(base + path, timeout=5)
+        r = op.open((f"http://127.0.0.1:{port}" if port else base) + path, timeout=5)
         return r.status, r.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read()
@@ -304,6 +304,53 @@ check("terrain : scènes du tinySA volant", post_(oa, "/terrain", dict(pin="4321
 check("terrain : garder avec étiquette", post_(oa, "/terrain", dict(pin="4321", action="save", label="  côté   jardin "),
                                                wa.port)[0] == 200 and terr[-1]["label"] == "côté jardin", str(terr[-1:]))
 check("terrain : effacer sans nom → 400", post_(oa, "/terrain", dict(pin="4321", action="delete"), wa.port)[0] == 400)
+# --- 🛠 page Tech : mot de passe Tech séparé + accord sur le PC + commandes vérifiées
+tech_cmds, tech_reqs = [], []
+tcfg = dict(password="", views=dict(vn(None), tech=True), tech="", tech_approve=True)
+wt = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_cfg=lambda: tcfg, on_tech=tech_cmds.append,
+                     on_tech_req=tech_reqs.append, get_tech=lambda: b'{"devs":[],"ok":1}')
+wt.start()
+wt.ready.wait(3)
+ot, ox = opener(), opener()
+get(ot, "/etat.json")
+post_(ot, "/connexion", dict(name="Clément", password=""), wt.port)
+post_(ox, "/connexion", dict(name="Curieux", password=""), wt.port)
+check("vue 🛠 Tech cachée par défaut", vn(None)["tech"] is False)
+check("tech : sans mot de passe Tech → page coupée", get(ot, "/tech.json", wt.port)[0] == 403
+      and post_(ot, "/tech/login", dict(password=""), wt.port)[0] == 403)
+tcfg["tech"] = "hf-2026!"
+check("tech : pas encore entré → 403 (connexion demandée)", get(ot, "/tech.json", wt.port)[0] == 403)
+check("tech : mot de passe Tech faux → 403", post_(ot, "/tech/login", dict(password="festival"), wt.port)[0] == 403
+      and not tech_reqs)
+check("tech : bon mot de passe → en attente du PC", post_(ot, "/tech/login", dict(password="hf-2026!"), wt.port)
+      == (200, dict(state="pending")) and tech_reqs and tech_reqs[-1]["name"] == "Clément", str(tech_reqs))
+check("tech : en attente → pas de commande", post_(ot, "/tech", dict(action="ack_all"), wt.port)[0] == 403
+      and json.loads(get(ot, "/tech.json", wt.port)[1]).get("pending") is True and not tech_cmds)
+wt.tech_decide(tech_reqs[-1]["token"], True)
+check("tech : accordé sur le PC → état servi", get(ot, "/tech.json", wt.port) == (200, b'{"devs":[],"ok":1}'))
+check("tech : commande transmise avec le nom", post_(ot, "/tech", dict(action="thr", occ=-75, weak=-90, absent=12),
+                                                     wt.port)[0] == 200 and tech_cmds[-1]["action"] == "thr"
+      and tech_cmds[-1]["occ"] == -75.0 and tech_cmds[-1]["by"] == "Clément", str(tech_cmds[-1:]))
+check("tech : commande bancale → 400", post_(ot, "/tech", dict(action="thr", occ="nan"), wt.port)[0] == 400
+      and post_(ot, "/tech", dict(action="rm -rf /"), wt.port)[0] == 400
+      and post_(ot, "/tech", dict(action="watch_add", freq=99999), wt.port)[0] == 400)
+check("tech : un autre navigateur n'a pas l'accès", post_(ox, "/tech", dict(action="ack_all"), wt.port)[0] == 403
+      and get(ox, "/tech.json", wt.port)[0] == 403)
+check("tech : sans session du tout → 401", post_(opener(), "/tech", dict(action="ack_all"), wt.port)[0] == 401)
+wt.revoke_tech()
+check("tech : accès retiré du PC", post_(ot, "/tech", dict(action="ack_all"), wt.port)[0] == 403)
+tcfg["tech_approve"] = False
+check("tech : sans accord demandé → accès direct", post_(ot, "/tech/login", dict(password="hf-2026!"), wt.port)
+      == (200, dict(state="ok")) and get(ot, "/tech.json", wt.port)[0] == 200)
+post_(ot, "/tech/logout", {}, wt.port)
+check("tech : quitter Tech", get(ot, "/tech.json", wt.port)[0] == 403)
+for _ in range(5):
+    post_(ox, "/tech/login", dict(password="1234567"), wt.port)
+check("tech : 5 essais faux → bloqué (même avec le bon)", post_(ox, "/tech/login", dict(password="hf-2026!"),
+                                                               wt.port)[0] == 429)
+tcfg["views"]["tech"] = False
+check("tech : vue non partagée → coupée", get(ot, "/tech.json", wt.port)[0] == 403)
+wt.stop()
 check("acquitter : requête bancale → 400", post_(oa, "/acquitter", dict(pin="4321", id="1; rm"), wa.port)[0] == 400
       and post_(oa, "/acquitter", dict(pin="4321", id=True), wa.port)[0] == 400)
 for _ in range(5):
@@ -585,6 +632,70 @@ else:
               pa.locator("#lg").inner_text())
         if CAP:
             pa.screenshot(path=os.path.join(CAP, "web_terrain.png"), full_page=True)
+        # --- 🛠 page Tech dans le navigateur : mot de passe Tech, puis gérer le serveur
+        tj = dict(ver="7.36.0", running=True, demo=False, msg="12:00:00 · Clément : seuils appliqués", ndev=2, snooze=0,
+                  thr=dict(occ=-80.0, weak=-95.0, weak_on=True, absent=8),
+                  statuses=[dict(name="En service", on=True, free=False), dict(name="Libre", on=False, free=True)],
+                  scenes=[dict(name="Grande scène", groups=["HF"]), dict(name="Club", groups=[])],
+                  devs=[dict(rank=0, ord="1er", name="Régie", addr="COM4", live=True, cycle=2.1, scenes=["Grande scène"]),
+                        dict(rank=1, ord="2ᵉ", name="Club", addr="192.168.1.21:5025", live=False, cycle=0, scenes=[])],
+                  watch=[dict(key=606500, name="HF 1", freq=606.5, status="En service", scene="Grande scène", group="HF",
+                              sig="✔ OK", color="#22c55e", level="-52.0 dBm"),
+                         dict(key=614000, name="Réserve", freq=614.0, status="Libre", scene="", group="",
+                              sig="✔ libre", color="#4d8fd6", level="")],
+                  clients=[dict(name="Clément", addr="127.0.0.1", view="tech", online=True, tech="ok")], alarms=0,
+                  show="Festival", saved=True)
+        tcmds = []
+        tcfg2 = dict(password="", views=dict(vn(None), tech=True), tech="hf-2026!", tech_approve=False)
+        wt2 = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_cfg=lambda: tcfg2, on_tech=tcmds.append,
+                              get_tech=lambda: json.dumps(tj, ensure_ascii=False).encode("utf-8"))
+        wt2.start()
+        wt2.ready.wait(3)
+        pg = br.new_page(viewport=dict(width=420, height=900))
+        pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.on("dialog", lambda d: d.accept())
+        pg.add_init_script("localStorage.setItem('name','Clément')")
+        pg.goto(f"http://127.0.0.1:{wt2.port}/#/tech")
+        pg.wait_for_selector("#tpw", state="visible", timeout=6000)
+        pg.fill("#tpw", "pas-le-bon")
+        pg.click("#tgo")
+        pg.wait_for_function("document.querySelector('#terr').textContent.length > 0", timeout=4000)
+        check("tech (navigateur) : mauvais mot de passe refusé", "incorrect" in pg.locator("#terr").inner_text())
+        pg.fill("#tpw", "hf-2026!")
+        pg.click("#tgo")
+        pg.wait_for_selector("#tapp", state="visible", timeout=6000)
+        check("tech (navigateur) : tinySA, fréquences et connectés affichés", pg.locator("#tdevs .row").count() == 2
+              and pg.locator("#tws .row").count() == 2 and "Clément" in pg.locator("#tcl").inner_text()
+              and pg.locator("#tocc").input_value() == "-80")
+        def _wait(n):
+            t0 = time.time()
+            while len(tcmds) < n and time.time() - t0 < 5:
+                time.sleep(0.05)
+        pg.fill("#tocc", "-75")
+        pg.click("#tthr")
+        _wait(1)
+        check("tech (navigateur) : seuils appliqués", tcmds and tcmds[-1]["action"] == "thr" and tcmds[-1]["occ"] == -75.0,
+              str(tcmds[-1:]))
+        pg.fill("#tan", "HF 9")
+        pg.fill("#taf", "612,125")
+        pg.click("#tadd")
+        _wait(2)
+        check("tech (navigateur) : fréquence ajoutée (virgule acceptée)", tcmds[-1]["action"] == "watch_add"
+              and tcmds[-1]["freq"] == 612.125 and tcmds[-1]["name"] == "HF 9", str(tcmds[-1:]))
+        pg.select_option("#tdevs .row:nth-child(2) select", "Club")
+        _wait(3)
+        check("tech (navigateur) : 2ᵉ tinySA rattaché au Club", tcmds[-1] == dict(tcmds[-1], action="dev_scenes", dev=1,
+                                                                               scenes=["Club"]), str(tcmds[-1:]))
+        pg.click("#tws .row:nth-child(2) [data-tdel]")
+        _wait(4)
+        check("tech (navigateur) : retirer une fréquence (confirmé)", tcmds[-1] == dict(tcmds[-1], action="watch_del",
+                                                                                     key=614000), str(tcmds[-1:]))
+        pg.click("#tstop")
+        _wait(5)
+        check("tech (navigateur) : arrêter (confirmé)", tcmds[-1]["action"] == "run" and tcmds[-1]["on"] is False)
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_tech.png"), full_page=True)
+        wt2.stop()
         # --- grand écran (tablette / PC de la régie)
         pt = br.new_page(viewport=dict(width=1280, height=760))
         pt.on("pageerror", lambda e: errs.append(str(e)))
