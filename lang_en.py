@@ -4035,3 +4035,34 @@ SAME_TEMPLATES += [
     "<div style='font-size:30px; font-weight:bold; margin:4px'>{} {}</div>",
     "<div style='font-size:22px; font-weight:bold'>{}</div><div style='font-size:18px'>{} MHz</div><div style='font-size:16px'>{}{}</div>",
 ]
+
+# ---- 7.40 : 💤 éteint (je sais)
+EXACT.update({
+    'Clic droit : 💤 éteint (je sais) / 🔔 rallumer.': 'Right-click: 💤 off (I know) / 🔔 back on.',
+    'Ctrl+Space': 'Ctrl+Space',
+    'RALLUMÉ': 'BACK ON',
+    'ÉTEINT (je sais)': 'OFF (I know)',
+    'Éteints (je sais)': 'Off (I know)',
+    "💤 Tout éteindre (je sais) : pas d'alarme ABSENT": '💤 Turn all off (I know): no ABSENT alarm',
+    '💤 Éteint (je sais)': '💤 Off (I know)',
+    "💤 Éteint (je sais) : pas d'alarme ABSENT": '💤 Off (I know): no ABSENT alarm',
+    "💤 Éteint (je sais) : pas d'alarme ABSENT  Ctrl+Espace": '💤 Off (I know): no ABSENT alarm  Ctrl+Space',
+    '💤 éteint (je sais)': '💤 off (I know)',
+    '🔔 Rallumer': '🔔 Back on',
+    '🔔 Rallumer (surveiller à nouveau)': '🔔 Back on (monitor again)',
+    '🔔 Rallumer (surveiller à nouveau)  Ctrl+Espace': '🔔 Back on (monitor again)  Ctrl+Space',
+    '🔔 Tout rallumer': '🔔 Turn all back on',
+})
+TEMPLATES.update({
+    '🔔 {} fréquence(s) rallumées.': '🔔 {} frequency(ies) back on.',
+    '🔔 {} rallumé': '🔔 {} back on',
+    "💤 {} éteint (je sais) : pas d'alarme ABSENT.": '💤 {} off (I know): no ABSENT alarm.',
+    '💤 {} éteint (je sais)': '💤 {} off (I know)',
+    "{} fréquence(s) en 💤 éteint (je sais) : pas d'alarme ABSENT pour elles. Rallume-les si elles doivent émettre.":
+        '{} frequency(ies) set to 💤 off (I know): no ABSENT alarm for them. Turn them back on if they must transmit.',
+    '💤 {} fréquence(s) éteintes (je sais).': '💤 {} frequency(ies) off (I know).',
+    '🔔 {} rallumé.': '🔔 {} back on.',
+})
+WEB += [
+    ('title="${w.muted?"Rallumer":"Éteint (je sais) : pas d’alarme ABSENT"}"', 'title="${w.muted?"Back on":"Off (I know): no ABSENT alarm"}"'),
+]

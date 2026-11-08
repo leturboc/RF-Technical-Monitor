@@ -1079,6 +1079,9 @@ check("prêt : pas de garde (Windows)", _lv(dict(_good, guarded=False))["guard"]
 check("prêt : résumé", (ns["ready_summary"](_rc(dict(_good, show_path="")))[0],
                         ns["ready_summary"](_rc(dict(_good, running=False, show_path="")))), 
       ("warn", ("bad", "❌ 1 problème(s) à régler avant le show")))
+check("prêt : micros éteints (je sais) rappelés", _lv(dict(_good, muted=2)).get("muted"), "info")
+check("tech : éteint (je sais)", ns["tech_request"](dict(action="mute", key="606500", on=1)),
+      dict(action="mute", key=606500, on=True))
 ok("prêt : chaque correction est un nom de méthode", all(re.fullmatch(r"[a-z_]*", c["fix"]) for c in _rc({})))
 
 print("\nÉCHECS:", fails)
