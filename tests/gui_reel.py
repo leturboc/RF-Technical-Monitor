@@ -1280,6 +1280,43 @@ _w_all[-1].pop("iso", None)
 win.states, win.state_cur = _sv[0], ""
 win.apply_state(_sv[1])
 
+# ✅ Prêt pour le show ? / 🖥 Mode Show / 🛡 garde (7.39, « on fortifie »)
+_rd = win.open_ready()
+wait(300)
+check("prêt ? : fenêtre avec un résumé et des vérifications", _rd.table.rowCount() >= 6 and _rd.head.text() != "",
+      _rd.head.text())
+check("prêt ? : chaque « Régler » mène à une vraie méthode", all(hasattr(win, c["fix"]) for c in _rd.checks if c["fix"])
+      and all(hasattr(win, c["fix"]) for c in m.ready_checks({}) if c["fix"]),
+      str([c["fix"] for c in _rd.checks if c["fix"] and not hasattr(win, c["fix"])]))
+check("prêt ? : démo signalée", any(c["key"] == "demo" and c["level"] == "bad" for c in _rd.checks)
+      or not win.demo_chk.isChecked())
+shot(_rd, "pret_pour_le_show")
+_rd.close()
+_sm = win.open_show_mode()
+wait(1300)
+check("mode Show : ouvert, une tuile par fréquence", _sm.isVisible() and len(_sm.tiles) == len(
+    [w_ for w_ in win.scope_ws() if not w_.get("off")]), f"{len(_sm.tiles)}")
+_akey = ("CONFLIT", int(round(win.watch[0]["freq"] * 1000)))
+win.alarms.raise_(_akey, "CONFLIT", "Essai mode Show", win.watch[0]["freq"], 2, time.time(), level=-50.0)
+_sm.refresh()
+check("mode Show : l'alarme en très gros", "Essai mode Show" in _sm.banner.text(), _sm.banner.text()[:120])
+shot(_sm, "mode_show")
+_sm.ack_btn.click()
+check("mode Show : tout acquitter", _akey not in win.alarms.active or win.alarms.active[_akey]["acked"])
+win.alarms.clear(_akey, time.time())
+_sm.refresh()
+check("mode Show : « Tout va bien » sans alarme", "Tout va bien" in _sm.banner.text() or len(win.alarms.active) > 0)
+win.open_show_mode()                      # 2ᵉ appel (F10) = refermer
+check("mode Show : F10 / ✖ referme", win._show_mode is None)
+def _fest_act(d):
+    check("garde : case dans le mode festival", d.guard_chk.isChecked() and d.values()["guard"] is True)
+    check("garde : bouton « Relancer sous garde » (pas lancée sous garde ici)", not d.guard_btn.isHidden())
+    return "reject"
+DLG_ACTION[0] = _fest_act
+step("mode festival (garde)", win.open_festival)
+DLG_ACTION[0] = "reject"
+check("garde : commande de démarrage avec --garde", win._startup_cmd().endswith("--garde"))
+
 # Vue : créer / réactiver une bande sans passer par ⚙ (demande de Clément 7.31)
 _vi = [win.view_combo.itemData(i) for i in range(win.view_combo.count())]
 check("Vue : « ＋ Nouvelle bande » et « Gérer les bandes » proposés", "__add__" in _vi and "__manage__" in _vi, str(_vi))

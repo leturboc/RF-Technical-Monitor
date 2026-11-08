@@ -38,9 +38,9 @@ vocab_words = set(ns["NAME_WORDS"]) | set(ns["SCENE_WORDS"]) | set(ns["GROUP_WOR
 miss_c = [c for c in sorted(set(consts) | set(html)) if c not in L.EXACT and not (c in vocab_words and c in L.VOCAB)]
 miss_t = [t for t in tpls if t not in L.TEMPLATES and t not in L.SAME_TEMPLATES]
 check(f"{len(set(consts) | set(html))} textes fixes traduits", not miss_c,
-      "\n  à ajouter dans lang_en.EXACT :\n" + "\n".join("  " + repr(c) for c in miss_c[:30]))
+      "\n  à ajouter dans lang_en.EXACT :\n" + "\n".join("  " + repr(c) for c in miss_c[:int(os.environ.get("I18N_N", 30))]))
 check(f"{len(tpls)} phrases à trous traduites", not miss_t,
-      "\n  à ajouter dans lang_en.TEMPLATES :\n" + "\n".join("  " + repr(t) for t in miss_t[:30]))
+      "\n  à ajouter dans lang_en.TEMPLATES :\n" + "\n".join("  " + repr(t) for t in miss_t[:int(os.environ.get("I18N_N", 30))]))
 bad = [k for k, v in L.TEMPLATES.items()
        if k.count("{}") != len(re.findall(r"(?<!\{)\{\}(?!\})", v.replace("{{", "").replace("}}", "")))]
 check("même nombre de trous « {} » en français et en anglais", not bad, str(bad[:5]))
