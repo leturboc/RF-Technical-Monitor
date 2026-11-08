@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.39.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.40.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -644,6 +644,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **Endurance** : `tests/endurance.py [minutes]` (vraie appli hors écran, 4 tinySA simulés, page web avec 3 clients,
     états, zoom ; relevés RSS / CPU / objets / tailles toutes les 30 s → CSV ; verdict sur la pente de la mémoire HORS
     relecture (`SweepStore` garde 30 min, voulu) et brute après 35 min). PAS dans la CI (long).
+- **7.40.0 (Clément : « des fois les mics sont éteints et je le sais »)** : il a choisi de GARDER les statuts et d'ajouter
+  **💤 Éteint (je sais)** qui reste jusqu'à ce qu'on rallume (pas de réveil automatique). `w["muted"]` (config + shows
+  via `watch`) ; `set_muted(ws, on)` (efface l'ABSENT en cours, journal « ÉTEINT (je sais) » / « RALLUMÉ ») ;
+  `w_paused` le respecte (pas d'ABSENT ; CONFLIT toujours actif, reste dans le plan) ; `sig_view` « 💤 éteint (je
+  sais) ». Accès : clic droit liste (+ Ctrl+Espace sur la liste, `toggle_muted_sel`), clic droit scène / groupe
+  (`layer_ws`, tout éteindre / rallumer), clic droit tuile du mur et du mode Show, page Tech (action `mute`, bouton 💤 /
+  🔔). « Prêt pour le show ? » rappelle les fréquences éteintes (`muted`, info).
+  **Suivi en direct WWB / WSM / Wisycom Manager** (idée de Clément) : en attente de vrais fichiers de LISTE / projet
+  (ses fichiers reçus sont des SCANS) — WWB .shw / export « Frequency report », WSM projet, Wisycom Manager.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

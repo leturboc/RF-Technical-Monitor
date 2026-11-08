@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.39.0"
+APP_VER = "7.40.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4206,8 +4206,9 @@ function techMount(){$("#tgo").onclick=tlogin;$("#tpw").onkeydown=e=>{if(e.key==
   tcmd({action:"watch_add",name:$("#tan").value,freq:f,status:$("#tast").value,scene:$("#tasc").value,group:$("#tagr").value});$("#tan").value="";$("#taf").value=""};
  $("#tq").oninput=()=>{$("#tws").dataset.k="";techUpdate()};
  $("#tstate").onchange=()=>{const v=$("#tstate").value;$("#tstate").dataset.k="";tcmd({action:"state",name:v})}}
-document.addEventListener("click",e=>{const b=e.target.closest("[data-tdel],[data-ted],[data-tid]");if(!b||mounted!=="tech")return;
- if(b.dataset.tdel){if(confirm("Retirer « "+b.dataset.n+" » de la liste ?"))tcmd({action:"watch_del",key:+b.dataset.tdel})}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tdel],[data-ted],[data-tid],[data-tmu]");if(!b||mounted!=="tech")return;
+ if(b.dataset.tmu)tcmd({action:"mute",key:+b.dataset.tmu,on:b.dataset.on==="1"});
+ else if(b.dataset.tdel){if(confirm("Retirer « "+b.dataset.n+" » de la liste ?"))tcmd({action:"watch_del",key:+b.dataset.tdel})}
  else if(b.dataset.ted){const n=prompt("Nom :",b.dataset.n);if(n==null)return;const f=prompt("Fréquence (MHz) :",b.dataset.f);if(f==null)return;
   tcmd({action:"watch_edit",key:+b.dataset.ted,name:n,freq:parseFloat(f.replace(",","."))})}
  else if(b.dataset.tid)tcmd({action:"identify",dev:+b.dataset.tid})});
@@ -4230,7 +4231,7 @@ function techUpdate(){const sh=(id,on)=>$(id).classList.toggle("hidden",!on);
   $("#tdevs").innerHTML=T.devs.map(d=>`<div class="row" style="border-left-color:${d.live?"var(--ok)":"var(--none)"}"><div class="x"><b>${esc(d.ord)} tinySA · ${esc(d.name)}</b><div class="mut">${d.live?"● en ligne":"○ pas connecté"} · ${esc(d.addr)}${d.cycle?" · cycle "+d.cycle+" s":""}</div></div><select class="in" data-tsc="${d.rank}" style="width:auto;flex:0 1 auto"><option value="">Tout le site</option>${scn.map(x=>`<option${d.scenes.length===1&&d.scenes[0]===x?" selected":""}>${esc(x)}</option>`).join("")}${d.scenes.length>1?`<option disabled selected>${esc(d.scenes.join(" + "))}</option>`:""}</select><button class="btn" data-tid="${d.rank}" title="Identifier">👋</button></div>`).join("")}
  const q=($("#tq").value||"").toLowerCase(),rows=T.watch.filter(w=>!q||(w.name+" "+w.freq+" "+w.scene+" "+w.group).toLowerCase().includes(q)),wk=JSON.stringify(rows)+so;
  if($("#tws").dataset.k!==wk&&!inside("#tws")){$("#tws").dataset.k=wk;
-  $("#tws").innerHTML=rows.map(w=>`<div class="row" style="border-left-color:${esc(w.color)}"><div class="x"><b>${esc(w.name)}</b> <span class="mut">${w.freq.toFixed(3)} MHz</span><div class="mut">${esc(w.sig)}${w.level?" · "+esc(w.level):""}${w.scene?" · "+esc(w.scene+(w.group?" › "+w.group:"")):""}</div></div><select class="in" data-tst="${w.key}" style="width:auto;flex:0 1 auto">${w.status?so.replace(`<option>${esc(w.status)}</option>`,`<option selected>${esc(w.status)}</option>`):so}</select><button class="btn" data-ted="${w.key}" data-n="${esc(w.name)}" data-f="${w.freq}" title="Modifier">✏</button><button class="btn" data-tdel="${w.key}" data-n="${esc(w.name)}" title="Retirer">🗑</button></div>`).join("")||`<div class="empty">Aucune fréquence</div>`}
+  $("#tws").innerHTML=rows.map(w=>`<div class="row" style="border-left-color:${esc(w.color)}"><div class="x"><b>${esc(w.name)}</b> <span class="mut">${w.freq.toFixed(3)} MHz</span><div class="mut">${esc(w.sig)}${w.level?" · "+esc(w.level):""}${w.scene?" · "+esc(w.scene+(w.group?" › "+w.group:"")):""}</div></div><select class="in" data-tst="${w.key}" style="width:auto;flex:0 1 auto">${w.status?so.replace(`<option>${esc(w.status)}</option>`,`<option selected>${esc(w.status)}</option>`):so}</select><button class="btn" data-tmu="${w.key}" data-on="${w.muted?0:1}" title="${w.muted?"Rallumer":"Éteint (je sais) : pas d’alarme ABSENT"}">${w.muted?"🔔":"💤"}</button><button class="btn" data-ted="${w.key}" data-n="${esc(w.name)}" data-f="${w.freq}" title="Modifier">✏</button><button class="btn" data-tdel="${w.key}" data-n="${esc(w.name)}" title="Retirer">🗑</button></div>`).join("")||`<div class="empty">Aucune fréquence</div>`}
  $("#tcl").innerHTML=T.clients.map(c=>`<div class="row" style="border-left-color:${c.online?"var(--ok)":"var(--none)"}"><div class="x"><b>${esc(c.name)}</b>${c.tech==="ok"?" 🛠":c.tech==="pending"?" ⏳":""}<div class="mut">${esc(c.addr)}${c.view?" · "+esc(c.view):""}</div></div></div>`).join("")||`<div class="empty">—</div>`}
 // ---------- spectre / waterfall
 function segs(){const bs=(spec&&spec.bands)||[],k=$("#band")?$("#band").value:"*";return bs.filter(x=>k==="*"||x.name===k)}
@@ -5174,7 +5175,7 @@ def snapshot_name(scene, label, existing, hhmm):
 
 
 TECH_ACTIONS = ("run", "snooze", "ack_all", "thr", "watch_add", "watch_edit", "watch_del", "dev_scenes", "identify",
-                "save", "state")
+                "save", "state", "mute")
 
 
 def tech_request(req):
@@ -5209,8 +5210,10 @@ def tech_request(req):
     elif a == "watch_add":
         out.update(freq=num("freq", 1, 7000), name=txt("name", 40), status=txt("status", 30), scene=txt("scene", 60),
                    group=txt("group", 60))
-    elif a in ("watch_edit", "watch_del"):
+    elif a in ("watch_edit", "watch_del", "mute"):
         out["key"] = int(num("key", 1000, 7000000))
+        if a == "mute":
+            out["on"] = bool(req.get("on"))
         if a == "watch_edit":
             out.update(freq=num("freq", 1, 7000, True), name=txt("name", 40) if "name" in req else None,
                        status=txt("status", 30) if "status" in req else None)
@@ -5825,6 +5828,10 @@ def ready_checks(i):
     if n and nost:
         add("status", "warn", "Statuts", f"{nost} fréquence(s) sans statut : pas d'alarme CONFLIT ni ABSENT pour elles.",
             "")
+    mu = int(i.get("muted") or 0)
+    if mu:
+        add("muted", "info", "Éteints (je sais)", f"{mu} fréquence(s) en 💤 éteint (je sais) : pas d'alarme ABSENT pour "
+            "elles. Rallume-les si elles doivent émettre.", "")
     pi = i.get("plan_issues")
     if pi is not None and n:
         if pi:
@@ -12587,6 +12594,9 @@ class ShowModeWindow(QtWidgets.QWidget):
                 t.setTextFormat(Qt.TextFormat.RichText)
                 t.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 t.setMinimumHeight(96)
+                t.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                t.customContextMenuRequested.connect(lambda pos, i_=i, t_=t: self.tile_menu(i_, t_, pos))
+                t.setToolTip("Clic droit : 💤 éteint (je sais) / 🔔 rallumer.")
                 self.grid.addWidget(t, i // cols, i % cols)
                 self.tiles.append(t)
         for t, w in zip(self.tiles, ws):
@@ -12597,6 +12607,17 @@ class ShowModeWindow(QtWidgets.QWidget):
                       f"<div style='font-size:18px'>{w['freq']:.3f} MHz</div>"
                       f"<div style='font-size:16px'>{_hesc(txt)}{(' · ' + lv) if lv else ''}</div>")
             t.setStyleSheet(f"background:{col}; color:{fg}; border-radius:8px; padding:6px")
+
+    def tile_menu(self, i, tile, pos):
+        ws = [w for w in self.owner.scope_ws() if not w.get("off")]
+        if i >= len(ws):
+            return
+        w = ws[i]
+        m = QtWidgets.QMenu(self)
+        a = m.addAction("🔔 Rallumer (surveiller à nouveau)" if w.get("muted") else "💤 Éteint (je sais) : pas d'alarme ABSENT")
+        if m.exec(tile.mapToGlobal(pos)) is a:
+            self.owner.set_muted([w], not w.get("muted"))
+            self.refresh()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -14467,10 +14488,14 @@ class WallWindow(QtWidgets.QWidget):
         if k >= len(self.owner.watch):
             return
         m = QtWidgets.QMenu(self)
-        a_hide = m.addAction(f"Retirer « {self.owner.watch[k]['name']} » du mur")
+        w = self.owner.watch[k]
+        a_mute = m.addAction("🔔 Rallumer" if w.get("muted") else "💤 Éteint (je sais)")
+        a_hide = m.addAction(f"Retirer « {w['name']} » du mur")
         a_pick = m.addAction("📋 Choisir les fréquences du mur…")
         act = m.exec(self.tiles[k].mapToGlobal(pos))
-        if act is a_hide:
+        if act is a_mute:
+            self.owner.set_muted([w], not w.get("muted"))
+        elif act is a_hide:
             self.owner.set_wall_rows([k], False)
         elif act is a_pick:
             self.owner.pick_wall()
@@ -15973,6 +15998,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.watch_table.itemSelectionChanged.connect(self._on_watch_sel)
         self.watch_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.watch_table.customContextMenuRequested.connect(self.watch_menu)
+        sc_mu = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Space"), self.watch_table)
+        sc_mu.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        sc_mu.activated.connect(lambda *_: self.toggle_muted_sel())
         self.watch_table.setItemDelegateForColumn(C_NAME, NameDelegate(self))
         sc_fill = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+D"), self.watch_table)
         sc_fill.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -16346,6 +16374,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.watch[-1]["rx"] = w["rx"]          # profil d'appareil (🧮 Vérifier le plan)
                 if w.get("iso"):
                     self.watch[-1]["iso"] = True             # 📸 toujours active, quel que soit l'état
+                if w.get("muted"):
+                    self.watch[-1]["muted"] = True           # 💤 éteinte exprès (je sais)
                 if w.get("ez"):
                     self.watch[-1]["ez"] = str(w["ez"])[:200]   # 🔗 venue d'un plan EazyRF suivi
             except Exception:
@@ -16563,6 +16593,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         **({"hide_wall": True} if w.get("hide_wall") else {}),
                         **({"rx": w["rx"]} if w.get("rx") else {}),
                         **({"iso": True} if w.get("iso") else {}),
+                        **({"muted": True} if w.get("muted") else {}),
                         **({"ez": w["ez"]} if w.get("ez") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
@@ -18663,7 +18694,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m = QtWidgets.QMenu(self)
         a_scene = m.addAction("＋ Nouvelle scène…")
         a_group = m.addAction("＋ Nouveau groupe…")
-        a_imp = a_asg = a_ren = a_col = a_del = None
+        a_imp = a_asg = a_ren = a_col = a_del = a_mu_on = a_mu_off = None
         rows = self._sel_rows()
         if real:
             m.addSeparator()
@@ -18671,6 +18702,12 @@ class MainWindow(QtWidgets.QMainWindow):
             if rows:
                 a_asg = m.addAction(f"Affecter les {len(rows)} fréquence(s) sélectionnée(s) ici")
             m.addSeparator()
+            lws = self.layer_ws(key)
+            if lws:
+                if not all(w.get("muted") for w in lws):
+                    a_mu_on = m.addAction("💤 Tout éteindre (je sais) : pas d'alarme ABSENT")
+                if any(w.get("muted") for w in lws):
+                    a_mu_off = m.addAction("🔔 Tout rallumer")
             a_ren = m.addAction("Renommer…")
             a_col = m.addAction("Couleur…")
             sub = QtWidgets.QMenu("🔔 Priorité des alarmes" + (" (ce groupe)" if key[1] else " (tous ses groupes)"), m)
@@ -18716,6 +18753,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.import_into(key)
         elif act is a_asg:
             self.assign_rows(rows, key[0], key[1] or "")
+        elif act is not None and act in (a_mu_on, a_mu_off):
+            self.set_muted(self.layer_ws(key), act is a_mu_on)
         elif act is a_ren:
             self.rename_layer(key)
         elif act is a_col:
@@ -18961,8 +19000,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.wall.rebuild()
 
     def w_paused(self, w):
-        """🎬 Groupe pas sur scène en ce moment (planning), ou 📸 fréquence hors de l'état actif : pas d'alarme ABSENT."""
-        if w.get("off"):
+        """🎬 Groupe pas sur scène en ce moment (planning), 📸 fréquence hors de l'état actif, ou 💤 éteinte exprès :
+        pas d'alarme ABSENT."""
+        if w.get("off") or w.get("muted"):
             return True
         act, planned = self._plan_state
         return planning_paused(w.get("scene", ""), w.get("group", ""), act, planned)
@@ -18971,6 +19011,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """(texte, ton, couleur) du signal de w selon son statut (voir signal_view)."""
         if w.get("off"):
             return "💤 en pause (état)", "none", self.theme["st_none"]
+        if w.get("muted") and w["state"] in (None, "free"):
+            return "💤 éteint (je sais)", "none", self.theme["st_none"]
         if w["state"] in (None, "free") and self.is_keep_on(w["status"]) and self.w_paused(w):
             return "💤 pas sur scène", "none", self.theme["st_none"]
         key, tone = signal_key(w["state"], self.is_keep_free(w["status"]), self.is_keep_on(w["status"]),
@@ -19211,12 +19253,18 @@ class MainWindow(QtWidgets.QMainWindow):
         a_wall = m.addAction("🧱 Afficher sur le mur" if wall_hid else "🧱 Masquer sur le mur")
         hid = all(self.watch[r].get("hide_mk") for r in rows)
         a_mk = m.addAction("📍 Réafficher le repère sur le spectre" if hid else "📍 Masquer le repère sur le spectre")
+        muted = all(self.watch[r].get("muted") for r in rows)
+        m.addSeparator()
+        a_mute = m.addAction("🔔 Rallumer (surveiller à nouveau)  Ctrl+Espace" if muted
+                             else "💤 Éteint (je sais) : pas d'alarme ABSENT  Ctrl+Espace")
         m.addSeparator()
         a_del = m.addAction("Supprimer")
         act = m.exec(self.watch_table.viewport().mapToGlobal(pos))
         if act is None:
             return
-        if act is a_zoom:
+        if act is a_mute:
+            self.set_muted([self.watch[r] for r in rows], not muted)
+        elif act is a_zoom:
             self.zoom_on(rows[0])
         elif act is a_thr:
             w0 = self.watch[rows[0]]
@@ -19262,6 +19310,50 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         elif act.data() is not None:
             self.set_status_rows(rows, act.data())
+
+    def set_muted(self, ws, on, quiet=False):
+        """💤 Éteint (je sais) : le micro est éteint exprès, pas d'alarme ABSENT, jusqu'à ce qu'on le rallume.
+        La fréquence reste dans le plan (elle se rallumera) et un signal sur une « doit rester libre » sonne toujours."""
+        now = time.time()
+        n = 0
+        for w in ws:
+            if bool(w.get("muted")) == bool(on):
+                continue
+            n += 1
+            if on:
+                w["muted"] = True
+                w["free_since"] = None
+                if w.get("absent"):
+                    w["absent"] = False
+                self.alarms.clear(("ABSENT", int(round(w["freq"] * 1000))), now)
+            else:
+                w.pop("muted", None)
+                w["free_since"] = None
+            self.log_event(w, w.get("level") if w.get("level") is not None else 0.0,
+                           "ÉTEINT (je sais)" if on else "RALLUMÉ")
+        if n:
+            w0 = ws[0]
+            self.update_watch_table(force=True)
+            self._update_markers()
+            self.refresh_alarms()
+            if self.wall is not None and self.wall.isVisible():
+                self.wall.rebuild()
+            if not quiet:
+                one = w0["name"] or f"{w0['freq']:.3f} MHz"
+                self.set_status((f"💤 {one} éteint (je sais) : pas d'alarme ABSENT." if on else f"🔔 {one} rallumé.")
+                                if n == 1 else (f"💤 {n} fréquence(s) éteintes (je sais)." if on
+                                                else f"🔔 {n} fréquence(s) rallumées."))
+        return n
+
+    def toggle_muted_sel(self):
+        rows = self._sel_rows()
+        ws = [self.watch[r] for r in rows if 0 <= r < len(self.watch)]
+        if ws:
+            self.set_muted(ws, not all(w.get("muted") for w in ws))
+
+    def layer_ws(self, key):
+        """Fréquences d'une scène (key = (scène, "")) ou d'un groupe (key = (scène, groupe))."""
+        return [w for w in self.watch if w["scene"] == key[0] and (not key[1] or w["group"] == key[1])]
 
     BLOCK_WIDTHS = (("Fréquence simple (pas de bloc)", 0.0), ("Bloc 6 MHz", 6.0), ("Bloc 8 MHz", 8.0),
                     ("Autre largeur…", None))
@@ -21435,6 +21527,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     sweep_age=(now - max(ts)) if ts else None, cycle=getattr(self, "last_cycle", 0.0) or 0.0,
                     watch_n=len(ws), uncovered=sum(1 for w in ws if not covered(w)),
                     no_status=sum(1 for w in ws if not w.get("status")), plan_issues=plan,
+                    muted=sum(1 for w in ws if w.get("muted")),
                     conflicts=sum(1 for a in self.alarms.active.values() if a.get("kind") != "APPAREIL")
                     if isinstance(self.alarms.active, dict) else len(self.alarms.active),
                     snooze=max(0.0, self.snooze_until - now) if self.snooze_until else 0.0,
@@ -22387,10 +22480,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.rebuild_watch_table()
             self._update_markers()
             return f"＋ {c['name'] or c['freq']} ({c['freq']:.3f} MHz) ajoutée"
-        if a in ("watch_edit", "watch_del"):
+        if a in ("watch_edit", "watch_del", "mute"):
             w = self._tech_w(c["key"])
             if w is None:
                 return "fréquence introuvable (liste changée entre-temps ?)"
+            if a == "mute":
+                self.set_muted([w], c["on"], quiet=True)
+                return f"💤 {w['name']} éteint (je sais)" if c["on"] else f"🔔 {w['name']} rallumé"
             if a == "watch_del":
                 self.watch.remove(w)
                 self.rebuild_watch_table()
@@ -22443,6 +22539,7 @@ class MainWindow(QtWidgets.QMainWindow):
             txt, _tone, col = self.sig_view(w)
             rows.append(dict(key=int(round(w["freq"] * 1000)), name=w["name"], freq=round(w["freq"], 4),
                              status=w["status"] or "", scene=w["scene"], group=w["group"], sig=txt, color=col,
+                             muted=bool(w.get("muted")),
                              level=self.lvl(w["level"], suffix=True) if w["level"] is not None else ""))
         clients = []
         if self.web is not None:

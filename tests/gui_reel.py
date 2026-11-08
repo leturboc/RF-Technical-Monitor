@@ -1280,6 +1280,34 @@ _w_all[-1].pop("iso", None)
 win.states, win.state_cur = _sv[0], ""
 win.apply_state(_sv[1])
 
+# 💤 Éteint (je sais) (7.40, Clément : « des fois les mics sont éteints et je le sais »)
+_on_st = [s_["name"] for s_ in win.statuses if s_.get("on")][0]
+_wm = next(w_ for w_ in win.watch if w_["status"] == _on_st)
+_km = int(round(_wm["freq"] * 1000))
+win.alarms.raise_(("ABSENT", _km), "ABSENT", _wm["name"], _wm["freq"], 2, time.time())
+_wm["absent"] = True
+check("éteint : 1 fréquence éteinte", win.set_muted([_wm], True) == 1)
+check("éteint : l'ABSENT en cours disparaît", ("ABSENT", _km) not in win.alarms.active and not _wm.get("absent"))
+check("éteint : plus d'ABSENT ensuite (comme en pause)", win.w_paused(_wm))
+_wm["state"] = "free"
+check("éteint : « 💤 éteint (je sais) » dans la liste", win.sig_view(_wm)[0] == "💤 éteint (je sais)", win.sig_view(_wm)[0])
+check("éteint : gardé dans le show", any(x.get("muted") for x in win._collect_config(False)["watch"]))
+check("éteint : rappel dans Prêt pour le show ?", any(c["key"] == "muted" for c in m.ready_checks(win.ready_info())))
+check("éteint : la page Tech rallume", "rallumé" in win.tech_do(dict(action="mute", key=_km, on=False))
+      and not _wm.get("muted"))
+_rows = win._sel_rows
+win._sel_rows = lambda: [win.watch.index(_wm)]
+win.toggle_muted_sel()
+check("éteint : Ctrl+Espace bascule", _wm.get("muted"))
+win.toggle_muted_sel()
+win._sel_rows = _rows
+check("éteint : rallumé = surveillé à nouveau", not _wm.get("muted") and not win.w_paused(_wm) or win.w_paused(_wm) and _wm.get("off"))
+_lk = (_wm["scene"], _wm["group"])
+if _lk[0]:
+    win.set_muted(win.layer_ws(_lk), True)
+    check("éteint : tout un groupe d'un coup", all(w_.get("muted") for w_ in win.layer_ws(_lk)))
+    win.set_muted(win.layer_ws(_lk), False)
+
 # ✅ Prêt pour le show ? / 🖥 Mode Show / 🛡 garde (7.39, « on fortifie »)
 _rd = win.open_ready()
 wait(300)
