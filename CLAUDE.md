@@ -601,6 +601,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   « 🛠 Retirer l'accès Tech », marques 🛠 / ⏳ dans les connectés. Testé : HTTP (test_alertes, 16 cas dont refus,
   blocage, autre navigateur), Chromium (page Tech, captures `web_tech.png`), vraie appli (gui_reel : accord par la
   fenêtre du PC, commandes appliquées). Pas de HTTPS (réseau de prod seulement).
+  **✅ Vérifié en vrai par Clément (09/11/2026) : accès Tech depuis son téléphone, accord sur le PC, commandes : « tout fonctionne ».**
 - **7.37.0 (Clément, après le mail de Régis d'EazyRF : « 📸 États » façon Snapshots)** : PURE `states_norm` ({name, keys
   = fréquences actives en kHz}, ≤ 30), `state_off`. `self.states` / `self.state_cur` (config + SHOW_KEYS « states »,
   « state_cur » ; appliqués APRÈS la liste dans `_apply_config`), `w["iso"]` (🔒 toujours active, mode ISO d'EazyRF,
