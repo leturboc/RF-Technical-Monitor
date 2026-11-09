@@ -459,8 +459,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   récepteur (quels émetteurs comptent) ; la ROBUSTESSE (linéarité, IP3, sélectivité canal) = écart + tolérances. Le
   profil SLX avait les tolérances de Wisycom (100 / 50) avec un filtre plus étroit → plans SLX jugés plus gentiment :
   passé à `_TOL_LARGE` (150 / 75, valeurs de départ). Textes corrigés (aide filtre, lexique, bulles, manuel).
-  **À demander à Clément** : ses profils EazyRF complets (2 TX, 3 TX, séparation, filtre, incrément) pour SLX / SLX-D,
-  evolution, PSM, AD, QLX-D, et ce que dit l'aide d'EazyRF sur « Filtre ».
+  ~~À demander à Clément : ses profils EazyRF~~ → FAIT en 7.27 avec sa bibliothèque `.lst4` (1 217 appareils) : ne
+  plus les lui redemander. Restent « valeurs de départ » (src guess) : senn_ana, shure_ana, shure_adt (familles
+  génériques ; un modèle précis s'importe depuis la bibliothèque, mode expert).
 - **Retours terrain de Clément (31/10/2026)** : vue Terrain ✅, son (sortie choisie) ✅, 👋 Identifier ✅, ntfy ✅.
 - **7.27.0 (Clément : bibliothèque EazyRF, « ça sonne beaucoup », compteur réseau, coord simple, manuel sans « non
   vérifié »)** :

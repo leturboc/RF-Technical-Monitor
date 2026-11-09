@@ -1563,8 +1563,8 @@ IM_CHUNK = 1_500_000
 IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
 # Règles d'intermod : tolérance (MHz) par type de produit ; un produit plus loin que ça de la porteuse est accepté,
 # 0 = type ignoré. 100 / 50 kHz = défauts des guides EazyRF (2 TX / 3 TX) ; 5ᵉ ordre : notre choix.
-# Le 1er réglage (comme EazyRF : 2 TX 100 / 3 TX 50 kHz) est celui par défaut ; avec le FILTRE du récepteur
-# (32 MHz dans le profil Wisycom d'EazyRF de Clément), son plan Wisycom donne 0 IM, comme dans EazyRF.
+# Le 1er réglage (Standard : 2 TX 100 / 3 TX 50 kHz) est celui par défaut ; avec le FILTRE du récepteur
+# (32 MHz pour un Wisycom MRK980), un plan Wisycom réel de Clément donne 0 IM.
 IM_TOL_PRESETS = [
     ("🟢 Standard (2 TX ±100 · 3 TX ±50 kHz)", {"2tx3": 0.100, "3tx3": 0.050, "5": 0.0, "7": 0.0},
      "Les tolérances les plus courantes en coordination : produits à 2 émetteurs (2A − B) à ±100 kHz et à "
@@ -1621,7 +1621,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
     a·A − b·B s'étale sur ± (a·largeur A + b·largeur B) / 2 autour de son centre ; « tombe sur » une cible quand
     cette bande arrive à moins de guard du bord de la cible.
     guard : tolérance (MHz), ou dict par type de produit (im_class : {"2tx3": 0.1, "3tx3": 0.05, "5": 0.05}) ;
-    dans le dict, 0 = type ignoré (comme une tolérance 0 dans EazyRF).
+    dans le dict, 0 = type ignoré (convention courante des logiciels de coordination).
     -> (rows, info). rows = [dict(f, order, terms, ntx, target, delta, hw, gap)] ; terms = [(indice, coefficient)] ;
     hw = demi-largeur du produit ; gap = écart bord à bord avec la cible (≤ 0 : ça se chevauche)."""
     gd = dict(guard) if isinstance(guard, dict) else None
@@ -1812,12 +1812,12 @@ def im_explain(f, freqs, orders=(3, 5), max_tx=5, tol=0.1, limit=40, bws=None):
     return im_scan(freqs, orders, max_tx, targets=[f], guard=tol, limit=limit, bws=bws)
 
 
-# ------------------------------------------------- vérification d'un plan de fréquences (façon EazyRF)
+# ------------------------------------------------- vérification d'un plan de fréquences
 PF_SEP = 0.300          # écart mini par défaut entre deux porteuses (MHz) ; réglable dans la fenêtre
 
 
 def pf_orders(tol):
-    """Ordres à calculer d'après les tolérances (0 = ignoré). Jusqu'au 5ᵉ comme EazyRF : le 7ᵉ multiplie les
+    """Ordres à calculer d'après les tolérances (0 = ignoré). Jusqu'au 5ᵉ : le 7ᵉ multiplie les
     combinaisons par ~100 (30 émetteurs : 200 millions) pour des produits très faibles."""
     return tuple(o for o, k in ((3, "2tx3"), (5, "5")) if tol.get(k, 0) > 0 or (o == 3 and tol.get("3tx3", 0) > 0))
 
@@ -2517,7 +2517,7 @@ def rx_custom_norm(lst):
         tol["7"] = 0.0
         extra = {k_: _rx_num(p.get(k_), 0.0, 7000.0, 0.0) for k_ in ("lo", "hi") if p.get(k_)}
         if p.get("img"):
-            extra["img"] = _rx_num(p.get("img"), 0.0, 200.0, 0.0)      # FI (fréquence intermédiaire) : image à ± FI (comme EazyRF, vérifié 7.51)
+            extra["img"] = _rx_num(p.get("img"), 0.0, 200.0, 0.0)      # FI (fréquence intermédiaire) : image à ± FI (vérifié 7.51)
         out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 10.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
                                     step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol,
                                     src="eazyrf" if p.get("src") == "eazyrf" else "perso", **extra),
@@ -2596,13 +2596,13 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
     """Compatibilité d'un plan : pour chaque fréquence, la liste de ses problèmes.
     - « sep » : une autre porteuse à moins de `sep` MHz (bord à bord pour un bloc large) ;
     - « im » : un produit d'intermod des ÉMETTEURS (is_tx) tombe dessus, dans la tolérance de son type (`tol`,
-      comme EazyRF : 2 TX / 3 TX / 5ᵉ ; 0 = type ignoré). Les réserves (is_tx False) sont protégées sans émettre.
+      2 TX / 3 TX / 5ᵉ ; 0 = type ignoré). Les réserves (is_tx False) sont protégées sans émettre.
     filt : largeur (MHz) du filtre d'entrée du récepteur (« Filtre » d'EazyRF) ; un produit ne gêne une fréquence
     que si tous ses émetteurs sont à ± filt / 2 d'elle (les autres sont filtrés). 0 = pas de filtre.
     sep, filt et tol peuvent être donnés PAR FRÉQUENCE (listes : profil d'appareil de chacune) : l'écart entre deux
     porteuses est le plus grand des deux, le filtre et les tolérances sont ceux de la fréquence touchée.
     img : FI du récepteur (MHz, 0 = pas vérifié ; une valeur ou une par fréquence). Récepteur superhétérodyne (les
-    analogiques, FI 10,7 MHz) : un ÉMETTEUR à f ± FI -> problème « img » (règle d'EazyRF, vérifiée par Clément le
+    analogiques, FI 10,7 MHz) : un ÉMETTEUR à f ± FI -> problème « img » (règle vérifiée par Clément le
     09/11/2026 : G3 sur 600 → « IMAGE de 589,300 / 610,700 », rien à 578,6 / 621,4) (tolérance =
     celle des 2 TX du récepteur, 100 kHz si elle vaut 0). Les deux côtés sont vérifiés (côté de l'oscillateur inconnu).
     -> (issues, info) ; issues[i] = [dict(kind, others=[indices], gap MHz, order, ntx, terms)]."""
@@ -9967,7 +9967,7 @@ class IntermodDialog(QtWidgets.QDialog):
         self.tgt_combo.addItem("Protéger : toutes les fréquences de la liste", "all")
         self.tgt_combo.addItem("Protéger : la couche active seulement", "scope")
         self.tgt_combo.addItem("Aucune cible : lister tous les produits dans la plage", "none")
-        # tolérances par type de produit (comme EazyRF : un 2A − B est bien plus fort qu'un A + B − C)
+        # tolérances par type de produit (un 2A − B est bien plus fort qu'un A + B − C)
         self.tol_spins = {}
         for key, tip in (("2tx3", "2 TX, 3ᵉ ordre (2A − B) : le produit le plus fort."),
                          ("3tx3", "3 TX, 3ᵉ ordre (A + B − C) : plus faible, tolérance plus serrée."),
@@ -9977,7 +9977,7 @@ class IntermodDialog(QtWidgets.QDialog):
             sp.setSingleStep(10)
             sp.setSuffix(" kHz")
             sp.setPrefix("± ")
-            sp.setSpecialValueText("ignoré")            # 0 = ce type de produit n'est pas compté (comme EazyRF)
+            sp.setSpecialValueText("ignoré")            # 0 = ce type de produit n'est pas compté
             sp.setToolTip(tip + "\nUn produit plus loin que ça de ta fréquence est accepté (comme les tolérances "
                                 "des logiciels de coordination).\n0 = « ignoré » : ce type de produit n'est pas compté du tout.")
             self.tol_spins[key] = sp
@@ -13906,7 +13906,7 @@ class EzrfSyncDialog(QtWidgets.QDialog):
 class StatesDialog(QtWidgets.QDialog):
     """📸 États (comme les Snapshots d'EazyRF) : plusieurs plans dans le même show (artistes, scènes, jours). Un état =
     les fréquences actives ; les autres passent en pause (pas d'alarme, hors du calcul d'intermod). « 🔒 Toujours » =
-    active dans tous les états (mode ISO d'EazyRF : intercom, talkies…)."""
+    active dans tous les états (intercom, talkies…)."""
 
     def __init__(self, owner):
         super().__init__(owner)
