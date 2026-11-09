@@ -1126,5 +1126,26 @@ check("accueil : tinySA perdu", _hs(dict(running=True, port=True, n_watch=3, los
 check("accueil : micro muet = à surveiller, pas d'alarme", _hs(dict(running=True, port=True, n_watch=3, ok=1, silent=2))[0],
       "warn")
 
+# --- qualité de mesure (7.44)
+_Fq = np.linspace(600, 610, 501); _Lq = np.full(501, -100.0); _Lq[250] = -60.0
+check("bruit local : le signal lui-même est ignoré", round(ns["noise_floor"](_Fq, _Lq, 605.0), 1), -100.0)
+check("bruit local : trop peu de points -> None", ns["noise_floor"]([1, 2], [-90, -80], 1.5), None)
+check("marge : très bon / juste / noyé", [ns["snr_view"](m)[1] for m in (25, 8, 2)], ["ok", "warn", "bad"])
+check("marge : une réserve propre = ok, une réserve occupée = bad", [ns["snr_view"](m, True)[1] for m in (2, 15)],
+      ["ok", "bad"])
+check("saturation : seuils, plus tôt avec le LNA", [ns["sat_level"](x) for x in (-40, -20, -10, None)]
+      + [ns["sat_level"](-35, True)], ["ok", "warn", "bad", "ok", "warn"])
+check("résolution : deux micros à 60 kHz avec un pas de 50 kHz = confondus",
+      [p_[:3] for p_ in ns["resolution_pairs"]([("A", 606.500, 0.05), ("B", 606.560, 0.05), ("C", 610.0, 0.05)], 0.0)],
+      [("A", "B", 0.06)])
+check("résolution : pas fin = OK", ns["resolution_pairs"]([("A", 606.500, 0.01), ("B", 606.560, 0.01)], 0.0), [])
+_lvq = lambda i: {c["key"]: c["level"] for c in ns["ready_checks"](i)}
+check("prêt : saturation signalée", _lvq(dict(running=True, sat="bad", sat_dbm=-8.0)).get("sat"), "bad")
+check("prêt : marge faible, résolution, mesures anciennes",
+      [_lvq(dict(running=True, low_snr=["HF 2"], res_pairs=[("A", "B", 0.06, 0.05)], stale=2)).get(k)
+       for k in ("snr", "res", "stale")], ["warn", "warn", "warn"])
+check("accueil : saturation = orange", ns["home_status"](dict(running=True, port=True, n_watch=2, ok=2, sat="warn",
+                                                              sat_dbm=-20.0))[0], "warn")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

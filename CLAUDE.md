@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.43.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.44.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -712,6 +712,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     EazyRF (deux TX à 21,4 MHz puis à 10,7 MHz d'un récepteur analogique).
   **7.43.1** : accueil compacté (titre et état d'une carte sur la même ligne) : sous Windows la hauteur mini était
   714 px (> 700, CI). Fusion V7 → V8 à la main (conflit dans `ScanWorker._loop` : `dev.configure` SDR + statistiques).
+- **7.44.0 (suite de la revue de code : indicateurs de qualité de mesure)** : PURE `noise_floor(F, L, f)` (20ᵉ centile à
+  ± 2 MHz sans ± 150 kHz autour de f), `snr_view(marge, keep_free)` (`SNR_GOOD/OK/LOW` 20 / 10 / 6 dB ; réserve :
+  inversé), `sat_level(max_dbm, lna)` (`SAT_WARN/BAD` −25 / −15 dBm, `SAT_LNA_SHIFT` 15 dB — **valeurs de départ, pas
+  mesurées sur un vrai Ultra**), `resolution_pairs(items, res)` (écart < 2 × max(pas, RBW)). `w["margin"]` (calculé
+  dans `update_watch_levels`), colonne **Marge** `C_MARG` = 10 (ajoutée en dernier, déplacée visuellement à côté de
+  Statut ; `WATCH_COLS_V` = 2 : un ordre de colonnes mémorisé avant 7.44 est ignoré). `_sat_max` {bande: (t, max)}
+  rempli par `on_sweep` ; `quality_info()` (sat, sat_dbm, low_snr, res_pairs, stale) → `ready_checks` (clés sat, snr,
+  res, stale ; « Régler » saturation = `open_measure`) et `home_status` (saturation = orange). Tuiles du mode Show :
+  « niveau · +marge dB ». Manuel : chapitre « Lire les états » (marge, saturation, résolution).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
