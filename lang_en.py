@@ -4562,3 +4562,13 @@ TEMPLATES.update({
     "<div style='font-size:24px; font-weight:bold'>{}</div>": "<div style='font-size:24px; font-weight:bold'>{}</div>",
     'background:{}; color:{}; border-radius:10px; padding:8px': 'background:{}; color:{}; border-radius:10px; padding:8px',
 })
+
+EXACT.update({'`:"")\n   :(st.health&&st.running&&st.health.data?`': '`:"")\n   :(st.health&&st.running&&st.health.data?`'})
+TEMPLATES.update({
+    '⚠ Surveillance partielle : pas de mesure pour {} — hors des bandes balayées ? (📶 Bandes)':
+        '⚠ Partial monitoring: no measurement for {} — outside the swept bands? (📶 Bands)',
+    '⚠ Surveillance dégradée : aucune mesure depuis le démarrage ({} s) — tes micros ne sont PAS surveillés. Vérifie le tinySA (câble, réseau).':
+        '⚠ Degraded monitoring: no measurement since start ({} s) — your mics are NOT monitored. Check the tinySA (cable, network).',
+})
+EXACT.update({"🔍 Zoom live : seule la zone zoomée est mesurée, le reste de ta liste n'est pas surveillé.":
+               '🔍 Live zoom: only the zoomed area is measured, the rest of your list is not monitored.'})

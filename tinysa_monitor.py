@@ -4250,7 +4250,7 @@ function update(v){const st=D.state;
   g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm&&r.tone!=="none"?` style="background:${r.color}${r.tone==="bad"?"aa":"55"};border-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
  if(v==="regie"){const rs=st.rows.filter(inLayer),un=st.alarms.filter(a=>!a.acked);
   $("#ra").innerHTML=un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:"")
-   :(st.health&&st.running&&st.health.tone!=="ok"?`<div class="rg-al ${st.health.tone==="bad"?"bad":"warn"}">${esc(st.health.text)}</div>`
+   :(st.health&&st.running&&st.health.data?`<div class="rg-al ${st.health.data.tone==="bad"?"bad":"warn"}">${esc(st.health.data.text)}</div>`
    :`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)${st.running?"":" · ⚠ surveillance arrêtée"}</small></div>`);
   const G={};rs.forEach(r=>{const k=lay(r)||"Sans scène";(G[k]=G[k]||[]).push(r)});
   const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
@@ -6877,6 +6877,39 @@ def home_next(i):
     return "run"
 
 
+def data_status(i):
+    """État des DONNÉES (7.47, revue UX : « absence d'alarme ≠ absence de mesure ≠ mesure trop ancienne ≠ couverture
+    incomplète ») : (ton, texte) ou None si les mesures sont fraîches et complètes. UNE seule logique, utilisée par
+    l'accueil, le bandeau du mode Show et la vue Régie de la page web. i : last_age (s depuis la dernière mesure prise
+    après ▶ Démarrer, None = aucune), run_age (s depuis ▶ Démarrer), stale_lim, stale_names, sat, sat_dbm."""
+    if "last_age" not in i:
+        return _sat_status(i)
+    age, lim = i.get("last_age"), float(i.get("stale_lim") or 15.0)
+    if age is None:
+        run_age = float(i.get("run_age") or 0.0)
+        if run_age > lim:                        # la 1re mesure n'arrive jamais : pas « en cours », c'est un problème
+            return "bad", (f"⚠ Surveillance dégradée : aucune mesure depuis le démarrage ({run_age:.0f} s) — "
+                           "tes micros ne sont PAS surveillés. Vérifie le tinySA (câble, réseau).")
+        return "wait", "⏳ Premier balayage en cours… pas encore de mesure : tes micros ne sont pas encore surveillés."
+    if age > lim:
+        return "bad", (f"⚠ Surveillance dégradée : aucune mesure depuis {age:.0f} s — les états affichés sont "
+                       "périmés. Vérifie le tinySA (câble, réseau).")
+    if i.get("zoom"):
+        return "warn", "🔍 Zoom live : seule la zone zoomée est mesurée, le reste de ta liste n'est pas surveillé."
+    names = list(i.get("stale_names") or [])
+    if names:
+        shown = ", ".join(names[:4]) + (f" (+ {len(names) - 4})" if len(names) > 4 else "")
+        return "warn", f"⚠ Surveillance partielle : pas de mesure pour {shown} — hors des bandes balayées ? (📶 Bandes)"
+    return _sat_status(i)
+
+
+def _sat_status(i):
+    if i.get("sat") in ("warn", "bad"):
+        return "warn", (f"⚠ Signal très fort à l'entrée du tinySA ({i.get('sat_dbm', 0):.0f} dBm) : mesures "
+                        "peut-être faussées — éloigne l'antenne d'un émetteur ou ajoute de l'atténuation")
+    return None
+
+
 def home_status(i):
     """Grande phrase d'état de l'accueil -> (ton ok|warn|bad|idle, texte). i : running, demo, port, n_watch,
     alarms [(type, nom)], ok, free, weak, muted, lost (tinySA perdus)."""
@@ -6894,20 +6927,9 @@ def home_status(i):
     if al:
         shown = " · ".join(f"{n} : {k}" for k, n in al[:3]) + (f" (+ {len(al) - 3})" if len(al) > 3 else "")
         return "bad", f"⚠ {len(al)} problème(s) — {shown}"
-    # 7.47 (revue UX) : jamais « tout va bien » sur des données absentes ou trop vieilles
-    if "last_age" in i:
-        age, lim = i.get("last_age"), float(i.get("stale_lim") or 15.0)
-        if age is None:
-            return "wait", "⏳ Premier balayage en cours… pas encore de mesure : tes micros ne sont pas encore surveillés."
-        if age > lim:
-            return "bad", (f"⚠ Surveillance dégradée : aucune mesure depuis {age:.0f} s — les états affichés sont "
-                           "périmés. Vérifie le tinySA (câble, réseau).")
-    if i.get("stale"):
-        return "warn", (f"⚠ Surveillance partielle : {i['stale']} fréquence(s) sans mesure (hors des bandes balayées "
-                        "ou bande pas encore balayée) — 📶 Bandes")
-    if i.get("sat") in ("warn", "bad"):
-        return "warn", (f"⚠ Signal très fort à l'entrée du tinySA ({i.get('sat_dbm', 0):.0f} dBm) : mesures "
-                        "peut-être faussées — éloigne l'antenne d'un émetteur ou ajoute de l'atténuation")
+    ds = data_status(i)
+    if ds is not None:
+        return ds
     bits = []
     if i.get("ok"):
         bits.append(f"{i['ok']} micro(s) OK")
@@ -15517,7 +15539,7 @@ class ShowModeWindow(QtWidgets.QWidget):
             self.banner.setText(rows + more)
             self.banner.setStyleSheet(f"background:{th['st_occ']}; color:white; border-radius:10px; padding:10px")
         else:
-            hl = o.health() if run else dict(tone="ok", text="")
+            hl = (o.health().get("data") if run else None) or dict(tone="ok", text="")
             if hl["tone"] in ("warn", "bad", "wait"):    # pas d'alarme MAIS mesures absentes / périmées / partielles
                 self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
                 bg = th["st_occ"] if hl["tone"] == "bad" else th["st_weak"]
@@ -18132,20 +18154,40 @@ class MainWindow(QtWidgets.QMainWindow):
     def health(self):
         """État général (accueil, mode Show, vue Régie) : {tone ok|warn|bad|wait|idle, text}."""
         try:
-            tone, text = home_status(self.home_info())
+            info = self.home_info()
+            tone, text = home_status(info)
+            ds = data_status(info) if self.is_running() else None
         except Exception:  # noqa: BLE001
-            tone, text = "idle", ""
-        return dict(tone=tone, text=text)
+            tone, text, ds = "idle", "", None
+        return dict(tone=tone, text=text, data=dict(tone=ds[0], text=ds[1]) if ds else None)
 
     def _home_fresh(self):
         """Fraîcheur des mesures pour l'accueil : âge de la dernière mesure (None = aucune depuis ▶ Démarrer),
         limite au-delà de laquelle c'est périmé, fréquences sans mesure, saturation."""
         now = time.time()
         t0 = getattr(self, "_run_t0", None)
-        ts = [t for k, t in self.latest_t.items() if k != ZOOM_ID and (t0 is None or t >= t0 - 1)]
+        run_age = (now - t0) if t0 else 0.0
+        # âge = celui de la bande la PLUS EN RETARD (revue UX : une bande figée pendant que les autres tournent ne doit
+        # pas passer inaperçue) ; une bande jamais mesurée depuis ▶ Démarrer compte pour run_age.
+        ages, seen = [], False
+        for b in self.scan_bands():
+            if not self._scan_now(b):
+                continue
+            t = self.latest_t.get(b["id"])
+            if t is not None and (t0 is None or t >= t0 - 1):
+                seen = True
+                ages.append(now - t)
+            else:
+                ages.append(run_age)
+        live = [d for d in self.dev_list() if d < len(self.live_mask()) and self.live_mask()[d]]
+        zoom = bool(getattr(self, "_zoom", None)) and len(live) <= 1    # avec 2 tinySA, l'autre garde les bandes
+        if zoom:                                   # 🔍 zoom live : seule la zone zoomée est mesurée (voulu)
+            tz = self.latest_t.get(ZOOM_ID)
+            ages, seen = ([now - tz] if tz is not None and (t0 is None or tz >= t0 - 1) else []), tz is not None
         q = self.quality_info()
-        return dict(last_age=(now - max(ts)) if ts else None, stale_lim=max(15.0, 4 * (self.last_cycle or 0.0)),
-                    stale=q.get("stale", 0), sat=q.get("sat"), sat_dbm=q.get("sat_dbm"))
+        return dict(last_age=max(ages) if (seen and ages) else None, run_age=run_age, zoom=zoom,
+                    stale_lim=max(15.0, 4 * (self.last_cycle or 0.0)), stale=q.get("stale", 0),
+                    stale_names=q.get("stale_names", []), sat=q.get("sat"), sat_dbm=q.get("sat_dbm"))
 
     def update_home(self):
         h = getattr(self, "home", None)
@@ -20657,7 +20699,9 @@ class MainWindow(QtWidgets.QMainWindow):
         for a in st["alarms"]:
             a.update(kind=tr(a["kind"]), info=tr(a["info"]))
         if st.get("health"):
-            st["health"] = dict(st["health"], text=tr(st["health"]["text"]))
+            d_ = st["health"].get("data")
+            st["health"] = dict(st["health"], text=tr(st["health"]["text"]),
+                                data=dict(d_, text=tr(d_["text"])) if d_ else None)
         if st.get("hunt"):
             st["hunt"] = dict(st["hunt"], devs=[tr(x) for x in st["hunt"]["devs"]], msg=tr(st["hunt"].get("msg") or ""))
         if st.get("terrain"):
@@ -24812,12 +24856,14 @@ class MainWindow(QtWidgets.QMainWindow):
         items = [(w["name"] or f"{w['freq']:.3f}", w["freq"], res_of(w["freq"])) for w in ws if not w.get("bw")]
         items = [x for x in items if x[2]]
         pairs = resolution_pairs(items, 0.0) if items else []
-        stale = 0
+        stale, stale_names = 0, []
         if self.is_running():
             for w in ws:
-                if res_of(w["freq"]) and w.get("level") is None:
-                    stale += 1
-        return dict(sat=sat_level(sat_dbm, lna), sat_dbm=sat_dbm, low_snr=low, res_pairs=pairs, stale=stale)
+                if w.get("level") is None and not self.w_paused(w):   # hors bandes, ou bande pas encore balayée
+                    stale_names.append(w["name"] or f"{w['freq']:.3f}")
+                    stale += bool(res_of(w["freq"]))                   # dans une bande balayée : mesure en retard
+        return dict(sat=sat_level(sat_dbm, lna), sat_dbm=sat_dbm, low_snr=low, res_pairs=pairs,
+                    stale=stale, stale_names=stale_names)
 
     def open_feature_search(self):
         """🔎 Ctrl+K : chercher une fonction par un mot et l'ouvrir."""
