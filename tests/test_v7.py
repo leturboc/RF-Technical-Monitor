@@ -1113,5 +1113,18 @@ ok("calibration : répétabilité (médiane, écart)", ns["calib_repeat"](_mk(0,
 _Fu = np.array([1.0, 3.0, 2.0, np.nan, 4.0]); _Lu = np.array([-1.0, -3.0, -2.0, -9.0, -4.0])
 check("grille nettoyée (triée, sans NaN)", [list(x) for x in ns["_clean_grid"](_Fu, _Lu)], [[1, 2, 3, 4], [-1, -2, -3, -4]])
 
+# --- 🏠 accueil
+_hn, _hs = ns["home_next"], ns["home_status"]
+check("accueil : rien de branché -> ① tinySA", (_hn({}), _hs({})[0]), ("port", "idle"))
+check("accueil : démo sans liste -> ② micros", _hn(dict(demo=True)), "list")
+check("accueil : prêt -> ③ démarrer", _hn(dict(port=True, n_watch=3)), "run")
+check("accueil : en marche -> plus d'étape", _hn(dict(running=True, port=True, n_watch=3)), "")
+check("accueil : tout va bien", _hs(dict(running=True, port=True, n_watch=3, ok=2, free=1)),
+      ("ok", "✔ Tout va bien — 2 micro(s) OK · 1 réserve(s) libre(s)"))
+check("accueil : alarmes en tête", _hs(dict(running=True, port=True, n_watch=3, alarms=[("ABSENT", "HF 3")], ok=2))[0], "bad")
+check("accueil : tinySA perdu", _hs(dict(running=True, port=True, n_watch=3, lost=["Plateau"]))[0], "bad")
+check("accueil : micro muet = à surveiller, pas d'alarme", _hs(dict(running=True, port=True, n_watch=3, ok=1, silent=2))[0],
+      "warn")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

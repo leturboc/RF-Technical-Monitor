@@ -167,6 +167,11 @@ win._build_pts_menu()
 [a_ for a_ in win.pts_menu.actions() if a_.isCheckable()][1].trigger()
 check("⚡ Auto équilibré : retour au pas d'avant", abs(win.bands[0]["step"] - _st0) < 1e-9, win.pts_btn.text())
 
+step("🎓 tutos : choix (coordination cachée)", win.start_tour)
+check("tutos : coordination cachée -> son tuto aussi", "coord" not in win._tour_chooser.buttons
+      and len(win._tour_chooser.buttons) == len(m.TOUR_KEYS) - 1)
+win._tour_chooser.close()
+win.set_coord(True)                           # les 6 tutos complets (outils de coordination montrés)
 step("🎓 tutos : choix", win.start_tour)
 _tc = win._tour_chooser
 check("tutos : 6 parcours proposés", len(_tc.buttons) == 6 and set(_tc.buttons) == set(m.TOUR_KEYS))
@@ -187,11 +192,12 @@ for _key in m.TOUR_KEYS:
         _tr.next_btn.click()
         app.processEvents()
     check(f"tuto {_key} : toutes les étapes ({_n}), dernière = Terminer", _tr.i == _n - 1 and "✔" in _tr.next_btn.text()
-          and _n >= 6, f"{_tr.i}/{_n}")
+          and _n >= 5, f"{_tr.i}/{_n}")
     _w_last = _tr.steps[-1][0]
     _tr.next_btn.click()
     app.processEvents()
     check(f"tuto {_key} terminé : surlignage retiré", win.tour_done and "f5a623" not in _w_last.styleSheet())
+win.set_coord(False)
 step("📚 lexique", win.open_glossary)
 _gl = win._glossary
 _n0 = _gl.count
@@ -822,7 +828,7 @@ _sig_x = _t.columnViewportPosition(m.C_SIG) + _t.columnWidth(m.C_SIG)
 check("1280×720 : colonne Signal visible sans faire défiler", 0 < _sig_x <= _t.viewport().width() + 2,
       f"{_sig_x} / {_t.viewport().width()}")
 vis = {t: b.isVisible() and b.visibleRegion().boundingRect().width() >= b.width() - 2
-       for t, b in (("Démarrer", win.start_btn), ("🔔", win.alarm_btn))}
+       for t, b in (("Démarrer", win.home.run_btn if win.home_on else win.start_btn), ("🔔", win.alarm_btn))}
 vis["Shows / Plus"] = all(a.isVisible() for a in win.cmd_bar.findChildren(W.QPushButton) if a.text() in ("🎪 Shows", "☰ Plus"))
 check("1280×720 : boutons du haut visibles en entier", all(vis.values()), str(vis))
 win.resize(1700, 980); wait(800)
@@ -1279,6 +1285,31 @@ check("tech : état inconnu refusé", "inconnu" in win.tech_do(dict(action="stat
 _w_all[-1].pop("iso", None)
 win.states, win.state_cur = _sv[0], ""
 win.apply_state(_sv[1])
+
+# 🏠 Accueil (7.43, Clément : « l'écran de base est assez imbuvable »)
+check("accueil : affiché, 3 cartes", win.home_bar.isVisible() and set(win.home.cards) == {"port", "list", "run"})
+check("accueil : parcours et Port / Démarrer en double cachés (hors expert)",
+      (not win.steps_bar.isVisible() and not win._port_act.isVisible()) or win.ui_level == "expert")
+win.update_home()
+check("accueil : phrase d'état remplie", win.home.status.text() != "", win.home.status.text())
+_lvl0 = win.ui_level
+win.set_level("expert")
+check("accueil : en expert, la barre de parcours revient", win.steps_bar.isVisible() and win._port_act.isVisible())
+win.set_level(_lvl0)
+win.set_home(False)
+check("accueil : masqué -> parcours de retour", not win.home_bar.isVisible() and win.steps_bar.isVisible())
+check("accueil : gardé dans la config", win._collect_config(False).get("home") is False)
+win.set_home(True)
+win.start_tour("ecran"); wait(200)
+check("tuto écran : commence par l'accueil", win._tour.steps[0][0] is win.home.cards["port"][0])
+win._tour.close()
+# outils de coordination cachés par défaut (7.43)
+check("coord : cachée par défaut", not win.coord_on and not win.step_btns["plan"].isVisible()
+      and not any(a_.isVisible() for a_ in win._coord_acts if not a_.isSeparator()))
+win.set_coord(True)
+check("coord : case ⚙ -> visible", win.step_btns["plan"].isVisible() or not win.steps_bar.isVisible())
+check("coord : gardée dans la config", win._collect_config(False).get("coord_tools") is True)
+win.set_coord(False)
 
 # 💤 Éteint (je sais) (7.40, Clément : « des fois les mics sont éteints et je le sais »)
 _on_st = [s_["name"] for s_ in win.statuses if s_.get("on")][0]

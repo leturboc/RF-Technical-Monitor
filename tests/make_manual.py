@@ -62,9 +62,10 @@ ICON = os.path.join(ROOT, "assets", "icone.png")
 IMG = os.path.join(ROOT, "docs", "img")
 # captures (tests/gui_reel.py en français, tests/gui_en.py en anglais) : chapitre → (fichier, légende fr, légende en)
 FIGS = {
-    "ecran": [("ecran", "L'écran principal en mode simple : barre du haut, parcours, spectre avec la barre des seuils, "
-                        "liste des fréquences à droite.",
-               "The main screen in simple mode: top bar, workflow, spectrum with the threshold bar, frequency list on the right.")],
+    "ecran": [("ecran", "L'écran principal : l'accueil en haut (① tinySA, ② Mes micros, ③ Surveiller et la phrase d'état), "
+                        "le spectre avec la barre des seuils, la liste des fréquences à droite.",
+               "The main screen: the home bar at the top (① tinySA, ② My mics, ③ Monitor and the status sentence), the "
+               "spectrum with the threshold bar, the frequency list on the right.")],
     "seuils": [("reglages", "⚙ Réglages › Seuils et alarmes.", "⚙ Settings › Thresholds and alarms.")],
     "mur": [("mur", "Le mur de fréquences : une tuile par fréquence, lisible de loin.",
              "The frequency wall: one tile per frequency, readable from a distance.")],

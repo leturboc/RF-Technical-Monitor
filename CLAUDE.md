@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.42.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.43.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -690,6 +690,26 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **CI** : job `linux-tests` (ubuntu, pty) : test_reseau, test_reseau_qt, test_relais_pi, test_garde, test_v7.
   - Pas fait (proposé par la revue) : découpage du fichier en modules (conflits V8), interface `SpectrumDevice`
     (prévu avec la V8), calibration par fréquence, métadonnées de mesure complètes.
+- **7.43.0 (Clément : « l'écran de base est assez imbuvable, penser hyper user friendly », « la coord je préfère la
+  garder cachée pour moi, on peut laisser la fréquence de secours », « + fréq image »)** :
+  - **🏠 Accueil** : `HomeBar` (toolbar `home_bar` sous `cmd_bar`) : cartes ① tinySA (`port_btn` menu = ports de
+    `port_combo` + démo), ② Mes micros (Importer / Ajouter / Depuis le scan), ③ Surveiller (▶ / ■, ✅ Prêt ?, 🖥 Mode
+    Show), 🎓 Tuto, ✕ ; carte à faire entourée (PURE `home_next`) ; grande phrase (PURE `home_status` : idle / ok /
+    warn « sans signal pour l'instant » / bad alarmes, tinySA perdu). `home_info`, `update_home` (dans `_alarm_tick`),
+    `set_home` (config `home`, ☰ Plus › 👁 Affichage › 🏠), `_home_layout` : avec l'accueil et hors expert, la barre de
+    parcours et Port / Démarrer de `cmd_bar` (`_dup_acts`) sont cachés. Tuto « écran » : 3 étapes accueil en tête
+    (`start_tour`), étapes visant des widgets cachés retirées.
+  - **Coordination cachée** : `coord_on` (config `coord_tools`, défaut False, case `coord_chk` dans ⚙ › Général),
+    `set_coord` : parcours ③ ④ (`_step_acts`, `_step_arrows`), `_coord_acts` (☰ Plus 🪄 🧮 🎛 + Intermod), tuto
+    « coord » (`COORD_TOURS`), étapes des tutos dont l'action est dans `COORD_METHODS`, clic droit du journal
+    « D'où ça peut venir », plan dans « Prêt ? ». 🆘 secours toujours visible. Manuel : encadrés « cachés par défaut ».
+  - **Fréquence image** : `pf_check(..., img)` (FI par fréquence, `_pf_vec`) : récepteur à FI > 0 + ÉMETTEUR à
+    f ± 2 × FI (les deux côtés, tolérance 2 TX du récepteur, 100 kHz si 0) → problème `img` ; `pf_suggest(..., img)`
+    (vérif exacte) ; `pf_issue_text` ; profils : `img` gardé par `rx_custom_norm` / `rx_custom_dump`, lu des .ezrf3 et
+    .lst4 (`rx_from_library`), champ « FI (fréquence image) » de `RxProfileEdit` ; PlanCheckDialog `_imgs`.
+    **Supposition** : image à ± 2 × FI (physique d'un superhétérodyne) ; la doc EazyRF parlait de « deux fréquences
+    séparées de 10,7 MHz » (l'écart = FI, oscillateur local ?) — **à faire vérifier par Clément** avec un plan test dans
+    EazyRF (deux TX à 21,4 MHz puis à 10,7 MHz d'un récepteur analogique).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
