@@ -1309,6 +1309,7 @@ check("Wisycom suivi : 1 changement, rien à retirer (pas celles de l'autre plan
 if win._ezrf_dlg is not None:
     win._ezrf_dlg.close()
 win.ezrf_link = None
+win.watch = []                                    # chaque plan sur une liste vide (sinon : 0 ajout, déjà présentes)
 for _fn in ("wsm_essai.wsm", "shure_essai.cug", "wisycom_essai.wshow", "dpa_essai.acp"):
     DLG_ACTION[0] = "accept"
     _nn = win.import_ezrf_file(os.path.join(HERE, "data", _fn))
