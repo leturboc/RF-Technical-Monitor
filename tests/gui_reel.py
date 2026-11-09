@@ -1348,8 +1348,8 @@ DLG_ACTION[0] = "reject"
 check("WWB .shw : fenêtre « Importer un plan Shure WWB », 4 fréquences, fichier suivi",
       _d_shw == ["Importer un plan Shure WWB"] and _n_shw == 4 and (win.ezrf_link or {}).get("kind") == "Shure WWB",
       f"{_d_shw} {_n_shw} {win.ezrf_link}")
-open(_shw, "w", encoding="utf-8").write(open(_shw, encoding="utf-8").read().replace("<value>577600</value>",
-                                                                                     "<value>578000</value>"))
+_txt_shw = open(_shw, encoding="utf-8").read().replace("<value>577600</value>", "<value>578000</value>")
+open(_shw, "w", encoding="utf-8").write(_txt_shw)                # lu AVANT d'ouvrir en écriture (sinon fichier vide)
 os.utime(_shw, (time.time() - 5, time.time() - 5))
 win._ezrf_next = 0.0
 _dd = win._ezrf_tick(time.time())
