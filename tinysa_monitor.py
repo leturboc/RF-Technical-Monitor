@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.48.0"
+APP_VER = "7.49.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -5802,48 +5802,63 @@ UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
 STEPS = (
     ("prep", "📋 Préparer", "Avant le show : scanner le lieu, ta liste de fréquences (importer, ajouter, nommer),\n"
      "le planning des plateaux et les états.",
-     (("▶ Scanner ici (pics remis à zéro)", "step_scan"),
-      ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"), (None, None),
-      ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
+     (("§1. Scanner le lieu", None),
+      ("▶ Scanner ici (pics remis à zéro)", "step_scan"),
+      ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"),
+      ("§2. Ma liste de fréquences", None),
       ("📥 Importer une liste ou un plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"),
-      ("🔗 Plan suivi (EazyRF, WWB, WSM, Wisycom, DPA)…", "ezrf_follow_info"),
+      ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
+      ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", "add_block_dialog"),
       ("✏ Nommer la sélection (HF 1, HF 2…)…", "quick_name_dialog"),
       ("Mon vocabulaire (noms proposés)…", "edit_vocab"),
-      ("📤 Exporter les fréquences (par scène / groupe)…", "export_by_scene"), (None, None),
+      ("🔗 Plan suivi (EazyRF, WWB, WSM, Wisycom, DPA)…", "ezrf_follow_info"),
+      ("📤 Exporter les fréquences (par scène / groupe)…", "export_by_scene"),
+      ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"),
+      ("§3. Coordination (avancé)", None),
+      ("🔒 Outils de coordination cachés : les afficher…", "show_coord_setting"),
       ("🪄 Trouver N fréquences compatibles (coordination auto)…", "open_coord"),
       ("🧮 Vérifier le plan de fréquences (compatibilité)…", "open_plan_check"),
-      ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"),
       ("⚡ Intermodulation (2 / 3 / 5 TX)…", "open_intermod"),
-      ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", "add_block_dialog"), (None, None),
+      ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"),
+      ("§4. Organiser le show", None),
       ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
-      ("📸 États (basculer de plan d'un clic)…", "open_states"), (None, None),
-      ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
+      ("📸 États (basculer de plan d'un clic)…", "open_states"))),
     ("show", "🎚 Surveiller", "Pendant le show : démarrer, vérifier que tout est prêt, mode Show plein écran, appel des\n"
      "micros, mur pour un 2ᵉ écran, fréquence de secours, alertes sur téléphone.",
-     (("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"), ("▶ Démarrer la surveillance", "step_monitor"),
-      ("🖥 Mode Show (plein écran, l'essentiel)  F10", "open_show_mode"),
+     (("§Avant d'ouvrir les portes", None),
+      ("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"),
       ("🎤 Appel des micros (line check)…  Ctrl+L", "open_linecheck"),
-      ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), (None, None),
+      ("§Pendant le show", None),
+      ("▶ Démarrer la surveillance", "step_monitor"),
+      ("🖥 Mode Show (plein écran, l'essentiel)  F10", "open_show_mode"),
+      ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"),
+      ("§Un micro est brouillé ?", None),
       ("🆘 Fréquence de secours…", "open_rescue"),
-      ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"), (None, None),
+      ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"),
+      ("§À distance et la nuit", None),
       ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "open_festival"))),
     ("after", "📊 Analyser", "Après le show : revoir ce qui s'est passé, rapport, occupation par heure, scans.",
-     (("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
-      ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"), ("📄 Rapport de show…", "make_report"),
-      (None, None),
+     (("§Revoir le show", None),
+      ("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
+      ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"),
+      ("📄 Rapport de show…", "make_report"),
+      ("§Scans des autres logiciels", None),
       ("📏 Importer un scan WSM / WWB comme référence…", "import_scan_as_ref"),
       ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", "open_scan_convert"))),
     ("hw", "🔌 Matériel", "Le matériel : plusieurs tinySA, tinySA en réseau (Raspberry Pi), relais, réglages de\n"
      "mesure, calibration, générateur, diagnostic.",
-     (("📡 Mes tinySA et les scènes qu'ils surveillent…", "open_devices"),
+     (("§Mes tinySA", None),
+      ("📡 Mes tinySA et les scènes qu'ils surveillent…", "open_devices"),
       ("➕ Plusieurs tinySA et leurs noms…", "open_devs_settings"),
-      ("🌐 tinySA en réseau : adresses enregistrées…", "open_net_profiles"),
-      ("📡 Relais réseau : partager le tinySA de CE PC…", "open_relay"), (None, None),
-      ("🎛 Réglages de mesure (finesse, préampli, atténuateur)…", "open_measure"),
       ("⚖ Calibrer les autres tinySA sur le 1er…", "start_calib"),
-      ("📡 Mode émission (générateur : tester un récepteur)…", "open_emit"), (None, None),
+      ("§En réseau (Raspberry Pi, autre PC)", None),
+      ("🌐 tinySA en réseau : adresses enregistrées…", "open_net_profiles"),
+      ("📡 Relais réseau : partager le tinySA de CE PC…", "open_relay"),
+      ("§Mesure et dépannage", None),
+      ("🎛 Réglages de mesure (finesse, préampli, atténuateur)…", "open_measure"),
+      ("📡 Mode émission (générateur : tester un récepteur)…", "open_emit"),
       ("🩺 Diagnostic tinySA (fichier pour le support)…", "open_diag"))),
 )
 # anciennes clés du parcours (tutos, tests) -> famille
@@ -18223,6 +18238,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "🔒 Outils de coordination": "Vérifier le plan, coordonner, intermod et profils d'appareil sont cachés :\n"
+                                    "⚙ Réglages › Général › « Outils de coordination (avancé) » pour les afficher.",
         "▶ Scanner ici": "Démarre le balayage et remet les pics à zéro : laisse tourner quelques minutes pour voir\n"
                         "ce qui occupe déjà le lieu (télé, autres équipes, brouilleurs).",
         "📍 Scans par lieu": "Un scan gardé par scène / lieu : comparer, fusionner, exporter, rapport d'étude de site.",
@@ -18320,10 +18337,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 if it_txt is None:
                     m_.addSeparator()
                     continue
+                if it_txt.startswith("§"):                # titre de rubrique (7.49 : menus rangés par rubriques)
+                    m_.addSection(it_txt[1:])
+                    continue
                 a_ = m_.addAction(it_txt)
                 a_.triggered.connect(lambda *_, k=key, n=meth: self.do_step(k, n))
                 if meth in COORD_METHODS:
                     self._coord_acts.append(a_)
+                elif meth == "show_coord_setting":
+                    self._coord_hint = a_
             if key == "hw":
                 for title, its in self.EXTRA_MENUS:       # sous-menus ajoutés par une autre version (V8 : SDR)
                     sm = m_.addMenu(title)
@@ -23577,6 +23599,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 a_.setVisible(self.coord_on)
         for a_ in self.__dict__.get("_coord_acts", []):
             a_.setVisible(self.coord_on)
+        h_ = self.__dict__.get("_coord_hint")
+        if h_ is not None:                          # caché : une entrée dit où les réactiver (Clément : « où est la coord ? »)
+            h_.setVisible(not self.coord_on)
 
     def set_smooth(self, on):
         """Courbes lissées (antialiasing) du spectre, de la rémanence et des scans gardés : plus joli, plus lourd."""
@@ -25140,6 +25165,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_feature_search(self):
         """🔎 Ctrl+K : chercher une fonction par un mot et l'ouvrir."""
         FeatureSearchDialog(self).exec()
+
+    def show_coord_setting(self):
+        """🔒 Les outils de coordination sont cachés : ⚙ Réglages › Général, où se trouve la case pour les afficher."""
+        self.open_settings(0)
 
     def open_devs_settings(self):
         """🔌 Matériel › Plusieurs tinySA : la rubrique des tinySA dans ⚙ Réglages."""

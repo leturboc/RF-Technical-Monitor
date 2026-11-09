@@ -4644,3 +4644,22 @@ TEMPLATES.update({
     "L'appli va se figer exprès (plus aucune réponse). La garde doit la fermer au bout de {} s puis la rouvrir. Continuer ?":
         'The app is going to freeze on purpose (no response at all). The guard must close it after {} s and then reopen it. Continue?',
 })
+
+# 7.49 : menus rangés en rubriques (le « § » ne sert qu'au programme : les deux formes sont traduites)
+_SECTIONS_749 = {
+    '1. Scanner le lieu': '1. Scan the venue', '2. Ma liste de fréquences': '2. My frequency list',
+    '3. Coordination (avancé)': '3. Coordination (advanced)', '4. Organiser le show': '4. Organise the show',
+    "Avant d'ouvrir les portes": 'Before doors open', 'Pendant le show': 'During the show',
+    'Un micro est brouillé ?': 'A mic is jammed?', 'À distance et la nuit': 'Remote and overnight',
+    'Revoir le show': 'Review the show', 'Scans des autres logiciels': "Other software's scans",
+    'Mes tinySA': 'My tinySA', 'En réseau (Raspberry Pi, autre PC)': 'Networked (Raspberry Pi, other PC)',
+    'Mesure et dépannage': 'Measurement and troubleshooting',
+}
+EXACT.update(_SECTIONS_749)
+EXACT.update({"§" + k: "§" + v for k, v in _SECTIONS_749.items()})
+EXACT.update({
+    '🔒 Outils de coordination cachés : les afficher…': '🔒 Coordination tools hidden: show them…',
+    '🔒 Outils de coordination': '🔒 Coordination tools',
+    "Vérifier le plan, coordonner, intermod et profils d'appareil sont cachés :\n⚙ Réglages › Général › « Outils de coordination (avancé) » pour les afficher.":
+        'Check the plan, coordinate, intermod and device profiles are hidden:\n⚙ Settings › General › “Coordination tools (advanced)” to show them.',
+})
