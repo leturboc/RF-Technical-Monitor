@@ -4258,3 +4258,33 @@ EXACT.update({
     '📥 Importer…': '📥 Import…',
 })
 EXACT['font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; '] = 'font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; '
+
+# ---- 7.44 : qualité de mesure
+EXACT.update({
+    'Correct : le signal se distingue bien du bruit.': 'Fine: the signal stands out clearly from the noise.',
+    'De combien le signal dépasse le bruit de fond autour de lui (dB).\n≥ 20 très bon · ≥ 10 correct · 6 à 10 juste · moins : noyé dans le bruit.':
+        'How far the signal rises above the noise floor around it (dB).\n≥ 20 very good · ≥ 10 fine · 6 to 10 borderline · less: buried in the noise.',
+    'Juste : le signal dépasse à peine le bruit (antenne, distance, pile ?).': 'Borderline: the signal barely rises above the noise (antenna, distance, battery?).',
+    'Marge': 'Margin',
+    'Marge au-dessus du bruit': 'Margin above the noise',
+    'Mesures anciennes': 'Old measurements',
+    "Noyé dans le bruit : on ne peut pas dire si l'émetteur est là.": 'Buried in the noise: we cannot tell whether the transmitter is there.',
+    'Pas encore de mesure.': 'No measurement yet.',
+    'Rien au-dessus du bruit : la réserve est propre.': 'Nothing above the noise: the reserve is clean.',
+    'Résolution': 'Resolution',
+    'Saturation': 'Overload',
+    'Très bon : le signal est largement au-dessus du bruit.': 'Very good: the signal is well above the noise.',
+    'Un signal dépasse nettement le bruit sur cette réserve.': 'A signal clearly rises above the noise on this reserve.',
+})
+TEMPLATES.update({
+    "⚠ Signal très fort à l'entrée du tinySA ({} dBm) : mesures peut-être faussées — éloigne l'antenne d'un émetteur ou ajoute de l'atténuation":
+        "⚠ Very strong signal at the tinySA input ({} dBm): measurements may be wrong — move the antenna away from a transmitter or add attenuation",
+    ' · {} dB': ' · {} dB',
+    "Le tinySA reçoit un signal très fort ({} dBm) : ses mesures peuvent être fausses (niveaux écrasés, faux signaux). Éloigne l'antenne des émetteurs, coupe le LNA, ou ajoute de l'atténuation.":
+        'The tinySA receives a very strong signal ({} dBm): its measurements may be wrong (squashed levels, false signals). Move the antenna away from transmitters, turn the LNA off, or add attenuation.',
+    "{} paire(s) de fréquences trop proches pour la résolution actuelle (ex. {} et {} : {} kHz d'écart, résolution {} kHz) : elles se confondent sur le spectre. ⚡ Points › Auto détaillé, ou un pas plus fin.":
+        '{} pair(s) of frequencies too close for the current resolution (e.g. {} and {}: {} kHz apart, resolution {} kHz): they merge on the spectrum. ⚡ Points › Auto detailed, or a finer step.',
+    "{} micro(s) à peine au-dessus du bruit ({}) : rapproche l'antenne du tinySA ou vérifie les émetteurs.":
+        '{} mic(s) barely above the noise ({}): move the tinySA antenna closer or check the transmitters.',
+    '{} fréquence(s) sans mesure récente alors que la surveillance tourne.': '{} frequency(ies) with no recent measurement while monitoring is running.',
+})

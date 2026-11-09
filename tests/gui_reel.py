@@ -1396,6 +1396,23 @@ check("coord : case ⚙ -> visible", win.step_btns["plan"].isVisible() or not wi
 check("coord : gardée dans la config", win._collect_config(False).get("coord_tools") is True)
 win.set_coord(False)
 
+# 📶 Qualité de mesure (7.44, revue de code)
+win.update_watch_table(force=True)
+_mtx = [win.watch_table.item(r_, m.C_MARG).text() for r_ in range(win.watch_table.rowCount())]
+check("qualité : colonne Marge remplie (dB au-dessus du bruit)", any(t_.endswith("dB") for t_ in _mtx), str(_mtx[:6]))
+check("qualité : colonne Marge à côté de Statut",
+      win.watch_table.horizontalHeader().visualIndex(m.C_MARG) == 4)
+_sat0 = dict(win.__dict__.get("_sat_max", {}))
+win._sat_max = {999: (time.time(), -8.0)}
+_qi = win.quality_info()
+check("qualité : saturation détectée (-8 dBm)", _qi["sat"] == "bad" and any(
+    c_["key"] == "sat" for c_ in m.ready_checks(win.ready_info())), str(_qi))
+win.update_home()
+check("qualité : l'accueil prévient de la saturation", "Signal très fort" in win.home.status.text()
+      or win.alarms.active, win.home.status.text())
+win._sat_max = _sat0
+check("qualité : config retient la version des colonnes", win._collect_config(False).get("watch_cols_v") == m.WATCH_COLS_V)
+
 # 💤 Éteint (je sais) (7.40, Clément : « des fois les mics sont éteints et je le sais »)
 _on_st = [s_["name"] for s_ in win.statuses if s_.get("on")][0]
 _wm = next(w_ for w_ in win.watch if w_["status"] == _on_st)

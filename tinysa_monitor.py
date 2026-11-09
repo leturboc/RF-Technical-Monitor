@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.43.1"
+APP_VER = "7.44.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -6671,6 +6671,29 @@ def ready_checks(i):
     if n and nost:
         add("status", "warn", "Statuts", f"{nost} fréquence(s) sans statut : pas d'alarme CONFLIT ni ABSENT pour elles.",
             "")
+    sat = i.get("sat")
+    if sat in ("warn", "bad"):
+        add("sat", "bad" if sat == "bad" else "warn", "Saturation",
+            f"Le tinySA reçoit un signal très fort ({i.get('sat_dbm', 0):.0f} dBm) : ses mesures peuvent être fausses "
+            "(niveaux écrasés, faux signaux). Éloigne l'antenne des émetteurs, coupe le LNA, ou ajoute de "
+            "l'atténuation.", "open_measure")
+    low = i.get("low_snr") or []
+    if low:
+        who = ", ".join(low[:4]) + (" …" if len(low) > 4 else "")
+        add("snr", "warn", "Marge au-dessus du bruit",
+            f"{len(low)} micro(s) à peine au-dessus du bruit ({who}) : rapproche l'antenne du tinySA ou vérifie les "
+            "émetteurs.", "")
+    rp = i.get("res_pairs") or []
+    if rp:
+        a_, b_, gap, r_ = rp[0]
+        add("res", "warn", "Résolution",
+            f"{len(rp)} paire(s) de fréquences trop proches pour la résolution actuelle (ex. {a_} et {b_} : "
+            f"{gap * 1000:.0f} kHz d'écart, résolution {r_ * 1000:.0f} kHz) : elles se confondent sur le spectre. "
+            "⚡ Points › Auto détaillé, ou un pas plus fin.", "")
+    stale = int(i.get("stale") or 0)
+    if stale and i.get("running"):
+        add("stale", "warn", "Mesures anciennes",
+            f"{stale} fréquence(s) sans mesure récente alors que la surveillance tourne.", "dump_diag")
     mu = int(i.get("muted") or 0)
     if mu:
         add("muted", "info", "Éteints (je sais)", f"{mu} fréquence(s) en 💤 éteint (je sais) : pas d'alarme ABSENT pour "
@@ -6741,6 +6764,69 @@ def ready_summary(checks):
     return "ok", "✅ Prêt pour le show !"
 
 
+# ------------------------------------------------------------------ qualité de mesure (7.44, revue de code)
+SNR_GOOD, SNR_OK, SNR_LOW = 20.0, 10.0, 6.0       # marge au-dessus du bruit (dB) : très bon / correct / juste
+# Saturation : niveau MAX reçu par le tinySA au-delà duquel ses mesures deviennent douteuses (compression, faux
+# signaux). Valeurs de départ prudentes, PAS mesurées sur un vrai tinySA Ultra (atténuateur auto) : à ajuster.
+SAT_WARN, SAT_BAD = -25.0, -15.0
+SAT_LNA_SHIFT = 15.0                                # préampli (LNA) en marche : sature ~15 dB plus tôt
+
+
+def noise_floor(F, L, f, win=2.0, exclude=0.15, q=20.0):
+    """Bruit de fond LOCAL autour de f (MHz) : 20ᵉ centile des points à ± win MHz, sans ceux à ± exclude de f (le
+    signal lui-même). -> dBm ou None (pas assez de points)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    if len(F) < 5:
+        return None
+    m = (np.abs(F - f) <= win) & (np.abs(F - f) > exclude) & np.isfinite(L)
+    if m.sum() < 5:
+        return None
+    return float(np.percentile(L[m], q))
+
+
+def snr_view(margin, keep_free=False):
+    """Marge (dB au-dessus du bruit) -> (texte court, ton ok|warn|bad|none, explication)."""
+    if margin is None:
+        return "—", "none", "Pas encore de mesure."
+    t = f"{margin:+.0f} dB"
+    if keep_free:                                   # réserve : une grande marge = quelqu'un est dessus
+        if margin >= SNR_OK:
+            return t, "bad", "Un signal dépasse nettement le bruit sur cette réserve."
+        return t, "ok", "Rien au-dessus du bruit : la réserve est propre."
+    if margin >= SNR_GOOD:
+        return t, "ok", "Très bon : le signal est largement au-dessus du bruit."
+    if margin >= SNR_OK:
+        return t, "ok", "Correct : le signal se distingue bien du bruit."
+    if margin >= SNR_LOW:
+        return t, "warn", "Juste : le signal dépasse à peine le bruit (antenne, distance, pile ?)."
+    return t, "bad", "Noyé dans le bruit : on ne peut pas dire si l'émetteur est là."
+
+
+def sat_level(max_dbm, lna=False):
+    """Niveau le plus fort vu par le tinySA -> "ok" | "warn" | "bad" (risque de saturation)."""
+    if max_dbm is None:
+        return "ok"
+    shift = SAT_LNA_SHIFT if lna else 0.0
+    if max_dbm >= SAT_BAD - shift:
+        return "bad"
+    if max_dbm >= SAT_WARN - shift:
+        return "warn"
+    return "ok"
+
+
+def resolution_pairs(items, res_mhz):
+    """Fréquences trop proches pour être distinguées avec la résolution du balayage (pas ou RBW, en MHz).
+    items = [(nom, MHz, résolution propre ou None)] -> [(nom1, nom2, écart MHz, résolution)]. Deux signaux à moins
+    de 2 × résolution se confondent sur le spectre."""
+    out = []
+    its = sorted(items, key=lambda x: x[1])
+    for (n1, f1, r1), (n2, f2, r2) in zip(its, its[1:]):
+        r = max(r1 or res_mhz, r2 or res_mhz)
+        if f2 - f1 < 2.0 * r - 1e-9:
+            out.append((n1, n2, round(f2 - f1, 4), r))
+    return out
+
+
 # ------------------------------------------------------------------ accueil (7.43 : « écran de base imbuvable »)
 def home_next(i):
     """Prochaine étape pour un débutant : "port" (brancher le tinySA), "list" (ajouter ses micros), "run" (démarrer)
@@ -6771,6 +6857,9 @@ def home_status(i):
     if al:
         shown = " · ".join(f"{n} : {k}" for k, n in al[:3]) + (f" (+ {len(al) - 3})" if len(al) > 3 else "")
         return "bad", f"⚠ {len(al)} problème(s) — {shown}"
+    if i.get("sat") in ("warn", "bad"):
+        return "warn", (f"⚠ Signal très fort à l'entrée du tinySA ({i.get('sat_dbm', 0):.0f} dBm) : mesures "
+                        "peut-être faussées — éloigne l'antenne d'un émetteur ou ajoute de l'atténuation")
     bits = []
     if i.get("ok"):
         bits.append(f"{i['ok']} micro(s) OK")
@@ -15114,6 +15203,8 @@ class ShowModeWindow(QtWidgets.QWidget):
         for t, w in zip(self.tiles, ws):
             txt, tone, col = o.sig_view(w)
             lv = o.lvl(w["level"], True) if w.get("level") is not None else ""
+            if lv and w.get("margin") is not None and o.is_keep_on(w["status"]):
+                lv += f" · {w['margin']:+.0f} dB"              # marge au-dessus du bruit
             fg = "black" if tone in ("warn",) else "white"
             t.setText(f"<div style='font-size:22px; font-weight:bold'>{_hesc(w['name'] or '')}</div>"
                       f"<div style='font-size:18px'>{w['freq']:.3f} MHz</div>"
@@ -17162,6 +17253,9 @@ def _html_esc(s):
 C_NAME, C_FREQ, C_LVL, C_MAX, C_THR, C_SIG, C_STAT, C_OCC, C_LAYER, C_BAND = range(10)
 WATCH_HEADERS = ["Nom", "MHz", "Niveau", "Max", "Seuil", "Signal", "Statut", "Occ.", "Scène › Groupe",
                  "Spectre"]
+C_MARG = 10                                     # 7.44 : marge au-dessus du bruit (colonne ajoutée en dernier)
+WATCH_HEADERS.append("Marge")
+WATCH_COLS_V = 2                                # ordre des colonnes mémorisé : ignoré s'il date d'avant la colonne Marge
 SIG_TEXT = {None: "—", "free": "libre", "weak": "faible", "occ": "OCCUPÉ"}
 CONFLICT_TEXT = "⚠ CONFLIT"
 ABSENT_TEXT = "⚠ ABSENT"
@@ -17667,7 +17761,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return dict(running=self.is_running(), demo=self.demo_chk.isChecked(), port=bool(p),
                     port_txt=self.port_combo.currentText() if p else "", n_watch=len(ws), lost=lost,
                     alarms=[(a["kind"], a.get("name") or "") for a in cur if a["kind"] != "APPAREIL"],
-                    ok=ok, free=free, weak=weak, muted=muted, silent=silent)
+                    ok=ok, free=free, weak=weak, muted=muted, silent=silent,
+                    **({k: v for k, v in self.quality_info().items() if k in ("sat", "sat_dbm")}
+                       if self.is_running() else {}))
 
     def update_home(self):
         h = getattr(self, "home", None)
@@ -18596,7 +18692,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                "vide = seuil global."),
                        (C_OCC, "Taux d'occupation sur la durée choisie dans « Détection »."),
                        (C_LAYER, "Scène et groupe de cette fréquence. Double-clic pour l'affecter."),
-                       (C_BAND, "Canal TV et attribution du spectre à cette fréquence (selon le pays).")):
+                       (C_BAND, "Canal TV et attribution du spectre à cette fréquence (selon le pays)."),
+                       (C_MARG, "De combien le signal dépasse le bruit de fond autour de lui (dB).\n≥ 20 très bon · "
+                                "≥ 10 correct · 6 à 10 juste · moins : noyé dans le bruit.")):
             self.watch_table.horizontalHeaderItem(c).setToolTip(tip)
         # le nom ne s'étire pas (sinon Signal / Statut sortent de la vue quand le panneau est étroit) : la dernière
         # colonne (attribution) prend la place restante
@@ -18608,8 +18706,9 @@ class MainWindow(QtWidgets.QMainWindow):
         hh_.setSectionsMovable(True)
         hh_.moveSection(hh_.visualIndex(C_SIG), 2)
         hh_.moveSection(hh_.visualIndex(C_STAT), 3)
+        hh_.moveSection(hh_.visualIndex(C_MARG), 4)
         for c, w in ((C_FREQ, 64), (C_LVL, 56), (C_MAX, 56), (C_THR, 56), (C_SIG, 78), (C_STAT, 84),
-                     (C_OCC, 48), (C_LAYER, 120), (C_BAND, 190)):
+                     (C_OCC, 48), (C_LAYER, 120), (C_BAND, 190), (C_MARG, 58)):
             self.watch_table.setColumnWidth(c, w)
         self.watch_table.verticalHeader().setVisible(False)
         self.watch_table.setWordWrap(False)
@@ -19073,7 +19172,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.names_chk.setChecked(data.get("names", True))
         self.set_unit(str(data.get("unit", "dbm")))
         wc = data.get("watch_cols")
-        if isinstance(wc, str) and wc:
+        if isinstance(wc, str) and wc and data.get("watch_cols_v") == WATCH_COLS_V:   # avant la colonne Marge : ignoré
             try:
                 self.watch_table.horizontalHeader().restoreState(QtCore.QByteArray.fromBase64(wc.encode()))
             except Exception:  # noqa: BLE001
@@ -19276,7 +19375,8 @@ class MainWindow(QtWidgets.QMainWindow):
             strong_on=self.strong_chk.isChecked(), strong_thr=self.strong_spin.value(), labels=dict(self.sig_labels),
             sig_colors=dict(self.sig_colors), plan_opts=dict(self.plan_opts), sdr=dict(self.sdr_cfg),
             port=self.port1() or "",
-            unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode())
+            unit=self.unit, watch_cols=bytes(self.watch_table.horizontalHeader().saveState().toBase64()).decode(),
+            watch_cols_v=WATCH_COLS_V)
         if full:
             data["demo"] = self.demo_chk.isChecked()
             data["geometry"] = bytes(self.saveGeometry().toBase64()).decode()
@@ -21704,6 +21804,7 @@ class MainWindow(QtWidgets.QMainWindow):
             t.setItem(r, C_OCC, self._item("—", False, True))
             t.setItem(r, C_LAYER, self._item("—"))
             t.setItem(r, C_BAND, self._item("—"))
+            t.setItem(r, C_MARG, self._item("—", False, True))
         self._updating = False
         self.rebuild_tree()
         self._refresh_focus()
@@ -21740,7 +21841,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 band = f"⚠ dans le bloc « {overlaps[r]} » · {band}"
             layer = self.layer_text(w)
             gc = self.group_color(w["scene"], w["group"]) if layer else None
-            sig = (lv, mx, st, conf, stat, w["name"], round(w["freq"], 3), thr_txt, occ_txt, band, layer, gc, absn)
+            keep_free = self.is_keep_free(w["status"])
+            m_txt, m_tone, m_tip = snr_view(w.get("margin") if w.get("level") is not None else None, keep_free)
+            sig = (lv, mx, st, conf, stat, w["name"], round(w["freq"], 3), thr_txt, occ_txt, band, layer, gc, absn,
+                   m_txt)
             if not force and w["sig"] == sig:
                 continue
             w["sig"] = sig
@@ -21749,7 +21853,7 @@ class MainWindow(QtWidgets.QMainWindow):
             row_fg = contrast_text(row_bg) if tone in ("bad", "warn") else th["ui_text"]
             cells = ((C_NAME, w["name"]), (C_FREQ, f'{w["freq"]:.3f}'), (C_LVL, lv), (C_MAX, mx),
                      (C_THR, thr_txt), (C_SIG, sig_txt), (C_STAT, stat), (C_OCC, occ_txt),
-                     (C_LAYER, layer or "—"), (C_BAND, band))
+                     (C_LAYER, layer or "—"), (C_BAND, band), (C_MARG, m_txt))
             for c, txt in cells:
                 it = t.item(r, c)
                 if it is None:
@@ -21766,6 +21870,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif c == C_LAYER and gc:
                     bg = blend(gc, base, 0.55)
                     fg = contrast_text(bg)
+                elif c == C_MARG:
+                    it.setToolTip(m_tip)
+                    if m_tone in ("warn", "bad") and not (keep_free and m_tone == "ok"):
+                        bg = blend(th["st_weak"] if m_tone == "warn" else th["st_occ"], base, 0.6)
+                        fg = contrast_text(bg)
                 elif c == C_BAND and w["cat"]:
                     bg = blend(th.get("bp_" + w["cat"], th["st_none"]), base, 0.6)
                     fg = contrast_text(bg)
@@ -22509,6 +22618,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.history.pop(bid, None)
         self.latest[bid] = (f, l)
         self.latest_t[bid] = time.time()
+        if bid != ZOOM_ID and len(l):
+            self.__dict__.setdefault("_sat_max", {})[bid] = (self.latest_t[bid], float(np.nanmax(l)))
         if bid != ZOOM_ID:
             if self._t_start is None:
                 self._t_start = self.latest_t[bid]
@@ -22608,6 +22719,8 @@ class MainWindow(QtWidgets.QMainWindow):
             how = "max" if self.is_keep_free(w["status"]) else "median"
             lvl = level_block(F, L, f, bw, how) if bw else level_at(F, L, f, win)
             w["level"] = lvl
+            fl_ = noise_floor(F, L, f, win=2.0 + bw / 2.0, exclude=max(0.15, win, bw / 2.0)) if lvl is not None else None
+            w["margin"] = (lvl - fl_) if fl_ is not None else None
             if lvl is None:
                 w["state"], w["t_acc"] = None, None
                 self._alarm_reset(w, now)
@@ -24274,7 +24387,40 @@ class MainWindow(QtWidgets.QMainWindow):
                     web_url=self.web_urls_text() if self.web is not None else "",
                     web_pin=bool(self.web_cfg.get("pin")), show_path=self.show_path,
                     session_rec=bool(self.session_cfg.get("rec")), disk_gb=disk,
-                    windows=sys.platform == "win32", guarded=self.guarded())
+                    windows=sys.platform == "win32", guarded=self.guarded(),
+                    **(self.quality_info() if self.is_running() else {}))
+
+    def quality_info(self):
+        """Indicateurs de qualité de mesure (7.44) : saturation, marges faibles, résolution, mesures anciennes."""
+        now = time.time()
+        stale_s = max(15.0, 4 * (getattr(self, "last_cycle", 0.0) or 0.0))
+        sm = [v for t_, v in self.__dict__.get("_sat_max", {}).values() if now - t_ <= stale_s]
+        sat_dbm = max(sm) if sm else None
+        lna = self._cfg.get("lna") is True
+        ws = [w for w in self.watch if not w.get("off") and not w.get("muted")]
+        low = [w["name"] or f"{w['freq']:.3f}" for w in ws
+               if self.is_keep_on(w["status"]) and w.get("level") is not None and w.get("margin") is not None
+               and w["state"] in ("weak", "occ") and w["margin"] < SNR_LOW]
+        bands = [b for b in self.scan_bands() if self._scan_now(b)]
+        rbw = self._cfg.get("rbw")
+
+        def res_of(f):
+            for b in bands:
+                if b["start"] <= f <= b["stop"]:
+                    return max(b["step"] / 1000.0, (rbw or 0) / 1000.0)
+            return None
+        items = [(w["name"] or f"{w['freq']:.3f}", w["freq"], res_of(w["freq"])) for w in ws if not w.get("bw")]
+        items = [x for x in items if x[2]]
+        pairs = resolution_pairs(items, 0.0) if items else []
+        stale = 0
+        if self.is_running():
+            for w in ws:
+                if res_of(w["freq"]) and w.get("level") is None:
+                    stale += 1
+        return dict(sat=sat_level(sat_dbm, lna), sat_dbm=sat_dbm, low_snr=low, res_pairs=pairs, stale=stale)
+
+    def open_measure(self):
+        self.open_settings("measure")
 
     def open_show_mode(self):
         """🖥 Mode Show plein écran (sur l'écran de la fenêtre principale)."""
