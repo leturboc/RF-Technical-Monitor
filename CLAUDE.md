@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.49.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.49.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -807,6 +807,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Mesure et dépannage). Coordination cachée : entrée `_coord_hint` « 🔒 Outils de coordination cachés : les
   afficher… » (`show_coord_setting` = ⚙ › Général), visible seulement si `coord_on` est faux (`set_coord`). lang_en :
   les titres avec ET sans « § ».
+- **7.49.1 (Clément : « pourquoi t'as que les IEM dans le .wshow ? », + 5 autres vrais shows Wisycom Manager 4.0 / 5.1)** :
+  confirmé sur 6 fichiers : Wisycom Manager n'enregistre JAMAIS la fréquence des récepteurs (MRK980, MRK16, MCR54),
+  connectés ou non, seulement celle des émetteurs MTK (DeviceChannel/TunedFreq). `parse_wisycom_show` : canaux dont le
+  nom = nom de l'appareil (MAT288 = combineur d'antennes, MRK16) écartés de la liste « sans fréquence » ; show sans
+  aucun émetteur (Maalouf) → message clair qui liste les canaux (« ajoute-les à la main, ou importe le plan depuis
+  EazyRF / un tableau ») au lieu de « aucune fréquence ». Piste non faite : interroger les récepteurs en réseau
+  (port 2101 = protocole Wisycom non documenté ; `EmberPlus Attached` = false dans ces shows).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

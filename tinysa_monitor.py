@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.49.0"
+APP_VER = "7.49.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2224,10 +2224,15 @@ def parse_wisycom_show(data):
             rows.append(dict(zone="", scene="", group=model, dev=(model,), devno="",
                              name=((nm.get("Value") if nm is not None else "") or "").strip()[:60], note=model, freq=f,
                              off=False))
-        if not chans:
-            missing += [(c.get("Name") or "").strip() for c in dv.findall("Channels/*") if (c.get("Name") or "").strip()]
+        if not chans:                              # récepteur : noms de canaux seulement (pas ceux = nom de l'appareil,
+            missing += [n for n in ((c.get("Name") or "").strip() for c in dv.findall("Channels/*"))   # MAT288, MRK16…)
+                        if n and n != model]
     if not rows:
-        raise ValueError("aucune fréquence dans ce show (Wisycom n'y enregistre que celles des émetteurs)")
+        names = ", ".join(missing[:8]) + ("…" if len(missing) > 8 else "")
+        raise ValueError(f"ce show ne contient que des récepteurs ({names}) : Wisycom Manager n'enregistre pas leurs "
+                         f"fréquences dans le fichier (seulement celles des émetteurs MTK). Ajoute-les à la main, ou "
+                         f"importe le plan depuis EazyRF / un tableau." if missing else
+                         "aucune fréquence dans ce show (Wisycom n'y enregistre que celles des émetteurs)")
     _number_dups(rows)
     warn = ""
     if missing:
