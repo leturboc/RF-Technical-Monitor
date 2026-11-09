@@ -1130,6 +1130,13 @@ check("accueil : alarmes en tête", _hs(dict(running=True, port=True, n_watch=3,
 check("accueil : tinySA perdu", _hs(dict(running=True, port=True, n_watch=3, lost=["Plateau"]))[0], "bad")
 check("accueil : micro muet = à surveiller, pas d'alarme", _hs(dict(running=True, port=True, n_watch=3, ok=1, silent=2))[0],
       "warn")
+_run = dict(running=True, port=True, n_watch=3, ok=2, free=1)
+check("accueil : démarré sans mesure -> jamais « tout va bien »", _hs(dict(_run, last_age=None))[0], "wait")
+check("accueil : mesures périmées -> surveillance dégradée", _hs(dict(_run, last_age=60, stale_lim=15))[0], "bad")
+check("accueil : fréquences sans mesure -> partielle", _hs(dict(_run, last_age=2, stale_lim=15, stale=2))[0], "warn")
+check("accueil : mesure fraîche -> tout va bien + âge", _hs(dict(_run, last_age=2, stale_lim=15)),
+      ("ok", "✔ Tout va bien — 2 micro(s) OK · 1 réserve(s) libre(s) · mesure il y a 2 s"))
+check("accueil : alarme prioritaire sur les données", _hs(dict(_run, last_age=None, alarms=[("ABSENT", "HF 1")]))[0], "bad")
 
 # --- qualité de mesure (7.44)
 _Fq = np.linspace(600, 610, 501); _Lq = np.full(501, -100.0); _Lq[250] = -60.0
@@ -1152,6 +1159,15 @@ check("prêt : marge faible, résolution, mesures anciennes",
 check("accueil : saturation = orange", ns["home_status"](dict(running=True, port=True, n_watch=2, ok=2, sat="warn",
                                                               sat_dbm=-20.0))[0], "warn")
 
+# --- 🔎 chercher une fonction (7.47)
+_fm = ns["feature_match"]
+_its = [("🎚 Surveiller › 🆘 Fréquence de secours…", "Propose des fréquences libres"), ("🔌 Matériel › 📡 Relais", "Partage"),
+        ("📋 Préparer › 📥 Importer", "fichier EazyRF")]
+check("recherche : sans accent ni majuscule", _fm(_its, "frequence SECOURS"), [0])
+check("recherche : dans la bulle aussi", _fm(_its, "eazyrf"), [2])
+check("recherche : vide = tout", _fm(_its, ""), [0, 1, 2])
+check("recherche : rien", _fm(_its, "zzz"), [])
+
 # --- fiches « problème » (7.46)
 _pk = ns["problem_key"]
 check("fiche : port pris par tinySA-App", _pk("could not open port 'COM4': PermissionError(13, 'Accès refusé.', None, 5)"), "busy")
@@ -1163,6 +1179,8 @@ check("fiche : tinySA muet", _pk("tinySA muet depuis 12 s"), "mute")
 check("fiche : inconnu", _pk("bizarre"), "other")
 _c = ns["problem_card"]("x", "no_port")
 ok("fiche : titre, explication, étapes, détail", _c["title"] and _c["what"] and len(_c["steps"]) >= 2 and _c["detail"] == "x")
+ok("fiche : conséquence toujours dite (liaison perdue ≠ arrêt)", all(ns["problem_card"]("", k)["impact"] for k in ns["PROBLEM_CARDS"])
+   and ns["problem_card"]("", "lost")["impact"] != ns["problem_card"]("", "busy")["impact"])
 ok("fiche : toutes complètes", all(t and w and st for t, w, st in ns["PROBLEM_CARDS"].values()))
 
 print("\nÉCHECS:", fails)

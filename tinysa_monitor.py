@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.46.0"
+APP_VER = "7.47.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4000,7 +4000,8 @@ body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,
 button,input,select{font:inherit;color:inherit}
 .hidden{display:none!important}.mut{color:var(--mut)}
 .rg-al{margin:10px 16px;border-radius:18px;padding:16px 22px;font-weight:800;font-size:clamp(22px,3.6vw,46px);line-height:1.15}
-.rg-al.ok{background:#14532d;color:#dcfce7}.rg-al.bad{background:var(--bad);color:#fff;animation:rgp .8s ease-in-out infinite alternate}
+.rg-al.ok{background:#14532d;color:#dcfce7}
+.rg-al.warn{background:#92400e;color:#fff7ed}.rg-al.bad{background:var(--bad);color:#fff;animation:rgp .8s ease-in-out infinite alternate}
 .rg-al small{display:block;font-size:.45em;font-weight:600;opacity:.9;margin-top:4px}
 @keyframes rgp{from{filter:brightness(1)}to{filter:brightness(1.3)}}
 .rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--rw,280px),1fr));gap:12px;padding:6px 16px 20px}
@@ -4245,7 +4246,8 @@ function update(v){const st=D.state;
   g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm&&r.tone!=="none"?` style="background:${r.color}${r.tone==="bad"?"aa":"55"};border-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
  if(v==="regie"){const rs=st.rows.filter(inLayer),un=st.alarms.filter(a=>!a.acked);
   $("#ra").innerHTML=un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:"")
-   :`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)${st.running?"":" · ⚠ surveillance arrêtée"}</small></div>`;
+   :(st.health&&st.running&&st.health.tone!=="ok"?`<div class="rg-al ${st.health.tone==="bad"?"bad":"warn"}">${esc(st.health.text)}</div>`
+   :`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)${st.running?"":" · ⚠ surveillance arrêtée"}</small></div>`);
   const G={};rs.forEach(r=>{const k=lay(r)||"Sans scène";(G[k]=G[k]||[]).push(r)});
   const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
   g.style.setProperty("--rw",Math.max(220,W/cols-16)+"px");g.style.setProperty("--rf",Math.max(18,Math.min(44,(W/cols)/11))+"px");
@@ -5910,6 +5912,20 @@ def glossary_find(text):
     return [g for g in GLOSSARY if not q or q in k(g[0]) or q in k(g[1])]
 
 
+def feature_match(items, query):
+    """🔎 Chercher une fonction (Ctrl+K) : items = [(chemin du menu, bulle d'aide)] -> indices des entrées qui
+    contiennent TOUS les mots cherchés (sans accents ni casse), d'abord celles où ils sont dans le nom."""
+    def k(x):
+        return "".join(c for c in unicodedata.normalize("NFD", str(x).lower()) if unicodedata.category(c) != "Mn")
+    words = k(query).split()
+    out = []
+    for i, (name, tip) in enumerate(items):
+        n_, t_ = k(name), k(tip)
+        if all(w in n_ or w in t_ for w in words):
+            out.append((0 if all(w in n_ for w in words) else 1, i))
+    return [i for _r, i in sorted(out)]
+
+
 # ------------------------------------------------------------------ ✅ prêt pour le show ?
 READY_ICONS = {"ok": "✅", "warn": "⚠️", "bad": "❌", "info": "ℹ️"}
 
@@ -6135,6 +6151,17 @@ def home_status(i):
     if al:
         shown = " · ".join(f"{n} : {k}" for k, n in al[:3]) + (f" (+ {len(al) - 3})" if len(al) > 3 else "")
         return "bad", f"⚠ {len(al)} problème(s) — {shown}"
+    # 7.47 (revue UX) : jamais « tout va bien » sur des données absentes ou trop vieilles
+    if "last_age" in i:
+        age, lim = i.get("last_age"), float(i.get("stale_lim") or 15.0)
+        if age is None:
+            return "wait", "⏳ Premier balayage en cours… pas encore de mesure : tes micros ne sont pas encore surveillés."
+        if age > lim:
+            return "bad", (f"⚠ Surveillance dégradée : aucune mesure depuis {age:.0f} s — les états affichés sont "
+                           "périmés. Vérifie le tinySA (câble, réseau).")
+    if i.get("stale"):
+        return "warn", (f"⚠ Surveillance partielle : {i['stale']} fréquence(s) sans mesure (hors des bandes balayées "
+                        "ou bande pas encore balayée) — 📶 Bandes")
     if i.get("sat") in ("warn", "bad"):
         return "warn", (f"⚠ Signal très fort à l'entrée du tinySA ({i.get('sat_dbm', 0):.0f} dBm) : mesures "
                         "peut-être faussées — éloigne l'antenne d'un émetteur ou ajoute de l'atténuation")
@@ -6151,6 +6178,8 @@ def home_status(i):
         bits.append(f"{i['muted']} éteint(s) exprès")
     if i.get("demo"):
         bits.append("mode démo")
+    if i.get("last_age") is not None:
+        bits.append(f"mesure il y a {i['last_age']:.0f} s")
     if i.get("weak") or i.get("silent"):
         return "warn", "✔ Pas d'alarme — " + " · ".join(bits)
     return "ok", "✔ Tout va bien" + (" — " + " · ".join(bits) if bits else "")
@@ -6257,11 +6286,23 @@ def problem_key(msg):
     return next((k for k, rx in _PROBLEM_KEYS if re.search(rx, low)), "other")
 
 
+# conséquence sur la surveillance et état réel après l'erreur (7.47, revue UX : « rassurer sans masquer »)
+PROBLEM_IMPACT = {
+    "no_port": "Rien n'est mesuré : la surveillance n'a pas démarré.",
+    "lost": "Les fréquences de ce tinySA ne sont plus mesurées (sauf si un autre tinySA reprend ses bandes). L'appli "
+            "réessaie toute seule ; l'alarme APPAREIL reste affichée tant qu'il n'est pas revenu.",
+}
+PROBLEM_IMPACT_DEFAULT = ("La surveillance est arrêtée : tes micros ne sont PAS surveillés en ce moment. Tes réglages "
+                          "et ta liste sont conservés.")
+
+
 def problem_card(msg="", key=None):
-    """-> dict(key, title, what, steps, detail) : fiche lisible par un débutant ; detail = message technique d'origine."""
+    """-> dict(key, title, what, steps, impact, detail) : fiche lisible par un débutant ; impact = conséquence sur la
+    surveillance ; detail = message technique d'origine."""
     k = key or problem_key(msg)
     title, what, steps = PROBLEM_CARDS.get(k, PROBLEM_CARDS["other"])
-    return dict(key=k, title=title, what=what, steps=list(steps), detail=str(msg or ""))
+    return dict(key=k, title=title, what=what, steps=list(steps), impact=PROBLEM_IMPACT.get(k, PROBLEM_IMPACT_DEFAULT),
+                detail=str(msg or ""))
 
 
 # ===== PURE-END
@@ -6580,7 +6621,8 @@ class ScanWorker(QtCore.QThread):
             self.st["rbw"] = cfg["rbw"] if ok else "?"
             if not ok:
                 self.stats["refused"] += 1
-                self._warn(f"⚠ Réglage refusé par le tinySA — {msg}")
+                self._warn(f"⚠ Réglage refusé par le tinySA — {msg} : le réglage précédent reste actif, nouvel essai "
+                           f"au prochain balayage")
         front = (cfg["lna"], cfg["att"])
         if front != self.st["front"]:
             self.st["front"] = front if self._apply_front(dev, cfg) else "?"
@@ -6602,7 +6644,8 @@ class ScanWorker(QtCore.QThread):
                 fails.append(m)
         if fails:
             self.stats["refused"] += 1
-            self._warn("⚠ Réglage refusé par le tinySA — " + " ; ".join(fails))
+            self._warn(f"⚠ Réglage refusé par le tinySA — {' ; '.join(fails)} : le réglage précédent reste actif, "
+                       f"nouvel essai au prochain balayage")
         return not fails
 
     def _scan_band(self, dev, b, cfg):
@@ -6630,7 +6673,8 @@ class ScanWorker(QtCore.QThread):
                     self.st["high"] = high if ok else None     # refusé : on réessaiera au prochain segment
                     if not ok:
                         self.stats["refused"] += 1
-                        self._warn(f"⚠ Changement d'entrée refusé — {msg}")
+                        self._warn(f"⚠ Changement d'entrée refusé — {msg} : l'entrée précédente reste active, nouvel "
+                                   f"essai au prochain segment")
                     else:
                         self.st["front"] = (cfg["lna"], cfg["att"]) if self._apply_front(dev, cfg) else "?"
                 if self.ultra and a >= 800e6 and not self.st.get("ultra"):
@@ -13024,10 +13068,69 @@ class HomeBar(QtWidgets.QWidget):
         self.run_btn.setStyleSheet("QPushButton{background:%s;color:%s;font-weight:bold;padding:5px 14px;"
                                    "border-radius:5px;}" % (col, contrast_text(col)))
         tone, txt = home_status(info)
-        c = {"ok": th["st_free"], "warn": th["st_weak"], "bad": th["st_occ"]}.get(tone)
+        c = {"ok": th["st_free"], "warn": th["st_weak"], "bad": th["st_occ"], "wait": th.get("st_none")}.get(tone)
         self.status.setText(txt)
         self.status.setStyleSheet("font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; "
                                   + (f"background:{c}; color:{contrast_text(c)}" if c else ""))
+
+
+class FeatureSearchDialog(QtWidgets.QDialog):
+    """🔎 Chercher une fonction (Ctrl+K, revue UX) : tape un mot (« secours », « RBW », « relais »…), Entrée lance
+    l'outil. Cherche dans les 4 menus du travail et ☰ Plus (nom ET bulle d'aide), sans accents ni majuscules."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("🔎 Chercher une fonction")
+        self.resize(560, 420)
+        lay = QtWidgets.QVBoxLayout(self)
+        self.edit = QtWidgets.QLineEdit()
+        self.edit.setPlaceholderText("Ex. : secours, relais, RBW, rapport, mur…")
+        self.edit.setToolTip("Tape un ou plusieurs mots ; Entrée ouvre la 1ʳᵉ fonction trouvée.")
+        self.listw = QtWidgets.QListWidget()
+        self.listw.setToolTip("Double-clic ou Entrée : ouvrir cette fonction.")
+        lay.addWidget(self.edit)
+        lay.addWidget(self.listw, 1)
+        self.items = self._collect()
+        self.edit.textChanged.connect(lambda *_: self.refresh())
+        self.edit.returnPressed.connect(lambda *_: self.go())
+        self.listw.itemActivated.connect(lambda *_: self.go())
+        self.refresh()
+
+    def _collect(self):
+        o, out = self.owner, []
+
+        def walk(menu, path):
+            for a in menu.actions():
+                if a.isSeparator() or not a.isVisible() or not a.text().strip():
+                    continue
+                name = a.text().split("\t")[0].replace("&", "")
+                if a.menu() is not None:
+                    walk(a.menu(), path + [name])
+                else:
+                    out.append((" › ".join(path + [name]), a.toolTip() if a.toolTip() != a.text() else "", a))
+        for k, mn in getattr(o, "step_menus", {}).items():
+            walk(mn, [o.step_btns[k].text()])
+        walk(o.more_menu, ["☰ Plus"])
+        return out
+
+    def refresh(self):
+        self.listw.clear()
+        for i in feature_match([(n, t) for n, t, _a in self.items], self.edit.text()):
+            it = QtWidgets.QListWidgetItem(self.items[i][0])
+            it.setToolTip(self.items[i][1])
+            it.setData(Qt.ItemDataRole.UserRole, i)
+            self.listw.addItem(it)
+        if self.listw.count():
+            self.listw.setCurrentRow(0)
+
+    def go(self):
+        it = self.listw.currentItem()
+        if it is None:
+            return
+        act = self.items[it.data(Qt.ItemDataRole.UserRole)][2]
+        self.accept()
+        QtCore.QTimer.singleShot(0, act.trigger)
 
 
 class ProblemDialog(QtWidgets.QDialog):
@@ -13047,6 +13150,12 @@ class ProblemDialog(QtWidgets.QDialog):
         what = QtWidgets.QLabel(card["what"])
         what.setWordWrap(True)
         lay.addWidget(what)
+        if card.get("impact"):
+            lay.addWidget(QtWidgets.QLabel("<b>Conséquence :</b>"))
+            imp = QtWidgets.QLabel(card["impact"])
+            imp.setWordWrap(True)
+            imp.setStyleSheet("color: #f59e0b; font-weight: bold")
+            lay.addWidget(imp)
         lay.addWidget(QtWidgets.QLabel("<b>Quoi faire :</b>"))
         for i, st in enumerate(card["steps"], 1):
             h_ = QtWidgets.QHBoxLayout()
@@ -13268,8 +13377,14 @@ class ShowModeWindow(QtWidgets.QWidget):
             self.banner.setText(rows + more)
             self.banner.setStyleSheet(f"background:{th['st_occ']}; color:white; border-radius:10px; padding:10px")
         else:
-            self.banner.setText("<div style='font-size:30px; font-weight:bold'>✔ Tout va bien</div>")
-            self.banner.setStyleSheet(f"background:{th['st_free']}; color:white; border-radius:10px; padding:8px")
+            hl = o.health() if run else dict(tone="ok", text="")
+            if hl["tone"] in ("warn", "bad", "wait"):    # pas d'alarme MAIS mesures absentes / périmées / partielles
+                self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
+                bg = th["st_occ"] if hl["tone"] == "bad" else th["st_weak"]
+                self.banner.setStyleSheet(f"background:{bg}; color:{contrast_text(bg)}; border-radius:10px; padding:8px")
+            else:
+                self.banner.setText("<div style='font-size:30px; font-weight:bold'>✔ Tout va bien</div>")
+                self.banner.setStyleSheet(f"background:{th['st_free']}; color:white; border-radius:10px; padding:8px")
         ws = [w for w in o.scope_ws() if not w.get("off")]
         sig = tuple((w["name"], round(w["freq"], 4)) for w in ws)
         cols = max(1, self.scroll.viewport().width() // 260)
@@ -15797,6 +15912,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.__dict__.setdefault("_step_acts", {})[key] = tb.insertWidget(self._more_act, b)
             self.step_btns[key] = b
             self.step_menus[key] = m_
+        self.find_btn = QtWidgets.QPushButton("🔎")
+        self.find_btn.setToolTip("Chercher une fonction par un mot (secours, relais, RBW, rapport…)  Ctrl+K")
+        self.find_btn.clicked.connect(lambda *_: self.open_feature_search())
+        tb.insertWidget(self._more_act, self.find_btn)
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+K"), self).activated.connect(lambda *_: self.open_feature_search())
         tb.insertSeparator(self._more_act)
         for old, new in STEP_ALIAS.items():               # tutos : anciennes étapes -> leur famille
             self.step_btns.setdefault(old, self.step_btns[new])
@@ -15866,8 +15986,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     port_txt=self.port_combo.currentText() if p else "", n_watch=len(ws), lost=lost,
                     alarms=[(a["kind"], a.get("name") or "") for a in cur if a["kind"] != "APPAREIL"],
                     ok=ok, free=free, weak=weak, muted=muted, silent=silent,
-                    **({k: v for k, v in self.quality_info().items() if k in ("sat", "sat_dbm")}
-                       if self.is_running() else {}))
+                    **(self._home_fresh() if self.is_running() else {}))
+
+    def health(self):
+        """État général (accueil, mode Show, vue Régie) : {tone ok|warn|bad|wait|idle, text}."""
+        try:
+            tone, text = home_status(self.home_info())
+        except Exception:  # noqa: BLE001
+            tone, text = "idle", ""
+        return dict(tone=tone, text=text)
+
+    def _home_fresh(self):
+        """Fraîcheur des mesures pour l'accueil : âge de la dernière mesure (None = aucune depuis ▶ Démarrer),
+        limite au-delà de laquelle c'est périmé, fréquences sans mesure, saturation."""
+        now = time.time()
+        t0 = getattr(self, "_run_t0", None)
+        ts = [t for k, t in self.latest_t.items() if k != ZOOM_ID and (t0 is None or t >= t0 - 1)]
+        q = self.quality_info()
+        return dict(last_age=(now - max(ts)) if ts else None, stale_lim=max(15.0, 4 * (self.last_cycle or 0.0)),
+                    stale=q.get("stale", 0), sat=q.get("sat"), sat_dbm=q.get("sat_dbm"))
 
     def update_home(self):
         h = getattr(self, "home", None)
@@ -16113,6 +16250,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._coord_acts = []
         mm.addSection("Réglages et affichage")
         mm.addAction("⚙ Réglages (seuils, bandes, son, langue…)…  Ctrl+,").triggered.connect(lambda *_: self.open_settings())
+        mm.addAction("🔎 Chercher une fonction…  Ctrl+K").triggered.connect(lambda *_: self.open_feature_search())
         self.win_menu.setTitle("🪟 Fenêtres et dispositions")
         mm.addMenu(self.win_menu)
         amenu = mm.addMenu("🎨 Apparence et langue")
@@ -16213,15 +16351,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
         mbox, mform = QtWidgets.QGroupBox("Mesure"), None
         mform = QtWidgets.QFormLayout(mbox)
+        m_help = QtWidgets.QLabel(
+            "Laisse tout en <b>Auto</b> si tu débutes. <b>Finesse (RBW)</b> : plus fine = distingue deux signaux "
+            "proches, mais balaye plus lentement. <b>Préampli (LNA)</b> : rend visibles les signaux faibles, mais "
+            "sature plus vite près d'un émetteur fort. <b>Atténuateur</b> : baisse le niveau d'entrée quand un "
+            "émetteur proche fausse la mesure (« signal très fort » dans ✅ Prêt ?).")
+        m_help.setWordWrap(True)
+        m_help.setMinimumHeight(m_help.fontMetrics().lineSpacing() * 4)
+        mform.addRow(m_help)
         mform.addRow("Points / balayage :", self.points_combo)
         mform.addRow("Finesse de mesure (RBW) :", self.rbw_combo)
         mform.addRow("Finesse en zoom (RBW) :", self.zrbw_combo)
         mform.addRow("Points en zoom :", self.zpts_combo)
         mform.addRow("Entrée :", self.input_combo)
-        mform.addRow("LNA :", self.lna_combo)
+        mform.addRow("Préampli (LNA) :", self.lna_combo)
         mform.addRow("Atténuateur :", self.att_combo)
-        mform.addRow("Offset :", self.offset_spin)
-        mform.addRow("Segment :", self.seg_combo)
+        mform.addRow("Correction de niveau (offset) :", self.offset_spin)
+        mform.addRow("Points par commande (segment) :", self.seg_combo)
         self.baud_combo = self._combo([(f"{b:,}".replace(",", " ") + " bauds", b)
                                        for b in (9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)], 115200)
         self.baud_combo.setToolTip("Vitesse du port série. En USB elle ne sert à rien (port COM virtuel : la vitesse\n"
@@ -17766,6 +17912,7 @@ class MainWindow(QtWidgets.QMainWindow):
         demo = self.demo_chk.isChecked()
         port = self.port1()
         self._last_problem = None                  # nouvel essai : l'ancien souci est oublié (revient s'il persiste)
+        self._run_t0 = time.time()                 # accueil : seules les mesures d'après ▶ Démarrer comptent
         if not demo and not port:
             self.show_problem(key="no_port")
             return
@@ -18337,7 +18484,7 @@ class MainWindow(QtWidgets.QMainWindow):
         st = web_state(rows, self.alarms.listing(), dict(
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
-            hunt=self.hunt_state(), terrain=self.terrain_state(),
+            hunt=self.hunt_state(), terrain=self.terrain_state(), health=self.health(),
             thr=round(float(self.thr_spin.value()), 1)))
         out = {"fr": json.dumps(st, ensure_ascii=False).encode("utf-8")}
         tr = en_translator()                              # chaque personne choisit sa langue sur la page
@@ -18345,6 +18492,8 @@ class MainWindow(QtWidgets.QMainWindow):
             r.update(state_txt=tr(r["state_txt"]), status=tr(r["status"]), alarm=tr(r["alarm"]))
         for a in st["alarms"]:
             a.update(kind=tr(a["kind"]), info=tr(a["info"]))
+        if st.get("health"):
+            st["health"] = dict(st["health"], text=tr(st["health"]["text"]))
         if st.get("hunt"):
             st["hunt"] = dict(st["hunt"], devs=[tr(x) for x in st["hunt"]["devs"]], msg=tr(st["hunt"].get("msg") or ""))
         if st.get("terrain"):
@@ -22462,6 +22611,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 if res_of(w["freq"]) and w.get("level") is None:
                     stale += 1
         return dict(sat=sat_level(sat_dbm, lna), sat_dbm=sat_dbm, low_snr=low, res_pairs=pairs, stale=stale)
+
+    def open_feature_search(self):
+        """🔎 Ctrl+K : chercher une fonction par un mot et l'ouvrir."""
+        FeatureSearchDialog(self).exec()
 
     def open_devs_settings(self):
         """🔌 Matériel › Plusieurs tinySA : la rubrique des tinySA dans ⚙ Réglages."""

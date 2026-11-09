@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.46.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.47.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -753,6 +753,22 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     « Reset max ») appliqués par `_apply_words` (dans `set_expert`, et après `_install_tips` : bulle d'origine gardée
     dans `_word_tips` + « (terme technique : …) ») ; RBW → « Finesse de mesure (RBW) », diversity → « Fusion des
     mesures (diversity) » ; lexique « Pics gardés ».
+- **7.47.0 (2ᵉ revue UX, faite sur la 7.44 ; la moitié était déjà dans la 7.46)** :
+  - **Jamais « tout va bien » sans mesure fraîche** : `home_status` lit `last_age` (None = aucune mesure depuis
+    ▶ Démarrer → ton « wait »), `stale_lim` (max(15 s, 4 cycles) → « ⚠ Surveillance dégradée », bad) et `stale`
+    (fréquences sans mesure → « partielle », warn) ; `_home_fresh()` (mesures postérieures à `_run_t0`, posé par
+    `toggle_run`) ; `health()` = {tone, text} utilisé par l'accueil, le bandeau du mode Show (sans alarme) et la vue
+    Régie web (`health` dans /etat.json, traduit ; classe CSS `.rg-al.warn`).
+  - Fiches : PURE `PROBLEM_IMPACT` (conséquence + état réel ; défaut = surveillance arrêtée, liste conservée ;
+    « lost » = l'appli réessaie) → « Conséquence : » dans `ProblemDialog`. Réglages refusés (`_warn`) : « le réglage
+    précédent reste actif, nouvel essai au prochain balayage ».
+  - **🔎 Chercher une fonction** (Ctrl+K, bouton 🔎 avant ☰ Plus, ☰ Plus) : PURE `feature_match` (tous les mots, sans
+    accents, nom puis bulle) ; `FeatureSearchDialog` parcourt `step_menus` + `more_menu` (actions visibles seulement :
+    la coordination cachée n'apparaît pas). `open_feature_search`.
+  - Réglages de mesure : aide en tête de la rubrique ; libellés « Préampli (LNA) », « Correction de niveau (offset) »,
+    « Points par commande (segment) ».
+  - Pas fait (proposé) : distinction systématique « détecté / déduit / recommandé » dans les alertes, profils de
+    configuration rapides, tests utilisateurs (à faire par Clément : débutant + technicien).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

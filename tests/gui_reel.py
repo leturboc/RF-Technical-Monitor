@@ -1340,6 +1340,23 @@ win._last_problem = None
 win.update_home()
 check("accueil : bouton caché sans souci", not win.home.help_btn.isVisibleTo(win.home))
 
+# 🔎 chercher une fonction (Ctrl+K) et état « surveillance dégradée » (7.47, revue UX 2)
+_fs = m.FeatureSearchDialog(win)
+_fs.show(); _fs.edit.setText("secours"); wait(100)
+shot(_fs, "recherche_fonction")
+check("Ctrl+K : « secours » trouve la fréquence de secours", _fs.listw.count() >= 1
+      and "🆘" in _fs.listw.item(0).text(), [_fs.listw.item(i).text() for i in range(_fs.listw.count())])
+_fs.edit.setText("relais"); wait(50)
+check("Ctrl+K : « relais » trouve le relais réseau", any("Relais" in _fs.listw.item(i).text() for i in range(_fs.listw.count())))
+_fs.close()
+if win.is_running():
+    _sv_lt = dict(win.latest_t)
+    win.latest_t.clear()
+    check("état : démarré sans mesure -> pas « tout va bien »", win.health()["tone"] in ("wait", "bad"), win.health())
+    win.latest_t.update({k: v - 3600 for k, v in _sv_lt.items()})
+    check("état : mesures vieilles d'une heure -> dégradée", win.health()["tone"] == "bad", win.health())
+    win.latest_t.clear(); win.latest_t.update(_sv_lt)
+
 # 📶 Qualité de mesure (7.44, revue de code)
 win.update_watch_table(force=True)
 _mtx = [win.watch_table.item(r_, m.C_MARG).text() for r_ in range(win.watch_table.rowCount())]

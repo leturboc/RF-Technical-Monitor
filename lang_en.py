@@ -4513,3 +4513,52 @@ TEMPLATES.update({
     '{} : liaison perdue': '{}: link lost',
     '(terme technique : {})': '(technical term: {})',
 })
+
+# 7.47 : revue UX 2 (états de surveillance, conséquences, recherche, réglages de mesure)
+EXACT.update({
+    '`:"")\n   :(st.health&&st.running&&st.health.tone!=="ok"?`': '`:"")\n   :(st.health&&st.running&&st.health.tone!=="ok"?`',
+    'color: #f59e0b; font-weight: bold': 'color: #f59e0b; font-weight: bold',
+    '⏳ Premier balayage en cours… pas encore de mesure : tes micros ne sont pas encore surveillés.':
+        '⏳ First sweep in progress… no measurement yet: your mics are not monitored yet.',
+    'Conséquence :': 'Consequence:',
+    "Rien n'est mesuré : la surveillance n'a pas démarré.": 'Nothing is measured: monitoring has not started.',
+    'La surveillance est arrêtée : tes micros ne sont PAS surveillés en ce moment. Tes réglages et ta liste sont conservés.':
+        'Monitoring is stopped: your mics are NOT monitored right now. Your settings and your list are kept.',
+    "Les fréquences de ce tinySA ne sont plus mesurées (sauf si un autre tinySA reprend ses bandes). L'appli réessaie toute seule ; l'alarme APPAREIL reste affichée tant qu'il n'est pas revenu.":
+        'The frequencies of this tinySA are no longer measured (unless another tinySA takes over its bands). The app retries by itself; the DEVICE alarm stays shown until it is back.',
+    '🔎 Chercher une fonction': '🔎 Find a feature',
+    '🔎 Chercher une fonction…  Ctrl+K': '🔎 Find a feature…  Ctrl+K',
+    'Chercher une fonction par un mot (secours, relais, RBW, rapport…)  Ctrl+K':
+        'Find a feature by a word (backup, relay, RBW, report…)  Ctrl+K',
+    'Ctrl+K': 'Ctrl+K',
+    'Ex. : secours, relais, RBW, rapport, mur…': 'E.g.: backup, relay, RBW, report, wall…',
+    'Tape un ou plusieurs mots ; Entrée ouvre la 1ʳᵉ fonction trouvée.': 'Type one or more words; Enter opens the first feature found.',
+    'Double-clic ou Entrée : ouvrir cette fonction.': 'Double-click or Enter: open this feature.',
+    'Laisse tout en': 'Leave everything on',
+    'si tu débutes.': 'if you are a beginner.',
+    'Finesse (RBW)': 'Resolution (RBW)',
+    ': plus fine = distingue deux signaux proches, mais balaye plus lentement.':
+        ': finer = tells two close signals apart, but sweeps more slowly.',
+    'Préampli (LNA)': 'Preamp (LNA)',
+    ": rend visibles les signaux faibles, mais sature plus vite près d'un émetteur fort.":
+        ': makes weak signals visible, but saturates sooner near a strong transmitter.',
+    'Atténuateur': 'Attenuator',
+    ": baisse le niveau d'entrée quand un émetteur proche fausse la mesure (« signal très fort » dans ✅ Prêt ?).":
+        ': lowers the input level when a nearby transmitter skews the measurement (“very strong signal” in ✅ Ready?).',
+    'Préampli (LNA) :': 'Preamp (LNA):',
+    'Correction de niveau (offset) :': 'Level correction (offset):',
+    'Points par commande (segment) :': 'Points per command (segment):',
+})
+TEMPLATES.update({
+    "⚠ Changement d'entrée refusé — {} : l'entrée précédente reste active, nouvel essai au prochain segment":
+        '⚠ Input change refused — {}: the previous input stays active, new try at the next segment',
+    '⚠ Réglage refusé par le tinySA — {} : le réglage précédent reste actif, nouvel essai au prochain balayage':
+        '⚠ Setting refused by the tinySA — {}: the previous setting stays active, new try at the next sweep',
+    'mesure il y a {} s': 'measured {} s ago',
+    '⚠ Surveillance partielle : {} fréquence(s) sans mesure (hors des bandes balayées ou bande pas encore balayée) — 📶 Bandes':
+        '⚠ Partial monitoring: {} frequency(ies) without measurement (outside the swept bands or band not swept yet) — 📶 Bands',
+    '⚠ Surveillance dégradée : aucune mesure depuis {} s — les états affichés sont périmés. Vérifie le tinySA (câble, réseau).':
+        '⚠ Degraded monitoring: no measurement for {} s — the states shown are out of date. Check the tinySA (cable, network).',
+    "<div style='font-size:24px; font-weight:bold'>{}</div>": "<div style='font-size:24px; font-weight:bold'>{}</div>",
+    'background:{}; color:{}; border-radius:10px; padding:8px': 'background:{}; color:{}; border-radius:10px; padding:8px',
+})
