@@ -630,7 +630,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     Relancée → `_late_layout` reprend la surveillance si `festival.was_running` (même sans mode festival ; aussi
     `TSM_RESUME` posé par `relaunch_guarded`, bouton « 🛡 Relancer maintenant sous garde » du `FestivalDialog`).
     `festival["guard"]` (défaut True) → `_startup_cmd` ajoute `--garde`. Test `tests/test_garde.py` (vrai processus
-    enfant : plante, se fige, se ferme ; dans la CI). **Jamais essayée dans l'exe Windows ni sur un vrai plantage.**
+    enfant : plante, se fige, se ferme ; dans la CI). **✅ Vérifié par Clément (09/11/2026, exe Windows 7.50, bouton « 💥 Tester : plantage ») : l'appli se relance bien.** Pas encore essayé : « 🧊 appli figée », un vrai plantage, la relance au démarrage de Windows.
   - **✅ Prêt pour le show ?** : PURE `ready_checks(info)` (liste {key, level ok|warn|bad|info, title, text, fix =
     méthode de MainWindow}) / `ready_summary` ; `MainWindow.ready_info()` (devs, dernier balayage, fréquences hors des
     bandes balayées, `pf_check` si ≤ 80 fréquences, son, ntfy / Telegram, web, show, `session_cfg["rec"]`, disque,
