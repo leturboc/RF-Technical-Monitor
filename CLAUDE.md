@@ -721,6 +721,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   rempli par `on_sweep` ; `quality_info()` (sat, sat_dbm, low_snr, res_pairs, stale) → `ready_checks` (clés sat, snr,
   res, stale ; « Régler » saturation = `open_measure`) et `home_status` (saturation = orange). Tuiles du mode Show :
   « niveau · +marge dB ». Manuel : chapitre « Lire les états » (marge, saturation, résolution).
+  Fusion V7 → V8 à la main (2ᵉ fois de suite) : la V8 a modifié les lignes `sig_colors=… / unit=… watch_cols=…` de
+  `_collect_config` (`sdr=`, `port=`) → **en V7, ajouter les nouvelles clés de config sur la ligne `coord_tools=` /
+  `home=` (zone propre à la V7), JAMAIS sur ces deux lignes-là**.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
