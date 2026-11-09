@@ -2281,6 +2281,8 @@ class _FakeResp:
 def _alerts_act(d):
     if not isinstance(d, m.AlertsDialog):
         return "reject"                      # le tuto (dialogue imbriqué) : on le ferme
+    check("alertes : tient sur un petit écran (OK toujours visible)", d.minimumSizeHint().height() <= 600,
+          str(d.minimumSizeHint().height()))
     d.service.setCurrentIndex(d.service.findData("telegram"))
     d.tg_token.setText("123:FAUX")
     _orig = m.urllib.request.urlopen

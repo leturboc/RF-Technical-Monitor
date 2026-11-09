@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.52.1"
+APP_VER = "7.52.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -7621,6 +7621,16 @@ class WebServer(threading.Thread):
             self.httpd.server_close()
 
 
+def fit_dialog(dlg, w, h):
+    """Taille d'une fenêtre bornée à l'écran (barre des tâches comprise) : jamais plus grande que la place dispo."""
+    try:
+        scr = (dlg.parentWidget().screen() if dlg.parentWidget() else None) or QtWidgets.QApplication.primaryScreen()
+        g = scr.availableGeometry()
+        dlg.resize(min(w, g.width() - 40), min(h, g.height() - 60))
+    except Exception:  # noqa: BLE001
+        dlg.resize(w, h)
+
+
 class AlertsDialog(QtWidgets.QDialog):
     """Réglages : alertes sur téléphone (ntfy / Telegram) et page web en lecture seule."""
 
@@ -7777,11 +7787,23 @@ class AlertsDialog(QtWidgets.QDialog):
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
+        # contenu dans une zone qui défile, OK / Annuler toujours visibles en bas (Clément 7.52 : sur un écran
+        # portable mis à l'échelle, la fenêtre dépassait de l'écran et le bouton OK était caché)
+        body = QtWidgets.QWidget()
+        bl = QtWidgets.QVBoxLayout(body)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.addWidget(nb)
+        bl.addWidget(wb)
+        bl.addStretch(1)
+        sc = QtWidgets.QScrollArea()
+        sc.setWidgetResizable(True)
+        sc.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sc.setWidget(body)
         lay = QtWidgets.QVBoxLayout(self)
-        lay.addWidget(nb)
-        lay.addWidget(wb)
-        lay.addStretch(1)
+        lay.addWidget(sc, 1)
         lay.addWidget(bb)
+        fit_dialog(self, 620, 760)
         self._svc()
         self.refresh()
 

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.52.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.52.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -850,6 +850,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   PermissionError » (diagnostics de Clément), puis 2 appli après le dégel. Corrigé : `_kill_tree(pr)` (`taskkill /F
   /T /PID` sous Windows, puis kill) ; relance par la garde (`TSM_GUARD_RESTART`) → `retry_first` sur le 1er tinySA
   (l'ancienne instance peut mettre quelques secondes à libérer le port). **À refaire par Clément avec la 7.52.1.**
+- **7.52.2 (Clément : « je peux pas valider en cliquant OK sur la page web et notif, c'est caché »)** : `AlertsDialog`
+  faisait 815 px de haut au minimum (> écran portable mis à l'échelle) → contenu dans un `QScrollArea`, OK / Annuler
+  toujours en bas ; `fit_dialog(dlg, w, h)` borne la taille à l'écran (à réutiliser pour toute grande fenêtre).
+  gui_reel : hauteur mini ≤ 600. Plus haute fenêtre restante mesurée : CoordDialog 639 px (cachée par défaut).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
