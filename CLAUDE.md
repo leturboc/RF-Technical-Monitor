@@ -842,7 +842,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   par point ; `thr_spin` / `weak_spin` suivent la valeur TYPIQUE (médiane + marges) pour les outils qui lisent le seuil
   global. Config + SHOW_KEYS : `thr_auto`, `auto_occ`, `auto_weak` ; défaut = allumé au **1er lancement seulement**
   (`_first_run`), les configs existantes restent en seuils fixes. Seuil tapé depuis la page Tech → Auto coupé.
-  **Pas essayé sur un vrai tinySA** (marges 12 / 6 dB = valeurs de départ ; à + 4 dB, du bruit pur passait en « faible » en démo).
+  **✅ Vérifié par Clément avec son vrai tinySA (09/11/2026) : « seuil auto ok »** (marges 12 / 6 dB gardées ; à + 4 dB,
+  du bruit pur passait en « faible » en démo).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
