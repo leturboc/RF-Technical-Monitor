@@ -135,10 +135,18 @@ shot(win, "demarrage")
 check("1er lancement : ultra simple (réglages et classement cachés)", win.ui_level == "ultra"
       and not win.thr_bar.isVisible() and not win.layer_box.isVisible(), win.ui_level)
 check("plus de panneau Réglages à gauche (tout dans ⚙)", not hasattr(win, "dock_set"))
-check("parcours : ① scan › ② liste › ③ plan › ④ intermod › ⑤ show › ⑥ après",
-      [b.text()[:1] for b in win.step_btns.values()] == ["①", "②", "③", "④", "⑤", "⑥"],
-      str([b.text() for b in win.step_btns.values()]))
+check("4 menus : Préparer › Surveiller › Analyser › Matériel (7.46)",
+      [k for k in win.step_menus] == ["prep", "show", "after", "hw"]
+      and all(win.step_btns[k].isVisible() for k in win.step_menus), str([b.text() for b in win.step_btns.values()]))
 check("1er lancement : tuto proposé", "Tuto" in win.tour_btn.text() and not win.tour_done)
+_miss_m = [a.text() for mn in win.step_menus.values() for a in mn.actions()
+           if a.text() and not a.isSeparator() and a.menu() is None
+           and not any(n == a.text() for _k, _t, _tp, its in m.STEPS for n, _f in its if n)]
+check("4 menus : chaque entrée vient de STEPS (ou d'un sous-menu ajouté)", not _miss_m, str(_miss_m))
+_bad_m = [n for _k, _t, _tp, its in m.STEPS for n, f in its if n and not callable(getattr(win, f, None))]
+check("4 menus : chaque entrée a sa méthode", not _bad_m, str(_bad_m))
+check("mots simples : « Pics gardés » hors expert", win.hold_chk.text() == "Pics gardés" and "max hold" in
+      win.hold_chk.toolTip().lower(), win.hold_chk.text())
 # ⚡ points par balayage Auto : par défaut au 1er lancement, pas choisi d'après la largeur totale
 _tot = sum(b["stop"] - b["start"] for b in win.bands if b["enabled"])
 check("1er lancement : points ⚡ Auto, pas d'après la largeur totale", win.points_combo.currentData() == 0
@@ -447,11 +455,12 @@ for x in win.findChildren(W.QWidget):
         miss.append((type(x).__name__, getattr(x, "text", lambda: "")() if not isinstance(x, W.QComboBox) else x.currentText()))
 check("chaque bouton / case / liste a une info-bulle", not miss, str(miss))
 _subs = [a for a in win.more_menu.actions() if a.menu() is not None]
-check("☰ Plus dans l'ordre du travail : liste, plan, scans / rapports, connexions, fenêtres, apparence",
-      [e for e in ["📋", "📐", "📊", "🔗", "🪟", "🎨"] if any(a.text().startswith(e) for a in _subs)]
-      == ["📋", "📐", "📊", "🔗", "🪟", "🎨"],
-      str([a.text() for a in _subs]))
-_no_tip = [a.text() for sm in [win.more_menu] + [a.menu() for a in _subs] for a in sm.actions()
+check("☰ Plus : réglages, fenêtres, apparence, affichage (le reste est dans les 4 menus)",
+      [e for e in ["🪟", "🎨", "👁"] if any(a.text().startswith(e) for a in _subs)] == ["🪟", "🎨", "👁"]
+      and not any(a.text().startswith(("📋", "📐", "🔗")) for a in _subs), str([a.text() for a in _subs]))
+check("mots simples : « Max hold » en expert", win.hold_chk.text() == "Max hold", win.hold_chk.text())
+_no_tip = [a.text() for sm in [win.more_menu] + list(win.step_menus.values()) + [a.menu() for a in _subs]
+           for a in sm.actions()
            if a.text() and not a.isSeparator() and not a.toolTip().strip() and a.toolTip() != a.text().replace("&", "")]
 check("☰ Plus : chaque entrée a une bulle d'aide", not _no_tip, str(_no_tip))
 win.set_expert(False)
@@ -1373,28 +1382,48 @@ win.apply_state(_sv[1])
 
 # 🏠 Accueil (7.43, Clément : « l'écran de base est assez imbuvable »)
 check("accueil : affiché, 3 cartes", win.home_bar.isVisible() and set(win.home.cards) == {"port", "list", "run"})
-check("accueil : parcours et Port / Démarrer en double cachés (hors expert)",
-      (not win.steps_bar.isVisible() and not win._port_act.isVisible()) or win.ui_level == "expert")
+check("accueil : Port / Démarrer en double cachés (hors expert)",
+      not win._port_act.isVisible() or win.ui_level == "expert")
 win.update_home()
 check("accueil : phrase d'état remplie", win.home.status.text() != "", win.home.status.text())
 _lvl0 = win.ui_level
 win.set_level("expert")
-check("accueil : en expert, la barre de parcours revient", win.steps_bar.isVisible() and win._port_act.isVisible())
+check("accueil : en expert, Port / Démarrer reviennent en haut", win._port_act.isVisible())
 win.set_level(_lvl0)
 win.set_home(False)
-check("accueil : masqué -> parcours de retour", not win.home_bar.isVisible() and win.steps_bar.isVisible())
+check("accueil : masqué -> Port / Démarrer de retour", not win.home_bar.isVisible() and win._port_act.isVisible())
 check("accueil : gardé dans la config", win._collect_config(False).get("home") is False)
 win.set_home(True)
 win.start_tour("ecran"); wait(200)
 check("tuto écran : commence par l'accueil", win._tour.steps[0][0] is win.home.cards["port"][0])
 win._tour.close()
 # outils de coordination cachés par défaut (7.43)
-check("coord : cachée par défaut", not win.coord_on and not win.step_btns["plan"].isVisible()
+check("coord : cachée par défaut", not win.coord_on and len(win._coord_acts) >= 4
       and not any(a_.isVisible() for a_ in win._coord_acts if not a_.isSeparator()))
 win.set_coord(True)
-check("coord : case ⚙ -> visible", win.step_btns["plan"].isVisible() or not win.steps_bar.isVisible())
+check("coord : case ⚙ -> visible", all(a_.isVisible() for a_ in win._coord_acts))
 check("coord : gardée dans la config", win._collect_config(False).get("coord_tools") is True)
 win.set_coord(False)
+
+# fiches « problème » (7.46, revue UX)
+_pd = m.ProblemDialog(win, m.problem_card("could not open port 'COM4': PermissionError(13, 'Accès refusé.')"))
+_pd.show(); wait(150)
+shot(_pd, "fiche_probleme")
+check("fiche problème : port occupé, 3 étapes, boutons", _pd.card["key"] == "busy" and len(_pd.card["steps"]) == 3
+      and set(_pd.btns) == {"retry", "demo", "diag", "close"})
+_pd.close()
+win._last_problem = m.problem_card("x", "gone")
+win.update_home()
+check("accueil : « ❓ Que faire ? » après un souci (surveillance arrêtée)",
+      win.home.help_btn.isVisibleTo(win.home) == (not win.is_running()))
+win._last_problem = m.problem_card("x", "lost")
+win.dev_live[0] = False
+win.update_home()
+check("accueil : « ❓ Que faire ? » si le tinySA décroche", win.home.help_btn.isVisibleTo(win.home) or not win.is_running())
+win.dev_live[0] = True
+win._last_problem = None
+win.update_home()
+check("accueil : bouton caché sans souci", not win.home.help_btn.isVisibleTo(win.home))
 
 # 📶 Qualité de mesure (7.44, revue de code)
 win.update_watch_table(force=True)

@@ -243,7 +243,7 @@ signaux). Loin des écrans LED, alimentations et ordinateurs, qui font monter le
 premier lancement) = le spectre, ta liste et les alarmes, rien d'autre ; <b>🔵 Simple</b> = + les réglages
 essentiels, le journal et le classement par scène / groupe ; <b>🎛 Expert</b> = tous les réglages (RBW, LNA,
 atténuateur, segments, fenêtre de mesure, calibration…).</div>
-<div class="box ok"><b>🎓 Tuto</b> (bouton de la barre du parcours, ou ☰ Plus › Aide) : six visites guidées pour
+<div class="box ok"><b>🎓 Tuto</b> (bouton de l'accueil, ou ☰ Plus › Aide) : six visites guidées pour
 débutants (voir le chapitre « Les tutos, le lexique et les bulles d'aide »). Commence par « 🖥 Découvrir
 l'écran ».</div>
 
@@ -291,14 +291,19 @@ l'écran ».</div>
 <p>Dessous, <b>une grande phrase</b> dit en permanence où tu en es : ce qu'il reste à faire, puis pendant le show
 « ✔ Tout va bien — 12 micros OK · 2 réserves libres » (vert), « ✔ Pas d'alarme — 1 micro sans signal pour l'instant »
 (orange) ou « ⚠ 2 problèmes — HF 3 : ABSENT… » (rouge). Le ✕ masque l'accueil ; ☰ Plus › 👁 Affichage › 🏠 Accueil
-le remet. En mode <b>expert</b>, la barre de parcours et le choix du port reviennent en haut.</p>
+le remet. En mode <b>expert</b>, le choix du port et ▶ Démarrer reviennent aussi dans la barre du haut.</p>
+<p>Si le tinySA a un souci (introuvable, prise déjà prise par tinySA-App, mode « stockage USB », relais réseau qui
+ne répond pas…), une <b>fiche</b> s'ouvre : ce qui se passe, quoi faire pas à pas, et des boutons <b>↻ Réessayer</b>,
+<b>🎭 Essayer en mode démo</b> et <b>🩺 Diagnostic</b>. Fermée trop vite ? Le bouton <b>❓ Que faire ?</b> de la carte ①
+la rouvre. En mode simple, quelques mots techniques sont remplacés par des mots de tous les jours (« Pics gardés »
+pour le max hold, « Effacer les pics » pour Reset max) ; le terme technique reste dans la bulle d'aide et revient en
+mode expert.</p>
 <table>
   <tr><th>Zone</th><th>Ce qu'on y fait</th></tr>
-  <tr><td><b>Barre du haut</b></td><td>🎪 Shows, 🔔 alarmes, ☰ Plus, ⚙ Réglages (sans l'accueil ou en expert :
-    aussi le port et ▶ Démarrer). La version est affichée en bas à droite.</td></tr>
-  <tr><td><b>Barre du parcours</b> (expert, ou accueil masqué)</td><td>Le travail dans l'ordre, de gauche à droite :
-    <b>① Scanner le lieu › ② Mes fréquences › ⑤ Surveiller le show › ⑥ Après le show</b>, puis 🎓 Tuto (③ et ④
-    seulement avec les outils de coordination, voir plus bas).</td></tr>
+  <tr><td><b>Barre du haut</b></td><td>🎪 Shows, 🔔 alarmes, puis les <b>quatre menus du travail</b> :
+    <b>📋 Préparer</b> (scanner, ta liste), <b>🎚 Surveiller</b> (pendant le show), <b>📊 Analyser</b> (après),
+    <b>🔌 Matériel</b> (tinySA, réseau, mesure) ; enfin ☰ Plus et ⚙ Réglages (sans l'accueil ou en expert : aussi le
+    port et ▶ Démarrer). La version est affichée en bas à droite.</td></tr>
   <tr><td><b>Barre du spectre</b></td><td>Vue (toutes les bandes ou une seule), 📶 Bandes, ⚡ Points, 🔍 Zoom
     live, Max hold et Reset max. Le bouton <b>⋯</b> déplie les outils moins courants : repères, marqueurs M1 / M2,
     rémanence, capture, légende des courbes, courbe de référence (expert).</td></tr>
@@ -320,7 +325,7 @@ le remet. En mode <b>expert</b>, la barre de parcours et le choix du port revien
 
 <h2 id="aide-in"><span class="n">6.</span> Les tutos, le lexique et les bulles d'aide</h2>
 <ul>
-  <li><b>🎓 Tuto</b> (barre du parcours, ou ☰ Plus › Aide) : six visites guidées. Une bulle s'affiche à côté de la
+  <li><b>🎓 Tuto</b> (accueil, ou ☰ Plus › Aide) : six visites guidées. Une bulle s'affiche à côté de la
     partie de l'écran concernée (entourée en orange), avec trois rubriques : <b>🧐 C'est quoi ?</b>, <b>🎯
     Pourquoi ?</b>, <b>👉 Comment ?</b>. Quand l'étape parle d'un outil, le bouton <b>« Fais-le »</b> l'ouvre ; le
     tuto reste ouvert à côté.
@@ -518,7 +523,7 @@ heure.</div>
     balayage reste rapide.</li>
 </ol>
 <h3>1.3 Ta liste de fréquences</h3>
-<p>Si tu as déjà un plan (EazyRF, WWB, WSM, Excel), <b>② Mes fréquences › 📥 Importer</b>. Sinon, ajoute à la main
+<p>Si tu as déjà un plan (EazyRF, WWB, WSM, Excel), <b>📋 Préparer › 📥 Importer</b>. Sinon, ajoute à la main
 (<b>＋ Ajouter</b>) ou attends le scan du site pour faire la coordination (étape 4).</p>
 <p>Pour chaque fréquence, le <b>statut</b> est le réglage le plus important :</p>
 <ul>
@@ -528,7 +533,7 @@ heure.</div>
     <span class="bad">CONFLIT</span>.</li>
 </ul>
 <h3>1.4 Les profils d'appareil</h3>
-<p><b>☰ Plus › 📐 Plan › 🎛 Profils d'appareil</b> : choisis la marque / gamme de chaque appareil. Le profil donne
+<p><b>📋 Préparer › 🎛 Profils d'appareil</b> : choisis la marque / gamme de chaque appareil. Le profil donne
 l'écart minimum entre fréquences, la largeur du filtre du récepteur et le pas de réglage. Les calculs de
 coordination en dépendent. Si tu connais les valeurs de ton logiciel de coordination habituel, crée un profil perso
 avec ces valeurs.</p>
@@ -547,14 +552,14 @@ télévision, autres équipes HF (prestataires, télé, sécurité), talkies, é
 paraît libre sur le papier peut être prise sur le site.</p>
 <ol class="steps">
   <li>Installe le tinySA là où seront tes récepteurs (régie HF, side-stage), antenne dégagée.</li>
-  <li>Choisis le port (✔ tinySA) puis clique <b>① Scanner le lieu</b> : le balayage démarre et le max hold (courbe
+  <li>Choisis le port (✔ tinySA) puis clique <b>📋 Préparer › ▶ Scanner ici</b> : le balayage démarre et le max hold (courbe
     orange) repart de zéro.</li>
   <li>Laisse tourner <b>au moins 10 minutes</b>, et si possible pendant les essais lumière / écrans (ils changent le
     bruit de fond). Plus c'est long, plus le max hold attrape les émetteurs intermittents (talkies, émetteurs qui
     font des essais).</li>
   <li>Regarde le spectre (chapitre « Lire le spectre ») : les plateaux de 8 MHz = TV, les pics = émetteurs, le bas
     = bruit de fond. Survole pour lire fréquence et niveau.</li>
-  <li><b>Garde ce scan</b> : <b>☰ Plus › 📍 Scans par lieu › 📍 Garder</b> (nomme-le comme la scène ou le lieu).
+  <li><b>Garde ce scan</b> : <b>📋 Préparer › 📍 Scans par lieu › 📍 Garder</b> (nomme-le comme la scène ou le lieu).
     Il servira à la coordination et au rapport.</li>
   <li>Facultatif : <b>📏 Référence › Capturer</b> = le « calme » du lieu, pour un seuil relatif (expert).</li>
 </ol>
@@ -573,7 +578,7 @@ complète au chapitre « Deux tinySA, relais réseau › Kit de chasse portable 
 (liste des ports › « 🌐 tinySA en réseau… » › l'adresse du Pi). Avec deux, le 2ᵉ.</p>
 <h3>3.2 Préparer la page web</h3>
 <ol class="steps">
-  <li>Sur le PC : <b>📣 Alertes et page web</b> (⑤ ou ☰ Plus) › onglet page web : active-la, règle un
+  <li>Sur le PC : <b>📣 Alertes et page web</b> (🎚 Surveiller) › onglet page web : active-la, règle un
     <b>code PIN</b> (4 chiffres ou plus) et coche la vue <b>🎒 Terrain</b> (elle est cachée par défaut).</li>
   <li>L'adresse de la page s'affiche (ex. <code>http://192.168.1.10:8080</code>) : ouvre-la sur ton téléphone,
     connecté au même Wi-Fi.</li>
@@ -590,7 +595,7 @@ complète au chapitre « Deux tinySA, relais réseau › Kit de chasse portable 
     plusieurs par scène, à différents endroits : ils seront fusionnés.</li>
   <li>Passe à la scène suivante et recommence. Tout est enregistré sur le PC, dans le show.</li>
 </ol>
-<p>Sur le PC, cliquer une scène dans « Mes fréquences » montre la fusion de ses scans (pointillés) ; ☰ Plus › 📍 Scans
+<p>Sur le PC, cliquer une scène dans « Mes fréquences » montre la fusion de ses scans (pointillés) ; 📋 Préparer › 📍 Scans
 par lieu les liste tous, et permet de les exporter (WWB, WSM, CSV) ou d'importer un scan d'un autre logiciel (dont
 le format natif <code>.sdb3</code> de WWB).</p>
 
@@ -606,7 +611,7 @@ une coordination <b>basique</b>, cachée par défaut : ⚙ Réglages › Génér
 dépendent (chapitre « Filtre récepteur et profils »).</p>
 <h3>4.2 Trouver des fréquences : coordination auto</h3>
 <ol class="steps">
-  <li><b>③ Coordonner le plan › 🪄 Trouver N fréquences compatibles</b>.</li>
+  <li><b>📋 Préparer › 🪄 Trouver N fréquences compatibles</b>.</li>
   <li><b>Appareil</b> : le profil du matériel à caler. <b>Combien</b> : le nombre de fréquences. <b>De … à</b> : la
     plage de tes émetteurs (inscrite dessus, ex. 470–608 MHz pour une gamme « A »).</li>
   <li><b>Éviter ce qui est occupé</b> + la liste <b>« Spectre : … »</b> :
@@ -622,18 +627,18 @@ dépendent (chapitre « Filtre récepteur et profils »).</p>
 <p>Si l'appli n'en trouve pas assez (« la plage est pleine »), c'est souvent physique : trop d'émetteurs sur trop peu
 de MHz. Élargis la plage, choisis un profil plus robuste (écart et tolérances plus serrés), ou répartis sur une autre bande.</p>
 <h3>4.3 Vérifier</h3>
-<p><b>③ › 🧮 Vérifier le plan</b> contrôle toute la liste. Chaque ligne en ✗ dit pourquoi (« trop près de HF 3 »,
+<p><b>📋 Préparer › 🧮 Vérifier le plan</b> contrôle toute la liste. Chaque ligne en ✗ dit pourquoi (« trop près de HF 3 »,
 « IM3 de HF 1 et HF 4 ») ; <b>Remplacer</b> propose une fréquence qui ne crée aucun nouveau problème. Refais la
 vérification jusqu'à 0 problème.</p>
-<h3>4.4 Comprendre l'intermod : ④</h3>
-<p><b>④ Intermod</b> liste les produits (2A − B, A + B − C…) qui tombent sur tes fréquences, du plus grave (mesuré
+<h3>4.4 Comprendre l'intermod</h3>
+<p><b>📋 Préparer › ⚡ Intermodulation</b> liste les produits (2A − B, A + B − C…) qui tombent sur tes fréquences, du plus grave (mesuré
 au-dessus du seuil) au moins grave (calcul seul). Les <b>règles</b> en haut choisissent ce qu'on compte ; « Standard »
 (2 TX ±100 kHz, 3 TX ±50 kHz) est un bon point de départ.</p>
 <h3>4.5 Les réserves</h3>
 <p>Garde 2 ou 3 fréquences compatibles en <b>« Libre »</b> par scène : ce seront tes secours, et l'appli te prévient
 si quelqu'un s'y installe.</p>
 <h3>4.6 Régler les émetteurs et enregistrer</h3>
-<p>Exporte la liste (☰ Plus › 📋 Liste › 📤 Exporter) pour régler les récepteurs (ou leur logiciel), puis
+<p>Exporte la liste (📋 Préparer › 📤 Exporter) pour régler les récepteurs (ou leur logiciel), puis
 <b>Ctrl+S</b>.</p>
 
 <h2 id="portes"><span class="n">14.</span> Étape 5 — Avant d'ouvrir les portes</h2>
@@ -642,7 +647,7 @@ si quelqu'un s'y installe.</p>
 <ol class="steps">
   <li><b>Seuils</b> (barre des seuils au-dessus du spectre) : clique <b>Auto</b> à côté du seuil « occupé » : il se place juste au-dessus
     du bruit de fond. « Niveau faible à partir de » : 10 dB sous l'occupé. « TX absent après » : 5 à 10 s.</li>
-  <li><b>⑤ › ▶ Démarrer la surveillance</b> ; accepte d'<b>enregistrer la session</b>.</li>
+  <li><b>🎚 Surveiller › ▶ Démarrer la surveillance</b> ; accepte d'<b>enregistrer la session</b>.</li>
   <li><b>🎤 Appel des micros</b> (Ctrl+L) : allume les émetteurs un par un ; chaque fréquence vue se coche. Une
     fréquence « inconnue » près d'une manquante = l'émetteur mal réglé.</li>
   <li>Toutes les lignes « En service » doivent être <span class="ok">OK</span> (vert). Les « Libre » en bleu.</li>
@@ -684,7 +689,7 @@ rouge dans les alarmes + téléphone) :</p>
 </ol>
 
 <h2 id="nuit"><span class="n">16.</span> Étape 7 — La nuit et plusieurs jours</h2>
-<p><b>☰ Plus › 🌙 Mode festival</b> : l'appli</p>
+<p><b>🎚 Surveiller › 🌙 Mode festival</b> : l'appli</p>
 <ul>
   <li>reprend toute seule la surveillance après une coupure de courant ou un plantage (si elle tournait) ;</li>
   <li>empêche la mise en veille du PC ;</li>
@@ -697,7 +702,7 @@ session est actif (environ quelques dizaines de Mo par heure, indiqué dans les 
 <h2 id="apres"><span class="n">17.</span> Étape 8 — Après le festival</h2>
 <ol class="steps">
   <li><b>■ Arrêter</b> : la session se ferme (dossier avec le spectre enregistré, le journal et la liste).</li>
-  <li><b>⑥ › ⏪ Relecture</b> : revois n'importe quel moment (curseur de temps) ; « 📂 Ouvrir une session » pour un
+  <li><b>📊 Analyser › ⏪ Relecture</b> : revois n'importe quel moment (curseur de temps) ; « 📂 Ouvrir une session » pour un
     autre jour ; ⚖ comparer deux sessions.</li>
   <li><b>📊 Occupation par heure</b> : les créneaux où chaque fréquence a été gênée.</li>
   <li><b>📄 Rapport de show</b> : un document HTML propre (fréquences, alarmes, incidents, scans) à envoyer à la
@@ -725,7 +730,7 @@ session est actif (environ quelques dizaines de Mo par heure, indiqué dans les 
 </ul>
 <h3>Tes fréquences</h3>
 <ul>
-  <li><b>📡 Ajouter depuis le scan</b> (② Mes fréquences, ou ☰ Plus › 📋 Liste) : les signaux que le tinySA voit
+  <li><b>📡 Ajouter depuis le scan</b> (📋 Préparer) : les signaux que le tinySA voit
     au-dessus d'un seuil (max hold, ou direct) deviennent des fréquences de ta liste, nommées Scan 1, Scan 2…,
     dans la scène / le groupe et avec le statut de ton choix. Ensuite, renomme-les, range-les, ou supprime le bruit
     comme n'importe quelle fréquence. Les plateaux larges (TNT…) et ce qui est déjà dans ta liste sont écartés
@@ -734,7 +739,7 @@ session est actif (environ quelques dizaines de Mo par heure, indiqué dans les 
     Tu peux aussi glisser-déposer un CSV sur la fenêtre.</li>
   <li>Ou à la main : <b>＋ Ajouter</b> au-dessus de la liste, ou clic droit sur le spectre › « Ajouter à ma
     liste ».</li>
-  <li><b>Nommer vite</b> : ☰ Plus › 📋 Liste de fréquences › ✏ Nommer la sélection (HF 1, HF 2…), ou
+  <li><b>Nommer vite</b> : 📋 Préparer › ✏ Nommer la sélection (HF 1, HF 2…), ou
     <kbd>Ctrl</kbd>+<kbd>D</kbd> pour numéroter vers le bas.</li>
 </ul>
 <h3>Statuts : la clé de tout</h3>
@@ -773,7 +778,7 @@ notes). L'an prochain : <b>Ouvrir un show</b>, puis <b>Enregistrer sous…</b>. 
 préférences (couleurs, fenêtres, alertes, langue…).</p>
 
 <h3>Plusieurs scènes, un seul tinySA : scans par lieu</h3>
-<p>① Scanner le lieu › 📍 Scans par lieu (ou ☰ Plus › ① Préparer). Sur un festival à plusieurs scènes, le spectre n'est pas le
+<p>📋 Préparer › 📍 Scans par lieu (ou 📋 Préparer). Sur un festival à plusieurs scènes, le spectre n'est pas le
 même partout. Promène le tinySA :</p>
 <ol class="steps">
   <li>À chaque scène : ▶ Démarrer, laisse tourner quelques minutes (le max hold attrape ce qui émet), puis choisis le
@@ -917,7 +922,7 @@ est dans <b>⚙ Réglages › Seuils et alarmes</b>.</p>
 </ul>
 
 <h3>Mode festival (nuit complète)</h3>
-<p>☰ Plus › ② Pendant le show, ou ⑤ Surveiller le show › 🌙 Mode festival. Pour laisser le PC surveiller seul la
+<p>🎚 Surveiller, ou 🎚 Surveiller › 🌙 Mode festival. Pour laisser le PC surveiller seul la
 nuit ou toute la semaine :</p>
 <ul>
   <li><b>Reprise automatique</b> : si l'appli s'arrête <b>pendant</b> la surveillance (coupure de courant,
@@ -1012,7 +1017,7 @@ bien dans un lieu calme et juste dans une zone pleine de TNT.</p>
 
 
 <ul>
-  <li>Bouton 🧱 (barre du haut) ou ☰ Plus › 🧱 Mur : une tuile par fréquence, couleur = état du signal.</li>
+  <li>Bouton 🧱 (barre du haut) ou 🎚 Surveiller › 🧱 Mur : une tuile par fréquence, couleur = état du signal.</li>
   <li><b>📋 Choisir</b> : quelles fréquences ont une tuile. « Alarmes toujours visibles » ramène une fréquence
     retirée tant qu'elle est en alarme.</li>
   <li><b>Taille des tuiles</b> : Auto, ou Petites / Moyennes / Grandes.</li>
@@ -1043,11 +1048,11 @@ propositions l'évitent. Les deux côtés sont vérifiés, à la tolérance 2 TX
 
 
 <h3>Trouver N fréquences compatibles (coordination auto)</h3>
-<p>Barre du parcours › ③ Coordonner le plan, ou ☰ Plus › 📐 Plan. Comme un logiciel de coordination : choisis
+<p>📋 Préparer (avec les outils de coordination). Comme un logiciel de coordination : choisis
 <b>l'appareil</b> (son filtre, son écart, son pas, chapitre 25), <b>combien</b> de fréquences il te faut et la
 <b>plage</b> (la bande de tes émetteurs). <b>🪄 Chercher</b> trouve, de bas en haut, des fréquences compatibles
 avec <b>toute ta liste et entre elles</b> (écart, intermod selon les règles, filtre), sur le pas de l'appareil,
-en évitant ce que le tinySA voit occupé (max hold au-dessus du seuil « occupé » : lance ① Scanner le lieu
+en évitant ce que le tinySA voit occupé (max hold au-dessus du seuil « occupé » : lance 📋 Préparer › ▶ Scanner ici
 quelques minutes avant). <b>＋ Ajouter à ma liste</b> les met en « En service », nommées « HF 1, HF 2… », dans
 la scène choisie. Si la plage est pleine, l'appli le dit (élargis la plage, ou un profil plus robuste : écart et tolérances plus serrés).
 Vérifie ensuite avec 🧮.</p>
@@ -1085,7 +1090,7 @@ un lot par appareil est préparé tout seul.</p>
 <div class="box warn">Coordination <b>basique</b> : un contrôle rapide de ton plan, pas un remplaçant de ton logiciel de
 coordination (EazyRF, WWB, WSM, Soundbase…), qui reste l'outil pour construire le plan.</div>
 <ul>
-  <li>Bouton 🧮 ou ☰ Plus › 📐 Plan de fréquences › 🧮 Vérifier le plan. Pour chaque fréquence : ✔ compatible
+  <li>Bouton 🧮 ou 📋 Préparer › 🧮 Vérifier le plan. Pour chaque fréquence : ✔ compatible
     ou ✗ avec le détail (écart trop faible, 2A − B, A + B − C, 5ᵉ ordre).</li>
   <li><b>Appareil par défaut</b> et colonne <b>Appareil</b> : un profil par fréquence (chapitre 25).</li>
   <li><b>Règles</b> : « Standard » (2 TX ±100 kHz, 3 TX ±50 kHz) par défaut ; la phrase « On vérifie : … »
@@ -1104,7 +1109,7 @@ coordination (EazyRF, WWB, WSM, Soundbase…), qui reste l'outil pour construire
   <li><b>👁 Surveiller</b> ajoute des produits à ta liste en « Libre ».</li>
 </ul>
 <h3>Planning des plateaux (qui joue quand)</h3>
-<p>⑤ Surveiller le show › 🎬, ou ☰ Plus › ② Pendant le show. Pour chaque <b>scène</b>, tu poses des créneaux :
+<p>🎚 Surveiller › 🎬, ou 🎚 Surveiller. Pour chaque <b>scène</b>, tu poses des créneaux :
 groupe (ou toute la scène), jour (tous les jours ou un jour précis du festival), début et fin (une fin avant le début
 = le set finit après minuit). Avec une <b>marge avant</b> (line check, changement de plateau : 15 min par défaut) et
 <b>après</b> (rappel : 10 min) :</p>
@@ -1119,7 +1124,7 @@ groupe (ou toute la scène), jour (tous les jours ou un jour précis du festival
 <p>Le planning est enregistré avec le show (🎪).</p>
 <h3>États : basculer de plan d'un clic</h3>
 <p>Plusieurs plans dans le même show (un artiste, une scène, un jour) ? Crée un <b>état</b> par plan :
-⑤ Surveiller › 📸 États, ou le bouton <b>📸</b> en haut de « Mes fréquences ».</p>
+🎚 Surveiller › 📸 États, ou le bouton <b>📸</b> en haut de « Mes fréquences ».</p>
 <ul>
   <li><b>＋ Nouveau</b> part des fréquences surveillées en ce moment ; dans le tableau, coche celles qui jouent dans cet
     état (« Cocher une scène / un groupe » va vite).</li>
@@ -1132,14 +1137,14 @@ groupe (ou toute la scène), jour (tous les jours ou un jour précis du festival
 <p>Planning ou états ? Le planning met en pause <b>à l'heure dite</b>, tout seul ; les états basculent <b>quand tu
 le décides</b>. Les deux peuvent servir ensemble.</p>
 <h3>Chasse au brouilleur</h3>
-<p>⑤ Surveiller le show, ☰ Plus › ② Pendant le show, ou clic droit sur une ligne du journal. Mets une <b>antenne
+<p>🎚 Surveiller, 🎚 Surveiller, ou clic droit sur une ligne du journal. Mets une <b>antenne
 directive</b> sur le tinySA, choisis la fréquence (prise de la ligne sélectionnée dans ta liste, ou de M1) et
 <b>▶ Chasser</b> : l'appli fait un zoom live serré (2 MHz par défaut, balayage très rapide) et joue un <b>bip qui
 accélère et monte</b> quand le niveau monte, comme un détecteur de métaux. Le niveau s'affiche en gros, avec le max
 vu et l'écart au max (« −7,8 dB ») : tourne-toi, déplace-toi, et remonte jusqu'à la source. « Suivre le plus fort de
 la zone » si le signal bouge un peu. Si ça sature tout près, ajoute de l'atténuation.</p>
 <h3>Mode émission (générateur)</h3>
-<p>☰ Plus › ② Pendant le show › 📡. Le tinySA Ultra devient un petit générateur pour <b>tester un récepteur</b> (son
+<p>🎚 Surveiller › 📡. Le tinySA Ultra devient un petit générateur pour <b>tester un récepteur</b> (son
 afficheur RF, son squelch, la réception d'une fréquence), un câble ou un splitter : porteuse pure, <b>FM</b> (comme
 un micro analogique : excursion et son de test réglables) ou AM, de −115 à environ −20 dBm. « Parcourir ma liste »
 passe d'une fréquence de ta liste à l'autre toutes les N secondes : pratique pour vérifier tous les récepteurs à la
@@ -1190,7 +1195,7 @@ filtre de son récepteur</b>.</p>
   <tr><td>Génériques (analogiques Sennheiser / Shure, ADT)</td><td>400 kHz</td><td>aucun</td><td>±150 / ±75 / ±50 kHz</td></tr>
 </table>
 <h3>Importer un plan EazyRF</h3>
-<p>Ton plan coordonné dans EazyRF arrive tel quel dans <b>Mes fréquences</b> : <b>② Mes fréquences › 📥 Importer une
+<p>Ton plan coordonné dans EazyRF arrive tel quel dans <b>Mes fréquences</b> : <b>📋 Préparer › 📥 Importer une
 liste</b> et choisis le document <b>.ezrf3</b> (ou glisse-le sur la fenêtre). Autre chemin : dans le plan de fréquences
 d'EazyRF, sélectionne les lignes, <b>Ctrl+C</b>, puis <b>📋 Coller une liste</b> ici.</p>
 <ul>
@@ -1207,10 +1212,10 @@ d'EazyRF, sélectionne les lignes, <b>Ctrl+C</b>, puis <b>📋 Coller une liste<
 </ul>
 <p><b>🔗 Suivre le fichier.</b> À l'import d'un .ezrf3, coche « Suivre ce fichier » : quand tu le réenregistres dans
 EazyRF (recoordination en plein festival), l'appli te montre les fréquences ajoutées, déplacées ou retirées et tu
-coches celles que tu reprends (Ctrl+Z pour revenir). ☰ Plus › 📋 Liste › 🔗 Plan EazyRF suivi : vérifier maintenant
+coches celles que tu reprends (Ctrl+Z pour revenir). 📋 Préparer › 🔗 Plan EazyRF suivi : vérifier maintenant
 ou arrêter de suivre. Le lien est gardé avec le show.</p>
 <h3>Profils perso</h3>
-<p>☰ Plus › 📐 Plan de fréquences › 🎛 Profils d'appareil (ou « ✏ Mes profils » dans la vérification du plan) :
+<p>📋 Préparer › 🎛 Profils d'appareil (ou « ✏ Mes profils » dans la vérification du plan) :
 <b>＋ Nouveau</b> copie un profil, <b>＋ Depuis les réglages actuels</b> reprend ceux de la fenêtre. Nom, filtre,
 écart, pas, tolérances, note. Les profils perso sont gardés dans ta config et dans tes shows. Le filtre d'un même
 appareil peut dépendre de sa bande (ex. groupe A d'un evolution) : fais un profil par bande si besoin.</p>
@@ -1222,7 +1227,7 @@ fréquence qui manque signale un pack mal réglé.</p>
 
 <h2 id="spectera"><span class="n">27.</span> Spectera / WMAS (porteurs larges)</h2>
 <ul>
-  <li>☰ Plus › 📐 Plan de fréquences › 📶 Ajouter un bloc : canal TV ou fréquence centrale + largeur (6 ou
+  <li>📋 Préparer › 📶 Ajouter un bloc : canal TV ou fréquence centrale + largeur (6 ou
     8 MHz). Ou clic droit sur une fréquence › « Bloc large ».</li>
   <li>« Doit émettre » : on regarde le niveau <b>médian</b> du bloc ; « doit rester libre » : le <b>pic</b>.</li>
   <li>L'intermod et la vérification du plan tiennent compte de la largeur des blocs.</li>
@@ -1232,7 +1237,7 @@ fréquence qui manque signale un pack mal réglé.</p>
 <ol class="steps">
   <li>⚙ Réglages › 2ᵉ tinySA et noms : coche « Utiliser un 2ᵉ tinySA », donne son port (<code>COM4</code>) ou son adresse
     réseau.</li>
-  <li>Sur un autre PC : <code>TinySA-Monitor.exe --relais</code> (ou ☰ Plus › 🔗 Connexions › 📡 Relais
+  <li>Sur un autre PC : <code>TinySA-Monitor.exe --relais</code> (ou 🔌 Matériel › 📡 Relais
     réseau), « Partager », puis saisis l'adresse affichée (ex. <code>192.168.1.20:5025</code>) sur le PC
     principal.</li>
   <li>Table des bandes, colonne « tinySA » : Auto, 1 ou 2. ✂ Couper divise une grosse bande.</li>
@@ -1354,7 +1359,7 @@ réseau n'est jamais saturé ; un délai qui grimpe (centaines de ms) signale un
 <h2 id="alertes"><span class="n">29.</span> Alertes téléphone et page web</h2>
 <h3>Alertes push</h3>
 <ul>
-  <li>Bouton 📣 ou ☰ Plus › 🔗 Connexions › 📣 Alertes : <b>ntfy</b> (appli gratuite, sans compte : abonne-toi au
+  <li>Bouton 📣 ou 🎚 Surveiller › 📣 Alertes : <b>ntfy</b> (appli gratuite, sans compte : abonne-toi au
     nom de canal affiché) ou <b>Telegram</b> (bot @BotFather ; « 🔎 Trouver mon chat id » le fait pour toi).</li>
   <li><b>Langue des alertes</b> : comme l'appli, français ou anglais.</li>
   <li>Bouton <b>📖 Tuto</b> pas à pas, et « Envoyer une alerte de test ». Il faut Internet (4G, wifi du site).
@@ -1416,12 +1421,12 @@ après, même si l'appli a été fermée. La place estimée est affichée (souve
 hier…) en <b>pointillés violets</b>, et liste les signaux <b>en plus</b> (nouveaux ici) ou <b>en moins</b> par
 rapport à elle. Pratique pour voir ce qui est arrivé avec le public ou un autre plateau.</p>
 <h3>Occupation par heure (créneaux à risque)</h3>
-<p>Relecture › 📊, ⑥ Après le show, ou ☰ Plus. Un tableau : une ligne par fréquence, une colonne par heure, le
+<p>Relecture › 📊, 📊 Analyser, ou ☰ Plus. Un tableau : une ligne par fréquence, une colonne par heure, le
 <b>% du temps</b> où elle dépassait le seuil « occupé ». Pour une fréquence qui doit émettre, c'est normal ;
 pour une <b>réserve « doit rester libre »</b>, c'est un créneau à risque (case rouge, résumé en bas). Survole une
 case pour le détail.</p>
 <h3>Rapport de show</h3>
-<p>☰ Plus › 📊 Scans et rapports › 📄 Rapport : HTML autonome (alarmes, occupation, journal), imprimable en PDF.</p>
+<p>📊 Analyser › 📄 Rapport : HTML autonome (alarmes, occupation, journal), imprimable en PDF.</p>
 
 <h2 id="journal"><span class="n">31.</span> Le journal</h2>
 <ul>
@@ -1498,7 +1503,7 @@ Pi : <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> dit ce qui 
     l'USB, bouton ⟳ à côté du port.</td></tr>
   <tr><td>Le tinySA ne répond plus après un moment</td><td>L'appli réessaie seule. Au bout de 3 essais ratés :
     débranche / rebranche le tinySA (il peut figer, aussi avec tinySA-App).</td></tr>
-  <tr><td>Une bande ne se remplit pas</td><td>☰ Plus › 🔗 Connexions › 🩺 Diagnostic, et envoie le fichier.</td></tr>
+  <tr><td>Une bande ne se remplit pas</td><td>🔌 Matériel › 🩺 Diagnostic, et envoie le fichier.</td></tr>
   <tr><td>Plein de fausses alarmes</td><td>Seuil « occupé » trop bas : remonte-le (ou Auto), vérifie le tapis
     avec ❓ Courbes ; un tinySA saturé invente des signaux : éloigne-le des émetteurs.</td></tr>
   <tr><td>Fenêtre perdue hors de l'écran</td><td>☰ Plus › 🪟 Fenêtres › Disposition standard.</td></tr>
@@ -1551,16 +1556,21 @@ Pi : <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> dit ce qui 
 </table>
 
 <h2 id="menus"><span class="n">36.</span> Où est quoi (menus)</h2>
-<p>☰ Plus suit le même ordre que la barre du parcours.</p>
+<p>Tous les outils sont rangés dans <b>quatre menus</b> en haut de l'écran, selon le moment du travail ; ☰ Plus ne
+garde que ce qui règle l'appli elle-même.</p>
 <table>
-  <tr><th>Menu ☰ Plus</th><th>Contenu</th></tr>
-  <tr><td>① Préparer</td><td>📋 Liste de fréquences (importer, ajouter, nommer, numéroter, exporter),
-    📐 Plan de fréquences (🧮 vérifier, 🎛 profils d'appareil, 📶 bloc Spectera), ⚡ Intermodulation</td></tr>
-  <tr><td>② Pendant le show</td><td>🎤 Appel des micros, 🧱 Mur, 🆘 Fréquence de secours</td></tr>
-  <tr><td>③ Après le show</td><td>⏪ Relecture, 📊 Scans et rapports (📄 rapport, 📏 référence, 🔁 convertir)</td></tr>
-  <tr><td>Réglages et connexions</td><td>🔗 Connexions (📣 alertes, 📡 relais, 🩺 diagnostic), 🪟 Fenêtres,
-    🎨 Apparence et langue, 👁 Affichage (ultra simple / simple / expert)</td></tr>
-  <tr><td>Aide</td><td>🎓 Tutos pas à pas, 📚 Lexique, 📖 Manuel, ℹ À propos</td></tr>
+  <tr><th>Menu</th><th>Contenu</th></tr>
+  <tr><td>📋 Préparer</td><td>▶ Scanner ici, 📍 Scans par lieu ; ta liste (📡 depuis le scan, 📥 importer, ＋ ajouter,
+    📋 coller, 🔗 plan EazyRF suivi, ✏ nommer, vocabulaire, 📤 exporter) ; 📶 bloc Spectera ; 🎬 Planning, 📸 États
+    (+ 🪄 🧮 🎛 ⚡ avec les outils de coordination)</td></tr>
+  <tr><td>🎚 Surveiller</td><td>✅ Prêt ?, ▶ Démarrer, 🖥 Mode Show, 🎤 Appel des micros, 🧱 Mur, 🆘 Fréquence de secours,
+    🔎 Chasse, 📣 Alertes et page web, 🌙 Mode festival</td></tr>
+  <tr><td>📊 Analyser</td><td>⏪ Relecture, 📊 Occupation par heure, 📄 Rapport, 📏 scan de référence, 🔁 convertir un
+    scan</td></tr>
+  <tr><td>🔌 Matériel</td><td>📡 Mes tinySA et leurs scènes, ➕ plusieurs tinySA, 🌐 adresses réseau, 📡 relais,
+    🎛 réglages de mesure, ⚖ calibration, 📡 mode émission, 🩺 diagnostic</td></tr>
+  <tr><td>☰ Plus</td><td>↶ Annuler / ↷ Rétablir, ⚙ Réglages, 🪟 Fenêtres, 🎨 Apparence et langue, 👁 Affichage
+    (ultra simple / simple / expert, 🏠 accueil) ; Aide : 🎓 Tutos, 📚 Lexique, 📖 Manuel, ℹ À propos</td></tr>
 </table>
 
 <h2 id="clavier"><span class="n">37.</span> Raccourcis clavier</h2>

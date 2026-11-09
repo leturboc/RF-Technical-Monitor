@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.45.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.46.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -733,6 +733,26 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   heure actuelle). `SerialRelay(..., allow=)` + champ « PC autorisés » de `RelayWindow` (`refused` affiché), test
   dans test_reseau. Colonne Marge : bulle « Bruit de fond utilisé » (`w["floor"]`). Pas fait (plus tard) :
   calibration par bande, métadonnées de mesure, répartition adaptative des bandes, tampons préalloués.
+- **7.46.0 (revue UX externe ; choix de Clément : « les deux, débutant d'abord » + une seule porte d'entrée, mots
+  simples, fiches d'erreur)** :
+  - **4 menus du travail** dans `cmd_bar`, juste avant ☰ Plus (`_more_act`) : `STEPS` = familles prep « 📋 Préparer »,
+    show « 🎚 Surveiller », after « 📊 Analyser », hw « 🔌 Matériel » (SANS numéro : ① ② ③ = cartes de l'accueil) ;
+    `_build_steps_bar` crée `step_btns` / `step_menus` (plus de barre de parcours : `steps_bar` = None, `step_lbl` /
+    `tour_btn` gardés hors écran) ; `STEP_ALIAS` (scan / list / plan / im → prep) pour les tutos ; `do_step` met
+    l'astuce `STEP_HINTS` dans la barre d'état. Actions de coordination (méthode dans `COORD_METHODS`) → `_coord_acts`
+    (`COORD_STEPS` vide). `EXTRA_MENUS` (V8 : SDR) va dans 🔌 Matériel. ☰ Plus ne garde que Annuler / Rétablir,
+    ⚙ Réglages, Fenêtres, Apparence, Affichage, Aide. Bulles des nouvelles entrées : `TIPS_MENU.update` juste après
+    le dict. `open_devs_settings` (= ⚙ › dev2). Tutos / manuel : « ⑤ › … » devenus « 🎚 Surveiller › … ».
+  - **Fiches « problème »** : PURE `PROBLEM_CARDS` (titre, ce qui se passe, étapes), `_PROBLEM_KEYS` (regex sur le
+    message en minuscules — pas de chaînes simples : test_i18n les prendrait pour du texte), `problem_key`,
+    `problem_card(msg, key)` ; `ProblemDialog` (Réessayer / mode démo / 🩺 / Fermer ; pas de Réessayer pour « lost ») ;
+    `MainWindow.show_problem` remplace le QMessageBox de `on_error` et « Aucun port » ; `_last_problem` (effacé au
+    démarrage et quand le tinySA revient) → `home_info["problem"]` → bouton « ❓ Que faire ? » de la carte ①
+    (`HomeBar.help_btn`, `problem_help`).
+  - **Mots simples** : PURE `UI_WORDS` / `ui_word(clé, expert)` (« Pics gardés » / « Max hold », « Effacer les pics » /
+    « Reset max ») appliqués par `_apply_words` (dans `set_expert`, et après `_install_tips` : bulle d'origine gardée
+    dans `_word_tips` + « (terme technique : …) ») ; RBW → « Finesse de mesure (RBW) », diversity → « Fusion des
+    mesures (diversity) » ; lexique « Pics gardés ».
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

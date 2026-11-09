@@ -52,7 +52,7 @@ signals). Away from LED screens, power supplies and computers, which raise the n
 
 <!--CH aide-in|Tutorials, glossary and tooltips-->
 <ul>
-  <li><b>🎓 Tutorial</b> (workflow bar, or ☰ More › Help): six guided tours. A bubble appears next to the part of the
+  <li><b>🎓 Tutorial</b> (home bar, or ☰ More › Help): six guided tours. A bubble appears next to the part of the
     screen concerned (outlined in orange), with three headings: <b>🧐 What is it?</b>, <b>🎯 Why?</b>, <b>👉 How?</b>.
     When the step is about a tool, the <b>« Do it »</b> button opens it; the tutorial stays open beside it.
     <table>
@@ -115,7 +115,7 @@ signals). Away from LED screens, power supplies and computers, which raise the n
     fast.</li>
 </ol>
 <h3>1.3 Your frequency list</h3>
-<p>If you already have a plan (EazyRF, WWB, WSM, Excel), <b>② My frequencies › 📥 Import</b>. Otherwise, add by hand
+<p>If you already have a plan (EazyRF, WWB, WSM, Excel), <b>📋 Prepare › 📥 Import</b>. Otherwise, add by hand
 (<b>＋ Add</b>) or wait for the site scan to do the coordination (step 4).</p>
 <p>For each frequency, the <b>status</b> is the most important setting:</p>
 <ul>
@@ -125,7 +125,7 @@ signals). Away from LED screens, power supplies and computers, which raise the n
     <span class="bad">CONFLICT</span> alarm.</li>
 </ul>
 <h3>1.4 Device profiles</h3>
-<p><b>☰ More › 📐 Plan › 🎛 Device profiles</b>: pick the brand / range of each device. The profile gives the minimum
+<p><b>📋 Prepare › 🎛 Device profiles</b>: pick the brand / range of each device. The profile gives the minimum
 spacing between frequencies, the receiver filter width and the tuning step. Coordination calculations depend on it.
 If you know the values from your usual coordination software, create a custom profile with them.</p>
 <h3>1.5 Stages (festival)</h3>
@@ -142,13 +142,13 @@ teams (rental companies, broadcast, security), walkie-talkies, LED screens that 
 on paper may be taken on site.</p>
 <ol class="steps">
   <li>Set up the tinySA where your receivers will be (RF desk, side-stage), antenna in the clear.</li>
-  <li>Choose the port (✔ tinySA) then click <b>① Scan the venue</b>: sweeping starts and the max hold (orange curve)
+  <li>Choose the port (✔ tinySA) then click <b>📋 Prepare › ▶ Scan here</b>: sweeping starts and the max hold (orange curve)
     restarts from zero.</li>
   <li>Let it run <b>at least 10 minutes</b>, ideally during light / screen tests (they change the noise floor). The
     longer, the more the max hold catches intermittent transmitters (walkies, transmitters being tested).</li>
   <li>Look at the spectrum (chapter « Reading the spectrum »): 8 MHz plateaus = TV, peaks = transmitters, the bottom =
     noise floor. Hover to read frequency and level.</li>
-  <li><b>Keep this scan</b>: <b>☰ More › 📍 Scans by location › 📍 Keep</b> (name it after the stage or place). It will
+  <li><b>Keep this scan</b>: <b>📋 Prepare › 📍 Scans by location › 📍 Keep</b> (name it after the stage or place). It will
     be used for coordination and the report.</li>
   <li>Optional: <b>📏 Reference › Capture</b> = the venue's « quiet », for a relative threshold (expert).</li>
 </ol>
@@ -167,7 +167,7 @@ supplied with each version). With <b>a single tinySA</b>, it is the 1st tinySA (
 the Pi's address). With two, the 2nd.</p>
 <h3>3.2 Prepare the web page</h3>
 <ol class="steps">
-  <li>On the PC: <b>📣 Alerts and web page</b> (⑤ or ☰ More) › web page tab: enable it, set a <b>PIN code</b> (4
+  <li>On the PC: <b>📣 Alerts and web page</b> (🎚 Monitor) › web page tab: enable it, set a <b>PIN code</b> (4
     digits or more) and tick the <b>🎒 Field</b> view (it is hidden by default).</li>
   <li>The page's address is shown (e.g. <code>http://192.168.1.10:8080</code>): open it on your phone, connected to
     the same Wi-Fi.</li>
@@ -184,7 +184,7 @@ the Pi's address). With two, the 2nd.</p>
     per stage, at different spots: they will be merged.</li>
   <li>Move to the next stage and start again. Everything is saved on the PC, in the show.</li>
 </ol>
-<p>On the PC, clicking a stage in « My frequencies » shows the merge of its scans (dashes); ☰ More › 📍 Scans by
+<p>On the PC, clicking a stage in « My frequencies » shows the merge of its scans (dashes); 📋 Prepare › 📍 Scans by
 location lists them all, and lets you export them (WWB, WSM, CSV) or import a scan from other software (including
 WWB's native <code>.sdb3</code> format).</p>
 
@@ -200,7 +200,7 @@ available.</div>
 (chapter « Receiver filter and device profiles »).</p>
 <h3>4.2 Find frequencies: 🪄 auto coordination</h3>
 <ol class="steps">
-  <li><b>③ Coordinate the plan › 🪄 Find N compatible frequencies</b>.</li>
+  <li><b>📋 Prepare › 🪄 Find N compatible frequencies</b>.</li>
   <li><b>Device</b>: the profile of the equipment to tune. <b>How many</b>: the number of frequencies. <b>From … to</b>:
     the range of your transmitters (written on them, e.g. 470–608 MHz for an « A » range).</li>
   <li><b>Avoid what is busy</b> + the <b>« Spectrum: … »</b> list:
@@ -216,24 +216,24 @@ available.</div>
 <p>If the app does not find enough (« the range is full »), it is often physics: too many transmitters on too few MHz.
 Widen the range, choose a more robust profile (tighter spacing and tolerances), or spread over another band.</p>
 <h3>4.3 Check: 🧮</h3>
-<p><b>③ › 🧮 Check the plan</b> checks the whole list. Each line marked ✗ says why (« too close to HF 3 », « IM3 of HF 1
+<p><b>📋 Prepare › 🧮 Check the plan</b> checks the whole list. Each line marked ✗ says why (« too close to HF 3 », « IM3 of HF 1
 and HF 4 »); <b>Replace</b> suggests a frequency that creates no new problem. Check again until there are 0
 problems.</p>
-<h3>4.4 Understand intermod: ④</h3>
-<p><b>④ Intermod</b> lists the products (2A − B, A + B − C…) landing on your frequencies, from the most serious
+<h3>4.4 Understand intermod</h3>
+<p><b>📋 Prepare › ⚡ Intermodulation</b> lists the products (2A − B, A + B − C…) landing on your frequencies, from the most serious
 (measured above the threshold) to the least (calculation only). The <b>rules</b> at the top choose what is counted;
 « Standard » (2 TX ±100 kHz, 3 TX ±50 kHz) is a good starting point.</p>
 <h3>4.5 Reserves</h3>
 <p>Keep 2 or 3 compatible frequencies as <b>« Free »</b> per stage: they will be your backups, and the app warns you if
 someone moves onto them.</p>
 <h3>4.6 Set the transmitters and save</h3>
-<p>Export the list (☰ More › 📋 List › 📤 Export) to set the receivers (or their software), then <b>Ctrl+S</b>.</p>
+<p>Export the list (📋 Prepare › 📤 Export) to set the receivers (or their software), then <b>Ctrl+S</b>.</p>
 
 <!--CH portes|Step 5 — Before doors open-->
 <ol class="steps">
   <li><b>Thresholds</b> (threshold bar above the spectrum): click <b>Auto</b> next to the « busy » threshold: it sits just above
     the noise floor. « Weak level from »: 10 dB below busy. « TX absent after »: 5 to 10 s.</li>
-  <li><b>⑤ › ▶ Start monitoring</b>; accept to <b>record the session</b>.</li>
+  <li><b>🎚 Monitor › ▶ Start monitoring</b>; accept to <b>record the session</b>.</li>
   <li><b>🎤 Line check</b> (Ctrl+L): switch the transmitters on one by one; each frequency seen gets ticked. An
     « unknown » frequency near a missing one = the wrongly set transmitter.</li>
   <li>All « In use » lines must be <span class="ok">OK</span> (green). The « Free » ones blue.</li>
@@ -273,7 +273,7 @@ someone moves onto them.</p>
 </ol>
 
 <!--CH nuit|Step 7 — The night and several days-->
-<p><b>☰ More › 🌙 Festival mode</b>: the app</p>
+<p><b>🎚 Monitor › 🌙 Festival mode</b>: the app</p>
 <ul>
   <li>restarts monitoring by itself after a power cut or a crash (if it was running);</li>
   <li>prevents the PC from going to sleep;</li>
@@ -286,7 +286,7 @@ per hour, shown in the settings).</p>
 <!--CH apres|Step 8 — After the festival-->
 <ol class="steps">
   <li><b>■ Stop</b>: the session is closed (folder with the recorded spectrum, the log and the list).</li>
-  <li><b>⑥ › ⏪ Replay</b>: review any moment (time slider); « 📂 Open a session » for another day; ⚖ compare two
+  <li><b>📊 Analyse › ⏪ Replay</b>: review any moment (time slider); « 📂 Open a session » for another day; ⚖ compare two
     sessions.</li>
   <li><b>📊 Occupancy per hour</b>: the time slots when each frequency was disturbed.</li>
   <li><b>📄 Show report</b>: a clean HTML document (frequencies, alarms, incidents, scans) to send to the
