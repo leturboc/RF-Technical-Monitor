@@ -1168,6 +1168,51 @@ check("prêt : marge faible, résolution, mesures anciennes",
 check("accueil : saturation = orange", ns["home_status"](dict(running=True, port=True, n_watch=2, ok=2, sat="warn",
                                                               sat_dbm=-20.0))[0], "warn")
 
+# --- plans des autres logiciels (7.48, vrais fichiers de Clément : .shw, .wsm, .cug, .wshow, .acp ; essais inventés)
+_pp = ns["parse_plan_file"]
+def _plan(fn):
+    return _pp(open(os.path.join(DD_, fn), "rb").read(), fn)
+_d, _k = _plan("wwb_essai.shw")
+_e = ns["ezrf_entries"](_d)
+check("WWB .shw : fréquences coordonnées, noms en double numérotés, zone = scène",
+      (_k, [(n, f, sc, g) for n, f, sc, g, *_ in _e]),
+      ("Shure WWB", [("Chant", 542.85, "", "AD G56"), ("Shure 1", 564.8, "", "AD G56"), ("Shure 2", 577.6, "", "AD G56"),
+                     ("Ears batteur", 609.075, "Scène B", "PSM300 K3E")]))
+_d, _k = _plan("wsm_essai.wsm")
+_e = ns["ezrf_entries"](_d)
+check("WSM .wsm : 3 fréquences, groupe = type de récepteur", (_k, [(n, f, g) for n, f, _sc, g, *_ in _e]),
+      ("Sennheiser WSM", [("EM3731 1", 560.0, "EM 3731/3732"), ("EM3731 2", 559.25, "EM 3731/3732"),
+                          ("Retour 1", 557.625, "EM 300-500 G4")]))
+_dv = sorted(_d["devices"].values(), key=lambda p: p["name"])
+check("WSM .wsm : règles lues (écart, tolérances, plage)",
+      [(p["name"], p["sep"], p["tol"]["2tx3"], p["tol"]["3tx3"], p["lo"], p["hi"]) for p in _dv],
+      [("EM 300-500 G4", 0.375, 0.15, 0.075, 520.0, 558.0), ("EM 3731/3732", 0.3, 0.1, 0.075, 470.0, 560.0)])
+_d, _k = _plan("shure_essai.cug")
+check("groupe Shure .cug", (_k, [(r["name"], r["freq"]) for r in _d["rows"]]),
+      ("Shure (groupe)", [("AD G56 · 1", 482.7), ("AD G56 · 2", 513.8), ("AD G56 · 3", 534.375)]))
+_d, _k = _plan("wisycom_essai.wshow")
+check("Wisycom .wshow : émetteurs gardés, récepteurs sans fréquence signalés",
+      (_k, [(r["name"], r["freq"]) for r in _d["rows"]], "ARR 1" in _d["warn"]),
+      ("Wisycom Manager", [("IEM 1", 670.0), ("IEM 2", 642.0)], True))
+_d, _k = _plan("dpa_essai.acp")
+check("DPA .acp : canaux, profil du mode (écart 500 kHz)",
+      (_k, _d["title"], [(r["name"], r["freq"]) for r in _d["rows"]], [p.get("sep") for p in _d["devices"].values()]),
+      ("DPA", "Essai DPA", [("Com1", 470.2), ("Com2", 500.9)], [0.5]))
+check("plan : format reconnu au contenu (sans extension)", _pp(open(os.path.join(DD_, "wwb_essai.shw"), "rb").read(), "x")[1],
+      "Shure WWB")
+try:
+    _pp(b"rien", "x.txt")
+    ok("plan : format inconnu refusé", False)
+except ValueError:
+    ok("plan : format inconnu refusé", True)
+_d1, _ = _plan("wwb_essai.shw")
+_d2 = dict(_d1, rows=[dict(r, freq=(565.0 if r["name"] == "Shure 1" else r["freq"])) for r in _d1["rows"]][:-1])
+for r in _d2["rows"]:
+    r["name"] = r["name"]
+_cur = [(ns["ezrf_id"](sc, g, n), f) for n, f, sc, g, *_ in ns["ezrf_entries"](_d1)]
+_df = ns["ezrf_diff"](ns["ezrf_entries"](_d2), _cur)
+check("suivi : une fréquence changée + une retirée dans WWB", (len(_df["add"]), len(_df["change"]), len(_df["remove"])), (0, 1, 1))
+
 # --- 🔎 chercher une fonction (7.47)
 _fm = ns["feature_match"]
 _its = [("🎚 Surveiller › 🆘 Fréquence de secours…", "Propose des fréquences libres"), ("🔌 Matériel › 📡 Relais", "Partage"),

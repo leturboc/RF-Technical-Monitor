@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.47.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.48.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -776,6 +776,29 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     « Points par commande (segment) ».
   - Pas fait (proposé) : distinction systématique « détecté / déduit / recommandé » dans les alertes, profils de
     configuration rapides, tests utilisateurs (à faire par Clément : débutant + technicien).
+- **7.48.0 (Clément a envoyé de VRAIS fichiers de plan : WWB .shw + .cug, WSM .wsm, Wisycom .wshow, DPA .acp ; PAS
+  dans le dépôt, essais inventés `tests/data/wwb_essai.shw`, `wsm_essai.wsm`, `shure_essai.cug`, `wisycom_essai.wshow`,
+  `dpa_essai.acp`)** : PURE `parse_wwb_show` (coordinated_data_root/freq_entry : value kHz, source_name, compat_key
+  zone / series / band, model ; sinon inventaire channel/frequency), `parse_wsm_project` (FrequencyManager/Devices/
+  Device : Frequency kHz, Name, StationaryDeviceType, Min/MaxFrequency, SearchStep, SpacingParams Carriers = écart,
+  Device2TxIM3 / Device3TxIM3 / Device2TxIM5 = tolérances → profil perso), `parse_shure_cug` (custom_groups/frequencies
+  series band / channel frequency number), `parse_wisycom_show` (ShowFile : seuls les ÉMETTEURS ont TunedFreq Hz ; les
+  récepteurs MRK / MCR n'ont que des noms → `warn`), `parse_dpa_acp` (JSON : settings `/ch/N/name`,
+  `/ch/N/radio/manual` kHz, mode → modelProfiles channelSpacing / spacingToIM3Product), `_number_dups` (« Shure » ×16 →
+  « Shure 1… »), `PLAN_EXTS`, `parse_plan_file(data, nom)` (extension sinon contenu) → (doc au format de
+  `parse_ezrf3`, logiciel). Tout passe par l'import EazyRF existant : `import_ezrf_file` (tous les plans), `open_ezrf(...,
+  kind)`, `EzrfImportDialog(..., kind)` (titre « Importer un plan {kind} »), `opts["kind"]`, `ezrf_link["kind"]`,
+  `_ezrf_tick` → `parse_plan_file`, `EzrfSyncDialog` / messages avec le nom du logiciel ; filtre d'import et
+  glisser-déposer. **Suivi en direct WWB / WSM / Wisycom / DPA = fait** (même mécanisme que .ezrf3).
+  Constat sur ses fichiers : WWB et WSM ont importé notre export de scan (référencé dans le .shw et le .wsm) ; WSM 4.9
+  exporte ses scans au format « Freq2D;RFA;RFB… » (celui qu'on appelait « Wisycom », déjà lu).
+  - **Tester la garde** (Clément : « comment simuler un crash pour voir si l'appli se réouvre ? ») : 🌙 Mode festival,
+    boutons `crash_btn` « 💥 Tester : plantage » (`os._exit(3)`) et `freeze_btn` « 🧊 Tester : appli figée » (le fil
+    de l'interface dort `GUARD_HANG_S` + 30 s), visibles seulement sous garde ; `MainWindow.guard_test(how)` enregistre
+    la config d'abord (la surveillance reprend) et note « TEST DE LA GARDE » au journal.
+  - **1er lancement** (Clément : « la vue du spectre en 470-694 pour ceux qui le téléchargent ») : avant toute mesure,
+    l'axe se cale sur les bandes (`_fit_range` dans la branche « pas de données » de `update_plot`) — avant, il
+    montrait 0–1 MHz ; « Vue » restait vide (`refresh_view_combo` : `findData(None)` tombait sur un séparateur).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

@@ -948,7 +948,9 @@ nuit ou toute la semaine :</p>
     reprend là où elle en était. Fermée normalement, la garde s'arrête avec elle. Si l'appli plante en boucle (5 fois
     en 10 min), la garde attend 5 min avant de réessayer. La garde sert au lancement avec Windows ; pour l'avoir
     tout de suite : <b>🛡 Relancer maintenant sous garde</b>. Ce qui s'est passé est noté dans <code>garde.log</code>
-    (dossier de la configuration). On peut aussi lancer <code>TinySA-Monitor.exe --garde</code> soi-même (raccourci).</li>
+    (dossier de la configuration). On peut aussi lancer <code>TinySA-Monitor.exe --garde</code> soi-même (raccourci).
+    Pour vérifier qu'elle marche, sous garde : <b>💥 Tester : plantage</b> (l'appli doit se rouvrir en quelques
+    secondes et la surveillance reprendre) et <b>🧊 Tester : appli figée</b> (fermée puis rouverte au bout de 90 s).</li>
 </ul>
 
 <h2 id="signal"><span class="n">21.</span> Lire les états</h2>
@@ -1218,8 +1220,23 @@ d'EazyRF, sélectionne les lignes, <b>Ctrl+C</b>, puis <b>📋 Coller une liste<
 </ul>
 <p><b>🔗 Suivre le fichier.</b> À l'import d'un .ezrf3, coche « Suivre ce fichier » : quand tu le réenregistres dans
 EazyRF (recoordination en plein festival), l'appli te montre les fréquences ajoutées, déplacées ou retirées et tu
-coches celles que tu reprends (Ctrl+Z pour revenir). 📋 Préparer › 🔗 Plan EazyRF suivi : vérifier maintenant
+coches celles que tu reprends (Ctrl+Z pour revenir). 📋 Préparer › 🔗 Plan suivi : vérifier maintenant
 ou arrêter de suivre. Le lien est gardé avec le show.</p>
+<h3>Importer et suivre un plan WWB, WSM, Wisycom ou DPA</h3>
+<p>Même chemin (📋 Préparer › 📥 Importer, ou glisser le fichier sur la fenêtre), même aperçu et même
+<b>🔗 Suivre ce fichier</b> :</p>
+<table>
+  <tr><th>Fichier</th><th>Ce qui est repris</th></tr>
+  <tr><td>Shure WWB <b>.shw</b> (show)</td><td>les fréquences coordonnées : nom du canal, zone = scène, série et bande =
+    groupe (« AD G56 »). Les canaux tous nommés « Shure » deviennent « Shure 1, 2… ».</td></tr>
+  <tr><td>Shure <b>.cug</b> (groupe exporté par WWB)</td><td>les canaux du groupe (« AD G56 · 1, 2… »).</td></tr>
+  <tr><td>Sennheiser WSM <b>.wsm</b> (projet)</td><td>la fréquence de chaque récepteur, groupe = type de récepteur, et
+    ses règles (écart entre porteuses, tolérances intermod, plage) en profil perso.</td></tr>
+  <tr><td>Wisycom Manager <b>.wshow</b></td><td>les fréquences des <b>émetteurs</b> (MTK…) : Wisycom n'enregistre pas
+    celles des récepteurs (MRK, MCR) dans ce fichier ; l'aperçu les liste pour que tu les ajoutes à la main.</td></tr>
+  <tr><td>DPA N <b>.acp</b> (projet)</td><td>le nom et la fréquence de chaque canal, et l'écart du mode choisi
+    (600 / 500 / 400 kHz) en profil perso.</td></tr>
+</table>
 <h3>Profils perso</h3>
 <p>📋 Préparer › 🎛 Profils d'appareil (ou « ✏ Mes profils » dans la vérification du plan) :
 <b>＋ Nouveau</b> copie un profil, <b>＋ Depuis les réglages actuels</b> reprend ceux de la fenêtre. Nom, filtre,

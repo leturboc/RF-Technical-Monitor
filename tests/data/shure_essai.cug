@@ -1,0 +1,7 @@
+<custom_groups version="1.0" time="10:00:00" appl_version="7.9.0.104" source="ESSAI" date="lun. nov. 9 2026">
+    <frequencies series="AD" band="G56">
+        <channel frequency="482700" number="1"/>
+        <channel frequency="513800" number="2"/>
+        <channel frequency="534375" number="3"/>
+    </frequencies>
+</custom_groups>
