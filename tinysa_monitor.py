@@ -18020,7 +18020,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.auto_weak_spin.setValue(int(data.get("auto_weak", AUTO_THR_DEFAULT[1])))
         except (TypeError, ValueError):
             pass
-        self.set_thr_auto(bool(data.get("thr_auto", getattr(self, "_first_run", False))))
+        self.set_thr_auto(bool(data.get("thr_auto", getattr(self, "_first_run", False) if startup else self.thr_auto)))
         self.set_home(bool(data.get("home", True)))
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
             self.net_profiles = net_profiles_merge(self.net_profiles, data["net_profiles"])

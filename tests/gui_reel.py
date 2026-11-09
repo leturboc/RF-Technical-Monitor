@@ -261,6 +261,7 @@ check("journal : un long chemin de session n'élargit pas la colonne (vu sous Wi
 wait(8000)
 shot(win, "demo_tout_spectre")
 # 7.52 : seuils auto (allumés d'office au 1er lancement)
+_lvl_before = win.ui_level
 check("seuils auto : allumés au 1er lancement", win.thr_auto and win.thr_auto_btn.isChecked())
 check("seuils auto : courbe du bruit + marge tracée", win.auto_curve.isVisible() and win._acurve is not None
       and not win.thr_line.isVisible())
@@ -281,7 +282,7 @@ win.auto_occ_spin.setValue(10)
 win.set_thr_auto(False); app.processEvents()
 check("seuils auto coupés : seuil fixe revenu", not win.auto_curve.isVisible() and win.thr_line.isVisible()
       and all(w_.get("athr") is None for w_ in win.watch))
-win.set_level("ultra"); app.processEvents()
+win.set_level(_lvl_before); app.processEvents()
 
 # vues par bande
 for i in range(1, min(win.view_combo.count(), 3)):
