@@ -209,7 +209,7 @@ EXACT = {
     '3. Scanner le lieu': '3. Scan the venue',
     'Avant de choisir tes fréquences, on regarde ce qui occupe DÉJÀ le lieu : télé (TNT), autres équipes, brouilleurs.': 'Before choosing your frequencies, look at what ALREADY occupies the venue: TV (DTT), other teams, jammers.',
     "Choisir une fréquence déjà prise, c'est la garantie d'un micro qui coupe pendant le show.": 'Picking a frequency that is already taken guarantees a mic dropping out during the show.',
-    'Clique ① : le balayage démarre et le max hold (courbe orange) repart de zéro. Laisse tourner 5 à 10 minutes, idéalement avec les écrans LED et les lumières allumés.': 'Click ①: sweeping starts and the max hold (orange curve) restarts from zero. Let it run 5 to 10 minutes, ideally with LED screens and lights on.',
+    '📋 Préparer › ▶ Scanner ici : le balayage démarre et le max hold (courbe orange) repart de zéro. Laisse tourner 5 à 10 minutes, idéalement avec les écrans LED et les lumières allumés.': '📋 Prepare › ▶ Scan here: sweeping starts and the max hold (orange curve) restarts from zero. Let it run 5 to 10 minutes, ideally with LED screens and lights on.',
     '▶ Scanner le lieu': '▶ Scan the venue',
     '4. Regarder le résultat': '4. Look at the result',
     "Les bosses sont des émetteurs. Les grands plateaux de 8 MHz sont des chaînes de télé (TNT). Le bas irrégulier, c'est le bruit de fond.": 'The bumps are transmitters. The big 8 MHz plateaus are TV channels (DTT). The ragged bottom is the noise floor.',
@@ -237,7 +237,7 @@ EXACT = {
     '9. Surveiller le show': '9. Monitor the show',
     "La surveillance balaye en continu et compare ce qu'elle voit à ta liste.": 'Monitoring sweeps continuously and compares what it sees with your list.',
     "C'est le cœur de l'appli : elle te prévient dès qu'un micro tombe ou qu'un intrus arrive.": 'It is the heart of the app: it warns you as soon as a mic drops out or an intruder shows up.',
-    "⑤ ▶ Démarrer. L'appli propose d'enregistrer la session (dis oui : tu pourras tout revoir). La colonne « Signal » passe au vert pour les émetteurs présents.": '⑤ ▶ Start. The app offers to record the session (say yes: you will be able to review everything). The « Signal » column turns green for the transmitters present.',
+    "🎚 Surveiller › ▶ Démarrer. L'appli propose d'enregistrer la session (dis oui : tu pourras tout revoir). La colonne « Signal » passe au vert pour les émetteurs présents.": '🎚 Monitor › ▶ Start. The app offers to record the session (say yes: you will be able to review everything). The « Signal » column turns green for the transmitters present.',
     '10. Quand une alarme sonne': '10. When an alarm goes off',
     "Une alarme = un problème sur une fréquence : ABSENT (ton micro ne se voit plus) ou CONFLIT (quelqu'un est sur ta réserve).": 'An alarm = a problem on a frequency: ABSENT (your mic is no longer seen) or CONFLICT (someone is on your reserve).',
     "Réagir vite, c'est éviter le trou dans le son.": 'Reacting fast avoids a hole in the sound.',
@@ -245,17 +245,17 @@ EXACT = {
     "11. Juste avant d'ouvrir : l'appel des micros": '11. Just before doors: the line check',
     "Le line check : tu allumes tes émetteurs un par un, l'appli coche ceux qu'elle voit.": 'The line check: you switch your transmitters on one by one, the app ticks those it sees.',
     "Tu sais en une minute si un émetteur manque ou s'il est sur la mauvaise fréquence.": 'In one minute you know whether a transmitter is missing or on the wrong frequency.',
-    "⑤ › 🎤 Appel des micros (Ctrl+L). Une fréquence inconnue proche d'une manquante = sûrement l'émetteur mal réglé.": '⑤ › 🎤 Line check (Ctrl+L). An unknown frequency close to a missing one = most likely the wrongly set transmitter.',
+    "🎚 Surveiller › 🎤 Appel des micros (Ctrl+L). Une fréquence inconnue proche d'une manquante = sûrement l'émetteur mal réglé.": '🎚 Monitor › 🎤 Line check (Ctrl+L). An unknown frequency close to a missing one = most likely the wrongly set transmitter.',
     "🎤 Ouvrir l'appel des micros": '🎤 Open the line check',
     '12. Être prévenu sur ton téléphone': '12. Get warned on your phone',
     'Les alarmes peuvent partir sur ton téléphone (ntfy, Telegram) et une page web montre tout aux autres techniciens du site.': 'Alarms can go to your phone (ntfy, Telegram) and a web page shows everything to the other technicians on site.',
     "Tu n'es pas collé à l'écran pendant tout le show.": 'You are not glued to the screen for the whole show.',
-    '⑤ › 📣 Alertes téléphone et page web : le bouton 📖 Tuto explique chaque étape.': '⑤ › 📣 Phone alerts and web page: the 📖 Tutorial button explains each step.',
+    '🎚 Surveiller › 📣 Alertes téléphone et page web : le bouton 📖 Tuto explique chaque étape.': '🎚 Monitor › 📣 Phone alerts and web page: the 📖 Tutorial button explains each step.',
     '📣 Régler les alertes…': '📣 Set up alerts…',
     '13. Après le show': '13. After the show',
     "Tout ce qui s'est passé est enregistré : spectre, alarmes, journal.": 'Everything that happened is recorded: spectrum, alarms, log.',
     'Pour comprendre un incident (« à 21 h 34 le micro 3 a coupé : pourquoi ? ») et faire un compte rendu.': 'To understand an incident (« at 9:34 pm mic 3 dropped out: why? ») and write a report.',
-    "⑥ › ⏪ Relecture pour revoir n'importe quel moment ; 📄 Rapport de show pour un document propre ; 📊 Occupation par heure.": '⑥ › ⏪ Replay to review any moment; 📄 Show report for a clean document; 📊 Occupancy per hour.',
+    "📊 Analyser › ⏪ Relecture pour revoir n'importe quel moment ; 📄 Rapport de show pour un document propre ; 📊 Occupation par heure.": '📊 Analyse › ⏪ Replay to review any moment; 📄 Show report for a clean document; 📊 Occupancy per hour.',
     '⏪ Ouvrir la relecture': '⏪ Open the replay',
     '14. Garder tout ton travail': '14. Keep all your work',
     'Un « show » 🎪 est un fichier qui contient tout : fréquences, scènes, bandes, scans gardés.': 'A « show » 🎪 is a file that holds everything: frequencies, stages, bands, kept scans.',
@@ -323,12 +323,12 @@ EXACT = {
     "5. L'intermodulation": '5. Intermodulation',
     'Le calcul des fréquences fantômes de tes émetteurs (2A − B, A + B − C…).': "The calculation of your transmitters' ghost frequencies (2A − B, A + B − C…).",
     "Pour comprendre d'où vient un signal gênant, ou vérifier un emplacement.": 'To understand where an interfering signal comes from, or to check a placement.',
-    '④ Intermod : la liste des produits qui tombent sur tes fréquences, du plus grave au moins grave. Les « règles » choisissent quels produits on compte.': '④ Intermod: the list of products landing on your frequencies, from most to least serious. The « rules » choose which products are counted.',
+    '📋 Préparer › ⚡ Intermod : la liste des produits qui tombent sur tes fréquences, du plus grave au moins grave. Les « règles » choisissent quels produits on compte.': '📋 Prepare › ⚡ Intermod: the list of products landing on your frequencies, from most to least serious. The « rules » choose which products are counted.',
     "⚡ Ouvrir l'intermod…": '⚡ Open intermod…',
     '6. Une fréquence de secours': '6. A backup frequency',
     'Quand un micro est brouillé pendant le show, il faut une autre fréquence, vite.': 'When a mic gets jammed during the show, you need another frequency, fast.',
     "L'appli cherche une fréquence libre MAINTENANT, compatible avec le reste.": 'The app looks for a frequency that is free NOW and compatible with the rest.',
-    '⑤ › 🆘 Fréquence de secours ; prépare-en quelques-unes avant le show (statut « Libre » : elles sont surveillées).': '⑤ › 🆘 Backup frequency; prepare a few before the show (status « Free »: they are monitored).',
+    '🎚 Surveiller › 🆘 Fréquence de secours ; prépare-en quelques-unes avant le show (statut « Libre » : elles sont surveillées).': '🎚 Monitor › 🆘 Backup frequency; prepare a few before the show (status « Free »: they are monitored).',
     '7. Coordination par scène ou globale': '7. Coordination per stage or global',
     "Avec des scans gardés par scène, tu peux coordonner une scène avec SON spectre, ou tout le site d'un coup.": 'With scans kept per stage, you can coordinate a stage with ITS spectrum, or the whole site at once.',
     'Une scène loin des autres a son propre environnement radio.': 'A stage far from the others has its own radio environment.',
@@ -791,7 +791,7 @@ EXACT = {
     'La zone est très chargée : accepte un niveau plus haut ou élargis la plage.': 'The area is very busy: accept a higher level or widen the range.',
     "Pas assez de place avec ces réglages : élargis la plage, baisse l'écart ou la tolérance.": 'Not enough room with these settings: widen the range, lower the spacing or the tolerance.',
     '% du temps où chaque fréquence était occupée, heure par heure, sur ce qui est relu.': '% of the time each frequency was busy, hour by hour, over what is being replayed.',
-    "(écart, intermod, filtre de l'appareil), sur le pas de l'appareil, en évitant ce que le tinySA voit occupé (max hold). Lance d'abord ① Scanner le lieu quelques minutes.": "(spacing, intermod, device filter), on the device's step, avoiding what the tinySA sees as busy (max hold). First run ① Scan the venue for a few minutes.",
+    "(écart, intermod, filtre de l'appareil), sur le pas de l'appareil, en évitant ce que le tinySA voit occupé (max hold). Lance d'abord 📋 Préparer › ▶ Scanner ici quelques minutes.": "(spacing, intermod, device filter), on the device's step, avoiding what the tinySA sees as busy (max hold). First run 📋 Prepare › ▶ Scan here for a few minutes.",
     'Ajoute les fréquences trouvées, avec cet appareil, au statut « doit émettre ».': 'Adds the frequencies found, with this device, with a « must transmit » status.',
     'Appareil :': 'Device:',
     'Bande occupée autour du pic près de M1 : là où le niveau reste au-dessus du pic moins cette valeur.': 'Occupied bandwidth around the peak near M1: where the level stays above the peak minus this value.',
@@ -872,7 +872,7 @@ EXACT = {
     "N'affiche pas les signaux à moins de 100 kHz d'une fréquence déjà dans ta liste.": "Doesn't show signals within 100 kHz of a frequency already in your list.",
     'Nom donné aux nouvelles fréquences, numéroté : Scan 1, Scan 2… (à renommer ensuite).': 'Name given to the new frequencies, numbered: Scan 1, Scan 2… (rename them afterwards).',
     'Où (plan du pays)': 'Where (country plan)',
-    'Pas encore de balayage : lance ▶ Démarrer (ou ① Scanner le lieu).': 'No sweep yet: press ▶ Start (or ① Scan the venue).',
+    'Pas encore de balayage : lance ▶ Démarrer (ou 📋 Préparer › ▶ Scanner ici).': 'No sweep yet: press ▶ Start (or 📋 Prepare › ▶ Scan here).',
     'Relance la recherche avec ces réglages.': 'Searches again with these settings.',
     'Réunir à :': 'Merge within:',
     'Sans celles déjà dans ma liste': 'Not those already in my list',
@@ -3277,7 +3277,7 @@ TEMPLATES = {
     '⚖ Comparé à « {} » (pointillés violets) : {} signal(aux) en plus ici': '⚖ Compared with « {} » (purple dots): {} extra signal(s) here',
     '{} {}   {} MHz': '{} {}   {} MHz',
     ' / {} dB': ' / {} dB',
-    '✔ {} fréquence(s) ajoutée(s). Vérifie avec ③ Vérifier le plan.': '✔ {} frequency(ies) added. Check with ③ Check the plan.',
+    '✔ {} fréquence(s) ajoutée(s). Vérifie avec 📋 Préparer › 🧮 Vérifier le plan.': '✔ {} frequency(ies) added. Check with 📋 Prepare › 🧮 Check the plan.',
     'Aucun balayage lisible dans « {} ».': 'No readable sweep in « {} ».',
     '{} ({} MHz) à {} h : occupée {} % du temps ({} balayages sur {})': '{} ({} MHz) at {}:00: busy {} % of the time ({} sweeps out of {})',
     '{} bande(s) balayée(s) sur {}. Les fréquences des bandes non balayées ne sont plus surveillées.': '{} band(s) swept out of {}. Frequencies in bands that are not swept are no longer monitored.',
@@ -4302,4 +4302,214 @@ TEMPLATES.update({
     'Bruit de fond utilisé : {} (± 2 MHz autour)': 'Noise floor used: {} (± 2 MHz around)',
     '{} niveau(x) illisible(s) sur {}': '{} unreadable level(s) out of {}',
     '{} points reçus sur {}, sans fréquences fiables': '{} points received out of {}, without reliable frequencies',
+})
+
+# 7.46 : revue UX (4 menus, fiches « problème », mots simples)
+EXACT.update({
+    'color: gray; font-size: 11px': 'color: gray; font-size: 11px',
+    'font-size:17px; font-weight:bold': 'font-size:17px; font-weight:bold',
+    '📋 Préparer': '📋 Prepare',
+    '🎚 Surveiller': '🎚 Monitor',
+    '📊 Analyser': '📊 Analyse',
+    '🔌 Matériel': '🔌 Hardware',
+    'Avant le show : scanner le lieu, ta liste de fréquences (importer, ajouter, nommer),\nle planning des plateaux et les états.':
+        'Before the show: scan the venue, your frequency list (import, add, name),\nthe stage schedule and the states.',
+    'Pendant le show : démarrer, vérifier que tout est prêt, mode Show plein écran, appel des\nmicros, mur pour un 2ᵉ écran, fréquence de secours, alertes sur téléphone.':
+        'During the show: start, check everything is ready, full-screen Show mode, line\ncheck, wall for a 2nd screen, backup frequency, phone alerts.',
+    "Après le show : revoir ce qui s'est passé, rapport, occupation par heure, scans.":
+        'After the show: review what happened, report, occupancy per hour, scans.',
+    'Le matériel : plusieurs tinySA, tinySA en réseau (Raspberry Pi), relais, réglages de\nmesure, calibration, générateur, diagnostic.':
+        'Hardware: several tinySA, networked tinySA (Raspberry Pi), relay, measurement\nsettings, calibration, generator, diagnostics.',
+    '▶ Scanner ici (pics remis à zéro)': '▶ Scan here (peaks reset)',
+    '▶ Scanner ici': '▶ Scan here',
+    'Mon vocabulaire (noms proposés)…': 'My vocabulary (suggested names)…',
+    "📡 Mes tinySA et les scènes qu'ils surveillent…": '📡 My tinySA and the stages they monitor…',
+    '➕ Plusieurs tinySA et leurs noms…': '➕ Several tinySA and their names…',
+    '➕ Plusieurs tinySA': '➕ Several tinySA',
+    '🎛 Réglages de mesure (finesse, préampli, atténuateur)…': '🎛 Measurement settings (resolution, preamp, attenuator)…',
+    '🎛 Réglages de mesure': '🎛 Measurement settings',
+    '⚖ Calibrer': '⚖ Calibrate',
+    '📋 Scanne le lieu quelques minutes, puis entre tes fréquences (import, scan ou à la main).':
+        '📋 Scan the venue for a few minutes, then enter your frequencies (import, scan or by hand).',
+    '🎚 Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.':
+        '🎚 Green = OK. An alarm goes off if a mic goes quiet or a signal lands on a spare.',
+    "📊 Relecture : revois n'importe quel moment de la session enregistrée.":
+        '📊 Playback: look again at any moment of the recorded session.',
+    '🔌 Plusieurs tinySA, réseau, mesure : ce qui concerne le matériel.':
+        '🔌 Several tinySA, network, measurement: everything about the hardware.',
+    'Réglages et affichage': 'Settings and display',
+    # bulles des menus
+    'Démarre le balayage et remet les pics à zéro : laisse tourner quelques minutes pour voir\nce qui occupe déjà le lieu (télé, autres équipes, brouilleurs).':
+        'Starts sweeping and resets the peaks: let it run for a few minutes to see\nwhat already occupies the venue (TV, other crews, interferers).',
+    '📍 Scans par lieu': '📍 Scans per location',
+    "Un scan gardé par scène / lieu : comparer, fusionner, exporter, rapport d'étude de site.":
+        'A kept scan per stage / location: compare, merge, export, site survey report.',
+    '📡 Ajouter depuis le scan': '📡 Add from the scan',
+    "Ajoute à ta liste les signaux que le tinySA voit au-dessus d'un seuil.":
+        'Adds to your list the signals the tinySA sees above a threshold.',
+    '📥 Importer une liste': '📥 Import a list',
+    'Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Excel / CSV…).':
+        'Your frequency plan from a file (EazyRF, WWB, WSM, Excel / CSV…).',
+    '＋ Ajouter une fréquence': '＋ Add a frequency',
+    'Une fréquence à la main : nom, MHz, statut, scène / groupe.': 'One frequency by hand: name, MHz, status, stage / group.',
+    '📋 Coller une liste': '📋 Paste a list',
+    "Colle des lignes « nom ; MHz » copiées d'un tableur ou d'un autre logiciel.":
+        'Paste “name ; MHz” lines copied from a spreadsheet or another program.',
+    '🪄 Trouver N fréquences': '🪄 Find N frequencies',
+    "Coordination simple : l'appli cherche N fréquences compatibles avec ta liste et le\nspectre mesuré.":
+        'Simple coordination: the app looks for N frequencies compatible with your list and the\nmeasured spectrum.',
+    '🎬 Planning': '🎬 Schedule',
+    "Qui joue quand, par scène : pas d'alarme ABSENT pendant les changements de plateau.":
+        'Who plays when, per stage: no ABSENT alarm during changeovers.',
+    '❓ Doit émettre': '❓ Must transmit',
+    'La différence entre « doit émettre » (alarme ABSENT) et « doit rester libre » (alarme CONFLIT).':
+        'The difference between “must transmit” (ABSENT alarm) and “must stay free” (CONFLICT alarm).',
+    '✅ Prêt pour le show': '✅ Ready for the show',
+    "Vérifie tout avant d'ouvrir : tinySA, bandes, son, alertes, enregistrement…":
+        'Checks everything before doors open: tinySA, bands, sound, alerts, recording…',
+    'Lance la surveillance de tes fréquences (le balayage tourne en continu).':
+        'Starts monitoring your frequencies (sweeping runs continuously).',
+    '🔎 Chasse au brouilleur': '🔎 Interference hunt',
+    'Un bip qui accélère quand tu te rapproches du signal, comme un détecteur de métaux.':
+        'A beep that speeds up as you get closer to the signal, like a metal detector.',
+    '🌙 Mode festival': '🌙 Festival mode',
+    "Nuit complète : reprise après coupure, PC qui ne s'endort pas, bilan chaque matin.":
+        'All night: resumes after an outage, PC kept awake, summary every morning.',
+    'À quelles heures chaque fréquence a été occupée : les créneaux à risque.':
+        'At what times each frequency was occupied: the risky time slots.',
+    'Quel tinySA surveille quelle scène ; 👋 Identifier fait clignoter son écran.':
+        'Which tinySA monitors which stage; 👋 Identify makes its screen flash.',
+    "Jusqu'à 8 tinySA : adresses (USB ou réseau), noms, corrections de niveau.":
+        'Up to 8 tinySA: addresses (USB or network), names, level corrections.',
+    '🌐 tinySA en réseau': '🌐 Networked tinySA',
+    'Les adresses de tes tinySA en réseau (Raspberry Pi, autre PC), avec un bouton Tester.':
+        'The addresses of your networked tinySA (Raspberry Pi, other PC), with a Test button.',
+    'Finesse de mesure (RBW), préampli (LNA), atténuateur, entrée, correction de niveau.':
+        'Measurement resolution (RBW), preamp (LNA), attenuator, input, level correction.',
+    'Avec plusieurs tinySA sur la même antenne : aligne leurs niveaux sur le 1er.':
+        'With several tinySA on the same antenna: aligns their levels on the 1st one.',
+    '📡 Mode émission': '📡 Transmit mode',
+    'Le tinySA devient un petit émetteur (en câble) pour tester un récepteur.':
+        'The tinySA becomes a small transmitter (cabled) to test a receiver.',
+    # tuto écran
+    'Les 4 menus du travail': 'The 4 work menus',
+    'En haut, quatre boutons rangent tous les outils selon le moment : 📋 Préparer (scanner le lieu, ta liste), 🎚 Surveiller (pendant le show), 📊 Analyser (après le show), 🔌 Matériel (tinySA, réseau, mesure).':
+        'At the top, four buttons sort every tool by moment: 📋 Prepare (scan the venue, your list), 🎚 Monitor (during the show), 📊 Analyse (after the show), 🔌 Hardware (tinySA, network, measurement).',
+    "Tu cherches un outil ? Demande-toi « je prépare, je surveille, j'analyse, ou c'est le matériel ? ».":
+        'Looking for a tool? Ask yourself: “am I preparing, monitoring, analysing, or is it hardware?”.',
+    "Clique un des quatre boutons : son menu s'ouvre.": 'Click one of the four buttons: its menu opens.',
+    "Les réglages, les fenêtres, l'apparence, le niveau d'affichage et l'aide.":
+        'Settings, windows, appearance, display level and help.',
+    "Tout ce qui sert à régler l'appli elle-même est là.": 'Everything used to set up the app itself is there.',
+    # mots simples
+    'Pics gardés': 'Peak hold',
+    'Effacer les pics': 'Clear peaks',
+    'Le nom du max hold en mode simple : la courbe orange, le plus haut niveau vu à chaque fréquence depuis « Effacer les pics ».':
+        'The name of max hold in simple mode: the orange curve, the highest level seen at each frequency since “Clear peaks”.',
+    'Finesse de mesure (RBW) :': 'Measurement resolution (RBW):',
+    'Finesse en zoom (RBW) :': 'Resolution in zoom (RBW):',
+    '🔀 Fusion des mesures (diversity) : les deux balayent tout, on garde le meilleur':
+        '🔀 Merge measurements (diversity): both sweep everything, the best is kept',
+    # fiches « problème »
+    'Quoi faire :': 'What to do:',
+    '↻ Réessayer': '↻ Try again',
+    '🎭 Essayer en mode démo': '🎭 Try demo mode',
+    'Relancer la mesure avec le tinySA.': 'Restart measuring with the tinySA.',
+    "Lancer l'appli avec des signaux simulés, sans tinySA.": 'Run the app with simulated signals, without a tinySA.',
+    "Écrire un fichier qui raconte ce qui s'est passé (à envoyer pour de l'aide).":
+        'Write a file describing what happened (to send when asking for help).',
+    'Fermer cette fiche.': 'Close this sheet.',
+    '❓ Que faire ?': '❓ What to do?',
+    'Le tinySA a un souci : ce qui se passe et comment le régler, pas à pas.':
+        'The tinySA has a problem: what is happening and how to fix it, step by step.',
+    'Aucun tinySA choisi': 'No tinySA chosen',
+    "L'appli ne sait pas encore sur quelle prise est ton tinySA.": 'The app does not know yet which port your tinySA is on.',
+    'Branche le tinySA sur le PC avec un câble USB qui transporte les données (pas un câble de charge seule) et allume-le.':
+        'Plug the tinySA into the PC with a USB cable that carries data (not a charge-only cable) and switch it on.',
+    'Clique sur « ① Le tinySA » puis choisis la ligne marquée ✔ tinySA (ou « Chercher à nouveau »).':
+        'Click “① The tinySA” then choose the line marked ✔ tinySA (or “Search again”).',
+    "Pas de tinySA sous la main ? Choisis « Mode démo » pour essayer l'appli.":
+        'No tinySA at hand? Choose “Demo mode” to try the app.',
+    'La prise du tinySA est déjà utilisée': "The tinySA's port is already in use",
+    "Un autre programme parle déjà au tinySA (tinySA-App, une 2ᵉ fenêtre de TinySA Monitor…) : une seule application à la fois peut l'utiliser.":
+        'Another program is already talking to the tinySA (tinySA-App, a 2nd TinySA Monitor window…): only one application at a time can use it.',
+    "Ferme tinySA-App et tout autre logiciel du tinySA (ou l'autre fenêtre de TinySA Monitor).":
+        'Close tinySA-App and any other tinySA software (or the other TinySA Monitor window).',
+    'Débranche le câble USB, attends 5 secondes, rebranche-le.': 'Unplug the USB cable, wait 5 seconds, plug it back in.',
+    'Clique sur « Réessayer ».': 'Click “Try again”.',
+    "Le tinySA n'est pas trouvé": 'The tinySA cannot be found',
+    'La prise choisie ne répond pas : le tinySA est éteint, débranché, ou branché ailleurs.':
+        'The chosen port does not answer: the tinySA is off, unplugged, or plugged in elsewhere.',
+    'Vérifie que le tinySA est allumé et que son écran affiche le spectre.':
+        'Check that the tinySA is on and that its screen shows the spectrum.',
+    'Essaie un autre câble USB (beaucoup de câbles USB-C ne font que la charge) ou une autre prise du PC.':
+        'Try another USB cable (many USB-C cables only charge) or another USB port on the PC.',
+    'Clique sur « ① Le tinySA › Chercher à nouveau », choisis la ligne ✔ tinySA, puis « Réessayer ».':
+        'Click “① The tinySA › Search again”, choose the ✔ tinySA line, then “Try again”.',
+    "Le tinySA n'est pas disponible": 'The tinySA is not available',
+    'Le tinySA est en mode « stockage USB » (il se présente comme une clé USB) : dans ce mode il refuse toute mesure.':
+        'The tinySA is in “USB storage” mode (it shows up as a USB stick): in this mode it refuses any measurement.',
+    'Sur le tinySA : STORAGE › MORE › USB DISK pour sortir de ce mode (ou éteins-le).':
+        'On the tinySA: STORAGE › MORE › USB DISK to leave this mode (or switch it off).',
+    'Redémarre le tinySA normalement.': 'Restart the tinySA normally.',
+    'Rebranche-le au PC puis clique sur « Réessayer ».': 'Plug it back into the PC then click “Try again”.',
+    'Le tinySA se met à jour': 'The tinySA is updating',
+    "Le tinySA est en train d'installer un nouveau firmware : il refuse les mesures pendant ce temps.":
+        'The tinySA is installing a new firmware: it refuses measurements meanwhile.',
+    'Attends la fin de la mise à jour et le redémarrage du tinySA (ne le débranche pas).':
+        'Wait for the update to finish and the tinySA to restart (do not unplug it).',
+    'Clique ensuite sur « Réessayer ».': 'Then click “Try again”.',
+    'Le tinySA ne répond plus': 'The tinySA no longer answers',
+    'Le tinySA est relié mais ne répond pas aux commandes (il est peut-être figé ou dans un menu).':
+        'The tinySA is connected but does not answer commands (it may be frozen or in a menu).',
+    "Sur le tinySA, quitte les menus ouverts (retour à l'écran du spectre).":
+        'On the tinySA, leave any open menu (back to the spectrum screen).',
+    'Débranche puis rebranche le câble USB (ou éteins / rallume le tinySA).':
+        'Unplug and plug back the USB cable (or switch the tinySA off / on).',
+    'Clique sur « Réessayer ». Si ça recommence : « 🩺 Diagnostic » et envoie le fichier.':
+        'Click “Try again”. If it happens again: “🩺 Diagnostics” and send the file.',
+    'Le relais réseau ne répond pas': 'The network relay does not answer',
+    "À cette adresse, il y a bien un appareil, mais le relais du tinySA n'y tourne pas (ou pas sur ce port).":
+        'There is a device at this address, but the tinySA relay is not running on it (or not on this port).',
+    "Vérifie que le Raspberry Pi (ou l'autre PC) est allumé et que le tinySA y est branché.":
+        'Check that the Raspberry Pi (or the other PC) is on and that the tinySA is plugged into it.',
+    "Sur l'autre PC : « Partager ce tinySA » doit être lancé. Sur le Pi : le relais démarre tout seul (compte 1 minute après l'allumage).":
+        'On the other PC: “Share this tinySA” must be running. On the Pi: the relay starts by itself (allow 1 minute after power-on).',
+    "Vérifie le port (5025 d'habitude), puis « Réessayer ».": 'Check the port (usually 5025), then “Try again”.',
+    'Adresse réseau injoignable': 'Network address unreachable',
+    "Le PC n'arrive pas à joindre cette adresse : appareil éteint, autre réseau Wi-Fi, ou adresse qui a changé.":
+        'The PC cannot reach this address: device off, another Wi-Fi network, or the address has changed.',
+    "Mets le PC et le Raspberry Pi (ou l'autre PC) sur le même réseau.":
+        'Put the PC and the Raspberry Pi (or the other PC) on the same network.',
+    "L'adresse du Pi change d'un réseau à l'autre : « 🔌 Matériel › Adresses réseau » puis « Tester ».":
+        "The Pi's address changes from one network to another: “🔌 Hardware › Network addresses” then “Test”.",
+    'Un pare-feu peut bloquer : autorise TinySA Monitor sur un réseau privé, puis « Réessayer ».':
+        'A firewall may block it: allow TinySA Monitor on a private network, then “Try again”.',
+    'Bande de fréquences refusée': 'Frequency band refused',
+    "Le tinySA refuse une des bandes à balayer (hors de ce qu'il sait mesurer).":
+        'The tinySA refuses one of the bands to sweep (outside what it can measure).',
+    'Ouvre « Vue › Gérer les bandes » et vérifie le début et la fin de chaque bande (en MHz).':
+        'Open “View › Manage bands” and check the start and end of each band (in MHz).',
+    "Trop de points d'un coup": 'Too many points at once',
+    'Le tinySA refuse un balayage aussi long en une seule commande.': 'The tinySA refuses such a long sweep in a single command.',
+    'Laisse « ⚡ Points » sur Auto, ou baisse le nombre de points.': 'Leave “⚡ Points” on Auto, or lower the number of points.',
+    'Liaison perdue avec le tinySA': 'Link to the tinySA lost',
+    "Le tinySA ne répond plus (câble, alimentation ou réseau). L'appli réessaie toute seule ; les autres tinySA, s'il y en a, reprennent ses bandes.":
+        'The tinySA no longer answers (cable, power or network). The app retries by itself; the other tinySA, if any, take over its bands.',
+    'Vérifie le câble USB (ou le réseau / le Raspberry Pi) et que le tinySA est allumé.':
+        'Check the USB cable (or the network / Raspberry Pi) and that the tinySA is on.',
+    "Si son écran est figé : débranche / rebranche l'USB, ou éteins / rallume le tinySA.":
+        'If its screen is frozen: unplug / replug the USB, or switch the tinySA off / on.',
+    "Rien à faire de plus : dès qu'il revient, la surveillance reprend.": 'Nothing more to do: as soon as it is back, monitoring resumes.',
+    'Le tinySA a renvoyé une erreur': 'The tinySA returned an error',
+    "La mesure s'est arrêtée sur une erreur inattendue.": 'Measuring stopped on an unexpected error.',
+    "Si ça recommence : débranche / rebranche le tinySA, ou essaie en mode démo pour vérifier l'appli.":
+        'If it happens again: unplug / replug the tinySA, or try demo mode to check the app.',
+    '« 🩺 Diagnostic » crée un fichier à envoyer pour comprendre le problème.':
+        '“🩺 Diagnostics” creates a file to send so the problem can be understood.',
+})
+TEMPLATES.update({
+    'Détail technique : {}': 'Technical detail: {}',
+    '{} : liaison perdue': '{}: link lost',
+    '(terme technique : {})': '(technical term: {})',
 })

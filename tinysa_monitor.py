@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.45.0"
+APP_VER = "7.46.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4809,54 +4809,69 @@ def store_occupancy(store, freqs, thr, hour_of, win=0.1):
 UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
              ("simple", "🔵 Simple : + réglages essentiels, journal, scènes / groupes"),
              ("expert", "🎛 Expert : tous les réglages"))
-# étape, texte du bouton, bulle, menu [(texte, méthode)] (vide = clic direct sur STEP_DEFAULT)
+# 7.46 (revue UX : « une seule porte d'entrée ») : 4 familles dans la barre du haut, à la place du parcours ①…⑥ et
+# des sections de ☰ Plus. Famille = (clé, texte du bouton, bulle, menu [(texte, méthode)] ; (None, None) = séparateur).
+# Les numéros ① ② ③ restent ceux des 3 cartes de l'accueil (tinySA, micros, surveiller).
 STEPS = (
-    ("scan", "① Scanner le lieu", "Avant tout : balayer le lieu pour voir ce qui est déjà occupé (TNT, autres\n"
-     "équipes, brouilleurs). Démarre le balayage (max hold remis à zéro), ou les scans par lieu (plusieurs scènes).",
-     (("▶ Scanner ici (max hold remis à zéro)", "step_scan"),
-      ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"))),
-    ("list", "② Mes fréquences", "Ta liste de fréquences : importer ton plan (EazyRF, WWB, WSM, Excel…), en ajouter,\n"
-     "et dire pour chacune si elle doit émettre ou rester libre.",
-     (("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
+    ("prep", "📋 Préparer", "Avant le show : scanner le lieu, ta liste de fréquences (importer, ajouter, nommer),\n"
+     "le planning des plateaux et les états.",
+     (("▶ Scanner ici (pics remis à zéro)", "step_scan"),
+      ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"), (None, None),
+      ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
       ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
-      ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"), (None, None),
-      ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
-    ("plan", "③ Coordonner le plan", "Compatibilité du plan (coordination simple) : écart entre porteuses et intermod,\n"
-     "une remplaçante proposée pour chaque fréquence à problème ; ou trouver N fréquences compatibles.",
-     (("🪄 Trouver N fréquences compatibles…", "open_coord"), ("🧮 Vérifier le plan…", "open_plan_check"),
-      ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"))),
-    ("im", "④ Intermod", "Produits d'intermodulation de tes émetteurs, ou d'où vient un signal gênant\n"
-     "(d'après le spectre mesuré).", ()),
-    ("show", "⑤ Surveiller le show", "Pendant le show : surveillance, alarmes, appel des micros, mur pour le 2ᵉ écran,\n"
-     "alertes sur téléphone.",
-     (("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"), ("▶ Démarrer la surveillance", "step_monitor"),
-      ("🖥 Mode Show (plein écran, l'essentiel)", "open_show_mode"),
+      ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"),
+      ("🔗 Plan EazyRF suivi…", "ezrf_follow_info"),
+      ("✏ Nommer la sélection (HF 1, HF 2…)…", "quick_name_dialog"),
+      ("Mon vocabulaire (noms proposés)…", "edit_vocab"),
+      ("📤 Exporter les fréquences (par scène / groupe)…", "export_by_scene"), (None, None),
+      ("🪄 Trouver N fréquences compatibles (coordination auto)…", "open_coord"),
+      ("🧮 Vérifier le plan de fréquences (compatibilité)…", "open_plan_check"),
+      ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"),
+      ("⚡ Intermodulation (2 / 3 / 5 TX)…", "open_intermod"),
+      ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", "add_block_dialog"), (None, None),
       ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
-      ("📸 États (basculer de plan d'un clic)…", "open_states"),
-      ("🎤 Appel des micros (line check)…", "open_linecheck"),
-      ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), ("📣 Alertes téléphone et page web…", "open_alerts"),
+      ("📸 États (basculer de plan d'un clic)…", "open_states"), (None, None),
+      ("❓ Doit émettre / doit rester libre : c'est quoi ?", "status_help"))),
+    ("show", "🎚 Surveiller", "Pendant le show : démarrer, vérifier que tout est prêt, mode Show plein écran, appel des\n"
+     "micros, mur pour un 2ᵉ écran, fréquence de secours, alertes sur téléphone.",
+     (("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"), ("▶ Démarrer la surveillance", "step_monitor"),
+      ("🖥 Mode Show (plein écran, l'essentiel)  F10", "open_show_mode"),
+      ("🎤 Appel des micros (line check)…  Ctrl+L", "open_linecheck"),
+      ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"), (None, None),
       ("🆘 Fréquence de secours…", "open_rescue"),
-      ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"),
+      ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"), (None, None),
+      ("📣 Alertes téléphone et page web…", "open_alerts"),
       ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "open_festival"))),
-    ("after", "⑥ Après le show", "Revoir ce qui s'est passé (relecture, session enregistrée), rapport, exports.",
+    ("after", "📊 Analyser", "Après le show : revoir ce qui s'est passé, rapport, occupation par heure, scans.",
      (("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
       ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"), ("📄 Rapport de show…", "make_report"),
-      ("📤 Exporter les fréquences…", "export_by_scene"))),
+      (None, None),
+      ("📏 Importer un scan WSM / WWB comme référence…", "import_scan_as_ref"),
+      ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", "open_scan_convert"))),
+    ("hw", "🔌 Matériel", "Le matériel : plusieurs tinySA, tinySA en réseau (Raspberry Pi), relais, réglages de\n"
+     "mesure, calibration, générateur, diagnostic.",
+     (("📡 Mes tinySA et les scènes qu'ils surveillent…", "open_devices"),
+      ("➕ Plusieurs tinySA et leurs noms…", "open_devs_settings"),
+      ("🌐 tinySA en réseau : adresses enregistrées…", "open_net_profiles"),
+      ("📡 Relais réseau : partager le tinySA de CE PC…", "open_relay"), (None, None),
+      ("🎛 Réglages de mesure (finesse, préampli, atténuateur)…", "open_measure"),
+      ("⚖ Calibrer les autres tinySA sur le 1er…", "start_calib"),
+      ("📡 Mode émission (générateur : tester un récepteur)…", "open_emit"), (None, None),
+      ("🩺 Diagnostic tinySA (fichier pour le support)…", "open_diag"))),
 )
-STEP_DEFAULT = dict(scan="step_scan", plan="open_plan_check", im="open_intermod")
+# anciennes clés du parcours (tutos, tests) -> famille
+STEP_ALIAS = dict(scan="prep", list="prep", plan="prep", im="prep")
+STEP_DEFAULT = {}
 # Outils de coordination : cachés par défaut (7.43, Clément : « toute la partie coord je préfère la garder en caché pour
 # moi, on peut laisser la fréquence de secours ») ; ⚙ › Général › « Outils de coordination (avancé) » les remontre.
 COORD_METHODS = ("open_coord", "open_plan_check", "open_rx_profiles", "open_intermod", "open_intermod_for")
-COORD_STEPS = ("plan", "im")
+COORD_STEPS = ()
 COORD_TOURS = ("coord",)
 STEP_HINTS = {
-    "scan": "① Laisse tourner quelques minutes : le max hold (orange) montre ce qui occupe déjà le lieu.",
-    "list": "② Ajoute depuis le scan, importe ou saisis tes fréquences ; puis Ctrl+E = doit émettre, "
-            "statut « Libre » = doit rester libre.",
-    "plan": "③ 🪄 Trouve N fréquences compatibles, ou vérifie ton plan et corrige les ✗ (« Proposer », « Remplacer »).",
-    "im": "④ Un signal bizarre ? « Chercher l'origine » à partir du spectre mesuré.",
-    "show": "⑤ Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.",
-    "after": "⑥ Relecture : revois n'importe quel moment de la session enregistrée.",
+    "prep": "📋 Scanne le lieu quelques minutes, puis entre tes fréquences (import, scan ou à la main).",
+    "show": "🎚 Vert = OK. Une alarme sonne si un micro se tait ou si un signal arrive sur une réserve.",
+    "after": "📊 Relecture : revois n'importe quel moment de la session enregistrée.",
+    "hw": "🔌 Plusieurs tinySA, réseau, mesure : ce qui concerne le matériel.",
 }
 STATUS_HELP = ("Chaque fréquence de ta liste a un STATUT, qui dit ce que tu attends d'elle :\n\n"
                "• « En service » = DOIT ÉMETTRE : un de tes micros / ears est censé être là. S'il se tait trop\n"
@@ -5825,6 +5840,8 @@ GLOSSARY = [
      "mais lente ; large = rapide mais deux signaux proches se confondent. Laisse en Auto si tu débutes."),
     ("Max hold", "La courbe orange : le plus haut niveau vu à chaque fréquence depuis le dernier « Reset max ». "
      "Elle garde la trace d'un émetteur même s'il n'a émis qu'une seconde."),
+    ("Pics gardés", "Le nom du max hold en mode simple : la courbe orange, le plus haut niveau vu à chaque fréquence "
+     "depuis « Effacer les pics »."),
     ("Rémanence", "Chaque balayage laisse une trace qui s'estompe peu à peu : ce qui est souvent là marque fort, ce "
      "qui passe rarement laisse une trace pâle (vue web Spectre / Terrain)."),
     ("Seuil « occupé »", "La ligne rouge : au-dessus, une fréquence est considérée comme occupée (quelqu'un émet). "
@@ -6137,6 +6154,114 @@ def home_status(i):
     if i.get("weak") or i.get("silent"):
         return "warn", "✔ Pas d'alarme — " + " · ".join(bits)
     return "ok", "✔ Tout va bien" + (" — " + " · ".join(bits) if bits else "")
+
+
+# ------------------------------------------------------------------ mots simples (7.46, revue UX) : en ultra simple /
+# simple, des mots de tous les jours ; le terme technique reste en expert et dans la bulle d'aide.
+UI_WORDS = {
+    "hold_chk": ("Pics gardés", "Max hold"),
+    "reset_btn": ("Effacer les pics", "Reset max"),
+}
+
+
+def ui_word(key, expert):
+    """Texte d'un contrôle selon le niveau : (simple, expert) de UI_WORDS ; clé inconnue -> ""."""
+    simple, tech = UI_WORDS.get(key, ("", ""))
+    return tech if expert else simple
+
+
+# ------------------------------------------------------------------ fiches « problème » (7.46, revue UX : un débutant
+# ne sait pas quoi faire de « PermissionError(13…) » ou « USB DISK MODE ACTIVE » -> ce qui se passe + quoi faire 1-2-3)
+PROBLEM_CARDS = {
+    "no_port": ("Aucun tinySA choisi",
+                "L'appli ne sait pas encore sur quelle prise est ton tinySA.",
+                ("Branche le tinySA sur le PC avec un câble USB qui transporte les données (pas un câble de charge "
+                 "seule) et allume-le.",
+                 "Clique sur « ① Le tinySA » puis choisis la ligne marquée ✔ tinySA (ou « Chercher à nouveau »).",
+                 "Pas de tinySA sous la main ? Choisis « Mode démo » pour essayer l'appli.")),
+    "busy": ("La prise du tinySA est déjà utilisée",
+             "Un autre programme parle déjà au tinySA (tinySA-App, une 2ᵉ fenêtre de TinySA Monitor…) : une seule "
+             "application à la fois peut l'utiliser.",
+             ("Ferme tinySA-App et tout autre logiciel du tinySA (ou l'autre fenêtre de TinySA Monitor).",
+              "Débranche le câble USB, attends 5 secondes, rebranche-le.",
+              "Clique sur « Réessayer ».")),
+    "gone": ("Le tinySA n'est pas trouvé",
+             "La prise choisie ne répond pas : le tinySA est éteint, débranché, ou branché ailleurs.",
+             ("Vérifie que le tinySA est allumé et que son écran affiche le spectre.",
+              "Essaie un autre câble USB (beaucoup de câbles USB-C ne font que la charge) ou une autre prise du PC.",
+              "Clique sur « ① Le tinySA › Chercher à nouveau », choisis la ligne ✔ tinySA, puis « Réessayer ».")),
+    "usbdisk": ("Le tinySA n'est pas disponible",
+                "Le tinySA est en mode « stockage USB » (il se présente comme une clé USB) : dans ce mode il refuse "
+                "toute mesure.",
+                ("Sur le tinySA : STORAGE › MORE › USB DISK pour sortir de ce mode (ou éteins-le).",
+                 "Redémarre le tinySA normalement.",
+                 "Rebranche-le au PC puis clique sur « Réessayer ».")),
+    "fwupdate": ("Le tinySA se met à jour",
+                 "Le tinySA est en train d'installer un nouveau firmware : il refuse les mesures pendant ce temps.",
+                 ("Attends la fin de la mise à jour et le redémarrage du tinySA (ne le débranche pas).",
+                  "Clique ensuite sur « Réessayer ».")),
+    "mute": ("Le tinySA ne répond plus",
+             "Le tinySA est relié mais ne répond pas aux commandes (il est peut-être figé ou dans un menu).",
+             ("Sur le tinySA, quitte les menus ouverts (retour à l'écran du spectre).",
+              "Débranche puis rebranche le câble USB (ou éteins / rallume le tinySA).",
+              "Clique sur « Réessayer ». Si ça recommence : « 🩺 Diagnostic » et envoie le fichier.")),
+    "net_refused": ("Le relais réseau ne répond pas",
+                    "À cette adresse, il y a bien un appareil, mais le relais du tinySA n'y tourne pas (ou pas sur ce "
+                    "port).",
+                    ("Vérifie que le Raspberry Pi (ou l'autre PC) est allumé et que le tinySA y est branché.",
+                     "Sur l'autre PC : « Partager ce tinySA » doit être lancé. Sur le Pi : le relais démarre tout seul "
+                     "(compte 1 minute après l'allumage).",
+                     "Vérifie le port (5025 d'habitude), puis « Réessayer ».")),
+    "net_unreach": ("Adresse réseau injoignable",
+                    "Le PC n'arrive pas à joindre cette adresse : appareil éteint, autre réseau Wi-Fi, ou adresse qui "
+                    "a changé.",
+                    ("Mets le PC et le Raspberry Pi (ou l'autre PC) sur le même réseau.",
+                     "L'adresse du Pi change d'un réseau à l'autre : « 🔌 Matériel › Adresses réseau » puis « Tester ».",
+                     "Un pare-feu peut bloquer : autorise TinySA Monitor sur un réseau privé, puis « Réessayer ».")),
+    "range": ("Bande de fréquences refusée",
+              "Le tinySA refuse une des bandes à balayer (hors de ce qu'il sait mesurer).",
+              ("Ouvre « Vue › Gérer les bandes » et vérifie le début et la fin de chaque bande (en MHz).",
+               "Clique sur « Réessayer ».")),
+    "segment": ("Trop de points d'un coup",
+                "Le tinySA refuse un balayage aussi long en une seule commande.",
+                ("Laisse « ⚡ Points » sur Auto, ou baisse le nombre de points.",
+                 "Clique sur « Réessayer ».")),
+    "lost": ("Liaison perdue avec le tinySA",
+             "Le tinySA ne répond plus (câble, alimentation ou réseau). L'appli réessaie toute seule ; les autres "
+             "tinySA, s'il y en a, reprennent ses bandes.",
+             ("Vérifie le câble USB (ou le réseau / le Raspberry Pi) et que le tinySA est allumé.",
+              "Si son écran est figé : débranche / rebranche l'USB, ou éteins / rallume le tinySA.",
+              "Rien à faire de plus : dès qu'il revient, la surveillance reprend.")),
+    "other": ("Le tinySA a renvoyé une erreur",
+              "La mesure s'est arrêtée sur une erreur inattendue.",
+              ("Clique sur « Réessayer ».",
+               "Si ça recommence : débranche / rebranche le tinySA, ou essaie en mode démo pour vérifier l'appli.",
+               "« 🩺 Diagnostic » crée un fichier à envoyer pour comprendre le problème.")),
+}
+_PROBLEM_KEYS = (                                 # expressions régulières sur le message en minuscules
+    ("usbdisk", r"\b(disque usb|usb disk)"), ("fwupdate", r"\b(mise à jour son firmware|firmware update)"),
+    ("range", r"\b(plage de fréquences|frequency range)"), ("segment", r"\b(nombre de points|exceeds range)"),
+    ("busy", r"\b(permissionerror|accès refusé|access is denied|permission denied|resource busy|errno 1[36]\b)"),
+    ("net_refused", r"\b(connection refused|connexion refusée|errno 111|10061|actively refused)"),
+    ("net_unreach", r"\b(timed out|10060|unreachable|getaddrinfo|name or service not known|no route|errno 11[03]\b|"
+                    r"errno 101|11001|nodename)"),
+    ("mute", r"\b(muet|pas de réponse|aucune mesure|inutilisable)"),
+    ("gone", r"\b(introuvable|filenotfound|no such file|could not open port|cannot find|le fichier spécifié|errno 2\b|"
+             r"not found)"),
+)
+
+
+def problem_key(msg):
+    """Message d'erreur brut (pyserial, socket, tinySA) -> clé de PROBLEM_CARDS."""
+    low = str(msg or "").lower()
+    return next((k for k, rx in _PROBLEM_KEYS if re.search(rx, low)), "other")
+
+
+def problem_card(msg="", key=None):
+    """-> dict(key, title, what, steps, detail) : fiche lisible par un débutant ; detail = message technique d'origine."""
+    k = key or problem_key(msg)
+    title, what, steps = PROBLEM_CARDS.get(k, PROBLEM_CARDS["other"])
+    return dict(key=k, title=title, what=what, steps=list(steps), detail=str(msg or ""))
 
 
 # ===== PURE-END
@@ -12799,6 +12924,11 @@ class HomeBar(QtWidgets.QWidget):
         self.port_menu.aboutToShow.connect(self._fill_ports)
         self.port_btn.setMenu(self.port_menu)
         h.addWidget(self.port_btn)
+        self.help_btn = QtWidgets.QPushButton("❓ Que faire ?")
+        self.help_btn.setToolTip("Le tinySA a un souci : ce qui se passe et comment le régler, pas à pas.")
+        self.help_btn.clicked.connect(lambda *_: o.problem_help())
+        self.help_btn.setVisible(False)
+        h.addWidget(self.help_btn)
         h.addStretch(1)
         h = card("list", "② Mes micros")
         self.imp_btn = QtWidgets.QPushButton("📥 Importer")
@@ -12881,6 +13011,10 @@ class HomeBar(QtWidgets.QWidget):
             pi.setText(f"Prêt : {info.get('port_txt', '')}")
         else:
             pi.setText("○ Aucun tinySA trouvé : branche-le en USB et allume-le.")
+        prob = info.get("problem")
+        self.help_btn.setVisible(bool(prob))
+        if prob and not info.get("lost") and not info.get("running"):
+            pi.setText(f"⚠ {prob}")
         n = int(info.get("n_watch") or 0)
         self.cards["list"][1].setText(f"{n} fréquence(s) dans ta liste" if n else "Ta liste est vide.")
         run = bool(info.get("running"))
@@ -12894,6 +13028,75 @@ class HomeBar(QtWidgets.QWidget):
         self.status.setText(txt)
         self.status.setStyleSheet("font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; "
                                   + (f"background:{c}; color:{contrast_text(c)}" if c else ""))
+
+
+class ProblemDialog(QtWidgets.QDialog):
+    """Fiche « problème » (7.46) : un titre clair, ce qui se passe, quoi faire 1-2-3, et des boutons pour le faire
+    (Réessayer, Mode démo, Diagnostic). Le message technique d'origine reste lisible en petit, en bas."""
+
+    def __init__(self, owner, card):
+        super().__init__(owner)
+        self.owner, self.card = owner, card
+        self.setWindowTitle(APP_NAME)
+        self.setMinimumWidth(480)
+        lay = QtWidgets.QVBoxLayout(self)
+        t = QtWidgets.QLabel("⚠ " + card["title"])
+        t.setStyleSheet("font-size:17px; font-weight:bold")
+        t.setWordWrap(True)
+        lay.addWidget(t)
+        what = QtWidgets.QLabel(card["what"])
+        what.setWordWrap(True)
+        lay.addWidget(what)
+        lay.addWidget(QtWidgets.QLabel("<b>Quoi faire :</b>"))
+        for i, st in enumerate(card["steps"], 1):
+            h_ = QtWidgets.QHBoxLayout()
+            h_.setContentsMargins(12, 0, 0, 0)
+            n_ = QtWidgets.QLabel(f"{i}.")              # numéro à part : la phrase reste traduisible telle quelle
+            n_.setAlignment(Qt.AlignmentFlag.AlignTop)
+            lb = QtWidgets.QLabel(st)
+            lb.setWordWrap(True)
+            h_.addWidget(n_)
+            h_.addWidget(lb, 1)
+            lay.addLayout(h_)
+        if card.get("detail"):
+            d = QtWidgets.QLabel(f"Détail technique : {card['detail']}")
+            d.setWordWrap(True)
+            d.setStyleSheet("color: gray; font-size: 11px")
+            d.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            lay.addWidget(d)
+        row = QtWidgets.QHBoxLayout()
+        self.btns = {}
+        acts = [] if card["key"] == "lost" else [("retry", "↻ Réessayer", self._retry),
+                                                  ("demo", "🎭 Essayer en mode démo", self._demo)]
+        acts += [("diag", "🩺 Diagnostic", self._diag), ("close", "Fermer", self.reject)]
+        for k, txt, fn in acts:
+            b = QtWidgets.QPushButton(txt)
+            b.setToolTip({"retry": "Relancer la mesure avec le tinySA.",
+                          "demo": "Lancer l'appli avec des signaux simulés, sans tinySA.",
+                          "diag": "Écrire un fichier qui raconte ce qui s'est passé (à envoyer pour de l'aide).",
+                          "close": "Fermer cette fiche."}[k])
+            b.clicked.connect(lambda *_, f=fn: f())
+            row.addWidget(b)
+            self.btns[k] = b
+        row.addStretch(1)
+        lay.addLayout(row)
+        (self.btns.get("retry") or self.btns["close"]).setDefault(True)
+
+    def _retry(self):
+        self.accept()
+        o = self.owner
+        if not o.is_running():
+            QtCore.QTimer.singleShot(0, lambda: o.toggle_run())
+
+    def _demo(self):
+        self.accept()
+        o = self.owner
+        o.demo_chk.setChecked(True)
+        if not o.is_running():
+            QtCore.QTimer.singleShot(0, lambda: o.toggle_run())
+
+    def _diag(self):
+        self.owner.open_diag()
 
 
 def free_plot_menus(widget):
@@ -13481,7 +13684,7 @@ def tour_steps(o, key="ecran"):
              "Avant de choisir tes fréquences, on regarde ce qui occupe DÉJÀ le lieu : télé (TNT), autres équipes, "
              "brouilleurs.",
              "Choisir une fréquence déjà prise, c'est la garantie d'un micro qui coupe pendant le show.",
-             "Clique ① : le balayage démarre et le max hold (courbe orange) repart de zéro. Laisse tourner 5 à 10 "
+             "📋 Préparer › ▶ Scanner ici : le balayage démarre et le max hold (courbe orange) repart de zéro. Laisse tourner 5 à 10 "
              "minutes, idéalement avec les écrans LED et les lumières allumés.", ("▶ Scanner le lieu", "step_scan")),
             (dock("dock_spec"), "4. Regarder le résultat",
              "Les bosses sont des émetteurs. Les grands plateaux de 8 MHz sont des chaînes de télé (TNT). Le bas "
@@ -13515,7 +13718,7 @@ def tour_steps(o, key="ecran"):
             (sb.get("show"), "9. Surveiller le show",
              "La surveillance balaye en continu et compare ce qu'elle voit à ta liste.",
              "C'est le cœur de l'appli : elle te prévient dès qu'un micro tombe ou qu'un intrus arrive.",
-             "⑤ ▶ Démarrer. L'appli propose d'enregistrer la session (dis oui : tu pourras tout revoir). La colonne "
+             "🎚 Surveiller › ▶ Démarrer. L'appli propose d'enregistrer la session (dis oui : tu pourras tout revoir). La colonne "
              "« Signal » passe au vert pour les émetteurs présents.", None),
             (g("alarm_btn"), "10. Quand une alarme sonne",
              "Une alarme = un problème sur une fréquence : ABSENT (ton micro ne se voit plus) ou CONFLIT (quelqu'un "
@@ -13526,18 +13729,18 @@ def tour_steps(o, key="ecran"):
             (sb.get("show"), "11. Juste avant d'ouvrir : l'appel des micros",
              "Le line check : tu allumes tes émetteurs un par un, l'appli coche ceux qu'elle voit.",
              "Tu sais en une minute si un émetteur manque ou s'il est sur la mauvaise fréquence.",
-             "⑤ › 🎤 Appel des micros (Ctrl+L). Une fréquence inconnue proche d'une manquante = sûrement l'émetteur "
+             "🎚 Surveiller › 🎤 Appel des micros (Ctrl+L). Une fréquence inconnue proche d'une manquante = sûrement l'émetteur "
              "mal réglé.", ("🎤 Ouvrir l'appel des micros", "open_linecheck")),
             (sb.get("show"), "12. Être prévenu sur ton téléphone",
              "Les alarmes peuvent partir sur ton téléphone (ntfy, Telegram) et une page web montre tout aux autres "
              "techniciens du site.",
              "Tu n'es pas collé à l'écran pendant tout le show.",
-             "⑤ › 📣 Alertes téléphone et page web : le bouton 📖 Tuto explique chaque étape.",
+             "🎚 Surveiller › 📣 Alertes téléphone et page web : le bouton 📖 Tuto explique chaque étape.",
              ("📣 Régler les alertes…", "open_alerts")),
             (sb.get("after"), "13. Après le show",
              "Tout ce qui s'est passé est enregistré : spectre, alarmes, journal.",
              "Pour comprendre un incident (« à 21 h 34 le micro 3 a coupé : pourquoi ? ») et faire un compte rendu.",
-             "⑥ › ⏪ Relecture pour revoir n'importe quel moment ; 📄 Rapport de show pour un document propre ; 📊 "
+             "📊 Analyser › ⏪ Relecture pour revoir n'importe quel moment ; 📄 Rapport de show pour un document propre ; 📊 "
              "Occupation par heure.", ("⏪ Ouvrir la relecture", "open_replay")),
             (g("more_btn"), "14. Garder tout ton travail",
              "Un « show » 🎪 est un fichier qui contient tout : fréquences, scènes, bandes, scans gardés.",
@@ -13624,12 +13827,12 @@ def tour_steps(o, key="ecran"):
             (sb.get("im"), "5. L'intermodulation",
              "Le calcul des fréquences fantômes de tes émetteurs (2A − B, A + B − C…).",
              "Pour comprendre d'où vient un signal gênant, ou vérifier un emplacement.",
-             "④ Intermod : la liste des produits qui tombent sur tes fréquences, du plus grave au moins grave. Les "
+             "📋 Préparer › ⚡ Intermod : la liste des produits qui tombent sur tes fréquences, du plus grave au moins grave. Les "
              "« règles » choisissent quels produits on compte.", ("⚡ Ouvrir l'intermod…", "open_intermod")),
             (sb.get("show"), "6. Une fréquence de secours",
              "Quand un micro est brouillé pendant le show, il faut une autre fréquence, vite.",
              "L'appli cherche une fréquence libre MAINTENANT, compatible avec le reste.",
-             "⑤ › 🆘 Fréquence de secours ; prépare-en quelques-unes avant le show (statut « Libre » : elles sont "
+             "🎚 Surveiller › 🆘 Fréquence de secours ; prépare-en quelques-unes avant le show (statut « Libre » : elles sont "
              "surveillées).", ("🆘 Fréquence de secours…", "open_rescue")),
             (sb.get("plan"), "7. Coordination par scène ou globale",
              "Avec des scans gardés par scène, tu peux coordonner une scène avec SON spectre, ou tout le site d'un "
@@ -13724,11 +13927,11 @@ def tour_steps(o, key="ecran"):
          "Lance ou arrête le balayage : le tinySA mesure les fréquences en boucle.",
          "Rien ne se passe tant que ce n'est pas démarré.",
          "▶ Démarrer ; ■ Arrêter pour stopper.", None),
-        (g("steps_bar"), "Le parcours",
-         "La barre des étapes, dans l'ordre du travail de gauche à droite : ① scanner le lieu, ② tes fréquences, ③ "
-         "coordonner, ④ intermod, ⑤ surveiller, ⑥ après le show.",
-         "Si tu ne sais pas quoi faire, suis les numéros.",
-         "Chaque bouton lance l'étape ; le texte à droite dit quoi faire ensuite.", None),
+        (sb.get("prep"), "Les 4 menus du travail",
+         "En haut, quatre boutons rangent tous les outils selon le moment : 📋 Préparer (scanner le lieu, ta liste), "
+         "🎚 Surveiller (pendant le show), 📊 Analyser (après le show), 🔌 Matériel (tinySA, réseau, mesure).",
+         "Tu cherches un outil ? Demande-toi « je prépare, je surveille, j'analyse, ou c'est le matériel ? ».",
+         "Clique un des quatre boutons : son menu s'ouvre.", None),
         (dock("dock_spec"), "Le spectre",
          "Le graphique : de gauche à droite les fréquences, de bas en haut la puissance reçue.",
          "Tu vois ce qui émet autour de toi.",
@@ -13762,11 +13965,11 @@ def tour_steps(o, key="ecran"):
          "Pour adapter l'appli à ton matériel et à ton PC.",
          "Ctrl+, l'ouvre aussi.", None),
         (g("more_btn"), "☰ Plus",
-         "Tous les outils, rangés dans l'ordre du travail (préparer, pendant, après).",
-         "Tout ce qui n'est pas sur l'écran principal est là.",
+         "Les réglages, les fenêtres, l'apparence, le niveau d'affichage et l'aide.",
+         "Tout ce qui sert à régler l'appli elle-même est là.",
          "« 👁 Affichage » : ultra simple (l'essentiel), simple, ou expert (tout). 📖 Manuel et 📚 Lexique dans "
          "Aide.", None),
-        (g("tour_btn"), "Les autres tutos",
+        (getattr(g("home"), "tour_btn", None), "Les autres tutos",
          "D'autres visites guidées : mon premier show de A à Z, lire le spectre, coordonner, plusieurs scènes, "
          "pendant le show.",
          "Chacune prend quelques minutes et ouvre les bons outils pour toi.",
@@ -14083,7 +14286,7 @@ class ScanAddDialog(QtWidgets.QDialog):
         t.resizeColumnsToContents()
         t.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
         if F is None:
-            self.count_lbl.setText("Pas encore de balayage : lance ▶ Démarrer (ou ① Scanner le lieu).")
+            self.count_lbl.setText("Pas encore de balayage : lance ▶ Démarrer (ou 📋 Préparer › ▶ Scanner ici).")
         else:
             self.count_lbl.setText(f"{len(pk)} signal(aux) au-dessus du seuil")
 
@@ -14141,7 +14344,7 @@ class CoordDialog(QtWidgets.QDialog):
             "Comme un logiciel de coordination : choisis l'appareil et combien de fréquences il te faut. L'appli "
             "cherche, de bas en haut de la plage, des fréquences <b>compatibles avec toute ta liste et entre elles</b> "
             "(écart, intermod, filtre de l'appareil), sur le pas de l'appareil, en évitant ce que le tinySA voit "
-            "occupé (max hold). Lance d'abord ① Scanner le lieu quelques minutes.")
+            "occupé (max hold). Lance d'abord 📋 Préparer › ▶ Scanner ici quelques minutes.")
         info.setWordWrap(True)
         info.setMinimumHeight(info.fontMetrics().height() * 4)
         lay.addWidget(info)
@@ -14367,7 +14570,7 @@ class CoordDialog(QtWidgets.QDialog):
         o.rebuild_watch_table()
         o._update_markers()
         o.set_status(f"🪄 {len(self.found)} fréquence(s) coordonnée(s) ajoutée(s) à ta liste.")
-        self.msg.setText(f"✔ {len(self.found)} fréquence(s) ajoutée(s). Vérifie avec ③ Vérifier le plan.")
+        self.msg.setText(f"✔ {len(self.found)} fréquence(s) ajoutée(s). Vérifie avec 📋 Préparer › 🧮 Vérifier le plan.")
         self.found = []
         self.res.clear()
 
@@ -15483,6 +15686,31 @@ class MainWindow(QtWidgets.QMainWindow):
         "🌐 Langue": "Français / English (appliqué au redémarrage).",
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
+    TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "▶ Scanner ici": "Démarre le balayage et remet les pics à zéro : laisse tourner quelques minutes pour voir\n"
+                        "ce qui occupe déjà le lieu (télé, autres équipes, brouilleurs).",
+        "📍 Scans par lieu": "Un scan gardé par scène / lieu : comparer, fusionner, exporter, rapport d'étude de site.",
+        "📡 Ajouter depuis le scan": "Ajoute à ta liste les signaux que le tinySA voit au-dessus d'un seuil.",
+        "📥 Importer une liste": "Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Excel / CSV…).",
+        "＋ Ajouter une fréquence": "Une fréquence à la main : nom, MHz, statut, scène / groupe.",
+        "📋 Coller une liste": "Colle des lignes « nom ; MHz » copiées d'un tableur ou d'un autre logiciel.",
+        "🪄 Trouver N fréquences": "Coordination simple : l'appli cherche N fréquences compatibles avec ta liste et le\n"
+                                  "spectre mesuré.",
+        "🎬 Planning": "Qui joue quand, par scène : pas d'alarme ABSENT pendant les changements de plateau.",
+        "❓ Doit émettre": "La différence entre « doit émettre » (alarme ABSENT) et « doit rester libre » (alarme CONFLIT).",
+        "✅ Prêt pour le show": "Vérifie tout avant d'ouvrir : tinySA, bandes, son, alertes, enregistrement…",
+        "▶ Démarrer la surveillance": "Lance la surveillance de tes fréquences (le balayage tourne en continu).",
+        "🖥 Mode Show": "Plein écran, seulement l'essentiel en très gros (F10).",
+        "🔎 Chasse au brouilleur": "Un bip qui accélère quand tu te rapproches du signal, comme un détecteur de métaux.",
+        "🌙 Mode festival": "Nuit complète : reprise après coupure, PC qui ne s'endort pas, bilan chaque matin.",
+        "📊 Occupation par heure": "À quelles heures chaque fréquence a été occupée : les créneaux à risque.",
+        "📡 Mes tinySA": "Quel tinySA surveille quelle scène ; 👋 Identifier fait clignoter son écran.",
+        "➕ Plusieurs tinySA": "Jusqu'à 8 tinySA : adresses (USB ou réseau), noms, corrections de niveau.",
+        "🌐 tinySA en réseau": "Les adresses de tes tinySA en réseau (Raspberry Pi, autre PC), avec un bouton Tester.",
+        "🎛 Réglages de mesure": "Finesse de mesure (RBW), préampli (LNA), atténuateur, entrée, correction de niveau.",
+        "⚖ Calibrer": "Avec plusieurs tinySA sur la même antenne : aligne leurs niveaux sur le 1er.",
+        "📡 Mode émission": "Le tinySA devient un petit émetteur (en câble) pour tester un récepteur.",
+    })
 
     def _install_tips(self):
         """Une explication sur chaque bouton / case / liste, aussi recopiée dans la barre d'état au survol."""
@@ -15501,7 +15729,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if w_.toolTip() and not w_.statusTip():
                 w_.setStatusTip(w_.toolTip().split("\n")[0])
         menus = set(self.findChildren(QtWidgets.QMenu))
-        todo = [self.more_menu]                      # sous-menus (Outils…) rattachés à des boutons hors fenêtre
+        todo = [self.more_menu] + list(getattr(self, "step_menus", {}).values())   # menus rattachés à des boutons
         while todo:
             m_ = todo.pop()
             menus.add(m_)
@@ -15519,6 +15747,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def set_expert(self, on):
         """Mode simple : seulement l'essentiel (seuils, bandes, 2ᵉ tinySA, pays). Expert : tous les réglages."""
         self.expert = bool(on)
+        self._apply_words(self.expert)
         if self.expert:
             self.ui_level = "expert"
         elif getattr(self, "ui_level", "simple") == "expert":
@@ -15541,52 +15770,41 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------- parcours (7.13, Clément : « dans l'ordre logique :
     # scan → plan → intermod → monitoring ») et niveaux d'affichage (« un mode ultra simple »)
     def _build_steps_bar(self):
-        bar = QtWidgets.QToolBar("Parcours")
-        bar.setObjectName("barre_parcours")
-        bar.setMovable(False)
-        bar.setFloatable(False)
-        bar.toggleViewAction().setEnabled(False)
-        self.step_btns = {}
+        """Les 4 familles (📋 Préparer, 🎚 Surveiller, 📊 Analyser, 🔌 Matériel) dans la barre du haut, juste avant
+        ☰ Plus (7.46 : une seule porte d'entrée ; remplace la barre de parcours ①…⑥)."""
+        tb = self.cmd_bar
+        self.step_btns, self.step_menus = {}, {}
+        self._coord_acts = list(getattr(self, "_coord_acts", []))
         for key, txt, tip, items in STEPS:
-            b = QtWidgets.QToolButton()
-            b.setText(txt)
+            b = QtWidgets.QPushButton(txt)
             b.setToolTip(tip)
-            b.setAutoRaise(True)
-            if items:
-                m_ = QtWidgets.QMenu(b)
-                m_.setToolTipsVisible(True)
-                for it_txt, meth in items:
-                    if it_txt is None:
-                        m_.addSeparator()
-                    else:
-                        m_.addAction(it_txt).triggered.connect(lambda *_, k=key, n=meth: self.do_step(k, n))
-                b.setMenu(m_)
-                b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
-            else:
-                b.clicked.connect(lambda *_, k=key: self.do_step(k))
-            self.__dict__.setdefault("_step_acts", {})[key] = bar.addWidget(b)
-            if key != STEPS[-1][0]:
-                arrow = QtWidgets.QLabel("›")
-                arrow.setStyleSheet("color: gray;")
-                self.__dict__.setdefault("_step_arrows", {})[key] = bar.addWidget(arrow)
+            m_ = QtWidgets.QMenu(b)
+            m_.setToolTipsVisible(True)
+            for it_txt, meth in items:
+                if it_txt is None:
+                    m_.addSeparator()
+                    continue
+                a_ = m_.addAction(it_txt)
+                a_.triggered.connect(lambda *_, k=key, n=meth: self.do_step(k, n))
+                if meth in COORD_METHODS:
+                    self._coord_acts.append(a_)
+            if key == "hw":
+                for title, its in self.EXTRA_MENUS:       # sous-menus ajoutés par une autre version (V8 : SDR)
+                    sm = m_.addMenu(title)
+                    for t_, n_ in its:
+                        sm.addAction(t_).triggered.connect(lambda *_, n=n_: getattr(self, n)())
+            b.setMenu(m_)
+            self.__dict__.setdefault("_step_acts", {})[key] = tb.insertWidget(self._more_act, b)
             self.step_btns[key] = b
-        bar.addSeparator()
-        self.tour_btn = QtWidgets.QToolButton()
+            self.step_menus[key] = m_
+        tb.insertSeparator(self._more_act)
+        for old, new in STEP_ALIAS.items():               # tutos : anciennes étapes -> leur famille
+            self.step_btns.setdefault(old, self.step_btns[new])
+        self.tour_btn = QtWidgets.QToolButton()          # gardés (tutos, anciennes configs) mais hors écran
         self.tour_btn.setText("🎓 Tuto")
-        self.tour_btn.setToolTip("Tutos pas à pas pour débutants : découvrir l'écran, premier show de A à Z, lire le\n"
-                                 "spectre, coordonner, plusieurs scènes, pendant le show ; + le lexique.")
-        self.tour_btn.setAutoRaise(True)
         self.tour_btn.clicked.connect(lambda *_: self.start_tour())
-        bar.addWidget(self.tour_btn)
         self.step_lbl = QtWidgets.QLabel("")
-        self._elastic(self.step_lbl)
-        self.step_lbl.setMinimumWidth(240)                 # dans une barre d'outils : sinon largeur nulle
-        self.step_lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
-        self.step_lbl.setToolTip("Ce qu'il faut faire à cette étape.")
-        bar.addWidget(self.step_lbl)
-        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, bar)
-        self.steps_bar = bar
+        self.steps_bar = None
 
     def _build_home(self):
         bar = QtWidgets.QToolBar("Accueil")
@@ -15642,7 +15860,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     silent += 1                      # doit émettre, rien reçu (pas encore ABSENT)
         p = self.port1()
-        return dict(running=self.is_running(), demo=self.demo_chk.isChecked(), port=bool(p),
+        pb = getattr(self, "_last_problem", None)
+        problem = pb["title"] if pb and (lost or (not self.is_running() and pb["key"] != "lost")) else ""
+        return dict(running=self.is_running(), demo=self.demo_chk.isChecked(), port=bool(p), problem=problem,
                     port_txt=self.port_combo.currentText() if p else "", n_watch=len(ws), lost=lost,
                     alarms=[(a["kind"], a.get("name") or "") for a in cur if a["kind"] != "APPAREIL"],
                     ok=ok, free=free, weak=weak, muted=muted, silent=silent,
@@ -15664,8 +15884,9 @@ class MainWindow(QtWidgets.QMainWindow):
             f_ = b.font()
             f_.setBold(k_ == key)
             b.setFont(f_)
-        self.step_lbl.setText(STEP_HINTS.get(key, ""))
-        self.step_lbl.setToolTip(STEP_HINTS.get(key, ""))
+        key = STEP_ALIAS.get(key, key)
+        if STEP_HINTS.get(key):
+            self.set_status(STEP_HINTS[key])
         fn = getattr(self, meth or STEP_DEFAULT.get(key, ""), None)
         if fn is not None:
             fn()
@@ -15712,6 +15933,19 @@ class MainWindow(QtWidgets.QMainWindow):
         for k_, a_ in getattr(self, "level_acts", {}).items():
             a_.setChecked(k_ == level)
         self._home_layout()
+
+    def _apply_words(self, expert):
+        """Mots simples hors expert (« Pics gardés » au lieu de « Max hold ») ; le terme technique reste dans la bulle."""
+        for k in UI_WORDS:
+            w_ = getattr(self, k, None)
+            if w_ is None:
+                continue
+            try:
+                base = self.__dict__.setdefault("_word_tips", {}).setdefault(k, w_.toolTip())
+                w_.setText(ui_word(k, expert))
+                w_.setToolTip(base if expert else (base + "\n" if base else "") + f"(terme technique : {ui_word(k, True)})")
+            except Exception:  # noqa: BLE001 — objets factices des tests
+                pass
 
     def start_tour(self, key=None):
         """🎓 Sans clé : choisir un tuto ; avec : le lancer (ecran, show, spectre, coord, scenes, live)."""
@@ -15874,56 +16108,11 @@ class MainWindow(QtWidgets.QMainWindow):
         mm = self.more_menu
         mm.addAction("↶ Annuler la dernière modification\tCtrl+Z").triggered.connect(lambda *_: self.undo())
         mm.addAction("↷ Rétablir\tCtrl+Y").triggered.connect(lambda *_: self.redo())
-        mm.addSection("① Préparer : liste, plan, intermod")
-        submenu(mm, "📋 Liste de fréquences", (
-            ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", lambda *_: self.open_scan_add()),
-            ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", lambda *_: self.import_watch()),
-            ("🔗 Plan EazyRF suivi…", lambda *_: self.ezrf_follow_info()),
-            ("＋ Ajouter une fréquence…", lambda *_: self.add_watch_dialog()),
-            ("✏ Nommer la sélection (HF 1, HF 2…)…", lambda *_: self.quick_name_dialog()),
-            ("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne  (Ctrl+D)", lambda *_: self.fill_down_names()),
-            ("Mon vocabulaire…", lambda *_: self.edit_vocab()),
-            (None, None),
-            ("📤 Exporter les fréquences (par scène / groupe)…", lambda *_: self.export_by_scene())))
-        tmenu = submenu(mm, "📐 Plan de fréquences", (
-            ("🪄 Trouver N fréquences compatibles (coordination auto)…", lambda *_: self.open_coord()),
-            ("🧮 Vérifier le plan de fréquences (compatibilité)…", lambda *_: self.open_plan_check()),
-            ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
-            (None, None),
-            ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
-        self._coord_acts = [a_ for a_ in tmenu.actions() if a_.text().startswith(("🪄", "🧮", "🎛")) or a_.isSeparator()]
-        mm.addAction("📍 Scans par lieu (plusieurs scènes, fusion, export)…").triggered.connect(lambda *_: self.open_sites())
-        a_im = mm.addAction("⚡ Intermodulation (2 / 3 / 5 TX)…")
-        a_im.triggered.connect(lambda *_: self.open_intermod())
-        self._coord_acts.append(a_im)
-        mm.addSection("② Pendant le show")
-        mm.addAction("✅ Prêt pour le show ? (tout vérifier)…").triggered.connect(lambda *_: self.open_ready())
-        mm.addAction("🖥 Mode Show (plein écran, l'essentiel)  F10").triggered.connect(lambda *_: self.open_show_mode())
-        mm.addAction("🎤 Appel des micros (line check)…  Ctrl+L").triggered.connect(lambda *_: self.open_linecheck())
-        mm.addAction("🧱 Mur de fréquences (2ᵉ écran)").triggered.connect(lambda *_: self.open_wall())
-        mm.addAction("🆘 Fréquence de secours…").triggered.connect(lambda *_: self.open_rescue())
-        mm.addAction("🔎 Chasse au brouilleur (bip qui suit le niveau)…").triggered.connect(lambda *_: self.open_hunt())
-        mm.addAction("🎬 Planning des plateaux (qui joue quand)…").triggered.connect(lambda *_: self.open_planning())
-        mm.addAction("📸 États (basculer de plan d'un clic)…").triggered.connect(lambda *_: self.open_states())
-        mm.addAction("📡 Mode émission (générateur : tester un récepteur)…").triggered.connect(lambda *_: self.open_emit())
-        mm.addAction("🌙 Mode festival (nuit complète, bilan chaque jour)…").triggered.connect(
-            lambda *_: self.open_festival())
-        mm.addSection("③ Après le show")
-        mm.addAction("⏪ Relecture : revoir le spectre / une session…").triggered.connect(lambda *_: self.open_replay())
-        mm.addAction("📊 Occupation par heure (créneaux à risque)…").triggered.connect(lambda *_: self.open_occupancy())
-        submenu(mm, "📊 Scans et rapports", (
-            ("📄 Rapport de show…", lambda *_: self.make_report()),
-            ("📏 Importer un scan WSM / WWB comme référence…", lambda *_: self.import_scan_as_ref()),
-            ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", lambda *_: self.open_scan_convert())))
-        mm.addSection("Réglages et connexions")
+        # 7.46 : préparer / surveiller / analyser / matériel sont dans les 4 boutons de la barre (STEPS) ;
+        # ☰ Plus ne garde que réglages, fenêtres, apparence, affichage et aide.
+        self._coord_acts = []
+        mm.addSection("Réglages et affichage")
         mm.addAction("⚙ Réglages (seuils, bandes, son, langue…)…  Ctrl+,").triggered.connect(lambda *_: self.open_settings())
-        submenu(mm, "🔗 Connexions", (
-            ("📣 Alertes téléphone et page web…", lambda *_: self.open_alerts()),
-            ("🌐 tinySA en réseau : adresses enregistrées…", lambda *_: self.open_net_profiles()),
-            ("📡 Relais réseau : partager le tinySA de CE PC…", lambda *_: self.open_relay()),
-            ("🩺 Diagnostic tinySA (fichier pour le support)…", lambda *_: self.open_diag())))
-        for title, items in self.EXTRA_MENUS:      # sous-menus ajoutés par une autre version (V8 : SDR)
-            submenu(mm, title, [(t, (lambda *_, n=n: getattr(self, n)())) for t, n in items])
         self.win_menu.setTitle("🪟 Fenêtres et dispositions")
         mm.addMenu(self.win_menu)
         amenu = mm.addMenu("🎨 Apparence et langue")
@@ -15938,7 +16127,6 @@ class MainWindow(QtWidgets.QMainWindow):
             a_.setChecked(code == self.lang)
             grp_l.addAction(a_)
             a_.triggered.connect(lambda *_, c=code: self.set_language(c))
-        tools_btn.setMenu(tmenu)
         lvl_menu = mm.addMenu("👁 Affichage : ultra simple / simple / expert")
         grp_v = QtGui.QActionGroup(lvl_menu)
         self.level_acts = {}
@@ -15975,6 +16163,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dup_acts = [self._port_act]          # en double avec l'accueil : cachés quand il est affiché (hors expert)
         for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn, self.settings_btn):
             a_ = tb.addWidget(wd)
+            if wd is more_btn:
+                self._more_act = a_                # les 4 familles (STEPS) se glissent juste avant ☰ Plus
             s_ = tb.addSeparator()
             if wd is self.start_btn:
                 self._dup_acts += [a_, s_]
@@ -16024,8 +16214,8 @@ class MainWindow(QtWidgets.QMainWindow):
         mbox, mform = QtWidgets.QGroupBox("Mesure"), None
         mform = QtWidgets.QFormLayout(mbox)
         mform.addRow("Points / balayage :", self.points_combo)
-        mform.addRow("RBW :", self.rbw_combo)
-        mform.addRow("RBW en zoom :", self.zrbw_combo)
+        mform.addRow("Finesse de mesure (RBW) :", self.rbw_combo)
+        mform.addRow("Finesse en zoom (RBW) :", self.zrbw_combo)
         mform.addRow("Points en zoom :", self.zpts_combo)
         mform.addRow("Entrée :", self.input_combo)
         mform.addRow("LNA :", self.lna_combo)
@@ -16269,6 +16459,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.persist_combo.currentIndexChanged.connect(lambda *_: self.update_plot())
         reset_btn = QtWidgets.QPushButton("Reset max")
         reset_btn.clicked.connect(self.reset_max)
+        self.reset_btn = reset_btn
         cap_btn = QtWidgets.QPushButton("📷 Capture")
         cap_btn.clicked.connect(self.capture)
         self.legend_btn = QtWidgets.QPushButton("❓ Courbes")
@@ -16715,6 +16906,8 @@ class MainWindow(QtWidgets.QMainWindow):
                          (self.band_table, self.del_band)):
             del_key(wd_, fn_)                      # Suppr = supprimer la sélection (Ctrl+Z pour revenir)
         self._install_tips()
+        self._word_tips = {}                      # bulles d'origine relues maintenant qu'elles sont posées
+        self._apply_words(getattr(self, "expert", False))
         # emojis seulement sur les boutons clés (7.28, Clément : « trop fouillis ») : les secondaires en texte seul
         for b in getattr(self, "_plain_btns", []):
             b.setText(re.sub(r"^[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]+\s*", "", b.text()))
@@ -17572,9 +17765,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         demo = self.demo_chk.isChecked()
         port = self.port1()
+        self._last_problem = None                  # nouvel essai : l'ancien souci est oublié (revient s'il persiste)
         if not demo and not port:
-            QtWidgets.QMessageBox.warning(self, APP_NAME, "Aucun port série sélectionné.\n"
-                                          "Branche le tinySA (et ferme tinySA-App) ou active le mode démo.")
+            self.show_problem(key="no_port")
             return
         if not any(b["enabled"] for b in self.bands):
             QtWidgets.QMessageBox.warning(self, APP_NAME, "Coche au moins une bande à balayer.")
@@ -17729,7 +17922,20 @@ class MainWindow(QtWidgets.QMainWindow):
         if dev == 0:                              # le 1er tinySA ne répond pas : on arrête tout
             for w in self.workers:
                 w.requestInterruption()
-        QtWidgets.QMessageBox.critical(self, APP_NAME, f"Erreur de balayage :\n{msg}")
+        self.show_problem(msg)
+
+    def problem_help(self):
+        """Bouton « ❓ Que faire ? » de l'accueil : la fiche du dernier problème."""
+        pb = getattr(self, "_last_problem", None) or problem_card("", "other")
+        ProblemDialog(self, pb).exec()
+
+    def show_problem(self, msg="", key=None):
+        """Fiche « ce qui se passe / quoi faire » (7.46) au lieu d'un message technique brut."""
+        card = problem_card(msg, key)
+        self._last_problem = card
+        self.update_home()
+        dlg = ProblemDialog(self, card)
+        dlg.exec()
 
     def on_link(self, dev, ok):
         """Un tinySA décroche (câble, réseau, relais) ou revient : alarme + répartition des bandes."""
@@ -17748,6 +17954,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.alarms.clear(key, now) is not None and self.notify_cfg["mode"] != "off":
                 self.send_notify(f"✔ {name} de nouveau en ligne", "Les bandes sont réparties à nouveau.", 1)
             self.log_event(w, 0.0, "APPAREIL RETROUVÉ")
+            self._last_problem = None
             self.set_status(f"✔ {name} de nouveau en ligne : bandes réparties à nouveau.")
         else:
             self._diag_pending = f"liaison perdue avec {self.dev_name(dev)}"     # écrit par _alarm_tick
@@ -17758,6 +17965,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                   info=f"liaison perdue — {other}"):
                 self._alarm_sound(2)
             self.log_event(w, 0.0, "APPAREIL PERDU")
+            self._last_problem = problem_card(f"{name} : liaison perdue", "lost")
             self.set_status(f"⚠ {name} : liaison perdue — {other}. Nouvel essai toutes les {ScanWorker.RETRY_S} s.")
         self.update_dev2_label()
         self.refresh_alarms()
@@ -17793,7 +18001,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                  "(colonne « tinySA » des bandes). Cycle deux fois plus court, et si l'un décroche,\n"
                                  "l'autre reprend toutes les bandes (alarme ⚠ APPAREIL).")
         self.dev2_chk.toggled.connect(lambda *_: self._dev2_changed())
-        self.div_chk = QtWidgets.QCheckBox("🔀 Diversity : les deux balayent tout, on garde le meilleur")
+        self.div_chk = QtWidgets.QCheckBox("🔀 Fusion des mesures (diversity) : les deux balayent tout, on garde le meilleur")
         self.div_chk.setToolTip("Deux antennes espacées, une par tinySA : les deux balayent les MÊMES bandes et, pour\n"
                                 "chaque fréquence, on garde le plus fort des deux (comme un récepteur diversity).\n"
                                 "Fini les « absent » quand une antenne tombe dans un creux. Cycle pas plus court\n"
@@ -22254,6 +22462,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 if res_of(w["freq"]) and w.get("level") is None:
                     stale += 1
         return dict(sat=sat_level(sat_dbm, lna), sat_dbm=sat_dbm, low_snr=low, res_pairs=pairs, stale=stale)
+
+    def open_devs_settings(self):
+        """🔌 Matériel › Plusieurs tinySA : la rubrique des tinySA dans ⚙ Réglages."""
+        self.open_settings("dev2")
 
     def open_measure(self):
         self.open_settings("measure")

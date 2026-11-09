@@ -1152,5 +1152,18 @@ check("prêt : marge faible, résolution, mesures anciennes",
 check("accueil : saturation = orange", ns["home_status"](dict(running=True, port=True, n_watch=2, ok=2, sat="warn",
                                                               sat_dbm=-20.0))[0], "warn")
 
+# --- fiches « problème » (7.46)
+_pk = ns["problem_key"]
+check("fiche : port pris par tinySA-App", _pk("could not open port 'COM4': PermissionError(13, 'Accès refusé.', None, 5)"), "busy")
+check("fiche : port absent", _pk("could not open port 'COM9': FileNotFoundError(2, 'Le fichier spécifié est introuvable.')"), "gone")
+check("fiche : mode disque USB", _pk(ns["tinysa_refusal"](["usb disk mode active"])), "usbdisk")
+check("fiche : relais pas lancé", _pk("[Errno 111] Connection refused"), "net_refused")
+check("fiche : Pi injoignable", _pk("timed out"), "net_unreach")
+check("fiche : tinySA muet", _pk("tinySA muet depuis 12 s"), "mute")
+check("fiche : inconnu", _pk("bizarre"), "other")
+_c = ns["problem_card"]("x", "no_port")
+ok("fiche : titre, explication, étapes, détail", _c["title"] and _c["what"] and len(_c["steps"]) >= 2 and _c["detail"] == "x")
+ok("fiche : toutes complètes", all(t and w and st for t, w, st in ns["PROBLEM_CARDS"].values()))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
