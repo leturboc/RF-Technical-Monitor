@@ -1,0 +1,57 @@
+name: Ménage des anciennes versions
+
+# Supprime les releases ET les tags v7.x plus anciens que la version donnée (par défaut v7.41.0, la première sans
+# comparaison « comme EazyRF »). Ne se lance qu'à la main : onglet Actions › « Ménage des anciennes versions » ›
+# Run workflow, en tapant SUPPRIMER. Les pré-releases test-… et les versions à partir de la limite sont gardées.
+# Les commits restent dans l'historique (dépôt privé).
+
+on:
+  workflow_dispatch:
+    inputs:
+      avant:
+        description: "Supprimer toutes les versions plus anciennes que (gardée elle-même)"
+        default: "v7.41.0"
+        required: true
+      confirmer:
+        description: "Taper SUPPRIMER pour supprimer pour de vrai (sinon : simple liste)"
+        default: ""
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  menage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Supprimer les anciennes releases et leurs tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          AVANT: ${{ inputs.avant }}
+          CONFIRMER: ${{ inputs.confirmer }}
+        run: |
+          set -euo pipefail
+          case "$AVANT" in v[0-9]*) ;; *) echo "::error::limite invalide : $AVANT"; exit 1;; esac
+          tags=$(gh api --paginate "repos/$REPO/tags?per_page=100" --jq '.[].name' | grep -E '^v[0-9]+(\.[0-9]+)*$' || true)
+          vieux=""
+          for t in $tags; do
+            if [ "$t" != "$AVANT" ] && [ "$(printf '%s\n%s\n' "$t" "$AVANT" | sort -V | head -1)" = "$t" ]; then
+              vieux="$vieux $t"
+            fi
+          done
+          n=$(echo $vieux | wc -w)
+          echo "Versions plus anciennes que $AVANT : $n"
+          echo "$vieux" | tr ' ' '\n' | sed '/^$/d'
+          if [ "$CONFIRMER" != "SUPPRIMER" ]; then
+            echo "::notice::Simple liste ($n versions). Relance en tapant SUPPRIMER pour les effacer."
+            exit 0
+          fi
+          for t in $vieux; do
+            if gh release view "$t" -R "$REPO" >/dev/null 2>&1; then
+              gh release delete "$t" -R "$REPO" --yes --cleanup-tag && echo "supprimée : $t (release + tag)"
+            else
+              gh api -X DELETE "repos/$REPO/git/refs/tags/$t" && echo "supprimé : tag $t"
+            fi
+          done
+          echo "::notice::Ménage fait : $n anciennes versions supprimées (gardées : $AVANT et plus récentes)."
