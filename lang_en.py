@@ -4686,3 +4686,21 @@ TEMPLATES.update({
     "{} canal(aux) de récepteur sans fréquence dans le fichier : Wisycom Manager ne les y enregistre pas. Complète-les dans le tableau « À compléter » (fréquence trouvée par le nom dans ta liste quand c'est possible).":
         '{} receiver channel(s) without frequency in the file: Wisycom Manager does not store them there. Complete them in the “To complete” table (frequency found by name in your list when possible).',
 })
+
+# 7.52 : seuils automatiques (bruit de fond appris)
+EXACT.update({
+    "Seuils auto : « faible » dès que le niveau dépasse le bruit de fond local de cette marge.":
+        "Auto thresholds: \"weak\" as soon as the level exceeds the local noise floor by this margin.",
+    "Seuils auto : « occupé » dès que le niveau dépasse le bruit de fond local de cette marge.\nPlus petit = plus "
+    "sensible (plus de fausses alertes), plus grand = moins sensible.":
+        "Auto thresholds: \"busy\" as soon as the level exceeds the local noise floor by this margin.\nSmaller = more "
+        "sensitive (more false alerts), bigger = less sensitive.",
+    "Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\nLe bruit est appris "
+    "en continu (il redescend vite, remonte lentement en 10 min, et ne\nremonte jamais pendant qu'une fréquence est "
+    "occupée). Courbe en tirets sur le spectre.\nUn seuil propre à une fréquence (colonne Seuil) reste prioritaire. "
+    "Décoche = seuils fixes.":
+        "Automatic thresholds: each frequency gets its own threshold = its noise floor + a margin.\nThe noise is learnt "
+        "continuously (it drops fast, rises slowly over 10 min, and never\nrises while a frequency is busy). Dashed "
+        "curve on the spectrum.\nA threshold set on a frequency (Threshold column) still wins. Untick = fixed thresholds.",
+    "bruit + ": "noise + ",
+})

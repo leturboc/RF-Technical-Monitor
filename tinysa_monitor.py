@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.51.0"
+APP_VER = "7.52.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1143,13 +1143,65 @@ def block_points(f, bw, step=1.0):
     return [f - bw / 2.0 + bw * k / (n - 1) for k in range(n)]
 
 
-def eff_thresholds(own_thr, ref_lvl, rel_on, margin, gthr, gweak):
-    """Seuils (occupé, faible) : seuil propre > référence + marge > seuil global."""
+def eff_thresholds(own_thr, ref_lvl, rel_on, margin, gthr, gweak, auto_floor=None, auto_m=(10.0, 4.0)):
+    """Seuils (occupé, faible) : seuil propre > référence + marge > auto (bruit de fond + marges) > seuil global."""
     if own_thr is not None:
         return own_thr, own_thr - (gthr - gweak)
     if rel_on and ref_lvl is not None:
         return ref_lvl + margin, ref_lvl + margin / 2.0
+    if auto_floor is not None:
+        return auto_floor + auto_m[0], auto_floor + auto_m[1]
     return gthr, gweak
+
+
+AUTO_THR_DEFAULT = (10.0, 4.0)                  # seuils auto : occupé = bruit + 10 dB, faible = bruit + 4 dB
+AUTO_RISE_S, AUTO_FALL_S = 600.0, 5.0           # le bruit appris monte lentement (10 min), redescend vite
+
+
+def floor_track(prev, cur, dt, busy=False, rise=AUTO_RISE_S, fall=AUTO_FALL_S):
+    """Bruit de fond appris (seuils auto) : suit vite une baisse, lentement une hausse, et NE MONTE PAS tant que la
+    fréquence est occupée (sinon un brouilleur large finirait par relever son propre seuil et l'alarme s'éteindrait).
+    Marche sur des nombres ou des tableaux numpy (NaN = pas de mesure). -> nouvelle valeur."""
+    if cur is None:
+        return prev
+    if prev is None:
+        return cur
+    p, c = np.asarray(prev, dtype=float), np.asarray(cur, dtype=float)
+    if p.shape != c.shape:
+        return cur
+    dt = max(0.0, float(dt))
+    up = c > p
+    a = np.where(up, 1.0 - math.exp(-dt / rise), 1.0 - math.exp(-dt / fall))
+    if busy is True:
+        a = np.where(up, 0.0, a)
+    elif busy is not False:
+        a = np.where(up & np.asarray(busy, dtype=bool), 0.0, a)
+    out = np.where(np.isfinite(p), p + (c - p) * a, c)
+    out = np.where(np.isfinite(c), out, p)
+    return float(out) if out.ndim == 0 else out
+
+
+def floor_curve(F, L, win=2.0, step=0.5, q=20.0):
+    """Courbe du bruit de fond le long du spectre (seuil auto dessiné) : q-ième centile à ± win MHz, tous les step MHz.
+    Trous du balayage (plus de 4 × le pas) = NaN. -> (Fc, Lc) ou (None, None)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    ok = np.isfinite(F) & np.isfinite(L)
+    F, L = F[ok], L[ok]
+    if len(F) < 5:
+        return None, None
+    o = np.argsort(F)
+    F, L = F[o], L[o]
+    c = np.arange(F[0], F[-1] + step / 2.0, step)
+    lo = np.searchsorted(F, c - win)
+    hi = np.searchsorted(F, c + win, side="right")
+    near = np.searchsorted(F, c).clip(1, len(F) - 1)
+    d = np.minimum(np.abs(F[near] - c), np.abs(F[near - 1] - c))
+    st = float(np.median(np.diff(F))) if len(F) > 1 else step
+    out = np.full(len(c), np.nan)
+    for i in range(len(c)):
+        if hi[i] - lo[i] >= 5 and d[i] <= max(step, 4 * st):
+            out[i] = np.percentile(L[lo[i]:hi[i]], q)
+    return c, out
 
 
 class OccWindow:
@@ -3569,7 +3621,7 @@ SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_o
              "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx", "states",
-             "state_cur", "ezrf_link")
+             "state_cur", "ezrf_link", "thr_auto", "auto_occ", "auto_weak")
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 
 
@@ -15929,6 +15981,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.recorder = None
         self.session_cfg = dict(SESSION_DEFAULT)
         self.ui_level = "simple" if CFG_PATH.exists() else "ultra"     # 1er lancement : ultra simple
+        self._first_run = not CFG_PATH.exists()
+        self.thr_auto = False
+        self._acurve = None                     # (Fc, Lc, t) : bruit de fond appris le long du spectre (seuils auto)
         self.tour_done = CFG_PATH.exists()
         self._tour = None
         self.log_kinds = log_kinds_norm(None)
@@ -16847,8 +16902,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.thr_spin.setValue(-80)
         self.thr_spin.valueChanged.connect(self._thr_from_spin)
         auto_btn = QtWidgets.QPushButton("Auto")
-        auto_btn.setToolTip("Seuil = niveau médian mesuré + 10 dB")
-        auto_btn.clicked.connect(self.auto_threshold)
+        auto_btn.setCheckable(True)
+        auto_btn.setToolTip("Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\n"
+                            "Le bruit est appris en continu (il redescend vite, remonte lentement en 10 min, et ne\n"
+                            "remonte jamais pendant qu'une fréquence est occupée). Courbe en tirets sur le spectre.\n"
+                            "Un seuil propre à une fréquence (colonne Seuil) reste prioritaire. Décoche = seuils fixes.")
+        auto_btn.toggled.connect(lambda on: self.set_thr_auto(bool(on)))
+        self.thr_auto_btn = auto_btn
+        self.auto_occ_spin = QtWidgets.QSpinBox()
+        self.auto_occ_spin.setRange(3, 40)
+        self.auto_occ_spin.setValue(int(AUTO_THR_DEFAULT[0]))
+        self.auto_occ_spin.setPrefix("bruit + ")
+        self.auto_occ_spin.setSuffix(" dB")
+        self.auto_occ_spin.setToolTip("Seuils auto : « occupé » dès que le niveau dépasse le bruit de fond local de cette "
+                                      "marge.\nPlus petit = plus sensible (plus de fausses alertes), plus grand = moins "
+                                      "sensible.")
+        self.auto_weak_spin = QtWidgets.QSpinBox()
+        self.auto_weak_spin.setRange(1, 30)
+        self.auto_weak_spin.setValue(int(AUTO_THR_DEFAULT[1]))
+        self.auto_weak_spin.setPrefix("bruit + ")
+        self.auto_weak_spin.setSuffix(" dB")
+        self.auto_weak_spin.setToolTip("Seuils auto : « faible » dès que le niveau dépasse le bruit de fond local de "
+                                       "cette marge.")
+        self.auto_occ_spin.valueChanged.connect(lambda *_: self._auto_margins_changed())
+        self.auto_weak_spin.valueChanged.connect(lambda *_: self._auto_margins_changed())
         self.weak_chk = QtWidgets.QCheckBox("Faible dès")
         self.weak_chk.setChecked(True)
         self.weak_spin = LevelSpin()
@@ -17155,6 +17232,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.weak_line.sigPositionChanged.connect(self._weak_from_line)
         pi.addItem(self.thr_line)
         pi.addItem(self.weak_line)
+        self.auto_curve = pg.PlotDataItem(pen=pg.mkPen(self.theme["thr"], width=1.3, style=Qt.PenStyle.DashLine), connect="finite")
+        self.auto_curve.setVisible(False)
+        pi.addItem(self.auto_curve, ignoreBounds=True)
         self.strong_line = pg.InfiniteLine(pos=-25, angle=0, movable=False,
                                            pen=pg.mkPen("#b06cff", width=1.4, style=Qt.PenStyle.DashDotLine))
         pi.addItem(self.strong_line)
@@ -17251,7 +17331,8 @@ class MainWindow(QtWidgets.QMainWindow):
         thr_set.setToolTip("Tous les réglages des seuils et des alarmes (⚙ Réglages).")
         thr_set.clicked.connect(lambda *_: self.open_settings("detect"))
         self.thr_bar = QtWidgets.QWidget()
-        tl = self._flow(("Occupé au-dessus de", self.thr_spin, auto_btn), (self.weak_chk, self.weak_spin),
+        tl = self._flow(("Occupé au-dessus de", self.thr_spin, self.auto_occ_spin, auto_btn),
+                        (self.weak_chk, self.weak_spin, self.auto_weak_spin),
                         ("TX absent après", self.absent_spin), thr_set)
         tl.setContentsMargins(0, 0, 0, 0)
         self.thr_bar.setLayout(tl)
@@ -17934,6 +18015,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if "smooth" in data:
             self.set_smooth(bool(data.get("smooth")))
         self.set_coord(bool(data.get("coord_tools", False)))
+        try:
+            self.auto_occ_spin.setValue(int(data.get("auto_occ", AUTO_THR_DEFAULT[0])))
+            self.auto_weak_spin.setValue(int(data.get("auto_weak", AUTO_THR_DEFAULT[1])))
+        except (TypeError, ValueError):
+            pass
+        self.set_thr_auto(bool(data.get("thr_auto", getattr(self, "_first_run", False))))
         self.set_home(bool(data.get("home", True)))
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
             self.net_profiles = net_profiles_merge(self.net_profiles, data["net_profiles"])
@@ -18050,6 +18137,7 @@ class MainWindow(QtWidgets.QMainWindow):
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
             coord_tools=bool(getattr(self, "coord_on", False)),
+            thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
             home=bool(getattr(self, "home_on", True)),
             dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], states=[dict(x) for x in self.states],
             state_cur=self.state_cur, ezrf_link=dict(self.ezrf_link) if self.ezrf_link else None, dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
@@ -20526,6 +20614,8 @@ class MainWindow(QtWidgets.QMainWindow):
             lv, mx = self.lvl(w["level"]), self.lvl(w["max"])
             stat = w["status"] or "—"
             thr_txt = self.lvl(w["thr"])
+            if w["thr"] is None and w.get("athr") is not None:
+                thr_txt = "auto " + self.lvl(w["athr"])
             pct = w["occw"].pct()
             occ_txt = "—" if pct is None else f"{pct:.0f} %"
             band = w["band"] or "—"
@@ -21392,6 +21482,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                + (f" · {ABSENT_TEXT} ×{absn}" if absn else "") + "   ")
 
     def update_watch_levels(self):
+        try:
+            self._auto_curve_update()
+        except Exception:
+            pass
         if not self.watch:
             return
         now = time.time()
@@ -21435,6 +21529,9 @@ class MainWindow(QtWidgets.QMainWindow):
             fl_ = noise_floor(F, L, f, win=2.0 + bw / 2.0, exclude=max(0.15, win, bw / 2.0)) if lvl is not None else None
             w["margin"] = (lvl - fl_) if fl_ is not None else None
             w["floor"] = fl_
+            if self.thr_auto and fl_ is not None:      # seuils auto : bruit appris, qui ne monte pas si c'est occupé
+                w["afl"] = floor_track(w.get("afl"), fl_, now - (w.get("afl_t") or now), busy=w.get("state") == "occ")
+                w["afl_t"] = now
             if lvl is None:
                 w["state"], w["t_acc"] = None, None
                 self._alarm_reset(w, now)
@@ -21442,7 +21539,9 @@ class MainWindow(QtWidgets.QMainWindow):
             w["max"] = lvl if w["max"] is None else max(w["max"], lvl)
             ref_l = ((level_block(self._ref_F, self._ref_L, f, bw, how) if bw else
                       level_at(self._ref_F, self._ref_L, f, win)) if rel else None)
-            thr, weak = eff_thresholds(w["thr"], ref_l, rel, margin, gthr, gweak)
+            thr, weak = eff_thresholds(w["thr"], ref_l, rel, margin, gthr, gweak,
+                                       w.get("afl") if self.thr_auto else None, self.auto_margins())
+            w["athr"] = thr if self.thr_auto and w["thr"] is None else None
             prev = w["state"]
             new = next_state(prev, lvl, thr, weak, weak_on)
             t0 = w["t_acc"]
@@ -21529,6 +21628,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if len(l) < 3:
             return
         thr = self.thr_spin.value()
+        if self.thr_auto and self._acurve is not None:   # seuils auto : la courbe du bruit + la marge, point par point
+            Fc, Lc, _ = self._acurve
+            ok = np.isfinite(Lc)
+            if ok.any():
+                thr = (np.interp(f, Fc[ok], Lc[ok]) + self.auto_margins()[0])[1:-1]
         mid = l[1:-1]
         idx = np.where((mid >= thr) & (mid >= l[:-2]) & (mid > l[2:]))[0] + 1
         if not len(idx):
@@ -22035,15 +22139,78 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _weak_toggled(self, on):
         self.weak_spin.setEnabled(on)
-        self.weak_line.setVisible(on)
+        self.auto_weak_spin.setEnabled(on)
+        self.weak_line.setVisible(on and not self.thr_auto)
 
     def auto_threshold(self):
-        if not self.latest:
-            QtWidgets.QMessageBox.information(self, APP_NAME, "Lance d'abord un balayage (▶ Démarrer).")
+        """Ancien bouton « Auto » (une seule fois) : allume maintenant les seuils automatiques."""
+        self.thr_auto_btn.setChecked(True)
+
+    def auto_margins(self):
+        return float(self.auto_occ_spin.value()), float(self.auto_weak_spin.value())
+
+    def set_thr_auto(self, on):
+        """Seuils automatiques : bruit de fond appris + marges, fréquence par fréquence."""
+        on = bool(on)
+        self.thr_auto = on
+        if self.thr_auto_btn.isChecked() != on:
+            self.thr_auto_btn.setChecked(on)
+        for w_ in (self.thr_spin, self.weak_spin):
+            w_.setVisible(not on)
+        for w_ in (self.auto_occ_spin, self.auto_weak_spin):
+            w_.setVisible(on)
+        self.thr_line.setVisible(not on)
+        self.weak_line.setVisible(not on and self.weak_chk.isChecked())
+        if not on:
+            self.auto_curve.setVisible(False)
+        self._auto_curve_draw()
+        self.reeval()
+
+    def _auto_margins_changed(self):
+        self._auto_curve_draw()
+        self.reeval()
+
+    def _auto_curve_update(self, now=None):
+        """Bruit de fond le long du spectre (courbe en tirets) + valeurs « typiques » des seuils globaux (utilisées par
+        les outils : coordination, scans…)."""
+        if not self.thr_auto or not self.latest:
             return
-        med = float(np.median(np.concatenate([v[1] for v in self.latest.values()])))
-        self.thr_spin.setValue(round(med + 10.0))
-        self.weak_spin.setValue(round(med + 4.0))
+        now = time.time() if now is None else now
+        F = np.concatenate([v[0] for v in self.latest.values()])
+        L = np.concatenate([v[1] for v in self.latest.values()])
+        Fc, Lc = floor_curve(F, L)
+        if Fc is None:
+            return
+        prev = self._acurve
+        if prev is not None and len(prev[0]) == len(Fc) and np.allclose(prev[0], Fc):
+            Lc = floor_track(prev[1], Lc, now - prev[2])
+        self._acurve = (Fc, Lc, now)
+        fin = Lc[np.isfinite(Lc)]
+        if len(fin):
+            m_occ, m_weak = self.auto_margins()
+            med = float(np.median(fin))
+            self.thr_spin.setValue(max(-130, min(0, round(med + m_occ))))
+            self.weak_spin.setValue(max(-130, min(0, round(med + m_weak))))
+        self._auto_curve_draw()
+
+    def _auto_curve_draw(self):
+        on = self.thr_auto and self._acurve is not None
+        self.auto_curve.setVisible(bool(on))
+        if on:
+            Fc, Lc, _ = self._acurve
+            self.auto_curve.setData(Fc, Lc + self.auto_margins()[0])     # en dBm : l'axe gauche convertit
+
+    def auto_thr_at(self, f):
+        """Seuil « occupé » automatique à f (MHz) d'après la courbe de bruit, ou None."""
+        if not self.thr_auto or self._acurve is None:
+            return None
+        Fc, Lc, _ = self._acurve
+        if f < Fc[0] - 1.0 or f > Fc[-1] + 1.0:
+            return None
+        ok = np.isfinite(Lc)
+        if not ok.any():
+            return None
+        return float(np.interp(f, Fc[ok], Lc[ok])) + self.auto_margins()[0]
 
     # ------------------------------------------------------- marqueurs M1 / M2
     def _build_markers_bar(self):
@@ -22197,6 +22364,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.refcurve.setPen(pg.mkPen(t["ref"], width=1.3, style=Qt.PenStyle.DashLine))
             self.thr_line.setPen(pg.mkPen(t["thr"], width=1.5, style=Qt.PenStyle.DashLine))
             self.weak_line.setPen(pg.mkPen(t["thr_weak"], width=1.2, style=Qt.PenStyle.DotLine))
+            if getattr(self, "auto_curve", None) is not None:
+                self.auto_curve.setPen(pg.mkPen(t["thr"], width=1.3, style=Qt.PenStyle.DashLine))
             self.wf_img.setLookupTable(make_lut(t.get("wf", "Inferno")))
         except Exception:
             pass
@@ -24080,6 +24249,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.refresh_alarms()
             return f"✔ {n} alarme(s) acquittée(s)"
         if a == "thr":
+            self.set_thr_auto(False)                    # seuil tapé depuis la page Tech = seuils fixes
             self.thr_spin.setValue(c["occ"])
             self.weak_chk.setChecked(c["weak_on"])
             if c["weak"] is not None:
