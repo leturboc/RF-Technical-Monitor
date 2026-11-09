@@ -1356,6 +1356,18 @@ if win.is_running():
     win.latest_t.update({k: v - 3600 for k, v in _sv_lt.items()})
     check("état : mesures vieilles d'une heure -> dégradée", win.health()["tone"] == "bad", win.health())
     win.latest_t.clear(); win.latest_t.update(_sv_lt)
+    _b0 = next(b for b in win.scan_bands() if win._scan_now(b))
+    _sv_t = win.latest_t.get(_b0["id"])
+    if _sv_t is not None and len([b for b in win.scan_bands() if win._scan_now(b)]) > 1:
+        win.latest_t[_b0["id"]] = _sv_t - 3600         # UNE bande figée, les autres tournent
+        check("état : une seule bande figée -> dégradée (bande la plus en retard)", win.health()["tone"] == "bad",
+              win.health())
+        win.latest_t[_b0["id"]] = _sv_t
+    win.on_link(0, False)
+    check("état : tinySA perdu -> rouge, même logique partout", win.health()["tone"] == "bad"
+          and "déconnecté" in win.health()["text"], win.health())
+    win.on_link(0, True)
+    check("état : tinySA revenu -> plus « déconnecté »", "déconnecté" not in win.health()["text"], win.health())
 
 # 📶 Qualité de mesure (7.44, revue de code)
 win.update_watch_table(force=True)
@@ -1436,7 +1448,10 @@ _sm.ack_btn.click()
 check("mode Show : tout acquitter", _akey not in win.alarms.active or win.alarms.active[_akey]["acked"])
 win.alarms.clear(_akey, time.time())
 _sm.refresh()
-check("mode Show : « Tout va bien » sans alarme", "Tout va bien" in _sm.banner.text() or len(win.alarms.active) > 0)
+_dh = win.health().get("data")
+check("mode Show sans alarme : « Tout va bien », ou l'état des données s'il y a un souci (même logique que l'accueil)",
+      len(win.alarms.active) > 0 or (("Tout va bien" in _sm.banner.text()) if not _dh
+                                     else _dh["text"][:25] in _sm.banner.text()), _sm.banner.text()[:160])
 win.open_show_mode()                      # 2ᵉ appel (F10) = refermer
 check("mode Show : F10 / ✖ referme", win._show_mode is None)
 def _fest_act(d):

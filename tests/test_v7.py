@@ -1133,7 +1133,16 @@ check("accueil : micro muet = à surveiller, pas d'alarme", _hs(dict(running=Tru
 _run = dict(running=True, port=True, n_watch=3, ok=2, free=1)
 check("accueil : démarré sans mesure -> jamais « tout va bien »", _hs(dict(_run, last_age=None))[0], "wait")
 check("accueil : mesures périmées -> surveillance dégradée", _hs(dict(_run, last_age=60, stale_lim=15))[0], "bad")
-check("accueil : fréquences sans mesure -> partielle", _hs(dict(_run, last_age=2, stale_lim=15, stale=2))[0], "warn")
+_p = _hs(dict(_run, last_age=2, stale_lim=15, stale_names=["HF 3", "HF 7"]))
+check("accueil : fréquences sans mesure -> partielle, en les nommant", (_p[0], "HF 3, HF 7" in _p[1]), ("warn", True))
+check("accueil : 1re mesure jamais arrivée -> dégradée (pas « en cours » sans fin)",
+      _hs(dict(_run, last_age=None, run_age=60, stale_lim=15))[0], "bad")
+check("accueil : zoom live = surveillance partielle dite", _hs(dict(_run, last_age=1, stale_lim=15, zoom=True))[0], "warn")
+check("accueil : juste démarré -> en cours", _hs(dict(_run, last_age=None, run_age=3, stale_lim=15))[0], "wait")
+check("état des données : frais et complet -> rien à dire (le mode Show garde « Tout va bien »)",
+      ns["data_status"](dict(last_age=2, stale_lim=15, run_age=50)), None)
+check("état des données : micro faible = pas un problème de données",
+      ns["data_status"](dict(last_age=2, stale_lim=15, run_age=50, weak=3)), None)
 check("accueil : mesure fraîche -> tout va bien + âge", _hs(dict(_run, last_age=2, stale_lim=15)),
       ("ok", "✔ Tout va bien — 2 micro(s) OK · 1 réserve(s) libre(s) · mesure il y a 2 s"))
 check("accueil : alarme prioritaire sur les données", _hs(dict(_run, last_age=None, alarms=[("ABSENT", "HF 1")]))[0], "bad")

@@ -759,6 +759,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     (fréquences sans mesure → « partielle », warn) ; `_home_fresh()` (mesures postérieures à `_run_t0`, posé par
     `toggle_run`) ; `health()` = {tone, text} utilisé par l'accueil, le bandeau du mode Show (sans alarme) et la vue
     Régie web (`health` dans /etat.json, traduit ; classe CSS `.rg-al.warn`).
+  - **Une seule logique d'état des données** : PURE `data_status(i)` (aucune mesure depuis ▶ Démarrer : « wait » puis
+    « bad » au-delà de `stale_lim` grâce à `run_age` — avant, « Premier balayage en cours » pouvait rester sans fin ;
+    âge = bande la PLUS EN RETARD parmi celles balayées (`_home_fresh`) ; zoom live avec un seul tinySA vivant =
+    partielle ; `stale_names` nomme les fréquences sans mesure ; saturation `_sat_status`). `home_status` l'appelle ;
+    `health()["data"]` = ce seul état des données, utilisé par le bandeau du mode Show (un micro faible ne remplace
+    plus « Tout va bien ») et la vue Régie. L'âge part de l'heure d'ACQUISITION (`sweep_t`, 7.45). `quality_info` :
+    `stale` (dans les bandes) ≠ `stale_names` (toutes).
   - Fiches : PURE `PROBLEM_IMPACT` (conséquence + état réel ; défaut = surveillance arrêtée, liste conservée ;
     « lost » = l'appli réessaie) → « Conséquence : » dans `ProblemDialog`. Réglages refusés (`_warn`) : « le réglage
     précédent reste actif, nouvel essai au prochain balayage ».
