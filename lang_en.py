@@ -4161,3 +4161,19 @@ EXACT.update({
     'Réglages de coordination courants pour ce modèle. Écart 450 kHz, filtre 50 MHz, tolérance 2 TX 200 kHz, 3 TX non compté.': 'Common coordination settings for this model. Spacing 450 kHz, filter 50 MHz, 2 TX tolerance 200 kHz, 3 TX not counted.',
     'Réglages de coordination courants pour ce modèle. Écart 500 kHz, filtre 16 MHz, tolérances 150 / 100 / 50 kHz.': 'Common coordination settings for this model. Spacing 500 kHz, filter 16 MHz, tolerances 150 / 100 / 50 kHz.',
 })
+
+# ---- 7.42 : fiabilité de l'acquisition (revue de code)
+EXACT.update({
+    'niveaux hors de toute plage possible': 'levels outside any possible range',
+})
+TEMPLATES.update({
+    'segments {} (moy. {} s, max {} s) · cycles {} (moy. {} s) · réglages {} s · incomplets {} · invalides {} · refus {} · reconnexions {}':
+        'segments {} (avg {} s, max {} s) · cycles {} (avg {} s) · settings {} s · incomplete {} · invalid {} · refused {} · reconnections {}',
+    'balayage inutilisable ({})': 'unusable sweep ({})',
+    '⚠ Balayage incomplet du tinySA ({}) : résolution réduite sur {}': '⚠ Incomplete tinySA sweep ({}): reduced resolution on {}',
+    'Statistiques de {} : {}': 'Statistics for {}: {}',
+    '{} points reçus sur {} demandés': '{} points received out of {} requested',
+    '{} {} dB → offset {} dB (sur {} points, base : {}{})': '{} {} dB → offset {} dB (on {} points, basis: {}{})',
+    '{} point(s) reçu(s) sur {}': '{} point(s) received out of {}',
+    ', répétabilité ±{} dB': ', repeatability ±{} dB',
+})

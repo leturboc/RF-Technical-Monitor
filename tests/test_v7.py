@@ -1084,5 +1084,34 @@ check("tech : éteint (je sais)", ns["tech_request"](dict(action="mute", key="60
       dict(action="mute", key=606500, on=True))
 ok("prêt : chaque correction est un nom de méthode", all(re.fullmatch(r"[a-z_]*", c["fix"]) for c in _rc({})))
 
+# --- fiabilité des mesures (revue de code 7.41)
+_sc = ns["scan_check"]
+_F = np.linspace(470e6, 480e6, 101)
+check("scan complet accepté", _sc(_F, np.full(101, -90.0), 470e6, 480e6, 101)[1], "ok")
+_r = _sc(None, np.full(80, -90.0), 470e6, 480e6, 101)
+check("scan tronqué : signalé « court », grille sur la bande", (_r[1], len(_r[0]), _r[0][0], _r[0][-1]),
+      ("court", 80, 470e6, 480e6))
+check("scan vide / absurde : invalide", (_sc(None, [-90.0], 470e6, 480e6, 101)[1],
+                                         _sc(None, np.full(50, 900.0), 470e6, 480e6, 50)[1]), ("invalide", "invalide"))
+_bad = _F.copy(); _bad[10] = _bad[9]
+check("fréquences non croissantes du tinySA : grille refaite", bool(np.all(np.diff(_sc(_bad, np.full(101, -90.0), 470e6,
+                                                                                    480e6, 101)[0]) > 0)), True)
+check("fréquences hors de la bande demandée : grille refaite",
+      float(_sc(_F + 50e6, np.full(101, -90.0), 470e6, 480e6, 101)[0][0]), 470e6)
+_rng = np.random.default_rng(3)
+_mk = lambda off, k: [(np.linspace(500, 510, 201), -95 + off + _rng.normal(0, 2, 201)) for _ in range(k)]
+_a, _b = _mk(0, 3), _mk(0, 9)
+_mh_a, _mh_b = ns["calib_maxhold"](_a, 3), ns["calib_maxhold"](_b, 3)
+_r_eq = ns["calib_offset"](*_mh_a, *_mh_b)
+_mh_all = (np.linspace(500, 510, 201), np.max(np.vstack([l for _f, l in _b]), axis=0))
+_r_old = ns["calib_offset"](*_mh_a, *_mh_all)
+ok("calibration : même nombre de balayages = pas de biais (bruit identique)", abs(_r_eq[0]) < abs(_r_old[0])
+      and abs(_r_eq[0]) <= 1.0, f"{_r_eq} vs ancien {_r_old}")
+_g = [(np.linspace(500, 510, 201), np.full(201, -90.0)), (np.linspace(500.5, 510.5, 201), np.full(201, -50.0))]
+check("calibration : balayage à une autre grille ignoré", float(ns["calib_maxhold"](_g, 3)[1].max()), -90.0)
+ok("calibration : répétabilité (médiane, écart)", ns["calib_repeat"](_mk(0, 3), _mk(-3, 3), 3)[0] > 1.5)
+_Fu = np.array([1.0, 3.0, 2.0, np.nan, 4.0]); _Lu = np.array([-1.0, -3.0, -2.0, -9.0, -4.0])
+check("grille nettoyée (triée, sans NaN)", [list(x) for x in ns["_clean_grid"](_Fu, _Lu)], [[1, 2, 3, 4], [-1, -2, -3, -4]])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

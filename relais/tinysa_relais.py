@@ -135,10 +135,11 @@ def log(msg):
 
 
 def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, on_ready=None, finder=None,
-          name=""):
+          name="", allow=None):
     """Boucle du relais. serial_port None = détection automatique (et à chaque réouverture) ; finder() = port à ouvrir
-    (mode --multi : le port de CE tinySA-là, None s'il est débranché)."""
-    opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05))
+    (mode --multi : le port de CE tinySA-là, None s'il est débranché). allow = adresses IP autorisées (None = toutes) :
+    le relais n'a pas de mot de passe, réserve-le à un réseau technique isolé et / ou à l'adresse du PC de régie."""
+    opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05, write_timeout=2.0))
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((host, int(tcp_port)))
@@ -172,7 +173,12 @@ def serve(serial_port=None, tcp_port=RELAY_PORT, host="0.0.0.0", stop=None, open
             rd, _, _ = select.select(socks, [], [], 0.01)
             if srv in rd:                          # nouveau client : il remplace l'ancien
                 new, addr = srv.accept()
+                if allow and addr[0] not in allow:
+                    log(f"{tag}Connexion refusée : {addr[0]} n'est pas dans --allow")
+                    new.close()
+                    continue
                 new.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                new.settimeout(5.0)        # client qui ne lit plus : envoi abandonné au bout de 5 s, client lâché
                 if conn is not None:
                     conn.close()
                 conn = new
@@ -248,7 +254,7 @@ def next_port(ports, base):
 
 
 def serve_multi(base_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, lister=None, ports_file=PORTS_FILE,
-                scan_s=5.0, on_ready=None):
+                scan_s=5.0, on_ready=None, allow=None):
     """--multi : un relais (un port TCP) par tinySA branché sur ce Pi. Le même tinySA (même numéro de série) garde son
     port, retenu dans ports_file ; un nouveau prend le premier port libre. base_port 0 = ports au hasard (tests)."""
     lister = lister or find_all_tinysa
@@ -270,7 +276,7 @@ def serve_multi(base_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, li
             else:
                 port = 0
             th = threading.Thread(target=serve, daemon=True, kwargs=dict(
-                tcp_port=port, host=host, stop=stop, opener=opener, name=key[-12:],
+                tcp_port=port, host=host, stop=stop, opener=opener, name=key[-12:], allow=allow,
                 finder=(lambda k=key: dict(lister()).get(k)),
                 on_ready=(lambda p, k=key: on_ready(k, p)) if on_ready else None))
             th.start()
@@ -294,6 +300,10 @@ def main(argv=None):
     ap.add_argument("--port", type=int, default=int(os.environ.get("TSM_RELAY_PORT", RELAY_PORT)),
                     help=f"port TCP (défaut {RELAY_PORT})")
     ap.add_argument("--diag", action="store_true", help="dit pourquoi le tinySA n'est pas trouvé, puis quitte")
+    ap.add_argument("--host", default=os.environ.get("TSM_RELAY_HOST", "0.0.0.0"),
+                    help="n'écouter que sur cette adresse du Pi (défaut : toutes)")
+    ap.add_argument("--allow", default=os.environ.get("TSM_RELAY_ALLOW", ""),
+                    help="adresses IP autorisées, séparées par des virgules (ex. l'IP du PC de régie ; défaut : toutes)")
     ap.add_argument("--multi", action="store_true",
                     help="plusieurs tinySA sur ce Pi : un port réseau chacun (5025, 5026…), retenu par numéro de série")
     a = ap.parse_args(argv)
@@ -304,11 +314,14 @@ def main(argv=None):
         for ln in diagnose():
             print(ln)
         return
+    allow = [x.strip() for x in a.allow.split(",") if x.strip()] or None
+    if allow:
+        log(f"Seules ces adresses peuvent se connecter : {', '.join(allow)}")
     try:
         if a.multi and not a.serial:
-            serve_multi(a.port)
+            serve_multi(a.port, host=a.host, allow=allow)
         else:
-            serve(a.serial, a.port)
+            serve(a.serial, a.port, host=a.host, allow=allow)
     except KeyboardInterrupt:
         log("Arrêt")
 

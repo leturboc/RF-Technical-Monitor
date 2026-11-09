@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.41.1"
+APP_VER = "7.42.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3579,11 +3579,82 @@ def assign_bands(items, ndev=2, live=None):
     return out
 
 
+def _clean_grid(F, L):
+    """Fréquences / niveaux nettoyés : valeurs finies, fréquences strictement croissantes (np.interp l'exige)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    n = min(len(F), len(L))
+    F, L = F[:n], L[:n]
+    ok = np.isfinite(F) & np.isfinite(L)
+    F, L = F[ok], L[ok]
+    if len(F) > 1 and np.any(np.diff(F) <= 0):
+        o = np.argsort(F, kind="stable")
+        F, L = F[o], L[o]
+        keep = np.concatenate(([True], np.diff(F) > 0))
+        F, L = F[keep], L[keep]
+    return F, L
+
+
+def calib_maxhold(sweeps, n):
+    """Max hold des n PREMIERS balayages d'un tinySA (même nombre pour chaque appareil : le max du bruit monte avec
+    le nombre de balayages, comparer 5 balayages à 3 biaisait l'offset — revue de code 7.41). Les balayages dont la
+    grille de fréquences diffère de celle du 1er sont ignorés. -> (F, L) ou None."""
+    sel = list(sweeps)[:max(1, int(n))]
+    if not sel:
+        return None
+    f0, l0 = _clean_grid(*sel[0])
+    if len(f0) < 2:
+        return None
+    ls = [l0]
+    for f_, l_ in sel[1:]:
+        f_, l_ = _clean_grid(f_, l_)
+        if f_.shape == f0.shape and np.allclose(f_, f0, rtol=0, atol=max(1e-6, 1e-3 * abs(f0[1] - f0[0]))):
+            ls.append(l_)
+    return f0, np.max(np.vstack(ls), axis=0)
+
+
+def calib_repeat(sweeps1, sweeps2, n, snr=10.0):
+    """Répétabilité : offset calculé balayage par balayage (i-ème du 1er contre i-ème de l'autre) -> (médiane, écart
+    max − min) en dB, ou None. Sert à dire si la calibration est stable."""
+    ds = []
+    for (f1, l1), (f2, l2) in zip(list(sweeps1)[:n], list(sweeps2)[:n]):
+        r = calib_offset(f1, l1, f2, l2, snr)
+        if r is not None:
+            ds.append(r[0])
+    if not ds:
+        return None
+    return round(float(np.median(ds)), 1) + 0.0, round(float(max(ds) - min(ds)), 1) + 0.0
+
+
+def scan_check(fr, lv, a, z, pts):
+    """Contrôle d'un segment reçu du tinySA (revue de code 7.41 : un scan tronqué était étalé sur toute la bande sans
+    rien dire). fr = fréquences Hz renvoyées (ou None), lv = niveaux, [a, z] Hz demandés, pts demandés.
+    -> (fréquences à utiliser, état "ok" | "court" | "invalide", note). « court » = moins de points que demandé
+    (utilisable, signalé) ; « invalide » = inutilisable (rien, ou niveaux absurdes)."""
+    lv = np.asarray(lv, dtype=float)
+    n = len(lv)
+    if n < 2 or not np.isfinite(lv).any():
+        return None, "invalide", f"{n} point(s) reçu(s) sur {pts}"
+    if np.nanmax(lv) > 40 or np.nanmin(lv) < -200:
+        return None, "invalide", "niveaux hors de toute plage possible"
+    step = (z - a) / max(1, pts - 1)
+    good = False
+    if fr is not None and len(fr) == n:
+        fr = np.asarray(fr, dtype=float)
+        good = (np.isfinite(fr).all() and np.all(np.diff(fr) > 0)
+                and fr[0] >= a - 2 * step - 1 and fr[-1] <= z + 2 * step + 1)
+    if not good:
+        fr = np.linspace(a, z, n)
+    if n < pts:
+        return fr, "court", f"{n} points reçus sur {pts} demandés"
+    return fr, "ok", ""
+
+
 def calib_offset(F1, L1, F2, L2, snr=10.0, min_pts=5):
     """Écart de lecture entre deux tinySA qui ont balayé la même bande (même antenne / splitter).
     -> (correction à AJOUTER au 2e en dB, nb de points utilisés, base « signaux » | « bruit de fond ») ou None.
     On compare d'abord les signaux vus par les deux (> plancher + snr dB) ; sinon le plancher de bruit."""
-    F1, L1, F2, L2 = (np.asarray(x, dtype=float) for x in (F1, L1, F2, L2))
+    F1, L1 = _clean_grid(F1, L1)
+    F2, L2 = _clean_grid(F2, L2)
     if len(F1) < 2 or len(F2) < 2:
         return None
     lo, hi = max(F1[0], F2[0]), min(F1[-1], F2[-1])
@@ -5934,15 +6005,15 @@ class TinySA:
     def cmd(self, text, timeout=15.0):
         if self.trace is None:
             return self._cmd(text, timeout)
-        t0 = time.time()
+        t0 = time.monotonic()
         self.trace(f">> {text or '(entrée)'}")
         try:
             lines = self._cmd(text, timeout)
         except Exception as e:
-            self.trace(f"!! {type(e).__name__} : {e} (après {time.time() - t0:.1f} s)")
+            self.trace(f"!! {type(e).__name__} : {e} (après {time.monotonic() - t0:.1f} s)")
             raise
         first = lines[0][:70] if lines else ""
-        self.trace(f"<< {len(lines)} ligne(s) en {time.time() - t0:.2f} s" + (f" : {first}" if first else ""))
+        self.trace(f"<< {len(lines)} ligne(s) en {time.monotonic() - t0:.2f} s" + (f" : {first}" if first else ""))
         return lines
 
     def _cmd(self, text, timeout=15.0):
@@ -5950,10 +6021,10 @@ class TinySA:
         out_ = (text + "\r").encode()
         self.ser.write(out_)
         self.tx_bytes += len(out_)
-        buf, t0 = b"", time.time()
+        buf, t0 = bytearray(), time.monotonic()      # monotonic : une heure système corrigée (NTP) ne fausse rien
         t_rx, first = t0, True
         while True:
-            now = time.time()
+            now = time.monotonic()
             if now - t0 > timeout:
                 raise TimeoutError(f"Pas de réponse du tinySA à « {text} »")
             if self.abort is not None and self.abort():
@@ -5964,12 +6035,12 @@ class TinySA:
             n = self.ser.in_waiting
             chunk = self.ser.read(n if n else 1)
             if chunk:
-                t_rx = time.time()
+                t_rx = time.monotonic()
                 if first:
                     self.rtt, first = t_rx - t0, False
                 self.rx_bytes += len(chunk)
-                buf += chunk
-                if buf.rstrip().endswith(self.PROMPT):
+                buf.extend(chunk)
+                if buf[-16:].rstrip().endswith(self.PROMPT):
                     break
         lines = [l.strip() for l in buf.decode(errors="ignore").replace("\r", "\n").split("\n")]
         lines = [l for l in lines if l and not l.startswith("ch>")]
@@ -6050,7 +6121,11 @@ class ScanWorker(QtCore.QThread):
         self.trace = deque(maxlen=800)             # derniers échanges avec le tinySA (diagnostic)
         self.st = dict(rbw="?", front="?", high=None)
         self.dev = None
-        self.cmdq = queue.Queue()                  # commandes à glisser entre deux bandes (identifier, numéroter)
+        self.cmdq = queue.Queue()
+        # statistiques (🩺 diagnostic) : où passe le temps, combien de balayages incomplets / reconnexions
+        self.stats = dict(segments=0, seg_s=0.0, seg_max=0.0, cycles=0, cycle_s=0.0, short=0, invalid=0,
+                          reconnects=0, refused=0, settings_s=0.0)
+        self._warned = {}                          # message -> dernière fois affiché (pas de répétition chaque cycle)                  # commandes à glisser entre deux bandes (identifier, numéroter)
 
     def force_close(self):
         """Arrêt qui traîne (tinySA qui ne répond plus) : on ferme le port depuis l'extérieur."""
@@ -6060,6 +6135,22 @@ class ScanWorker(QtCore.QThread):
 
     def _say(self, txt):
         return f"{self.label} : {txt}" if self.label else txt
+
+    def _warn(self, txt, every=60.0):
+        """Avertissement dans la barre d'état, au plus une fois par minute pour le même message."""
+        now = time.monotonic()
+        if now - self._warned.get(txt, -1e9) >= every:
+            self._warned[txt] = now
+            self.status.emit(self._say(txt))
+        self._tr("⚠ " + txt)
+
+    def stats_text(self):
+        s_ = self.stats
+        avg = s_["seg_s"] / s_["segments"] if s_["segments"] else 0.0
+        cyc = s_["cycle_s"] / s_["cycles"] if s_["cycles"] else 0.0
+        return (f"segments {s_['segments']} (moy. {avg:.2f} s, max {s_['seg_max']:.2f} s) · cycles {s_['cycles']} "
+                f"(moy. {cyc:.1f} s) · réglages {s_['settings_s']:.1f} s · incomplets {s_['short']} · invalides "
+                f"{s_['invalid']} · refus {s_['refused']} · reconnexions {s_['reconnects']}")
 
     def _tr(self, txt):
         self.trace.append(f"{datetime.now():%H:%M:%S.%f}"[:-3] + " " + txt)
@@ -6108,6 +6199,7 @@ class ScanWorker(QtCore.QThread):
                     lost = True
                     self.link.emit(False)
                 fails += 1
+                self.stats["reconnects"] += 1
                 self._tr(f"liaison perdue : {e}")
                 hint = (" · le tinySA semble figé : débranche / rebranche son USB (ou éteins-le / rallume-le)"
                         if fails >= 3 else "")
@@ -6131,11 +6223,13 @@ class ScanWorker(QtCore.QThread):
                 self.msleep(300)
                 continue
             if dev is not None:
+                t_s = time.monotonic()
                 self._apply_settings(dev, cfg)
+                self.stats["settings_s"] += time.monotonic() - t_s
                 self._tr("cycle : " + ", ".join(f"{b['name']} {b['start_hz'] / 1e6:g}–{b['stop_hz'] / 1e6:g} MHz "
                                                 f"{int(b['n'])} pts" for b in bands)
                          + f" · RBW {cfg['rbw'] or 'auto'} · entrée {cfg['input']}")
-            t0, aborted = time.time(), False
+            t0, aborted = time.monotonic(), False
             for b in bands:
                 self._run_cmds(dev)
                 res = self._scan_band(dev, b, cfg)
@@ -6145,7 +6239,10 @@ class ScanWorker(QtCore.QThread):
                 if len(res[0]):
                     self.sweep.emit(b["id"], res[0], res[1])
             if not aborted and not self.isInterruptionRequested():
-                self.cycle.emit(time.time() - t0, len(bands))
+                dt = time.monotonic() - t0
+                self.stats["cycles"] += 1
+                self.stats["cycle_s"] += dt
+                self.cycle.emit(dt, len(bands))
 
     def _run_cmds(self, dev):
         """👋 identifier (le fond de l'écran clignote en orange, puis ses couleurs reviennent) / 🔢 numéroter."""
@@ -6176,15 +6273,17 @@ class ScanWorker(QtCore.QThread):
                 self.devid.emit(n_)
 
     def _apply_settings(self, dev, cfg):
+        """Un réglage n'est retenu comme appliqué QUE si le tinySA l'a accepté (revue de code 7.41 : un refus était
+        mémorisé comme fait, jamais retenté, et l'appli croyait le tinySA réglé autrement qu'il ne l'était)."""
         if cfg["rbw"] != self.st["rbw"]:
             ok, msg = dev.set_rbw(cfg["rbw"])
-            self.st["rbw"] = cfg["rbw"]
+            self.st["rbw"] = cfg["rbw"] if ok else "?"
             if not ok:
-                self.status.emit(f"⚠ Réglage refusé par le tinySA — {msg}")
+                self.stats["refused"] += 1
+                self._warn(f"⚠ Réglage refusé par le tinySA — {msg}")
         front = (cfg["lna"], cfg["att"])
         if front != self.st["front"]:
-            self._apply_front(dev, cfg)
-            self.st["front"] = front
+            self.st["front"] = front if self._apply_front(dev, cfg) else "?"
 
     def _apply_front(self, dev, cfg):
         """LNA + atténuateur (mutuellement exclusifs sur le tinySA)."""
@@ -6202,7 +6301,9 @@ class ScanWorker(QtCore.QThread):
             if not ok:
                 fails.append(m)
         if fails:
-            self.status.emit("⚠ Réglage refusé par le tinySA — " + " ; ".join(fails))
+            self.stats["refused"] += 1
+            self._warn("⚠ Réglage refusé par le tinySA — " + " ; ".join(fails))
+        return not fails
 
     def _scan_band(self, dev, b, cfg):
         """Balaye une bande en segments. Renvoie None si la config a changé / arrêt demandé."""
@@ -6226,17 +6327,29 @@ class ScanWorker(QtCore.QThread):
                 if want is not None and (want == "high") != self.st["high"]:
                     high = want == "high"
                     ok, msg = dev.set_input(high)
-                    self.st["high"] = high
+                    self.st["high"] = high if ok else None     # refusé : on réessaiera au prochain segment
                     if not ok:
-                        self.status.emit(f"⚠ Changement d'entrée refusé — {msg}")
-                    self._apply_front(dev, cfg)
+                        self.stats["refused"] += 1
+                        self._warn(f"⚠ Changement d'entrée refusé — {msg}")
+                    else:
+                        self.st["front"] = (cfg["lna"], cfg["att"]) if self._apply_front(dev, cfg) else "?"
                 if self.ultra and a >= 800e6 and not self.st.get("ultra"):
-                    dev.try_cmd("ultra on")                # au-delà de 800 MHz (sans effet si déjà actif)
-                    self.st["ultra"] = True
+                    ok, _m = dev.try_cmd("ultra on")       # au-delà de 800 MHz (sans effet si déjà actif)
+                    self.st["ultra"] = ok
                 dev.expect_scan(pts, cfg["rbw"], (z - a) / max(1, pts - 1) / 1e3)
+                t_seg = time.monotonic()
                 fr, lv = dev.scan(a, z, pts)
-                if fr is None or len(fr) != len(lv):
-                    fr = np.linspace(a, z, len(lv))
+                dt = time.monotonic() - t_seg
+                self.stats["segments"] += 1
+                self.stats["seg_s"] += dt
+                self.stats["seg_max"] = max(self.stats["seg_max"], dt)
+                fr, state, note = scan_check(fr, lv, a, z, pts)
+                if state == "invalide":
+                    self.stats["invalid"] += 1
+                    raise RuntimeError(f"balayage inutilisable ({note})")      # → reconnexion, nouvel essai
+                if state == "court":
+                    self.stats["short"] += 1
+                    self._warn(f"⚠ Balayage incomplet du tinySA ({note}) : résolution réduite sur {b['name']}")
             else:
                 fr = np.linspace(a, z, pts)
                 lv = self._demo_levels(fr, b, cfg)
@@ -6304,7 +6417,7 @@ class SerialRelay(threading.Thread):
     def __init__(self, port, tcp_port=RELAY_PORT, host="0.0.0.0", opener=None):
         super().__init__(daemon=True)
         self.port, self.tcp_port, self.host = port, int(tcp_port), host
-        self.opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05))
+        self.opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05, write_timeout=2.0))
         self.stop_evt, self.ready = threading.Event(), threading.Event()
         self.client, self.error, self.serial_ok = None, "", False
         self.rx = self.tx = 0                     # octets tinySA → réseau / réseau → tinySA
@@ -6347,6 +6460,7 @@ class SerialRelay(threading.Thread):
                 if srv in rd:                      # nouveau client : il remplace l'ancien
                     new, addr = srv.accept()
                     new.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    new.settimeout(5.0)    # client qui ne lit plus : envoi abandonné au bout de 5 s, client lâché
                     if conn is not None:
                         conn.close()
                     conn, self.client = new, addr[0]
@@ -17113,6 +17227,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for k, w in enumerate(list(self.workers)):
             k = getattr(w, "slot", k)
             tr = getattr(w, "trace", None)
+            if hasattr(w, "stats_text"):
+                out += ["", f"Statistiques de {self.dev_name(k)} : {w.stats_text()}"]
             out += ["", f"Échanges avec {self.dev_name(k)} (plus récents en bas) :"] + [str(x) for x in list(tr or [])]
         try:
             d = self.log_dir / "diagnostic"
@@ -17448,24 +17564,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self._calib_end("⚠ Calibration abandonnée : trop long.")
             return
         if all(len(v) >= CALIB_SWEEPS for v in cal["data"].values()):
-            def maxhold(lst):
-                f0 = lst[0][0]
-                ls = [l_ for f_, l_ in lst if f_.shape == f0.shape]
-                return f0, np.max(np.vstack(ls), axis=0)
-            F1, L1 = maxhold(cal["data"][0])
+            ref = calib_maxhold(cal["data"][0], CALIB_SWEEPS)          # même nombre de balayages pour tous
             msgs, bad = [], []
             for d in sorted(cal["data"]):
                 if d == 0:
                     continue
-                F2, L2 = maxhold(cal["data"][d])
-                res = calib_offset(F1, L1, F2, L2)
+                oth = calib_maxhold(cal["data"][d], CALIB_SWEEPS)
+                res = calib_offset(*ref, *oth) if (ref is not None and oth is not None) else None
                 if res is None:
                     bad.append(self.dev_name(d))
                     continue
                 delta, n, kind = res
+                rep_ = calib_repeat(cal["data"][0], cal["data"][d], CALIB_SWEEPS)
+                spread = f", répétabilité ±{rep_[1] / 2:.1f} dB" if rep_ is not None else ""
                 new = max(-40.0, min(40.0, round(self.dev_offset(d) + delta, 1)))
                 self.set_dev_offset(d, new)
-                msgs.append(f"{self.dev_name(d)} {delta:+.1f} dB → offset {new:+.1f} dB (sur {n} points, base : {kind})")
+                msgs.append(f"{self.dev_name(d)} {delta:+.1f} dB → offset {new:+.1f} dB (sur {n} points, base : {kind}"
+                            f"{spread})")
             if not msgs:
                 self._calib_end("⚠ Calibration impossible : pas assez de points communs.")
                 return
