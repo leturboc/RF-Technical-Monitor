@@ -1,0 +1,48 @@
+<show version="1.0" time="10:00:00" appl_version="7.9.0.104" source="ESSAI" date="lun. nov. 9 2026">
+    <show_properties version="1.0">
+        <show_info>
+            <name>Essai WWB</name>
+            <customer/>
+        </show_info>
+    </show_properties>
+    <inventory version="2.1">
+        <device>
+            <series>AD</series>
+            <model type="10">AD4Q-A</model>
+            <band type="10">G56</band>
+            <zone type="10">Default</zone>
+            <channel number="1">
+                <frequency type="3">542850</frequency>
+                <channel_name type="10"><![CDATA[Chant]]></channel_name>
+            </channel>
+        </device>
+    </inventory>
+    <coordinated_data_root version="0.3" id="essai">
+        <mic_channels count="4" units="khz">
+            <freq_entry tag="" id="A-0" color="#585858">
+                <compat_key><zone>Default</zone><series>AD</series><band>G56</band><mode>Standard</mode></compat_key>
+                <value>542850</value>
+                <model>AD4Q-A</model>
+                <source_name>Chant</source_name>
+            </freq_entry>
+            <freq_entry tag="" id="A-1" color="#585858">
+                <compat_key><zone>Default</zone><series>AD</series><band>G56</band><mode>Standard</mode></compat_key>
+                <value>564800</value>
+                <model>AD4Q-A</model>
+                <source_name>Shure</source_name>
+            </freq_entry>
+            <freq_entry tag="" id="A-2" color="#585858">
+                <compat_key><zone>Default</zone><series>AD</series><band>G56</band><mode>Standard</mode></compat_key>
+                <value>577600</value>
+                <model>AD4Q-A</model>
+                <source_name>Shure</source_name>
+            </freq_entry>
+            <freq_entry tag="" id="P-0" color="#585858">
+                <compat_key><zone>Scène B</zone><series>PSM300</series><band>K3E</band><mode>Standard</mode></compat_key>
+                <value>609075</value>
+                <model>PSM300</model>
+                <source_name>Ears batteur</source_name>
+            </freq_entry>
+        </mic_channels>
+    </coordinated_data_root>
+</show>

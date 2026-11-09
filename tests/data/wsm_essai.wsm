@@ -1,0 +1,40 @@
+<!DOCTYPE WSM>
+<WSM Version="2.0" AppVersion="4.9.0.7">
+    <Device TypeID="16" Version="1.0" Type="EM3731">
+        <Receiver TypeID="32" UniqueId="1" Version="1.0" Type="EM3732">
+            <Name>EM3731</Name>
+            <CurrentFrequency>560000</CurrentFrequency>
+        </Receiver>
+    </Device>
+    <FrequencyManager ProfDeviceEdited="0">
+        <Devices>
+            <Device UniqueId="1" Version="1.0" Type="STANDARD" Mode="0">
+                <Name>EM3731</Name>
+                <StationaryDeviceType>EM 3731/3732</StationaryDeviceType>
+                <Frequency>560000</Frequency>
+                <MinFrequency>470000</MinFrequency>
+                <MaxFrequency>560000</MaxFrequency>
+                <SearchStep>25</SearchStep>
+                <SpacingParams><Carriers>300</Carriers><Device2TxIM3>100</Device2TxIM3><Device3TxIM3>75</Device3TxIM3><Device2TxIM5>0</Device2TxIM5></SpacingParams>
+            </Device>
+            <Device UniqueId="2" Version="1.0" Type="STANDARD" Mode="0">
+                <Name>EM3731</Name>
+                <StationaryDeviceType>EM 3731/3732</StationaryDeviceType>
+                <Frequency>559250</Frequency>
+                <MinFrequency>470000</MinFrequency>
+                <MaxFrequency>560000</MaxFrequency>
+                <SearchStep>25</SearchStep>
+                <SpacingParams><Carriers>300</Carriers><Device2TxIM3>100</Device2TxIM3><Device3TxIM3>75</Device3TxIM3><Device2TxIM5>0</Device2TxIM5></SpacingParams>
+            </Device>
+            <Device UniqueId="3" Version="1.0" Type="STANDARD" Mode="0">
+                <Name>Retour 1</Name>
+                <StationaryDeviceType>EM 300-500 G4</StationaryDeviceType>
+                <Frequency>557625</Frequency>
+                <MinFrequency>520000</MinFrequency>
+                <MaxFrequency>558000</MaxFrequency>
+                <SearchStep>25</SearchStep>
+                <SpacingParams><Carriers>375</Carriers><Device2TxIM3>150</Device2TxIM3><Device3TxIM3>75</Device3TxIM3><Device2TxIM5>0</Device2TxIM5></SpacingParams>
+            </Device>
+        </Devices>
+    </FrequencyManager>
+</WSM>

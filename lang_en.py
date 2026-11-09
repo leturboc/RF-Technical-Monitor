@@ -4572,3 +4572,75 @@ TEMPLATES.update({
 })
 EXACT.update({"🔍 Zoom live : seule la zone zoomée est mesurée, le reste de ta liste n'est pas surveillé.":
                '🔍 Live zoom: only the zoomed area is measured, the rest of your list is not monitored.'})
+
+# 7.48 : plans des autres logiciels (WWB .shw / .cug, WSM .wsm, Wisycom .wshow, DPA .acp) + tests de la garde
+EXACT.update({k: k for k in (
+    '"projectFileVersion"', '<EazyRFds', '<ShowFile', 'Carriers', 'Channels/*', 'CurrentFrequency', 'DPA', 'Device',
+    'Device2TxIM3', 'Device2TxIM5', 'Device3TxIM3', 'DeviceAttr/DeviceChannel', 'Frequency', 'FrequencyManager/Devices',
+    'MaxFrequency', 'MinFrequency', 'Mode', 'Name', 'SearchStep', 'Sennheiser WSM', 'ShowFile', 'Shure WWB',
+    'SpacingParams', 'StationaryDeviceType', 'TunedFreq', 'Value', 'WSM', 'Wisycom Manager')})
+EXACT.update({
+    'Shure (groupe)': 'Shure (group)',
+    'Canal': 'Channel',
+    'Plan suivi': 'Followed plan',
+    '🔗 Plan suivi': '🔗 Followed plan',
+    'TEST DE LA GARDE': 'GUARD TEST',
+    'groupe Shure': 'Shure group', 'projet WSM': 'WSM project', 'show WWB': 'WWB show', 'show Wisycom': 'Wisycom show',
+    'aucune fréquence dans ce groupe': 'no frequency in this group',
+    'aucune fréquence dans ce projet': 'no frequency in this project',
+    'aucune fréquence dans ce show': 'no frequency in this show',
+    "aucune fréquence dans ce show (Wisycom n'y enregistre que celles des émetteurs)":
+        'no frequency in this show (Wisycom only stores those of the transmitters)',
+    "ce n'est pas un groupe personnalisé Shure (.cug)": 'this is not a Shure custom group (.cug)',
+    "ce n'est pas un projet DPA (.acp)": 'this is not a DPA project (.acp)',
+    "ce n'est pas un projet Wireless Systems Manager (.wsm)": 'this is not a Wireless Systems Manager project (.wsm)',
+    "ce n'est pas un show Wireless Workbench (.shw)": 'this is not a Wireless Workbench show (.shw)',
+    "ce n'est pas un show Wisycom Manager (.wshow)": 'this is not a Wisycom Manager show (.wshow)',
+    'format de plan inconnu (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp)':
+        'unknown plan format (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp)',
+    'Ce qui va arriver dans Mes fréquences : scène › groupe › fréquence.':
+        'What will arrive in My frequencies: stage › group › frequency.',
+    'Aucun plan suivi. Pour en suivre un : 📥 Importer une liste, choisis le plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) et coche « 🔗 Suivre ce fichier ».':
+        'No followed plan. To follow one: 📥 Import a list, choose the plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) and tick “🔗 Follow this file”.',
+    "Le plan importé avec « Suivre ce fichier » (EazyRF, WWB, WSM, Wisycom, DPA) : à chaque\nréenregistrement dans le logiciel,\nl'appli propose les fréquences ajoutées, modifiées ou retirées.":
+        'The plan imported with “Follow this file” (EazyRF, WWB, WSM, Wisycom, DPA): each time it is\nsaved again in that software,\nthe app offers the added, changed or removed frequencies.',
+    'Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Wisycom, DPA, Excel / CSV…).':
+        'Your frequency plan from a file (EazyRF, WWB, WSM, Wisycom, DPA, Excel / CSV…).',
+    '📥 Importer une liste ou un plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…':
+        '📥 Import a list or a plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…',
+    "🔗 Le plan n'est plus suivi.": '🔗 The plan is no longer followed.',
+    '🔗 Plan suivi (EazyRF, WWB, WSM, Wisycom, DPA)…': '🔗 Followed plan (EazyRF, WWB, WSM, Wisycom, DPA)…',
+    '💥 Tester : plantage': '💥 Test: crash',
+    '🧊 Tester : appli figée': '🧊 Test: frozen app',
+    "Fait planter l'appli exprès : la garde doit la rouvrir en quelques secondes et la\nsurveillance doit reprendre toute seule si elle tournait.":
+        'Crashes the app on purpose: the guard must reopen it within a few seconds and\nmonitoring must resume by itself if it was running.',
+    "Fige l'appli exprès (plus aucune réponse) : la garde doit la fermer au bout de 90 s\net la rouvrir.":
+        'Freezes the app on purpose (no response at all): the guard must close it after 90 s\nand reopen it.',
+    "L'appli va planter exprès. La garde doit la rouvrir en quelques secondes ; si la surveillance tourne, elle reprend toute seule. Continuer ?":
+        'The app is going to crash on purpose. The guard must reopen it within a few seconds; if monitoring is running, it resumes by itself. Continue?',
+})
+TEMPLATES.update({
+    '{} illisible ({})': '{} unreadable ({})',
+    'projet DPA illisible ({})': 'DPA project unreadable ({})',
+    '/ch/{}/radio/manual': '/ch/{}/radio/manual',
+    '/ch/{}/name': '/ch/{}/name',
+    'DPA {}': 'DPA {}',
+    '🔗 Plan {} « {} » illisible : {}': '🔗 {} plan “{}” unreadable: {}',
+    '🔗 Plan {} : {} ajoutée(s), {} modifiée(s), {} retirée(s).': '🔗 {} plan: {} added, {} changed, {} removed.',
+    '📥 Plan {} : {} fréquence(s) importée(s)': '📥 {} plan: {} frequency(ies) imported',
+    'Importer un plan {}': 'Import a {} plan',
+    "🔗 Suivi : « {} »\n{}\n\nÀ chaque réenregistrement dans {}, l'appli te propose les fréquences ajoutées, modifiées ou retirées.":
+        '🔗 Following: “{}”\n{}\n\nEach time it is saved again in {}, the app offers you the added, changed or removed frequencies.',
+    '{} canal(aux) de récepteur sans fréquence dans le fichier ({}{}) : Wisycom Manager ne les y enregistre pas, ajoute-les à la main.':
+        '{} receiver channel(s) without frequency in the file ({}{}): Wisycom Manager does not store them there, add them by hand.',
+    '🔗 « {} » a été réenregistré dans {}. Coche ce que tu reprends dans ta liste :':
+        '🔗 “{}” was saved again in {}. Tick what you take into your list:',
+    '🔗 Suivre ce fichier : quand tu le réenregistres dans {}, proposer les changements':
+        '🔗 Follow this file: when you save it again in {}, offer the changes',
+    "🔗 Plan {} « {} » réenregistré : rien n'a changé dans la liste.": '🔗 {} plan “{}” saved again: nothing changed in the list.',
+    "L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences ajoutées,\nmodifiées ou retirées dans {} et tu choisis ce que tu reprends.":
+        'The app checks the file every 5 s; if it changes, it lists the frequencies added,\nchanged or removed in {} and you choose what you take.',
+    'Plan {} modifié': '{} plan changed',
+    "L'appli va se figer exprès (plus aucune réponse). La garde doit la fermer au bout de {} s puis la rouvrir. Continuer ?":
+        'The app is going to freeze on purpose (no response at all). The guard must close it after {} s and then reopen it. Continue?',
+})

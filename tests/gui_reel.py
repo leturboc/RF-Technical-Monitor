@@ -1332,6 +1332,38 @@ check("EazyRF suivi : fréquence déplacée dans la liste", any(abs(w_["freq"] -
       and not any(abs(w_["freq"] - 503.45) < 1e-6 for w_ in win.watch))
 check("EazyRF suivi : gardé dans la config", (win._collect_config(False).get("ezrf_link") or {}).get("path") == _ezf
       and any(x.get("ez") for x in win._collect_config(False)["watch"]))
+# 🔗 même chose avec un show Shure WWB (.shw, 7.48) : import par la fenêtre, suivi, fréquence changée dans WWB
+_shw = os.path.join(tmp, "Maalouf.shw")
+_sh.copy(os.path.join(HERE, "data", "wwb_essai.shw"), _shw)
+win.watch = []
+win.ezrf_link = None
+_d_shw = []
+def _shw_act(d):
+    _d_shw.append(d.windowTitle())
+    d.follow.setChecked(True)
+    return "accept"
+DLG_ACTION[0] = _shw_act
+_n_shw = win.import_ezrf_file(_shw)
+DLG_ACTION[0] = "reject"
+check("WWB .shw : fenêtre « Importer un plan Shure WWB », 4 fréquences, fichier suivi",
+      _d_shw == ["Importer un plan Shure WWB"] and _n_shw == 4 and (win.ezrf_link or {}).get("kind") == "Shure WWB",
+      f"{_d_shw} {_n_shw} {win.ezrf_link}")
+open(_shw, "w", encoding="utf-8").write(open(_shw, encoding="utf-8").read().replace("<value>577600</value>",
+                                                                                     "<value>578000</value>"))
+os.utime(_shw, (time.time() - 5, time.time() - 5))
+win._ezrf_next = 0.0
+_dd = win._ezrf_tick(time.time())
+check("WWB .shw suivi : changement vu", _dd and len(_dd["change"]) == 1 and win._ezrf_dlg is not None, str(_dd))
+if win._ezrf_dlg is not None:
+    check("WWB .shw suivi : la fenêtre dit « Shure WWB »", "Shure WWB" in win._ezrf_dlg.windowTitle(),
+          win._ezrf_dlg.windowTitle())
+    win._ezrf_dlg.apply()
+check("WWB .shw suivi : fréquence déplacée", any(abs(w_["freq"] - 578.0) < 1e-6 for w_ in win.watch))
+for _fn in ("wsm_essai.wsm", "shure_essai.cug", "wisycom_essai.wshow", "dpa_essai.acp"):
+    DLG_ACTION[0] = "accept"
+    _nn = win.import_ezrf_file(os.path.join(HERE, "data", _fn))
+    DLG_ACTION[0] = "reject"
+    check(f"import du plan {_fn}", (_nn or 0) >= 1, str(_nn))
 win.ezrf_link = None
 win.watch, win.scenes, win.site_scans = _ez_saved[0], _ez_saved[1], _ez_saved[2]
 m.rx_set_custom(_ez_saved[3])

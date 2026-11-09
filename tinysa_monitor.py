@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.47.0"
+APP_VER = "7.48.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2061,6 +2061,248 @@ def parse_ezrf_paste(text):
     devices = {(r["dev"][0],): dict(name=r["dev"][0]) for r in rows if r["dev"]}
     return dict(title="", date="", version="", rows=rows, devices=devices, interf=[], scan=None, scan_title="", tv=[],
                 warn="")
+
+
+def _xml_root(data, what):
+    import xml.etree.ElementTree as ET
+    raw = data.encode("utf-8") if isinstance(data, str) else bytes(data)
+    raw = raw.lstrip(b"\xef\xbb\xbf")
+    raw = re.sub(rb"<!DOCTYPE[^>]*>", b"", raw, count=1)          # WSM : « <!DOCTYPE WSM> » en tête
+    try:
+        return ET.fromstring(raw)
+    except ET.ParseError as e:
+        raise ValueError(f"{what} illisible ({e})") from None
+
+
+def _plan_doc(rows, devices, title="", warn=""):
+    """Même forme que parse_ezrf3 : l'import, l'aperçu et le suivi du fichier marchent pareil pour tous les formats."""
+    return dict(title=title, date="", version="", rows=rows, devices=devices, interf=[], scan=None, scan_title="",
+                tv=[], warn=warn)
+
+
+def _khz(x):
+    try:
+        v = float(str(x).strip().replace(",", ".")) / 1000.0
+    except (TypeError, ValueError):
+        return 0.0
+    return round(v, 5) if 1.0 <= v <= 7000.0 else 0.0
+
+
+def parse_wwb_show(data):
+    """Show Shure Wireless Workbench (.shw, vrai fichier de Clément, WWB 7.9) -> doc comme parse_ezrf3. Fréquences =
+    « coordinated_data_root » (freq_entry : value kHz, source_name = nom du canal, compat_key zone / series / band,
+    model) ; sinon les canaux de l'inventaire (channel/frequency). Scène = zone (sauf « Default »), groupe = série +
+    bande (« AD G56 »), appareil = modèle. Pas de règles de coordination dans le fichier : profil à choisir à la main."""
+    root = _xml_root(data, "show WWB")
+    if root.tag != "show":
+        raise ValueError("ce n'est pas un show Wireless Workbench (.shw)")
+    title = (root.findtext("show_properties/show_info/name") or "").strip()
+    rows, devices = [], {}
+
+    def add(name, f, zone, series, band, model):
+        if not f:
+            return
+        zone = "" if zone.strip().lower() in ("", "default") else zone.strip()
+        k = (model or series or "Shure",)
+        devices.setdefault(k, dict(name=k[0]))
+        rows.append(dict(zone="", scene=zone[:60], group=" ".join(x for x in (series, band) if x)[:60], dev=k,
+                         devno="", name=name.strip()[:60], note=model, freq=f, off=False))
+    for fe in root.iter("freq_entry"):
+        ck = fe.find("compat_key")
+        g = (lambda t: (ck.findtext(t) or "").strip()) if ck is not None else (lambda t: "")
+        add(fe.findtext("source_name") or "", _khz(fe.findtext("value")), g("zone"), g("series"), g("band"),
+            (fe.findtext("model") or "").strip())
+    if not rows:                                   # pas encore coordonné : les canaux de l'inventaire
+        for dv in root.iter("device"):
+            gd = lambda t: (dv.findtext(t) or "").strip()      # noqa: E731
+            for ch in dv.findall("channel"):
+                add(ch.findtext("channel_name") or "", _khz(ch.findtext("frequency")), gd("zone"), gd("series"),
+                    gd("band"), gd("model"))
+    if not rows:
+        raise ValueError("aucune fréquence dans ce show")
+    _number_dups(rows)
+    return _plan_doc(rows, devices, title)
+
+
+def _number_dups(rows):
+    """Noms en double (WWB nomme souvent tous les canaux « Shure ») -> « Shure 1 », « Shure 2 »… ; vide -> modèle n."""
+    cnt, seen = {}, {}
+    for r in rows:
+        r["name"] = r["name"] or (r["note"] or "Canal")
+        cnt[r["name"]] = cnt.get(r["name"], 0) + 1
+    for r in rows:
+        if cnt[r["name"]] > 1:
+            seen[r["name"]] = seen.get(r["name"], 0) + 1
+            r["name"] = f"{r['name']} {seen[r['name']]}"[:60]
+
+
+def parse_wsm_project(data):
+    """Projet Sennheiser Wireless Systems Manager (.wsm, vrai fichier de Clément, WSM 4.9) -> doc comme parse_ezrf3.
+    Fréquences = FrequencyManager/Devices/Device (Frequency kHz, Name, StationaryDeviceType, Min / MaxFrequency,
+    SearchStep, SpacingParams : Carriers = écart entre porteuses kHz, Device2TxIM3 / Device3TxIM3 / Device2TxIM5 =
+    tolérances kHz) ; sinon les récepteurs (Receiver/CurrentFrequency). Groupe = type de récepteur."""
+    root = _xml_root(data, "projet WSM")
+    if root.tag != "WSM":
+        raise ValueError("ce n'est pas un projet Wireless Systems Manager (.wsm)")
+    rows, devices = [], {}
+
+    def num(e, t, d=0.0):
+        try:
+            return float((e.findtext(t) or "").strip())
+        except ValueError:
+            return d
+    fm = root.find("FrequencyManager/Devices")
+    for dv in (fm.findall("Device") if fm is not None else []):
+        f = _khz(dv.findtext("Frequency"))
+        if not f:
+            continue
+        typ = (dv.findtext("StationaryDeviceType") or dv.findtext("Name") or "WSM").strip()[:60]
+        sp = dv.find("SpacingParams")
+        p = dict(name=typ, lo=num(dv, "MinFrequency") / 1000.0, hi=num(dv, "MaxFrequency") / 1000.0,
+                 sep=(num(sp, "Carriers", 300.0) if sp is not None else 300.0) / 1000.0, filt=0.0,
+                 step=(num(dv, "SearchStep", 25.0) or 25.0) / 1000.0,
+                 tol={"2tx3": (num(sp, "Device2TxIM3", 100.0) if sp is not None else 100.0) / 1000.0,
+                      "3tx3": (num(sp, "Device3TxIM3", 50.0) if sp is not None else 50.0) / 1000.0,
+                      "5": (num(sp, "Device2TxIM5") if sp is not None else 0.0) / 1000.0, "7": 0.0}, img=0.0)
+        k = ezrf_dev_key(p)
+        devices.setdefault(k, p)
+        rows.append(dict(zone="", scene="", group=typ, dev=k, devno="", name=(dv.findtext("Name") or "").strip()[:60],
+                         note="", freq=f, off=False))
+    if not rows:
+        for rc in root.iter("Receiver"):
+            f = _khz(rc.findtext("CurrentFrequency"))
+            typ = (rc.get("Type") or "WSM")[:60]
+            if f:
+                devices.setdefault((typ,), dict(name=typ))
+                rows.append(dict(zone="", scene="", group=typ, dev=(typ,), devno="",
+                                 name=(rc.findtext("Name") or "").strip()[:60], note=typ, freq=f, off=False))
+    if not rows:
+        raise ValueError("aucune fréquence dans ce projet")
+    _number_dups(rows)
+    return _plan_doc(rows, devices)
+
+
+def parse_shure_cug(data):
+    """Groupe personnalisé Shure exporté par WWB (.cug, vrai fichier de Clément) : <custom_groups><frequencies
+    series band><channel frequency (kHz) number>. Nom = « série bande · n° », groupe = « série bande »."""
+    root = _xml_root(data, "groupe Shure")
+    if root.tag != "custom_groups":
+        raise ValueError("ce n'est pas un groupe personnalisé Shure (.cug)")
+    rows, devices = [], {}
+    for fq in root.iter("frequencies"):
+        sb = " ".join(x for x in ((fq.get("series") or "").strip(), (fq.get("band") or "").strip()) if x) or "Shure"
+        devices.setdefault((sb,), dict(name=sb))
+        for ch in fq.findall("channel"):
+            f = _khz(ch.get("frequency"))
+            if f:
+                rows.append(dict(zone="", scene="", group=sb[:60], dev=(sb,), devno="",
+                                 name=f"{sb} · {(ch.get('number') or '').strip() or len(rows) + 1}"[:60], note="",
+                                 freq=f, off=False))
+    if not rows:
+        raise ValueError("aucune fréquence dans ce groupe")
+    return _plan_doc(rows, devices)
+
+
+def parse_wisycom_show(data):
+    """Show Wisycom Manager (.wshow, vrai fichier de Clément, WisycomManager 5.1) : seuls les ÉMETTEURS (MTK…)
+    gardent leur fréquence (DeviceChannel : Name, TunedFreq en Hz) ; les récepteurs (MRK, MCR) n'ont que des noms de
+    canaux -> signalés dans warn (à ajouter à la main). Groupe = modèle de l'appareil (Device Name)."""
+    root = _xml_root(data, "show Wisycom")
+    if root.tag != "ShowFile":
+        raise ValueError("ce n'est pas un show Wisycom Manager (.wshow)")
+    rows, devices, missing = [], {}, []
+    for dv in root.iter("Device"):
+        model = (dv.get("Name") or "Wisycom").strip()[:60]
+        chans = dv.findall("DeviceAttr/DeviceChannel")
+        for ch in chans:
+            try:
+                f = round(float(ch.find("TunedFreq").get("Value")) / 1e6, 5)
+            except (AttributeError, TypeError, ValueError):
+                f = 0.0
+            if not 1.0 <= f <= 7000.0:
+                continue
+            nm = ch.find("Name")
+            devices.setdefault((model,), dict(name=model))
+            rows.append(dict(zone="", scene="", group=model, dev=(model,), devno="",
+                             name=((nm.get("Value") if nm is not None else "") or "").strip()[:60], note=model, freq=f,
+                             off=False))
+        if not chans:
+            missing += [(c.get("Name") or "").strip() for c in dv.findall("Channels/*") if (c.get("Name") or "").strip()]
+    if not rows:
+        raise ValueError("aucune fréquence dans ce show (Wisycom n'y enregistre que celles des émetteurs)")
+    _number_dups(rows)
+    warn = ""
+    if missing:
+        warn = (f"{len(missing)} canal(aux) de récepteur sans fréquence dans le fichier ({', '.join(missing[:6])}"
+                f"{'…' if len(missing) > 6 else ''}) : Wisycom Manager ne les y enregistre pas, ajoute-les à la main.")
+    return _plan_doc(rows, devices, warn=warn)
+
+
+def parse_dpa_acp(data):
+    """Projet DPA N (.acp, JSON, vrai fichier de Clément, récepteurs N-DR1) : par appareil, réglages « /ch/N/name » et
+    « /ch/N/radio/manual » (kHz). Règles : profil du modèle (frequencyManagerProject/modelProfiles, mode du canal :
+    channelSpacing = écart, spacingToIM3Product = tolérance intermod), plage = 1re bande de frequencyTable."""
+    import json
+    try:
+        d = json.loads(data.decode("utf-8-sig") if isinstance(data, (bytes, bytearray)) else data)
+    except (ValueError, UnicodeDecodeError) as e:
+        raise ValueError(f"projet DPA illisible ({e})") from None
+    if not isinstance(d, dict) or "devices" not in d:
+        raise ValueError("ce n'est pas un projet DPA (.acp)")
+    profs = {}
+    for mp in ((d.get("frequencyManagerProject") or {}).get("modelProfiles") or []):
+        profs[mp.get("model")] = {c.get("mode"): c for c in (mp.get("calculationProfiles") or [])}
+    rows, devices = [], {}
+    for dv in d.get("devices") or []:
+        model = str(dv.get("model") or "DPA")[:40]
+        st = {}
+        for x in dv.get("settings") or []:
+            if x.get("key") and x.get("values"):
+                st[x["key"]] = x["values"][0].get("value")
+        bands = ((dv.get("frequencyTable") or {}).get("bands") or [{}])
+        lo, hi = _khz(bands[0].get("startFrequency")), _khz(bands[0].get("stopFrequency"))
+        for n in range(1, int(dv.get("numberOfChannels") or 2) + 1):
+            f = _khz(st.get(f"/ch/{n}/radio/manual"))
+            if not f:
+                continue
+            mode = next((x["values"][0].get("value") for x in dv.get("settings") or []
+                         if x.get("guiType") == "Mode" and x.get("channelNumber") == n and x.get("values")), 1)
+            cp = (profs.get(dv.get("model")) or {}).get(mode)
+            p = dict(name=f"DPA {model}", lo=lo, hi=hi, sep=float(cp.get("channelSpacing", 500)) / 1000.0, filt=0.0,
+                     step=0.025, img=0.0,
+                     tol={"2tx3": float(cp.get("spacingToIM3Product", 0)) / 1000.0,
+                          "3tx3": float(cp.get("spacingToIM3Product", 0)) / 1000.0, "5": 0.0, "7": 0.0}) \
+                if cp else dict(name=f"DPA {model}")
+            k = ezrf_dev_key(p) if cp else (p["name"],)
+            devices.setdefault(k, p)
+            rows.append(dict(zone="", scene="", group=f"DPA {model}", dev=k, devno="",
+                             name=str(st.get(f"/ch/{n}/name") or "").strip()[:60], note=model, freq=f, off=False))
+    if not rows:
+        raise ValueError("aucune fréquence dans ce projet")
+    _number_dups(rows)
+    title = re.split(r"[\\/]", str(d.get("name") or ""))[-1].rsplit(".", 1)[0]
+    return _plan_doc(rows, devices, title)
+
+
+PLAN_EXTS = {".ezrf3": "EazyRF", ".shw": "Shure WWB", ".wsm": "Sennheiser WSM", ".cug": "Shure (groupe)",
+             ".wshow": "Wisycom Manager", ".acp": "DPA"}
+
+
+def parse_plan_file(data, name=""):
+    """Plan de fréquences d'un logiciel de coordination -> (doc comme parse_ezrf3, nom du logiciel). Choisi par
+    l'extension, sinon par le contenu (balise racine)."""
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    head = (data[:400].decode("utf-8", "ignore") if isinstance(data, (bytes, bytearray)) else str(data)[:400])
+    kind = PLAN_EXTS.get(ext) or next((n for tag, n in (("<EazyRFds", "EazyRF"), ("<ShowFile", "Wisycom Manager"),
+                                                       ("<show", "Shure WWB"), ("WSM", "Sennheiser WSM"),
+                                                       ("<custom_groups", "Shure (groupe)"),
+                                                       ('"projectFileVersion"', "DPA")) if tag in head), "")
+    fn = {"EazyRF": parse_ezrf3, "Shure WWB": parse_wwb_show, "Sennheiser WSM": parse_wsm_project,
+          "Shure (groupe)": parse_shure_cug, "Wisycom Manager": parse_wisycom_show, "DPA": parse_dpa_acp}.get(kind)
+    if fn is None:
+        raise ValueError("format de plan inconnu (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, "
+                         "Wisycom .wshow, DPA .acp)")
+    return fn(data), kind
 
 
 def ezrf_id(scene, group, name):
@@ -5563,9 +5805,9 @@ STEPS = (
      (("▶ Scanner ici (pics remis à zéro)", "step_scan"),
       ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"), (None, None),
       ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
-      ("📥 Importer une liste (EazyRF, WWB, WSM, CSV…)…", "import_watch"),
+      ("📥 Importer une liste ou un plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"),
-      ("🔗 Plan EazyRF suivi…", "ezrf_follow_info"),
+      ("🔗 Plan suivi (EazyRF, WWB, WSM, Wisycom, DPA)…", "ezrf_follow_info"),
       ("✏ Nommer la sélection (HF 1, HF 2…)…", "quick_name_dialog"),
       ("Mon vocabulaire (noms proposés)…", "edit_vocab"),
       ("📤 Exporter les fréquences (par scène / groupe)…", "export_by_scene"), (None, None),
@@ -10764,10 +11006,10 @@ class EzrfImportDialog(QtWidgets.QDialog):
     EazyRF), groupes (sections), appareils (profils perso avec les réglages du document), interférences notées,
     scan de fond."""
 
-    def __init__(self, owner, doc, source, path=None):
+    def __init__(self, owner, doc, source, path=None, kind="EazyRF"):
         super().__init__(owner)
-        self.owner, self.doc, self.path = owner, doc, path
-        self.setWindowTitle("Importer un plan EazyRF")
+        self.owner, self.doc, self.path, self.kind = owner, doc, path, kind
+        self.setWindowTitle(f"Importer un plan {kind}")
         self.resize(640, 600)
         lay = QtWidgets.QVBoxLayout(self)
         ent = ezrf_entries(doc, False)
@@ -10791,7 +11033,8 @@ class EzrfImportDialog(QtWidgets.QDialog):
             lay.addWidget(w)
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Scène › groupe › fréquence", "MHz", "Appareil"])
-        self.tree.setToolTip("Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe.")
+        self.tree.setToolTip("Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe."
+                             if kind == "EazyRF" else "Ce qui va arriver dans Mes fréquences : scène › groupe › fréquence.")
         names = ezrf_profile_names(doc["devices"])
         nodes = {}
         for name, f, sc, gr, dk, _note in ent:
@@ -10847,10 +11090,10 @@ class EzrfImportDialog(QtWidgets.QDialog):
                              "spectre, utilisable par Coordonner.")
         self.scan.setVisible(bool(sc_n))
         lay.addWidget(self.scan)
-        self.follow = QtWidgets.QCheckBox("🔗 Suivre ce fichier : quand tu le réenregistres dans EazyRF, proposer les "
-                                          "changements")
-        self.follow.setToolTip("L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences "
-                               "ajoutées,\nmodifiées ou retirées dans EazyRF et tu choisis ce que tu reprends.")
+        self.follow = QtWidgets.QCheckBox(f"🔗 Suivre ce fichier : quand tu le réenregistres dans {kind}, proposer les "
+                                          f"changements")
+        self.follow.setToolTip(f"L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences "
+                               f"ajoutées,\nmodifiées ou retirées dans {kind} et tu choisis ce que tu reprends.")
         self.follow.setChecked(bool(path))
         self.follow.setVisible(bool(path))
         lay.addWidget(self.follow)
@@ -10873,7 +11116,7 @@ class EzrfImportDialog(QtWidgets.QDialog):
         return dict(status=self.status.currentData() or "", profiles=self.prof.isChecked(),
                     skip_off=self.skip.isChecked(), interf=self.interf.isChecked() and self.interf.isVisibleTo(self),
                     scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked(),
-                    follow=self.follow.isChecked() and bool(self.path))
+                    follow=self.follow.isChecked() and bool(self.path), kind=self.kind)
 
 
 class RxProfileEdit(QtWidgets.QDialog):
@@ -13397,12 +13640,13 @@ class EzrfSyncDialog(QtWidgets.QDialog):
     def __init__(self, owner, d):
         super().__init__(owner)
         self.owner, self.d = owner, d
-        self.setWindowTitle("Plan EazyRF modifié")
+        lk = owner.ezrf_link or {}
+        kind = lk.get("kind") or "EazyRF"
+        self.setWindowTitle(f"Plan {kind} modifié")
         self.resize(560, 460)
         lay = QtWidgets.QVBoxLayout(self)
-        lk = owner.ezrf_link or {}
-        head = QtWidgets.QLabel(f"🔗 « {lk.get('name', '')} » a été réenregistré dans EazyRF. Coche ce que tu reprends "
-                                "dans ta liste :")
+        head = QtWidgets.QLabel(f"🔗 « {lk.get('name', '')} » a été réenregistré dans {kind}. Coche ce que tu reprends "
+                                f"dans ta liste :")
         head.setWordWrap(True)
         lay.addWidget(head)
         self.lst = QtWidgets.QListWidget()
@@ -15773,6 +16017,19 @@ class FestivalDialog(QtWidgets.QDialog):
         gl = QtWidgets.QHBoxLayout()
         gl.addWidget(self.guard_lbl, 1)
         gl.addWidget(self.guard_btn)
+        # tester la garde sans chercher le bon processus dans le Gestionnaire des tâches (Clément : « comment simuler
+        # un crash pour voir si l'appli se réouvre ? ») : seulement quand l'appli tourne sous garde
+        self.crash_btn = QtWidgets.QPushButton("💥 Tester : plantage")
+        self.crash_btn.setToolTip("Fait planter l'appli exprès : la garde doit la rouvrir en quelques secondes et la\n"
+                                  "surveillance doit reprendre toute seule si elle tournait.")
+        self.crash_btn.clicked.connect(lambda *_: o.guard_test("crash"))
+        self.freeze_btn = QtWidgets.QPushButton("🧊 Tester : appli figée")
+        self.freeze_btn.setToolTip("Fige l'appli exprès (plus aucune réponse) : la garde doit la fermer au bout de 90 s\n"
+                                   "et la rouvrir.")
+        self.freeze_btn.clicked.connect(lambda *_: o.guard_test("freeze"))
+        for b_ in (self.crash_btn, self.freeze_btn):
+            b_.setVisible(o.guarded())
+            gl.addWidget(b_)
         f.addLayout(gl)
         f.addLayout(hl)
         f.addWidget(dl)
@@ -17919,7 +18176,8 @@ class MainWindow(QtWidgets.QMainWindow):
     EXTRA_MENUS = []          # [(titre, [(texte, nom de méthode)])] : sous-menus ajoutés au ☰ Plus (V8 : SDR)
 
     TIPS_MENU = {
-        "🔗 Plan EazyRF suivi": "Le .ezrf3 importé avec « Suivre ce fichier » : à chaque réenregistrement dans EazyRF,\n"
+        "🔗 Plan suivi": "Le plan importé avec « Suivre ce fichier » (EazyRF, WWB, WSM, Wisycom, DPA) : à chaque\n"
+                        "réenregistrement dans le logiciel,\n"
                                "l'appli propose les fréquences ajoutées, modifiées ou retirées.",
         "📸 États": "Plusieurs plans (artistes, scènes, jours) dans le même show ;\n"
                    "un clic bascule de l'un à l'autre, les fréquences hors de l'état passent en pause.",
@@ -17969,7 +18227,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         "ce qui occupe déjà le lieu (télé, autres équipes, brouilleurs).",
         "📍 Scans par lieu": "Un scan gardé par scène / lieu : comparer, fusionner, exporter, rapport d'étude de site.",
         "📡 Ajouter depuis le scan": "Ajoute à ta liste les signaux que le tinySA voit au-dessus d'un seuil.",
-        "📥 Importer une liste": "Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Excel / CSV…).",
+        "📥 Importer une liste": "Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Wisycom, DPA, Excel / CSV…).",
         "＋ Ajouter une fréquence": "Une fréquence à la main : nom, MHz, statut, scène / groupe.",
         "📋 Coller une liste": "Colle des lignes « nom ; MHz » copiées d'un tableur ou d'un autre logiciel.",
         "🪄 Trouver N fréquences": "Coordination simple : l'appli cherche N fréquences compatibles avec ta liste et le\n"
@@ -21113,7 +21371,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view_combo.insertSeparator(self.view_combo.count())
         self.view_combo.addItem("＋ Nouvelle bande à balayer…", "__add__")
         self.view_combo.addItem("Gérer les bandes…", "__manage__")
-        idx = self.view_combo.findData(cur)
+        idx = self.view_combo.findData(cur) if cur is not None else 0    # None = séparateur : « Vue » restait vide
         self.view_combo.setCurrentIndex(max(idx, 0))
         self._view_prev = self.view_combo.currentIndex()
         self.view_combo.blockSignals(False)
@@ -22735,10 +22993,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def import_watch(self):
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Importer des fréquences", "", "CSV / texte / EazyRF (*.csv *.txt *.tsv *.ezrf3);;"
-            "Plan EazyRF (*.ezrf3);;Tous les fichiers (*)")
+            self, "Importer des fréquences", "", "Listes et plans (*.csv *.txt *.tsv *.ezrf3 *.shw *.cug *.wsm *.wshow "
+            "*.acp);;Plan EazyRF (*.ezrf3);;Show Shure WWB (*.shw);;Groupe Shure (*.cug);;Projet Sennheiser WSM (*.wsm);;"
+            "Show Wisycom Manager (*.wshow);;Projet DPA (*.acp);;Tous les fichiers (*)")
         for p in paths:
-            if Path(p).suffix.lower() == ".ezrf3":
+            if Path(p).suffix.lower() in PLAN_EXTS:
                 self.import_ezrf_file(p)
                 continue
             self.open_import(decode_text(Path(p).read_bytes()), os.path.basename(p), preset=self._scope_preset())
@@ -22749,21 +23008,24 @@ class MainWindow(QtWidgets.QMainWindow):
         if ok and txt.strip():
             self.open_import(txt, "Texte collé", preset=self._scope_preset())
 
-    def import_ezrf_file(self, path):
+    def import_ezrf_file(self, path, opts=None):
+        """Plan d'un logiciel de coordination (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm) -> aperçu
+        puis import ; le fichier peut ensuite être suivi (🔗)."""
         try:
-            doc = parse_ezrf3(Path(path).read_bytes())
+            doc, kind = parse_plan_file(Path(path).read_bytes(), os.path.basename(path))
         except (OSError, ValueError) as e:
             QtWidgets.QMessageBox.warning(self, APP_NAME, f"Impossible de lire « {os.path.basename(path)} » : {e}")
             return None
-        return self.open_ezrf(doc, os.path.basename(path), path=path)
+        return self.open_ezrf(doc, os.path.basename(path), opts=opts, path=path, kind=kind)
 
-    def open_ezrf(self, doc, source, opts=None, path=None):
-        """Plan EazyRF -> fenêtre d'aperçu puis import (opts donné = sans fenêtre, pour les tests)."""
+    def open_ezrf(self, doc, source, opts=None, path=None, kind="EazyRF"):
+        """Plan -> fenêtre d'aperçu puis import (opts donné = sans fenêtre, pour les tests)."""
         if opts is None:
-            dlg = EzrfImportDialog(self, doc, source, path)
+            dlg = EzrfImportDialog(self, doc, source, path, kind)
             if not dlg.exec():
                 return None
             opts = dlg.options()
+        opts = dict(opts, kind=opts.get("kind") or kind)
         return self.apply_ezrf(doc, opts, source, path)
 
     def _ezrf_profiles(self, doc):
@@ -22864,10 +23126,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if opts.get("follow") and path:            # 🔗 suivre le fichier
             try:
                 self.ezrf_link = dict(path=str(path), mtime=os.path.getmtime(path), name=os.path.basename(str(path)),
-                                      status=opts.get("status", ""), skip_off=bool(opts.get("skip_off", True)))
+                                      status=opts.get("status", ""), skip_off=bool(opts.get("skip_off", True)),
+                                      kind=opts.get("kind") or "EazyRF")
             except OSError:
                 self.ezrf_link = None
-        msg = f"📥 Plan EazyRF : {added} fréquence(s) importée(s)"
+        msg = f"📥 Plan {opts.get('kind') or 'EazyRF'} : {added} fréquence(s) importée(s)"
         if len(entries) > added:
             msg += f" ({len(entries) - added} déjà présente(s))"
         if keymap:
@@ -22924,7 +23187,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def dropEvent(self, e):
         for u in e.mimeData().urls():
             p = u.toLocalFile()
-            if p and Path(p).suffix.lower() == ".ezrf3":
+            if p and Path(p).suffix.lower() in PLAN_EXTS:
                 self.import_ezrf_file(p)
             elif p and Path(p).suffix.lower() in (".csv", ".txt", ".tsv"):
                 self.open_import(decode_text(Path(p).read_bytes()), os.path.basename(p),
@@ -23384,6 +23647,11 @@ class MainWindow(QtWidgets.QMainWindow):
             keys = [self.view_id] if self._series(self.view_id) is not None else []
         if not keys:
             self._clear_plot()
+            if self._fit_x and self._zoom is None:       # pas encore de mesure : l'axe montre déjà les bandes
+                rng = self._fit_range()                    # (1er lancement : 470–694 MHz, pas 0–1 MHz — Clément)
+                if rng:
+                    span = rng[1] - rng[0]
+                    self.spec.getPlotItem().setXRange(rng[0] - 0.01 * span, rng[1] + 0.01 * span, padding=0)
             return
         xs, ys, mxs, mys = [], [], [], []
         for k in keys:
@@ -24621,15 +24889,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if now - mt < 1.0 and not force:            # EazyRF est peut-être encore en train d'écrire
             return None
         lk["mtime"] = mt
+        kind = lk.get("kind") or "EazyRF"
         try:
-            doc = parse_ezrf3(Path(lk["path"]).read_bytes())
+            doc, _k = parse_plan_file(Path(lk["path"]).read_bytes(), lk["path"])
         except (OSError, ValueError) as e:
-            self.set_status(f"🔗 Plan EazyRF « {lk.get('name', '')} » illisible : {e}")
+            self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » illisible : {e}")
             return None
         d = ezrf_diff(ezrf_entries(doc, lk.get("skip_off", True)),
                       [(w["ez"], w["freq"]) for w in self.watch if w.get("ez")])
         if not (d["add"] or d["change"] or d["remove"]):
-            self.set_status(f"🔗 Plan EazyRF « {lk.get('name', '')} » réenregistré : rien n'a changé dans la liste.")
+            self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » réenregistré : rien n'a changé dans la liste.")
             return d
         if self._ezrf_dlg is not None:
             try:
@@ -24668,19 +24937,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rebuild_watch_table()
         self._update_markers()
         self.undo_track()
-        self.set_status(f"🔗 Plan EazyRF : {n[0]} ajoutée(s), {n[1]} modifiée(s), {n[2]} retirée(s).")
+        self.set_status(f"🔗 Plan {(self.ezrf_link or {}).get('kind') or 'EazyRF'} : {n[0]} ajoutée(s), {n[1]} "
+                        f"modifiée(s), {n[2]} retirée(s).")
         return tuple(n)
 
     def ezrf_follow_info(self):
         lk = self.ezrf_link
         if not lk:
-            QtWidgets.QMessageBox.information(self, APP_NAME, "Aucun plan EazyRF suivi. Pour en suivre un : 📥 Importer "
-                                              "une liste, choisis le .ezrf3 et coche « 🔗 Suivre ce fichier ».")
+            QtWidgets.QMessageBox.information(self, APP_NAME, "Aucun plan suivi. Pour en suivre un : 📥 Importer une "
+                                              "liste, choisis le plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser "
+                                              "WSM .wsm, Wisycom .wshow, DPA .acp) et coche « 🔗 Suivre ce fichier ».")
             return
+        kind = lk.get("kind") or "EazyRF"
         box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle("Plan EazyRF suivi")
-        box.setText(f"🔗 Suivi : « {lk.get('name', '')} »\n{lk.get('path', '')}\n\nÀ chaque réenregistrement dans EazyRF, "
-                    "l'appli te propose les fréquences ajoutées, modifiées ou retirées.")
+        box.setWindowTitle("Plan suivi")
+        box.setText(f"🔗 Suivi : « {lk.get('name', '')} »\n{lk.get('path', '')}\n\nÀ chaque réenregistrement dans {kind}, "
+                    f"l'appli te propose les fréquences ajoutées, modifiées ou retirées.")
         b_now = box.addButton("Vérifier maintenant", QtWidgets.QMessageBox.ButtonRole.ActionRole)
         b_stop = box.addButton("Arrêter de suivre", QtWidgets.QMessageBox.ButtonRole.DestructiveRole)
         box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
@@ -24690,7 +24962,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.set_status("🔗 Fichier introuvable ou illisible.")
         elif box.clickedButton() is b_stop:
             self.ezrf_link = None
-            self.set_status("🔗 Le plan EazyRF n'est plus suivi.")
+            self.set_status("🔗 Le plan n'est plus suivi.")
 
     def open_planning(self):
         d = PlanningDialog(self)
@@ -24958,6 +25230,24 @@ class MainWindow(QtWidgets.QMainWindow):
         if getattr(sys, "frozen", False):
             return f'"{sys.executable}"{g}'
         return f'"{sys.executable}" "{Path(__file__).resolve()}"{g}'
+
+    def guard_test(self, how="crash"):
+        """💥 / 🧊 Tester la garde : plantage (sortie brutale, code 3) ou appli figée (le fil de l'interface dort
+        GUARD_HANG_S + 30 s). La config est enregistrée avant : la surveillance en cours reprend après la relance."""
+        if not self.guarded():
+            return False
+        txt = ("L'appli va planter exprès. La garde doit la rouvrir en quelques secondes ; si la surveillance tourne, "
+               "elle reprend toute seule. Continuer ?" if how == "crash" else
+               f"L'appli va se figer exprès (plus aucune réponse). La garde doit la fermer au bout de {GUARD_HANG_S:.0f} s "
+               "puis la rouvrir. Continuer ?")
+        if QtWidgets.QMessageBox.question(self, APP_NAME, txt) != QtWidgets.QMessageBox.StandardButton.Yes:
+            return False
+        self.log_event(dict(name="Garde", freq=0.0), 0.0, "TEST DE LA GARDE")
+        self._save_config()
+        if how == "crash":
+            os._exit(3)
+        time.sleep(GUARD_HANG_S + 30)           # figé : plus de battement -> la garde coupe et relance
+        return True
 
     @staticmethod
     def guarded():

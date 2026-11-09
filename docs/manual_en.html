@@ -924,7 +924,9 @@ night or all week:</p>
     normally, the watchdog stops with it. If the app crashes in a loop (5 times in 10 min), the watchdog waits 5 min
     before trying again. The watchdog is used when starting with Windows; to get it right away: <b>🛡 Restart now
     under the watchdog</b>. What happened is written to <code>garde.log</code> (configuration folder). You can also
-    run <code>TinySA-Monitor.exe --garde</code> yourself (shortcut).</li>
+    run <code>TinySA-Monitor.exe --garde</code> yourself (shortcut). To check it works, under the watchdog: <b>💥 Test:
+    crash</b> (the app must reopen within a few seconds and monitoring resume) and <b>🧊 Test: frozen app</b> (closed
+    then reopened after 90 s).</li>
 </ul>
 
 <h2 id="signal"><span class="n">21.</span> Reading the states</h2>
@@ -1188,8 +1190,23 @@ rows, <b>Ctrl+C</b>, then <b>📋 Paste a list</b> here.</p>
 </ul>
 <p><b>🔗 Follow the file.</b> When importing a .ezrf3, tick “Follow this file”: when you save it again in EazyRF
 (re-coordination during the festival), the app shows the frequencies added, moved or removed and you tick those you
-take (Ctrl+Z to go back). 📋 Prepare › 🔗 Followed EazyRF plan: check now or stop following. The link is kept
+take (Ctrl+Z to go back). 📋 Prepare › 🔗 Followed plan: check now or stop following. The link is kept
 with the show.</p>
+<h3>Import and follow a WWB, WSM, Wisycom or DPA plan</h3>
+<p>Same way (📋 Prepare › 📥 Import, or drop the file on the window), same preview and same <b>🔗 Follow this
+file</b>:</p>
+<table>
+  <tr><th>File</th><th>What is taken</th></tr>
+  <tr><td>Shure WWB <b>.shw</b> (show)</td><td>the coordinated frequencies: channel name, zone = stage, series and band =
+    group (“AD G56”). Channels all named “Shure” become “Shure 1, 2…”.</td></tr>
+  <tr><td>Shure <b>.cug</b> (group exported by WWB)</td><td>the channels of the group (“AD G56 · 1, 2…”).</td></tr>
+  <tr><td>Sennheiser WSM <b>.wsm</b> (project)</td><td>each receiver's frequency, group = receiver type, and its rules
+    (carrier spacing, intermod tolerances, range) as a custom profile.</td></tr>
+  <tr><td>Wisycom Manager <b>.wshow</b></td><td>the <b>transmitter</b> frequencies (MTK…): Wisycom does not store the
+    receivers' ones (MRK, MCR) in this file; the preview lists them so you can add them by hand.</td></tr>
+  <tr><td>DPA N <b>.acp</b> (project)</td><td>each channel's name and frequency, and the spacing of the chosen mode
+    (600 / 500 / 400 kHz) as a custom profile.</td></tr>
+</table>
 <h3>Custom profiles</h3>
 <p>📋 Prepare › 🎛 Device profiles (or “✏ My profiles” in the plan check): <b>＋ New</b> copies a
 profile, <b>＋ From current settings</b> takes the window's settings. Name, filter, spacing, step, tolerances,

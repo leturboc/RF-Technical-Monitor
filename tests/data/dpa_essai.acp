@@ -1,0 +1,108 @@
+{
+  "id": "essai",
+  "projectFileVersion": "1.1.1",
+  "name": "C:\\HF\\Essai DPA.acp",
+  "region": "FR",
+  "panels": [],
+  "devices": [
+    {
+      "id": "d1",
+      "model": "N-DR1",
+      "description": "",
+      "numberOfChannels": 2,
+      "settings": [
+        {
+          "key": "/ch/1/name",
+          "type": 0,
+          "values": [
+            {
+              "value": "Com1",
+              "valueType": 1
+            }
+          ],
+          "guiType": "Text"
+        },
+        {
+          "key": "/ch/2/name",
+          "type": 0,
+          "values": [
+            {
+              "value": "Com2",
+              "valueType": 1
+            }
+          ],
+          "guiType": "Text"
+        },
+        {
+          "type": 0,
+          "guiType": "Mode",
+          "channelNumber": 1,
+          "values": [
+            {
+              "value": 1
+            }
+          ]
+        },
+        {
+          "type": 0,
+          "guiType": "Mode",
+          "channelNumber": 2,
+          "values": [
+            {
+              "value": 1
+            }
+          ]
+        },
+        {
+          "key": "/ch/1/radio/manual",
+          "type": 0,
+          "values": [
+            {
+              "value": 470200,
+              "valueType": 1
+            }
+          ],
+          "guiType": "Frequency"
+        },
+        {
+          "key": "/ch/2/radio/manual",
+          "type": 0,
+          "values": [
+            {
+              "value": 500900,
+              "valueType": 1
+            }
+          ],
+          "guiType": "Frequency"
+        }
+      ],
+      "frequencyTable": {
+        "bands": [
+          {
+            "startFrequency": 470200,
+            "stopFrequency": 693800
+          }
+        ]
+      }
+    }
+  ],
+  "frequencyManagerProject": {
+    "modelProfiles": [
+      {
+        "model": "N-DR1",
+        "calculationProfiles": [
+          {
+            "mode": 0,
+            "channelSpacing": 600,
+            "spacingToIM3Product": 600
+          },
+          {
+            "mode": 1,
+            "channelSpacing": 500,
+            "spacingToIM3Product": 500
+          }
+        ]
+      }
+    ]
+  }
+}
