@@ -4636,3 +4636,5 @@ EXACT.update({
     'Aucun plan suivi. Pour en suivre un : 📥 Importer une liste, choisis le plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) et coche « 🔗 Suivre ce fichier ».':
         'No followed plan. To follow one: 📥 Import a list, choose the plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) and tick “🔗 Follow this file”.',
 })
+
+EXACT.update({"taskkill /F /T /PID": "taskkill /F /T /PID"})   # commande Windows (garde), jamais affichée
