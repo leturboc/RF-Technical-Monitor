@@ -6,7 +6,8 @@ Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
 ## Qui / comment répondre
-L'utilisateur (Clément) est technicien son/HF/AV en festivals (utilise EazyRF, WWB, WSM). Il parle un français
+L'utilisateur (Clément) est technicien son/HF/AV en festivals (utilise des logiciels de coordination, WWB, WSM ; « le logiciel de coord » = celui des fichiers `.ezrf3` /
+`.lst4` : **ne jamais écrire son nom** ici ni dans les textes de l'appli, sauf comme nom de format de fichier). Il parle un français
 décontracté : réponds en français, ton détendu mais précis, concret et actionnable.
 **Dis toujours ce qui n'est pas vérifié** : l'interface Qt réelle est lancée par `tests/gui_reel.py` (Linux offscreen
 en local, vrai Windows dans la CI) ; ni le vrai tinySA, ni les sons, ni un vrai double écran n'ont été testés par Claude.
@@ -122,18 +123,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Plein écran : `self.wall.show()` après l'avoir mis dans `WallFullWindow` (sinon écran noir, 7.6.0) ; écran = celui
   où est le mur. `wall_window_other_screen` (bouton « 🖥 Autre écran » si 2 écrans, menu Fenêtres) : fenêtre sur
   l'autre écran.
-- Intermod : tolérances par type de produit (`im_class` : 2tx3 / 3tx3 / 5 / 7, `IM_TOL_PRESETS`, défaut EazyRF
-  100 / 50 kHz d'après ses guides V3.75 / V4.00 ; 5ᵉ / 7ᵉ = notre choix). `guard` de `im_scan` = float ou dict.
+- Intermod : tolérances par type de produit (`im_class` : 2tx3 / 3tx3 / 5 / 7, `IM_TOL_PRESETS`, défaut
+  100 / 50 kHz (tolérances courantes) ; 5ᵉ / 7ᵉ = notre choix). `guard` de `im_scan` = float ou dict.
   Les « doit rester libre » ne sont pas des émetteurs. Niveau « mesuré » masqué quand la cible est un « doit émettre »
   qui émet (on mesurerait sa porteuse). Clément trouvait l'ancien calcul (±300 kHz partout) « tout faux » face à
   Wisycom Manager : **demander sa liste Wisycom pour comparer** avant de toucher encore aux règles.
   Verdict « calcul seul · rien mesuré » (avant « à risque ») : le calcul dit que ça tombe dessus, le niveau mesuré
   est sous les seuils ; seules les combinaisons qui tombent dans la tolérance sont listées (message en tête).
   Gravité `im_verdict` (PURE) : 🔴 mesuré ≥ seuil occupé, 🟠 ≥ seuil faible, 🟡 IM3 2 TX non mesuré, ⚪ le reste ;
-  triées du plus grave au moins grave (`sev`). Tolérance 0 (dict) = type ignoré, comme EazyRF ; préréglage
+  triées du plus grave au moins grave (`sev`). Tolérance 0 (dict) = type ignoré ; préréglage
   « 2A − B seulement ». Sur le plan de Clément (558/574/606/614/646/478) : propre en 2A − B seul, conflits en
-  A + B − C et IM5 pile dessus → EazyRF / Wisycom ne comptent probablement pas ces produits (non vérifié).
-- Vérifier le plan (🧮, Outils, `PlanCheckDialog`, demande de Clément « comme EazyRF ») : PURE `pf_check` (écart entre
+  A + B − C et IM5 pile dessus → les logiciels de coord ne comptent probablement pas ces produits (non vérifié).
+- Vérifier le plan (🧮, Outils, `PlanCheckDialog`, demande de Clément) : PURE `pf_check` (écart entre
   porteuses `PF_SEP` bord à bord + intermod des émetteurs selon tolérances ; réserves protégées sans émettre ;
   produits larges → toutes les fréquences recouvertes), `pf_issue_text`, `pf_suggest` (pré-filtre vectorisé :
   écart, produits des autres sur la candidate, 3ᵉ ordre impliquant la candidate ; puis `pf_check` exact ;
@@ -143,26 +144,26 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   la cible la plus proche qui n'est pas un émetteur du produit (un produit large était jeté s'il touchait d'abord
   un de ses émetteurs).
 - **Règles d'intermod (7.7.0, demande de Clément : « on comprend pas »)** : `IM_TOL_PRESETS` = (nom, tolérances,
-  explication) : 🟢 Standard (2A − B ±100 kHz, PAR DÉFAUT — le plan Wisycom validé par EazyRF passe), 🟡 3ᵉ ordre
+  explication) : 🟢 Standard (2A − B ±100 kHz, PAR DÉFAUT — le plan Wisycom réel de Clément passe), 🟡 3ᵉ ordre
   complet (+ A + B − C ±50), 🟠 Prudent (+ 5ᵉ), 🔴 Très prudent ; `IM_TOL_CUSTOM` « ✏ Personnalisé » (choisi tout
   seul si on touche une tolérance) ; `fill_rules_combo` (Qt), `im_rules_text` (PURE, phrase « On vérifie : … »).
   `pf_check` / `pf_suggest` : `max_tx` déduit des tolérances. Résumé de la vérification par type de problème.
 - **Filtre récepteur (7.8.0)** : le plan Wisycom de Clément (470.2 471.3 478 558 574 606 614 646 660.95 661.45)
-  donne « 0 IM » dans EazyRF avec son profil MRK980 : 2 TX 100, 3 TX 50, Séparation 500, **Filtre 32 MHz**, Incrément
-  0,005 (MTK952 : 0,025). Interprétation (déduite, pas lue dans une doc EazyRF) : un produit ne gêne une fréquence que
-  si TOUS ses émetteurs sont à ± filtre / 2 d'elle → avec ça, 0 problème comme EazyRF ; sans filtre : des A + B − C.
+  donne « 0 IM » dans le logiciel de coord avec son profil MRK980 : 2 TX 100, 3 TX 50, Séparation 500, **Filtre 32 MHz**, Incrément
+  0,005 (MTK952 : 0,025). Interprétation (déduite, pas lue dans une doc) : un produit ne gêne une fréquence que
+  si TOUS ses émetteurs sont à ± filtre / 2 d'elle → avec ça, 0 problème ; sans filtre : des A + B − C.
   `pf_check(..., filt)`, `pf_suggest(..., step, filt)` (pré-filtre cohérent, test « rapide = brute » avec filtre),
-  IntermodDialog `filt_spin` (cible connue seulement). Préréglage 1 = « 🟢 Comme EazyRF (2 TX ±100 · 3 TX ±50) »,
+  IntermodDialog `filt_spin` (cible connue seulement). Préréglage 1 = « 🟢 Standard (2 TX ±100 · 3 TX ±50) »,
   puis « ⚪ Simple » (2A − B). `self.plan_opts = {sep kHz, filt MHz, step kHz}` dans config.json.
   Diagnostic auto (liaison perdue / erreur) : plus de `QTimer.singleShot(0, lambda)` (crash.log 7.6.2 « access
   violation » dans `dump_diag`) → `self._diag_pending`, écrit par `_alarm_tick` dans un try.
 - **Profils d'appareil (7.9.0, Clément : « après Wisycom c'est très sélectif, il faut des machines moins sélectives
-  Shure, Sennheiser… »)** : PURE `RX_PROFILES` (clé, nom, {sep, filt, step, tol}, explication) : wisycom (= profil
-  EazyRF de Clément), senn_dig, senn_ana, shure_dig, shure_ana, iem (+ 5ᵉ ordre) ; **seul Wisycom vient d'un vrai
-  profil, les autres sont des valeurs de départ NON vérifiées** (lui demander ses profils EazyRF). `rx_profile(key)`.
+  Shure, Sennheiser… »)** : PURE `RX_PROFILES` (clé, nom, {sep, filt, step, tol}, explication) : wisycom (= vrai profil
+  de Clément), senn_dig, senn_ana, shure_dig, shure_ana, iem (+ 5ᵉ ordre) ; **seul Wisycom vient d'un vrai
+  profil, les autres sont des valeurs de départ NON vérifiées** (depuis 7.27 : tirés de sa bibliothèque `.lst4`). `rx_profile(key)`.
   `pf_check` / `pf_suggest` acceptent sep / filt / tol PAR FRÉQUENCE (listes, `_pf_vec`, `_pf_tols`) : écart d'une
   paire = le plus grand des deux, filtre et tolérances = ceux de la fréquence touchée (supposition raisonnable, pas
-  lue chez EazyRF) ; pas des propositions = celui de l'appareil de la fréquence. `w["rx"]` (config + shows via
+  lue dans une doc) ; pas des propositions = celui de l'appareil de la fréquence. `w["rx"]` (config + shows via
   `watch`). `PlanCheckDialog` : `prof_combo` (appareil par défaut → remplit les réglages ; toucher un réglage →
   « ✏ Réglages ci-dessous »), colonne « Appareil » (`rx_short`), `rx_combo` + « Appliquer aux lignes choisies »
   (`set_rx`, sélection multiple), `fill_rx_combo`. `plan_opts["prof"]`.
@@ -207,8 +208,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     Relecture : « 📂 Ouvrir une session » (`open_rec` lit session.json → `sess_watch`, journal.csv →
     `sess_events`, PURE `session_journal_rows`), « 🕘 Dernière session », « 💾 Exporter… » (`export_store`).
     Case « Demander à chaque démarrage » (`sess_ask_chk`, onglet Journal). `rec_mb_per_hour` (place estimée).
-  - **Profils d'appareil** : filtres donnés par Clément (EazyRF) : evolution 16, SLX 16, PSM 16, AD 32, QLX-D 32
-    (ULX-D supposé idem) ; ADT inconnu (0 = prudent) ; `d["src"]` (eazyrf | guess | perso). Profils perso :
+  - **Profils d'appareil** : filtres donnés par Clément : evolution 16, SLX 16, PSM 16, AD 32, QLX-D 32
+    (ULX-D supposé idem) ; ADT inconnu (0 = prudent) ; `d["src"]` (valeur courante | guess | perso). Profils perso :
     `RX_CUSTOM`, `rx_all`, `rx_custom_norm` / `rx_set_custom` / `rx_custom_dump` (config ET shows : `rx_custom` dans
     SHOW_KEYS, appliqué en tête de `_apply_config`), `RxProfilesDialog` / `RxProfileEdit`, `rx_profiles_changed`.
     Aide : `rx_help_html` (PURE), `show_filter_help`, `filter_help_btn` (PlanCheck + Intermod).
@@ -311,7 +312,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `parse_scan_text` lisait déjà WWB (virgule / point-virgule / tabulation, sans en-tête), un « WSM » à blocs
   `[Data]`, décimale à virgule, Hz ; **ajout : en-tête « dBµV » (Wisycom Manager) → dBm = dBµV − 107**. Le format WSM
   du comparatif (`[Data]`, MHz, dBm) contredit celui de nikharju (kHz + %, ligne 7) : on lit les deux, l'export WSM
-  reste celui de nikharju. Formats de **listes de fréquences** (WWB / WSM / Wisycom / EazyRF) : toujours pas de vrai
+  reste celui de nikharju. Formats de **listes de fréquences** (WWB / WSM / Wisycom / logiciel de coord) : toujours pas de vrai
   fichier → demander des exemples à Clément (docs.soundbase.app bloqué par le réseau de la session).
 - **7.17.0 (Clément : « choisir la sortie audio, un menu Settings avec roue crantée », « hyper chaud de la chasse au
   brouilleur »)** :
@@ -459,18 +460,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   récepteur (quels émetteurs comptent) ; la ROBUSTESSE (linéarité, IP3, sélectivité canal) = écart + tolérances. Le
   profil SLX avait les tolérances de Wisycom (100 / 50) avec un filtre plus étroit → plans SLX jugés plus gentiment :
   passé à `_TOL_LARGE` (150 / 75, valeurs de départ). Textes corrigés (aide filtre, lexique, bulles, manuel).
-  ~~À demander à Clément : ses profils EazyRF~~ → FAIT en 7.27 avec sa bibliothèque `.lst4` (1 217 appareils) : ne
+  ~~À demander à Clément : ses profils~~ → FAIT en 7.27 avec sa bibliothèque `.lst4` (1 217 appareils) : ne
   plus les lui redemander. Restent « valeurs de départ » (src guess) : senn_ana, shure_ana, shure_adt (familles
   génériques ; un modèle précis s'importe depuis la bibliothèque, mode expert).
 - **Retours terrain de Clément (31/10/2026)** : vue Terrain ✅, son (sortie choisie) ✅, 👋 Identifier ✅, ntfy ✅.
-- **7.27.0 (Clément : bibliothèque EazyRF, « ça sonne beaucoup », compteur réseau, coord simple, manuel sans « non
+- **7.27.0 (Clément : bibliothèque d'appareils, « ça sonne beaucoup », compteur réseau, coord simple, manuel sans « non
   vérifié »)** :
-  - **📚 Bibliothèque EazyRF** : PURE `parse_lst4` (XML « Appareils.lst4 » : Description, Départ / Arrêt MHz, Incrément,
+  - **📚 Bibliothèque d'appareils** : PURE `parse_lst4` (XML « Appareils.lst4 » : Description, Départ / Arrêt MHz, Incrément,
     Tolérance / Tolérance3TX / Tolérance5e et Séparation en kHz, Filtre MHz, FréqImage), `rx_library_find`,
-    `rx_from_library` ; `RX_LIBRARY` (fichier à part `appareils_eazyrf.json` à côté de config.json : `rx_library`,
-    `set_rx_library`) ; `RxLibraryDialog` (import, recherche, « Ajouter à mes profils » → profil perso src « eazyrf »
+    `rx_from_library` ; `RX_LIBRARY` (fichier à part à côté de config.json : `rx_library`,
+    `set_rx_library`) ; `RxLibraryDialog` (import, recherche, « Ajouter à mes profils » → profil perso (src « valeur courante »)
     avec `lo` / `hi`) ; `CoordDialog._range_from_prof` (la plage suit l'appareil). **Le fichier de Clément (1 217
-    appareils, données EazyRF) n'est PAS dans le dépôt** ; test sur `tests/data/appareils_essai.lst4` (inventé).
+    appareils) n'est PAS dans le dépôt** ; test sur `tests/data/appareils_essai.lst4` (inventé).
     `RX_PROFILES` recalés sur ses valeurs (SLX ≠ SLX-D, PSM 900 ≠ 1000, EW-D tolérances 0…) ; `_TOL_*` ont « 5 » = 50 kHz
     (le plan Wisycom de Clément reste à 0 problème avec le 5ᵉ ordre et le filtre 32 MHz). Pas encore géré : la
     fréquence image (FréqImage 10,7 MHz des analogiques).
@@ -480,10 +481,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     dans ⚙ Son. smoke_test4/5 forcent `confirm=0, repeat=10` pour garder leurs vérifs.
   - **🌐 Compteur réseau** : `TinySA.rx_bytes` / `tx_bytes` / `rtt` (1er octet), `_net_tick` (2 s) → `net_text` (PURE)
     à côté de la version (`_info_base`, `_net_txt`, `_show_info`).
-  - **Coord simple** : `coord_note()` en tête de Coord / Plan / Intermod / Secours (« EazyRF, Soundbase, WWB, WSM pour
-    un vrai plan »).
+  - **Coord simple** : `coord_note()` en tête de Coord / Plan / Intermod / Secours (« utilise un vrai logiciel de
+    coordination pour le plan »).
   - **Manuel** : chapitre « Ce qui n'est pas vérifié » retiré (`DROP` dans make_manual.py), plus de « non vérifié »
-    ni de prénom dans le manuel / l'appli (le suivi reste ICI). Profils : tableau des valeurs EazyRF.
+    ni de prénom dans le manuel / l'appli (le suivi reste ICI). Profils : tableau des valeurs courantes.
 - **7.28.0 (Clément : « trop fouillis, usine à gaz », « un manuel beaucoup plus pro », sans « non testé »)** — choix validés
   avec lui : garder l'écran (parcours, ☰ Plus), tout dans ⚙ sauf les seuils, emojis sur les boutons clés seulement :
   - **Plus de panneau Réglages** (`dock_set` supprimé, `LAYOUT_VER` 4) : ses sections sont des pages `set_pages`
@@ -552,7 +553,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`self.smooth`, `set_smooth`, config `smooth`, case ⚙ › Général), rémanence en `PlotDataItem` clip + downsampling,
   `on_partial` redessine au plus 5 fois / s ; démo : 113 % → 56 %. Clément : « ça le faisait pas avec mon autre écran »
   et « j'ai relancé ça va mieux » (écran plus grand / mise à l'échelle = plus de pixels à dessiner).
-- **7.31.2 (Clément : « choisir la bande de fréq à exporter vers EazyRF », « scans par lieu dans ① ou ②, pas ③ »)** :
+- **7.31.2 (Clément : « choisir la bande de fréq à exporter vers le logiciel de coord », « scans par lieu dans ① ou ②, pas ③ »)** :
   PURE `scan_crop(F, *cols, lo, hi)` ; widget `RangeBox` (tout / zone affichée / chaque bande / appareil de la
   bibliothèque avec `lo`/`hi` / à la main ; `values()` → (lo, hi) ou (None, None) ; `select`) dans `ExportScanDialog`
   (`lo`/`hi` pas gardés dans `export_prefs`), `SitesDialog.export` (« Plage exportée ») et `ScanConvertDialog._write`.
@@ -567,7 +568,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   vues d'éléments) sur la liste (`del_watch`), l'arbre (`delete_selected_layer`), les bandes (`del_band`, garde une
   bande), Scans par lieu, adresses réseau. gui_reel : envoyer les touches au tableau (une fenêtre non modale laissée
   ouverte par un test précédent peut être la fenêtre active).
-- **7.33.0** : import des plans EazyRF (`.ezrf3` / copier-coller) et règles de calcul d'EazyRF (voir « Formats de
+- **7.33.0** : import des plans `.ezrf3` (fichier / copier-coller) et règles de calcul du logiciel de coord (voir « Formats de
   fichiers »). Filtre = ± la valeur (avant : ± filtre / 2) → plus sévère qu'en 7.32.
 - **7.34.0 (Clément, en plein show : « je suis pas en diversity, ça décroche sur le soft alors qu'aux récepteurs c'est
   ok »)** : **🔀 Diversity maison** : `dev2["div"]` (case `div_chk` dans ⚙ › 2ᵉ tinySA, config + shows via `dev2`),
@@ -603,20 +604,20 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   blocage, autre navigateur), Chromium (page Tech, captures `web_tech.png`), vraie appli (gui_reel : accord par la
   fenêtre du PC, commandes appliquées). Pas de HTTPS (réseau de prod seulement).
   **✅ Vérifié en vrai par Clément (09/11/2026) : accès Tech depuis son téléphone, accord sur le PC, commandes : « tout fonctionne ».**
-- **7.37.0 (Clément, après le mail de Régis d'EazyRF : « 📸 États » façon Snapshots)** : PURE `states_norm` ({name, keys
+- **7.37.0 (Clément : « 📸 États », plusieurs plans dans un show)** : PURE `states_norm` ({name, keys
   = fréquences actives en kHz}, ≤ 30), `state_off`. `self.states` / `self.state_cur` (config + SHOW_KEYS « states »,
-  « state_cur » ; appliqués APRÈS la liste dans `_apply_config`), `w["iso"]` (🔒 toujours active, mode ISO d'EazyRF,
+  « state_cur » ; appliqués APRÈS la liste dans `_apply_config`), `w["iso"]` (🔒 toujours active,
   gardé dans `watch`) ; `apply_state(nom)` pose `w["off"]` (+ efface CONFLIT / ABSENT), `w_paused` le respecte (pas
   d'ABSENT), CONFLIT sauté si `off`, `sig_view` « 💤 en pause (état) », `PlanCheckDialog._params` ignore les `off`.
   `_append_watch` ajoute la nouvelle à l'état actif ; `set_watch_freq` garde la fréquence dans ses états ;
   `clear_show_data` vide les états. UI : bouton `state_btn` (menu `_build_state_menu`) dans « Mes fréquences »,
   `StatesDialog` (liste + tableau Dans l'état / 🔒 Toujours, cocher une scène, dupliquer, Suppr), ⑤ + ☰ Plus ②.
   Tech : action « state » + `states` / `state_cur` dans `tech_state`, liste 📸 dans la page.
-- **7.38.0** : **🔗 Suivre le plan EazyRF** : case `follow` d'`EzrfImportDialog` (fichier seulement) → `self.ezrf_link`
+- **7.38.0** : **🔗 Suivre le plan `.ezrf3`** : case `follow` d'`EzrfImportDialog` (fichier seulement) → `self.ezrf_link`
   {path, mtime, name, status, skip_off} (config + SHOW_KEYS « ezrf_link »), `w["ez"]` = PURE `ezrf_id(scène, groupe,
   nom)` (gardé dans `watch`) ; `_ezrf_tick` (dans `_alarm_tick`, toutes les 5 s, attend 1 s après l'écriture) →
   PURE `ezrf_diff` (add / change / remove) → `EzrfSyncDialog` non modale (cases, Appliquer → `apply_ezrf_diff`, Plus
-  tard, Ne plus suivre) ; ☰ Plus › 📋 Liste › « 🔗 Plan EazyRF suivi… » (`ezrf_follow_info` : vérifier maintenant /
+  tard, Ne plus suivre) ; ☰ Plus › 📋 Liste › « 🔗 Plan suivi… » (`ezrf_follow_info` : vérifier maintenant /
   arrêter). **Plusieurs tinySA sur un Pi** : `relais/tinysa_relais.py --multi` (`install_pi.sh multi`) :
   `find_all_tinysa` / `device_key` (n° de série USB, sinon prise), `serve_multi` (un thread `serve(..., finder=, name=)`
   par tinySA, rescan 5 s), ports retenus dans `~/.tinysa_relais_ports.json` (`load_ports` / `save_ports` /
@@ -655,16 +656,17 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   🔔). « Prêt pour le show ? » rappelle les fréquences éteintes (`muted`, info).
   **Suivi en direct WWB / WSM / Wisycom Manager** (idée de Clément) : en attente de vrais fichiers de LISTE / projet
   (ses fichiers reçus sont des SCANS) — WWB .shw / export « Frequency report », WSM projet, Wisycom Manager.
-- **7.41.0 (Clément : « ai-je le droit de citer EazyRF ? Je fais son taf gratuit… bien rappeler que c'est une coord
+- **7.41.0 (Clément : « ai-je le droit de citer ce logiciel ? … bien rappeler que c'est une coord
   basique »)** : choix de Clément = **mentions neutres + avertissement, bibliothèque .lst4 gardée mais CACHÉE**. Règle
-  désormais : EazyRF / WWB / WSM / Wisycom ne sont cités QUE pour la compatibilité de fichiers (import .ezrf3, suivi,
-  export de scans) ; plus de « comme EazyRF » (préréglage 1 = « 🟢 Standard (2 TX ±100 · 3 TX ±50 kHz) », test_im
-  adapté), plus de « Snapshots » / « mode ISO » dans les textes. `COORD_NOTE` (« ⚠ Coordination BASIQUE… ne remplace pas
+  désormais : WWB / WSM / Wisycom / le logiciel de coord ne sont cités QUE pour la compatibilité de fichiers (import .ezrf3, suivi,
+  export de scans) ; plus de comparaison « comme [logiciel] » (préréglage 1 = « 🟢 Standard (2 TX ±100 · 3 TX ±50 kHz) », test_im
+  adapté), plus de noms de fonctions d'autres logiciels dans les textes. `COORD_NOTE` (« ⚠ Coordination BASIQUE… ne remplace pas
   un logiciel de coordination ») + `TRADEMARKS` (pas affilié ni approuvé, marques de leurs propriétaires) : `coord_note()`
   en orange, « À propos », manuel (intro, Vérifier le plan, « Où sont mes fichiers ? »), README. Profils intégrés :
-  `_EZ` = « Réglages de coordination courants pour ce modèle. », `RX_SRC_TXT["eazyrf"]` = « courant » (la clé `src`
-  reste "eazyrf" dans les données). Bibliothèque : bouton « 📚 Bibliothèque (.lst4)… » visible SEULEMENT en mode expert,
-  aucun texte « EazyRF » dans sa fenêtre, retirée du manuel. **Ne pas réintroduire de comparaison « comme EazyRF ».**
+  `_EZ` = « Réglages de coordination courants pour ce modèle. », `RX_SRC_TXT` de la valeur « courante » = « courant » (la
+  clé `src` d'origine reste dans les données). Bibliothèque : bouton « 📚 Bibliothèque (.lst4)… » visible SEULEMENT en mode expert,
+  aucun nom de logiciel dans sa fenêtre, retirée du manuel. **Ne pas réintroduire de comparaison avec un autre logiciel.** 7.52 : derniers « comme … » retirés (commentaires,
+  traductions orphelines, ce fichier) ; workflow manuel `menage-releases.yml` = suppression des releases < v7.41.0.
 - **7.41.1 (Clément : « un tour du code pour l'alléger ou corriger les bugs »)** : pyflakes propre à 3 variables près ;
   vulture : ~130 lignes mortes sur 23 600 (laissées : gain nul, risque de conflit V8). **`tests/monkey.py [n] [graine]`**
   (« test du singe » : vraie appli en démo, clics au hasard sur boutons / menus / clics droits / fenêtres ; QMenu et
@@ -709,8 +711,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     f ± 2 × FI (les deux côtés, tolérance 2 TX du récepteur, 100 kHz si 0) → problème `img` ; `pf_suggest(..., img)`
     (vérif exacte) ; `pf_issue_text` ; profils : `img` gardé par `rx_custom_norm` / `rx_custom_dump`, lu des .ezrf3 et
     .lst4 (`rx_from_library`), champ « FI (fréquence image) » de `RxProfileEdit` ; PlanCheckDialog `_imgs`.
-    **7.51.0 : règle corrigée à ± 1 × FI (plus 2 × FI), vérifiée par Clément dans EazyRF 4.81 (09/11/2026)** :
-    Sennheiser EM300-500 G3 sur 600,000 + Wisycom sur 578,6 / 589,3 / 610,7 / 621,4 → EazyRF signale « IMAGE de
+    **7.51.0 : règle corrigée à ± 1 × FI (plus 2 × FI), vérifiée par Clément dans le logiciel de coord (09/11/2026)** :
+    Sennheiser EM300-500 G3 sur 600,000 + Wisycom sur 578,6 / 589,3 / 610,7 / 621,4 → le logiciel de coord signale « IMAGE de
     589,300 » et « IMAGE de 610,700 », rien pour 578,6 ni 621,4. Test « comme le test de Clément » dans test_plan.
   **7.43.1** : accueil compacté (titre et état d'une carte sur la même ligne) : sous Windows la hauteur mini était
   714 px (> 700, CI). Fusion V7 → V8 à la main (conflit dans `ScanWorker._loop` : `dev.configure` SDR + statistiques).
@@ -788,7 +790,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   récepteurs MRK / MCR n'ont que des noms → `warn`), `parse_dpa_acp` (JSON : settings `/ch/N/name`,
   `/ch/N/radio/manual` kHz, mode → modelProfiles channelSpacing / spacingToIM3Product), `_number_dups` (« Shure » ×16 →
   « Shure 1… »), `PLAN_EXTS`, `parse_plan_file(data, nom)` (extension sinon contenu) → (doc au format de
-  `parse_ezrf3`, logiciel). Tout passe par l'import EazyRF existant : `import_ezrf_file` (tous les plans), `open_ezrf(...,
+  `parse_ezrf3`, logiciel). Tout passe par l'import `.ezrf3` existant : `import_ezrf_file` (tous les plans), `open_ezrf(...,
   kind)`, `EzrfImportDialog(..., kind)` (titre « Importer un plan {kind} »), `opts["kind"]`, `ezrf_link["kind"]`,
   `_ezrf_tick` → `parse_plan_file`, `EzrfSyncDialog` / messages avec le nom du logiciel ; filtre d'import et
   glisser-déposer. **Suivi en direct WWB / WSM / Wisycom / DPA = fait** (même mécanisme que .ezrf3).
@@ -814,18 +816,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   connectés ou non, seulement celle des émetteurs MTK (DeviceChannel/TunedFreq). `parse_wisycom_show` : canaux dont le
   nom = nom de l'appareil (MAT288 = combineur d'antennes, MRK16) écartés de la liste « sans fréquence » ; show sans
   aucun émetteur (Maalouf) → message clair qui liste les canaux (« ajoute-les à la main, ou importe le plan depuis
-  EazyRF / un tableau ») au lieu de « aucune fréquence ». Piste non faite : interroger les récepteurs en réseau
+  le logiciel de coord / un tableau ») au lieu de « aucune fréquence ». Piste non faite : interroger les récepteurs en réseau
   (port 2101 = protocole Wisycom non documenté ; `EmberPlus Attached` = false dans ces shows).
 - **7.50.0 (Clément : « tu peux pas les add toi-même et faire une corrélation au nom ? »)** : `parse_wisycom_show` ne
   lève plus d'erreur sans émetteur : `doc["pending"]` = [{name, model}] (doublons numérotés « SPARE 1, 2… ») ; PURE
   `name_match(nom, candidats, avoid)` (identique, sinon mêmes numéros + chaque mot = début d'un mot du candidat :
   « DEP 1 » ↔ « HF 1 DEPART » ; `avoid=("IEM",)` pour un récepteur MRK / MCR ; égalité = None) — sur Roc : 12 / 16
-  canaux retrouvés dans l'EazyRF de Roc ; `plan_fill_pending(doc, manual)` (ajoute les complétés, à l'import ET à chaque
+  canaux retrouvés dans le plan `.ezrf3` de Roc ; `plan_fill_pending(doc, manual)` (ajoute les complétés, à l'import ET à chaque
   relecture du fichier suivi). `EzrfImportDialog` : tableau « À compléter » (`pend`, MHz pré-remplis par le nom dans
   la liste, `_pend_match`, bouton « 📂 Chercher les noms dans un autre plan… » `_pend_from_file`, `manual()` →
   `opts["manual"]` → `ezrf_link["manual"]`). **Suivi par fichier** : `w["ezsrc"]` = nom du fichier d'origine (config +
   shows) ; `_ezrf_cur(lk)` ne compare qu'avec les fréquences de CE fichier (avant : suivre un .wshow après un .ezrf3
-  proposait de retirer toutes celles d'EazyRF) ; une entrée déjà reliée à un autre plan n'est plus « volée » ;
+  proposait de retirer toutes celles du `.ezrf3`) ; une entrée déjà reliée à un autre plan n'est plus « volée » ;
   ajouts dont la fréquence existe déjà = ignorés. Clément a mis à jour Wisycom Manager : **lui redemander un show
   enregistré avec la nouvelle version** (si les MRK ont un TunedFreq, ils sont lus sans rien changer).
 - **7.52.0 (Clément : « penser à add un auto sur les seuils »)** : le bouton « Auto » (une fois, médiane + 10 dB) devient
@@ -883,14 +885,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `MHz(2 déc);4 niveaux dBµV` (on lit le max des 4, dBm = dBµV − 107). Un « WSM » peut aussi être un simple
   `470.2,-105`. `scan_write` : wwb / wsm / wisycom / tti identiques aux originaux (lignes de données identiques pour
   TTI, WWB, WSM) ; `scan_uniform` (grille régulière, max par case) pour WSM (pas entier en kHz) et Wisycom (1/100 MHz).
-  **Retour de Clément (04/11/2026) : nos exports WWB et Wisycom s'importent bien dans EazyRF** ; import de nos WSM / TTI
+  **Retour de Clément (04/11/2026) : nos exports WWB et Wisycom s'importent bien dans le logiciel de coord** ; import de nos WSM / TTI
   pas vérifié.
-- Les formats « EazyRF / WWB / WSM » pour l'**export de listes de fréquences** sont des suppositions génériques :
+- Les formats « logiciel de coord / WWB / WSM » pour l'**export de listes de fréquences** sont des suppositions génériques :
   demander à Clément un vrai fichier d'import avant de les « corriger ».
-  Mail de Régis (EazyRF) sur les Snapshots (4.81, résumé d'IA, pas une doc) : idée « 📸 États » en attente du feu
-  vert de Clément. eazyrf.com est bloqué par le proxy.
-- **Document EazyRF `.ezrf3` (7.33, 7 vrais fichiers de Clément, PAS dans le dépôt ; essai inventé
-  `tests/data/eazyrf_essai.ezrf3` + `eazyrf_collage_essai.txt`)** : XML `EazyRFds`, éléments À PLAT dans l'ordre
+  Le site de l'éditeur du logiciel de coord est bloqué par le proxy.
+- **Document `.ezrf3` (7.33, 7 vrais fichiers de Clément, PAS dans le dépôt ; essai inventé
+  fichiers d'essai `.ezrf3` + collage dans `tests/data/`)** : XML (racine = nom du logiciel + « ds »), éléments À PLAT dans l'ordre
   `GroupeDt` (NbSect, ZoneNo, HorsFonction) / `SectionDt` (NbApp) / `AppareilDt` (AppareilName, AppDescription « #n »,
   NbreFréqDésiré, Tolérance / Tolérance3TX / Tolérance5e / Séparation en kHz, Filtre MHz, Incrément, Départ / Arrêt,
   Eval5eOrdre, FréqImage, AppNbIM) / `FréquenceDt` (Valeur « 558,200 » parfois VIDE = pas encore attribuée,
@@ -898,16 +899,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   paires float64 MHz / dBm), `OptionsDt/Eval5eOrdre` (interrupteur général du 5ᵉ ordre), `RésuméDt/NbIM`
   (« Nbre Intermodulation: N »), `InformsDt` (Titre, Date, Version). PURE `parse_ezrf3`, `parse_ezrf_paste` /
   `is_ezrf_paste` (copier-coller du plan : titres empilés après chaque ligne vide, `#n - Appareil`, `nom<TAB>MHz`),
-  `ezrf_entries` (scène = groupe EazyRF, préfixé de la zone si plusieurs ; groupe = section), `ezrf_profile_names`,
+  `ezrf_entries` (scène = groupe du document, préfixé de la zone si plusieurs ; groupe = section), `ezrf_profile_names`,
   `ezrf_dev_key`. `EzrfImportDialog`, `MainWindow.import_ezrf_file` / `open_ezrf` / `apply_ezrf` /
   `_ezrf_profiles` (profils perso créés ou réutilisés, posés sur les groupes), branchés sur `import_watch`,
   `open_import` (collage) et le glisser-déposer.
-- **Règles de calcul d'EazyRF (doc officielle envoyée par Clément, § 2.4, + vérifié sur ses 7 plans)** : Filtre =
+- **Règles de calcul du logiciel de coord (doc officielle envoyée par Clément, § 2.4, + vérifié sur ses 7 plans)** : Filtre =
   **± la valeur** (« 16 MHz : porteuse à 500 → émetteurs de 484 à 516 »), PAS ± filtre / 2 comme avant 7.33 ;
   tolérance = « au-delà de laquelle les IM sont acceptées » → **limite stricte** (produit pile à 50 kHz = OK ; marge
   1e-6) ; 5ᵉ ordre = case de l'appareil ET option du document ; **chaque zone est calculée à part**. Résultat
   (`pf_check` par zone, réglages par appareil) : Roc d'Azur 0/0, Maalouf 0/0, Isabelle 0/0, PlaneR Samedi 0/0,
-  TechFest 6/6, PlaneR complet 104 (EazyRF) / 110 (nous, même détail appareil par appareil ; façon de compter
+  TechFest 6/6, PlaneR complet 104 (logiciel de coord) / 110 (nous, même détail appareil par appareil ; façon de compter
   différente). Image (10,7 MHz : deux fréquences séparées de 10,7 MHz) : PAS encore calculée.
 
 ## Tests (`tests/`, à lancer depuis la racine du dépôt)
@@ -989,7 +990,7 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
 - Interface validée en vrai Qt (Linux + Windows CI : ≤ 1280 × 700). **Retour terrain de Clément : 1 tinySA réel,
   2 h sans souci** (version de test d'octobre 2026). Restent : 2 tinySA réels, relais, sons, nuit complète.
-- Ajouter les vrais formats d'import EazyRF / WWB / WSM dès que Clément fournit des exemples.
+- Ajouter les vrais formats d'import WWB / WSM / logiciel de coord dès que Clément fournit des exemples.
 - Spectera : faits issus de la doc / presse Sennheiser (6 / 8 MHz, 2 canaux larges par base, plages UHF / 1G4) ;
   **jamais mesuré** un vrai porteur Spectera au tinySA (niveau du plateau selon RBW, seuil à régler).
 - Idée : import d'un plan Spectera (WSM / Spectera Control).
