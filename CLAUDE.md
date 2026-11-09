@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.52.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.52.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -844,6 +844,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`_first_run`), les configs existantes restent en seuils fixes. Seuil tapé depuis la page Tech → Auto coupé.
   **✅ Vérifié par Clément avec son vrai tinySA (09/11/2026) : « seuil auto ok »** (marges 12 / 6 dB gardées ; à + 4 dB,
   du bruit pur passait en « faible » en démo).
+- **7.52.1 (test « 🧊 appli figée » de Clément, 10/11/2026)** : la garde a bien vu le gel (91 s) et relancé, MAIS
+  `pr.kill()` ne tuait que le LANCEUR PyInstaller (exe « un seul fichier » = lanceur + appli Python dans un 2ᵉ
+  processus) : l'appli figée restait vivante, gardait COM4 → nouvelle instance « could not open port 'COM4':
+  PermissionError » (diagnostics de Clément), puis 2 appli après le dégel. Corrigé : `_kill_tree(pr)` (`taskkill /F
+  /T /PID` sous Windows, puis kill) ; relance par la garde (`TSM_GUARD_RESTART`) → `retry_first` sur le 1er tinySA
+  (l'ancienne instance peut mettre quelques secondes à libérer le port). **À refaire par Clément avec la 7.52.1.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

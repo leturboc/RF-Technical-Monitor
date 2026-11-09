@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.52.0"
+APP_VER = "7.52.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -20662,7 +20662,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for i, addr, label in targets:
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
             w.slot = i                                    # n° fixe du tinySA (0 = 1er, 1 = 2ᵉ, 2… = 3ᵉ…)
-            w.retry_first = i > 0 or str(addr).startswith("socket://")   # en réseau, il peut arriver après
+            w.retry_first = (i > 0 or str(addr).startswith("socket://")      # en réseau, il peut arriver après
+                             or os.environ.get("TSM_GUARD_RESTART") == "1")  # relance : l'ancienne libère le port
             w.baud = int(self.baud_combo.currentData() or 115200)
             w.sdr_dir = self.sdr_cfg.get("dir", "")
             w.get_sdr = lambda: dict(self.sdr_cfg)
@@ -27356,6 +27357,26 @@ def _guard_env(beat, restarted):
     return env
 
 
+def _kill_tree(pr):
+    """Ferme de force l'appli ET ses processus enfants. L'exe PyInstaller « un seul fichier » = un lanceur + l'appli
+    Python dans un 2ᵉ processus : tuer le seul lanceur laissait l'appli figée vivante (port COM gardé, puis 2 appli
+    après le dégel ; vu par Clément en 7.52 : « COM4 accès refusé » après la relance)."""
+    try:
+        if os.name == "nt":
+            subprocess.run("taskkill /F /T /PID".split() + [str(pr.pid)], capture_output=True, timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        pr.kill()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        pr.wait(15)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_GRACE_S, poll_s=2.0,
               max_runs=None, stop=None):
     """TinySA-Monitor.exe --garde : petit processus SANS fenêtre qui lance l'appli et la surveille. Elle plante
@@ -27398,8 +27419,7 @@ def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_
         why = ""
         while True:
             if stop is not None and stop.is_set():
-                pr.kill()
-                pr.wait()
+                _kill_tree(pr)
                 note("garde arrêtée")
                 return restarts
             time.sleep(poll_s)
@@ -27420,11 +27440,7 @@ def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_
                 return restarts
             if act == "kill":
                 why = f"figée (plus de signe de vie depuis {int(age if age is not None else now - t0)} s) : fermée de force"
-                try:
-                    pr.kill()
-                    pr.wait(15)
-                except Exception:  # noqa: BLE001
-                    pass
+                _kill_tree(pr)
             else:
                 why = f"arrêtée avec le code {pr.returncode} (plantage)"
             break
