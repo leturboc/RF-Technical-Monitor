@@ -4182,16 +4182,16 @@ EXACT.update({
     'Cachés par défaut : TinySA Monitor surveille, il ne remplace pas un logiciel de\ncoordination. La fréquence de secours reste toujours disponible.':
         'Hidden by default: TinySA Monitor monitors, it does not replace coordination\nsoftware. The backup frequency is always available.',
     'FI (fréquence image) :': 'IF (image frequency):',
-    'Fréquence intermédiaire (FI) des récepteurs analogiques, souvent 10,7 MHz :\nun émetteur à ± 2 × FI de la fréquence tombe sur sa fréquence image. 0 = pas vérifié (récepteurs numériques).':
-        'Intermediate frequency (IF) of analogue receivers, often 10.7 MHz:\na transmitter at ± 2 × IF from the frequency lands on its image frequency. 0 = not checked (digital receivers).',
+    'Fréquence intermédiaire (FI) des récepteurs analogiques, souvent 10,7 MHz :\nun émetteur à ± FI de la fréquence tombe sur sa fréquence image. 0 = pas vérifié (récepteurs numériques).':
+        'Intermediate frequency (IF) of analogue receivers, often 10.7 MHz:\na transmitter at ± IF from the frequency lands on its image frequency. 0 = not checked (digital receivers).',
     'Outils de coordination (avancé) : vérifier le plan, coordonner, intermod, profils':
         'Coordination tools (advanced): check the plan, coordinate, intermod, profiles',
     'fréquence image': 'image frequency',
     'non vérifiée': 'not checked',
 })
 TEMPLATES.update({
-    'fréquence image : {} ({}) pile à 2 × FI ({} MHz)': 'image frequency: {} ({}) exactly at 2 × IF ({} MHz)',
-    'fréquence image : {} ({}) à {} kHz de 2 × FI ({} MHz)': 'image frequency: {} ({}) {} kHz from 2 × IF ({} MHz)',
+    'fréquence image : {} ({}) pile à ± FI ({} MHz)': 'image frequency: {} ({}) exactly at ± IF ({} MHz)',
+    'fréquence image : {} ({}) à {} kHz de ± FI ({} MHz)': 'image frequency: {} ({}) {} kHz from ± IF ({} MHz)',
     ' · FI {} MHz (fréquence image vérifiée)': ' · IF {} MHz (image frequency checked)',
 })
 
@@ -4685,4 +4685,22 @@ TEMPLATES.update({
     '{} trouvée(s) dans {} · {} à compléter': '{} found in {} · {} to complete',
     "{} canal(aux) de récepteur sans fréquence dans le fichier : Wisycom Manager ne les y enregistre pas. Complète-les dans le tableau « À compléter » (fréquence trouvée par le nom dans ta liste quand c'est possible).":
         '{} receiver channel(s) without frequency in the file: Wisycom Manager does not store them there. Complete them in the “To complete” table (frequency found by name in your list when possible).',
+})
+
+# 7.52 : seuils automatiques (bruit de fond appris)
+EXACT.update({
+    "Seuils auto : « faible » dès que le niveau dépasse le bruit de fond local de cette marge.":
+        "Auto thresholds: \"weak\" as soon as the level exceeds the local noise floor by this margin.",
+    "Seuils auto : « occupé » dès que le niveau dépasse le bruit de fond local de cette marge.\nPlus petit = plus "
+    "sensible (plus de fausses alertes), plus grand = moins sensible.":
+        "Auto thresholds: \"busy\" as soon as the level exceeds the local noise floor by this margin.\nSmaller = more "
+        "sensitive (more false alerts), bigger = less sensitive.",
+    "Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\nLe bruit est appris "
+    "en continu (il redescend vite, remonte lentement en 10 min, et ne\nremonte jamais pendant qu'une fréquence est "
+    "occupée). Courbe en tirets sur le spectre.\nUn seuil propre à une fréquence (colonne Seuil) reste prioritaire. "
+    "Décoche = seuils fixes.":
+        "Automatic thresholds: each frequency gets its own threshold = its noise floor + a margin.\nThe noise is learnt "
+        "continuously (it drops fast, rises slowly over 10 min, and never\nrises while a frequency is busy). Dashed "
+        "curve on the spectrum.\nA threshold set on a frequency (Threshold column) still wins. Untick = fixed thresholds.",
+    "bruit + ": "noise + ",
 })

@@ -1253,5 +1253,27 @@ ok("fiche : conséquence toujours dite (liaison perdue ≠ arrêt)", all(ns["pro
    and ns["problem_card"]("", "lost")["impact"] != ns["problem_card"]("", "busy")["impact"])
 ok("fiche : toutes complètes", all(t and w and st for t, w, st in ns["PROBLEM_CARDS"].values()))
 
+# 7.52 : seuils automatiques (bruit de fond appris)
+_et, _ft, _fc = ns["eff_thresholds"], ns["floor_track"], ns["floor_curve"]
+check("seuil auto : bruit + marges", _et(None, None, False, 8, -80, -90, -105.0, (10.0, 4.0)), (-95.0, -101.0))
+check("seuil auto : seuil propre prioritaire", _et(-70, None, False, 8, -80, -90, -105.0, (10.0, 4.0))[0], -70)
+check("seuil auto : sans bruit connu = seuil global", _et(None, None, False, 8, -80, -90, None), (-80, -90))
+check("bruit appris : 1re mesure", _ft(None, -100.0, 1), -100.0)
+ok("bruit appris : redescend vite", _ft(-90.0, -100.0, 5) < -96)
+ok("bruit appris : remonte lentement", -100.0 < _ft(-100.0, -90.0, 5) < -99.5)
+check("bruit appris : ne remonte pas si occupé", _ft(-100.0, -60.0, 600, busy=True), -100.0)
+ok("bruit appris : redescend même si occupé", _ft(-90.0, -100.0, 5, busy=True) < -96)
+_a = _ft(np.array([-100.0, -100.0]), np.array([-60.0, -60.0]), 600, busy=np.array([True, False]))
+ok("bruit appris : tableau, case occupée gelée", _a[0] == -100.0 and _a[1] > -80)
+_F = np.arange(470.0, 480.0, 0.025)
+_L = np.full(len(_F), -105.0)
+_L[(np.abs(_F - 474.0) < 0.05)] = -40.0                      # une porteuse
+_Fc, _Lc = _fc(_F, _L)
+ok("courbe de bruit : la porteuse ne relève pas le bruit", np.nanmax(np.abs(_Lc + 105.0)) < 0.5)
+_F2 = np.concatenate([np.arange(470.0, 472.0, 0.025), np.arange(480.0, 482.0, 0.025)])
+_Fc2, _Lc2 = _fc(_F2, np.full(len(_F2), -100.0))
+ok("courbe de bruit : trou entre deux bandes = NaN", np.isnan(_Lc2[(_Fc2 > 474) & (_Fc2 < 478)]).all())
+ok("seuils auto dans les shows", all(k in ns["SHOW_KEYS"] for k in ("thr_auto", "auto_occ", "auto_weak")))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

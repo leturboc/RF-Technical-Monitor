@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.50.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.52.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -601,6 +601,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   « 🛠 Retirer l'accès Tech », marques 🛠 / ⏳ dans les connectés. Testé : HTTP (test_alertes, 16 cas dont refus,
   blocage, autre navigateur), Chromium (page Tech, captures `web_tech.png`), vraie appli (gui_reel : accord par la
   fenêtre du PC, commandes appliquées). Pas de HTTPS (réseau de prod seulement).
+  **✅ Vérifié en vrai par Clément (09/11/2026) : accès Tech depuis son téléphone, accord sur le PC, commandes : « tout fonctionne ».**
 - **7.37.0 (Clément, après le mail de Régis d'EazyRF : « 📸 États » façon Snapshots)** : PURE `states_norm` ({name, keys
   = fréquences actives en kHz}, ≤ 30), `state_off`. `self.states` / `self.state_cur` (config + SHOW_KEYS « states »,
   « state_cur » ; appliqués APRÈS la liste dans `_apply_config`), `w["iso"]` (🔒 toujours active, mode ISO d'EazyRF,
@@ -707,9 +708,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     f ± 2 × FI (les deux côtés, tolérance 2 TX du récepteur, 100 kHz si 0) → problème `img` ; `pf_suggest(..., img)`
     (vérif exacte) ; `pf_issue_text` ; profils : `img` gardé par `rx_custom_norm` / `rx_custom_dump`, lu des .ezrf3 et
     .lst4 (`rx_from_library`), champ « FI (fréquence image) » de `RxProfileEdit` ; PlanCheckDialog `_imgs`.
-    **Supposition** : image à ± 2 × FI (physique d'un superhétérodyne) ; la doc EazyRF parlait de « deux fréquences
-    séparées de 10,7 MHz » (l'écart = FI, oscillateur local ?) — **à faire vérifier par Clément** avec un plan test dans
-    EazyRF (deux TX à 21,4 MHz puis à 10,7 MHz d'un récepteur analogique).
+    **7.51.0 : règle corrigée à ± 1 × FI (plus 2 × FI), vérifiée par Clément dans EazyRF 4.81 (09/11/2026)** :
+    Sennheiser EM300-500 G3 sur 600,000 + Wisycom sur 578,6 / 589,3 / 610,7 / 621,4 → EazyRF signale « IMAGE de
+    589,300 » et « IMAGE de 610,700 », rien pour 578,6 ni 621,4. Test « comme le test de Clément » dans test_plan.
   **7.43.1** : accueil compacté (titre et état d'une carte sur la même ligne) : sous Windows la hauteur mini était
   714 px (> 700, CI). Fusion V7 → V8 à la main (conflit dans `ScanWorker._loop` : `dev.configure` SDR + statistiques).
 - **7.44.0 (suite de la revue de code : indicateurs de qualité de mesure)** : PURE `noise_floor(F, L, f)` (20ᵉ centile à
@@ -826,6 +827,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   proposait de retirer toutes celles d'EazyRF) ; une entrée déjà reliée à un autre plan n'est plus « volée » ;
   ajouts dont la fréquence existe déjà = ignorés. Clément a mis à jour Wisycom Manager : **lui redemander un show
   enregistré avec la nouvelle version** (si les MRK ont un TunedFreq, ils sont lus sans rien changer).
+- **7.52.0 (Clément : « penser à add un auto sur les seuils »)** : le bouton « Auto » (une fois, médiane + 10 dB) devient
+  un MODE à cocher `thr_auto_btn` → `set_thr_auto` : **un seuil par fréquence** = bruit de fond appris + marges
+  (`auto_occ_spin` « bruit + 12 dB », `auto_weak_spin` « bruit + 6 dB », visibles dans la barre à la place des seuils
+  fixes). PURE `AUTO_THR_DEFAULT`, `floor_track` (descend vite `AUTO_FALL_S` 5 s, monte lentement `AUTO_RISE_S` 600 s,
+  **ne monte pas tant que la fréquence est occupée** : un brouilleur large ne relève pas son propre seuil),
+  `floor_curve` (20ᵉ centile à ± 2 MHz tous les 0,5 MHz, NaN dans les trous), `eff_thresholds(..., auto_floor,
+  auto_m)` (seuil propre > référence > auto > global). `w["afl"]` / `w["afl_t"]` (bruit appris de la fréquence, à
+  partir de `w["floor"]`, donc les blocs larges gardent leur fenêtre), `w["athr"]` → colonne Seuil « auto −95 ».
+  `_acurve` (courbe apprise) → `auto_curve` en tirets (couleur `thr`), `auto_thr_at(f)`, `detect_unknown` seuil point
+  par point ; `thr_spin` / `weak_spin` suivent la valeur TYPIQUE (médiane + marges) pour les outils qui lisent le seuil
+  global. Config + SHOW_KEYS : `thr_auto`, `auto_occ`, `auto_weak` ; défaut = allumé au **1er lancement seulement**
+  (`_first_run`), les configs existantes restent en seuils fixes. Seuil tapé depuis la page Tech → Auto coupé.
+  **Pas essayé sur un vrai tinySA** (marges 12 / 6 dB = valeurs de départ ; à + 4 dB, du bruit pur passait en « faible » en démo).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

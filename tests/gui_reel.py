@@ -220,7 +220,7 @@ _gl.close()
 shot(win, "ultra_simple")
 step("passer en simple", lambda: win.set_level("simple"))
 check("simple : seuils au-dessus du spectre et classement visibles", win.thr_bar.isVisible() and win.layer_box.isVisible()
-      and win.thr_spin.isVisible() and win.absent_spin.isVisible())
+      and (win.thr_spin.isVisible() or win.auto_occ_spin.isVisible()) and win.absent_spin.isVisible())
 check("barre du spectre allégée : outils secondaires derrière ⋯", not win.mk_btn.isVisible() and not win.legend_btn.isVisible())
 win.more_spec_btn.setChecked(True); wait(200)
 check("⋯ : repères, marqueurs, légende visibles", win.mk_btn.isVisible() and win.mkr_btn.isVisible() and win.legend_btn.isVisible())
@@ -260,6 +260,29 @@ check("journal : un long chemin de session n'élargit pas la colonne (vu sous Wi
       _dj.minimumSizeHint().width() <= 300, str(_dj.minimumSizeHint().width()))
 wait(8000)
 shot(win, "demo_tout_spectre")
+# 7.52 : seuils auto (allumés d'office au 1er lancement)
+_lvl_before = win.ui_level
+check("seuils auto : allumés au 1er lancement", win.thr_auto and win.thr_auto_btn.isChecked())
+check("seuils auto : courbe du bruit + marge tracée", win.auto_curve.isVisible() and win._acurve is not None
+      and not win.thr_line.isVisible())
+_aw = [w_ for w_ in win.watch if w_.get("athr") is not None]
+check("seuils auto : chaque fréquence a son seuil", len(_aw) >= len(win.watch) // 2, f"{len(_aw)}/{len(win.watch)}")
+_r0 = win.watch.index(_aw[0]) if _aw else 0
+check("seuils auto : colonne Seuil « auto … »", win.watch_table.item(_r0, m.C_THR).text().startswith("auto"),
+      win.watch_table.item(_r0, m.C_THR).text())
+win.set_level("simple"); app.processEvents()
+check("seuils auto : marges dans la barre, valeurs fixes cachées", win.auto_occ_spin.isVisible()
+      and not win.thr_spin.isVisible())
+shot(win, "seuils_auto")
+_t0 = _aw[0]["athr"] if _aw else None
+win.auto_occ_spin.setValue(win.auto_occ_spin.value() + 6); app.processEvents()
+check("seuils auto : marge + 6 dB → seuil + 6 dB", _aw and abs(_aw[0]["athr"] - _t0 - 6) < 1.5,
+      f"{_t0} → {_aw[0].get('athr') if _aw else None}")
+win.auto_occ_spin.setValue(12)
+win.set_thr_auto(False); app.processEvents()
+check("seuils auto coupés : seuil fixe revenu", not win.auto_curve.isVisible() and win.thr_line.isVisible()
+      and all(w_.get("athr") is None for w_ in win.watch))
+win.set_level(_lvl_before); app.processEvents()
 
 # vues par bande
 for i in range(1, min(win.view_combo.count(), 3)):
