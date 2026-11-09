@@ -1192,15 +1192,24 @@ check("groupe Shure .cug", (_k, [(r["name"], r["freq"]) for r in _d["rows"]]),
       ("Shure (groupe)", [("AD G56 · 1", 482.7), ("AD G56 · 2", 513.8), ("AD G56 · 3", 534.375)]))
 _d, _k = _plan("wisycom_essai.wshow")
 check("Wisycom .wshow : émetteurs gardés, récepteurs sans fréquence signalés",
-      (_k, [(r["name"], r["freq"]) for r in _d["rows"]], "ARR 1" in _d["warn"]),
+      (_k, [(r["name"], r["freq"]) for r in _d["rows"]], [p_["name"] for p_ in _d["pending"]] == ["ARR 1", "ARR 2"]),
       ("Wisycom Manager", [("IEM 1", 670.0), ("IEM 2", 642.0)], True))
 _rx_only = open(os.path.join(DD_, "wisycom_essai.wshow"), encoding="utf-8").read()
 _rx_only = _rx_only[:_rx_only.index('    <Category CategoryName="Unknown">\n      <Device DeviceNum="2"')] + "  </DeviceList>\n</ShowFile>\n"
-try:
-    _pp(_rx_only.encode("utf-8"), "rx.wshow")
-    ok("Wisycom : show sans émetteur -> message qui liste les canaux", False)
-except ValueError as e_:
-    ok("Wisycom : show sans émetteur -> message qui liste les canaux", "ARR 1" in str(e_) and "récepteurs" in str(e_), str(e_))
+_dr, _ = _pp(_rx_only.encode("utf-8"), "rx.wshow")
+check("Wisycom : show sans émetteur -> récepteurs « à compléter » (pas d'erreur)",
+      (len(_dr["rows"]), [p_["name"] for p_ in _dr["pending"]]), (0, ["ARR 1", "ARR 2"]))
+_nm = ns["name_match"]
+_cands = ["HF 1 DEPART", "IEM 1 DEPART", "HF 3 ARRIVEE", "HF 2 SCENE", "Chant"]
+check("nom : « DEP 1 » ambigu (HF et IEM) sans indice", _nm("DEP 1", _cands), None)
+check("nom : récepteur de micros -> IEM écarté", _nm("DEP 1", _cands, ("IEM",)), 0)
+check("nom : abréviations « ARR 3 », « SCE 2 »", (_nm("ARR 3", _cands), _nm("SCE 2", _cands)), (2, 3))
+check("nom : identique (casse, espaces)", _nm(" chant ", _cands), 4)
+check("nom : rien de proche", _nm("Trumpet 1", _cands), None)
+_df = ns["plan_fill_pending"](_dr, {"ARR 1": 578.05, "ARR 2": "x"})
+check("complétés à la main : ajoutés au plan, le reste reste à compléter",
+      ([(r["name"], r["freq"], r["group"]) for r in _df["rows"]], [p_["name"] for p_ in _df["pending"]]),
+      ([("ARR 1", 578.05, "MRK980")], ["ARR 2"]))
 _d, _k = _plan("dpa_essai.acp")
 check("DPA .acp : canaux, profil du mode (écart 500 kHz)",
       (_k, _d["title"], [(r["name"], r["freq"]) for r in _d["rows"]], [p.get("sep") for p in _d["devices"].values()]),

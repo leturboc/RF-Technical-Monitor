@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.49.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.50.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -814,6 +814,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   aucun émetteur (Maalouf) → message clair qui liste les canaux (« ajoute-les à la main, ou importe le plan depuis
   EazyRF / un tableau ») au lieu de « aucune fréquence ». Piste non faite : interroger les récepteurs en réseau
   (port 2101 = protocole Wisycom non documenté ; `EmberPlus Attached` = false dans ces shows).
+- **7.50.0 (Clément : « tu peux pas les add toi-même et faire une corrélation au nom ? »)** : `parse_wisycom_show` ne
+  lève plus d'erreur sans émetteur : `doc["pending"]` = [{name, model}] (doublons numérotés « SPARE 1, 2… ») ; PURE
+  `name_match(nom, candidats, avoid)` (identique, sinon mêmes numéros + chaque mot = début d'un mot du candidat :
+  « DEP 1 » ↔ « HF 1 DEPART » ; `avoid=("IEM",)` pour un récepteur MRK / MCR ; égalité = None) — sur Roc : 12 / 16
+  canaux retrouvés dans l'EazyRF de Roc ; `plan_fill_pending(doc, manual)` (ajoute les complétés, à l'import ET à chaque
+  relecture du fichier suivi). `EzrfImportDialog` : tableau « À compléter » (`pend`, MHz pré-remplis par le nom dans
+  la liste, `_pend_match`, bouton « 📂 Chercher les noms dans un autre plan… » `_pend_from_file`, `manual()` →
+  `opts["manual"]` → `ezrf_link["manual"]`). **Suivi par fichier** : `w["ezsrc"]` = nom du fichier d'origine (config +
+  shows) ; `_ezrf_cur(lk)` ne compare qu'avec les fréquences de CE fichier (avant : suivre un .wshow après un .ezrf3
+  proposait de retirer toutes celles d'EazyRF) ; une entrée déjà reliée à un autre plan n'est plus « volée » ;
+  ajouts dont la fréquence existe déjà = ignorés. Clément a mis à jour Wisycom Manager : **lui redemander un show
+  enregistré avec la nouvelle version** (si les MRK ont un TunedFreq, ils sont lus sans rien changer).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
