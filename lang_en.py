@@ -4663,3 +4663,7 @@ EXACT.update({
     "Vérifier le plan, coordonner, intermod et profils d'appareil sont cachés :\n⚙ Réglages › Général › « Outils de coordination (avancé) » pour les afficher.":
         'Check the plan, coordinate, intermod and device profiles are hidden:\n⚙ Settings › General › “Coordination tools (advanced)” to show them.',
 })
+TEMPLATES.update({
+    "ce show ne contient que des récepteurs ({}) : Wisycom Manager n'enregistre pas leurs fréquences dans le fichier (seulement celles des émetteurs MTK). Ajoute-les à la main, ou importe le plan depuis EazyRF / un tableau.":
+        'this show only contains receivers ({}): Wisycom Manager does not store their frequencies in the file (only those of the MTK transmitters). Add them by hand, or import the plan from EazyRF / a spreadsheet.',
+})

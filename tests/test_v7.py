@@ -1194,6 +1194,13 @@ _d, _k = _plan("wisycom_essai.wshow")
 check("Wisycom .wshow : émetteurs gardés, récepteurs sans fréquence signalés",
       (_k, [(r["name"], r["freq"]) for r in _d["rows"]], "ARR 1" in _d["warn"]),
       ("Wisycom Manager", [("IEM 1", 670.0), ("IEM 2", 642.0)], True))
+_rx_only = open(os.path.join(DD_, "wisycom_essai.wshow"), encoding="utf-8").read()
+_rx_only = _rx_only[:_rx_only.index('    <Category CategoryName="Unknown">\n      <Device DeviceNum="2"')] + "  </DeviceList>\n</ShowFile>\n"
+try:
+    _pp(_rx_only.encode("utf-8"), "rx.wshow")
+    ok("Wisycom : show sans émetteur -> message qui liste les canaux", False)
+except ValueError as e_:
+    ok("Wisycom : show sans émetteur -> message qui liste les canaux", "ARR 1" in str(e_) and "récepteurs" in str(e_), str(e_))
 _d, _k = _plan("dpa_essai.acp")
 check("DPA .acp : canaux, profil du mode (écart 500 kHz)",
       (_k, _d["title"], [(r["name"], r["freq"]) for r in _d["rows"]], [p.get("sep") for p in _d["devices"].values()]),
