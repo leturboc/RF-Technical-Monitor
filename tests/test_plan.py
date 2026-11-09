@@ -222,22 +222,26 @@ check("lots : plan complet (3 appareils) sans aucun problème", sum(len(x) for x
 check("lots : aucune fréquence en double", len(set(F_)), len(F_))
 check("lots : aucun lot -> rien", ns["pf_fill_lots"]([], plan0), [])
 
-# ---- fréquence image (FI 10,7 MHz des récepteurs analogiques) : un émetteur à f ± 2 × FI
+# ---- fréquence image (FI 10,7 MHz des récepteurs analogiques) : un émetteur à f ± FI (règle d'EazyRF, vérifiée 7.51)
 _T0 = {"2tx3": 0.0, "3tx3": 0.0, "5": 0.0, "7": 0.0}
-_iss, _ = ns["pf_check"]([500.000, 521.400], [True, True], None, 0.3, _T0, None, 0.0, [10.7, 0.0])
-check("image : émetteur à f + 2 × 10,7 MHz signalé sur le récepteur analogique", [x["kind"] for x in _iss[0]], ["img"])
+_iss, _ = ns["pf_check"]([500.000, 510.700], [True, True], None, 0.3, _T0, None, 0.0, [10.7, 0.0])
+check("image : émetteur à f + 10,7 MHz signalé sur le récepteur analogique", [x["kind"] for x in _iss[0]], ["img"])
+_isE = [ns["pf_check"]([600.000, b], [True, True], None, 0.3, _T0, None, 0.0, [10.7, 0.0])[0][0] for b in
+        (610.7, 621.4, 589.3, 578.6)]
+check("image : comme le test de Clément dans EazyRF (G3 sur 600 : 589,3 et 610,7 oui, 578,6 et 621,4 non)",
+      [bool(x) for x in _isE], [True, False, True, False])
 check("image : rien pour le récepteur sans FI", _iss[1], [])
-_iss2, _ = ns["pf_check"]([500.000, 478.650], [True, True], None, 0.3, _T0, None, 0.0, 10.7)
-check("image : aussi côté bas (f − 2 × FI), à 50 kHz", ([x["kind"] for x in _iss2[0]], round(_iss2[0][0]["gap"], 3)),
+_iss2, _ = ns["pf_check"]([500.000, 489.350], [True, True], None, 0.3, _T0, None, 0.0, 10.7)
+check("image : aussi côté bas (f − FI), à 50 kHz", ([x["kind"] for x in _iss2[0]], round(_iss2[0][0]["gap"], 3)),
       (["img"], 0.05))
-_iss3, _ = ns["pf_check"]([500.000, 521.700], [True, True], None, 0.3, _T0, None, 0.0, 10.7)
+_iss3, _ = ns["pf_check"]([500.000, 511.000], [True, True], None, 0.3, _T0, None, 0.0, 10.7)
 check("image : à 300 kHz de l'image = OK (tolérance 100 kHz)", _iss3, [[], []])
-_iss4, _ = ns["pf_check"]([500.000, 521.400], [True, False], None, 0.3, _T0, None, 0.0, 10.7)
+_iss4, _ = ns["pf_check"]([500.000, 510.700], [True, False], None, 0.3, _T0, None, 0.0, 10.7)
 check("image : une réserve (n'émet pas) ne gêne pas", _iss4[0], [])
-ok("image : texte", "fréquence image" in ns["pf_issue_text"](_iss[0][0], ["A", "B"], [500.0, 521.4]))
-_sg = ns["pf_suggest"](0, [500.000, 521.400], [True, True], None, 0.3, _T0, None, lo=499.0, hi=501.0, step=0.025,
+ok("image : texte", "fréquence image" in ns["pf_issue_text"](_iss[0][0], ["A", "B"], [500.0, 510.7]))
+_sg = ns["pf_suggest"](0, [500.000, 510.700], [True, True], None, 0.3, _T0, None, lo=499.0, hi=501.0, step=0.025,
                        img=[10.7, 0.0])
-ok("image : les propositions l'évitent", _sg and all(abs(abs(521.4 - c) - 21.4) >= 0.1 - 1e-6 for c, _d in _sg), str(_sg))
+ok("image : les propositions l'évitent", _sg and all(abs(abs(510.7 - c) - 10.7) >= 0.1 - 1e-6 for c, _d in _sg), str(_sg))
 _cd = ns["rx_custom_norm"]([dict(name="Analogique", sep=0.4, img=10.7)])
 check("image : gardée dans un profil perso", _cd[0][2].get("img"), 10.7)
 

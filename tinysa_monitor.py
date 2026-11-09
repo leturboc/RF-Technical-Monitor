@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.50.0"
+APP_VER = "7.51.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2463,7 +2463,7 @@ def rx_custom_norm(lst):
         tol["7"] = 0.0
         extra = {k_: _rx_num(p.get(k_), 0.0, 7000.0, 0.0) for k_ in ("lo", "hi") if p.get(k_)}
         if p.get("img"):
-            extra["img"] = _rx_num(p.get("img"), 0.0, 200.0, 0.0)      # FI (fréquence intermédiaire) : image à ± 2 × FI
+            extra["img"] = _rx_num(p.get("img"), 0.0, 200.0, 0.0)      # FI (fréquence intermédiaire) : image à ± FI (comme EazyRF, vérifié 7.51)
         out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 10.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
                                     step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol,
                                     src="eazyrf" if p.get("src") == "eazyrf" else "perso", **extra),
@@ -2548,7 +2548,8 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
     sep, filt et tol peuvent être donnés PAR FRÉQUENCE (listes : profil d'appareil de chacune) : l'écart entre deux
     porteuses est le plus grand des deux, le filtre et les tolérances sont ceux de la fréquence touchée.
     img : FI du récepteur (MHz, 0 = pas vérifié ; une valeur ou une par fréquence). Récepteur superhétérodyne (les
-    analogiques, FI 10,7 MHz) : un ÉMETTEUR à f ± 2 × FI tombe sur sa fréquence image -> problème « img » (tolérance =
+    analogiques, FI 10,7 MHz) : un ÉMETTEUR à f ± FI -> problème « img » (règle d'EazyRF, vérifiée par Clément le
+    09/11/2026 : G3 sur 600 → « IMAGE de 589,300 / 610,700 », rien à 578,6 / 621,4) (tolérance =
     celle des 2 TX du récepteur, 100 kHz si elle vaut 0). Les deux côtés sont vérifiés (côté de l'oscillateur inconnu).
     -> (issues, info) ; issues[i] = [dict(kind, others=[indices], gap MHz, order, ntx, terms)]."""
     F = np.asarray(list(freqs), dtype=float)
@@ -2576,7 +2577,7 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
             if k == v:
                 continue
             for side in (1.0, -1.0):
-                g = abs(F[k] - (F[v] + side * 2.0 * IM[v])) - (B[k] + B[v]) / 2.0
+                g = abs(F[k] - (F[v] + side * IM[v])) - (B[k] + B[v]) / 2.0
                 if g < ti - 1e-6:
                     issues[v].append(dict(kind="img", others=[k], gap=float(max(0.0, g)), fi=float(IM[v])))
                     break
@@ -2605,8 +2606,8 @@ def pf_issue_text(it, names, freqs):
     if it["kind"] == "img":
         o = it["others"][0]
         if it["gap"] <= 0.001:
-            return f"fréquence image : {names[o]} ({freqs[o]:.3f}) pile à 2 × FI ({it['fi']:g} MHz)"
-        return f"fréquence image : {names[o]} ({freqs[o]:.3f}) à {it['gap'] * 1000:.0f} kHz de 2 × FI ({it['fi']:g} MHz)"
+            return f"fréquence image : {names[o]} ({freqs[o]:.3f}) pile à ± FI ({it['fi']:g} MHz)"
+        return f"fréquence image : {names[o]} ({freqs[o]:.3f}) à {it['gap'] * 1000:.0f} kHz de ± FI ({it['fi']:g} MHz)"
     if it["kind"] == "sep":
         o = it["others"][0]
         if it["gap"] < 0:
@@ -10390,7 +10391,7 @@ class RxProfileEdit(QtWidgets.QDialog):
         f.addRow("A + B − C :", self.tol["3tx3"])
         f.addRow("5ᵉ ordre :", self.tol["5"])
         self.img = spin(prof.get("img", 0.0), 0, 200, 0.1, " MHz", "Fréquence intermédiaire (FI) des récepteurs "
-                        "analogiques, souvent 10,7 MHz :\nun émetteur à ± 2 × FI de la fréquence tombe sur sa fréquence "
+                        "analogiques, souvent 10,7 MHz :\nun émetteur à ± FI de la fréquence tombe sur sa fréquence "
                         "image. 0 = pas vérifié (récepteurs numériques).", "non vérifiée", 3)
         f.addRow("FI (fréquence image) :", self.img)
         self.note = QtWidgets.QLineEdit(prof.get("note", ""))

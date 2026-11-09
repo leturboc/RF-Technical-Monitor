@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.50.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.51.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -707,9 +707,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     f ± 2 × FI (les deux côtés, tolérance 2 TX du récepteur, 100 kHz si 0) → problème `img` ; `pf_suggest(..., img)`
     (vérif exacte) ; `pf_issue_text` ; profils : `img` gardé par `rx_custom_norm` / `rx_custom_dump`, lu des .ezrf3 et
     .lst4 (`rx_from_library`), champ « FI (fréquence image) » de `RxProfileEdit` ; PlanCheckDialog `_imgs`.
-    **Supposition** : image à ± 2 × FI (physique d'un superhétérodyne) ; la doc EazyRF parlait de « deux fréquences
-    séparées de 10,7 MHz » (l'écart = FI, oscillateur local ?) — **à faire vérifier par Clément** avec un plan test dans
-    EazyRF (deux TX à 21,4 MHz puis à 10,7 MHz d'un récepteur analogique).
+    **7.51.0 : règle corrigée à ± 1 × FI (plus 2 × FI), vérifiée par Clément dans EazyRF 4.81 (09/11/2026)** :
+    Sennheiser EM300-500 G3 sur 600,000 + Wisycom sur 578,6 / 589,3 / 610,7 / 621,4 → EazyRF signale « IMAGE de
+    589,300 » et « IMAGE de 610,700 », rien pour 578,6 ni 621,4. Test « comme le test de Clément » dans test_plan.
   **7.43.1** : accueil compacté (titre et état d'une carte sur la même ligne) : sous Windows la hauteur mini était
   714 px (> 700, CI). Fusion V7 → V8 à la main (conflit dans `ScanWorker._loop` : `dev.configure` SDR + statistiques).
 - **7.44.0 (suite de la revue de code : indicateurs de qualité de mesure)** : PURE `noise_floor(F, L, f)` (20ᵉ centile à

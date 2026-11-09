@@ -4182,16 +4182,16 @@ EXACT.update({
     'Cachés par défaut : TinySA Monitor surveille, il ne remplace pas un logiciel de\ncoordination. La fréquence de secours reste toujours disponible.':
         'Hidden by default: TinySA Monitor monitors, it does not replace coordination\nsoftware. The backup frequency is always available.',
     'FI (fréquence image) :': 'IF (image frequency):',
-    'Fréquence intermédiaire (FI) des récepteurs analogiques, souvent 10,7 MHz :\nun émetteur à ± 2 × FI de la fréquence tombe sur sa fréquence image. 0 = pas vérifié (récepteurs numériques).':
-        'Intermediate frequency (IF) of analogue receivers, often 10.7 MHz:\na transmitter at ± 2 × IF from the frequency lands on its image frequency. 0 = not checked (digital receivers).',
+    'Fréquence intermédiaire (FI) des récepteurs analogiques, souvent 10,7 MHz :\nun émetteur à ± FI de la fréquence tombe sur sa fréquence image. 0 = pas vérifié (récepteurs numériques).':
+        'Intermediate frequency (IF) of analogue receivers, often 10.7 MHz:\na transmitter at ± IF from the frequency lands on its image frequency. 0 = not checked (digital receivers).',
     'Outils de coordination (avancé) : vérifier le plan, coordonner, intermod, profils':
         'Coordination tools (advanced): check the plan, coordinate, intermod, profiles',
     'fréquence image': 'image frequency',
     'non vérifiée': 'not checked',
 })
 TEMPLATES.update({
-    'fréquence image : {} ({}) pile à 2 × FI ({} MHz)': 'image frequency: {} ({}) exactly at 2 × IF ({} MHz)',
-    'fréquence image : {} ({}) à {} kHz de 2 × FI ({} MHz)': 'image frequency: {} ({}) {} kHz from 2 × IF ({} MHz)',
+    'fréquence image : {} ({}) pile à ± FI ({} MHz)': 'image frequency: {} ({}) exactly at ± IF ({} MHz)',
+    'fréquence image : {} ({}) à {} kHz de ± FI ({} MHz)': 'image frequency: {} ({}) {} kHz from ± IF ({} MHz)',
     ' · FI {} MHz (fréquence image vérifiée)': ' · IF {} MHz (image frequency checked)',
 })
 
