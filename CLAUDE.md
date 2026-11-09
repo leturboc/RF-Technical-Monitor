@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.44.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.45.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -724,6 +724,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Fusion V7 → V8 à la main (2ᵉ fois de suite) : la V8 a modifié les lignes `sig_colors=… / unit=… watch_cols=…` de
   `_collect_config` (`sdr=`, `port=`) → **en V7, ajouter les nouvelles clés de config sur la ligne `coord_tools=` /
   `home=` (zone propre à la V7), JAMAIS sur ces deux lignes-là**.
+- **7.45.0 (2ᵉ audit externe, « fiabilité critique »)** : `scan_check` refuse tout NaN et un balayage COURT sans
+  fréquences fiables (avant : étalé sur la bande = signaux décalés) ; court AVEC fréquences = gardé à sa place.
+  `TinySA.try_cmd` reconnaît `tinysa_refusal` (disque USB, mise à jour) → réglage non mémorisé. Calibration réussie →
+  `history` vidé + `reset_max` (offsets changés = autre échelle). `_sync_cfg` prépare une copie puis
+  `self._cfg.update` sous `self.lock`. Heure de MESURE : `ScanWorker.sweep_t` {bande: time.time()} posé avant
+  `sweep.emit`, lu par `MainWindow._sweep_time` via `sender()` (signature du signal inchangée pour la V8 ; repli =
+  heure actuelle). `SerialRelay(..., allow=)` + champ « PC autorisés » de `RelayWindow` (`refused` affiché), test
+  dans test_reseau. Colonne Marge : bulle « Bruit de fond utilisé » (`w["floor"]`). Pas fait (plus tard) :
+  calibration par bande, métadonnées de mesure, répartition adaptative des bandes, tampons préalloués.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

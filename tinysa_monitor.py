@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.44.0"
+APP_VER = "7.45.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3656,8 +3656,10 @@ def scan_check(fr, lv, a, z, pts):
     (utilisable, signalé) ; « invalide » = inutilisable (rien, ou niveaux absurdes)."""
     lv = np.asarray(lv, dtype=float)
     n = len(lv)
-    if n < 2 or not np.isfinite(lv).any():
+    if n < 2:
         return None, "invalide", f"{n} point(s) reçu(s) sur {pts}"
+    if not np.isfinite(lv).all():              # audit 7.44 : un seul NaN fausse le max hold, les seuils, la marge…
+        return None, "invalide", f"{int((~np.isfinite(lv)).sum())} niveau(x) illisible(s) sur {n}"
     if np.nanmax(lv) > 40 or np.nanmin(lv) < -200:
         return None, "invalide", "niveaux hors de toute plage possible"
     step = (z - a) / max(1, pts - 1)
@@ -3666,6 +3668,8 @@ def scan_check(fr, lv, a, z, pts):
         fr = np.asarray(fr, dtype=float)
         good = (np.isfinite(fr).all() and np.all(np.diff(fr) > 0)
                 and fr[0] >= a - 2 * step - 1 and fr[-1] <= z + 2 * step + 1)
+    if n < pts and not good:     # audit 7.44 : sans fréquences fiables, on ne sait pas QUELLE partie manque :
+        return None, "invalide", f"{n} points reçus sur {pts}, sans fréquences fiables"   # étaler = décaler
     if not good:
         fr = np.linspace(a, z, n)
     if n < pts:
@@ -6220,6 +6224,9 @@ class TinySA:
             lines = self.cmd(text, timeout=6)
         except TimeoutError:
             return False, f"{text} : pas de réponse"
+        refus = tinysa_refusal(lines)              # disque USB, mise à jour… : le réglage n'est PAS appliqué
+        if refus:
+            return False, f"{text} : {refus}"
         bad = [l for l in lines if "usage" in l.lower() or l.endswith("?")]
         return (not bad), (f"{text} : {bad[0]}" if bad else "")
 
@@ -6289,6 +6296,7 @@ class ScanWorker(QtCore.QThread):
         self.dev = None
         self.cmdq = queue.Queue()
         # statistiques (🩺 diagnostic) : où passe le temps, combien de balayages incomplets / reconnexions
+        self.sweep_t = {}                         # id bande -> heure de la dernière mesure (time.time)
         self.stats = dict(segments=0, seg_s=0.0, seg_max=0.0, cycles=0, cycle_s=0.0, short=0, invalid=0,
                           reconnects=0, refused=0, settings_s=0.0)
         self._warned = {}                          # message -> dernière fois affiché (pas de répétition chaque cycle)                  # commandes à glisser entre deux bandes (identifier, numéroter)
@@ -6403,6 +6411,7 @@ class ScanWorker(QtCore.QThread):
                     aborted = True
                     break
                 if len(res[0]):
+                    self.sweep_t[b["id"]] = time.time()   # heure de la MESURE (pas de son traitement par l'interface)
                     self.sweep.emit(b["id"], res[0], res[1])
             if not aborted and not self.isInterruptionRequested():
                 dt = time.monotonic() - t0
@@ -6580,9 +6589,11 @@ class SerialRelay(threading.Thread):
     Un nouveau client remplace l'ancien (reconnexion après une coupure réseau). Port USB débranché :
     réouverture automatique toutes les 2 s."""
 
-    def __init__(self, port, tcp_port=RELAY_PORT, host="0.0.0.0", opener=None):
+    def __init__(self, port, tcp_port=RELAY_PORT, host="0.0.0.0", opener=None, allow=None):
         super().__init__(daemon=True)
         self.port, self.tcp_port, self.host = port, int(tcp_port), host
+        self.allow = [a for a in (allow or []) if a] or None   # adresses IP autorisées (None = toutes), comme le Pi
+        self.refused = ""                         # dernière adresse refusée (affichée dans la fenêtre)
         self.opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05, write_timeout=2.0))
         self.stop_evt, self.ready = threading.Event(), threading.Event()
         self.client, self.error, self.serial_ok = None, "", False
@@ -6625,6 +6636,10 @@ class SerialRelay(threading.Thread):
                 rd, _, _ = select.select(socks, [], [], 0.01)
                 if srv in rd:                      # nouveau client : il remplace l'ancien
                     new, addr = srv.accept()
+                    if self.allow and addr[0] not in self.allow:
+                        self.refused = addr[0]
+                        new.close()
+                        continue
                     new.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     new.settimeout(5.0)    # client qui ne lit plus : envoi abandonné au bout de 5 s, client lâché
                     if conn is not None:
@@ -7367,6 +7382,10 @@ class RelayWindow(QtWidgets.QWidget):
         self.tcp_spin = QtWidgets.QSpinBox()
         self.tcp_spin.setRange(1024, 65535)
         self.tcp_spin.setValue(RELAY_PORT)
+        self.allow_edit = QtWidgets.QLineEdit()
+        self.allow_edit.setPlaceholderText("vide = tout le réseau · ex. 192.168.1.10")
+        self.allow_edit.setToolTip("Adresses IP des PC qui ont le droit de se connecter à ce tinySA, séparées par des "
+                                   "virgules. Vide = n'importe quel appareil du réseau.")
         self.go_btn = QtWidgets.QPushButton("▶ Partager ce tinySA")
         self.go_btn.clicked.connect(lambda *_: self.toggle())
         self.addr_lbl = QtWidgets.QLabel("")
@@ -7385,6 +7404,7 @@ class RelayWindow(QtWidgets.QWidget):
         h.addWidget(b_ref)
         form.addRow("Port du tinySA :", h)
         form.addRow("Port réseau (TCP) :", self.tcp_spin)
+        form.addRow("PC autorisés :", self.allow_edit)
         lay = QtWidgets.QVBoxLayout(self)
         lay.addWidget(help_lbl)
         lay.addLayout(form)
@@ -7416,6 +7436,7 @@ class RelayWindow(QtWidgets.QWidget):
             self.go_btn.setText("▶ Partager ce tinySA")
             self.port_combo.setEnabled(True)
             self.tcp_spin.setEnabled(True)
+            self.allow_edit.setEnabled(True)
             self.addr_lbl.setText("")
             self.state_lbl.setText("Arrêté.")
             return
@@ -7423,7 +7444,8 @@ class RelayWindow(QtWidgets.QWidget):
         if not port:
             self.state_lbl.setText("⚠ Aucun port : branche le tinySA (et ferme tinySA-App).")
             return
-        self.relay = SerialRelay(port, self.tcp_spin.value())
+        allow = [x.strip() for x in self.allow_edit.text().replace(";", ",").split(",") if x.strip()]
+        self.relay = SerialRelay(port, self.tcp_spin.value(), allow=allow)
         self.relay.start()
         self.relay.ready.wait(3)
         if not self.relay.is_alive():
@@ -7436,6 +7458,7 @@ class RelayWindow(QtWidgets.QWidget):
         self.go_btn.setText("■ Arrêter le partage")
         self.port_combo.setEnabled(False)
         self.tcp_spin.setEnabled(False)
+        self.allow_edit.setEnabled(False)
         self.timer.start()
         self.tick()
 
@@ -7445,6 +7468,8 @@ class RelayWindow(QtWidgets.QWidget):
             return
         usb = "✔ tinySA ouvert" if r.serial_ok else f"⚠ {r.error or 'tinySA introuvable'} (nouvel essai…)"
         cli = f"✔ connecté à {r.client}" if r.client else "en attente du PC principal…"
+        if r.refused:
+            cli += f" · ⛔ refusé : {r.refused}"
         self.state_lbl.setText(f"{usb}\nRéseau : {cli}\nTrafic : {r.rx / 1024:.0f} Ko reçus du tinySA · "
                                f"{r.tx / 1024:.1f} Ko de commandes")
 
@@ -16729,7 +16754,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return self._ver
 
     def _sync_cfg(self, *_):
-        c = self._cfg
+        c = dict(self._cfg)     # audit 7.44 : on prépare une copie, puis on la pose d'un coup sous le verrou
         c["rbw"] = self.rbw_combo.currentData()
         c["zrbw"] = self.zrbw_combo.currentData()
         c["zpts"] = self.zpts_combo.currentData()
@@ -16742,6 +16767,9 @@ class MainWindow(QtWidgets.QMainWindow):
         c["points"] = int(pd_) if pd_ and pd_ > 0 else 1000
         c["points_auto"] = pd_ in AUTO_BUDGET
         c["points_sel"] = pd_
+        with self.lock:
+            self._cfg.update(c)
+        c = self._cfg
         if c["points_auto"] and getattr(self, "bands", None) and self._auto_steps() is not None and self._auto_changed:
             self.rebuild_band_table()
             self.update_estimate()
@@ -18036,6 +18064,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _calib_end(self, msg, popup=True):
         with self.lock:
             self._calib = None
+        if msg.startswith("⚖"):     # audit 7.44 : offsets changés -> max hold / historique d'avant = autre échelle
+            self.history.clear()
+            self.reset_max()
         self._bump()
         self.calib_btn.setText("⚖ Calibrer les autres tinySA sur le 1er…")
         self.calib_msg = msg
@@ -19706,7 +19737,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     bg = blend(gc, base, 0.55)
                     fg = contrast_text(bg)
                 elif c == C_MARG:
-                    it.setToolTip(m_tip)
+                    fl_ = w.get("floor")
+                    it.setToolTip(m_tip + (f"\nBruit de fond utilisé : {self.lvl(fl_, True)} (± 2 MHz autour)"
+                                           if fl_ is not None and w.get("level") is not None else ""))
                     if m_tone in ("warn", "bad") and not (keep_free and m_tone == "ok"):
                         bg = blend(th["st_weak"] if m_tone == "warn" else th["st_occ"], base, 0.6)
                         fg = contrast_text(bg)
@@ -20430,6 +20463,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 wr.writerow([t.item(r, c).text() for c in range(7)])
 
     # --------------------------------------------------------- données live
+    def _sweep_time(self, bid):
+        """Heure de la mesure donnée par le worker (audit 7.44 : interface chargée = balayages datés en retard) ;
+        heure actuelle si l'appareil ne la donne pas (ou si elle est incohérente)."""
+        now = time.time()
+        try:
+            t = (getattr(self.sender(), "sweep_t", None) or {}).get(bid)
+        except Exception:  # noqa: BLE001
+            t = None
+        return t if isinstance(t, float) and now - 120.0 < t <= now + 1.0 else now
+
     def on_sweep(self, bid, f, l):
         if bid in CALIB_IDS:
             self._calib_add(CALIB_IDS.index(bid), f, l)
@@ -20446,7 +20489,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.history.pop(bid, None)
         self.latest[bid] = (f, l)
-        self.latest_t[bid] = time.time()
+        self.latest_t[bid] = self._sweep_time(bid)
         if bid != ZOOM_ID and len(l):
             self.__dict__.setdefault("_sat_max", {})[bid] = (self.latest_t[bid], float(np.nanmax(l)))
         if bid != ZOOM_ID:
@@ -20550,6 +20593,7 @@ class MainWindow(QtWidgets.QMainWindow):
             w["level"] = lvl
             fl_ = noise_floor(F, L, f, win=2.0 + bw / 2.0, exclude=max(0.15, win, bw / 2.0)) if lvl is not None else None
             w["margin"] = (lvl - fl_) if fl_ is not None else None
+            w["floor"] = fl_
             if lvl is None:
                 w["state"], w["t_acc"] = None, None
                 self._alarm_reset(w, now)

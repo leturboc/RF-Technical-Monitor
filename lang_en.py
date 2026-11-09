@@ -4288,3 +4288,18 @@ TEMPLATES.update({
         '{} mic(s) barely above the noise ({}): move the tinySA antenna closer or check the transmitters.',
     '{} fréquence(s) sans mesure récente alors que la surveillance tourne.': '{} frequency(ies) with no recent measurement while monitoring is running.',
 })
+
+# 7.45 : audit 2 (relais, bruit de fond, refus)
+EXACT.update({
+    'PC autorisés :': 'Allowed PCs:',
+    'vide = tout le réseau · ex. 192.168.1.10': 'empty = whole network · e.g. 192.168.1.10',
+    "Adresses IP des PC qui ont le droit de se connecter à ce tinySA, séparées par des virgules. Vide = n'importe quel appareil du réseau.":
+        'IP addresses of the PCs allowed to connect to this tinySA, separated by commas. Empty = any device on the network.',
+})
+TEMPLATES.update({
+    '\nBruit de fond utilisé : {} (± 2 MHz autour)': '\nNoise floor used: {} (± 2 MHz around)',
+    ' · ⛔ refusé : {}': ' · ⛔ refused: {}',
+    'Bruit de fond utilisé : {} (± 2 MHz autour)': 'Noise floor used: {} (± 2 MHz around)',
+    '{} niveau(x) illisible(s) sur {}': '{} unreadable level(s) out of {}',
+    '{} points reçus sur {}, sans fréquences fiables': '{} points received out of {}, without reliable frequencies',
+})

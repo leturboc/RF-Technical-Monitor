@@ -1089,8 +1089,13 @@ _sc = ns["scan_check"]
 _F = np.linspace(470e6, 480e6, 101)
 check("scan complet accepté", _sc(_F, np.full(101, -90.0), 470e6, 480e6, 101)[1], "ok")
 _r = _sc(None, np.full(80, -90.0), 470e6, 480e6, 101)
-check("scan tronqué : signalé « court », grille sur la bande", (_r[1], len(_r[0]), _r[0][0], _r[0][-1]),
-      ("court", 80, 470e6, 480e6))
+check("scan tronqué sans fréquences : refusé (on ne sait pas quoi manque)", (_r[0], _r[1]), (None, "invalide"))
+_r = _sc(np.linspace(470e6, 478e6, 81), np.full(81, -90.0), 470e6, 480e6, 101)
+check("scan tronqué AVEC fréquences fiables : « court », gardé à sa place", (_r[1], len(_r[0]), _r[0][-1]),
+      ("court", 81, 478e6))
+_nan = np.full(101, -90.0); _nan[40] = np.nan
+check("un seul NaN : balayage refusé", _sc(_F, _nan, 470e6, 480e6, 101)[1], "invalide")
+check("refus du tinySA reconnu (try_cmd)", bool(ns["tinysa_refusal"](["USB disk mode active"])), True)
 check("scan vide / absurde : invalide", (_sc(None, [-90.0], 470e6, 480e6, 101)[1],
                                          _sc(None, np.full(50, 900.0), 470e6, 480e6, 50)[1]), ("invalide", "invalide"))
 _bad = _F.copy(); _bad[10] = _bad[9]

@@ -87,6 +87,20 @@ dev2.close()
 dev3.close()
 check("compteurs de trafic", relay.rx > 1000 and relay.tx > 10, f"rx={relay.rx} tx={relay.tx}")
 
+# --- liste d'adresses autorisées (audit 7.44) : 127.0.0.1 pas dedans -> connexion refusée
+r3 = SerialRelay(slave_path, tcp_port=0, host="127.0.0.1", allow=["10.9.9.9"])
+r3.start()
+r3.ready.wait(3)
+try:
+    TinySA(f"socket://127.0.0.1:{r3.tcp_port}").version()
+    _ok3 = False
+except Exception:  # noqa: BLE001
+    _ok3 = True
+time.sleep(0.2)
+check("relais Windows : adresse non autorisée refusée", _ok3 and r3.refused == "127.0.0.1", r3.refused)
+r3.stop()
+r3.join(4)
+
 # --- port série introuvable : le relais reste vivant et réessaie
 r2 = SerialRelay("/dev/inexistant_tinysa", tcp_port=0, host="127.0.0.1")
 r2.start()
