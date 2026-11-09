@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.48.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.49.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -799,6 +799,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **1er lancement** (Clément : « la vue du spectre en 470-694 pour ceux qui le téléchargent ») : avant toute mesure,
     l'axe se cale sur les bandes (`_fit_range` dans la branche « pas de données » de `update_plot`) — avant, il
     montrait 0–1 MHz ; « Vue » restait vide (`refresh_view_combo` : `findData(None)` tombait sur un séparateur).
+- **7.49.0 (Clément : « tu me l'as caché où la coord ??? », « re-ranger les menus, c'est incompréhensible, ordre
+  alphabétique ? »)** : pas d'alphabétique (mélangerait des outils sans rapport) → **rubriques titrées** dans les 4 menus :
+  entrée `("§Titre", None)` de `STEPS` = `QMenu.addSection` (Préparer : 1. Scanner le lieu / 2. Ma liste / 3.
+  Coordination (avancé) / 4. Organiser le show ; Surveiller : Avant d'ouvrir / Pendant / Un micro est brouillé ? /
+  À distance et la nuit ; Analyser : Revoir le show / Scans des autres logiciels ; Matériel : Mes tinySA / En réseau /
+  Mesure et dépannage). Coordination cachée : entrée `_coord_hint` « 🔒 Outils de coordination cachés : les
+  afficher… » (`show_coord_setting` = ⚙ › Général), visible seulement si `coord_on` est faux (`set_coord`). lang_en :
+  les titres avec ET sans « § ».
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

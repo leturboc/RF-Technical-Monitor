@@ -143,7 +143,11 @@ _miss_m = [a.text() for mn in win.step_menus.values() for a in mn.actions()
            if a.text() and not a.isSeparator() and a.menu() is None
            and not any(n == a.text() for _k, _t, _tp, its in m.STEPS for n, _f in its if n)]
 check("4 menus : chaque entrée vient de STEPS (ou d'un sous-menu ajouté)", not _miss_m, str(_miss_m))
-_bad_m = [n for _k, _t, _tp, its in m.STEPS for n, f in its if n and not callable(getattr(win, f, None))]
+_bad_m = [n for _k, _t, _tp, its in m.STEPS for n, f in its if n and not n.startswith("§")
+          and not callable(getattr(win, f, None))]
+check("menus rangés en rubriques titrées (7.49)", all(any(n and n.startswith("§") for n, _f in its)
+                                                       for _k, _t, _tp, its in m.STEPS))
+check("coordination cachée : l'entrée « 🔒 … les afficher » est là", win._coord_hint.isVisible() != win.coord_on)
 check("4 menus : chaque entrée a sa méthode", not _bad_m, str(_bad_m))
 check("mots simples : « Pics gardés » hors expert", win.hold_chk.text() == "Pics gardés" and "max hold" in
       win.hold_chk.toolTip().lower(), win.hold_chk.text())
