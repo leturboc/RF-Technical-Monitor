@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.41.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.43.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -673,6 +673,43 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   attribut / liste / dict de MainWindow → `free_plot_menus` + `deleteLater`), `ShowModeWindow` en `WA_DeleteOnClose`.
   Mesure (16 fenêtres × 4) : +60 Mo / tour → ≈ +10 Mo / tour. **Garder une fenêtre réutilisée = la ranger dans un
   attribut de MainWindow** (sinon elle est détruite 10 s après fermeture). monkey.py PAS dans la CI (long).
+- **7.42.0 (revue de code d'un autre développeur, transmise par Clément)** — fiabilité de l'acquisition :
+  - **Réglages refusés** : `_apply_settings` / `_apply_front` (renvoie ok) / entrée haute-basse / `ultra on` ne
+    mémorisent un réglage QUE s'il est accepté (sinon `"?"` / None → retenté au cycle suivant) ; `_warn` = message au
+    plus 1×/min. Test smoke_test5 (faux tinySA qui refuse puis accepte).
+  - **Calibration** : PURE `_clean_grid` (finies, croissantes), `calib_maxhold(sweeps, n)` = n PREMIERS balayages de
+    chaque appareil (avant : 5 contre 3 → biais, −1,3 dB mesuré en test, −0,1 maintenant), balayages à grille différente
+    ignorés ; `calib_repeat` (offset balayage par balayage → « répétabilité ±x dB » dans le message).
+  - **Balayages contrôlés** : PURE `scan_check(fr, lv, a, z, pts)` → ok / court (moins de points : utilisé, signalé,
+    compté) / invalide (→ RuntimeError → reconnexion) ; fréquences du tinySA non croissantes / hors bande → grille refaite.
+  - `TinySA._cmd` : `time.monotonic()` + `bytearray` ; `ScanWorker.stats` / `stats_text()` (segments, cycles, temps
+    de réglage, incomplets, invalides, refus, reconnexions) dans le 🩺 diagnostic.
+  - **Relais** (Pi et `SerialRelay`) : `write_timeout=2` côté série, `settimeout(5)` sur le client (un client qui ne lit
+    plus est lâché au lieu de bloquer) ; Pi : `--host` / `--allow` (ou `TSM_RELAY_HOST` / `TSM_RELAY_ALLOW` via
+    `systemctl edit`), LISEZMOI § 5 Sécurité. Tests test_relais_pi (client lent, --allow).
+  - **CI** : job `linux-tests` (ubuntu, pty) : test_reseau, test_reseau_qt, test_relais_pi, test_garde, test_v7.
+  - Pas fait (proposé par la revue) : découpage du fichier en modules (conflits V8), interface `SpectrumDevice`
+    (prévu avec la V8), calibration par fréquence, métadonnées de mesure complètes.
+- **7.43.0 (Clément : « l'écran de base est assez imbuvable, penser hyper user friendly », « la coord je préfère la
+  garder cachée pour moi, on peut laisser la fréquence de secours », « + fréq image »)** :
+  - **🏠 Accueil** : `HomeBar` (toolbar `home_bar` sous `cmd_bar`) : cartes ① tinySA (`port_btn` menu = ports de
+    `port_combo` + démo), ② Mes micros (Importer / Ajouter / Depuis le scan), ③ Surveiller (▶ / ■, ✅ Prêt ?, 🖥 Mode
+    Show), 🎓 Tuto, ✕ ; carte à faire entourée (PURE `home_next`) ; grande phrase (PURE `home_status` : idle / ok /
+    warn « sans signal pour l'instant » / bad alarmes, tinySA perdu). `home_info`, `update_home` (dans `_alarm_tick`),
+    `set_home` (config `home`, ☰ Plus › 👁 Affichage › 🏠), `_home_layout` : avec l'accueil et hors expert, la barre de
+    parcours et Port / Démarrer de `cmd_bar` (`_dup_acts`) sont cachés. Tuto « écran » : 3 étapes accueil en tête
+    (`start_tour`), étapes visant des widgets cachés retirées.
+  - **Coordination cachée** : `coord_on` (config `coord_tools`, défaut False, case `coord_chk` dans ⚙ › Général),
+    `set_coord` : parcours ③ ④ (`_step_acts`, `_step_arrows`), `_coord_acts` (☰ Plus 🪄 🧮 🎛 + Intermod), tuto
+    « coord » (`COORD_TOURS`), étapes des tutos dont l'action est dans `COORD_METHODS`, clic droit du journal
+    « D'où ça peut venir », plan dans « Prêt ? ». 🆘 secours toujours visible. Manuel : encadrés « cachés par défaut ».
+  - **Fréquence image** : `pf_check(..., img)` (FI par fréquence, `_pf_vec`) : récepteur à FI > 0 + ÉMETTEUR à
+    f ± 2 × FI (les deux côtés, tolérance 2 TX du récepteur, 100 kHz si 0) → problème `img` ; `pf_suggest(..., img)`
+    (vérif exacte) ; `pf_issue_text` ; profils : `img` gardé par `rx_custom_norm` / `rx_custom_dump`, lu des .ezrf3 et
+    .lst4 (`rx_from_library`), champ « FI (fréquence image) » de `RxProfileEdit` ; PlanCheckDialog `_imgs`.
+    **Supposition** : image à ± 2 × FI (physique d'un superhétérodyne) ; la doc EazyRF parlait de « deux fréquences
+    séparées de 10,7 MHz » (l'écart = FI, oscillateur local ?) — **à faire vérifier par Clément** avec un plan test dans
+    EazyRF (deux TX à 21,4 MHz puis à 10,7 MHz d'un récepteur analogique).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

@@ -658,5 +658,34 @@ check("config relue : blocs", sorted(w["bw"] for w in win5.watch) == sorted(w["b
       str([w["bw"] for w in win5.watch]))
 check("préréglages Spectera", sum(1 for p in m.BAND_PRESETS if p[0].startswith("Spectera")) == 4)
 
+# ---- réglage refusé par le tinySA : retenté au cycle suivant (revue de code 7.41)
+class _Dev:
+    def __init__(self):
+        self.rbw_calls, self.cmds, self.refuse = 0, [], True
+
+    def set_rbw(self, khz):
+        self.rbw_calls += 1
+        return (False, "rbw 30 : usage") if self.refuse else (True, "")
+
+    def try_cmd(self, t):
+        self.cmds.append(t)
+        return (False, f"{t} : usage") if self.refuse else (True, "")
+
+
+_w = m.ScanWorker("x", False, lambda: None, lambda: 0)
+_d = _Dev()
+_cfg = dict(rbw=30, lna=False, att="auto")
+_w._apply_settings(_d, _cfg)
+check("réglage refusé : pas noté comme appliqué", _w.st["rbw"] == "?" and _w.st["front"] == "?", str(_w.st))
+_w._apply_settings(_d, _cfg)
+check("réglage refusé : retenté au cycle suivant", _d.rbw_calls == 2, str(_d.rbw_calls))
+_d.refuse = False
+_w._apply_settings(_d, _cfg)
+_n = _d.rbw_calls
+_w._apply_settings(_d, _cfg)
+check("réglage accepté : noté, plus renvoyé", _w.st["rbw"] == 30 and _w.st["front"] == (False, "auto")
+      and _d.rbw_calls == _n, str(_w.st))
+check("réglage refusé : compté dans les statistiques", _w.stats["refused"] >= 2 and "refus" in _w.stats_text())
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

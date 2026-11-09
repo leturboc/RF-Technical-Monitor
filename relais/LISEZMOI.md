@@ -81,6 +81,29 @@ Un Pi peut partager jusqu'à 8 tinySA (un réseau, une boîte, plusieurs antenne
 
 Astuce : colle une étiquette « 5025 », « 5026 »… sur chaque tinySA une fois les ports attribués.
 
+## 5. Sécurité du réseau
+
+Le relais n'a **pas de mot de passe** : toute machine du réseau qui joint le Pi sur le port 5025 peut parler au
+tinySA. Sur un réseau technique isolé (le réseau de la régie, un routeur à toi), ce n'est pas un problème. Sur un
+Wi-Fi partagé (public, catering…), limite l'accès :
+
+- **Seulement le PC de régie** : remplace `192.168.1.10` par l'IP du PC.
+  ```
+  sudo systemctl edit tinysa-relais
+  ```
+  puis écris ces deux lignes, enregistre (Ctrl+O, Entrée, Ctrl+X) :
+  ```
+  [Service]
+  Environment=TSM_RELAY_ALLOW=192.168.1.10
+  ```
+  et `sudo systemctl restart tinysa-relais`. Plusieurs PC : `TSM_RELAY_ALLOW=192.168.1.10,192.168.1.11`.
+  Le journal dit « Connexion refusée » pour les autres.
+- **Une seule interface** du Pi (ex. seulement le câble Ethernet) : `Environment=TSM_RELAY_HOST=192.168.1.50` (l'IP
+  du Pi sur ce réseau-là).
+- Les mêmes réglages existent en ligne de commande : `--allow 192.168.1.10` et `--host 192.168.1.50`.
+
+Un client qui se fige (PC en veille, Wi-Fi qui décroche) est lâché au bout de 5 s : il ne bloque plus le relais.
+
 ## Dépannage
 
 ### « En attente du tinySA (aucun tinySA vu en USB) »

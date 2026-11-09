@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.41.1"
+APP_VER = "7.43.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1875,7 +1875,7 @@ def rx_library_find(lib, text, limit=400):
 def rx_from_library(dev):
     """Appareil de la bibliothèque -> profil perso (rx_custom_norm), avec sa plage de fréquences."""
     return dict(name=dev["name"], sep=dev["sep"], filt=dev["filt"], step=dev["step"], tol=dict(dev["tol"]),
-                lo=dev.get("lo", 0.0), hi=dev.get("hi", 0.0), src="eazyrf",
+                lo=dev.get("lo", 0.0), hi=dev.get("hi", 0.0), src="eazyrf", img=float(dev.get("img") or 0.0),
                 note=f"Bibliothèque · {dev.get('type', '')} · {dev.get('lo', 0):g}–{dev.get('hi', 0):g} MHz")
 
 
@@ -1901,7 +1901,7 @@ def ezrf_dev_key(p):
     """Clé d'un appareil : nom + réglages (deux « AKG DMS700 » réglés différemment = deux profils)."""
     t = p.get("tol") or {}
     return (p["name"], round(p.get("sep", 0), 4), round(p.get("filt", 0), 3), round(p.get("step", 0), 4),
-            round(t.get("2tx3", 0), 4), round(t.get("3tx3", 0), 4), round(t.get("5", 0), 4))
+            round(t.get("2tx3", 0), 4), round(t.get("3tx3", 0), 4), round(t.get("5", 0), 4), round(p.get("img") or 0, 3))
 
 
 def parse_ezrf3(data):
@@ -2158,6 +2158,8 @@ def rx_custom_norm(lst):
         tol = {k: _rx_num(t.get(k), 0.0, 2.0, d) for k, d in _TOL_EZ.items()}
         tol["7"] = 0.0
         extra = {k_: _rx_num(p.get(k_), 0.0, 7000.0, 0.0) for k_ in ("lo", "hi") if p.get(k_)}
+        if p.get("img"):
+            extra["img"] = _rx_num(p.get("img"), 0.0, 200.0, 0.0)      # FI (fréquence intermédiaire) : image à ± 2 × FI
         out.append((key, name, dict(sep=_rx_num(p.get("sep"), 0.0, 10.0, 0.4), filt=_rx_num(p.get("filt"), 0.0, 400.0, 0.0),
                                     step=_rx_num(p.get("step"), 0.001, 1.0, 0.025), tol=tol,
                                     src="eazyrf" if p.get("src") == "eazyrf" else "perso", **extra),
@@ -2172,7 +2174,8 @@ def rx_set_custom(lst):
 def rx_custom_dump():
     """Profils perso -> liste JSON (config, shows)."""
     return [dict(key=k, name=n, sep=d["sep"], filt=d["filt"], step=d["step"], tol=dict(d["tol"]), note=w,
-                 src=d.get("src", "perso"), **{k_: d[k_] for k_ in ("lo", "hi") if d.get(k_)}) for k, n, d, w in RX_CUSTOM]
+                 src=d.get("src", "perso"), **{k_: d[k_] for k_ in ("lo", "hi", "img") if d.get(k_)})
+            for k, n, d, w in RX_CUSTOM]
 
 
 RX_SRC_TXT = {"eazyrf": "courant", "guess": "générique", "perso": "ton profil"}
@@ -2231,7 +2234,7 @@ def _pf_tols(tol, n):
     return L, {k: max([t.get(k, 0.0) for t in L], default=0.0) for k in ("2tx3", "3tx3", "5", "7")}
 
 
-def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, filt=0.0):
+def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, filt=0.0, img=0.0):
     """Compatibilité d'un plan : pour chaque fréquence, la liste de ses problèmes.
     - « sep » : une autre porteuse à moins de `sep` MHz (bord à bord pour un bloc large) ;
     - « im » : un produit d'intermod des ÉMETTEURS (is_tx) tombe dessus, dans la tolérance de son type (`tol`,
@@ -2240,6 +2243,9 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
     que si tous ses émetteurs sont à ± filt / 2 d'elle (les autres sont filtrés). 0 = pas de filtre.
     sep, filt et tol peuvent être donnés PAR FRÉQUENCE (listes : profil d'appareil de chacune) : l'écart entre deux
     porteuses est le plus grand des deux, le filtre et les tolérances sont ceux de la fréquence touchée.
+    img : FI du récepteur (MHz, 0 = pas vérifié ; une valeur ou une par fréquence). Récepteur superhétérodyne (les
+    analogiques, FI 10,7 MHz) : un ÉMETTEUR à f ± 2 × FI tombe sur sa fréquence image -> problème « img » (tolérance =
+    celle des 2 TX du récepteur, 100 kHz si elle vaut 0). Les deux côtés sont vérifiés (côté de l'oscillateur inconnu).
     -> (issues, info) ; issues[i] = [dict(kind, others=[indices], gap MHz, order, ntx, terms)]."""
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
@@ -2259,6 +2265,17 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
         g = float(D[a, b])
         issues[a].append(dict(kind="sep", others=[b], gap=g))
         issues[b].append(dict(kind="sep", others=[a], gap=g))
+    IM = _pf_vec(img, n)
+    for v in np.nonzero(IM > 0)[0].tolist():                   # fréquence image des récepteurs superhétérodynes
+        ti = TL[v].get("2tx3", 0.0) or 0.100
+        for k in np.nonzero(tx)[0].tolist():
+            if k == v:
+                continue
+            for side in (1.0, -1.0):
+                g = abs(F[k] - (F[v] + side * 2.0 * IM[v])) - (B[k] + B[v]) / 2.0
+                if g < ti - 1e-6:
+                    issues[v].append(dict(kind="img", others=[k], gap=float(max(0.0, g)), fi=float(IM[v])))
+                    break
     txi = np.nonzero(tx)[0]
     orders = pf_orders(tmax)
     if len(txi) >= 2 and orders:
@@ -2281,6 +2298,11 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
 
 def pf_issue_text(it, names, freqs):
     """Une ligne lisible pour un problème de pf_check."""
+    if it["kind"] == "img":
+        o = it["others"][0]
+        if it["gap"] <= 0.001:
+            return f"fréquence image : {names[o]} ({freqs[o]:.3f}) pile à 2 × FI ({it['fi']:g} MHz)"
+        return f"fréquence image : {names[o]} ({freqs[o]:.3f}) à {it['gap'] * 1000:.0f} kHz de 2 × FI ({it['fi']:g} MHz)"
     if it["kind"] == "sep":
         o = it["others"][0]
         if it["gap"] < 0:
@@ -2292,7 +2314,7 @@ def pf_issue_text(it, names, freqs):
 
 
 def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, lo=None, hi=None, step=0.025,
-               n=5, busy=None, max_check=600, filt=0.0):
+               n=5, busy=None, max_check=600, filt=0.0, img=0.0):
     """Fréquences de remplacement pour la n° i, les plus proches d'abord : aucune incompatibilité pour elle,
     et pas de NOUVEAU problème pour les autres. busy(c) -> True si le spectre mesuré y est occupé (on évite).
     sep / tol / filt : comme pf_check (une valeur, ou une par fréquence). step : pas des fréquences proposées.
@@ -2313,7 +2335,9 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
     others = [k for k in range(nn) if k != i]
     Fo, Bo, To = [F[k] for k in others], [B[k] for k in others], [T[k] for k in others]
     TLo, SPo, FLo = [TL[k] for k in others], [float(SP[k]) for k in others], [float(FL[k]) for k in others]
-    base, _ = pf_check(Fo, To, Bo, SPo, TLo, max_tx, FLo)
+    IMv = _pf_vec(img, nn)
+    IMo = [float(IMv[k]) for k in others]
+    base, _ = pf_check(Fo, To, Bo, SPo, TLo, max_tx, FLo, IMo)
     base_n = sum(len(x) for x in base)
     grid = np.round(np.arange(math.ceil(lo / step - 1e-9) * step, hi + 1e-9, step), 6)
     grid = grid[np.abs(grid - f0) > 1e-9]
@@ -2385,7 +2409,7 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
         if checked > max_check:
             break
         iss, _ = pf_check(Fo + [c], To + [T[i]], Bo + [bi], SPo + [float(SP[i])], TLo + [ti], max_tx,
-                          FLo + [float(FL[i])])                                  # vérification exacte
+                          FLo + [float(FL[i])], IMo + [float(IMv[i])])           # vérification exacte
         if iss[-1] or sum(len(x) for x in iss[:-1]) > base_n:
             continue
         out.append((c, c - f0))
@@ -3583,11 +3607,82 @@ def assign_bands(items, ndev=2, live=None):
     return out
 
 
+def _clean_grid(F, L):
+    """Fréquences / niveaux nettoyés : valeurs finies, fréquences strictement croissantes (np.interp l'exige)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    n = min(len(F), len(L))
+    F, L = F[:n], L[:n]
+    ok = np.isfinite(F) & np.isfinite(L)
+    F, L = F[ok], L[ok]
+    if len(F) > 1 and np.any(np.diff(F) <= 0):
+        o = np.argsort(F, kind="stable")
+        F, L = F[o], L[o]
+        keep = np.concatenate(([True], np.diff(F) > 0))
+        F, L = F[keep], L[keep]
+    return F, L
+
+
+def calib_maxhold(sweeps, n):
+    """Max hold des n PREMIERS balayages d'un tinySA (même nombre pour chaque appareil : le max du bruit monte avec
+    le nombre de balayages, comparer 5 balayages à 3 biaisait l'offset — revue de code 7.41). Les balayages dont la
+    grille de fréquences diffère de celle du 1er sont ignorés. -> (F, L) ou None."""
+    sel = list(sweeps)[:max(1, int(n))]
+    if not sel:
+        return None
+    f0, l0 = _clean_grid(*sel[0])
+    if len(f0) < 2:
+        return None
+    ls = [l0]
+    for f_, l_ in sel[1:]:
+        f_, l_ = _clean_grid(f_, l_)
+        if f_.shape == f0.shape and np.allclose(f_, f0, rtol=0, atol=max(1e-6, 1e-3 * abs(f0[1] - f0[0]))):
+            ls.append(l_)
+    return f0, np.max(np.vstack(ls), axis=0)
+
+
+def calib_repeat(sweeps1, sweeps2, n, snr=10.0):
+    """Répétabilité : offset calculé balayage par balayage (i-ème du 1er contre i-ème de l'autre) -> (médiane, écart
+    max − min) en dB, ou None. Sert à dire si la calibration est stable."""
+    ds = []
+    for (f1, l1), (f2, l2) in zip(list(sweeps1)[:n], list(sweeps2)[:n]):
+        r = calib_offset(f1, l1, f2, l2, snr)
+        if r is not None:
+            ds.append(r[0])
+    if not ds:
+        return None
+    return round(float(np.median(ds)), 1) + 0.0, round(float(max(ds) - min(ds)), 1) + 0.0
+
+
+def scan_check(fr, lv, a, z, pts):
+    """Contrôle d'un segment reçu du tinySA (revue de code 7.41 : un scan tronqué était étalé sur toute la bande sans
+    rien dire). fr = fréquences Hz renvoyées (ou None), lv = niveaux, [a, z] Hz demandés, pts demandés.
+    -> (fréquences à utiliser, état "ok" | "court" | "invalide", note). « court » = moins de points que demandé
+    (utilisable, signalé) ; « invalide » = inutilisable (rien, ou niveaux absurdes)."""
+    lv = np.asarray(lv, dtype=float)
+    n = len(lv)
+    if n < 2 or not np.isfinite(lv).any():
+        return None, "invalide", f"{n} point(s) reçu(s) sur {pts}"
+    if np.nanmax(lv) > 40 or np.nanmin(lv) < -200:
+        return None, "invalide", "niveaux hors de toute plage possible"
+    step = (z - a) / max(1, pts - 1)
+    good = False
+    if fr is not None and len(fr) == n:
+        fr = np.asarray(fr, dtype=float)
+        good = (np.isfinite(fr).all() and np.all(np.diff(fr) > 0)
+                and fr[0] >= a - 2 * step - 1 and fr[-1] <= z + 2 * step + 1)
+    if not good:
+        fr = np.linspace(a, z, n)
+    if n < pts:
+        return fr, "court", f"{n} points reçus sur {pts} demandés"
+    return fr, "ok", ""
+
+
 def calib_offset(F1, L1, F2, L2, snr=10.0, min_pts=5):
     """Écart de lecture entre deux tinySA qui ont balayé la même bande (même antenne / splitter).
     -> (correction à AJOUTER au 2e en dB, nb de points utilisés, base « signaux » | « bruit de fond ») ou None.
     On compare d'abord les signaux vus par les deux (> plancher + snr dB) ; sinon le plancher de bruit."""
-    F1, L1, F2, L2 = (np.asarray(x, dtype=float) for x in (F1, L1, F2, L2))
+    F1, L1 = _clean_grid(F1, L1)
+    F2, L2 = _clean_grid(F2, L2)
     if len(F1) < 2 or len(F2) < 2:
         return None
     lo, hi = max(F1[0], F2[0]), min(F1[-1], F2[-1])
@@ -5488,6 +5583,11 @@ STEPS = (
       ("📤 Exporter les fréquences…", "export_by_scene"))),
 )
 STEP_DEFAULT = dict(scan="step_scan", plan="open_plan_check", im="open_intermod")
+# Outils de coordination : cachés par défaut (7.43, Clément : « toute la partie coord je préfère la garder en caché pour
+# moi, on peut laisser la fréquence de secours ») ; ⚙ › Général › « Outils de coordination (avancé) » les remontre.
+COORD_METHODS = ("open_coord", "open_plan_check", "open_rx_profiles", "open_intermod", "open_intermod_for")
+COORD_STEPS = ("plan", "im")
+COORD_TOURS = ("coord",)
 STEP_HINTS = {
     "scan": "① Laisse tourner quelques minutes : le max hold (orange) montre ce qui occupe déjà le lieu.",
     "list": "② Ajoute depuis le scan, importe ou saisis tes fréquences ; puis Ctrl+E = doit émettre, "
@@ -6641,6 +6741,54 @@ def ready_summary(checks):
     return "ok", "✅ Prêt pour le show !"
 
 
+# ------------------------------------------------------------------ accueil (7.43 : « écran de base imbuvable »)
+def home_next(i):
+    """Prochaine étape pour un débutant : "port" (brancher le tinySA), "list" (ajouter ses micros), "run" (démarrer)
+    ou "" (tout tourne)."""
+    if i.get("running"):
+        return ""
+    if not i.get("port") and not i.get("demo"):
+        return "port"
+    if not i.get("n_watch"):
+        return "list"
+    return "run"
+
+
+def home_status(i):
+    """Grande phrase d'état de l'accueil -> (ton ok|warn|bad|idle, texte). i : running, demo, port, n_watch,
+    alarms [(type, nom)], ok, free, weak, muted, lost (tinySA perdus)."""
+    nxt = home_next(i)
+    if nxt == "port":
+        return "idle", "① Branche le tinySA en USB et allume-le (ou essaie le mode démo)."
+    if nxt == "list":
+        return "idle", "② Ajoute tes micros : importe ton plan de fréquences ou ajoute-les à la main."
+    if nxt == "run":
+        return "idle", "③ Prêt : clique ▶ Démarrer la surveillance."
+    if i.get("lost"):
+        who = ", ".join(i["lost"])
+        return "bad", f"⚠ tinySA déconnecté : {who} — vérifie le câble (reconnexion automatique)"
+    al = i.get("alarms") or []
+    if al:
+        shown = " · ".join(f"{n} : {k}" for k, n in al[:3]) + (f" (+ {len(al) - 3})" if len(al) > 3 else "")
+        return "bad", f"⚠ {len(al)} problème(s) — {shown}"
+    bits = []
+    if i.get("ok"):
+        bits.append(f"{i['ok']} micro(s) OK")
+    if i.get("free"):
+        bits.append(f"{i['free']} réserve(s) libre(s)")
+    if i.get("weak"):
+        bits.append(f"{i['weak']} signal(aux) faible(s)")
+    if i.get("silent"):
+        bits.append(f"{i['silent']} micro(s) sans signal pour l'instant")
+    if i.get("muted"):
+        bits.append(f"{i['muted']} éteint(s) exprès")
+    if i.get("demo"):
+        bits.append("mode démo")
+    if i.get("weak") or i.get("silent"):
+        return "warn", "✔ Pas d'alarme — " + " · ".join(bits)
+    return "ok", "✔ Tout va bien" + (" — " + " · ".join(bits) if bits else "")
+
+
 # ===== PURE-END
 
 
@@ -6677,15 +6825,15 @@ class TinySA:
     def cmd(self, text, timeout=15.0):
         if self.trace is None:
             return self._cmd(text, timeout)
-        t0 = time.time()
+        t0 = time.monotonic()
         self.trace(f">> {text or '(entrée)'}")
         try:
             lines = self._cmd(text, timeout)
         except Exception as e:
-            self.trace(f"!! {type(e).__name__} : {e} (après {time.time() - t0:.1f} s)")
+            self.trace(f"!! {type(e).__name__} : {e} (après {time.monotonic() - t0:.1f} s)")
             raise
         first = lines[0][:70] if lines else ""
-        self.trace(f"<< {len(lines)} ligne(s) en {time.time() - t0:.2f} s" + (f" : {first}" if first else ""))
+        self.trace(f"<< {len(lines)} ligne(s) en {time.monotonic() - t0:.2f} s" + (f" : {first}" if first else ""))
         return lines
 
     def _cmd(self, text, timeout=15.0):
@@ -6693,10 +6841,10 @@ class TinySA:
         out_ = (text + "\r").encode()
         self.ser.write(out_)
         self.tx_bytes += len(out_)
-        buf, t0 = b"", time.time()
+        buf, t0 = bytearray(), time.monotonic()      # monotonic : une heure système corrigée (NTP) ne fausse rien
         t_rx, first = t0, True
         while True:
-            now = time.time()
+            now = time.monotonic()
             if now - t0 > timeout:
                 raise TimeoutError(f"Pas de réponse du tinySA à « {text} »")
             if self.abort is not None and self.abort():
@@ -6707,12 +6855,12 @@ class TinySA:
             n = self.ser.in_waiting
             chunk = self.ser.read(n if n else 1)
             if chunk:
-                t_rx = time.time()
+                t_rx = time.monotonic()
                 if first:
                     self.rtt, first = t_rx - t0, False
                 self.rx_bytes += len(chunk)
-                buf += chunk
-                if buf.rstrip().endswith(self.PROMPT):
+                buf.extend(chunk)
+                if buf[-16:].rstrip().endswith(self.PROMPT):
                     break
         lines = [l.strip() for l in buf.decode(errors="ignore").replace("\r", "\n").split("\n")]
         lines = [l for l in lines if l and not l.startswith("ch>")]
@@ -6961,7 +7109,11 @@ class ScanWorker(QtCore.QThread):
         self.paused = False                             # écoute en cours sur ce SDR : balayage suspendu
         self.st = dict(rbw="?", front="?", high=None)
         self.dev = None
-        self.cmdq = queue.Queue()                  # commandes à glisser entre deux bandes (identifier, numéroter)
+        self.cmdq = queue.Queue()
+        # statistiques (🩺 diagnostic) : où passe le temps, combien de balayages incomplets / reconnexions
+        self.stats = dict(segments=0, seg_s=0.0, seg_max=0.0, cycles=0, cycle_s=0.0, short=0, invalid=0,
+                          reconnects=0, refused=0, settings_s=0.0)
+        self._warned = {}                          # message -> dernière fois affiché (pas de répétition chaque cycle)                  # commandes à glisser entre deux bandes (identifier, numéroter)
 
     def force_close(self):
         """Arrêt qui traîne (tinySA qui ne répond plus) : on ferme le port depuis l'extérieur."""
@@ -6971,6 +7123,22 @@ class ScanWorker(QtCore.QThread):
 
     def _say(self, txt):
         return f"{self.label} : {txt}" if self.label else txt
+
+    def _warn(self, txt, every=60.0):
+        """Avertissement dans la barre d'état, au plus une fois par minute pour le même message."""
+        now = time.monotonic()
+        if now - self._warned.get(txt, -1e9) >= every:
+            self._warned[txt] = now
+            self.status.emit(self._say(txt))
+        self._tr("⚠ " + txt)
+
+    def stats_text(self):
+        s_ = self.stats
+        avg = s_["seg_s"] / s_["segments"] if s_["segments"] else 0.0
+        cyc = s_["cycle_s"] / s_["cycles"] if s_["cycles"] else 0.0
+        return (f"segments {s_['segments']} (moy. {avg:.2f} s, max {s_['seg_max']:.2f} s) · cycles {s_['cycles']} "
+                f"(moy. {cyc:.1f} s) · réglages {s_['settings_s']:.1f} s · incomplets {s_['short']} · invalides "
+                f"{s_['invalid']} · refus {s_['refused']} · reconnexions {s_['reconnects']}")
 
     def _tr(self, txt):
         self.trace.append(f"{datetime.now():%H:%M:%S.%f}"[:-3] + " " + txt)
@@ -7034,6 +7202,7 @@ class ScanWorker(QtCore.QThread):
                     lost = True
                     self.link.emit(False)
                 fails += 1
+                self.stats["reconnects"] += 1
                 self._tr(f"liaison perdue : {e}")
                 hint = (" · le tinySA semble figé : débranche / rebranche son USB (ou éteins-le / rallume-le)"
                         if fails >= 3 else "")
@@ -7057,13 +7226,15 @@ class ScanWorker(QtCore.QThread):
                 self.msleep(300)
                 continue
             if dev is not None:
+                t_s = time.monotonic()
                 self._apply_settings(dev, cfg)
                 if hasattr(dev, "configure"):
                     dev.configure(bands, cfg["rbw"], self.get_sdr())
+                self.stats["settings_s"] += time.monotonic() - t_s
                 self._tr("cycle : " + ", ".join(f"{b['name']} {b['start_hz'] / 1e6:g}–{b['stop_hz'] / 1e6:g} MHz "
                                                 f"{int(b['n'])} pts" for b in bands)
                          + f" · RBW {cfg['rbw'] or 'auto'} · entrée {cfg['input']}")
-            t0, aborted = time.time(), False
+            t0, aborted = time.monotonic(), False
             for b in bands:
                 self._run_cmds(dev)
                 res = self._scan_band(dev, b, cfg)
@@ -7073,7 +7244,10 @@ class ScanWorker(QtCore.QThread):
                 if len(res[0]):
                     self.sweep.emit(b["id"], res[0], res[1])
             if not aborted and not self.isInterruptionRequested():
-                self.cycle.emit(time.time() - t0, len(bands))
+                dt = time.monotonic() - t0
+                self.stats["cycles"] += 1
+                self.stats["cycle_s"] += dt
+                self.cycle.emit(dt, len(bands))
 
     def _run_cmds(self, dev):
         """👋 identifier (le fond de l'écran clignote en orange, puis ses couleurs reviennent) / 🔢 numéroter."""
@@ -7104,15 +7278,17 @@ class ScanWorker(QtCore.QThread):
                 self.devid.emit(n_)
 
     def _apply_settings(self, dev, cfg):
+        """Un réglage n'est retenu comme appliqué QUE si le tinySA l'a accepté (revue de code 7.41 : un refus était
+        mémorisé comme fait, jamais retenté, et l'appli croyait le tinySA réglé autrement qu'il ne l'était)."""
         if cfg["rbw"] != self.st["rbw"]:
             ok, msg = dev.set_rbw(cfg["rbw"])
-            self.st["rbw"] = cfg["rbw"]
+            self.st["rbw"] = cfg["rbw"] if ok else "?"
             if not ok:
-                self.status.emit(f"⚠ Réglage refusé par le tinySA — {msg}")
+                self.stats["refused"] += 1
+                self._warn(f"⚠ Réglage refusé par le tinySA — {msg}")
         front = (cfg["lna"], cfg["att"])
         if front != self.st["front"]:
-            self._apply_front(dev, cfg)
-            self.st["front"] = front
+            self.st["front"] = front if self._apply_front(dev, cfg) else "?"
 
     def _apply_front(self, dev, cfg):
         """LNA + atténuateur (mutuellement exclusifs sur le tinySA)."""
@@ -7130,7 +7306,9 @@ class ScanWorker(QtCore.QThread):
             if not ok:
                 fails.append(m)
         if fails:
-            self.status.emit("⚠ Réglage refusé par le tinySA — " + " ; ".join(fails))
+            self.stats["refused"] += 1
+            self._warn("⚠ Réglage refusé par le tinySA — " + " ; ".join(fails))
+        return not fails
 
     def _scan_band(self, dev, b, cfg):
         """Balaye une bande en segments. Renvoie None si la config a changé / arrêt demandé."""
@@ -7154,17 +7332,29 @@ class ScanWorker(QtCore.QThread):
                 if want is not None and (want == "high") != self.st["high"]:
                     high = want == "high"
                     ok, msg = dev.set_input(high)
-                    self.st["high"] = high
+                    self.st["high"] = high if ok else None     # refusé : on réessaiera au prochain segment
                     if not ok:
-                        self.status.emit(f"⚠ Changement d'entrée refusé — {msg}")
-                    self._apply_front(dev, cfg)
+                        self.stats["refused"] += 1
+                        self._warn(f"⚠ Changement d'entrée refusé — {msg}")
+                    else:
+                        self.st["front"] = (cfg["lna"], cfg["att"]) if self._apply_front(dev, cfg) else "?"
                 if self.ultra and a >= 800e6 and not self.st.get("ultra"):
-                    dev.try_cmd("ultra on")                # au-delà de 800 MHz (sans effet si déjà actif)
-                    self.st["ultra"] = True
+                    ok, _m = dev.try_cmd("ultra on")       # au-delà de 800 MHz (sans effet si déjà actif)
+                    self.st["ultra"] = ok
                 dev.expect_scan(pts, cfg["rbw"], (z - a) / max(1, pts - 1) / 1e3)
+                t_seg = time.monotonic()
                 fr, lv = dev.scan(a, z, pts)
-                if fr is None or len(fr) != len(lv):
-                    fr = np.linspace(a, z, len(lv))
+                dt = time.monotonic() - t_seg
+                self.stats["segments"] += 1
+                self.stats["seg_s"] += dt
+                self.stats["seg_max"] = max(self.stats["seg_max"], dt)
+                fr, state, note = scan_check(fr, lv, a, z, pts)
+                if state == "invalide":
+                    self.stats["invalid"] += 1
+                    raise RuntimeError(f"balayage inutilisable ({note})")      # → reconnexion, nouvel essai
+                if state == "court":
+                    self.stats["short"] += 1
+                    self._warn(f"⚠ Balayage incomplet du tinySA ({note}) : résolution réduite sur {b['name']}")
             else:
                 fr = np.linspace(a, z, pts)
                 lv = self._demo_levels(fr, b, cfg)
@@ -7232,7 +7422,7 @@ class SerialRelay(threading.Thread):
     def __init__(self, port, tcp_port=RELAY_PORT, host="0.0.0.0", opener=None):
         super().__init__(daemon=True)
         self.port, self.tcp_port, self.host = port, int(tcp_port), host
-        self.opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05))
+        self.opener = opener or (lambda p: serial.serial_for_url(p, 115200, timeout=0.05, write_timeout=2.0))
         self.stop_evt, self.ready = threading.Event(), threading.Event()
         self.client, self.error, self.serial_ok = None, "", False
         self.rx = self.tx = 0                     # octets tinySA → réseau / réseau → tinySA
@@ -7275,6 +7465,7 @@ class SerialRelay(threading.Thread):
                 if srv in rd:                      # nouveau client : il remplace l'ancien
                     new, addr = srv.accept()
                     new.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    new.settimeout(5.0)    # client qui ne lit plus : envoi abandonné au bout de 5 s, client lâché
                     if conn is not None:
                         conn.close()
                     conn, self.client = new, addr[0]
@@ -10420,6 +10611,10 @@ class RxProfileEdit(QtWidgets.QDialog):
         f.addRow("2A − B :", self.tol["2tx3"])
         f.addRow("A + B − C :", self.tol["3tx3"])
         f.addRow("5ᵉ ordre :", self.tol["5"])
+        self.img = spin(prof.get("img", 0.0), 0, 200, 0.1, " MHz", "Fréquence intermédiaire (FI) des récepteurs "
+                        "analogiques, souvent 10,7 MHz :\nun émetteur à ± 2 × FI de la fréquence tombe sur sa fréquence "
+                        "image. 0 = pas vérifié (récepteurs numériques).", "non vérifiée", 3)
+        f.addRow("FI (fréquence image) :", self.img)
         self.note = QtWidgets.QLineEdit(prof.get("note", ""))
         self.note.setPlaceholderText("ex. valeurs de mon logiciel de coordination")
         self.note.setToolTip("Note affichée en bulle dans les listes.")
@@ -10434,6 +10629,7 @@ class RxProfileEdit(QtWidgets.QDialog):
         return dict(key=key, name=self.name.text().strip() or "Mon appareil", filt=self.filt.value(),
                     sep=self.sep.value() / 1000.0, step=self.step.value() / 1000.0,
                     tol={k: sp.value() / 1000.0 for k, sp in self.tol.items()},
+                    **({"img": self.img.value()} if self.img.value() > 0 else {}),
                     note=self.note.text().strip() or "Profil perso.")
 
 
@@ -10905,6 +11101,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
                     step=self.step_spin.value() / 1000.0)
         P = [rx_profile(o.rx_of(w)) or dflt for w in ws]            # appareil de chaque fréquence (ou de son groupe)
         self._steps = [q["step"] for q in P]
+        self._imgs = [float(q.get("img") or 0.0) for q in P]       # FI : fréquence image (analogiques)
         return (ws, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
                 [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P], None,
                 [q["filt"] for q in P])
@@ -10913,7 +11110,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         ws, F, T, B, sep, tol, mx, filt = self._params()
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.issues, info = pf_check(F, T, B, sep, tol, mx, filt)
+            self.issues, info = pf_check(F, T, B, sep, tol, mx, filt, self._imgs)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self.ws = ws
@@ -10950,13 +11147,14 @@ class PlanCheckDialog(QtWidgets.QDialog):
         elif not bad:
             self.sum_lbl.setText(f"✔ Plan compatible : {n} / {n} fréquences sans problème (pour ces règles).")
         else:
-            kinds = {"sep": 0, "2tx3": 0, "3tx3": 0, "5": 0}
+            kinds = {"sep": 0, "img": 0, "2tx3": 0, "3tx3": 0, "5": 0}
             for iss in self.issues:
                 for it in iss:
-                    k_ = "sep" if it["kind"] == "sep" else im_class(it["order"], it["ntx"])
+                    k_ = it["kind"] if it["kind"] in ("sep", "img") else im_class(it["order"], it["ntx"])
                     kinds[k_ if k_ in kinds else "5"] += 1
             det = " · ".join(f"{v} {lab}" for lab, v in (("écart trop faible", kinds["sep"]), ("2A − B", kinds["2tx3"]),
-                                                          ("A + B − C", kinds["3tx3"]), ("5ᵉ ordre", kinds["5"])) if v)
+                                                          ("A + B − C", kinds["3tx3"]), ("5ᵉ ordre", kinds["5"]),
+                                                          ("fréquence image", kinds["img"])) if v)
             self.sum_lbl.setText(f"✗ {bad} fréquence(s) à revoir sur {n} · ✔ {n - bad} compatibles ({det}). "
                                  "Choisis une ligne ✗ puis « Proposer ».")
         self.sum_lbl.setStyleSheet(f"color:{th['st_free'] if n and not bad else th['st_occ'] if bad else th['ui_text']}")
@@ -10987,7 +11185,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
                 busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            kw = dict(n=6, busy=busy, step=self._steps[r], filt=filt)        # pas de l'appareil de cette fréquence
+            kw = dict(n=6, busy=busy, step=self._steps[r], filt=filt, img=self._imgs)   # pas de l'appareil de cette fréquence
             sg = pf_suggest(r, F, T, B, sep, tol, mx, **kw)
             if not sg:                                  # rien tout près : on cherche dans toutes les bandes
                 ext = self.owner._band_extent()
@@ -14421,6 +14619,12 @@ class SettingsDialog(QtWidgets.QDialog):
                                    "bien moins de processeur, surtout avec beaucoup de points ou la rémanence.")
         self.smooth_chk.toggled.connect(lambda *_: o.set_smooth(self.smooth_chk.isChecked()))
         f.addRow(self.smooth_chk)
+        self.coord_chk = QtWidgets.QCheckBox("Outils de coordination (avancé) : vérifier le plan, coordonner, intermod, profils")
+        self.coord_chk.setChecked(bool(getattr(o, "coord_on", False)))
+        self.coord_chk.setToolTip("Cachés par défaut : TinySA Monitor surveille, il ne remplace pas un logiciel de\n"
+                                  "coordination. La fréquence de secours reste toujours disponible.")
+        self.coord_chk.toggled.connect(lambda *_: o.set_coord(self.coord_chk.isChecked()))
+        f.addRow(self.coord_chk)
         tabs.addTab(g, "Général")
         self.keys.append("general")
         # --- Son
@@ -14573,6 +14777,146 @@ class SettingsDialog(QtWidgets.QDialog):
         if d:
             o.session_cfg["dir"] = d
             self.sess_lbl.setText(d)
+
+
+class HomeBar(QtWidgets.QWidget):
+    """🏠 Accueil (7.43, Clément : « l'écran de base est assez imbuvable, penser hyper user friendly pour des gens qui
+    ne connaissent ni la HF ni le tinySA ») : 3 grosses cartes ① tinySA ② Mes micros ③ Surveiller, la prochaine étape
+    entourée, et une phrase d'état en gros. Mis à jour chaque seconde par MainWindow.update_home."""
+
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = o = owner
+        self.setObjectName("accueil")
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(4)
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(8)
+        self.cards = {}
+
+        def card(key, title):
+            fr = QtWidgets.QFrame()
+            fr.setObjectName("carte")
+            v = QtWidgets.QVBoxLayout(fr)
+            v.setContentsMargins(10, 6, 10, 6)
+            v.setSpacing(3)
+            t = QtWidgets.QLabel(title)
+            t.setStyleSheet("font-weight:bold; font-size:14px")
+            info = QtWidgets.QLabel("")
+            info.setWordWrap(True)
+            h = QtWidgets.QHBoxLayout()
+            h.setSpacing(6)
+            v.addWidget(t)
+            v.addWidget(info)
+            v.addLayout(h)
+            self.cards[key] = (fr, info, h)
+            row.addWidget(fr, 1)
+            return h
+
+        h = card("port", "① Le tinySA")
+        self.port_btn = QtWidgets.QPushButton("🔌 Choisir…")
+        self.port_btn.setToolTip("Choisir le tinySA : branché en USB, en réseau (Raspberry Pi), ou le mode démo pour\n"
+                                 "essayer sans tinySA.")
+        self.port_menu = QtWidgets.QMenu(self.port_btn)
+        self.port_menu.aboutToShow.connect(self._fill_ports)
+        self.port_btn.setMenu(self.port_menu)
+        h.addWidget(self.port_btn)
+        h.addStretch(1)
+        h = card("list", "② Mes micros")
+        self.imp_btn = QtWidgets.QPushButton("📥 Importer")
+        self.imp_btn.setToolTip("Importer ton plan de fréquences (EazyRF, WWB, WSM, Excel / CSV…).")
+        self.imp_btn.clicked.connect(lambda *_: o.import_watch())
+        self.add_btn = QtWidgets.QPushButton("＋ Ajouter")
+        self.add_btn.setToolTip("Ajouter une fréquence à la main (nom + MHz).")
+        self.add_btn.clicked.connect(lambda *_: o.add_watch_dialog())
+        self.scan_btn = QtWidgets.QPushButton("📡 Depuis le scan")
+        self.scan_btn.setToolTip("Ajouter les signaux que le tinySA voit en ce moment (au-dessus d'un seuil).")
+        self.scan_btn.clicked.connect(lambda *_: o.open_scan_add())
+        for b in (self.imp_btn, self.add_btn, self.scan_btn):
+            h.addWidget(b)
+        h.addStretch(1)
+        h = card("run", "③ Surveiller")
+        self.run_btn = QtWidgets.QPushButton("▶ Démarrer")
+        self.run_btn.setToolTip("Démarrer / arrêter la surveillance de tes micros.")
+        self.run_btn.clicked.connect(lambda *_: o.toggle_run())
+        self.ready_btn = QtWidgets.QPushButton("✅ Prêt ?")
+        self.ready_btn.setToolTip("Tout vérifier avant le show (son, alertes, fréquences hors bandes…).")
+        self.ready_btn.clicked.connect(lambda *_: o.open_ready())
+        self.show_btn = QtWidgets.QPushButton("🖥 Mode Show")
+        self.show_btn.setToolTip("Plein écran, seulement l'essentiel en très gros (F10).")
+        self.show_btn.clicked.connect(lambda *_: o.open_show_mode())
+        for b in (self.run_btn, self.ready_btn, self.show_btn):
+            h.addWidget(b)
+        h.addStretch(1)
+        side = QtWidgets.QVBoxLayout()
+        self.tour_btn = QtWidgets.QPushButton("🎓 Tuto")
+        self.tour_btn.setToolTip("Visites guidées pas à pas, pour débutants.")
+        self.tour_btn.clicked.connect(lambda *_: o.start_tour())
+        self.hide_btn = QtWidgets.QToolButton()
+        self.hide_btn.setText("✕")
+        self.hide_btn.setAutoRaise(True)
+        self.hide_btn.setToolTip("Masquer l'accueil (☰ Plus › 👁 Affichage › 🏠 Accueil pour le remettre).")
+        self.hide_btn.clicked.connect(lambda *_: o.set_home(False))
+        side.addWidget(self.hide_btn, 0, Qt.AlignmentFlag.AlignRight)
+        side.addWidget(self.tour_btn)
+        side.addStretch(1)
+        row.addLayout(side)
+        lay.addLayout(row)
+        self.status = QtWidgets.QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setToolTip("Ce qui se passe, en une phrase.")
+        lay.addWidget(self.status)
+
+    def _fill_ports(self):
+        o, m = self.owner, self.port_menu
+        m.clear()
+        cur = o.port_combo.currentIndex()
+        for i in range(o.port_combo.count()):
+            a = m.addAction(o.port_combo.itemText(i))
+            a.setCheckable(True)
+            a.setChecked(i == cur and not o.demo_chk.isChecked())
+            a.triggered.connect(lambda *_, i=i: (o.demo_chk.setChecked(False), o.port_combo.setCurrentIndex(i)))
+        m.addSeparator()
+        m.addAction("↻ Chercher à nouveau les tinySA branchés").triggered.connect(lambda *_: o.refresh_ports())
+        a = m.addAction("🎭 Mode démo (essayer sans tinySA)")
+        a.setCheckable(True)
+        a.setChecked(o.demo_chk.isChecked())
+        a.triggered.connect(lambda *_, a=a: o.demo_chk.setChecked(a.isChecked()))
+
+    def refresh(self, info):
+        o = self.owner
+        th = o.theme
+        nxt = home_next(info)
+        acc = th.get("ui_accent", "#3b82f6")
+        for k, (fr, _i, _h) in self.cards.items():
+            fr.setStyleSheet("QFrame#carte{border:%s; border-radius:8px; background:%s}"
+                             % (f"3px solid {acc}" if k == nxt else f"1px solid {th['plot_fg']}55", th["ui_base"]))
+        pi = self.cards["port"][1]
+        if info.get("demo"):
+            pi.setText("🎭 Mode démo : signaux simulés")
+        elif info.get("lost"):
+            who = ", ".join(info["lost"])
+            pi.setText(f"○ Déconnecté : {who}")
+        elif info.get("running"):
+            pi.setText(f"● Relié · {info.get('port_txt', '')}")
+        elif info.get("port"):
+            pi.setText(f"Prêt : {info.get('port_txt', '')}")
+        else:
+            pi.setText("○ Aucun tinySA trouvé : branche-le en USB et allume-le.")
+        n = int(info.get("n_watch") or 0)
+        self.cards["list"][1].setText(f"{n} fréquence(s) dans ta liste" if n else "Ta liste est vide.")
+        run = bool(info.get("running"))
+        self.cards["run"][1].setText("● Surveillance en cours" if run else "■ Arrêtée")
+        self.run_btn.setText("■ Arrêter" if run else "▶ Démarrer")
+        col = th["st_occ"] if run else th["st_free"]
+        self.run_btn.setStyleSheet("QPushButton{background:%s;color:%s;font-weight:bold;padding:5px 14px;"
+                                   "border-radius:5px;}" % (col, contrast_text(col)))
+        tone, txt = home_status(info)
+        c = {"ok": th["st_free"], "warn": th["st_weak"], "bad": th["st_occ"]}.get(tone)
+        self.status.setText(txt)
+        self.status.setStyleSheet("font-size:17px; font-weight:bold; padding:4px 8px; border-radius:6px; "
+                                  + (f"background:{c}; color:{contrast_text(c)}" if c else ""))
 
 
 def free_plot_menus(widget):
@@ -15576,6 +15920,8 @@ class TourChooser(QtWidgets.QDialog):
         lay.addWidget(head)
         self.buttons = {}
         for k, t, mins, desc in TOURS:
+            if k in COORD_TOURS and not getattr(owner, "coord_on", False):
+                continue
             b = QtWidgets.QPushButton(f"{t}  ·  {mins} min")
             b.setToolTip(desc)
             b.setStyleSheet("text-align:left; padding:6px 10px; font-weight:bold")
@@ -16972,6 +17318,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._autosave.setInterval(AUTOSAVE_MS)
         self._autosave.timeout.connect(self._save_config)
         self._autosave.start()
+        self.set_coord(self.coord_on)             # outils de coordination cachés sauf si la config les montre
         self._first_show = True
 
     def _fit_to_screen(self):
@@ -17236,11 +17583,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
             else:
                 b.clicked.connect(lambda *_, k=key: self.do_step(k))
-            bar.addWidget(b)
+            self.__dict__.setdefault("_step_acts", {})[key] = bar.addWidget(b)
             if key != STEPS[-1][0]:
                 arrow = QtWidgets.QLabel("›")
                 arrow.setStyleSheet("color: gray;")
-                bar.addWidget(arrow)
+                self.__dict__.setdefault("_step_arrows", {})[key] = bar.addWidget(arrow)
             self.step_btns[key] = b
         bar.addSeparator()
         self.tour_btn = QtWidgets.QToolButton()
@@ -17259,6 +17606,74 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, bar)
         self.steps_bar = bar
+
+    def _build_home(self):
+        bar = QtWidgets.QToolBar("Accueil")
+        bar.setObjectName("barre_accueil")
+        bar.setMovable(False)
+        bar.setFloatable(False)
+        bar.toggleViewAction().setEnabled(False)
+        self.home = HomeBar(self)
+        self.home.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+        bar.addWidget(self.home)
+        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, bar)
+        self.home_bar = bar
+
+    home_on = True
+
+    def set_home(self, on):
+        """🏠 Accueil affiché ou non (config « home »). Avec l'accueil, la barre de parcours n'est montrée qu'en expert."""
+        self.home_on = bool(on)
+        if getattr(self, "home_bar", None) is not None:
+            self.home_bar.setVisible(self.home_on)
+        self._home_layout()
+        a = getattr(self, "home_act", None)
+        if a is not None:
+            a.setChecked(self.home_on)
+        self.update_home()
+
+    def _home_layout(self):
+        """Avec l'accueil (hors expert) : pas de barre de parcours ni de Port / Démarrer en double en haut."""
+        full = not self.home_on or getattr(self, "ui_level", "simple") == "expert"
+        if getattr(self, "steps_bar", None) is not None:
+            self.steps_bar.setVisible(full)
+        for a_ in getattr(self, "_dup_acts", []):
+            a_.setVisible(full)
+
+    def home_info(self):
+        lost = [self.dev_name(d) for d in self.dev_list()
+                if self.is_running() and d < len(self.dev_live) and not self.dev_live[d]]
+        cur = [a for a in self.alarms.active.values()] if isinstance(self.alarms.active, dict) else []
+        cur.sort(key=lambda a: (a["acked"], -a["prio"]))
+        ws = [w for w in self.watch if not w.get("off")]
+        ok = free = weak = muted = silent = 0
+        for w in ws:
+            if w.get("muted"):
+                muted += 1
+                continue
+            _t, tone, _c = self.sig_view(w)
+            ok += tone == "ok"
+            free += tone == "free"
+            if tone == "warn":
+                if w.get("state") == "weak":
+                    weak += 1
+                else:
+                    silent += 1                      # doit émettre, rien reçu (pas encore ABSENT)
+        p = self.port1()
+        return dict(running=self.is_running(), demo=self.demo_chk.isChecked(), port=bool(p),
+                    port_txt=self.port_combo.currentText() if p else "", n_watch=len(ws), lost=lost,
+                    alarms=[(a["kind"], a.get("name") or "") for a in cur if a["kind"] != "APPAREIL"],
+                    ok=ok, free=free, weak=weak, muted=muted, silent=silent)
+
+    def update_home(self):
+        h = getattr(self, "home", None)
+        if h is None or not self.home_on:
+            return
+        try:
+            h.refresh(self.home_info())
+        except Exception:  # noqa: BLE001 — l'accueil ne doit jamais gêner la surveillance
+            pass
 
     def do_step(self, key, meth=None):
         """Une étape du parcours : met l'étape en avant, explique, et lance l'action (ou celle du menu)."""
@@ -17313,6 +17728,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.layer_box.setVisible(not ultra)
         for k_, a_ in getattr(self, "level_acts", {}).items():
             a_.setChecked(k_ == level)
+        self._home_layout()
 
     def start_tour(self, key=None):
         """🎓 Sans clé : choisir un tuto ; avec : le lancer (ecran, show, spectre, coord, scenes, live)."""
@@ -17323,7 +17739,32 @@ class MainWindow(QtWidgets.QMainWindow):
         if getattr(self, "_tour", None) is not None:
             self._tour.close()
         title = next((t for k, t, *_ in TOURS if k == key), "Tuto")
-        self._tour = TourDialog(self, tour_steps(self, key), title)
+        steps = tour_steps(self, key)
+        if self.home_on and getattr(self, "home", None) is not None and self.ui_level != "expert":
+            hidden = {id(x) for x in (self.port_combo, self.demo_chk, self.start_btn, self.steps_bar)}
+            steps = [st for st in steps if id(st[0]) not in hidden]
+            if key == "ecran":                     # l'accueil remplace port / démo / démarrer / parcours
+                c = self.home.cards
+                steps = [
+                    (c["port"][0], "Bienvenue 👋",
+                     "TinySA Monitor écoute en permanence les fréquences radio de tes micros sans fil grâce à un "
+                     "petit appareil, le tinySA.",
+                     "Il te prévient tout de suite si un micro se tait ou si quelqu'un vient émettre sur ta fréquence.",
+                     "① « 🔌 Choisir… » : où est branché le tinySA (USB, réseau), ou le mode démo pour essayer sans "
+                     "appareil.", None),
+                    (c["list"][0], "② Mes micros",
+                     "Ta liste de fréquences à surveiller : tes micros, tes ears, tes réserves.",
+                     "Sans liste, l'appli ne sait pas quoi surveiller.",
+                     "📥 Importer ton plan, ＋ Ajouter à la main, ou 📡 Depuis le scan.", ("📥 Importer…", "import_watch")),
+                    (c["run"][0], "③ Surveiller",
+                     "Lance ou arrête le balayage : le tinySA mesure les fréquences en boucle.",
+                     "Rien ne se passe tant que ce n'est pas démarré.",
+                     "▶ Démarrer. La grande phrase en dessous dit en permanence si tout va bien ; ✅ Prêt ? vérifie "
+                     "tout avant le show.", None),
+                ] + steps
+        if not self.coord_on:                      # outils de coordination cachés : leurs étapes aussi
+            steps = [st for st in steps if not (st[-1] and st[-1][1] in COORD_METHODS)] or steps
+        self._tour = TourDialog(self, steps, title)
         self._tour.show()
         self._tour.go(0)
 
@@ -17467,8 +17908,11 @@ class MainWindow(QtWidgets.QMainWindow):
             ("🎛 Profils d'appareil (filtre récepteur)…", lambda *_: self.open_rx_profiles()),
             (None, None),
             ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", lambda *_: self.add_block_dialog())))
+        self._coord_acts = [a_ for a_ in tmenu.actions() if a_.text().startswith(("🪄", "🧮", "🎛")) or a_.isSeparator()]
         mm.addAction("📍 Scans par lieu (plusieurs scènes, fusion, export)…").triggered.connect(lambda *_: self.open_sites())
-        mm.addAction("⚡ Intermodulation (2 / 3 / 5 TX)…").triggered.connect(lambda *_: self.open_intermod())
+        a_im = mm.addAction("⚡ Intermodulation (2 / 3 / 5 TX)…")
+        a_im.triggered.connect(lambda *_: self.open_intermod())
+        self._coord_acts.append(a_im)
         mm.addSection("② Pendant le show")
         mm.addAction("✅ Prêt pour le show ? (tout vérifier)…").triggered.connect(lambda *_: self.open_ready())
         mm.addAction("🖥 Mode Show (plein écran, l'essentiel)  F10").triggered.connect(lambda *_: self.open_show_mode())
@@ -17522,6 +17966,11 @@ class MainWindow(QtWidgets.QMainWindow):
             a_.triggered.connect(lambda *_, k=key_: self.set_level(k))
             self.level_acts[key_] = a_
         self.expert_act = self.level_acts["expert"]
+        lvl_menu.addSeparator()
+        self.home_act = lvl_menu.addAction("🏠 Accueil (les 3 étapes en haut de l'écran)")
+        self.home_act.setCheckable(True)
+        self.home_act.setChecked(True)
+        self.home_act.triggered.connect(lambda *_: self.set_home(self.home_act.isChecked()))
         mm.addSection("Aide")
         mm.addAction("🎓 Tutos pas à pas (débutants)…").triggered.connect(lambda *_: self.start_tour())
         mm.addAction("📚 Lexique : les mots de la HF expliqués…").triggered.connect(lambda *_: self.open_glossary())
@@ -17539,13 +17988,17 @@ class MainWindow(QtWidgets.QMainWindow):
         ph.setContentsMargins(4, 2, 8, 2)
         for wd in (QtWidgets.QLabel("Port :"), self.port_combo, btn_ports, self.demo_chk, self.info_lbl):
             ph.addWidget(wd)
-        tb.addWidget(port_box)
+        self._port_act = tb.addWidget(port_box)
+        self._dup_acts = [self._port_act]          # en double avec l'accueil : cachés quand il est affiché (hors expert)
         for wd in (self.start_btn, prof_btn, self.alarm_btn, more_btn, self.settings_btn):
-            tb.addWidget(wd)
-            tb.addSeparator()
+            a_ = tb.addWidget(wd)
+            s_ = tb.addSeparator()
+            if wd is self.start_btn:
+                self._dup_acts += [a_, s_]
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
         self.cmd_bar = tb
         self._build_steps_bar()
+        self._build_home()
 
         # --- panneau de gauche : réglages
         self.points_combo = self._combo([(t, k) for k, t, _b in AUTO_POINTS]
@@ -18697,6 +19150,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.export_prefs = ex if isinstance(ex, dict) else {}
         if "smooth" in data:
             self.set_smooth(bool(data.get("smooth")))
+        self.set_coord(bool(data.get("coord_tools", False)))
+        self.set_home(bool(data.get("home", True)))
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
             self.net_profiles = net_profiles_merge(self.net_profiles, data["net_profiles"])
         if "net_addr" in data:
@@ -18810,6 +19265,8 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
+            coord_tools=bool(getattr(self, "coord_on", False)),
+            home=bool(getattr(self, "home_on", True)),
             dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], states=[dict(x) for x in self.states],
             state_cur=self.state_cur, ezrf_link=dict(self.ezrf_link) if self.ezrf_link else None, dev_names=list(self.dev_names), web={k: v for k, v in self.web_cfg.items() if k not in ("pin", "password", "tech")},
             expert=self.expert, sections=dict(self.sections_open), spec_more=self.more_spec_btn.isChecked() is True, wall_size=self.wall.size_combo.currentData(),
@@ -19276,6 +19733,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for k, w in enumerate(list(self.workers)):
             k = getattr(w, "slot", k)
             tr = getattr(w, "trace", None)
+            if hasattr(w, "stats_text"):
+                out += ["", f"Statistiques de {self.dev_name(k)} : {w.stats_text()}"]
             out += ["", f"Échanges avec {self.dev_name(k)} (plus récents en bas) :"] + [str(x) for x in list(tr or [])]
         try:
             d = self.log_dir / "diagnostic"
@@ -19613,24 +20072,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self._calib_end("⚠ Calibration abandonnée : trop long.")
             return
         if all(len(v) >= CALIB_SWEEPS for v in cal["data"].values()):
-            def maxhold(lst):
-                f0 = lst[0][0]
-                ls = [l_ for f_, l_ in lst if f_.shape == f0.shape]
-                return f0, np.max(np.vstack(ls), axis=0)
-            F1, L1 = maxhold(cal["data"][0])
+            ref = calib_maxhold(cal["data"][0], CALIB_SWEEPS)          # même nombre de balayages pour tous
             msgs, bad = [], []
             for d in sorted(cal["data"]):
                 if d == 0:
                     continue
-                F2, L2 = maxhold(cal["data"][d])
-                res = calib_offset(F1, L1, F2, L2)
+                oth = calib_maxhold(cal["data"][d], CALIB_SWEEPS)
+                res = calib_offset(*ref, *oth) if (ref is not None and oth is not None) else None
                 if res is None:
                     bad.append(self.dev_name(d))
                     continue
                 delta, n, kind = res
+                rep_ = calib_repeat(cal["data"][0], cal["data"][d], CALIB_SWEEPS)
+                spread = f", répétabilité ±{rep_[1] / 2:.1f} dB" if rep_ is not None else ""
                 new = max(-40.0, min(40.0, round(self.dev_offset(d) + delta, 1)))
                 self.set_dev_offset(d, new)
-                msgs.append(f"{self.dev_name(d)} {delta:+.1f} dB → offset {new:+.1f} dB (sur {n} points, base : {kind})")
+                msgs.append(f"{self.dev_name(d)} {delta:+.1f} dB → offset {new:+.1f} dB (sur {n} points, base : {kind}"
+                            f"{spread})")
             if not msgs:
                 self._calib_end("⚠ Calibration impossible : pas assez de points communs.")
                 return
@@ -21771,7 +22229,8 @@ class MainWindow(QtWidgets.QMainWindow):
         def same(d, p):
             return (abs(d["sep"] - p["sep"]) < 1e-6 and abs(d["filt"] - p["filt"]) < 1e-6
                     and abs(d["step"] - p["step"]) < 1e-6
-                    and all(abs(d["tol"].get(k, 0) - p["tol"].get(k, 0)) < 1e-6 for k in ("2tx3", "3tx3", "5")))
+                    and all(abs(d["tol"].get(k, 0) - p["tol"].get(k, 0)) < 1e-6 for k in ("2tx3", "3tx3", "5"))
+                    and abs(float(d.get("img") or 0) - float(p.get("img") or 0)) < 1e-6)
         new, want = [], {}
         have = {n: (k, d) for k, n, d, _w in RX_CUSTOM}
         low = lambda x: str(x).strip().lower()
@@ -21785,7 +22244,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     d = rx_from_library(dict(p, type=""))
                     d["name"] = name
                     d["note"] = (f"Plan EazyRF « {doc['title'] or 'sans titre'} » · {p['lo']:g}–{p['hi']:g} MHz"
-                                 + (f" · fréquence image {p['img']:g} MHz (pas prise en compte)" if p.get("img") else ""))
+                                 + (f" · FI {p['img']:g} MHz (fréquence image vérifiée)" if p.get("img") else ""))
                     new.append(d)
                 want[dk] = name
             else:
@@ -22280,6 +22739,21 @@ class MainWindow(QtWidgets.QMainWindow):
         if not bs:
             return None
         return min(b["start"] for b in bs), max(b["stop"] for b in bs)
+
+    coord_on = False
+
+    def set_coord(self, on):
+        """Montre / cache les outils de coordination (parcours ③ ④, ☰ Plus, tutos, clic droit du journal)."""
+        self.coord_on = bool(on)
+        for k in COORD_STEPS:
+            a_ = self.__dict__.get("_step_acts", {}).get(k)
+            if a_ is not None:
+                a_.setVisible(self.coord_on)
+            a_ = self.__dict__.get("_step_arrows", {}).get(k)
+            if a_ is not None:
+                a_.setVisible(self.coord_on)
+        for a_ in self.__dict__.get("_coord_acts", []):
+            a_.setVisible(self.coord_on)
 
     def set_smooth(self, on):
         """Courbes lissées (antialiasing) du spectre, de la rémanence et des scans gardés : plus joli, plus lourd."""
@@ -23757,7 +24231,7 @@ class MainWindow(QtWidgets.QMainWindow):
         plan = None
         try:
             tx = [w for w in ws if not self.is_keep_free(w["status"])]
-            if 0 < len(ws) <= 80:
+            if 0 < len(ws) <= 80 and self.coord_on:
                 dflt = dict(sep=self.plan_opts.get("sep", 300) / 1000.0, filt=float(self.plan_opts.get("filt", 32.0)),
                             tol=IM_TOL_PRESETS[0][1])
                 P = [rx_profile(self.rx_of(w)) or dflt for w in ws]
@@ -24053,6 +24527,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         m = QtWidgets.QMenu(self)
         a_or = m.addAction("⚡ D'où ça peut venir ? (intermodulation)…")
+        a_or.setVisible(self.coord_on)
         a_zoom = m.addAction("🔍 Voir sur le spectre")
         a_hunt = m.addAction("🔎 Chasser ce signal (bip)…")
         a_add = m.addAction("＋ Ajouter à ma liste")
@@ -24486,6 +24961,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._beat_next = now + GUARD_BEAT_S
             guard_beat()
             self._reap_dialogs(now)
+        self.update_home()
         self._planning_tick(now)
         self._ezrf_tick(now)
         self._sites_tick(now)

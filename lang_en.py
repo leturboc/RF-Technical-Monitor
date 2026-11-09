@@ -4161,3 +4161,99 @@ EXACT.update({
     'Réglages de coordination courants pour ce modèle. Écart 450 kHz, filtre 50 MHz, tolérance 2 TX 200 kHz, 3 TX non compté.': 'Common coordination settings for this model. Spacing 450 kHz, filter 50 MHz, 2 TX tolerance 200 kHz, 3 TX not counted.',
     'Réglages de coordination courants pour ce modèle. Écart 500 kHz, filtre 16 MHz, tolérances 150 / 100 / 50 kHz.': 'Common coordination settings for this model. Spacing 500 kHz, filter 16 MHz, tolerances 150 / 100 / 50 kHz.',
 })
+
+# ---- 7.42 : fiabilité de l'acquisition (revue de code)
+EXACT.update({
+    'niveaux hors de toute plage possible': 'levels outside any possible range',
+})
+TEMPLATES.update({
+    'segments {} (moy. {} s, max {} s) · cycles {} (moy. {} s) · réglages {} s · incomplets {} · invalides {} · refus {} · reconnexions {}':
+        'segments {} (avg {} s, max {} s) · cycles {} (avg {} s) · settings {} s · incomplete {} · invalid {} · refused {} · reconnections {}',
+    'balayage inutilisable ({})': 'unusable sweep ({})',
+    '⚠ Balayage incomplet du tinySA ({}) : résolution réduite sur {}': '⚠ Incomplete tinySA sweep ({}): reduced resolution on {}',
+    'Statistiques de {} : {}': 'Statistics for {}: {}',
+    '{} points reçus sur {} demandés': '{} points received out of {} requested',
+    '{} {} dB → offset {} dB (sur {} points, base : {}{})': '{} {} dB → offset {} dB (on {} points, basis: {}{})',
+    '{} point(s) reçu(s) sur {}': '{} point(s) received out of {}',
+    ', répétabilité ±{} dB': ', repeatability ±{} dB',
+})
+
+# ---- 7.43 : coordination cachée, fréquence image
+EXACT.update({
+    'Cachés par défaut : TinySA Monitor surveille, il ne remplace pas un logiciel de\ncoordination. La fréquence de secours reste toujours disponible.':
+        'Hidden by default: TinySA Monitor monitors, it does not replace coordination\nsoftware. The backup frequency is always available.',
+    'FI (fréquence image) :': 'IF (image frequency):',
+    'Fréquence intermédiaire (FI) des récepteurs analogiques, souvent 10,7 MHz :\nun émetteur à ± 2 × FI de la fréquence tombe sur sa fréquence image. 0 = pas vérifié (récepteurs numériques).':
+        'Intermediate frequency (IF) of analogue receivers, often 10.7 MHz:\na transmitter at ± 2 × IF from the frequency lands on its image frequency. 0 = not checked (digital receivers).',
+    'Outils de coordination (avancé) : vérifier le plan, coordonner, intermod, profils':
+        'Coordination tools (advanced): check the plan, coordinate, intermod, profiles',
+    'fréquence image': 'image frequency',
+    'non vérifiée': 'not checked',
+})
+TEMPLATES.update({
+    'fréquence image : {} ({}) pile à 2 × FI ({} MHz)': 'image frequency: {} ({}) exactly at 2 × IF ({} MHz)',
+    'fréquence image : {} ({}) à {} kHz de 2 × FI ({} MHz)': 'image frequency: {} ({}) {} kHz from 2 × IF ({} MHz)',
+    ' · FI {} MHz (fréquence image vérifiée)': ' · IF {} MHz (image frequency checked)',
+})
+
+# ---- 7.43 : 🏠 accueil
+EXACT.update({
+    "Ajouter les signaux que le tinySA voit en ce moment (au-dessus d'un seuil).": 'Add the signals the tinySA sees right now (above a threshold).',
+    'Ajouter une fréquence à la main (nom + MHz).': 'Add a frequency by hand (name + MHz).',
+    'Ce qui se passe, en une phrase.': 'What is happening, in one sentence.',
+    'Choisir le tinySA : branché en USB, en réseau (Raspberry Pi), ou le mode démo pour\nessayer sans tinySA.':
+        'Choose the tinySA: plugged in USB, on the network (Raspberry Pi), or demo mode to\ntry without a tinySA.',
+    'Démarrer / arrêter la surveillance de tes micros.': 'Start / stop monitoring your mics.',
+    'Importer ton plan de fréquences (EazyRF, WWB, WSM, Excel / CSV…).': 'Import your frequency plan (EazyRF, WWB, WSM, Excel / CSV…).',
+    "Masquer l'accueil (☰ Plus › 👁 Affichage › 🏠 Accueil pour le remettre).": 'Hide the home bar (☰ More › 👁 Display › 🏠 Home to bring it back).',
+    "Plein écran, seulement l'essentiel en très gros (F10).": 'Full screen, only the essentials in very large text (F10).',
+    'QFrame#carte{border:%s; border-radius:8px; background:%s}': 'QFrame#carte{border:%s; border-radius:8px; background:%s}',
+    'Ta liste est vide.': 'Your list is empty.',
+    'Tout vérifier avant le show (son, alertes, fréquences hors bandes…).': 'Check everything before the show (sound, alerts, frequencies outside the bands…).',
+    'Visites guidées pas à pas, pour débutants.': 'Step-by-step guided tours, for beginners.',
+    'font-size:17px; font-weight:bold; padding:4px 8px; border-radius:6px; ': 'font-size:17px; font-weight:bold; padding:4px 8px; border-radius:6px; ',
+    'font-weight:bold; font-size:14px': 'font-weight:bold; font-size:14px',
+    '↻ Chercher à nouveau les tinySA branchés': '↻ Search again for plugged-in tinySAs',
+    '① Branche le tinySA en USB et allume-le (ou essaie le mode démo).': '① Plug the tinySA in USB and switch it on (or try demo mode).',
+    '① Le tinySA': '① The tinySA',
+    '② Ajoute tes micros : importe ton plan de fréquences ou ajoute-les à la main.': '② Add your mics: import your frequency plan or add them by hand.',
+    '② Mes micros': '② My mics',
+    '③ Prêt : clique ▶ Démarrer la surveillance.': '③ Ready: click ▶ Start monitoring.',
+    '③ Surveiller': '③ Monitor',
+    '■ Arrêtée': '■ Stopped',
+    '○ Aucun tinySA trouvé : branche-le en USB et allume-le.': '○ No tinySA found: plug it in USB and switch it on.',
+    '● Surveillance en cours': '● Monitoring',
+    "✔ Pas d'alarme": '✔ No alarm',
+    'mode démo': 'demo mode',
+    '🎭 Mode démo (essayer sans tinySA)': '🎭 Demo mode (try without a tinySA)',
+    '🎭 Mode démo : signaux simulés': '🎭 Demo mode: simulated signals',
+    "🏠 Accueil (les 3 étapes en haut de l'écran)": '🏠 Home (the 3 steps at the top of the screen)',
+    '📡 Depuis le scan': '📡 From the scan',
+    '🔌 Choisir…': '🔌 Choose…',
+    '🖥 Mode Show': '🖥 Show mode',
+})
+TEMPLATES.update({
+    '● Relié · {}': '● Connected · {}',
+    'Prêt : {}': 'Ready: {}',
+    '{} micro(s) OK': '{} mic(s) OK',
+    '{} réserve(s) libre(s)': '{} free reserve(s)',
+    '⚠ {} problème(s) — {}': '⚠ {} problem(s) — {}',
+    '{} éteint(s) exprès': '{} switched off on purpose',
+    '{} signal(aux) faible(s)': '{} weak signal(s)',
+    '{} fréquence(s) dans ta liste': '{} frequency(ies) in your list',
+    "{} micro(s) sans signal pour l'instant": '{} mic(s) with no signal yet',
+    '⚠ tinySA déconnecté : {} — vérifie le câble (reconnexion automatique)': '⚠ tinySA disconnected: {} — check the cable (automatic reconnection)',
+    '○ Déconnecté : {}': '○ Disconnected: {}',
+})
+SAME_TEMPLATES += ['3px solid {}', '1px solid {}55']
+EXACT["✔ Pas d'alarme — "] = '✔ No alarm — '
+EXACT.update({
+    "Sans liste, l'appli ne sait pas quoi surveiller.": "Without a list, the app does not know what to monitor.",
+    'Ta liste de fréquences à surveiller : tes micros, tes ears, tes réserves.': 'Your list of frequencies to monitor: your mics, your IEMs, your reserves.',
+    '① « 🔌 Choisir… » : où est branché le tinySA (USB, réseau), ou le mode démo pour essayer sans appareil.':
+        '① “🔌 Choose…”: where the tinySA is plugged in (USB, network), or demo mode to try without a device.',
+    '▶ Démarrer. La grande phrase en dessous dit en permanence si tout va bien ; ✅ Prêt ? vérifie tout avant le show.':
+        '▶ Start. The big sentence below always says whether everything is fine; ✅ Ready? checks everything before the show.',
+    '📥 Importer ton plan, ＋ Ajouter à la main, ou 📡 Depuis le scan.': '📥 Import your plan, ＋ Add by hand, or 📡 From the scan.',
+    '📥 Importer…': '📥 Import…',
+})

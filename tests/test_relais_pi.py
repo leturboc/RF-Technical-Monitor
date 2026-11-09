@@ -141,6 +141,60 @@ if len(ready) == 2:
 stop2.set()
 thm.join(4)
 check("multi : arrêt propre", not thm.is_alive())
+# ---- client qui ne lit plus (revue de code 7.41) : le relais doit le lâcher au lieu de rester bloqué
+import socket as _so
+fake4, slave4 = open_fake()
+stop4 = threading.Event()
+p4 = []
+th4 = threading.Thread(target=R.serve, kwargs=dict(serial_port=slave4, tcp_port=0, host="127.0.0.1", stop=stop4.is_set,
+                                                    on_ready=p4.append, allow=["127.0.0.1"]), daemon=True)
+th4.start()
+t0 = time.time()
+while not p4 and time.time() - t0 < 5:
+    time.sleep(0.05)
+lazy = _so.create_connection(("127.0.0.1", p4[0]))
+lazy.setsockopt(_so.SOL_SOCKET, _so.SO_RCVBUF, 4096)
+for _ in range(4):                                  # gros scans demandés, jamais lus
+    try:
+        lazy.sendall(b"scan 470000000 700000000 20000 3\r")
+    except OSError:
+        break
+time.sleep(8)
+_v4 = ""
+for _ in range(5):                                  # le faux tinySA peut finir d'envoyer un scan en cours
+    try:
+        d4 = TinySA(ns["parse_device_addr"](f"127.0.0.1:{p4[0]}")[1])
+        _v4 = d4.version()
+        d4.close()
+    except Exception:  # noqa: BLE001
+        pass
+    if _v4 == "tinySA4_v1.4-fake":
+        break
+    time.sleep(2)
+check("client qui ne lit plus : lâché, un nouveau client est servi", _v4 == "tinySA4_v1.4-fake", repr(_v4))
+lazy.close()
+stop4.set()
+th4.join(3)
+check("relais (client lent) arrêté proprement", not th4.is_alive())
+# ---- --allow : une adresse non autorisée est refusée
+stop5 = threading.Event()
+p5 = []
+fake5, slave5 = open_fake()
+th5 = threading.Thread(target=R.serve, kwargs=dict(serial_port=slave5, tcp_port=0, host="127.0.0.1", stop=stop5.is_set,
+                                                    on_ready=p5.append, allow=["10.9.9.9"]), daemon=True)
+th5.start()
+t0 = time.time()
+while not p5 and time.time() - t0 < 5:
+    time.sleep(0.05)
+_refused = False
+try:
+    d5 = TinySA(ns["parse_device_addr"](f"127.0.0.1:{p5[0]}")[1])
+    d5.close()
+except Exception:  # noqa: BLE001
+    _refused = True
+check("--allow : client non autorisé refusé", _refused)
+stop5.set()
+th5.join(3)
 stop.set()
 th.join(3)
 check("relais arrêté proprement", not th.is_alive())
