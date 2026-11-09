@@ -278,7 +278,7 @@ _t0 = _aw[0]["athr"] if _aw else None
 win.auto_occ_spin.setValue(win.auto_occ_spin.value() + 6); app.processEvents()
 check("seuils auto : marge + 6 dB → seuil + 6 dB", _aw and abs(_aw[0]["athr"] - _t0 - 6) < 1.5,
       f"{_t0} → {_aw[0].get('athr') if _aw else None}")
-win.auto_occ_spin.setValue(10)
+win.auto_occ_spin.setValue(12)
 win.set_thr_auto(False); app.processEvents()
 check("seuils auto coupés : seuil fixe revenu", not win.auto_curve.isVisible() and win.thr_line.isVisible()
       and all(w_.get("athr") is None for w_ in win.watch))

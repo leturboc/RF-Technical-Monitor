@@ -829,7 +829,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   enregistré avec la nouvelle version** (si les MRK ont un TunedFreq, ils sont lus sans rien changer).
 - **7.52.0 (Clément : « penser à add un auto sur les seuils »)** : le bouton « Auto » (une fois, médiane + 10 dB) devient
   un MODE à cocher `thr_auto_btn` → `set_thr_auto` : **un seuil par fréquence** = bruit de fond appris + marges
-  (`auto_occ_spin` « bruit + 10 dB », `auto_weak_spin` « bruit + 4 dB », visibles dans la barre à la place des seuils
+  (`auto_occ_spin` « bruit + 12 dB », `auto_weak_spin` « bruit + 6 dB », visibles dans la barre à la place des seuils
   fixes). PURE `AUTO_THR_DEFAULT`, `floor_track` (descend vite `AUTO_FALL_S` 5 s, monte lentement `AUTO_RISE_S` 600 s,
   **ne monte pas tant que la fréquence est occupée** : un brouilleur large ne relève pas son propre seuil),
   `floor_curve` (20ᵉ centile à ± 2 MHz tous les 0,5 MHz, NaN dans les trous), `eff_thresholds(..., auto_floor,
@@ -839,7 +839,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   par point ; `thr_spin` / `weak_spin` suivent la valeur TYPIQUE (médiane + marges) pour les outils qui lisent le seuil
   global. Config + SHOW_KEYS : `thr_auto`, `auto_occ`, `auto_weak` ; défaut = allumé au **1er lancement seulement**
   (`_first_run`), les configs existantes restent en seuils fixes. Seuil tapé depuis la page Tech → Auto coupé.
-  **Pas essayé sur un vrai tinySA** (marges 10 / 4 dB = valeurs de départ).
+  **Pas essayé sur un vrai tinySA** (marges 12 / 6 dB = valeurs de départ ; à + 4 dB, du bruit pur passait en « faible » en démo).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

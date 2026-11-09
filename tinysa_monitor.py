@@ -1154,7 +1154,7 @@ def eff_thresholds(own_thr, ref_lvl, rel_on, margin, gthr, gweak, auto_floor=Non
     return gthr, gweak
 
 
-AUTO_THR_DEFAULT = (10.0, 4.0)                  # seuils auto : occupé = bruit + 10 dB, faible = bruit + 4 dB
+AUTO_THR_DEFAULT = (12.0, 6.0)                  # seuils auto : occupé = bruit + 12 dB, faible = bruit + 6 dB
 AUTO_RISE_S, AUTO_FALL_S = 600.0, 5.0           # le bruit appris monte lentement (10 min), redescend vite
 
 
