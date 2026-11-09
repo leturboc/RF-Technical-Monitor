@@ -1363,6 +1363,37 @@ if win._ezrf_dlg is not None:
           win._ezrf_dlg.windowTitle())
     win._ezrf_dlg.apply()
 check("WWB .shw suivi : fréquence déplacée", any(abs(w_["freq"] - 578.0) < 1e-6 for w_ in win.watch))
+# Wisycom : récepteurs « à compléter », retrouvés par le nom dans la liste (7.50, Clément : « corrélation au nom »)
+win.ezrf_link = None
+win.watch = []
+win._append_watch("HF 1 ARRIVEE", 575.8, "", None, "", "")
+win.watch[-1].update(ez="ARRIVÉE|HF|HF 1 ARRIVEE", ezsrc="Roc.ezrf3")       # venue d'un autre plan
+_wsh = os.path.join(tmp, "Roc.wshow")
+_sh.copy(os.path.join(HERE, "data", "wisycom_essai.wshow"), _wsh)
+_pend = []
+def _wsh_act(d):
+    _pend.append([(d.pend.item(r, 0).text(), d.pend.item(r, 2).text()) for r in range(d.pend.rowCount())])
+    shot(d, "wisycom_a_completer")
+    d.follow.setChecked(True)
+    return "accept"
+DLG_ACTION[0] = _wsh_act
+win.import_ezrf_file(_wsh)
+DLG_ACTION[0] = "reject"
+check("Wisycom : ARR 1 retrouvé par le nom (HF 1 ARRIVEE), ARR 2 à compléter",
+      _pend and _pend[0] == [("ARR 1", "575.800"), ("ARR 2", "")], str(_pend))
+check("Wisycom : rien en double, IEM ajoutés, complété retenu dans le suivi",
+      sum(1 for w_ in win.watch if abs(w_["freq"] - 575.8) < 1e-6) == 1 and len(win.watch) == 3
+      and (win.ezrf_link or {}).get("manual") == {"ARR 1": 575.8}, f"{[(w_['name'], w_['freq']) for w_ in win.watch]} {win.ezrf_link}")
+_t = open(_wsh, encoding="utf-8").read().replace('<TunedFreq Value="642000000" />', '<TunedFreq Value="643000000" />')
+open(_wsh, "w", encoding="utf-8").write(_t)
+os.utime(_wsh, (time.time() - 5, time.time() - 5))
+win._ezrf_next = 0.0
+_dd = win._ezrf_tick(time.time())
+check("Wisycom suivi : 1 changement, rien à retirer (pas celles de l'autre plan)",
+      _dd and (len(_dd["add"]), len(_dd["change"]), len(_dd["remove"])) == (0, 1, 0), str(_dd))
+if win._ezrf_dlg is not None:
+    win._ezrf_dlg.close()
+win.ezrf_link = None
 for _fn in ("wsm_essai.wsm", "shure_essai.cug", "wisycom_essai.wshow", "dpa_essai.acp"):
     DLG_ACTION[0] = "accept"
     _nn = win.import_ezrf_file(os.path.join(HERE, "data", _fn))

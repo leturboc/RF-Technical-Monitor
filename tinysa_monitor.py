@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.49.1"
+APP_VER = "7.50.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2227,20 +2227,79 @@ def parse_wisycom_show(data):
                              name=((nm.get("Value") if nm is not None else "") or "").strip()[:60], note=model, freq=f,
                              off=False))
         if not chans:                              # récepteur : noms de canaux seulement (pas ceux = nom de l'appareil,
-            missing += [n for n in ((c.get("Name") or "").strip() for c in dv.findall("Channels/*"))   # MAT288, MRK16…)
-                        if n and n != model]
-    if not rows:
-        names = ", ".join(missing[:8]) + ("…" if len(missing) > 8 else "")
-        raise ValueError(f"ce show ne contient que des récepteurs ({names}) : Wisycom Manager n'enregistre pas leurs "
-                         f"fréquences dans le fichier (seulement celles des émetteurs MTK). Ajoute-les à la main, ou "
-                         f"importe le plan depuis EazyRF / un tableau." if missing else
-                         "aucune fréquence dans ce show (Wisycom n'y enregistre que celles des émetteurs)")
+            missing += [dict(name=n[:60], model=model)                                                  # MAT288, MRK16…)
+                        for n in ((c.get("Name") or "").strip() for c in dv.findall("Channels/*")) if n and n != model]
+    if not rows and not missing:
+        raise ValueError("aucune fréquence dans ce show (Wisycom n'y enregistre que celles des émetteurs)")
     _number_dups(rows)
     warn = ""
     if missing:
-        warn = (f"{len(missing)} canal(aux) de récepteur sans fréquence dans le fichier ({', '.join(missing[:6])}"
-                f"{'…' if len(missing) > 6 else ''}) : Wisycom Manager ne les y enregistre pas, ajoute-les à la main.")
-    return _plan_doc(rows, devices, warn=warn)
+        warn = (f"{len(missing)} canal(aux) de récepteur sans fréquence dans le fichier : Wisycom Manager ne les y "
+                f"enregistre pas. Complète-les dans le tableau « À compléter » (fréquence trouvée par le nom dans ta "
+                f"liste quand c'est possible).")
+    doc = _plan_doc(rows, devices, warn=warn)
+    cnt, seen = {}, {}
+    for p_ in missing:
+        cnt[p_["name"]] = cnt.get(p_["name"], 0) + 1
+    for p_ in missing:                          # 3 × « SPARE » -> SPARE 1, 2, 3 (à compléter chacun)
+        if cnt[p_["name"]] > 1:
+            seen[p_["name"]] = seen.get(p_["name"], 0) + 1
+            p_["name"] = f"{p_['name']} {seen[p_['name']]}"[:60]
+    doc["pending"] = missing
+    return doc
+
+
+def _name_tokens(s):
+    k = "".join(c for c in unicodedata.normalize("NFD", str(s).upper()) if unicodedata.category(c) != "Mn")
+    words = re.findall(r"[A-Z]+|\d+", k)
+    return [w for w in words if not w.isdigit()], [int(w) for w in words if w.isdigit()]
+
+
+def name_match(name, candidates, avoid=()):
+    """Corrélation par le nom (Clément : « fais une corrélation au nom ») : canal d'un récepteur Wisycom → l'entrée de la
+    liste qui porte le même nom, sinon les mêmes numéros + chaque mot du canal = début d'un mot du candidat (« DEP 1 »
+    ↔ « HF 1 DEPART », « SCE 2 » ↔ « HF 2 SCENE »). avoid = mots qui écartent un candidat (« IEM » pour un récepteur de
+    micros). -> indice dans candidates, ou None (rien, ou plusieurs à égalité)."""
+    nk = re.sub(r"\s+", " ", str(name).strip().lower())
+    exact = [i for i, c in enumerate(candidates) if re.sub(r"\s+", " ", str(c).strip().lower()) == nk]
+    if exact:
+        return exact[0] if len(exact) == 1 else None
+    wa, na = _name_tokens(name)
+    if not wa and not na:
+        return None
+    best, hits = 0, []
+    for i, c in enumerate(candidates):
+        wb, nb = _name_tokens(c)
+        if sorted(na) != sorted(nb) or any(x in wb for x in avoid if x not in wa):
+            continue
+        if not all(any(b.startswith(a) or a.startswith(b) for b in wb) for a in wa):
+            continue
+        sc = sum(1 for a in wa for b in wb if b.startswith(a) or a.startswith(b))
+        if sc > best:
+            best, hits = sc, [i]
+        elif sc == best:
+            hits.append(i)
+    return hits[0] if len(hits) == 1 else None
+
+
+def plan_fill_pending(doc, manual):
+    """Canaux sans fréquence complétés (manual = {nom: MHz}) -> ajoutés aux lignes du plan (groupe = modèle), le reste
+    reste « à compléter ». Utilisé à l'import ET à chaque relecture du fichier suivi."""
+    rows, left = list(doc["rows"]), []
+    devices = dict(doc["devices"])
+    for p in doc.get("pending") or []:
+        f = (manual or {}).get(p["name"])
+        try:
+            f = round(float(f), 5) if f else 0.0
+        except (TypeError, ValueError):
+            f = 0.0
+        if 1.0 <= f <= 7000.0:
+            devices.setdefault((p["model"],), dict(name=p["model"]))
+            rows.append(dict(zone="", scene="", group=p["model"], dev=(p["model"],), devno="", name=p["name"],
+                             note=p["model"], freq=f, off=False))
+        else:
+            left.append(p)
+    return dict(doc, rows=rows, devices=devices, pending=left)
 
 
 def parse_dpa_acp(data):
@@ -11051,6 +11110,9 @@ class EzrfImportDialog(QtWidgets.QDialog):
             w = QtWidgets.QLabel("⚠ " + doc["warn"])
             w.setWordWrap(True)
             lay.addWidget(w)
+        self.pend = None
+        if doc.get("pending"):
+            self._build_pending(lay)
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Scène › groupe › fréquence", "MHz", "Appareil"])
         self.tree.setToolTip("Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe."
@@ -11132,8 +11194,84 @@ class EzrfImportDialog(QtWidgets.QDialog):
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
 
+    def _build_pending(self, lay):
+        """« À compléter » : canaux de récepteurs sans fréquence dans le fichier (Wisycom). Fréquence retrouvée par le
+        nom dans ta liste (ou un autre plan) quand c'est possible ; sinon à taper."""
+        box = QtWidgets.QGroupBox("À compléter : récepteurs sans fréquence dans le fichier")
+        v = QtWidgets.QVBoxLayout(box)
+        self.pend = QtWidgets.QTableWidget(len(self.doc["pending"]), 4)
+        self.pend.setHorizontalHeaderLabels(["Canal", "Appareil", "MHz", "Trouvé (par le nom)"])
+        self.pend.setToolTip("Tape la fréquence en MHz (ex. 578,050). Vide = pas importé. Retenu avec le suivi du "
+                             "fichier : un nouvel enregistrement dans Wisycom Manager ne l'efface pas.")
+        self.pend.verticalHeader().setVisible(False)
+        for r, p_ in enumerate(self.doc["pending"]):
+            for c, txt in enumerate((p_["name"], p_["model"])):
+                it = QtWidgets.QTableWidgetItem(txt)
+                it.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.pend.setItem(r, c, it)
+            self.pend.setItem(r, 2, QtWidgets.QTableWidgetItem(""))
+            it = QtWidgets.QTableWidgetItem("")
+            it.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.pend.setItem(r, 3, it)
+        self.pend.horizontalHeader().setStretchLastSection(True)
+        self.pend.setMinimumHeight(140)
+        v.addWidget(self.pend)
+        h = QtWidgets.QHBoxLayout()
+        b = QtWidgets.QPushButton("📂 Chercher les noms dans un autre plan…")
+        b.setToolTip("Un plan EazyRF, WWB, WSM… où ces canaux ont leur fréquence (par ex. « HF 1 DEPART » pour « DEP 1 ») :\n"
+                     "les fréquences trouvées par le nom remplissent les cases vides.")
+        b.clicked.connect(lambda *_: self._pend_from_file())
+        self.pend_lbl = QtWidgets.QLabel("")
+        h.addWidget(b)
+        h.addWidget(self.pend_lbl, 1)
+        v.addLayout(h)
+        lay.addWidget(box)
+        self._pend_match([(w["name"], w["freq"]) for w in self.owner.watch], "ta liste")
+
+    def _pend_match(self, pool, where):
+        names = [n for n, _f in pool]
+        n = 0
+        for r, p_ in enumerate(self.doc["pending"]):
+            if self.pend.item(r, 2).text().strip():
+                continue
+            avoid = ("IEM",) if p_["model"].upper().startswith(("MRK", "MCR")) else ()
+            i = name_match(p_["name"], names, avoid)
+            if i is not None:
+                self.pend.item(r, 2).setText(f"{pool[i][1]:.3f}")
+                self.pend.item(r, 3).setText(f"{pool[i][0]} ({where})")
+                n += 1
+        left = sum(1 for r in range(self.pend.rowCount()) if not self.pend.item(r, 2).text().strip())
+        self.pend_lbl.setText(f"{n} trouvée(s) dans {where} · {left} à compléter")
+        return n
+
+    def _pend_from_file(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Plan où chercher les noms", "", "Plans (*.ezrf3 *.shw *.cug *.wsm *.wshow *.acp);;Tous (*)")
+            if not path:
+                return 0
+        try:
+            doc, _k = parse_plan_file(Path(path).read_bytes(), os.path.basename(path))
+        except (OSError, ValueError) as e:
+            self.pend_lbl.setText(f"Illisible : {e}")
+            return 0
+        return self._pend_match([(e[0], e[1]) for e in ezrf_entries(doc, False)], os.path.basename(path))
+
+    def manual(self):
+        out = {}
+        if self.pend is None:
+            return out
+        for r, p_ in enumerate(self.doc["pending"]):
+            try:
+                f = float(self.pend.item(r, 2).text().strip().replace(",", "."))
+            except ValueError:
+                continue
+            if 1.0 <= f <= 7000.0:
+                out[p_["name"]] = round(f, 5)
+        return out
+
     def options(self):
-        return dict(status=self.status.currentData() or "", profiles=self.prof.isChecked(),
+        return dict(status=self.status.currentData() or "", profiles=self.prof.isChecked(), manual=self.manual(),
                     skip_off=self.skip.isChecked(), interf=self.interf.isChecked() and self.interf.isVisibleTo(self),
                     scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked(),
                     follow=self.follow.isChecked() and bool(self.path), kind=self.kind)
@@ -19793,6 +19931,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.watch[-1]["muted"] = True           # 💤 éteinte exprès (je sais)
                 if w.get("ez"):
                     self.watch[-1]["ez"] = str(w["ez"])[:200]   # 🔗 venue d'un plan EazyRF suivi
+                    if w.get("ezsrc"):
+                        self.watch[-1]["ezsrc"] = str(w["ezsrc"])[:200]   # … de quel fichier (7.50)
             except Exception:
                 pass
         if "ezrf_link" in data:                  # 🔗 plan EazyRF suivi
@@ -20024,7 +20164,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         **({"rx": w["rx"]} if w.get("rx") else {}),
                         **({"iso": True} if w.get("iso") else {}),
                         **({"muted": True} if w.get("muted") else {}),
-                        **({"ez": w["ez"]} if w.get("ez") else {}))
+                        **({"ez": w["ez"]} if w.get("ez") else {}),
+                        **({"ezsrc": w["ezsrc"]} if w.get("ezsrc") else {}))
                    for w in self.watch],
             scenes=[dict(name=s["name"], color=s["color"],
                          groups=[dict(name=g["name"], color=g["color"], prio=int(g.get("prio", 1)),
@@ -23053,6 +23194,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 return None
             opts = dlg.options()
         opts = dict(opts, kind=opts.get("kind") or kind)
+        if opts.get("manual"):                       # récepteurs Wisycom complétés dans « À compléter »
+            doc = plan_fill_pending(doc, opts["manual"])
         return self.apply_ezrf(doc, opts, source, path)
 
     def _ezrf_profiles(self, doc):
@@ -23113,11 +23256,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 if rx not in lst:
                     lst.append(rx)
             k = int(round(f * 1000))
+            src = os.path.basename(str(path)) if path else ""
             if k in by_key:
-                by_key[k].setdefault("ez", ezrf_id(sc, gr, name))   # 🔗 déjà là : reliée au plan quand même
+                if not by_key[k].get("ez"):           # 🔗 déjà là : reliée au plan quand même (pas volée à un autre plan)
+                    by_key[k]["ez"] = ezrf_id(sc, gr, name)
+                    if src:
+                        by_key[k]["ezsrc"] = src
                 continue
             self._append_watch(name, f, st, None, sc, gr)
             self.watch[-1]["ez"] = ezrf_id(sc, gr, name)
+            if src:
+                self.watch[-1]["ezsrc"] = src
             if rx:
                 self.watch[-1]["rx"] = rx
             by_key[k] = self.watch[-1]
@@ -23154,7 +23303,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self.ezrf_link = dict(path=str(path), mtime=os.path.getmtime(path), name=os.path.basename(str(path)),
                                       status=opts.get("status", ""), skip_off=bool(opts.get("skip_off", True)),
-                                      kind=opts.get("kind") or "EazyRF")
+                                      kind=opts.get("kind") or "EazyRF", manual=dict(opts.get("manual") or {}))
             except OSError:
                 self.ezrf_link = None
         msg = f"📥 Plan {opts.get('kind') or 'EazyRF'} : {added} fréquence(s) importée(s)"
@@ -24925,8 +25074,9 @@ class MainWindow(QtWidgets.QMainWindow):
         except (OSError, ValueError) as e:
             self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » illisible : {e}")
             return None
-        d = ezrf_diff(ezrf_entries(doc, lk.get("skip_off", True)),
-                      [(w["ez"], w["freq"]) for w in self.watch if w.get("ez")])
+        doc = plan_fill_pending(doc, lk.get("manual") or {})   # canaux complétés à la main (récepteurs Wisycom)
+        d = ezrf_diff(ezrf_entries(doc, lk.get("skip_off", True)), self._ezrf_cur(lk))
+        d["add"] = [e for e in d["add"] if not any(abs(w["freq"] - e[1]) < 1e-6 for w in self.watch)]
         if not (d["add"] or d["change"] or d["remove"]):
             self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » réenregistré : rien n'a changé dans la liste.")
             return d
@@ -24940,10 +25090,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._alarm_sound(1)
         return d
 
+    def _ezrf_cur(self, lk):
+        """Fréquences de la liste venues du plan suivi -> [(id, MHz)]. Seulement celles de CE fichier (7.50 : sinon,
+        en suivant un .wshow après avoir importé un .ezrf3, l'appli proposait de retirer toutes celles d'EazyRF)."""
+        src = lk.get("name", "")
+        return [(w["ez"], w["freq"]) for w in self.watch if w.get("ez") and w.get("ezsrc", src) == src]
+
     def apply_ezrf_diff(self, d, add, change, remove):
         """Applique les changements cochés -> (ajoutées, modifiées, retirées)."""
         st = self._resolve_status(self.ezrf_link.get("status", "")) if self.ezrf_link and self.ezrf_link.get("status") else ""
-        by_ez = {w["ez"]: w for w in self.watch if w.get("ez")}
+        src = (self.ezrf_link or {}).get("name", "")
+        by_ez = {w["ez"]: w for w in self.watch if w.get("ez") and w.get("ezsrc", src) == src}
         n = [0, 0, 0]
         for e in add:
             name, f, sc, gr, _dk, _note = e
@@ -24951,6 +25108,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             self._append_watch(name, f, st, None, sc, gr)
             self.watch[-1]["ez"] = ezrf_id(sc, gr, name)
+            if src:
+                self.watch[-1]["ezsrc"] = src
             n[0] += 1
         for i, _old, new_f, _e in change:
             w = by_ez.get(i)

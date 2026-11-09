@@ -3627,7 +3627,6 @@ TEMPLATES = {
     '📸 État « {} » créé avec {} fréquence(s) : décoche celles qui ne jouent pas dans « Gérer les états ».': '📸 State “{}” created with {} frequency(ies): untick those that do not play in “Manage states”.',
     '📸 {}  ({})': '📸 {}  ({})',
     '{}  ({})': '{}  ({})',
-    '{} ({})': '{} ({})',
     '🔗 « {} » a été réenregistré dans EazyRF. Coche ce que tu reprends dans ta liste :': '🔗 “{}” was saved again in EazyRF. Tick what you take into your list:',
     '🔗 Plan EazyRF : {} ajoutée(s), {} modifiée(s), {} retirée(s).': '🔗 EazyRF plan: {} added, {} moved, {} removed.',
     '＋ {}  {} MHz': '＋ {}  {} MHz',
@@ -4666,4 +4665,24 @@ EXACT.update({
 TEMPLATES.update({
     "ce show ne contient que des récepteurs ({}) : Wisycom Manager n'enregistre pas leurs fréquences dans le fichier (seulement celles des émetteurs MTK). Ajoute-les à la main, ou importe le plan depuis EazyRF / un tableau.":
         'this show only contains receivers ({}): Wisycom Manager does not store their frequencies in the file (only those of the MTK transmitters). Add them by hand, or import the plan from EazyRF / a spreadsheet.',
+})
+
+# 7.50 : récepteurs Wisycom « à compléter », corrélation par le nom
+EXACT.update({
+    'MCR': 'MCR', 'MRK': 'MRK',
+    'ta liste': 'your list',
+    'Plan où chercher les noms': 'Plan to search the names in',
+    "Tape la fréquence en MHz (ex. 578,050). Vide = pas importé. Retenu avec le suivi du fichier : un nouvel enregistrement dans Wisycom Manager ne l'efface pas.":
+        'Type the frequency in MHz (e.g. 578.050). Empty = not imported. Kept with the file follow-up: a new save in Wisycom Manager does not erase it.',
+    'Trouvé (par le nom)': 'Found (by name)',
+    'Un plan EazyRF, WWB, WSM… où ces canaux ont leur fréquence (par ex. « HF 1 DEPART » pour « DEP 1 ») :\nles fréquences trouvées par le nom remplissent les cases vides.':
+        'An EazyRF, WWB, WSM… plan where these channels have their frequency (e.g. “HF 1 DEPART” for “DEP 1”):\nthe frequencies found by name fill the empty cells.',
+    'À compléter : récepteurs sans fréquence dans le fichier': 'To complete: receivers without frequency in the file',
+    '📂 Chercher les noms dans un autre plan…': '📂 Look the names up in another plan…',
+})
+TEMPLATES.update({
+    'Illisible : {}': 'Unreadable: {}',
+    '{} trouvée(s) dans {} · {} à compléter': '{} found in {} · {} to complete',
+    "{} canal(aux) de récepteur sans fréquence dans le fichier : Wisycom Manager ne les y enregistre pas. Complète-les dans le tableau « À compléter » (fréquence trouvée par le nom dans ta liste quand c'est possible).":
+        '{} receiver channel(s) without frequency in the file: Wisycom Manager does not store them there. Complete them in the “To complete” table (frequency found by name in your list when possible).',
 })
