@@ -4257,3 +4257,4 @@ EXACT.update({
     '📥 Importer ton plan, ＋ Ajouter à la main, ou 📡 Depuis le scan.': '📥 Import your plan, ＋ Add by hand, or 📡 From the scan.',
     '📥 Importer…': '📥 Import…',
 })
+EXACT['font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; '] = 'font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; '

@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.43.0"
+APP_VER = "7.43.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -14789,8 +14789,8 @@ class HomeBar(QtWidgets.QWidget):
         self.owner = o = owner
         self.setObjectName("accueil")
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(6, 4, 6, 4)
-        lay.setSpacing(4)
+        lay.setContentsMargins(6, 2, 6, 2)
+        lay.setSpacing(3)
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(8)
         self.cards = {}
@@ -14799,16 +14799,19 @@ class HomeBar(QtWidgets.QWidget):
             fr = QtWidgets.QFrame()
             fr.setObjectName("carte")
             v = QtWidgets.QVBoxLayout(fr)
-            v.setContentsMargins(10, 6, 10, 6)
-            v.setSpacing(3)
+            v.setContentsMargins(8, 3, 8, 4)
+            v.setSpacing(2)
+            top = QtWidgets.QHBoxLayout()                # titre et état sur une seule ligne (place en hauteur)
+            top.setSpacing(8)
             t = QtWidgets.QLabel(title)
             t.setStyleSheet("font-weight:bold; font-size:14px")
             info = QtWidgets.QLabel("")
-            info.setWordWrap(True)
+            info.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
+            top.addWidget(t)
+            top.addWidget(info, 1)
             h = QtWidgets.QHBoxLayout()
             h.setSpacing(6)
-            v.addWidget(t)
-            v.addWidget(info)
+            v.addLayout(top)
             v.addLayout(h)
             self.cards[key] = (fr, info, h)
             row.addWidget(fr, 1)
@@ -14915,7 +14918,7 @@ class HomeBar(QtWidgets.QWidget):
         tone, txt = home_status(info)
         c = {"ok": th["st_free"], "warn": th["st_weak"], "bad": th["st_occ"]}.get(tone)
         self.status.setText(txt)
-        self.status.setStyleSheet("font-size:17px; font-weight:bold; padding:4px 8px; border-radius:6px; "
+        self.status.setStyleSheet("font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; "
                                   + (f"background:{c}; color:{contrast_text(c)}" if c else ""))
 
 
