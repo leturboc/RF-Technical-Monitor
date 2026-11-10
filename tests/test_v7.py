@@ -1422,5 +1422,61 @@ for _F in (np.concatenate([np.linspace(470, 694, 4500), np.linspace(800, 830, 60
     _c2, _o2 = ns["floor_curve"](_F, _L)
     _okfc &= bool(np.allclose(_c1, _c2) and np.allclose(_o1, _o2, equal_nan=True))
 ok("7.56 : floor_curve vectorisé = calcul fenêtre par fenêtre (3 cas, trous compris)", _okfc)
+# 7.57 : déduire tout seul (vue UHF du pays, waterfall, pays, bandes manquantes)
+_B = [dict(id=1, start=470.0, stop=694.0, enabled=True), dict(id=2, start=823.0, stop=832.0, enabled=True),
+      dict(id=3, start=0.1, stop=6000.0, enabled=False)]
+ok("7.57 : Vue d'office = la bande UHF du pays (France)", ns["default_view_band"](_B, "FR") == 1)
+ok("7.57 : une seule bande balayée -> elle", ns["default_view_band"]([_B[1]], "FR") == 2)
+ok("7.57 : rien sur l'UHF -> rien", ns["default_view_band"]([_B[1], dict(_B[1], id=4)], "FR") is None)
+_B2 = [dict(id=1, start=400.0, stop=1000.0, enabled=True), dict(id=2, start=470.0, stop=608.0, enabled=True)]
+ok("7.57 : États-Unis : 470-608, la bande la plus étroite qui la couvre", ns["default_view_band"](_B2, "US") == 2
+   and ns["country_uhf"]("US") == (470.0, 608.0) and ns["country_uhf"]("FR") == (470.0, 694.0))
+ok("7.57 : pays d'après Windows", ns["country_from_locale"]("fr_FR") == "FR" and ns["country_from_locale"]("fr-BE") == "BE"
+   and ns["country_from_locale"]("en_US") == "US" and ns["country_from_locale"]("ja_JP") == "" and ns["country_from_locale"]("") == "")
+ok("7.57 : waterfall en « toutes les bandes » avec une seule bande balayée", ns["single_band_view"](-1, [_B[0], _B[2]], -2) == 1
+   and ns["single_band_view"](-1, _B, -2) is None and ns["single_band_view"](2, _B, -2) == 2)
+_mb = ns["missing_bands"]([470.2, 558.0, 825.0, 828.5, 1790.0, 1795.2, 0.0], _B)
+ok("7.57 : bandes manquantes (823-832 couvert, 1790/1795 réunies, marge 2 MHz)", _mb == [(1788.0, 1798.0, 2)], str(_mb))
+ok("7.57 : tout couvert -> rien à proposer", ns["missing_bands"]([470.2, 600.0], _B) == [])
+# 7.57 : préréglages perso
+_up = ns["user_presets_norm"]([dict(name="  Concert   jazz ", desc="calme", st=dict(persist=5, repeat=999, points=7, thr_auto=0)),
+                                dict(name="concert jazz", st={}), "x", dict(name="")])
+ok("7.57 : préréglages perso nettoyés (nom, doublon, réglages bancals -> défaut)", len(_up) == 1
+   and _up[0]["name"] == "Concert jazz" and _up[0]["st"]["persist"] == 5 and _up[0]["st"]["repeat"] == 30
+   and _up[0]["st"]["points"] == 0 and _up[0]["st"]["thr_auto"] is False and set(_up[0]["st"]) == set(ns["QUICK_PRESETS"][0][3]))
+_all = ns["presets_all"](_up)
+ok("7.57 : perso après les intégrés, clé u:nom, ⭐", _all[-1][0] == "u:Concert jazz" and _all[-1][1] == "⭐ Concert jazz"
+   and len(_all) == len(ns["QUICK_PRESETS"]) + 1)
+ok("7.57 : un préréglage perso se reconnaît", ns["preset_match"](dict(_up[0]["st"]), _up) == "u:Concert jazz")
+_m = ns["user_presets_merge"]([dict(name="A", st={}), dict(name="B", st=dict(persist=3))], [dict(name="b", st=dict(persist=20))])
+ok("7.57 : fusion PC + show (à nom égal le show gagne)", [x["name"] for x in _m] == ["A", "b"] and _m[1]["st"]["persist"] == 20)
+ok("7.57 : préréglages perso, rémanence, pics gardés et rythme des alarmes suivent le show",
+   all(k in ns["SHOW_KEYS"] for k in ("user_presets", "persist", "hold", "alarm_timing")))
+# 7.57 : 👤 profils utilisateur
+_cfg = dict(theme=dict(curve="#3ddc84"), unit="dbuv", thr=-88.0, sound=dict(device="Casque USB", volume=40, repeat=60),
+            watch=[dict(name="HF 1", freq=470.2)], bands=[1], user_presets=[dict(name="Jazz", st={})], web=dict(pin="1234"))
+_ud = ns["user_doc"](_cfg, "  Clément  FOH ", "7.57")
+ok("7.57 : profil = préférences seulement (pas le show, pas le web, pas la sortie audio)",
+   _ud["name"] == "Clément FOH" and set(_ud["prefs"]) == {"theme", "unit", "thr", "sound", "user_presets"}
+   and "device" not in _ud["prefs"]["sound"], str(_ud["prefs"].keys()))
+import json as _js
+_rd = ns["read_user"](_js.dumps(_ud))
+ok("7.57 : relu à l'identique", _rd["prefs"] == _ud["prefs"] and _rd["name"] == "Clément FOH")
+_now = dict(theme=dict(curve="#ffffff"), unit="dbm", sound=dict(device="Haut-parleurs PC", volume=70), watch=["garde"])
+_ap = ns["user_apply"](_now, _rd)
+ok("7.57 : charger un profil : préférences remplacées, sortie audio du PC et show gardés",
+   _ap["unit"] == "dbuv" and _ap["theme"]["curve"] == "#3ddc84" and _ap["sound"]["device"] == "Haut-parleurs PC"
+   and _ap["sound"]["volume"] == 40 and _ap["watch"] == ["garde"])
+for _bad in ("pas du json", '{"format":"tinysa-show","show":{}}', "[1,2]"):
+    try:
+        ns["read_user"](_bad); _okb = False
+    except ValueError:
+        _okb = True
+    ok(f"7.57 : fichier refusé : {_bad[:20]}", _okb)
+ok("7.57 : clé inconnue d'un profil ignorée", "watch" not in ns["read_user"](_js.dumps(dict(format="tinysa-user", prefs=dict(watch=[1], unit="pct"))))["prefs"])
+ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB.tsauser" and ns["user_filename"]("  ") == "Profil.tsauser",
+   ns["user_filename"]('Clé: "A/B"?'))
+ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
+                                                                             "site_scans", "web", "notify"}))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

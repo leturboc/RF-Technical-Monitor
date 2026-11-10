@@ -1633,6 +1633,24 @@ win.alarms.repeat_s = float(win.sound.cfg["repeat"])
 win.strong_chk.setChecked(_preset_cur0["strong"]); win.strong_spin.setValue(_preset_cur0["strong_lvl"])
 win.hold_chk.setChecked(_preset_cur0["hold"])
 
+# 👤 profils utilisateur (7.57) : fenêtre ouverte, enregistrer puis recharger dans un dossier temporaire
+_ud_old = m.USER_DIR
+m.USER_DIR = m.Path(tempfile.mkdtemp()) / "Profils"
+_up = win.open_user_profiles()
+wait(200)
+_unit0 = win.unit
+_pp = win.user_profile_save("Essai")
+win.set_unit("pct" if _unit0 != "pct" else "dbm")
+win.user_profile_load(_pp)
+check("profil utilisateur : enregistré puis rechargé (unité revenue)", _pp is not None and win.unit == _unit0, win.unit)
+_up.refresh()
+check("profil utilisateur : listé", _up.lst.count() == 1)
+shot(_up, "profils_utilisateur")
+_up.close()
+m.USER_DIR = _ud_old
+check("7.57 : waterfall = la seule bande balayée en « toutes les bandes »",
+      m.single_band_view(-1, [b for b in win.bands if b["enabled"]][:1], m.ZOOM_ID) is not None)
+
 # ✅ Prêt pour le show ? / 🖥 Mode Show / 🛡 garde (7.39, « on fortifie »)
 _rd = win.open_ready()
 wait(300)

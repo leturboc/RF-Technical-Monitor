@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.56.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.57.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -975,6 +975,28 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **Optimisations** : `floor_curve` sans boucle (centile linéaire à la main sur fenêtres triées, = np.percentile,
     ≈ 28× plus rapide, test « = calcul fenêtre par fenêtre ») ; `ScanWorker.stats["pts"]` → `stats_text` « vitesse N
     points/s (x ms par point) » dans le 🩺 diagnostic (**à lire sur le diagnostic de Clément**).
+- **7.57.0 (Clément : « la Vue sur UHF 470-694 direct en France pour un nouveau show, déduire tout ça ; le waterfall
+  ne s'affiche pas de lui-même ; pouvoir créer ces préréglages ; tout ça dans les shows ; un mode préférences user »)** :
+  - **Déduire** : PURE `COUNTRY_UHF` / `country_uhf` (US / CA 470-608, sinon 470-694), `default_view_band(bandes, pays)`
+    (la bande balayée qui recouvre le plus l'UHF, la plus étroite à égalité ; une seule bande -> elle),
+    `country_from_locale` (« fr_FR » -> FR), `single_band_view` (waterfall : la bande de la Vue, ou la SEULE bande balayée
+    en « Toutes les bandes » — avant, le waterfall disait « choisis une bande »), `missing_bands(fréquences, bandes)`
+    (bandes à proposer, ± 2 MHz, réunies à 10 MHz). MainWindow : `_wf_bid`, `auto_view` (nouveau show via
+    `clear_show_data`, 1er lancement dans `_late_layout` avec le pays de `QLocale`), `_bands_changed` montre le waterfall
+    si une seule bande, `set_level` rend le waterfall en quittant l'ultra simple (`_prev_level`),
+    `offer_missing_bands` (fenêtre NON bloquante `_band_offer` après `open_import` / `apply_ezrf`).
+  - **⭐ Préréglages perso** : PURE `user_presets_norm` ({name, desc, st} ≤ 30, réglages bancals -> ceux du festival),
+    `user_presets_merge` (à nom égal le nouveau gagne), `presets_all(user)` (clé « u:nom », « ⭐ nom ») ; `quick_preset` /
+    `preset_changes` / `preset_match` prennent `user`. `self.user_presets` (config + SHOW_KEYS, FUSIONNÉS dans
+    `_apply_config` comme `net_profiles`). PresetDialog : « ⭐ Enregistrer mes réglages actuels… » (`save_current`),
+    « Supprimer » (`delete`), `_fill`. Noms perso jamais traduits. SHOW_KEYS + `persist`, `hold`, `alarm_timing`
+    ({confirm, repeat} recopié dans `sound.cfg` à l'ouverture).
+  - **👤 Profils utilisateur** : PURE `USER_KEYS` (affichage, couleurs, mots, seuils, alarmes, son SANS `device`,
+    préréglages perso ; jamais le show / web / alertes / tinySA), `user_doc`, `read_user` (format « tinysa-user »),
+    `user_apply` (garde la sortie audio du PC), `user_filename`. `USER_DIR` = Documents/TinySA Monitor/Profils, fichiers
+    `.tsauser`. `UserProfilesDialog` (`self._userprof` : liste ✓, Charger, Enregistrer, Importer, Exporter, Supprimer,
+    Dossier), `user_profile_save` / `user_profile_load` (+ `set_level`), `user_name` (config). ☰ Plus et ⚙ › Général.
+    Testé : PURE (test_v7), vraie appli (scripts de la session + gui_reel). **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
