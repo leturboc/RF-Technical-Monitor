@@ -949,6 +949,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   de la vue, refait 60 ms après un zoom / déplacement / redimensionnement via `_dens_timer`), `_clear_hist_pool`
   remet la couleur au changement de thème. Démo : 39 → 29 % de processeur. Testé : test_v7 (raster), captures (vue
   seule) ; **pas vu sur le PC de Clément**.
+  **✅ Vérifié par Clément (10/11/2026, vrai tinySA) : câble USB débranché en pleine surveillance → bandeau rouge tout de
+  suite ; rebranché → la surveillance reprend seule et revient à « tout va bien ».**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
