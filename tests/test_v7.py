@@ -1293,5 +1293,32 @@ _pb = ns["plain_btn_text"]
 check("7.54 : bouton sans emoji de tête", [_pb(x) for x in ("🎪 Shows", "▶ Démarrer", "⚡ Auto · 50 kHz", "+ Ajouter")],
       ["Shows", "Démarrer", "Auto · 50 kHz", "+ Ajouter"])
 check("7.54 : bouton-icône gardé", [_pb(x) for x in ("🔔", "🔔 1", "⚙", "")], ["🔔", "🔔 1", "⚙", ""])
+# 7.54 : thèmes daltoniens vérifiés par simulation (Machado 2009, sévérité 1) : les états critiques restent distincts
+_MCH = {"protan": [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
+        "deutan": [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]],
+        "tritan": [[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.303900]],
+        "normal": np.eye(3)}
+def _lab(hx, kind):
+    c = np.array([int(hx[i:i + 2], 16) / 255 for i in (1, 3, 5)])
+    c = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    if kind == "mono":
+        y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; c = np.array([y, y, y])
+    else:
+        c = np.clip(np.array(_MCH[kind]) @ c, 0, 1)
+    X = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]]) @ c
+    X /= np.array([0.95047, 1.0, 1.08883])
+    f = np.where(X > 0.008856, np.cbrt(X), 7.787 * X + 16 / 116)
+    return np.array([116 * f[1] - 16, 500 * (f[0] - f[1]), 200 * (f[1] - f[2])])
+def _crit(t, kind):
+    pairs = [("st_free", "st_occ"), ("st_libre", "st_occ"), ("st_weak", "st_occ"), ("st_free", "st_weak"),
+             ("st_free", "st_libre")]
+    return min(float(np.linalg.norm(_lab(t[a], kind) - _lab(t[b], kind))) for a, b in pairs)
+_TH = ns["THEMES"]
+for _n, _k in (("Daltonien · deutéranopie (vert)", "deutan"), ("Daltonien · protanopie (rouge)", "protan"),
+               ("Daltonien · tritanopie (bleu / jaune)", "tritan"), ("Monochrome (sans couleur)", "mono")):
+    ok(f"7.54 : thème « {_n} » lisible en vision {_k} (ΔE {_crit(_TH[_n], _k):.0f} ≥ 17)", _crit(_TH[_n], _k) >= 17)
+ok("7.54 : thème par défaut : OK et occupé distincts pour un deutéranope (ΔE ≥ 25)",
+   float(np.linalg.norm(_lab(_TH["Pro sombre"]["st_free"], "deutan") - _lab(_TH["Pro sombre"]["st_occ"], "deutan"))) >= 25)
+ok("7.54 : tous les thèmes ont toutes les couleurs", all(all(k in t for k, *_ in ns["THEME_KEYS"]) for t in _TH.values()))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -1,7 +1,7 @@
 name: Ménage des anciennes versions
 
-# Supprime les releases ET les tags v7.x plus anciens que la version donnée (par défaut v7.41.0, la première sans
-# comparaison « comme EazyRF »). Ne se lance qu'à la main : onglet Actions › « Ménage des anciennes versions » ›
+# Supprime les releases ET les tags v7.x plus anciens que la version donnée (par défaut v7.41.0, la première aux
+# mentions neutres). Ne se lance qu'à la main : onglet Actions › « Ménage des anciennes versions » ›
 # Run workflow, en tapant SUPPRIMER. Les pré-releases test-… et les versions à partir de la limite sont gardées.
 # Les commits restent dans l'historique (dépôt privé).
 

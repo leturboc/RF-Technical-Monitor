@@ -4684,3 +4684,13 @@ TEMPLATES.update({k: k for k in ("background:{}; color:{}; border:1px solid {}; 
 TEMPLATES.update({"<div style='font-size:22px; font-weight:600'>{}</div><div style='font-size:17px; opacity:.8'>{} MHz</div><div style='font-size:16px; font-weight:600; color:{}'>{}<span style='font-weight:400'>{}</span></div>": "<div style='font-size:22px; font-weight:600'>{}</div><div style='font-size:17px; opacity:.8'>{} MHz</div><div style='font-size:16px; font-weight:600; color:{}'>{}<span style='font-weight:400'>{}</span></div>"})
 EXACT.update({"PNG": "PNG"})
 TEMPLATES.update({"{}_{}.png": "{}_{}.png"})
+EXACT.update({
+    "Catppuccin (Mocha)": "Catppuccin (Mocha)", "Tokyo Night": "Tokyo Night", "Dracula": "Dracula",
+    "Rosé Pine": "Rosé Pine", "Gruvbox": "Gruvbox",
+    "Daltonien · deutéranopie (vert)": "Colour-blind · deuteranopia (green)",
+    "Daltonien · protanopie (rouge)": "Colour-blind · protanopia (red)",
+    "Daltonien · tritanopie (bleu / jaune)": "Colour-blind · tritanopia (blue / yellow)",
+    "Monochrome (sans couleur)": "Monochrome (no colour)",
+    "Thèmes (Pro sombre, Catppuccin, Nord, Daltonien…) et chaque couleur à la main.":
+        "Themes (Pro dark, Catppuccin, Nord, Colour-blind…) and every colour by hand.",
+})
