@@ -206,17 +206,17 @@ THEMES = {
                            maxhold="#ffff00", thr="#ff3030", thr_weak="#ffa500", st_free="#00e5ff",
                            st_weak="#ffe600", st_occ="#ff2d2d", st_unk="#ff9d00", st_none="#9a9a9a",
                            wf="Chaud"),
-    # 7.54.1 (Clément : « le filtre rouge ou vert c'est pas beau du tout ») : surfaces neutres, seules les courbes
-    # et les accents gardent la couleur (avant : tout l'écran teinté de rouge / de vert).
-    "Nuit (rouge)": dict(ui_bg="#121010", ui_base="#171414", ui_button="#241f1e", ui_text="#d8c4bc",
-                         ui_accent="#c2453d", plot_bg="#0e0c0c", plot_fg="#8a7670", curve="#ff6a5c",
-                         maxhold="#e0a050", thr="#ff6a5c", thr_weak="#e0b050", st_free="#5fb3a1",
+    # 7.54.1 (Clément : « le filtre rouge ou vert c'est pas beau », photo d'un vieil analyseur à tube : « plutôt comme
+    # ça ») : interface neutre, SPECTRE façon écran cathodique (plot_style « crt » : grille bien visible, trace
+    # phosphore avec halo, une seule teinte pour la grille, les axes et la trace).
+    "Nuit (rouge)": dict(_G, ui_accent="#c2453d", plot_bg="#0c0505", plot_fg="#ff6f5e", curve="#ffc2b8",
+                         maxhold="#c0503f", thr="#ffe0da", thr_weak="#e89080", st_free="#5fb3a1",
                          st_libre="#7a8fd6", st_weak="#e0b050", st_occ="#ff5c5c", st_unk="#b48ad6",
-                         st_none="#4a4240", ref="#d08a8a", wf="Rouge (nuit)"),
-    "Analyseur vert": dict(_G, plot_bg="#050a07", plot_fg="#4f8a62", curve="#3ddc84", maxhold="#ffd60a",
-                           thr="#ff6b6b", thr_weak="#ffc35c", st_free="#3ddc84", st_libre="#5e9eff",
-                           st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff", st_none="#636366",
-                           ref="#c48bff", wf="Viridis"),
+                         st_none="#4a4240", ref="#d08a8a", wf="Rouge (nuit)", plot_style="crt"),
+    "Analyseur vert": dict(_G, ui_accent="#2fbf71", plot_bg="#06100b", plot_fg="#5fe39a", curve="#b8ffd6",
+                           maxhold="#3a9e64", thr="#e2ffee", thr_weak="#9ad8b0", st_free="#3ddc84",
+                           st_libre="#5e9eff", st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff",
+                           st_none="#636366", ref="#8fd6b0", wf="Phosphore vert", plot_style="crt"),
 }
 # l'ancien thème par défaut (7.12) : une config qui l'a gardé tel quel passe au nouveau (voir _apply_config)
 OLD_DEFAULT_THEME = dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
@@ -234,6 +234,7 @@ WF_MAPS = {
     "Chaud": [(0.0, (0, 0, 0)), (0.33, (180, 0, 0)), (0.66, (255, 200, 0)), (1.0, (255, 255, 255))],
     "Bleu-rouge": [(0.0, (0, 0, 60)), (0.35, (0, 120, 255)), (0.65, (255, 230, 0)), (1.0, (255, 0, 0))],
     "Rouge (nuit)": [(0.0, (0, 0, 0)), (0.5, (140, 0, 0)), (1.0, (255, 80, 80))],
+    "Phosphore vert": [(0.0, (2, 8, 4)), (0.5, (20, 140, 70)), (1.0, (200, 255, 220))],
 }
 
 DEFAULT_STATUSES = [("Libre", "#4d8fd6"), ("Occupé", "#c95c5c"),            # couleurs douces (7.12)
@@ -804,6 +805,7 @@ for _k, (_lab, _col) in CATEGORIES.items():
     THEME_KEYS.append(("bp_" + _k, _lab, "Bandes du spectre"))
 for _n, _t in THEMES.items():
     _t.setdefault("ref", "#c084fc")
+    _t.setdefault("plot_style", "normal")       # « crt » = spectre façon écran cathodique (7.54.1)
     _t.setdefault("st_libre", "#3b82f6")
     for _k, (_lab, _col) in CATEGORIES.items():
         _t.setdefault("bp_" + _k, _col)
@@ -24795,7 +24797,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     a = pi.getAxis(ax)
                     a.setPen(pg.mkPen(t["plot_fg"]))
                     a.setTextPen(pg.mkPen(t["plot_fg"]))
-            self.curve.setPen(pg.mkPen(t["curve"], width=1.6))
+            crt = t.get("plot_style") == "crt"
+            self.curve.setPen(pg.mkPen(t["curve"], width=1.8 if crt else 1.6))
+            try:                                  # halo du phosphore (écran cathodique)
+                glow = QtGui.QColor(t["plot_fg"])
+                glow.setAlpha(70)
+                self.curve.setShadowPen(pg.mkPen(glow, width=6) if crt else None)
+            except Exception:
+                pass
+            self.spec.getPlotItem().showGrid(x=True, y=True, alpha=0.40 if crt else 0.25)
             self.maxcurve.setPen(pg.mkPen(t["maxhold"], width=1))
             self.refcurve.setPen(pg.mkPen(t["ref"], width=1.3, style=Qt.PenStyle.DashLine))
             self.thr_line.setPen(pg.mkPen(t["thr"], width=1.5, style=Qt.PenStyle.DashLine))
