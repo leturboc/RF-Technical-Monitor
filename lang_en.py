@@ -4699,3 +4699,6 @@ EXACT.update({
 EXACT.update({"💤 éteint": "💤 off", "💤 éteint · ": "💤 off · ", "💤 hors état": "💤 not in state",
               "💤 hors état · ": "💤 not in state · "})
 EXACT.update({"Phosphore vert": "Green phosphor"})
+EXACT.update({"Analyseur bleu": "Blue analyser", "Analyseur ambre": "Amber analyser",
+              "Analyseur blanc": "White analyser", "Phosphore bleu": "Blue phosphor",
+              "Phosphore ambre": "Amber phosphor"})

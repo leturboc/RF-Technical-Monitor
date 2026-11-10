@@ -217,6 +217,19 @@ THEMES = {
                            maxhold="#3a9e64", thr="#e2ffee", thr_weak="#9ad8b0", st_free="#3ddc84",
                            st_libre="#5e9eff", st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff",
                            st_none="#636366", ref="#8fd6b0", wf="Phosphore vert", plot_style="crt"),
+    # gamme « analyseur à tube » (Clément : « un bleu aussi, genre une gamme de thèmes analo »)
+    "Analyseur bleu": dict(_G, ui_accent="#3a8dff", plot_bg="#050a14", plot_fg="#6fb4ff", curve="#cfe6ff",
+                           maxhold="#3f78c0", thr="#e6f2ff", thr_weak="#9cc4f0", st_free="#4fd1c5",
+                           st_libre="#8f9cff", st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff",
+                           st_none="#636366", ref="#a8c8f0", wf="Phosphore bleu", plot_style="crt"),
+    "Analyseur ambre": dict(_G, ui_accent="#e08a1e", plot_bg="#0f0904", plot_fg="#ffae42", curve="#ffe0b0",
+                            maxhold="#b8742a", thr="#fff0d8", thr_weak="#e8b070", st_free="#4fd1c5",
+                            st_libre="#5e9eff", st_weak="#ffd60a", st_occ="#ff6b6b", st_unk="#c48bff",
+                            st_none="#636366", ref="#e8c08a", wf="Phosphore ambre", plot_style="crt"),
+    "Analyseur blanc": dict(_G, plot_bg="#0a0b0c", plot_fg="#c8ccd2", curve="#ffffff", maxhold="#8a9098",
+                            thr="#ffb4a8", thr_weak="#ffd68a", st_free="#4fd1c5", st_libre="#5e9eff",
+                            st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff", st_none="#636366",
+                            ref="#b0b6c0", wf="Gris", plot_style="crt"),
 }
 # l'ancien thème par défaut (7.12) : une config qui l'a gardé tel quel passe au nouveau (voir _apply_config)
 OLD_DEFAULT_THEME = dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
@@ -235,6 +248,8 @@ WF_MAPS = {
     "Bleu-rouge": [(0.0, (0, 0, 60)), (0.35, (0, 120, 255)), (0.65, (255, 230, 0)), (1.0, (255, 0, 0))],
     "Rouge (nuit)": [(0.0, (0, 0, 0)), (0.5, (140, 0, 0)), (1.0, (255, 80, 80))],
     "Phosphore vert": [(0.0, (2, 8, 4)), (0.5, (20, 140, 70)), (1.0, (200, 255, 220))],
+    "Phosphore bleu": [(0.0, (2, 4, 12)), (0.5, (30, 90, 190)), (1.0, (215, 235, 255))],
+    "Phosphore ambre": [(0.0, (10, 5, 0)), (0.5, (170, 95, 15)), (1.0, (255, 230, 180))],
 }
 
 DEFAULT_STATUSES = [("Libre", "#4d8fd6"), ("Occupé", "#c95c5c"),            # couleurs douces (7.12)
