@@ -1637,8 +1637,15 @@ win.alarms.clear(_akey, time.time())
 _sm.refresh()
 _dh = win.health().get("data")
 check("mode Show sans alarme : « Tout va bien », ou l'état des données s'il y a un souci (même logique que l'accueil)",
-      len(win.alarms.active) > 0 or (("Tout va bien" in _sm.banner.text()) if not _dh
-                                     else _dh["text"][:25] in _sm.banner.text()), _sm.banner.text()[:160])
+      len(win.alarms.active) > 0 or (("Tout va bien" in _sm.banner.text()) if (_dh or {}).get("tone") == "ok"
+                                     else (_dh or {}).get("text", "?")[:25] in _sm.banner.text()), _sm.banner.text()[:160])
+_ir = win.is_running
+win.is_running = lambda: False
+_sm.refresh()
+check("audit : mode Show, surveillance arrêtée = jamais « Tout va bien »",
+      "Tout va bien" not in _sm.banner.text() and "arrêtée" in _sm.banner.text(), _sm.banner.text()[:160])
+win.is_running = _ir
+_sm.refresh()
 win.open_show_mode()                      # 2ᵉ appel (F10) = refermer
 check("mode Show : F10 / ✖ referme", win._show_mode is None)
 def _fest_act(d):

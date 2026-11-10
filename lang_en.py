@@ -3683,8 +3683,7 @@ WEB = [
     ('"Code faux (ou commande à distance désactivée sur le PC)."', '"Wrong code (or remote control disabled on the PC)."'),
     ('`💤 pas sur scène`', '`💤 not on stage`'),
     ('>✔ Tout va bien<small>', '>✔ All good<small>'),
-    ('} fréquence(s) surveillée(s)${', '} frequency(ies) monitored${'),
-    ('" · ⚠ surveillance arrêtée"', '" · ⚠ monitoring stopped"'),
+    ('} fréquence(s) surveillée(s)</small>', '} frequency(ies) monitored</small>'),
     ('} autre(s) alarme(s)</div>', '} more alarm(s)</div>'),
     ('} alarme(s)`:(wn.length', '} alarm(s)`:(wn.length'),
     ('} à surveiller`', '} to watch`'),
@@ -4660,3 +4659,15 @@ TEMPLATES.update({
 })
 WEB += [('>⚠ État de surveillance indéterminé<', '>⚠ Monitoring state unknown<')]
 EXACT.update({"⚠ État de surveillance indéterminé": "⚠ Monitoring state unknown"})
+
+# audit 7.52 (UX) : surveillance arrêtée jamais « tout va bien », alarmes + état ensemble
+EXACT.update({
+    "Rien n'est surveillé en ce moment.": "Nothing is being monitored right now.",
+    "■ Surveillance arrêtée": "■ Monitoring stopped",
+    "■ Surveillance arrêtée : rien n'est surveillé en ce moment.": "■ Monitoring stopped: nothing is being monitored right now.",
+    '`\n   :!hd?`': '`\n   :!hd?`',
+    '`\n   :hd.tone!=="ok"?`': '`\n   :hd.tone!=="ok"?`',
+    '`:""):"")\n   +(hb||(un.length?"":`': '`:""):"")\n   +(hb||(un.length?"":`',
+})
+TEMPLATES.update({"<div style='font-size:20px; margin-top:6px'>{}</div>": "<div style='font-size:20px; margin-top:6px'>{}</div>"})
+WEB += [('>■ Surveillance arrêtée<', '>■ Monitoring stopped<'), ("<small>Rien n'est surveillé en ce moment.</small>", "<small>Nothing is being monitored right now.</small>")]
