@@ -32,7 +32,7 @@ m.install_gc_main_thread(app, 100)
 FR = re.compile(r"[éèêàùçôîûœÉÈÀÇ]|\b(le|la|les|des|du|une|pour|avec|sans|dans|sur|est|pas|ou|aux|cette|ce|ces|"
                 r"fréquences?|appareil|bande|réglages?|libre|occupée?s?|fenêtre|écran|liste|niveau|seuil|"
                 r"Ajouter|Supprimer|Enregistrer|Ouvrir|Fermer|Annuler|Démarrer|Arrêter|Afficher|Masquer|Liste|Spectre|Alarmes|Mur|muet|faible|Seuil|Nom|Statut|Groupe|Couleur|Mots)\b")
-OK_WORDS = re.compile(r"Sennheiser|Wisycom|Shure|EazyRF|Français|tinySA|Spectera|Sémaphore")
+OK_WORDS = re.compile(r"Sennheiser|Wisycom|Shure|EazyRF|Français|tinySA|Spectera|Sémaphore|Rosé Pine")
 import lang_en
 FRS = lang_en.EXACT                       # un texte affiché tel quel en français alors qu'il a sa traduction
 try:
