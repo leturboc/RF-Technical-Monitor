@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.54.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.55.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -940,6 +940,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   courbes (refaites seulement à chaque balayage, pas à chaque rafraîchissement). Total démo : Pro sombre 59 → 39 %,
   Analyseur vert 87 → ~45 %. Reste : rémanence ≈ +10 % (idée : image de densité au lieu de N courbes), `floor_curve` ≈ 3 %
   (centiles en boucle). **Pas mesuré sur le PC de Clément.**
+- **7.55.0 (Clément : « go rémanence »)** : la rémanence du spectre n'est plus N courbes empilées mais UNE image de
+  densité façon analyseur numérique : PURE `density_raster(traces, x0, x1, y0, y1, W, H, weights)` (chaque ancien
+  balayage tracé en ligne brisée continue colonne par colonne — min / max entre les bords interpolés + points — donc pas
+  de trou sur un pic raide ; coupures NaN entre bandes respectées ; somme pondérée / total, 0..1), `density_glow`
+  (halo d'1 pixel), `density_lut(couleur)` (couleur de la trace, alpha gamma 0,45). MainWindow : `_update_history`
+  garde `_dens_traces` (récent → ancien, poids 1 − i/(n+1)) → `_density_draw` (ImageItem `_dens_img`, taille = pixels
+  de la vue, refait 60 ms après un zoom / déplacement / redimensionnement via `_dens_timer`), `_clear_hist_pool`
+  remet la couleur au changement de thème. Démo : 39 → 29 % de processeur. Testé : test_v7 (raster), captures (vue
+  seule) ; **pas vu sur le PC de Clément**.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

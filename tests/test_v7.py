@@ -1339,5 +1339,26 @@ ok("7.54.1 : statuts gardent leur sens", _t2[0]["color"] == _TH["Analyseur bleu"
    and _t2[1]["color"] == _TH["Analyseur bleu"]["st_free"])
 ok("7.54.1 : l'original n'est pas modifié", _sc[0]["color"] == "#000000")
 ok("7.54.1 : palette illisible -> défaut", len(_tp({"pal": "n'importe quoi"})) == 10)
+# 7.55 : rémanence en image de densité
+_dr = ns["density_raster"]
+_x = np.linspace(470, 694, 4500); _y = np.full(4500, -100.0); _y[2000] = -40.0
+_a = _dr([(_x, _y)], 470, 694, -120, -10, 1600, 600)
+_c = int((_x[2000] - 470) / 224 * 1600)
+ok("7.55 : densité (W, H) entre 0 et 1", _a.shape == (1600, 600) and float(_a.min()) >= 0 and float(_a.max()) <= 1)
+ok("7.55 : pic raide tracé sans trou jusqu'au sommet", bool((_a[_c, int(20 / 110 * 600):int(80 / 110 * 600)] > 0.99).all()))
+ok("7.55 : rien au-dessus du pic", float(_a[_c, int(85 / 110 * 600):].max()) == 0.0)
+_x2 = np.concatenate([np.linspace(470, 500, 100), [np.nan], np.linspace(600, 620, 100)])
+_a2 = _dr([(_x2, np.full(201, -90.0))], 470, 694, -120, -10, 224, 110)
+ok("7.55 : coupure entre bandes respectée (rien entre 500 et 600)", float(_a2[40:125].max()) == 0.0 and float(_a2[10, 30]) > 0.99)
+_a3 = _dr([(_x, _y), (_x, _y + 30)], 470, 694, -120, -10, 400, 220, [1.0, 0.25])
+ok("7.55 : poids des anciens balayages (récent 0,8 / ancien 0,2)", abs(float(_a3[10, 40]) - 0.8) < 1e-3
+   and abs(float(_a3[10, 100]) - 0.2) < 1e-3)
+ok("7.55 : vue hors des données = image vide", float(_dr([(_x, _y)], 800, 900, -120, -10, 100, 100).max()) == 0.0)
+ok("7.55 : rien à tracer = image vide", _dr([], 470, 694, -120, -10, 50, 50).shape == (50, 50))
+_l = ns["density_lut"]("#3ddc84")
+ok("7.55 : table de couleurs RGBA (transparente à 0, couleur de la trace)",
+   _l.shape == (256, 4) and int(_l[0, 3]) == 0 and int(_l[255, 3]) > 200 and tuple(_l[255, :3]) == (0x3d, 0xdc, 0x84))
+_g = ns["density_glow"](np.pad(np.ones((1, 1), dtype=np.float32), 3))
+ok("7.55 : halo d'un pixel autour, borné à 1", float(_g[3, 3]) == 1.0 and 0 < float(_g[3, 4]) < 1 and float(_g[3, 5]) == 0.0)
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

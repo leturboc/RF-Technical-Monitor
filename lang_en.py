@@ -129,7 +129,7 @@ EXACT = {
     'Le nombre de mesures par balayage. Plus de points = plus de détails mais plus lent. « ⚡ Auto » choisit un bon compromis tout seul.': 'The number of measurements per sweep. More points = more detail but slower. « ⚡ Auto » picks a good compromise by itself.',
     'La « finesse » de chaque mesure (largeur du filtre du tinySA). Fine = voit les petits signaux proches mais lente ; large = rapide mais deux signaux proches se confondent. Laisse en Auto si tu débutes.': "The « fineness » of each measurement (width of the tinySA's filter). Narrow = sees small close signals but slow; wide = fast but two close signals merge. Leave it on Auto if you are starting out.",
     "La courbe orange : le plus haut niveau vu à chaque fréquence depuis le dernier « Reset max ». Elle garde la trace d'un émetteur même s'il n'a émis qu'une seconde.": 'The orange curve: the highest level seen at each frequency since the last « Reset max ». It keeps track of a transmitter even if it was only on for a second.',
-    "Chaque balayage laisse une trace qui s'estompe peu à peu : ce qui est souvent là marque fort, ce qui passe rarement laisse une trace pâle (vue web Spectre / Terrain).": 'Each sweep leaves a trace that slowly fades: what is often there marks strongly, what rarely passes leaves a faint trace (Spectrum / Field web views).',
+    "Chaque balayage laisse une trace qui s'estompe peu à peu, comme sur un analyseur : ce qui est souvent là brille, ce qui passe rarement laisse une trace pâle (spectre de l'appli, bouton ⋯, et vues web Spectre / Terrain).": 'Each sweep leaves a trace that slowly fades, like on an analyser: what is often there glows, what rarely passes leaves a faint trace (app spectrum, ⋯ button, and Spectrum / Field web views).',
     "La ligne rouge : au-dessus, une fréquence est considérée comme occupée (quelqu'un émet). « Auto » le place un peu au-dessus du bruit de fond.": 'The red line: above it, a frequency is considered busy (someone is transmitting). « Auto » places it a bit above the noise floor.',
     'Seuil « faible »': '« Weak » threshold',
     'En dessous du seuil occupé : un signal qui dépasse ce niveau sans atteindre « occupé » est « faible » (émetteur loin, pile faible, ou bruit qui monte).': 'Below the busy threshold: a signal above this level but under « busy » is « weak » (distant transmitter, weak battery, or rising noise).',
@@ -4709,4 +4709,8 @@ EXACT.update({
         "Also recolour my stages, groups and statuses with this theme",
     "🎨 Scènes, groupes et statuts aux couleurs du thème (Ctrl+Z pour annuler).":
         "🎨 Stages, groups and statuses in the theme colours (Ctrl+Z to undo).",
+})
+EXACT.update({
+    "Rémanence façon analyseur : les anciens balayages restent à l'écran en lueur.\nCe qui revient à chaque balayage brille, un signal passager laisse une trace pâle.":
+        "Analyser-style persistence: older sweeps stay on screen as a glow.\nWhat comes back every sweep shines, a passing signal leaves a faint trace.",
 })

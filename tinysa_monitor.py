@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.54.2"
+APP_VER = "7.55.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1387,6 +1387,87 @@ def floor_track(prev, cur, dt, busy=False, rise=AUTO_RISE_S, fall=AUTO_FALL_S):
     out = np.where(np.isfinite(p), p + (c - p) * a, c)
     out = np.where(np.isfinite(c), out, p)
     return float(out) if out.ndim == 0 else out
+
+
+def density_raster(traces, x0, x1, y0, y1, W, H, weights=None):
+    """Rémanence façon analyseur numérique (7.55) : densité des anciens balayages sur une grille de W × H pixels.
+    traces = [(x, y)] du plus récent au plus ancien (NaN = coupure entre bandes) ; weights = poids de chacun (défaut 1).
+    Chaque trace est tracée comme une ligne brisée continue : dans chaque colonne, de son minimum à son maximum sur
+    l'intervalle de la colonne (extrémités interpolées + points du balayage) -> aucun trou sur un pic raide.
+    Renvoie un tableau (W, H) float32 entre 0 et 1 (1 = touché par tous les balayages), colonne 0 = x0, ligne 0 = y0."""
+    W, H = int(W), int(H)
+    out = np.zeros((W, H + 1), dtype=np.float64)
+    if W < 2 or H < 2 or not traces or not (x1 > x0) or not (y1 > y0):
+        return np.zeros((max(W, 1), max(H, 1)), dtype=np.float32)
+    weights = list(weights) if weights is not None else [1.0] * len(traces)
+    tot = float(sum(weights[:len(traces)])) or 1.0
+    bounds = x0 + (x1 - x0) * np.arange(W + 1) / W
+    sx, sy = W / (x1 - x0), H / (y1 - y0)
+    for (x, y), w in zip(traces, weights):
+        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        if len(x) < 2:
+            continue
+        bad = ~(np.isfinite(x) & np.isfinite(y))
+        cuts = np.flatnonzero(bad)
+        starts = np.concatenate(([0], cuts + 1))
+        ends = np.concatenate((cuts, [len(x)]))
+        for a, b in zip(starts, ends):
+            if b - a < 1:
+                continue
+            xs, ys = x[a:b], y[a:b]
+            if xs[0] > xs[-1]:
+                xs, ys = xs[::-1], ys[::-1]
+            if xs[-1] < x0 or xs[0] > x1:
+                continue
+            c0 = int(max(0, np.floor((xs[0] - x0) * sx)))
+            c1 = int(min(W - 1, np.floor((xs[-1] - x0) * sx)))
+            if c1 < c0:
+                continue
+            bl = np.clip(bounds[c0:c1 + 2], xs[0], xs[-1])
+            vb = np.interp(bl, xs, ys)
+            lo = np.minimum(vb[:-1], vb[1:])
+            hi = np.maximum(vb[:-1], vb[1:])
+            # points du balayage à l'intérieur des colonnes (pics plus fins qu'une colonne)
+            pc = np.floor((xs - x0) * sx).astype(int)
+            ok = (pc >= c0) & (pc <= c1)
+            if ok.any():
+                np.minimum.at(lo, pc[ok] - c0, ys[ok])
+                np.maximum.at(hi, pc[ok] - c0, ys[ok])
+            r0 = np.floor((lo - y0) * sy).astype(int)
+            r1 = np.floor((hi - y0) * sy).astype(int)
+            vis = (r1 >= 0) & (r0 <= H - 1)
+            if not vis.any():
+                continue
+            cols = np.arange(c0, c1 + 1)[vis]
+            np.add.at(out, (cols, np.clip(r0[vis], 0, H - 1)), w)
+            np.add.at(out, (cols, np.clip(r1[vis], 0, H - 1) + 1), -w)
+    return (np.cumsum(out, axis=1)[:, :H] / tot).clip(0.0, 1.0).astype(np.float32)
+
+
+def density_glow(a, k=0.35):
+    """Léger halo du phosphore sur l'image de densité : chaque pixel déborde d'un pixel autour (part k), borné à 1."""
+    a = np.asarray(a, dtype=np.float32)
+    if a.ndim != 2 or min(a.shape) < 3:
+        return a
+    g = a.copy()
+    g[:, 1:] += k * a[:, :-1]
+    g[:, :-1] += k * a[:, 1:]
+    g[1:, :] += 0.6 * k * a[:-1, :]
+    g[:-1, :] += 0.6 * k * a[1:, :]
+    return np.clip(g, 0.0, 1.0)
+
+
+def density_lut(color, gamma=0.45, alpha_max=235):
+    """Table de couleurs RGBA (256 × 4) de la rémanence : la couleur de la trace, de transparente (jamais touché) à
+    presque opaque (touché à chaque balayage) ; gamma < 1 = les passages rares restent visibles."""
+    c = str(color).lstrip("#")
+    r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+    k = (np.arange(256) / 255.0) ** gamma
+    lut = np.zeros((256, 4), dtype=np.uint8)
+    lut[:, 0], lut[:, 1], lut[:, 2] = r, g, b
+    lut[:, 3] = np.round(alpha_max * k).astype(np.uint8)
+    lut[0, 3] = 0
+    return lut
 
 
 def floor_curve(F, L, win=2.0, step=0.5, q=20.0):
@@ -6435,8 +6516,9 @@ GLOSSARY = [
      "Elle garde la trace d'un émetteur même s'il n'a émis qu'une seconde."),
     ("Pics gardés", "Le nom du max hold en mode simple : la courbe orange, le plus haut niveau vu à chaque fréquence "
      "depuis « Effacer les pics »."),
-    ("Rémanence", "Chaque balayage laisse une trace qui s'estompe peu à peu : ce qui est souvent là marque fort, ce "
-     "qui passe rarement laisse une trace pâle (vue web Spectre / Terrain)."),
+    ("Rémanence", "Chaque balayage laisse une trace qui s'estompe peu à peu, comme sur un analyseur : ce qui est "
+     "souvent là brille, ce qui passe rarement laisse une trace pâle (spectre de l'appli, bouton ⋯, et vues web "
+     "Spectre / Terrain)."),
     ("Seuil « occupé »", "La ligne rouge : au-dessus, une fréquence est considérée comme occupée (quelqu'un émet). "
      "« Auto » le place un peu au-dessus du bruit de fond."),
     ("Seuil « faible »", "En dessous du seuil occupé : un signal qui dépasse ce niveau sans atteindre « occupé » est "
@@ -17488,7 +17570,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.persist_combo = self._combo([("Rémanence : aucune", 0), ("Rémanence : 3 balayages", 3),
                                           ("Rémanence : 5 balayages", 5), ("Rémanence : 10 balayages", 10),
                                           ("Rémanence : 20 balayages", 20)])
-        self.persist_combo.setToolTip("Garde à l'écran les anciens balayages, de plus en plus transparents.")
+        self.persist_combo.setToolTip("Rémanence façon analyseur : les anciens balayages restent à l'écran en lueur.\n"
+                                      "Ce qui revient à chaque balayage brille, un signal passager laisse une trace pâle.")
         self.persist_combo.currentIndexChanged.connect(lambda *_: self.update_plot())
         reset_btn = QtWidgets.QPushButton("Reset max")
         reset_btn.clicked.connect(self.reset_max)
@@ -22187,42 +22270,77 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_markers()
 
     def _update_history(self, keys):
-        """Rémanence : anciens balayages en transparence dégressive."""
+        """Rémanence (7.55, façon analyseur numérique) : les anciens balayages ne sont plus N courbes empilées mais UNE
+        image de densité (density_raster) : ce qui revient souvent brille, un passage rare reste en trace fantôme.
+        Une seule image à dessiner (au lieu de N chemins) : ≈ −10 % de processeur mesuré en démo."""
         n = self.persist_combo.currentData() or 0
-        nan = np.array([np.nan])
-        base = QtGui.QColor(self.theme["curve"])
-        for i in range(max(n, len(self._hist_items))):
+        traces = []
+        for i in range(n):
             xs, ys = [], []
-            if i < n:
-                for k in keys:
-                    h = self.history.get(k)
-                    if k in self.latest and h and len(h) > i:
-                        f, l = h[-1 - i]
-                        xs += [f, nan]
-                        ys += [l, nan]
+            for k in keys:
+                h = self.history.get(k)
+                if k in self.latest and h and len(h) > i:
+                    f, l = h[-1 - i]
+                    xs += [np.asarray(f, dtype=float), np.array([np.nan])]
+                    ys += [np.asarray(l, dtype=float), np.array([np.nan])]
             if xs:
-                while len(self._hist_items) <= i:
-                    it = pg.PlotDataItem(connect="finite", antialias=bool(getattr(self, "smooth", False)))
-                    it.setClipToView(True)                 # fluidité (7.31.1) : seulement la partie visible,
-                    it.setDownsampling(auto=True, method="peak")   # ~1 point par pixel, pics gardés
-                    it.setZValue(-1)
-                    # 7.54.2 : la rémanence ne change qu'une fois par balayage mais était redessinée à chaque
-                    # rafraîchissement (5 fois / s) -> image gardée en cache, refaite seulement si elle change
-                    it.curve.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
-                    self.spec.getPlotItem().addItem(it)
-                    self._hist_items.append(it)
-                c = QtGui.QColor(base)
-                c.setAlpha(int(150 * (1 - i / (n + 0.5))) + 20)
-                self._hist_items[i].setPen(pg.mkPen(c, width=1))
-                self._hist_items[i].setData(np.concatenate(xs), np.concatenate(ys))
-            elif i < len(self._hist_items):
-                self._hist_items[i].setData(np.array([]), np.array([]))
+                traces.append((np.concatenate(xs), np.concatenate(ys)))
+        self._dens_traces = traces
+        self._dens_n = n
+        self._density_draw()
+
+    def _density_item(self):
+        img = getattr(self, "_dens_img", None)
+        if img is None:
+            img = pg.ImageItem()
+            img.setZValue(-1)
+            img.setLookupTable(density_lut(self.theme["curve"]))
+            img.setLevels((0.0, 1.0))
+            self.spec.getPlotItem().addItem(img, ignoreBounds=True)
+            self._dens_img = img
+            # vue déplacée / zoomée / fenêtre redimensionnée : image refaite (calcul ≈ 20 ms, regroupé)
+            self._dens_timer = QtCore.QTimer(self)
+            self._dens_timer.setSingleShot(True)
+            self._dens_timer.setInterval(60)
+            self._dens_timer.timeout.connect(self._density_draw)
+            vb = self.spec.getPlotItem().vb
+            vb.sigXRangeChanged.connect(lambda *a: self._dens_timer.start())
+            vb.sigYRangeChanged.connect(lambda *a: self._dens_timer.start())
+            vb.sigResized.connect(lambda *a: self._dens_timer.start())
+        return img
+
+    def _density_draw(self):
+        traces = getattr(self, "_dens_traces", None)
+        img = getattr(self, "_dens_img", None)
+        if not traces:
+            if img is not None:
+                img.setVisible(False)
+            return
+        img = self._density_item()
+        vb = self.spec.getPlotItem().vb
+        (x0, x1), (y0, y1) = vb.viewRange()
+        W = int(min(1800, max(64, vb.width())))
+        H = int(min(700, max(48, vb.height())))
+        n = max(1, getattr(self, "_dens_n", len(traces)))
+        w = [1.0 - i / (n + 1.0) for i in range(len(traces))]
+        try:
+            arr = density_glow(density_raster(traces, x0, x1, y0, y1, W, H, w))
+        except Exception:
+            img.setVisible(False)
+            return
+        img.setImage(arr, autoLevels=False, levels=(0.0, 1.0))
+        img.setRect(QtCore.QRectF(x0, y0, x1 - x0, y1 - y0))
+        img.setVisible(True)
 
     def _clear_hist_pool(self):
+        """Changement de thème : la rémanence prend la couleur de la nouvelle trace."""
         pi = self.spec.getPlotItem()
         for it in self._hist_items:
             pi.removeItem(it)
         self._hist_items = []
+        img = getattr(self, "_dens_img", None)
+        if img is not None:
+            img.setLookupTable(density_lut(self.theme["curve"]))
 
     MK_STYLE = (("full", "Trait sur toute la hauteur"), ("top", "Petit repère discret en haut"))
 
