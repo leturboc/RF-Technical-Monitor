@@ -934,9 +934,14 @@ def default_view_band(bands, country):
 
 
 def country_from_locale(name):
-    """Code pays de l'appli d'après la langue / région du système (« fr_FR » -> « FR ») ; inconnu -> ""."""
+    """Code pays de l'appli d'après la langue / région du système (« fr_FR » -> « FR », « de_CH » -> « CH ») ;
+    inconnu -> "". Un système en ANGLAIS ne dit rien de sûr (beaucoup de techniciens ont un Windows « en_US » en
+    France : vu sur la CI Windows en 7.57) -> "" (l'appli garde la France)."""
     codes = [c for c, _n in COUNTRIES]
-    m = re.search(r"[_-]([A-Za-z]{2})\b", str(name or ""))
+    t = str(name or "")
+    if t[:2].lower() == "en":
+        return ""
+    m = re.search(r"[_-]([A-Za-z]{2})\b", t)
     c = m.group(1).upper() if m else ""
     return c if c in codes else ""
 

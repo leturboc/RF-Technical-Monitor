@@ -1432,7 +1432,9 @@ _B2 = [dict(id=1, start=400.0, stop=1000.0, enabled=True), dict(id=2, start=470.
 ok("7.57 : États-Unis : 470-608, la bande la plus étroite qui la couvre", ns["default_view_band"](_B2, "US") == 2
    and ns["country_uhf"]("US") == (470.0, 608.0) and ns["country_uhf"]("FR") == (470.0, 694.0))
 ok("7.57 : pays d'après Windows", ns["country_from_locale"]("fr_FR") == "FR" and ns["country_from_locale"]("fr-BE") == "BE"
-   and ns["country_from_locale"]("en_US") == "US" and ns["country_from_locale"]("ja_JP") == "" and ns["country_from_locale"]("") == "")
+   and ns["country_from_locale"]("de_CH") == "CH" and ns["country_from_locale"]("ja_JP") == "" and ns["country_from_locale"]("") == "")
+ok("7.57 : Windows en anglais = rien de sûr (la France reste)", ns["country_from_locale"]("en_US") == ""
+   and ns["country_from_locale"]("en_GB") == "")
 ok("7.57 : waterfall en « toutes les bandes » avec une seule bande balayée", ns["single_band_view"](-1, [_B[0], _B[2]], -2) == 1
    and ns["single_band_view"](-1, _B, -2) is None and ns["single_band_view"](2, _B, -2) == 2)
 _mb = ns["missing_bands"]([470.2, 558.0, 825.0, 828.5, 1790.0, 1795.2, 0.0], _B)
