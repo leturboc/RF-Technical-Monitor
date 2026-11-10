@@ -85,7 +85,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.54.0"
+APP_VER = "7.54.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -206,16 +206,17 @@ THEMES = {
                            maxhold="#ffff00", thr="#ff3030", thr_weak="#ffa500", st_free="#00e5ff",
                            st_weak="#ffe600", st_occ="#ff2d2d", st_unk="#ff9d00", st_none="#9a9a9a",
                            wf="Chaud"),
-    "Nuit (rouge)": dict(ui_bg="#140000", ui_base="#0b0000", ui_button="#2a0707", ui_text="#ff7a7a",
-                         ui_accent="#a01818", plot_bg="#090000", plot_fg="#d05555", curve="#ff4a4a",
-                         maxhold="#a02a2a", thr="#ffb4b4", thr_weak="#c07070", st_free="#8a3535",
-                         st_weak="#e0803c", st_occ="#ff2a2a", st_unk="#ffb347", st_none="#6a3030",
-                         wf="Rouge (nuit)"),
-    "Analyseur vert": dict(ui_bg="#06150a", ui_base="#020a04", ui_button="#0f2a16", ui_text="#9dffb0",
-                           ui_accent="#1f9d4a", plot_bg="#010802", plot_fg="#58c46f", curve="#3dff6a",
-                           maxhold="#e8ff4a", thr="#ff5a5a", thr_weak="#ffc24a", st_free="#3dff6a",
-                           st_weak="#ffd84a", st_occ="#ff4d4d", st_unk="#ffa94d", st_none="#4a7a56",
-                           wf="Viridis"),
+    # 7.54.1 (Clément : « le filtre rouge ou vert c'est pas beau du tout ») : surfaces neutres, seules les courbes
+    # et les accents gardent la couleur (avant : tout l'écran teinté de rouge / de vert).
+    "Nuit (rouge)": dict(ui_bg="#121010", ui_base="#171414", ui_button="#241f1e", ui_text="#d8c4bc",
+                         ui_accent="#c2453d", plot_bg="#0e0c0c", plot_fg="#8a7670", curve="#ff6a5c",
+                         maxhold="#e0a050", thr="#ff6a5c", thr_weak="#e0b050", st_free="#5fb3a1",
+                         st_libre="#7a8fd6", st_weak="#e0b050", st_occ="#ff5c5c", st_unk="#b48ad6",
+                         st_none="#4a4240", ref="#d08a8a", wf="Rouge (nuit)"),
+    "Analyseur vert": dict(_G, plot_bg="#050a07", plot_fg="#4f8a62", curve="#3ddc84", maxhold="#ffd60a",
+                           thr="#ff6b6b", thr_weak="#ffc35c", st_free="#3ddc84", st_libre="#5e9eff",
+                           st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff", st_none="#636366",
+                           ref="#c48bff", wf="Viridis"),
 }
 # l'ancien thème par défaut (7.12) : une config qui l'a gardé tel quel passe au nouveau (voir _apply_config)
 OLD_DEFAULT_THEME = dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
@@ -801,14 +802,11 @@ CATEGORIES = {
 THEME_KEYS.append(("ref", "Courbe de référence", "Graphique"))
 for _k, (_lab, _col) in CATEGORIES.items():
     THEME_KEYS.append(("bp_" + _k, _lab, "Bandes du spectre"))
-_NIGHT_BP = dict(tv="#8a2a2a", tv_off="#3a1212", mobile="#c03030", pmse="#ff5a5a", broadcast="#a04040",
-                 safety="#ff2a2a", mil="#7a3a10", aero="#b04848", marine="#8a3030", sat="#a05050",
-                 ism="#b05050", amateur="#c08040", civ="#d06a3a", pro="#904040", other="#4a2020")
 for _n, _t in THEMES.items():
-    _t.setdefault("ref", "#ff9a9a" if _n == "Nuit (rouge)" else "#c084fc")
-    _t.setdefault("st_libre", "#6a3a6a" if _n == "Nuit (rouge)" else "#3b82f6")
+    _t.setdefault("ref", "#c084fc")
+    _t.setdefault("st_libre", "#3b82f6")
     for _k, (_lab, _col) in CATEGORIES.items():
-        _t.setdefault("bp_" + _k, _NIGHT_BP[_k] if _n == "Nuit (rouge)" else _col)
+        _t.setdefault("bp_" + _k, _col)
 
 COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "Allemagne"),
              ("GB", "Royaume-Uni"), ("IT", "Italie"), ("ES", "Espagne"), ("NL", "Pays-Bas"),
@@ -23041,6 +23039,12 @@ class MainWindow(QtWidgets.QMainWindow):
             gc = self.group_color(w["scene"], w["group"]) if layer else None
             keep_free = self.is_keep_free(w["status"])
             m_txt, m_tone, m_tip = snr_view(w.get("margin") if w.get("level") is not None else None, keep_free)
+            # 7.54.1 (Clément : « je vois plus le éteint ») : 💤 dans la case Statut et ligne grisée, même si le micro
+            # émet encore (la case Signal, elle, montre ce qui est mesuré)
+            if w.get("muted"):
+                stat = "💤 éteint · " + stat if w["status"] else "💤 éteint"
+            elif w.get("off"):
+                stat = "💤 hors état · " + stat if w["status"] else "💤 hors état"
             sig = (lv, mx, st, conf, stat, w["name"], round(w["freq"], 3), thr_txt, occ_txt, band, layer, gc, absn,
                    m_txt)
             if not force and w["sig"] == sig:
@@ -23050,6 +23054,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # 7.54 (look « pro ») : la ligne n'est que légèrement teintée, la couleur forte reste sur la case Signal
             row_bg = {"bad": blend(th["st_occ"], base, 0.20), "warn": blend(th["st_weak"], base, 0.10)}.get(tone, base)
             row_fg = th["ui_text"]
+            dim = bool(w.get("muted") or w.get("off"))
+            if dim:
+                row_fg = blend(th["ui_text"], base, 0.55)
             cells = ((C_NAME, w["name"]), (C_FREQ, f'{w["freq"]:.3f}'), (C_LVL, lv), (C_MAX, mx),
                      (C_THR, thr_txt), (C_SIG, sig_txt), (C_STAT, stat), (C_OCC, occ_txt),
                      (C_LAYER, layer or "—"), (C_BAND, band), (C_MARG, m_txt))
@@ -23064,8 +23071,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     bg = blend(tone_col, base, 1.0 if tone == "bad" else 0.85)
                     fg = contrast_text(bg)
                 elif c == C_STAT and w["status"]:
-                    bg = blend(self.status_color(w["status"]), row_bg, 0.32)
-                    fg = th["ui_text"]
+                    bg = blend(self.status_color(w["status"]), row_bg, 0.32 * (0.5 if dim else 1.0))
+                    fg = row_fg
                 elif c == C_LAYER and gc:
                     bg = blend(gc, row_bg, 0.30)
                     fg = th["ui_text"]
