@@ -1107,6 +1107,16 @@ _jit = _F.copy(); _jit[10] += 0.5e5; _jit[11] -= 0.5e5     # arrondi : 2 points 
 _r = _sc(_jit, np.full(101, -90.0), 470e6, 480e6, 101)
 check("simple arrondi (< ½ pas) : grille théorique, accepté", (_r[1], bool(np.all(np.diff(_r[0]) > 0))), ("ok", True))
 check("sans fréquences, complet : grille théorique", _sc(None, np.full(101, -90.0), 470e6, 480e6, 101)[1], "ok")
+_pl = ns["parse_scan_lines"]
+_fa, _la = _pl(["470000000 -90.5", "470100000 -91.0", "470200000 -89.0"])
+check("parser : fréquence + niveau", (list(_fa), list(_la)), ([470e6, 470.1e6, 470.2e6], [-90.5, -91.0, -89.0]))
+_fb, _lb = _pl(["-90.5", "-91.0", "-89.0"])
+check("parser : niveaux seuls = pas de fréquences", (_fb, len(_lb)), (None, 3))
+_fc, _lc = _pl(["470000000 -90.5", "-91.0", "470200000 -89.0"])
+ok("audit 7.53 : réponse mélangée = fréquences illisibles (pas « niveaux seuls »)",
+   _fc is not None and len(_fc) == 3 and bool(np.isnan(_fc).all()))
+check("audit 7.53 : réponse mélangée complète refusée par scan_check",
+      _sc(*_pl(["470000000 -90"] + ["-90"] * 100), 470e6, 480e6, 101)[1], "invalide")
 _rng = np.random.default_rng(3)
 _mk = lambda off, k: [(np.linspace(500, 510, 201), -95 + off + _rng.normal(0, 2, 201)) for _ in range(k)]
 _a, _b = _mk(0, 3), _mk(0, 9)

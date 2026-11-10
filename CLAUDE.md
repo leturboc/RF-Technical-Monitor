@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.53.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.53.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -872,6 +872,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     « ✔ Tout va bien » seulement en surveillance, sans alarme et mesures fraîches. gui_reel : `is_running` forcé à
     False → bannière « arrêtée ».
   - Pas fait (proposé) : concaténations de `_scan_band` (à mesurer d'abord), mesure de cadence réelle par segment.
+- **7.53.1 (5ᵉ audit externe, sur la 7.53.0)** : `parse_scan_lines` : réponse MÉLANGÉE (lignes « fréquence niveau » et
+  lignes « niveau » seul) → fréquences = NaN (avant : None, pris pour « niveaux seuls » → grille théorique) →
+  `scan_check` refuse. Même signature (la V8 l'utilise). `_sweep_time` : une heure de mesure ANCIENNE est gardée
+  (avant : > 2 min → remplacée par « maintenant » = fraîcheur artificielle) ; heure future → maintenant ; absente → maintenant.
+  Testé : test_v7 (parser), test_reseau_qt (vrai ScanWorker sur faux tinySA). **Pas vérifié sur un vrai tinySA.**
+  Toujours pas fait : concaténations de `_scan_band`, authentification / chiffrement du relais (réseau technique).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

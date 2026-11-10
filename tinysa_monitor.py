@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.53.0"
+APP_VER = "7.53.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -384,7 +384,12 @@ def parse_scan_lines(lines):
         else:
             lv.append(nums[0])
     levels = np.array(lv, dtype=float)
-    freqs = np.array(fr, dtype=float) if (len(fr) == len(lv) and len(fr) > 0) else None
+    if len(fr) == len(lv) and len(fr) > 0:
+        freqs = np.array(fr, dtype=float)
+    elif fr:                                     # audit 7.53 : réponse MÉLANGÉE (certaines lignes avec fréquence,
+        freqs = np.full(len(lv), np.nan)         # d'autres sans) : on ne fait pas comme si c'était « niveaux seuls » ;
+    else:                                        # NaN = fréquences illisibles -> scan_check refuse le segment
+        freqs = None
     return freqs, levels
 
 
@@ -21467,7 +21472,9 @@ class MainWindow(QtWidgets.QMainWindow):
             t = (getattr(self.sender(), "sweep_t", None) or {}).get(bid)
         except Exception:  # noqa: BLE001
             t = None
-        return t if isinstance(t, float) and now - 120.0 < t <= now + 1.0 else now
+        if isinstance(t, (float, int)) and not isinstance(t, bool):
+            return min(float(t), now)            # audit 7.53 : une mesure ANCIENNE garde son âge (avant : remise à
+        return now                               # « maintenant » au-delà de 2 min = fraîcheur artificielle)
 
     def on_sweep(self, bid, f, l):
         if bid in CALIB_IDS:
