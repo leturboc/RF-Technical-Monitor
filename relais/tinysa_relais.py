@@ -317,6 +317,9 @@ def main(argv=None):
     allow = [x.strip() for x in a.allow.split(",") if x.strip()] or None
     if allow:
         log(f"Seules ces adresses peuvent se connecter : {', '.join(allow)}")
+    else:
+        log("ATTENTION : aucune liste --allow : tout appareil du reseau peut piloter le tinySA. "
+            "A reserver a un reseau technique de confiance (LISEZMOI, section Securite).")
     try:
         if a.multi and not a.serial:
             serve_multi(a.port, host=a.host, allow=allow)

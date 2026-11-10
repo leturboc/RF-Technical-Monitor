@@ -4638,3 +4638,25 @@ EXACT.update({
 })
 
 EXACT.update({"taskkill /F /T /PID": "taskkill /F /T /PID"})   # commande Windows (garde), jamais affichée
+
+# audit 7.52 : état indéterminé, fréquences incohérentes, relais ouvert
+EXACT.update({
+    "\n⚠ Aucun PC autorisé n'est indiqué : tout appareil du réseau peut piloter ce tinySA. À réserver à un réseau technique de confiance.":
+        "\n⚠ No allowed PC is set: any device on the network can control this tinySA. Keep it on a trusted technical network.",
+    "fréquences renvoyées par le tinySA incohérentes avec la bande demandée":
+        "frequencies returned by the tinySA do not match the requested band",
+    "état indéterminé": "unknown state",
+    "⚠ État de surveillance indéterminé : impossible de vérifier la fraîcheur des mesures (voir crash.log). Vérifie le spectre et la liste.":
+        "⚠ Monitoring state unknown: cannot check how fresh the measurements are (see crash.log). Check the spectrum and the list.",
+    '`\n   :st.health&&st.running&&st.health.data&&st.health.data.tone!=="ok"?`':
+        '`\n   :st.health&&st.running&&st.health.data&&st.health.data.tone!=="ok"?`',
+    '`:"")\n   :(st.running&&!(st.health&&st.health.data)?`': '`:"")\n   :(st.running&&!(st.health&&st.health.data)?`',
+})
+TEMPLATES.update({
+    'font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; background:{}; color:{}':
+        'font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; background:{}; color:{}',
+    '{}\nRéseau : {}\nTrafic : {} Ko reçus du tinySA · {} Ko de commandes{}':
+        '{}\nNetwork: {}\nTraffic: {} KB received from the tinySA · {} KB of commands{}',
+})
+WEB += [('>⚠ État de surveillance indéterminé<', '>⚠ Monitoring state unknown<')]
+EXACT.update({"⚠ État de surveillance indéterminé": "⚠ Monitoring state unknown"})

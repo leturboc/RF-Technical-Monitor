@@ -260,6 +260,17 @@ check("journal : un long chemin de session n'élargit pas la colonne (vu sous Wi
       _dj.minimumSizeHint().width() <= 300, str(_dj.minimumSizeHint().width()))
 wait(8000)
 shot(win, "demo_tout_spectre")
+# audit 7.52 : si l'état ne peut pas être calculé, jamais « tout va bien »
+_hi = win.home_info
+win.home_info = lambda: 1 / 0
+_h = win.health()
+check("audit : état indéterminé = alerte, pas « OK »", _h["tone"] == "bad" and (_h["data"] or {}).get("tone") == "bad",
+      str(_h))
+win.update_home(); app.processEvents()
+check("audit : accueil affiche l'état indéterminé", "indéterminé" in win.home.status.text(), win.home.status.text())
+win.home_info = _hi
+_h = win.health()
+check("audit : mesures fraîches = data ok (pas None)", _h["data"] is not None, str(_h))
 # 7.52 : seuils auto (allumés d'office au 1er lancement)
 _lvl_before = win.ui_level
 check("seuils auto : allumés au 1er lancement", win.thr_auto and win.thr_auto_btn.isChecked())

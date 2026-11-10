@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.52.2"
+APP_VER = "7.53.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4030,7 +4030,12 @@ def scan_check(fr, lv, a, z, pts):
     if n < pts and not good:     # audit 7.44 : sans fréquences fiables, on ne sait pas QUELLE partie manque :
         return None, "invalide", f"{n} points reçus sur {pts}, sans fréquences fiables"   # étaler = décaler
     if not good:
-        fr = np.linspace(a, z, n)
+        grid = np.linspace(a, z, n)
+        if fr is not None and len(fr) == n:      # audit 7.52 : fréquences EXPLICITES mais incohérentes
+            fr = np.asarray(fr, dtype=float)
+            if not (np.isfinite(fr).all() and np.max(np.abs(fr - grid)) <= step / 2 + 1):
+                return None, "invalide", "fréquences renvoyées par le tinySA incohérentes avec la bande demandée"
+        fr = grid                                # (simple arrondi à moins d'un demi-pas : grille théorique)
     if n < pts:
         return fr, "court", f"{n} points reçus sur {pts} demandés"
     return fr, "ok", ""
@@ -4605,7 +4610,8 @@ function update(v){const st=D.state;
   g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm&&r.tone!=="none"?` style="background:${r.color}${r.tone==="bad"?"aa":"55"};border-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
  if(v==="regie"){const rs=st.rows.filter(inLayer),un=st.alarms.filter(a=>!a.acked);
   $("#ra").innerHTML=un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:"")
-   :(st.health&&st.running&&st.health.data?`<div class="rg-al ${st.health.data.tone==="bad"?"bad":"warn"}">${esc(st.health.data.text)}</div>`
+   :(st.running&&!(st.health&&st.health.data)?`<div class="rg-al bad">⚠ État de surveillance indéterminé</div>`
+   :st.health&&st.running&&st.health.data&&st.health.data.tone!=="ok"?`<div class="rg-al ${st.health.data.tone==="bad"?"bad":"warn"}">${esc(st.health.data.text)}</div>`
    :`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)${st.running?"":" · ⚠ surveillance arrêtée"}</small></div>`);
   const G={};rs.forEach(r=>{const k=lay(r)||"Sans scène";(G[k]=G[k]||[]).push(r)});
   const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
@@ -6437,6 +6443,8 @@ SNR_GOOD, SNR_OK, SNR_LOW = 20.0, 10.0, 6.0       # marge au-dessus du bruit (dB
 # Saturation : niveau MAX reçu par le tinySA au-delà duquel ses mesures deviennent douteuses (compression, faux
 # signaux). Valeurs de départ prudentes, PAS mesurées sur un vrai tinySA Ultra (atténuateur auto) : à ajuster.
 SAT_WARN, SAT_BAD = -25.0, -15.0
+UNKNOWN_HEALTH = ("⚠ État de surveillance indéterminé : impossible de vérifier la fraîcheur des mesures "
+                  "(voir crash.log). Vérifie le spectre et la liste.")
 SAT_LNA_SHIFT = 15.0                                # préampli (LNA) en marche : sature ~15 dB plus tôt
 
 
@@ -8057,8 +8065,10 @@ class RelayWindow(QtWidgets.QWidget):
         cli = f"✔ connecté à {r.client}" if r.client else "en attente du PC principal…"
         if r.refused:
             cli += f" · ⛔ refusé : {r.refused}"
+        open_ = "" if r.allow else ("\n⚠ Aucun PC autorisé n'est indiqué : tout appareil du réseau peut piloter ce "
+                                     "tinySA. À réserver à un réseau technique de confiance.")
         self.state_lbl.setText(f"{usb}\nRéseau : {cli}\nTrafic : {r.rx / 1024:.0f} Ko reçus du tinySA · "
-                               f"{r.tx / 1024:.1f} Ko de commandes")
+                               f"{r.tx / 1024:.1f} Ko de commandes{open_}")
 
     def closeEvent(self, e):
         if self.relay is not None:
@@ -13876,7 +13886,9 @@ class ShowModeWindow(QtWidgets.QWidget):
             self.banner.setText(rows + more)
             self.banner.setStyleSheet(f"background:{th['st_occ']}; color:white; border-radius:10px; padding:10px")
         else:
-            hl = (o.health().get("data") if run else None) or dict(tone="ok", text="")
+            hl = o.health().get("data") if run else dict(tone="ok", text="")
+            if hl is None:                       # audit 7.52 : en surveillance, pas d'état = inconnu, pas « OK »
+                hl = dict(tone="bad", text=UNKNOWN_HEALTH)
             if hl["tone"] in ("warn", "bad", "wait"):    # pas d'alarme MAIS mesures absentes / périmées / partielles
                 self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
                 bg = th["st_occ"] if hl["tone"] == "bad" else th["st_weak"]
@@ -16517,9 +16529,24 @@ class MainWindow(QtWidgets.QMainWindow):
             info = self.home_info()
             tone, text = home_status(info)
             ds = data_status(info) if self.is_running() else None
-        except Exception:  # noqa: BLE001
-            tone, text, ds = "idle", "", None
-        return dict(tone=tone, text=text, data=dict(tone=ds[0], text=ds[1]) if ds else None)
+        except Exception:  # noqa: BLE001        audit 7.52 : jamais « tout va bien » si on n'a pas pu vérifier
+            now = time.time()
+            if now - getattr(self, "_health_err_t", 0) > 600:     # noté au plus toutes les 10 min (appelé chaque s)
+                self._health_err_t = now
+                try:
+                    log_crash("état indéterminé", traceback.format_exc())
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                run = bool(self.is_running())
+            except Exception:  # noqa: BLE001
+                run = True                       # dans le doute : on suppose qu'on surveille (= alerte visible)
+            bad = dict(tone="bad", text=UNKNOWN_HEALTH)
+            return dict(tone="bad", text=UNKNOWN_HEALTH, data=bad if run else None)
+        run = self.is_running()
+        # data : None = surveillance arrêtée ; {tone ok} = mesures fraîches ; sinon le problème (ou l'état inconnu)
+        data = dict(tone=ds[0], text=ds[1]) if ds else (dict(tone="ok", text="") if run else None)
+        return dict(tone=tone, text=text, data=data)
 
     def _home_fresh(self):
         """Fraîcheur des mesures pour l'accueil : âge de la dernière mesure (None = aucune depuis ▶ Démarrer),
@@ -16556,7 +16583,13 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             h.refresh(self.home_info())
         except Exception:  # noqa: BLE001 — l'accueil ne doit jamais gêner la surveillance
-            pass
+            try:                                 # audit 7.52 : ne pas laisser l'ancienne phrase (peut-être « OK »)
+                c = self.theme["st_occ"]
+                h.status.setText(UNKNOWN_HEALTH)
+                h.status.setStyleSheet("font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; "
+                                       f"background:{c}; color:{contrast_text(c)}")
+            except Exception:  # noqa: BLE001
+                pass
 
     def do_step(self, key, meth=None):
         """Une étape du parcours : met l'étape en avant, explique, et lance l'action (ou celle du menu)."""
