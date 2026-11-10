@@ -20,6 +20,12 @@ pré-release `test-<branche>` remplacée à chaque push ; push sur main → rele
 monter `APP_VER` pour publier). Un tag `v*` poussé à la main attache aussi l'exe. Le proxy du conteneur Claude
 interdit de pousser des tags / créer des releases : passer par le workflow. Dépôt **privé** : téléchargement réservé
 aux comptes qui y ont accès.
+**Quota de minutes (épuisé le 10/11/2026 : ~1 660 min de machine en 10 jours, une minute Windows compte double)** :
+`concurrency` (un push annule la compilation en cours de la même branche, jamais sur main) ; `paths-ignore` (CLAUDE.md,
+README, apercu/) ; job `gate` : sur main, aucune compilation si la release `v<APP_VER>` existe, sinon compilation +
+auto-test + release SANS tests ni captures (commit déjà testé sur ui-validation) ; la V8 n'est plus recompilée par
+la synchro (à la main : Actions › Run workflow › v8-sdr, ou `gh workflow run build-exe.yml --ref v8-sdr`).
+**Regrouper les modifs en peu de pushs.**
 Depuis le conteneur Claude, `gh run view <id>` montre les annotations, mais les journaux et artefacts (stockage Azure)
 sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : il n'y a aucune police (mesures ×2).
 
@@ -28,8 +34,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `test-v8-sdr` seulement). Ne PAS fusionner la V8 dans main avant le feu vert de Clément (quand il aura testé avec
   son HackRF Pro) : ce jour-là, retirer la surcharge `APP_VER` de la V8, monter la version (8.0.0), fusionner.
 - **Toute modif de la V7 doit aller dans la V8** (demande de Clément, sinon conflits). Automatique : le workflow
-  `.github/workflows/sync-v8.yml` fusionne `ui-validation` dans `v8-sdr` à chaque push sur `ui-validation`, puis
-  relance la compilation de la V8 ; en cas de conflit il échoue (annotation « Conflit V7 → V8 dans : … ») sans rien
+  `.github/workflows/sync-v8.yml` fusionne `ui-validation` dans `v8-sdr` à chaque push sur `ui-validation` (sans
+  la recompiler depuis 11/2026 : quota de minutes) ; en cas de conflit il échoue (annotation « Conflit V7 → V8 dans : … ») sans rien
   pousser. Par sécurité, après chaque version V7, vérifier : `git fetch origin && git log origin/v8-sdr..origin/ui-validation`
   (doit être vide), sinon fusionner à la main.
 - **Pour éviter les conflits** : la V8 ne modifie JAMAIS les lignes communes qui bougent à chaque version V7. La ligne
