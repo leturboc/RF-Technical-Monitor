@@ -82,7 +82,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.53.1"
+APP_VER = "7.54.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -135,8 +135,19 @@ THEME_KEYS = [
 
 # Thèmes 7.12 (Clément : « le rouge et le vert sont horribles ») : couleurs d'état désaturées, lisibles en texte
 # blanc ou noir ; « Daltonien » = palette Okabe-Ito (OK bleu, problème vermillon) ; défaut = « Sombre doux ».
-DEFAULT_THEME = "Sombre doux"
+DEFAULT_THEME = "Pro sombre"
+# 7.54 (Clément : « pro, type soft Apple ») : gris graphite, couleurs système d'Apple, la couleur réservée aux états.
 THEMES = {
+    "Pro sombre": dict(ui_bg="#1c1c1e", ui_base="#232326", ui_button="#2c2c2e", ui_text="#f2f2f7",
+                       ui_accent="#0a84ff", plot_bg="#161618", plot_fg="#8e8e93", curve="#64d2ff",
+                       maxhold="#ff9f0a", thr="#ff6961", thr_weak="#ffd60a", st_free="#30d158",
+                       st_libre="#409cff", st_weak="#ffb340", st_occ="#ff453a", st_unk="#bf5af2",
+                       st_none="#636366", ref="#bf5af2", wf="Viridis"),
+    "Pro clair": dict(ui_bg="#f5f5f7", ui_base="#ffffff", ui_button="#e9e9ee", ui_text="#1d1d1f",
+                      ui_accent="#007aff", plot_bg="#ffffff", plot_fg="#6e6e73", curve="#007aff",
+                      maxhold="#ff9500", thr="#ff3b30", thr_weak="#d4a106", st_free="#34c759",
+                      st_libre="#007aff", st_weak="#ff9500", st_occ="#ff3b30", st_unk="#af52de",
+                      st_none="#8e8e93", ref="#af52de", wf="Gris"),
     "Sombre doux": dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
                         ui_accent="#528bff", plot_bg="#181a1f", plot_fg="#abb2bf", curve="#61afef",
                         maxhold="#d19a66", thr="#e06c75", thr_weak="#e5c07b", st_free="#4f9d69",
@@ -251,19 +262,83 @@ def blend(fg, bg, a):
     return rgb_to_hex(*(f[i] * a + b[i] * (1 - a) for i in range(3)))
 
 
+def soft_style(c, bg, txt):
+    """Bandeau « façon Apple » (7.54) : fond légèrement teinté de la couleur d'état, contour fin de la même couleur,
+    texte normal. Pour les états calmes ; une alarme garde un fond plein (doit sauter aux yeux)."""
+    return (f"background:{blend(c, bg, 0.18)}; color:{txt}; border:1px solid {blend(c, bg, 0.60)}; "
+            f"border-radius:10px")
+
+
 def contrast_text(bg):
     r, g, b = hex_to_rgb(bg)
     return "#000000" if (0.299 * r + 0.587 * g + 0.114 * b) > 150 else "#ffffff"
 
 
 def make_stylesheet(t):
-    bd = blend(t["ui_text"], t["ui_bg"], 0.28)
-    return (
-        "QGroupBox { border:1px solid %s; border-radius:6px; margin-top:12px; padding:10px 6px 6px 6px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left:10px; padding:0 4px; color:%s; }"
-        "QToolTip { color:%s; background:%s; border:1px solid %s; }"
-        "QTabBar::tab { padding:6px 14px; }"
-        % (bd, t["ui_accent"], t["ui_text"], t["ui_button"], bd))
+    """Feuille de style de toute l'appli (7.54 : look « pro, façon Apple » : coins arrondis, bordures fines, survol
+    discret, accent bleu pour ce qui est choisi). Les cases à cocher et les flèches des champs numériques restent
+    dessinées par Qt (les styler demanderait des images)."""
+    bd = blend(t["ui_text"], t["ui_bg"], 0.16)            # bordure fine
+    bd2 = blend(t["ui_text"], t["ui_bg"], 0.26)           # bordure au survol
+    sub = blend(t["ui_text"], t["ui_bg"], 0.62)           # texte secondaire
+    hov = blend(t["ui_text"], t["ui_button"], 0.08)       # bouton survolé
+    prs = blend(t["ui_text"], t["ui_button"], 0.16)       # bouton enfoncé
+    sel = blend(t["ui_accent"], t["ui_base"], 0.35)       # sélection dans les listes
+    alt = blend(t["ui_text"], t["ui_base"], 0.025)        # une ligne sur deux
+    hdl = blend(t["ui_text"], t["ui_bg"], 0.30)           # poignée des barres de défilement
+    acc, txt, bg, base, btn = t["ui_accent"], t["ui_text"], t["ui_bg"], t["ui_base"], t["ui_button"]
+    on = contrast_text(acc)
+    return """
+QWidget { font-family: "Segoe UI Variable Text", "Segoe UI", "SF Pro Text", "Helvetica Neue", "Inter", sans-serif; }
+QGroupBox { border:1px solid %(bd)s; border-radius:10px; margin-top:14px; padding:12px 8px 8px 8px; }
+QGroupBox::title { subcontrol-origin: margin; left:12px; padding:0 4px; color:%(sub)s; font-weight:600; }
+QToolTip { color:%(txt)s; background:%(btn)s; border:1px solid %(bd2)s; border-radius:6px; padding:5px 7px; }
+QPushButton, QToolButton { background:%(btn)s; border:1px solid %(bd)s; border-radius:7px; padding:4px 11px; }
+QPushButton:hover, QToolButton:hover { background:%(hov)s; border-color:%(bd2)s; }
+QPushButton:pressed, QToolButton:pressed { background:%(prs)s; }
+QPushButton:checked, QToolButton:checked { background:%(acc)s; color:%(on)s; border-color:%(acc)s; }
+QPushButton:disabled, QToolButton:disabled { color:%(sub)s; background:%(bg)s; }
+QPushButton:default { border:1px solid %(acc)s; }
+QToolButton[popupMode="1"], QToolButton[popupMode="2"] { padding-right:18px; }
+QToolBar { background:%(bg)s; border:0; spacing:5px; padding:4px 6px; }
+QToolBar QToolButton { background:transparent; border:1px solid transparent; }
+QToolBar QToolButton:hover { background:%(hov)s; border-color:%(bd)s; }
+QToolBar QToolButton:checked { background:%(acc)s; color:%(on)s; }
+QLineEdit { background:%(base)s; border:1px solid %(bd)s; border-radius:6px; padding:3px 7px;
+            selection-background-color:%(acc)s; selection-color:%(on)s; }
+QLineEdit:focus { border:1px solid %(acc)s; }
+QTableView, QTreeView, QListView { background:%(base)s; alternate-background-color:%(alt)s; border:1px solid %(bd)s;
+            border-radius:10px; gridline-color:%(bd)s; selection-background-color:%(sel)s; selection-color:%(txt)s; }
+QTableView::item, QTreeView::item, QListView::item { padding:2px 4px; }
+QHeaderView { background:transparent; }
+QHeaderView::section { background:%(bg)s; color:%(sub)s; border:0; border-bottom:1px solid %(bd)s;
+            border-right:1px solid %(bd)s; padding:5px 6px; font-weight:600; }
+QTableCornerButton::section { background:%(bg)s; border:0; }
+QMenu { background:%(btn)s; border:1px solid %(bd2)s; border-radius:9px; padding:5px; }
+QMenu::item { padding:5px 22px 5px 12px; border-radius:6px; }
+QMenu::item:selected { background:%(acc)s; color:%(on)s; }
+QMenu::item:disabled { color:%(sub)s; }
+QMenu::separator { height:1px; background:%(bd)s; margin:5px 8px; }
+QMenu::section { color:%(sub)s; font-weight:600; padding:6px 12px 2px 12px; }
+QTabWidget::pane { border:1px solid %(bd)s; border-radius:10px; top:-1px; }
+QTabBar::tab { background:transparent; border:1px solid transparent; border-radius:7px; padding:5px 14px;
+            margin:2px 2px; color:%(sub)s; }
+QTabBar::tab:selected { background:%(btn)s; border-color:%(bd)s; color:%(txt)s; }
+QTabBar::tab:hover:!selected { color:%(txt)s; }
+QDockWidget { titlebar-close-icon:none; }
+QDockWidget::title { background:%(bg)s; padding:6px 8px; font-weight:600; color:%(sub)s; }
+QScrollBar:vertical { background:transparent; width:10px; margin:2px; }
+QScrollBar:horizontal { background:transparent; height:10px; margin:2px; }
+QScrollBar::handle { background:%(hdl)s; border-radius:3px; min-height:28px; min-width:28px; }
+QScrollBar::handle:hover { background:%(sub)s; }
+QScrollBar::add-line, QScrollBar::sub-line { width:0; height:0; }
+QScrollBar::add-page, QScrollBar::sub-page { background:transparent; }
+QSplitter::handle { background:%(bg)s; }
+QStatusBar { color:%(sub)s; }
+QProgressBar { border:1px solid %(bd)s; border-radius:6px; background:%(base)s; text-align:center; }
+QProgressBar::chunk { background:%(acc)s; border-radius:5px; }
+""" % dict(bd=bd, bd2=bd2, sub=sub, hov=hov, prs=prs, sel=sel, alt=alt, hdl=hdl, acc=acc, txt=txt,
+                    bg=bg, base=base, btn=btn, on=on)
 
 
 # ----------------------------------------------------------------- utilitaires
@@ -4358,28 +4433,29 @@ def web_state(rows, alarms, info):
 
 WEB_PAGE = r"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0d0f13"><title>TinySA Monitor</title>
+<meta name="theme-color" content="#000000"><title>TinySA Monitor</title>
 <link rel="icon" href="data:image/png;base64,__ICON__"><link rel="apple-touch-icon" href="data:image/png;base64,__ICON__">
 <style>
-:root{--bg:#0d0f13;--panel:#161a21;--panel2:#1c212a;--line:#272d38;--fg:#f2f4f7;--mut:#8b95a5;--acc:#ff9f1c;
---ok:#22c55e;--bad:#ef4444;--warn:#eab308;--abs:#f97316;--none:#3a4150;--r:14px}
+:root{--bg:#000000;--panel:#1c1c1e;--panel2:#2c2c2e;--line:#38383a;--fg:#f5f5f7;--mut:#98989d;--acc:#0a84ff;
+--ok:#30d158;--bad:#ff453a;--warn:#ffd60a;--abs:#ff9f0a;--none:#48484a;--r:14px}
 *{box-sizing:border-box}html,body{margin:0;height:100%}
-body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+body{background:var(--bg);color:var(--fg);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;
 -webkit-tap-highlight-color:transparent}
 button,input,select{font:inherit;color:inherit}
 .hidden{display:none!important}.mut{color:var(--mut)}
-.rg-al{margin:10px 16px;border-radius:18px;padding:16px 22px;font-weight:800;font-size:clamp(22px,3.6vw,46px);line-height:1.15}
-.rg-al.ok{background:#14532d;color:#dcfce7}
-.rg-al.warn{background:#92400e;color:#fff7ed}.rg-al.bad{background:var(--bad);color:#fff;animation:rgp .8s ease-in-out infinite alternate}
+.rg-al{margin:10px 16px;border-radius:20px;padding:16px 22px;font-weight:700;font-size:clamp(22px,3.6vw,46px);line-height:1.15;letter-spacing:-.01em}
+.rg-al.ok{background:rgba(48,209,88,.14);color:var(--fg);border:1px solid rgba(48,209,88,.45)}
+.rg-al.warn{background:rgba(255,159,10,.16);color:var(--fg);border:1px solid rgba(255,159,10,.5)}.rg-al.bad{background:var(--bad);color:#fff;animation:rgp .8s ease-in-out infinite alternate}
 .rg-al small{display:block;font-size:.45em;font-weight:600;opacity:.9;margin-top:4px}
 @keyframes rgp{from{filter:brightness(1)}to{filter:brightness(1.3)}}
 .rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--rw,280px),1fr));gap:12px;padding:6px 16px 20px}
-.rg .g{border-radius:18px;padding:16px 18px;border:3px solid var(--line);background:var(--panel)}
+.rg .g{border-radius:20px;padding:16px 18px;border:1.5px solid var(--line);background:var(--panel)}
 .rg .g b{display:block;font-size:var(--rf,26px);line-height:1.15}
 .rg .g .k{font-size:calc(var(--rf,26px)*.7);font-weight:800;margin-top:6px}
 .rg .g .p{font-size:calc(var(--rf,26px)*.5);margin-top:6px;opacity:.95}
-.rg .g.ok{background:#14532d;border-color:#22c55e}.rg .g.warn{background:#713f12;border-color:#eab308}
-.rg .g.bad{background:#7f1d1d;border-color:#ef4444}.rg .g.none{opacity:.7}
+.rg .g.ok{background:rgba(48,209,88,.12);border-color:rgba(48,209,88,.55)}.rg .g.ok .k{color:var(--ok)}
+.rg .g.warn{background:rgba(255,159,10,.13);border-color:rgba(255,159,10,.6)}.rg .g.warn .k{color:var(--abs)}
+.rg .g.bad{background:var(--bad);border-color:var(--bad)}.rg .g.none{opacity:.7}
 .hb{text-align:center;padding:10px 16px}.hb .lv{font-size:clamp(54px,16vw,120px);font-weight:900;line-height:1.05}
 .hb .bar{height:28px;border-radius:14px;background:var(--panel2);overflow:hidden;margin:12px 0}
 .hb .bar i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);transition:width .3s}
@@ -4400,7 +4476,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
 .in:focus{border-color:var(--acc)}
 .btn{border:0;border-radius:10px;padding:10px 16px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;
 font-weight:600}.btn:hover{border-color:#3a4252}
-.btn.pri{background:var(--acc);color:#111;border-color:var(--acc);width:100%;padding:13px;margin-top:18px;font-size:16px}
+.btn.pri{background:var(--acc);color:#fff;border-color:var(--acc);width:100%;padding:13px;margin-top:18px;font-size:16px}
 .err{color:var(--bad);min-height:20px;margin-top:10px;font-size:14px}
 /* --- en-tête --- */
 .top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);
@@ -4442,17 +4518,17 @@ border-radius:var(--r);padding:18px;transition:transform .1s,border-color .1s}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px}
 .c{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--none);border-radius:12px;padding:10px 12px}
 .c.ok{border-left-color:var(--ok)}.c.bad{border-left-color:var(--bad)}.c.warn{border-left-color:var(--warn)}
-.c.free{border-left-color:#3b82f6}.t.free{background:#1e3a8a;border-color:#3b82f6}
+.c.free{border-left-color:var(--acc)}.t.free{background:rgba(10,132,255,.14);border-color:rgba(10,132,255,.6)}
 .c.alarm{background:var(--abs);color:#111;border-color:var(--abs)}
-.c .n{font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c .n{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c .f{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}.c.alarm .f,.c.alarm .s{color:#111}
 .c .l{font-size:15px;margin-top:3px;font-weight:600}.c .s{color:var(--mut);font-size:12.5px}
 .wall{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(var(--tw,200px),1fr))}
-.t{border-radius:16px;padding:14px;text-align:center;background:var(--panel2);border:3px solid var(--line);min-height:var(--th,130px);
+.t{border-radius:18px;padding:14px;text-align:center;background:var(--panel);border:1.5px solid var(--line);min-height:var(--th,130px);
 display:flex;flex-direction:column;justify-content:center}
-.t.ok{background:#14532d;border-color:#22c55e}.t.bad{background:#7f1d1d;border-color:#ef4444}
-.t.warn{background:#713f12;border-color:#eab308}.t.alarm{background:var(--abs);border-color:#fff;color:#111}
-.t .n{font-weight:800;font-size:calc(var(--fs,22px)*1.15);line-height:1.1}.t .f{opacity:.8;font-size:calc(var(--fs,22px)*.62)}
+.t.ok{background:rgba(48,209,88,.13);border-color:rgba(48,209,88,.6)}.t.bad{background:rgba(255,69,58,.28);border-color:var(--bad)}
+.t.warn{background:rgba(255,159,10,.14);border-color:rgba(255,159,10,.6)}.t.alarm{background:var(--abs);border-color:#fff;color:#111}
+.t .n{font-weight:700;font-size:calc(var(--fs,22px)*1.15);line-height:1.1}.t .f{opacity:.8;font-size:calc(var(--fs,22px)*.62)}
 .t .l{font-weight:700;font-size:var(--fs,22px);margin-top:4px}
 .wallfs{position:fixed;inset:0;z-index:20;background:var(--bg);padding:12px;overflow:auto}
 .plot{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
@@ -4480,7 +4556,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
 <div id="app" class="hidden">
  <header class="top"><div class="bar"><div class="logo">📡</div>
   <div class="ttl"><b id="t">TinySA Monitor</b><span id="meta" class="mut"></span></div>
-  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button><a id="lng" class="chip" href="?lang=en" title="English" style="text-decoration:none">EN</a></div>
+  <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button><a id="lng" class="chip" href="?lang=en" title="English" style="text-decoration:none;color:inherit">EN</a></div>
   <nav id="nav"></nav></header>
  <section id="al"></section><main id="view"></main>
 </div>
@@ -13587,8 +13663,8 @@ class HomeBar(QtWidgets.QWidget):
         tone, txt = home_status(info)
         c = {"ok": th["st_free"], "warn": th["st_weak"], "bad": th["st_occ"], "wait": th.get("st_none")}.get(tone)
         self.status.setText(txt)
-        self.status.setStyleSheet("font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; "
-                                  + (f"background:{c}; color:{contrast_text(c)}" if c else ""))
+        self.status.setStyleSheet("font-size:16px; font-weight:600; padding:4px 10px; border-radius:9px; "
+                                  + (soft_style(c, th["ui_bg"], th["ui_text"]) if c else ""))
 
 
 class FeatureSearchDialog(QtWidgets.QDialog):
@@ -13906,10 +13982,10 @@ class ShowModeWindow(QtWidgets.QWidget):
         elif hl["tone"] != "ok":                 # pas d'alarme MAIS arrêtée / mesures absentes / périmées / partielles
             self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
             bg = th["st_occ"] if hl["tone"] == "bad" else th["st_weak"]
-            self.banner.setStyleSheet(f"background:{bg}; color:{contrast_text(bg)}; border-radius:10px; padding:8px")
+            self.banner.setStyleSheet(soft_style(bg, th["ui_bg"], th["ui_text"]) + "; padding:10px")
         else:
-            self.banner.setText("<div style='font-size:30px; font-weight:bold'>✔ Tout va bien</div>")
-            self.banner.setStyleSheet(f"background:{th['st_free']}; color:white; border-radius:10px; padding:8px")
+            self.banner.setText("<div style='font-size:30px; font-weight:600'>✔ Tout va bien</div>")
+            self.banner.setStyleSheet(soft_style(th["st_free"], th["ui_bg"], th["ui_text"]) + "; padding:10px")
         ws = [w for w in o.scope_ws() if not w.get("off")]
         sig = tuple((w["name"], round(w["freq"], 4)) for w in ws)
         cols = max(1, self.scroll.viewport().width() // 260)
@@ -13933,11 +14009,19 @@ class ShowModeWindow(QtWidgets.QWidget):
             lv = o.lvl(w["level"], True) if w.get("level") is not None else ""
             if lv and w.get("margin") is not None and o.is_keep_on(w["status"]):
                 lv += f" · {w['margin']:+.0f} dB"              # marge au-dessus du bruit
-            fg = "black" if tone in ("warn",) else "white"
-            t.setText(f"<div style='font-size:22px; font-weight:bold'>{_hesc(w['name'] or '')}</div>"
-                      f"<div style='font-size:18px'>{w['freq']:.3f} MHz</div>"
-                      f"<div style='font-size:16px'>{_hesc(txt)}{(' · ' + lv) if lv else ''}</div>")
-            t.setStyleSheet(f"background:{col}; color:{fg}; border-radius:8px; padding:6px")
+            th_ = o.theme
+            if tone == "bad":                    # problème : tuile pleine, elle doit se voir de loin
+                card = f"background:{col}; color:{contrast_text(col)}; border-radius:12px; padding:6px"
+                stc = contrast_text(col)
+            else:                                # 7.54 (look « pro ») : carte sombre, liseré et état en couleur
+                card = (f"background:{blend(col, th_['ui_button'], 0.14)}; color:{th_['ui_text']}; "
+                        f"border:1.5px solid {blend(col, th_['ui_bg'], 0.60)}; border-radius:14px; padding:6px")
+                stc = blend(col, th_["ui_text"], 0.80)
+            t.setText(f"<div style='font-size:22px; font-weight:600'>{_hesc(w['name'] or '')}</div>"
+                      f"<div style='font-size:17px; opacity:.8'>{w['freq']:.3f} MHz</div>"
+                      f"<div style='font-size:16px; font-weight:600; color:{stc}'>{_hesc(txt)}"
+                      f"<span style='font-weight:400'>{(' · ' + lv) if lv else ''}</span></div>")
+            t.setStyleSheet(card)
 
     def tile_menu(self, i, tile, pos):
         ws = [w for w in self.owner.scope_ws() if not w.get("off")]
@@ -16598,10 +16682,10 @@ class MainWindow(QtWidgets.QMainWindow):
             h.refresh(self.home_info())
         except Exception:  # noqa: BLE001 — l'accueil ne doit jamais gêner la surveillance
             try:                                 # audit 7.52 : ne pas laisser l'ancienne phrase (peut-être « OK »)
-                c = self.theme["st_occ"]
+                th_ = self.theme
                 h.status.setText(UNKNOWN_HEALTH)
-                h.status.setStyleSheet("font-size:16px; font-weight:bold; padding:2px 8px; border-radius:6px; "
-                                       f"background:{c}; color:{contrast_text(c)}")
+                h.status.setStyleSheet("font-size:16px; font-weight:600; padding:4px 10px; "
+                                       + soft_style(th_["st_occ"], th_["ui_bg"], th_["ui_text"]))
             except Exception:  # noqa: BLE001
                 pass
 
@@ -17964,6 +18048,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.scope = ks or None
         self.focus_chk.setChecked(bool(data.get("focus", False)))
         th = data.get("theme")
+        if isinstance(th, dict) and not data.get("theme_v") and all(
+                th.get(k) == v for k, v in THEMES["Sombre doux"].items() if k != "wf"):
+            th = None                             # 7.54 : l'ancien thème par défaut, jamais retouché -> « Pro sombre »
         if isinstance(th, dict):
             base = dict(THEMES[DEFAULT_THEME])
             base.update({k: v for k, v in th.items() if k in base and isinstance(v, str)})
@@ -18205,7 +18292,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            coord_tools=bool(getattr(self, "coord_on", False)),
+            coord_tools=bool(getattr(self, "coord_on", False)), theme_v=2,
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
             home=bool(getattr(self, "home_on", True)),
             dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], states=[dict(x) for x in self.states],
@@ -19784,9 +19871,9 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.layer_lbl.setText(f"Couche active : Global — {len(self.watch)} fréquence(s)")
         self.focus_chk.setEnabled(bool(self.scope))
-        col = self.theme["st_free"]
+        col = self.theme["ui_accent"]
         self.global_btn.setStyleSheet(
-            "QPushButton{background:%s;color:%s;font-weight:bold;}" % (col, contrast_text(col))
+            "QPushButton{background:%s;color:%s;font-weight:600;border-color:%s;}" % (col, contrast_text(col), col)
             if not self.scope else "")
         self.update_title()
 
@@ -20703,8 +20790,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             w["sig"] = sig
             sig_txt, tone, tone_col = self.sig_view(w)
-            row_bg = {"bad": blend(th["st_occ"], base, 0.55), "warn": blend(th["st_weak"], base, 0.30)}.get(tone, base)
-            row_fg = contrast_text(row_bg) if tone in ("bad", "warn") else th["ui_text"]
+            # 7.54 (look « pro ») : la ligne n'est que légèrement teintée, la couleur forte reste sur la case Signal
+            row_bg = {"bad": blend(th["st_occ"], base, 0.20), "warn": blend(th["st_weak"], base, 0.10)}.get(tone, base)
+            row_fg = th["ui_text"]
             cells = ((C_NAME, w["name"]), (C_FREQ, f'{w["freq"]:.3f}'), (C_LVL, lv), (C_MAX, mx),
                      (C_THR, thr_txt), (C_SIG, sig_txt), (C_STAT, stat), (C_OCC, occ_txt),
                      (C_LAYER, layer or "—"), (C_BAND, band), (C_MARG, m_txt))
@@ -20719,21 +20807,21 @@ class MainWindow(QtWidgets.QMainWindow):
                     bg = blend(tone_col, base, 1.0 if tone == "bad" else 0.85)
                     fg = contrast_text(bg)
                 elif c == C_STAT and w["status"]:
-                    bg = blend(self.status_color(w["status"]), base, 0.75)
-                    fg = contrast_text(bg)
+                    bg = blend(self.status_color(w["status"]), row_bg, 0.32)
+                    fg = th["ui_text"]
                 elif c == C_LAYER and gc:
-                    bg = blend(gc, base, 0.55)
-                    fg = contrast_text(bg)
+                    bg = blend(gc, row_bg, 0.30)
+                    fg = th["ui_text"]
                 elif c == C_MARG:
                     fl_ = w.get("floor")
                     it.setToolTip(m_tip + (f"\nBruit de fond utilisé : {self.lvl(fl_, True)} (± 2 MHz autour)"
                                            if fl_ is not None and w.get("level") is not None else ""))
                     if m_tone in ("warn", "bad") and not (keep_free and m_tone == "ok"):
-                        bg = blend(th["st_weak"] if m_tone == "warn" else th["st_occ"], base, 0.6)
-                        fg = contrast_text(bg)
+                        bg = blend(th["st_weak"] if m_tone == "warn" else th["st_occ"], row_bg, 0.35)
+                        fg = th["ui_text"]
                 elif c == C_BAND and w["cat"]:
-                    bg = blend(th.get("bp_" + w["cat"], th["st_none"]), base, 0.6)
-                    fg = contrast_text(bg)
+                    bg = blend(th.get("bp_" + w["cat"], th["st_none"]), row_bg, 0.25)
+                    fg = th["ui_text"]
                     tip = describe_freq(w["freq"], self.plan, self.tv)
                     if it.toolTip() != tip:
                         it.setToolTip(tip)
@@ -22026,7 +22114,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _marker_item(self, key):
         it = self._mk_items.get(key)
         if it is None:
-            pen = pg.mkPen(key[0], width=2.0, style=Qt.PenStyle.DotLine if key[1] else Qt.PenStyle.SolidLine)
+            c_ = QtGui.QColor(key[0])
+            c_.setAlphaF(0.72)                   # 7.54 : repères plus fins et un peu transparents (moins de « barreaux »)
+            pen = pg.mkPen(c_, width=1.5, style=Qt.PenStyle.DotLine if key[1] else Qt.PenStyle.SolidLine)
             it = pg.PlotCurveItem(pen=pen, connect="pairs")
             self.spec.getPlotItem().addItem(it)
             self._mk_items[key] = it
@@ -22517,7 +22607,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._strip_rows.append((entries, y0))
             for (a, b, lab, cat, note) in entries:
                 r = QtWidgets.QGraphicsRectItem(a, y0 + 0.06, b - a, 0.88)
-                r.setBrush(pg.mkBrush(th.get("bp_" + cat, "#64748b")))
+                r.setBrush(pg.mkBrush(blend(th.get("bp_" + cat, "#64748b"), th["plot_bg"], 0.62)))
                 r.setPen(edge)
                 pi.addItem(r, ignoreBounds=True)
                 self._strip_rects.append(r)
@@ -22554,7 +22644,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     pi.addItem(t, ignoreBounds=True)
                     self._strip_labels.append(t)
                 t = self._strip_labels[k]
-                t.setText(txt, color=contrast_text(th.get("bp_" + cat, "#64748b")))
+                t.setText(txt, color=contrast_text(blend(th.get("bp_" + cat, "#64748b"), th["plot_bg"], 0.62)))
                 t.setPos((lo + hi) / 2.0, y0 + 0.5)
                 t.setVisible(True)
                 k += 1

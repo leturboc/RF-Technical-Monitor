@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.53.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.54.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -884,6 +884,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   faibles pile au seuil → 83 / 145 événements libre ↔ occupé (pas un bug : leur donner un seuil propre). Corrigé en
   7.53.1 : l'événement « Libre » notait le PIC de l'occupation (−69,7 dBm, plus fort que le « OCCUPÉ » à −91,7 :
   illisible) → il note le niveau actuel, le pic va dans la note « max pendant l'occupation : … ».
+- **7.54.0 (Clément : « on taf sur le graphique ? » → les 4 zones, style « pro, type soft Apple »)** : thèmes PURE
+  « Pro sombre » (NOUVEAU DÉFAUT : graphite #1c1c1e, couleurs système Apple) et « Pro clair » ; une config dont le thème
+  est EXACTEMENT l'ancien défaut « Sombre doux » passe au nouveau (marque `theme_v` = 2 dans la config) ; un thème
+  retouché reste tel quel. `make_stylesheet` = vraie feuille de style (gabarit `%(clé)s`, PAS un f-string : test_i18n
+  prend les f-strings pour du texte) : boutons / champs / tableaux / menus / onglets arrondis, barres de défilement
+  fines, police Segoe UI Variable / SF Pro. Cases à cocher et flèches des champs numériques NON stylées (il faudrait des
+  images). PURE `soft_style(c, bg, txt)` = bandeau teinté + contour fin (phrase de l'accueil, « Tout va bien » du mode
+  Show) ; une ALARME garde un fond plein. Liste : lignes à peine teintées, la couleur forte reste sur la case Signal.
+  Mode Show : cartes sombres teintées, état en couleur ; tuile en problème = pleine. Spectre : repères fins (1,5 px) et
+  un peu transparents ; bandeaux du plan / TV adoucis (`blend` 0,62 sur le fond). Bouton « Global » = accent bleu.
+  Page web : palette Apple (fond noir, panneaux #1c1c1e, accent bleu #0a84ff), Régie / Mur / tuiles teintées, alarmes
+  pleines. Aperçus avant / après : `apercu/` (pas dans le dépôt). **Rendu Windows réel pas vu par Claude** (captures de
+  la CI seulement) ; un écran mis à l'échelle peut changer les tailles mini (gui_reel les vérifie).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
