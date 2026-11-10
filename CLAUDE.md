@@ -878,6 +878,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (avant : > 2 min → remplacée par « maintenant » = fraîcheur artificielle) ; heure future → maintenant ; absente → maintenant.
   Testé : test_v7 (parser), test_reseau_qt (vrai ScanWorker sur faux tinySA). **Pas vérifié sur un vrai tinySA.**
   Toujours pas fait : concaténations de `_scan_band`, authentification / chiffrement du relais (réseau technique).
+  **Bilan de la 1re nuit sous garde (Clément, 10/11/2026, 7.52.0, 30 radios FM, 1 tinySA)** : 8 h 45 de surveillance
+  sans plantage ni liaison perdue, bilan reçu à 09:00. MAIS ce bilan vient de l'instance FIGÉE par le test 🧊 (00:15)
+  qui s'est réveillée et a continué : la relance n'a pas eu COM4 (bug corrigé en 7.52.1). RADIO 2 / RADIO 11 = stations
+  faibles pile au seuil → 83 / 145 événements libre ↔ occupé (pas un bug : leur donner un seuil propre). Corrigé en
+  7.53.1 : l'événement « Libre » notait le PIC de l'occupation (−69,7 dBm, plus fort que le « OCCUPÉ » à −91,7 :
+  illisible) → il note le niveau actuel, le pic va dans la note « max pendant l'occupation : … ».
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

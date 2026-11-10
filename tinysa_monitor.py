@@ -23812,7 +23812,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 w["peak"] = max(w["peak"] or lvl, lvl)
             elif prev == "occ":
                 w["im"] = ""
-                self.log_event(w, w["peak"] or lvl, f"Libre ({now - w['since']:.0f} s)")
+                # bilan de Clément (7.53) : « Libre » affichait le PIC de l'occupation (−69,7) et paraissait plus fort que
+                # le « OCCUPÉ » (−91,7) : on note le niveau ACTUEL, le pic va dans la note
+                pk = w.get("peak")
+                self.log_event(dict(w, note=f"max pendant l'occupation : {self.lvl(pk)}") if pk is not None else w,
+                               lvl, f"Libre ({now - w['since']:.0f} s)")
             w["state"] = new
             # ---- alarmes : CONFLIT (signal sur une fréquence « doit rester libre ») et ABSENT (« doit émettre » muette)
             fk = int(round(f * 1000))
