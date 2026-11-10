@@ -3689,7 +3689,7 @@ WEB = [
     ('} à surveiller`', '} to watch`'),
     ('lay(r)||"Sans scène"', 'lay(r)||"No scene"'),
     ('>Aucune fréquence surveillée.</div>', '>No monitored frequency.</div>'),
-    ('href="?lang=en" title="English" style="text-decoration:none">EN<', 'href="?lang=fr" title="Français" style="text-decoration:none">FR<'),
+    ('href="?lang=en" title="English" style="text-decoration:none;color:inherit">EN<', 'href="?lang=fr" title="Français" style="text-decoration:none;color:inherit">FR<'),
     ('<html lang="fr">', '<html lang="en">'),
     ('"fr-FR"', '"en-GB"'),
     ("⚠ Plus de nouvelles du PC de surveillance", "⚠ No news from the monitoring PC"),
@@ -4672,3 +4672,13 @@ EXACT.update({
 TEMPLATES.update({"<div style='font-size:20px; margin-top:6px'>{}</div>": "<div style='font-size:20px; margin-top:6px'>{}</div>"})
 WEB += [('>■ Surveillance arrêtée<', '>■ Monitoring stopped<'), ("<small>Rien n'est surveillé en ce moment.</small>", "<small>Nothing is being monitored right now.</small>")]
 TEMPLATES.update({"max pendant l'occupation : {}": "max while busy: {}"})
+
+# 7.54 : look « pro »
+EXACT.update({"Pro sombre": "Pro dark", "Pro clair": "Pro light"})
+TEMPLATES.update({"background:{}; color:{}; border:1.5px solid {}; border-radius:14px; padding:6px":
+                  "background:{}; color:{}; border:1.5px solid {}; border-radius:14px; padding:6px"})
+EXACT.update({k: k for k in ("font-size:16px; font-weight:600; padding:4px 10px; ",
+                             "font-size:16px; font-weight:600; padding:4px 10px; border-radius:9px; ")})
+TEMPLATES.update({k: k for k in ("background:{}; color:{}; border:1px solid {}; border-radius:10px",
+                                 "background:{}; color:{}; border-radius:12px; padding:6px")})
+TEMPLATES.update({"<div style='font-size:22px; font-weight:600'>{}</div><div style='font-size:17px; opacity:.8'>{} MHz</div><div style='font-size:16px; font-weight:600; color:{}'>{}<span style='font-weight:400'>{}</span></div>": "<div style='font-size:22px; font-weight:600'>{}</div><div style='font-size:17px; opacity:.8'>{} MHz</div><div style='font-size:16px; font-weight:600; color:{}'>{}<span style='font-weight:400'>{}</span></div>"})

@@ -3,3 +3,4 @@ __pycache__/
 tests/captures/
 tests/captures_en/
 tests/endurance.csv
+apercu/
