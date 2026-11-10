@@ -1320,5 +1320,24 @@ for _n, _k in (("Daltonien · deutéranopie (vert)", "deutan"), ("Daltonien · p
 ok("7.54 : thème par défaut : OK et occupé distincts pour un deutéranope (ΔE ≥ 25)",
    float(np.linalg.norm(_lab(_TH["Pro sombre"]["st_free"], "deutan") - _lab(_TH["Pro sombre"]["st_occ"], "deutan"))) >= 25)
 ok("7.54 : tous les thèmes ont toutes les couleurs", all(all(k in t for k, *_ in ns["THEME_KEYS"]) for t in _TH.values()))
+# 7.54.1 : palette des scènes / groupes / statuts par thème
+_tp = ns["theme_pal"]
+ok("7.54.1 : chaque thème a une palette d'au moins 7 couleurs", all(len(_tp(t)) >= 7 for t in _TH.values()))
+_av = _tp(_TH["Analyseur vert"])
+ok("7.54.1 : palette Analyseur vert = nuances du phosphore (vert dominant)",
+   all(int(c[3:5], 16) >= int(c[1:3], 16) and int(c[3:5], 16) >= int(c[5:7], 16) for c in _av))
+ok("7.54.1 : nuances distinctes", len(set(_av)) == len(_av))
+_sc = [dict(name="A", color="#000000", groups=[dict(name="g1", color="#000000"), dict(name="g2", color="#000000")]),
+       dict(name="B", color="#000000", groups=[])]
+_st = [dict(name="Libre", color="#000000", free=True), dict(name="En service", color="#000000", on=True),
+       dict(name="Réservé", color="#000000")]
+_s2, _t2 = ns["layers_recolor"](_sc, _st, _TH["Analyseur bleu"])
+ok("7.54.1 : recolorer garde les noms", [x["name"] for x in _s2] == ["A", "B"] and len(_s2[0]["groups"]) == 2)
+ok("7.54.1 : scènes / groupes recolorés depuis la palette",
+   {_s2[0]["color"], _s2[0]["groups"][0]["color"], _s2[0]["groups"][1]["color"]} <= set(_tp(_TH["Analyseur bleu"])))
+ok("7.54.1 : statuts gardent leur sens", _t2[0]["color"] == _TH["Analyseur bleu"]["st_libre"]
+   and _t2[1]["color"] == _TH["Analyseur bleu"]["st_free"])
+ok("7.54.1 : l'original n'est pas modifié", _sc[0]["color"] == "#000000")
+ok("7.54.1 : palette illisible -> défaut", len(_tp({"pal": "n'importe quoi"})) == 10)
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

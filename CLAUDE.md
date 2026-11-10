@@ -916,7 +916,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   supprimé, bandeaux = couleurs normales) ; leur SPECTRE est façon vieil analyseur à tube (photo de Clément) : clé de thème
   `plot_style` « crt » (« normal » ailleurs) → grille plus visible (alpha 0,40), trace phosphore + halo (`setShadowPen`),
   grille / axes / trace d'une seule teinte ; LUT « Phosphore vert ». Gamme « analo » (Clément : « un bleu aussi ») :
-  Analyseur vert / bleu / ambre / blanc + Nuit (rouge), LUT « Phosphore bleu / ambre ». 💤 : la case Signal ne dit « éteint » que si le micro ne capte rien (sinon elle
+  Analyseur vert / bleu / ambre / blanc + Nuit (rouge), LUT « Phosphore bleu / ambre ».
+  **Palettes des couches par thème** (Clément : « des couleurs prédéfinies pour les groupes qui suivent le thème, en analo
+  aussi ») : PURE `THEME_PALETTES` (palettes des thèmes inspirés, Okabe-Ito / Tol pour les daltoniens), `phosphor_shades`
+  (nuances clair / foncé alternées du phosphore), clé de thème `pal` (couleurs séparées par des virgules, gardée dans la
+  config), `theme_pal(t)`, `layers_recolor(scènes, statuts, t)` (statut « doit rester libre » → `st_libre`, « doit émettre »
+  → `st_free`, les autres → palette). Nouvelles scènes / groupes (`ensure_group`) et nouveaux statuts (`_resolve_status`,
+  `StatusDialog`) prennent la palette du thème ; `ColorsDialog.recolor_chk` (décochée par défaut) → `recolor_layers()`
+  (annulable). Thèmes « analyseur » : bandeaux du bas (`bp_*`) en nuances assombries du phosphore. 💤 : la case Signal ne dit « éteint » que si le micro ne capte rien (sinon elle
   montre la mesure) → la case **Statut** affiche « 💤 éteint · statut » (ou « 💤 hors état » pour un état 📸) et la ligne
   est grisée (`dim` dans `update_watch_table`), même si le micro émet encore.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),

@@ -4702,3 +4702,11 @@ EXACT.update({"Phosphore vert": "Green phosphor"})
 EXACT.update({"Analyseur bleu": "Blue analyser", "Analyseur ambre": "Amber analyser",
               "Analyseur blanc": "White analyser", "Phosphore bleu": "Blue phosphor",
               "Phosphore ambre": "Amber phosphor"})
+EXACT.update({
+    "Chaque thème a sa palette (nuances du phosphore pour les thèmes « Analyseur »).\nCoché : à OK, tes scènes, groupes et statuts prennent ces couleurs ; les statuts\n« doit rester libre » / « doit émettre » gardent leur sens. Annulable (Ctrl+Z).\nLes nouvelles scènes et nouveaux groupes prennent toujours la palette du thème.":
+        "Each theme has its own palette (phosphor shades for the “Analyser” themes).\nTicked: on OK, your stages, groups and statuses take these colours; “must stay free” /\n“must transmit” statuses keep their meaning. Can be undone (Ctrl+Z).\nNew stages and groups always take the theme palette.",
+    "Recolorer aussi mes scènes, groupes et statuts avec ce thème":
+        "Also recolour my stages, groups and statuses with this theme",
+    "🎨 Scènes, groupes et statuts aux couleurs du thème (Ctrl+Z pour annuler).":
+        "🎨 Stages, groups and statuses in the theme colours (Ctrl+Z to undo).",
+})

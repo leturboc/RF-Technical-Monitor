@@ -816,12 +816,87 @@ CATEGORIES = {
 THEME_KEYS.append(("ref", "Courbe de référence", "Graphique"))
 for _k, (_lab, _col) in CATEGORIES.items():
     THEME_KEYS.append(("bp_" + _k, _lab, "Bandes du spectre"))
+# 7.54.1 (Clément : « des couleurs prédéfinies pour les groupes qui suivent le thème, en analo aussi ») : palette des
+# scènes / groupes / statuts de chaque thème (clé « pal », couleurs séparées par des virgules). Thèmes « analyseur » :
+# nuances du phosphore (calculées).
+GROUP_COLORS_DEF = ["#38bdf8", "#f472b6", "#a3e635", "#fbbf24", "#c084fc", "#2dd4bf", "#fb923c", "#60a5fa",
+                    "#f87171", "#34d399"]
+_OKABE = ["#56b4e9", "#e69f00", "#f0e442", "#0072b2", "#cc79a7", "#d55e00", "#009e73", "#999999"]
+THEME_PALETTES = {
+    "Pro sombre": ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#5e5ce6",
+                   "#ff6b6b", "#4fd1c5"],
+    "Pro clair": ["#007aff", "#ff9500", "#34c759", "#af52de", "#ff2d55", "#32ade6", "#ffcc00", "#5856d6",
+                  "#ff3b30", "#00c7be"],
+    "Catppuccin (Mocha)": ["#89b4fa", "#f5c2e7", "#a6e3a1", "#f9e2af", "#cba6f7", "#94e2d5", "#fab387", "#74c7ec",
+                           "#f38ba8", "#b4befe"],
+    "Tokyo Night": ["#7aa2f7", "#bb9af7", "#9ece6a", "#e0af68", "#7dcfff", "#f7768e", "#ff9e64", "#73daca",
+                    "#2ac3de", "#c0caf5"],
+    "Dracula": ["#bd93f9", "#ff79c6", "#50fa7b", "#f1fa8c", "#8be9fd", "#ffb86c", "#ff5555", "#6272a4"],
+    "Rosé Pine": ["#c4a7e7", "#ebbcba", "#9ccfd8", "#f6c177", "#31748f", "#eb6f92", "#e0def4", "#908caa"],
+    "Gruvbox": ["#83a598", "#d3869b", "#b8bb26", "#fabd2f", "#8ec07c", "#fe8019", "#fb4934", "#d5c4a1"],
+    "Nord": ["#88c0d0", "#b48ead", "#a3be8c", "#ebcb8b", "#81a1c1", "#d08770", "#bf616a", "#8fbcbb", "#5e81ac"],
+    "Daltonien · deutéranopie (vert)": _OKABE,
+    "Daltonien · protanopie (rouge)": _OKABE,
+    "Daltonien · tritanopie (bleu / jaune)": ["#33bbee", "#ee3377", "#009988", "#ee7733", "#0077bb", "#cc3311",
+                                              "#bbbbbb"],
+    "Monochrome (sans couleur)": ["#f0f0f0", "#a0a0a0", "#d0d0d0", "#787878", "#c0c0c0", "#8c8c8c", "#e0e0e0"],
+    "Haut contraste": ["#00ffff", "#ffff00", "#ff00ff", "#00ff00", "#ff8000", "#ffffff", "#0080ff", "#ff3030"],
+}
+
+
+def phosphor_shades(fg, n=8):
+    """Nuances d'une couleur de phosphore (de la plus vive à la plus sombre, en alternant clair / foncé pour que deux
+    groupes voisins se distinguent)."""
+    steps = [0.0, 0.55, 0.25, 0.75, 0.40, 0.15, 0.65, 0.33]
+    out = []
+    for i, k in enumerate(steps[:n]):
+        out.append(blend("#ffffff", fg, k * 0.6) if i % 2 == 0 else blend("#000000", fg, k * 0.6))
+    return out
+
+
+def theme_pal(t):
+    """Palette des scènes / groupes / statuts du thème t (liste de couleurs #rrggbb)."""
+    pal = [c.strip() for c in str(t.get("pal") or "").split(",") if re.fullmatch(r"#[0-9a-fA-F]{6}", c.strip())]
+    return pal or list(GROUP_COLORS_DEF)
+
+
+def layers_recolor(scenes, statuses, t):
+    """Recolore scènes, groupes et statuts avec la palette du thème t. Les statuts gardent leur sens : « doit rester
+    libre » = couleur « réserve libre » du thème, « doit émettre » = couleur « OK » ; les autres prennent la palette.
+    Renvoie (scènes, statuts) neufs."""
+    pal = theme_pal(t)
+    sc_out, n = [], 0
+    for i, sc in enumerate(scenes):
+        d = dict(sc, color=pal[i % len(pal)])
+        gs = []
+        for g in sc.get("groups", []):
+            gs.append(dict(g, color=pal[(n + 1) % len(pal)]))
+            n += 1
+        d["groups"] = gs
+        sc_out.append(d)
+    st_out, k = [], 0
+    for st in statuses:
+        if st.get("free"):
+            c = t.get("st_libre", pal[0])
+        elif st.get("on"):
+            c = t.get("st_free", pal[0])
+        else:
+            c = pal[(k + 3) % len(pal)]
+            k += 1
+        st_out.append(dict(st, color=c))
+    return sc_out, st_out
+
+
 for _n, _t in THEMES.items():
     _t.setdefault("ref", "#c084fc")
     _t.setdefault("plot_style", "normal")       # « crt » = spectre façon écran cathodique (7.54.1)
+    _t.setdefault("pal", ",".join(THEME_PALETTES.get(_n) or phosphor_shades(_t["plot_fg"])
+                                  if _t["plot_style"] == "crt" else THEME_PALETTES.get(_n) or GROUP_COLORS_DEF))
     _t.setdefault("st_libre", "#3b82f6")
-    for _k, (_lab, _col) in CATEGORIES.items():
-        _t.setdefault("bp_" + _k, _col)
+    _sh = phosphor_shades(_t["plot_fg"]) if _t.get("plot_style") == "crt" else None
+    for _i, (_k, (_lab, _col)) in enumerate(CATEGORIES.items()):
+        # thèmes « analyseur » : bandeaux du bas en nuances du phosphore, assombries (7.54.1)
+        _t.setdefault("bp_" + _k, blend(_sh[_i % len(_sh)], _t["plot_bg"], 0.55) if _sh else _col)
 
 COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "Allemagne"),
              ("GB", "Royaume-Uni"), ("IT", "Italie"), ("ES", "Espagne"), ("NL", "Pays-Bas"),
@@ -8422,6 +8497,13 @@ class ColorsDialog(QtWidgets.QDialog):
         hint = QtWidgets.QLabel("Les couleurs des statuts manuels se règlent dans « Statuts ».\n"
                                 "Les changements s'appliquent en direct.")
         lay.addWidget(hint)
+        # 7.54.1 : scènes / groupes / statuts aux couleurs du thème (nuances du phosphore en « analyseur »)
+        self.recolor_chk = QtWidgets.QCheckBox("Recolorer aussi mes scènes, groupes et statuts avec ce thème")
+        self.recolor_chk.setToolTip("Chaque thème a sa palette (nuances du phosphore pour les thèmes « Analyseur »).\n"
+                                    "Coché : à OK, tes scènes, groupes et statuts prennent ces couleurs ; les statuts\n"
+                                    "« doit rester libre » / « doit émettre » gardent leur sens. Annulable (Ctrl+Z).\n"
+                                    "Les nouvelles scènes et nouveaux groupes prennent toujours la palette du thème.")
+        lay.addWidget(self.recolor_chk)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -8541,7 +8623,8 @@ class StatusDialog(QtWidgets.QDialog):
             self.rebuild()
 
     def add_row(self):
-        col = STATUS_AUTO_COLORS[len(self.rows) % len(STATUS_AUTO_COLORS)]
+        pal = theme_pal(getattr(self.parent(), "theme", None) or {})       # 7.54.1 : palette du thème
+        col = pal[(len(self.rows) + 3) % len(pal)]
         self.rows.append(dict(name="Nouveau statut", color=col, orig=None, free=False, on=False))
         self.rebuild()
 
@@ -19858,11 +19941,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         sc = self.scene_by_name(scene)
         if sc is None:
-            sc = dict(name=scene, color=GROUP_COLORS[len(self.scenes) % len(GROUP_COLORS)], groups=[])
+            pal = theme_pal(self.theme)                  # 7.54.1 : couleurs qui suivent le thème
+            sc = dict(name=scene, color=pal[len(self.scenes) % len(pal)], groups=[])
             self.scenes.append(sc)
         if group and not any(g["name"] == group for g in sc["groups"]):
             n = sum(len(x["groups"]) for x in self.scenes)
-            sc["groups"].append(dict(name=group, color=GROUP_COLORS[n % len(GROUP_COLORS)]))
+            pal = theme_pal(self.theme)
+            sc["groups"].append(dict(name=group, color=pal[(n + 1) % len(pal)]))
 
     def group_color(self, scene, group):
         sc = self.scene_by_name(scene)
@@ -21338,7 +21423,21 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg = ColorsDialog(self, self.theme, self.preview_theme)
         if dlg.exec():
             self.theme = dict(dlg.theme)
+            if dlg.recolor_chk.isChecked():
+                self.recolor_layers()
         self.apply_theme()
+
+    def recolor_layers(self):
+        """Scènes, groupes et statuts aux couleurs de la palette du thème (7.54.1)."""
+        self.scenes, self.statuses = layers_recolor(self.scenes, self.statuses, self.theme)
+        self.rebuild_tree()
+        for w in self.watch:
+            w["sig"] = None
+        self.update_watch_table(force=True)
+        self._update_markers()
+        if self.wall is not None and self.wall.isVisible():
+            self.wall.rebuild()
+        self.set_status("🎨 Scènes, groupes et statuts aux couleurs du thème (Ctrl+Z pour annuler).")
 
     def preview_theme(self, t):
         self.theme = dict(t)
@@ -21351,7 +21450,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for s in self.statuses:
             if s["name"].lower() == st.lower():
                 return s["name"]
-        self.statuses.append(dict(name=st, color=STATUS_AUTO_COLORS[len(self.statuses) % len(STATUS_AUTO_COLORS)],
+        pal = theme_pal(self.theme)
+        self.statuses.append(dict(name=st, color=pal[(len(self.statuses) + 3) % len(pal)],
                                   free=False, on=False))
         return st
 
