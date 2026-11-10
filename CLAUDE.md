@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.55.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.56.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -951,6 +951,30 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   seule) ; **pas vu sur le PC de Clément**.
   **✅ Vérifié par Clément (10/11/2026, vrai tinySA) : câble USB débranché en pleine surveillance → bandeau rouge tout de
   suite ; rebranché → la surveillance reprend seule et revient à « tout va bien ».**
+- **7.56.0 (Clément : « j'aime bien tout ça, prends le temps, pousse pas trop vite »)** — 5 chantiers, un seul push :
+  - **⚡ Préréglages rapides** (revue UX « profils de configuration rapides ») : PURE `QUICK_PRESETS` (festival, salle,
+    nuit, scan : réglages thr_auto, auto_occ / auto_weak, points (donnée d'`AUTO_POINTS`), persist, absent, confirm,
+    repeat (valeur d'`ALARM_REPEATS`), strong / strong_lvl, hold ; 5ᵉ champ = fenêtre proposée ensuite, « nuit » →
+    `open_festival`), `PRESET_LABELS`, `quick_preset`, `preset_value_text`, `preset_changes(cur, clé)` (maintenant →
+    après, seulement ce qui change), `preset_match`. MainWindow : `preset_current`, `apply_preset` (réglages seulement :
+    liste / scènes / bandes jamais touchées), `open_presets` → `PresetDialog` (`self._presets`, liste avec ✓, tableau
+    des changements, Appliquer). Entrées : 🎚 Surveiller › Avant d'ouvrir, ⚙ › Général. gui_reel applique les 4.
+    Valeurs des préréglages = **choix de Claude, pas mesurées sur le terrain**.
+  - **Alarmes expliquées** (revue UX « détecté / déduit / recommandé ») : PURE `ALARM_HELP` {type: (cause probable,
+    conseil)} et `alarm_explain(a, now, niveau, seuil)` → {measured, deduced, advice} ; `w["ethr"]` = seuil appliqué ;
+    MainWindow `alarm_explain`, `alarm_why_text`, étiquette `alarm_why` sous la liste des alarmes (alarme choisie, sinon
+    la plus récente à acquitter) + bulle sur chaque ligne ; conseil sous l'alarme du mode Show ; `notify_text` ajoute
+    une 2ᵉ ligne « quoi faire » (test_alertes mis à jour) ; page web : champ `hint` (traduit) dans les alarmes, affiché
+    `.hint` dans les vues Alarmes / Régie / bandeau.
+  - **Page web façon thème** : `web_json` envoie `plot` {bg, fg, curve, mh, thr, crt} ; JS `PC()` : fond du tracé,
+    grille (phosphore si crt), trace, pics gardés, seuil et légende aux couleurs du thème ; rémanence en
+    `globalCompositeOperation="lighter"` (les traces s'additionnent : ce qui revient brille), calque refait si la couleur
+    change. Test Chromium : calque de rémanence allumé (plus de test « bleu »).
+  - **Rapports au look pro** : PURE `REPORT_PRO_CSS` ajouté après les styles d'origine de `build_report_html` (rapport,
+    bilan du matin) et `site_report_html` (typo système, cartes, tableaux arrondis, pastilles, couleurs système).
+  - **Optimisations** : `floor_curve` sans boucle (centile linéaire à la main sur fenêtres triées, = np.percentile,
+    ≈ 28× plus rapide, test « = calcul fenêtre par fenêtre ») ; `ScanWorker.stats["pts"]` → `stats_text` « vitesse N
+    points/s (x ms par point) » dans le 🩺 diagnostic (**à lire sur le diagnostic de Clément**).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

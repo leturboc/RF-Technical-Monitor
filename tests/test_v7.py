@@ -1360,5 +1360,67 @@ ok("7.55 : table de couleurs RGBA (transparente à 0, couleur de la trace)",
    _l.shape == (256, 4) and int(_l[0, 3]) == 0 and int(_l[255, 3]) > 200 and tuple(_l[255, :3]) == (0x3d, 0xdc, 0x84))
 _g = ns["density_glow"](np.pad(np.ones((1, 1), dtype=np.float32), 3))
 ok("7.55 : halo d'un pixel autour, borné à 1", float(_g[3, 3]) == 1.0 and 0 < float(_g[3, 4]) < 1 and float(_g[3, 5]) == 0.0)
+# 7.56 : préréglages rapides
+_qp = ns["QUICK_PRESETS"]
+ok("7.56 : 4 préréglages (festival, salle, nuit, scan)", [p_[0] for p_ in _qp] == ["festival", "salle", "nuit", "scan"])
+_keys = {k for k, _l in ns["PRESET_LABELS"]} | {"strong_lvl"}
+ok("7.56 : chaque préréglage règle tous les réglages connus", all(set(p_[3]) == _keys for p_ in _qp))
+ok("7.56 : points = une donnée d'AUTO_POINTS", all(p_[3]["points"] in [d for d, *_ in ns["AUTO_POINTS"]] for p_ in _qp))
+ok("7.56 : son rejoué = une valeur d'ALARM_REPEATS", all(p_[3]["repeat"] in dict(ns["ALARM_REPEATS"]) for p_ in _qp))
+_cur = dict(ns["quick_preset"]("festival")[3])
+ok("7.56 : réglages = préréglage -> aucun changement, reconnu", ns["preset_changes"](_cur, "festival") == []
+   and ns["preset_match"](_cur) == "festival")
+_ch = ns["preset_changes"](_cur, "nuit")
+_labs = [c[0] for c in _ch]
+ok("7.56 : festival -> nuit : points, rémanence, absent, confirmé, rejouée changent",
+   _labs == ["Points par balayage", "Rémanence", "TX absent après", "Conflit confirmé après", "Alarme rejouée"], _labs)
+ok("7.56 : textes lisibles", ("Rémanence", "10 balayages", "aucune") in _ch
+   and ("Alarme rejouée", "toutes les 30 s", "toutes les minutes") in _ch)
+_c2 = dict(_cur, strong_lvl=-30.0)
+ok("7.56 : niveau « trop fort » différent = changement", any(c[0] == "Alerte « trop fort »" for c in ns["preset_changes"](_c2, "festival"))
+   and ns["preset_match"](_c2) == "")
+ok("7.56 : préréglage inconnu = rien", ns["preset_changes"](_cur, "zzz") == [] and ns["quick_preset"]("zzz") is None)
+ok("7.56 : réglages incomplets (vieille config) ne plantent pas", isinstance(ns["preset_changes"]({}, "salle"), list))
+# 7.56 : alarmes expliquées
+_ae = ns["alarm_explain"]
+_e = _ae(dict(kind="CONFLIT", name="HF 3", freq=606.0, level=-61.6, t0=100.0, t_end=None, info="vu par FOH"), 145.0,
+         "-62 dBm", "-88 dBm")
+ok("7.56 : conflit mesuré = niveau, fréquence, seuil, durée, info", _e["measured"] ==
+   "-62 dBm sur 606.000 MHz (seuil -88 dBm), depuis 45 s · vu par FOH", _e["measured"])
+ok("7.56 : conflit : cause et conseil", "doit rester libre" in _e["deduced"] and "Chasse" in _e["advice"])
+_e = _ae(dict(kind="ABSENT", name="HF 1", freq=470.2, level=-99.0, t0=0.0, t_end=None, info=""), 125.0)
+ok("7.56 : absent", _e["measured"] == "Plus de signal sur 470.200 MHz depuis 2 min" and "piles" in _e["deduced"]
+   and "Éteint (je sais)" in _e["advice"], _e["measured"])
+_e = _ae(dict(kind="APPAREIL", name="FOH", freq=0.0, level=None, t0=0.0, t_end=30.0, info="x"), 999.0)
+ok("7.56 : tinySA perdu (alarme terminée : durée jusqu'à la fin)", _e["measured"] == "Plus de réponse du tinySA depuis 30 s",
+   _e["measured"])
+_e = _ae(dict(kind="INTERMOD", name="R", freq=500.0, level=-70.0, t0=0.0, info="2×A − B (A 510, B 520)"), 5.0)
+ok("7.56 : intermod : formule dans le mesuré, sans seuil", _e["measured"] == "-70 dBm sur 500.000 MHz, depuis 5 s · 2×A − B (A 510, B 520)"
+   and "intermodulation" in _e["deduced"], _e["measured"])
+ok("7.56 : chaque type d'alarme a une cause et un conseil", all(d and c for d, c in ns["ALARM_HELP"].values())
+   and set(ns["ALARM_HELP"]) == {"CONFLIT", "INTERMOD", "ABSENT", "TROP FORT", "APPAREIL"})
+ok("7.56 : type inconnu = pas d'explication inventée", _ae(dict(kind="ZZ", freq=1.0, t0=0), 1)["deduced"] == "")
+# 7.56 : floor_curve sans boucle = même résultat que le calcul fenêtre par fenêtre
+def _fc_ref(F, L, win=2.0, step=0.5, q=20.0):
+    o = np.argsort(F); F, L = F[o], L[o]
+    c = np.arange(F[0], F[-1] + step / 2.0, step)
+    lo = np.searchsorted(F, c - win); hi = np.searchsorted(F, c + win, side="right")
+    near = np.searchsorted(F, c).clip(1, len(F) - 1)
+    d = np.minimum(np.abs(F[near] - c), np.abs(F[near - 1] - c))
+    st = float(np.median(np.diff(F)))
+    out = np.full(len(c), np.nan)
+    for i in range(len(c)):
+        if hi[i] - lo[i] >= 5 and d[i] <= max(step, 4 * st):
+            out[i] = np.percentile(L[lo[i]:hi[i]], q)
+    return c, out
+_rg = np.random.default_rng(7)
+_okfc = True
+for _F in (np.concatenate([np.linspace(470, 694, 4500), np.linspace(800, 830, 600)]), np.linspace(470, 480, 60),
+           np.sort(_rg.uniform(470, 700, 3000))):
+    _L = -100 + _rg.normal(0, 3, len(_F))
+    _c1, _o1 = _fc_ref(_F, _L)
+    _c2, _o2 = ns["floor_curve"](_F, _L)
+    _okfc &= bool(np.allclose(_c1, _c2) and np.allclose(_o1, _o2, equal_nan=True))
+ok("7.56 : floor_curve vectorisé = calcul fenêtre par fenêtre (3 cas, trous compris)", _okfc)
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

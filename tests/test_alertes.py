@@ -46,9 +46,12 @@ check("désactivées", not nw(2, "off"))
 a = dict(kind="CONFLIT", name="HF 3", freq=512.0, level=-61.6, layer="Grande scène › IEM", info="vu par FOH", prio=2)
 t, b = nt(a, "Festival X")
 check("titre", t == "⚠ CONFLIT — HF 3", t)
-check("corps", b == "[Festival X] 512.000 MHz · -62 dBm · Grande scène › IEM · vu par FOH", b)
+check("corps", b.split("\n")[0] == "[Festival X] 512.000 MHz · -62 dBm · Grande scène › IEM · vu par FOH", b)
+check("corps : 2ᵉ ligne = quoi faire (7.56)", b.split("\n")[1] == ns["ALARM_HELP"]["CONFLIT"][1], b)
 t, b = nt(dict(kind="APPAREIL", name="FOH", freq=0.0, level=None, layer="", info="liaison perdue", prio=2))
-check("alarme appareil : pas de fréquence", b == "liaison perdue", b)
+check("alarme appareil : pas de fréquence", b.split("\n")[0] == "liaison perdue", b)
+t, b = nt(dict(kind="ESSAI", name="x", freq=0.0, level=None, layer="", info="", prio=0))
+check("type inconnu : pas de ligne de conseil", "\n" not in b, b)
 
 url, hdr, data = ns["ntfy_request"]("https://ntfy.sh/", "/tinysa-abc", t, "corps é", 2)
 check("ntfy : url", url == "https://ntfy.sh/tinysa-abc", url)
@@ -511,9 +514,11 @@ else:
             spec_b = json.dumps(dict(t=10.0 + k, bands=[dict(b, l=[x + (k % 2) * 6 for x in b["l"]]) for b in out])).encode()
             pg.wait_for_timeout(1100)
         pn = pg.evaluate("() => (pers ? pers.n : -1)")
-        blue = pg.evaluate("""() => {const c=document.querySelector('#cv'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
-            let n=0;for(let i=0;i<d.length;i+=4){if(d[i+2]>150&&d[i]<120&&d[i+1]>100)n++}return n}""")
-        check("spectre : rémanence (une trace par balayage, bleue)", isinstance(pn, int) and pn >= 3 and blue > 200
+        # 7.56 : la rémanence a la couleur de la trace du thème (plus forcément bleue) : on compte les pixels
+        # allumés de son calque
+        blue = pg.evaluate("""() => {if(!pers)return 0;const d=pers.c.getContext('2d').getImageData(0,0,pers.c.width,pers.c.height).data;
+            let n=0;for(let i=3;i<d.length;i+=4){if(d[i]>20)n++}return n}""")
+        check("spectre : rémanence (une trace par balayage, calque allumé)", isinstance(pn, int) and pn >= 3 and blue > 200
               and "rémanence" in pg.locator("#lg").inner_text(), f"{pn} {blue}")
         check("spectre : rémanence retenue", pg.evaluate("localStorage.getItem('rm')") == "1")
         if CAP:

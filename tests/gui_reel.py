@@ -1601,6 +1601,38 @@ if _lk[0]:
     check("éteint : tout un groupe d'un coup", all(w_.get("muted") for w_ in win.layer_ws(_lk)))
     win.set_muted(win.layer_ws(_lk), False)
 
+# ⚡ Préréglages rapides (7.56) : chaque préréglage appliqué est ensuite reconnu (✓), sans toucher à la liste
+_pd = win.open_presets()
+wait(300)
+_nw0 = len(win.watch)
+_preset_cur0 = win.preset_current()
+_qb = QtWidgets.QMessageBox.question
+QtWidgets.QMessageBox.question = staticmethod(lambda *a, **k: QtWidgets.QMessageBox.StandardButton.No)
+_okp = []
+for _i, _p in enumerate(m.QUICK_PRESETS):
+    _pd.lst.setCurrentRow(_i)
+    wait(80)
+    if _i == 2:
+        shot(_pd, "prereglages_rapides")
+    _pd.apply()
+    wait(150)
+    _okp.append(m.preset_match(win.preset_current()) == _p[0])
+QtWidgets.QMessageBox.question = _qb
+check("préréglages : chacun appliqué puis reconnu", all(_okp), str(_okp))
+check("préréglages : la liste n'a pas bougé", len(win.watch) == _nw0)
+check("préréglages : taille de la fenêtre raisonnable", _pd.minimumSizeHint().height() <= 600,
+      str(_pd.minimumSizeHint()))
+_pd.close()
+# retour aux réglages d'avant (la suite des tests ne doit pas dépendre du dernier préréglage)
+win.thr_auto_btn.setChecked(_preset_cur0["thr_auto"]); win.set_thr_auto(_preset_cur0["thr_auto"])
+win.points_combo.setCurrentIndex(max(0, win.points_combo.findData(_preset_cur0["points"]))); win.apply_points()
+win.persist_combo.setCurrentIndex(max(0, win.persist_combo.findData(_preset_cur0["persist"])))
+win.absent_spin.setValue(_preset_cur0["absent"])
+win.sound.cfg = m.sound_cfg_norm(dict(win.sound.cfg, confirm=_preset_cur0["confirm"], repeat=_preset_cur0["repeat"]))
+win.alarms.repeat_s = float(win.sound.cfg["repeat"])
+win.strong_chk.setChecked(_preset_cur0["strong"]); win.strong_spin.setValue(_preset_cur0["strong_lvl"])
+win.hold_chk.setChecked(_preset_cur0["hold"])
+
 # ✅ Prêt pour le show ? / 🖥 Mode Show / 🛡 garde (7.39, « on fortifie »)
 _rd = win.open_ready()
 wait(300)
@@ -1628,6 +1660,10 @@ check("mode Show : ouvert, une tuile par fréquence", _sm.isVisible() and len(_s
     [w_ for w_ in win.scope_ws() if not w_.get("off")]), f"{len(_sm.tiles)}")
 _akey = ("CONFLIT", int(round(win.watch[0]["freq"] * 1000)))
 win.alarms.raise_(_akey, "CONFLIT", "Essai mode Show", win.watch[0]["freq"], 2, time.time(), level=-50.0)
+_al0 = next(a_ for a_ in win.alarms.listing() if a_["key"] == _akey)
+_why = win.alarm_why_text(_al0, html=False)
+check("alarme expliquée : mesuré / cause probable / à faire (7.56)",
+      all(k in _why for k in ("Mesuré", "Cause probable", "À faire")) and "MHz" in _why, _why)
 _sm.refresh()
 check("mode Show : l'alarme en très gros", "Essai mode Show" in _sm.banner.text(), _sm.banner.text()[:120])
 shot(_sm, "mode_show")
