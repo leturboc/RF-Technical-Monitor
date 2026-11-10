@@ -4682,3 +4682,5 @@ EXACT.update({k: k for k in ("font-size:16px; font-weight:600; padding:4px 10px;
 TEMPLATES.update({k: k for k in ("background:{}; color:{}; border:1px solid {}; border-radius:10px",
                                  "background:{}; color:{}; border-radius:12px; padding:6px")})
 TEMPLATES.update({"<div style='font-size:22px; font-weight:600'>{}</div><div style='font-size:17px; opacity:.8'>{} MHz</div><div style='font-size:16px; font-weight:600; color:{}'>{}<span style='font-weight:400'>{}</span></div>": "<div style='font-size:22px; font-weight:600'>{}</div><div style='font-size:17px; opacity:.8'>{} MHz</div><div style='font-size:16px; font-weight:600; color:{}'>{}<span style='font-weight:400'>{}</span></div>"})
+EXACT.update({"PNG": "PNG"})
+TEMPLATES.update({"{}_{}.png": "{}_{}.png"})

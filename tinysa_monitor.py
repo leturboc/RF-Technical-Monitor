@@ -61,6 +61,7 @@ import socket
 import sys
 import threading
 import time
+import tempfile
 import traceback
 import unicodedata
 import urllib.request
@@ -260,6 +261,22 @@ def blend(fg, bg, a):
     """Mélange fg (poids a) sur bg -> '#rrggbb'."""
     f, b = hex_to_rgb(fg), hex_to_rgb(bg)
     return rgb_to_hex(*(f[i] * a + b[i] * (1 - a) for i in range(3)))
+
+
+_LEAD_ICON = re.compile("^[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF\u2600-\u27BF"
+                        "\u2B00-\u2BFF\uFE0F\u200D]+\\s+")
+
+
+def plain_btn_text(t):
+    """Texte d'un bouton sans son emoji de tête (7.54, Clément : « les boutons sont vraiment pas beaux ») :
+    « 🎪 Shows » -> « Shows ». Un bouton qui n'est qu'une icône (« 🔔 », « 🔔 1 », « ⚙ ») la garde."""
+    if not isinstance(t, str):
+        return t
+    m = _LEAD_ICON.match(t)
+    if not m:
+        return t
+    rest = t[m.end():]
+    return rest if re.search(r"[^\W\d_]", rest) else t
 
 
 def soft_style(c, bg, txt):
@@ -8165,6 +8182,61 @@ class RelayWindow(QtWidgets.QWidget):
 # --------------------------------------------------------------------------
 # Aides graphiques
 # --------------------------------------------------------------------------
+def qss_icons(t):
+    """Petites images du look « pro » (7.54) dessinées à la volée aux couleurs du thème (flèche de menu, coche) ->
+    morceau de feuille de style. Les styler sans image faisait disparaître la flèche / la coche."""
+    try:
+        d = Path(tempfile.gettempdir()) / "tinysa_monitor_qss"
+        d.mkdir(parents=True, exist_ok=True)
+        sub = blend(t["ui_text"], t["ui_bg"], 0.70)
+        on = contrast_text(t["ui_accent"])
+        key = (sub + on).replace("#", "")
+
+        def draw(name, col, pts, w=2.0, size=24):
+            path = d / f"{name}_{key}.png"
+            if not path.exists():
+                pm = QtGui.QPixmap(size, size)
+                pm.fill(Qt.GlobalColor.transparent)
+                pa = QtGui.QPainter(pm)
+                pa.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+                pen = QtGui.QPen(QtGui.QColor(col), w * size / 12)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                pa.setPen(pen)
+                pa.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(x * size, y * size) for x, y in pts]))
+                pa.end()
+                pm.save(str(path), "PNG")
+            return path.as_posix()
+
+        chev = draw("chev", sub, [(0.25, 0.38), (0.5, 0.63), (0.75, 0.38)], 1.4)
+        chk = draw("check", on, [(0.24, 0.52), (0.42, 0.70), (0.76, 0.32)], 1.6)
+        bd = blend(t["ui_text"], t["ui_bg"], 0.32)
+        acc, base = t["ui_accent"], t["ui_base"]
+        return f"""
+QToolButton::menu-indicator {{ image:url({chev}); subcontrol-origin:padding; subcontrol-position:right center;
+    right:5px; width:10px; height:10px; }}
+QToolButton::menu-button {{ border:0; border-left:1px solid {bd}; width:16px; }}
+QToolButton::menu-arrow {{ image:url({chev}); width:10px; height:10px; }}
+QPushButton::menu-indicator {{ image:url({chev}); subcontrol-origin:padding; subcontrol-position:right center;
+    right:5px; width:10px; height:10px; }}
+QComboBox {{ background:{base}; border:1px solid {blend(t["ui_text"], t["ui_bg"], 0.16)}; border-radius:6px;
+    padding:3px 24px 3px 8px; }}
+QComboBox:hover {{ border-color:{bd}; }}
+QComboBox:focus {{ border-color:{acc}; }}
+QComboBox::drop-down {{ border:0; width:22px; }}
+QComboBox::down-arrow {{ image:url({chev}); width:10px; height:10px; }}
+QComboBox QAbstractItemView {{ border:1px solid {bd}; border-radius:8px; padding:4px; outline:0; }}
+QCheckBox::indicator, QGroupBox::indicator {{ width:15px; height:15px; border-radius:4px;
+    border:1px solid {bd}; background:{base}; }}
+QCheckBox::indicator:hover {{ border-color:{acc}; }}
+QCheckBox::indicator:checked, QGroupBox::indicator:checked {{ background:{acc}; border-color:{acc}; image:url({chk}); }}
+QCheckBox::indicator:disabled {{ background:{t["ui_bg"]}; }}
+QPushButton, QToolButton {{ min-height:20px; }}
+"""
+    except Exception:  # noqa: BLE001  — pas d'image : on garde les flèches / coches de Qt
+        return ""
+
+
 def build_palette(t):
     C = QtGui.QColor
     R, G = QtGui.QPalette.ColorRole, QtGui.QPalette.ColorGroup
@@ -22516,7 +22588,7 @@ class MainWindow(QtWidgets.QMainWindow):
         app = QtWidgets.QApplication.instance()
         app.setStyle("Fusion")
         app.setPalette(build_palette(t))
-        app.setStyleSheet(make_stylesheet(t))
+        app.setStyleSheet(make_stylesheet(t) + qss_icons(t))
         try:
             for w in (self.spec, self.wf, self.bandw):
                 w.setBackground(t["plot_bg"])
@@ -25140,6 +25212,33 @@ def _patch(cls, name, which="first", lists=(), kws=(), static=False):
             return orig(self, *a, **kw)
         f._tsm_tr = True
         setattr(cls, name, f)
+
+
+def install_plain_buttons():
+    """Boutons sans emoji de tête (look « pro » 7.54) : posé sur QAbstractButton.setText et les constructeurs de
+    QPushButton / QToolButton, AVANT install_language (la traduction s'applique au texte complet, puis on retire
+    l'emoji). Les menus et listes gardent leurs emojis."""
+    W = QtWidgets
+    o_set = W.QAbstractButton.setText
+    if getattr(o_set, "_tsm_plain", False):
+        return
+
+    def set_text(self, t, _o=o_set):
+        return _o(self, plain_btn_text(t))
+    set_text._tsm_plain = True
+    W.QAbstractButton.setText = set_text
+    for cls in (W.QPushButton, W.QToolButton):
+        o_init = cls.__init__
+
+        def init(self, *a, _o=o_init, **kw):
+            _o(self, *a, **kw)
+            t = W.QAbstractButton.text(self)
+            if t:
+                o_set(self, plain_btn_text(t))
+        cls.__init__ = init
+
+
+install_plain_buttons()
 
 
 def _load_lang_en():

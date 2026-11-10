@@ -895,7 +895,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Mode Show : cartes sombres teintées, état en couleur ; tuile en problème = pleine. Spectre : repères fins (1,5 px) et
   un peu transparents ; bandeaux du plan / TV adoucis (`blend` 0,62 sur le fond). Bouton « Global » = accent bleu.
   Page web : palette Apple (fond noir, panneaux #1c1c1e, accent bleu #0a84ff), Régie / Mur / tuiles teintées, alarmes
-  pleines. Aperçus avant / après : `apercu/` (pas dans le dépôt). **Rendu Windows réel pas vu par Claude** (captures de
+  pleines. Aperçus avant / après : `apercu/` (pas dans le dépôt).
+  **Boutons (Clément : « les boutons sont vraiment pas beaux »)** : PURE `plain_btn_text` (emoji de tête retiré ;
+  un bouton qui n'est qu'une icône, « 🔔 », « 🔔 1 », « ⚙ », la garde) appliqué par `install_plain_buttons()` (appelé AU
+  CHARGEMENT du module, donc AVANT install_language : la traduction voit le texte complet) sur
+  `QAbstractButton.setText` et les constructeurs QPushButton / QToolButton ; menus et listes gardent leurs emojis ;
+  les tests comparent via `plain_btn_text(...)`. `qss_icons(t)` dessine (QPainter → PNG dans le dossier temporaire)
+  la flèche de menu et la coche aux couleurs du thème + styles QComboBox / QCheckBox / hauteur mini des boutons. **Rendu Windows réel pas vu par Claude** (captures de
   la CI seulement) ; un écran mis à l'échelle peut changer les tailles mini (gui_reel les vérifie).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.

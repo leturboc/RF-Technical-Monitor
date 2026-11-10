@@ -1289,5 +1289,9 @@ _Fc2, _Lc2 = _fc(_F2, np.full(len(_F2), -100.0))
 ok("courbe de bruit : trou entre deux bandes = NaN", np.isnan(_Lc2[(_Fc2 > 474) & (_Fc2 < 478)]).all())
 ok("seuils auto dans les shows", all(k in ns["SHOW_KEYS"] for k in ("thr_auto", "auto_occ", "auto_weak")))
 
+_pb = ns["plain_btn_text"]
+check("7.54 : bouton sans emoji de tête", [_pb(x) for x in ("🎪 Shows", "▶ Démarrer", "⚡ Auto · 50 kHz", "+ Ajouter")],
+      ["Shows", "Démarrer", "Auto · 50 kHz", "+ Ajouter"])
+check("7.54 : bouton-icône gardé", [_pb(x) for x in ("🔔", "🔔 1", "⚙", "")], ["🔔", "🔔 1", "⚙", ""])
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

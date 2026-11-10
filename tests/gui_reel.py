@@ -876,7 +876,7 @@ check("1280×720 : colonne Signal visible sans faire défiler", 0 < _sig_x <= _t
       f"{_sig_x} / {_t.viewport().width()}")
 vis = {t: b.isVisible() and b.visibleRegion().boundingRect().width() >= b.width() - 2
        for t, b in (("Démarrer", win.home.run_btn if win.home_on else win.start_btn), ("🔔", win.alarm_btn))}
-vis["Shows / Plus"] = all(a.isVisible() for a in win.cmd_bar.findChildren(W.QPushButton) if a.text() in ("🎪 Shows", "☰ Plus"))
+vis["Shows / Plus"] = all(a.isVisible() for a in win.cmd_bar.findChildren(W.QPushButton) if a.text() in ("🎪 Shows", "☰ Plus", "Shows", "Plus"))
 check("1280×720 : boutons du haut visibles en entier", all(vis.values()), str(vis))
 win.resize(1700, 980); wait(800)
 
@@ -1369,7 +1369,7 @@ _noff = win.apply_state("Artiste A")
 check("état : les autres en pause, sauf la « toujours »", _noff == len(_w_all) - 3
       and not _w_all[0].get("off") and not _w_all[-1].get("off") and _w_all[2].get("off"), str(_noff))
 check("état : « 💤 en pause (état) » dans la liste", win.sig_view(_w_all[2])[0] == "💤 en pause (état)")
-check("état : bouton « 📸 Artiste A »", win.state_btn.text() == "📸 Artiste A", win.state_btn.text())
+check("état : bouton « Artiste A »", win.state_btn.text() == m.plain_btn_text("📸 Artiste A"), win.state_btn.text())
 _cf = win._collect_config(False)
 check("état : enregistré dans le show", _cf["state_cur"] == "Artiste A" and any(x["name"] == "Artiste A" for x in _cf["states"])
       and any(x.get("iso") for x in _cf["watch"]))
@@ -1635,7 +1635,7 @@ check("🔕 silence : pas de son, bouton « jusqu'à … »", not _calls and "ju
 win.snooze_until = time.time() - 1
 win._alarm_tick()
 win._alarm_sound(2)
-check("🔕 fin du silence : le son revient tout seul", _calls == [2] and win.snooze_btn.text() == "🔕 Silence", str(_calls))
+check("🔕 fin du silence : le son revient tout seul", _calls == [2] and win.snooze_btn.text() == m.plain_btn_text("🔕 Silence"), str(_calls))
 win.sound.alarm = _orig_alarm
 check("son : critiques rejouées toutes les 30 s par défaut, CONFLIT confirmé après 3 s",
       win.alarms.repeat_s == 30 and win.sound.cfg["confirm"] == 3 and not win.sound.cfg["occ_beep"],
