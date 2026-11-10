@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.56.0"
+APP_VER = "7.57.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -110,6 +110,7 @@ STOP_FORCE_MS = 4000
 LAYOUT_VER = 4                # à monter quand la disposition de base change (les anciennes sont ignorées)          # « Arrêter » : au-delà, on ferme le port pour débloquer
 LOG_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Journaux"
 SHOW_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Shows"
+USER_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Profils"      # 👤 profils utilisateur (7.57)
 
 # ===== PURE-BEGIN  (code sans interface graphique, testé séparément)
 
@@ -901,6 +902,68 @@ for _n, _t in THEMES.items():
 COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "Allemagne"),
              ("GB", "Royaume-Uni"), ("IT", "Italie"), ("ES", "Espagne"), ("NL", "Pays-Bas"),
              ("EU", "Europe (générique CEPT)"), ("US", "États-Unis"), ("CA", "Canada")]
+
+# 7.57 (Clément : « mettre la Vue sur UHF 470-694 direct si on est en France pour un nouveau show, déduire tout ça
+# rapidement ») : bande UHF des micros par pays (télé + micros HF) ; États-Unis / Canada : 470-608 après le « repack ».
+COUNTRY_UHF = {"US": (470.0, 608.0), "CA": (470.0, 608.0)}
+COUNTRY_UHF_DEFAULT = (470.0, 694.0)
+
+
+def country_uhf(code):
+    """(début, fin) MHz de la bande UHF des micros du pays."""
+    return COUNTRY_UHF.get(str(code or "").upper(), COUNTRY_UHF_DEFAULT)
+
+
+def default_view_band(bands, country):
+    """Bande à afficher d'office (nouveau show, 1er lancement) : la bande balayée qui recouvre le plus l'UHF du pays
+    (à égalité : la plus étroite, donc la plus lisible) ; une seule bande balayée -> elle ; rien -> None.
+    bands = [{id, start, stop, enabled}]."""
+    on = [b for b in bands if b.get("enabled", True)]
+    if len(on) == 1:
+        return on[0]["id"]
+    lo, hi = country_uhf(country)
+    best, key = None, None
+    for b in on:
+        ov = min(float(b["stop"]), hi) - max(float(b["start"]), lo)
+        if ov <= 0:
+            continue
+        k = (ov, -(float(b["stop"]) - float(b["start"])))
+        if key is None or k > key:
+            best, key = b["id"], k
+    return best
+
+
+def country_from_locale(name):
+    """Code pays de l'appli d'après la langue / région du système (« fr_FR » -> « FR ») ; inconnu -> ""."""
+    codes = [c for c, _n in COUNTRIES]
+    m = re.search(r"[_-]([A-Za-z]{2})\b", str(name or ""))
+    c = m.group(1).upper() if m else ""
+    return c if c in codes else ""
+
+
+def missing_bands(freqs, bands, pad=2.0, join=10.0):
+    """Fréquences de la liste qu'AUCUNE bande balayée ne couvre -> bandes à proposer [(début, fin, nombre)] en MHz
+    ronds (fréquences à moins de join MHz réunies, pad MHz de marge de chaque côté). Avant 7.57 : elles restaient
+    simplement « pas surveillées » (dit seulement dans « Prêt pour le show ? »)."""
+    on = [(float(b["start"]), float(b["stop"])) for b in bands if b.get("enabled", True)]
+    out = sorted(float(f) for f in freqs if f and not any(a - 0.05 <= float(f) <= z + 0.05 for a, z in on))
+    groups = []
+    for f in out:
+        if groups and f - groups[-1][-1] <= join:
+            groups[-1].append(f)
+        else:
+            groups.append([f])
+    return [(float(math.floor(g[0] - pad)), float(math.ceil(g[-1] + pad)), len(g)) for g in groups]
+
+
+def single_band_view(view_id, bands, zoom_id):
+    """Bande du waterfall : celle de la Vue ; en « Toutes les bandes » avec UNE seule bande balayée -> celle-là
+    (avant 7.57 le waterfall restait vide en disant « choisis une bande ») ; sinon None."""
+    if view_id not in (-1, None):
+        return view_id
+    on = [b["id"] for b in bands if b.get("enabled", True)]
+    return on[0] if len(on) == 1 else None
+
 
 COUNTRY_NOTES = {
     "FR": "Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48) / micros HF ; 700 et 800 MHz attribués "
@@ -3920,8 +3983,56 @@ SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_o
              "points", "points_auto", "points_sel", "planning", "site_scans", "rbw", "zrbw", "zpts", "input", "lna", "att", "seg", "offset",
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx", "states",
-             "state_cur", "ezrf_link", "thr_auto", "auto_occ", "auto_weak")
+             "state_cur", "ezrf_link", "thr_auto", "auto_occ", "auto_weak",
+             "user_presets", "persist", "hold", "alarm_timing")      # 7.57 : préréglages perso + leurs réglages
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
+# 7.57 (Clément : « un mode préférences utilisateur, qu'on puisse se passer les préférences : affichage, seuils,
+# préréglages perso… comme des bases user ») : ce qu'un 👤 profil utilisateur emporte. PAS le show (fréquences, scènes,
+# bandes, statuts, tinySA, scans) ni ce qui dépend du PC (sortie audio, dossiers, fenêtres, page web, alertes).
+USER_KEYS = ("theme", "theme_v", "unit", "smooth", "coord_tools", "home", "expert", "ui_level", "labels", "sig_colors",
+             "spec_more", "wall_size", "markers", "mark", "names", "watch_cols", "watch_cols_v", "log_kinds",
+             "persist", "hold", "points_sel", "points_auto", "thr_auto", "auto_occ", "auto_weak", "thr", "weak_thr",
+             "weak_on", "win", "absent_s", "strong_on", "strong_thr", "sound", "alarm_timing", "user_presets")
+
+
+def user_doc(cfg, name, app_ver=""):
+    """Fichier profil utilisateur (.tsauser) : nom + préférences (clés USER_KEYS présentes dans la config)."""
+    prefs = {k: cfg[k] for k in USER_KEYS if k in cfg}
+    if isinstance(prefs.get("sound"), dict):
+        prefs["sound"] = {k: v for k, v in prefs["sound"].items() if k != "device"}   # la sortie audio reste au PC
+    return dict(format="tinysa-user", version=1, app=app_ver, name=" ".join(str(name or "").split())[:60] or "Profil",
+                prefs=prefs)
+
+
+def read_user(text):
+    """Texte d'un fichier .tsauser -> doc ; ValueError s'il n'en est pas un."""
+    import json as _json                          # section PURE : pas de json global (tests)
+    try:
+        d = _json.loads(text)
+    except ValueError as e:
+        raise ValueError("Fichier illisible (pas du JSON).") from e
+    if not isinstance(d, dict) or d.get("format") != "tinysa-user" or not isinstance(d.get("prefs"), dict):
+        raise ValueError("Ce n'est pas un profil utilisateur TinySA Monitor.")
+    return dict(name=" ".join(str(d.get("name") or "").split())[:60] or "Profil", app=str(d.get("app") or ""),
+                prefs={k: v for k, v in d["prefs"].items() if k in USER_KEYS})
+
+
+def user_apply(cfg_now, doc):
+    """Config actuelle + profil -> config à appliquer : seules les préférences du profil changent ; la sortie audio
+    de CE PC est gardée."""
+    out = dict(cfg_now)
+    for k, v in doc["prefs"].items():
+        if k == "sound" and isinstance(v, dict):
+            dev = (cfg_now.get("sound") or {}).get("device", "")
+            v = dict(v, device=dev)
+        out[k] = v
+    return out
+
+
+def user_filename(name):
+    """Nom de fichier du profil : « Clément.tsauser » (caractères interdits par Windows retirés)."""
+    base = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", " ".join(str(name or "").split())).strip(" .")[:60] or "Profil"
+    return base + ".tsauser"
 
 
 def show_doc(cfg, meta, ref=None, app_ver=""):
@@ -5826,9 +5937,55 @@ PRESET_LABELS = (("thr_auto", "Seuils automatiques"), ("auto_occ", "Occupé dès
                  ("strong", "Alerte « trop fort »"), ("hold", "Pics gardés"))
 
 
-def quick_preset(key):
-    """(clé, nom, explication, réglages, fenêtre proposée ensuite) du préréglage, ou None."""
-    return next((p for p in QUICK_PRESETS if p[0] == key), None)
+def user_presets_norm(lst):
+    """7.57 : préréglages perso [{name, desc, st}] lus de la config / d'un show / d'un profil : noms uniques (≤ 40
+    caractères), au plus 30, réglages manquants ou bancals = ceux du préréglage « festival »."""
+    base = QUICK_PRESETS[0][3]
+    out, seen = [], set()
+    for d in lst if isinstance(lst, list) else []:
+        if not isinstance(d, dict):
+            continue
+        name = " ".join(str(d.get("name") or "").split())[:40]
+        if not name or name.lower() in seen:
+            continue
+        st0 = d.get("st") if isinstance(d.get("st"), dict) else {}
+        st = {}
+        for k, v in base.items():
+            x = st0.get(k, v)
+            if isinstance(v, bool):
+                x = bool(x)
+            elif isinstance(v, float):
+                x = float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else v
+            else:
+                x = int(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else v
+            st[k] = x
+        if st["repeat"] not in dict(ALARM_REPEATS):
+            st["repeat"] = base["repeat"]
+        if st["points"] not in [d_ for d_, *_ in AUTO_POINTS]:
+            st["points"] = base["points"]
+        seen.add(name.lower())
+        out.append(dict(name=name, desc=str(d.get("desc") or "")[:300], st=st))
+        if len(out) >= 30:
+            break
+    return out
+
+
+def user_presets_merge(old, new):
+    """Préréglages perso du PC + ceux d'un show ou d'un profil (à nom égal, le nouveau gagne)."""
+    new_ = user_presets_norm(new)
+    names = {p["name"].lower() for p in new_}
+    return user_presets_norm([p for p in user_presets_norm(old) if p["name"].lower() not in names] + new_)
+
+
+def presets_all(user=None):
+    """Préréglages intégrés + perso (clé « u:nom », nom précédé de ⭐), au format de QUICK_PRESETS."""
+    return tuple(QUICK_PRESETS) + tuple(("u:" + p["name"], "⭐ " + p["name"], p["desc"], p["st"], None)
+                                        for p in user_presets_norm(user))
+
+
+def quick_preset(key, user=None):
+    """(clé, nom, explication, réglages, fenêtre proposée ensuite) du préréglage (intégré ou perso), ou None."""
+    return next((p for p in presets_all(user) if p[0] == key), None)
 
 
 def preset_value_text(k, v, cfg=None):
@@ -5853,10 +6010,10 @@ def preset_value_text(k, v, cfg=None):
     return str(v)
 
 
-def preset_changes(cur, key):
+def preset_changes(cur, key, user=None):
     """Ce que le préréglage key va changer par rapport aux réglages actuels cur (mêmes clés) :
     [(libellé, maintenant, après)] ; seulement les réglages qui changent vraiment."""
-    p = quick_preset(key)
+    p = quick_preset(key, user)
     if not p:
         return []
     new = p[3]
@@ -5875,9 +6032,9 @@ def preset_changes(cur, key):
     return out
 
 
-def preset_match(cur):
+def preset_match(cur, user=None):
     """Clé du préréglage dont TOUS les réglages valent les réglages actuels, sinon "" (réglé à la main)."""
-    return next((p[0] for p in QUICK_PRESETS if not preset_changes(cur, p[0])), "")
+    return next((p[0] for p in presets_all(user) if not preset_changes(cur, p[0], user)), "")
 
 
 def net_text(nbytes, dt, rtt):
@@ -13802,6 +13959,11 @@ class SettingsDialog(QtWidgets.QDialog):
         pre_btn.setToolTip("Règle d'un coup les seuils, la mesure, la rémanence et les alarmes pour une situation type.")
         pre_btn.clicked.connect(lambda *_: o.open_presets())
         f.addRow(pre_btn)
+        usr_btn = QtWidgets.QPushButton("👤 Profils utilisateur (mes préférences)…")
+        usr_btn.setToolTip("Enregistre / charge tes préférences (affichage, seuils, alarmes, préréglages perso) et "
+                           "passe-les à un collègue.")
+        usr_btn.clicked.connect(lambda *_: o.open_user_profiles())
+        f.addRow(usr_btn)
         f.addRow(col_btn)
         f.addRow(lab_btn)
         self.smooth_chk = QtWidgets.QCheckBox("Courbes lissées (plus joli, mais plus gourmand en processeur)")
@@ -14520,11 +14682,9 @@ class PresetDialog(QtWidgets.QDialog):
         row = QtWidgets.QHBoxLayout()
         self.lst = QtWidgets.QListWidget()
         self.lst.setMaximumWidth(230)
-        self.lst.setToolTip("Les situations types. Celle qui correspond à tes réglages actuels est marquée ✓.")
-        for key, name, _d, _st, _a in QUICK_PRESETS:
-            it = QtWidgets.QListWidgetItem(name)
-            it.setData(Qt.ItemDataRole.UserRole, key)
-            self.lst.addItem(it)
+        self.lst.setToolTip("Les situations types, puis tes préréglages perso (⭐). Celui qui correspond à tes "
+                            "réglages actuels est marqué ✓.")
+        self._fill()
         row.addWidget(self.lst)
         right = QtWidgets.QVBoxLayout()
         self.desc = QtWidgets.QLabel()
@@ -14545,6 +14705,15 @@ class PresetDialog(QtWidgets.QDialog):
         row.addLayout(right, 1)
         lay.addLayout(row, 1)
         bb = QtWidgets.QHBoxLayout()
+        self.save_btn = QtWidgets.QPushButton("⭐ Enregistrer mes réglages actuels…")
+        self.save_btn.setToolTip("Crée un préréglage perso avec tes réglages actuels (seuils, mesure, rémanence, "
+                                 "alarmes).\nIl est gardé dans l'appli, dans le show enregistré et dans ton profil.")
+        self.save_btn.clicked.connect(lambda *_: self.save_current())
+        self.del_btn = QtWidgets.QPushButton("Supprimer")
+        self.del_btn.setToolTip("Supprime ce préréglage perso (les préréglages intégrés restent).")
+        self.del_btn.clicked.connect(lambda *_: self.delete())
+        bb.addWidget(self.save_btn)
+        bb.addWidget(self.del_btn)
         bb.addStretch(1)
         self.apply_btn = QtWidgets.QPushButton("Appliquer")
         self.apply_btn.setToolTip("Règle l'appli selon ce préréglage (tout reste modifiable à la main ensuite).")
@@ -14556,10 +14725,51 @@ class PresetDialog(QtWidgets.QDialog):
         bb.addWidget(close_btn)
         lay.addLayout(bb)
         self.lst.currentRowChanged.connect(lambda *_: self.refresh())
-        cur = preset_match(owner.preset_current())
-        keys = [p[0] for p in QUICK_PRESETS]
+        cur = preset_match(owner.preset_current(), owner.user_presets)
+        keys = [p[0] for p in presets_all(owner.user_presets)]
         self.lst.setCurrentRow(keys.index(cur) if cur in keys else 0)
-        fit_dialog(self, 760, 460)
+        fit_dialog(self, 780, 480)
+        self.refresh()
+
+    def _fill(self, select=None):
+        self.lst.blockSignals(True)
+        self.lst.clear()
+        for key, name, _d, _st, _a in presets_all(self.owner.user_presets):
+            it = QtWidgets.QListWidgetItem(name)
+            it.setData(Qt.ItemDataRole.UserRole, key)
+            self.lst.addItem(it)
+        keys = [p[0] for p in presets_all(self.owner.user_presets)]
+        if select in keys:
+            self.lst.setCurrentRow(keys.index(select))
+        self.lst.blockSignals(False)
+
+    def save_current(self):
+        o = self.owner
+        name, ok = QtWidgets.QInputDialog.getText(self, "Préréglage perso", "Nom du préréglage (ex. « Concert jazz », "
+                                                  "« Théâtre du Rond-Point ») :")
+        name = " ".join(str(name or "").split())[:40]
+        if not ok or not name:
+            return
+        if any(p["name"].lower() == name.lower() for p in o.user_presets):
+            r = QtWidgets.QMessageBox.question(self, "Préréglage perso", f"« {name} » existe déjà : le remplacer ?")
+            if r != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+        desc, ok = QtWidgets.QInputDialog.getText(self, "Préréglage perso", "Pour quoi ? (une phrase, facultatif) :")
+        o.user_presets = user_presets_merge(o.user_presets, [dict(name=name, desc=desc if ok else "",
+                                                                   st=o.preset_current())])
+        o.set_status(f"⭐ Préréglage perso « {name} » enregistré.")
+        self._fill("u:" + name)
+        self.refresh()
+
+    def delete(self):
+        k = self.key() or ""
+        if not k.startswith("u:"):
+            return
+        o = self.owner
+        o.user_presets = [p for p in o.user_presets if "u:" + p["name"] != k]
+        o.set_status(f"Préréglage perso « {k[2:]} » supprimé.")
+        self._fill()
+        self.lst.setCurrentRow(0)
         self.refresh()
 
     def key(self):
@@ -14567,18 +14777,23 @@ class PresetDialog(QtWidgets.QDialog):
         return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
 
     def refresh(self):
+        up = self.owner.user_presets
         cur = self.owner.preset_current()
-        match = preset_match(cur)
+        match = preset_match(cur, up)
         for i in range(self.lst.count()):
             it = self.lst.item(i)
             k = it.data(Qt.ItemDataRole.UserRole)
-            p = quick_preset(k)
-            it.setText(TR(p[1]) + ("  ✓" if k == match else ""))
-        p = quick_preset(self.key())
+            p = quick_preset(k, up)
+            if p:                                   # noms perso jamais traduits
+                it.setText((p[1] if k.startswith("u:") else TR(p[1])) + ("  ✓" if k == match else ""))
+        p = quick_preset(self.key(), up)
+        self.del_btn.setEnabled(bool(p) and p[0].startswith("u:"))
         if not p:
             return
-        self.desc.setText(f"<b>{_hesc(TR(p[1]))}</b><br>{_hesc(TR(p[2]))}")
-        ch = preset_changes(cur, p[0])
+        perso = p[0].startswith("u:")
+        self.desc.setText(f"<b>{_hesc(p[1] if perso else TR(p[1]))}</b><br>"
+                          f"{_hesc(p[2] if perso else TR(p[2])) or _hesc(TR('Préréglage perso.'))}")
+        ch = preset_changes(cur, p[0], up)
         self.tab.setRowCount(len(ch))
         for r, (lab, a, b) in enumerate(ch):
             for c, txt in enumerate((lab, a, b)):
@@ -14593,7 +14808,7 @@ class PresetDialog(QtWidgets.QDialog):
             return
         self.owner.apply_preset(k)
         self.refresh()
-        after = quick_preset(k)[4]
+        after = quick_preset(k, self.owner.user_presets)[4]
         if after and hasattr(self.owner, after):
             r = QtWidgets.QMessageBox.question(
                 self, "Préréglages rapides", "Préréglage appliqué. Ouvrir aussi le mode festival (relance automatique, "
@@ -16316,6 +16531,166 @@ class ShowInfoDialog(QtWidgets.QDialog):
                     notes=self.notes.toPlainText().strip())
 
 
+class UserProfilesDialog(QtWidgets.QDialog):
+    """👤 Profils utilisateur (7.57) : les préférences de chacun (affichage, couleurs, mots, seuils, alarmes, son,
+    préréglages perso) dans un fichier .tsauser, à charger d'un clic ou à passer à un collègue."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Profils utilisateur")
+        lay = QtWidgets.QVBoxLayout(self)
+        head = QtWidgets.QLabel(
+            "Un profil garde TES préférences : affichage (thème, niveau, unité, colonnes), mots et couleurs, seuils, "
+            "alarmes et son (sauf la sortie audio), préréglages perso. Il ne touche jamais au show (fréquences, scènes, "
+            "bandes, tinySA) : charge ton profil sur n'importe quel PC, ou passe-le à un collègue.")
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setToolTip("Les profils du dossier Documents › TinySA Monitor › Profils. ✓ = le profil chargé.")
+        self.lst.itemDoubleClicked.connect(lambda *_: self.load())
+        lay.addWidget(self.lst, 1)
+        self.info = QtWidgets.QLabel("")
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        row = QtWidgets.QHBoxLayout()
+        b_load = QtWidgets.QPushButton("Charger ce profil")
+        b_load.setToolTip("Applique les préférences de ce profil (le show en cours ne bouge pas).")
+        b_load.clicked.connect(lambda *_: self.load())
+        b_save = QtWidgets.QPushButton("💾 Enregistrer mes préférences…")
+        b_save.setToolTip("Crée ou met à jour un profil avec tes préférences actuelles.")
+        b_save.clicked.connect(lambda *_: self.save())
+        b_imp = QtWidgets.QPushButton("📥 Importer…")
+        b_imp.setToolTip("Ajoute un profil reçu (fichier .tsauser) à la liste et le charge.")
+        b_imp.clicked.connect(lambda *_: self.import_file())
+        b_exp = QtWidgets.QPushButton("📤 Exporter…")
+        b_exp.setToolTip("Enregistre le profil choisi ailleurs (clé USB, mail…) pour le passer à quelqu'un.")
+        b_exp.clicked.connect(lambda *_: self.export_file())
+        b_del = QtWidgets.QPushButton("Supprimer")
+        b_del.setToolTip("Supprime le fichier du profil choisi (tes préférences actuelles ne bougent pas).")
+        b_del.clicked.connect(lambda *_: self.delete())
+        b_dir = QtWidgets.QPushButton("📂 Dossier")
+        b_dir.setToolTip("Ouvre le dossier des profils.")
+        b_dir.clicked.connect(lambda *_: self.open_dir())
+        b_close = QtWidgets.QPushButton("Fermer")
+        b_close.setToolTip("Ferme cette fenêtre.")
+        b_close.clicked.connect(lambda *_: self.close())
+        for b in (b_load, b_save, b_imp, b_exp, b_del, b_dir):
+            row.addWidget(b)
+        row.addStretch(1)
+        row.addWidget(b_close)
+        lay.addLayout(row)
+        self.lst.currentRowChanged.connect(lambda *_: self.show_info())
+        fit_dialog(self, 820, 420)
+        self.refresh()
+
+    def refresh(self, select=None):
+        self.lst.blockSignals(True)
+        self.lst.clear()
+        try:
+            files = sorted(USER_DIR.glob("*.tsauser"), key=lambda p_: p_.stem.lower())
+        except OSError:
+            files = []
+        cur = getattr(self.owner, "user_name", "")
+        for p_ in files:
+            try:
+                doc = read_user(p_.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 — fichier abîmé : listé quand même
+                doc = dict(name=p_.stem, prefs={})
+            it = QtWidgets.QListWidgetItem(doc["name"] + ("  ✓" if doc["name"] == cur else ""))
+            it.setData(Qt.ItemDataRole.UserRole, str(p_))
+            self.lst.addItem(it)
+            if select and str(p_) == str(select):
+                self.lst.setCurrentItem(it)
+        if self.lst.currentRow() < 0 and self.lst.count():
+            self.lst.setCurrentRow(0)
+        self.lst.blockSignals(False)
+        self.show_info()
+
+    def path(self):
+        it = self.lst.currentItem()
+        return Path(it.data(Qt.ItemDataRole.UserRole)) if it is not None else None
+
+    def show_info(self):
+        p_ = self.path()
+        if p_ is None:
+            self.info.setText("Aucun profil pour l'instant : « 💾 Enregistrer mes préférences » crée le tien.")
+            return
+        try:
+            doc = read_user(p_.read_text(encoding="utf-8"))
+            pr = doc["prefs"]
+            th = "thème perso" if isinstance(pr.get("theme"), dict) else "—"
+            self.info.setText(f"{len(pr)} préférence(s) · {th} · {len(user_presets_norm(pr.get('user_presets')))} "
+                              f"préréglage(s) perso · {p_.name}")
+        except Exception as e:  # noqa: BLE001
+            self.info.setText(f"⚠ {p_.name} : {e}")
+
+    def load(self):
+        p_ = self.path()
+        if p_ is not None:
+            self.owner.user_profile_load(p_)
+            self.refresh(p_)
+
+    def save(self):
+        o = self.owner
+        name, ok = QtWidgets.QInputDialog.getText(self, "Profil utilisateur", "Nom du profil (ton prénom, ton poste…) :",
+                                                  text=getattr(o, "user_name", "") or "")
+        name = " ".join(str(name or "").split())[:60]
+        if ok and name:
+            p_ = o.user_profile_save(name)
+            if p_ is not None:
+                self.refresh(p_)
+
+    def import_file(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Importer un profil", "",
+                                                        "Profils TinySA Monitor (*.tsauser);;Tous les fichiers (*)")
+        if not path:
+            return
+        try:
+            doc = read_user(Path(path).read_text(encoding="utf-8"))
+            USER_DIR.mkdir(parents=True, exist_ok=True)
+            dst = USER_DIR / user_filename(doc["name"])
+            if Path(path).resolve() != dst.resolve():
+                dst.write_text(Path(path).read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Profil illisible :\n{e}")
+            return
+        self.owner.user_profile_load(dst)
+        self.refresh(dst)
+
+    def export_file(self):
+        p_ = self.path()
+        if p_ is None:
+            return
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter le profil", p_.name,
+                                                        "Profils TinySA Monitor (*.tsauser)")
+        if path:
+            try:
+                Path(path).write_text(p_.read_text(encoding="utf-8"), encoding="utf-8")
+                self.owner.set_status(f"📤 Profil exporté : {path}")
+            except OSError as e:
+                QtWidgets.QMessageBox.warning(self, APP_NAME, f"Export impossible :\n{e}")
+
+    def delete(self):
+        p_ = self.path()
+        if p_ is None:
+            return
+        r = QtWidgets.QMessageBox.question(self, APP_NAME, f"Supprimer le fichier du profil « {p_.stem} » ?")
+        if r == QtWidgets.QMessageBox.StandardButton.Yes:
+            try:
+                p_.unlink()
+            except OSError:
+                pass
+            self.refresh()
+
+    def open_dir(self):
+        try:
+            USER_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(USER_DIR)))
+
+
 class ShowOpenDialog(QtWidgets.QDialog):
     """Liste des shows enregistrés (et des anciens profils) : nom, lieu, dates, nb de fréquences."""
 
@@ -16672,6 +17047,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_level = "simple" if CFG_PATH.exists() else "ultra"     # 1er lancement : ultra simple
         self._first_run = not CFG_PATH.exists()
         self.thr_auto = False
+        self.user_presets = []                     # ⭐ préréglages perso (7.57)
+        self.user_name = ""                        # 👤 profil utilisateur chargé (7.57)
         self._acurve = None                     # (Fc, Lc, t) : bruit de fond appris le long du spectre (seuils auto)
         self.tour_done = CFG_PATH.exists()
         self._tour = None
@@ -16826,8 +17203,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.tour_done:
             self.tour_btn.setText("🎓 Première fois ? Tuto")
             self.step_lbl.setText("👋 Suis les étapes de gauche à droite, ou lance le tuto.")
+        if getattr(self, "_first_run", False):
+            # 7.57 : 1er lancement : le pays d'après Windows, puis la Vue directement sur l'UHF de ce pays
+            code = country_from_locale(QtCore.QLocale.system().name())
+            i_ = self.country_combo.findData(code) if code else -1
+            if i_ >= 0 and i_ != self.country_combo.currentIndex():
+                self.country_combo.setCurrentIndex(i_)
+            self.auto_view()
         if not self._state_restored:
-            if self.view_id == -1:
+            if self._wf_bid() is None:
                 self.dock_wf.hide()      # pas de waterfall en vue « tout le spectre » : le spectre prend la place
             self._dock_sizes()
 
@@ -16985,6 +17369,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "👤 Profils utilisateur": "Tes préférences (affichage, couleurs, seuils, alarmes, préréglages perso) dans un\n"
+                                 "fichier : à recharger sur n'importe quel PC ou à passer à un collègue.",
         "⚡ Préréglages rapides": "Festival plein air, salle, nuit de surveillance, scan de repérage : règle d'un coup\n"
                                  "les seuils, la mesure, la rémanence et les alarmes (tu vois ce qui change avant).",
         "🔒 Outils de coordination": "Vérifier le plan, coordonner, intermod et profils d'appareil sont cachés :\n"
@@ -17299,6 +17685,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.thr_bar.setVisible(not ultra)
         if ultra and getattr(self, "dock_wf", None) is not None:
             self.dock_wf.setVisible(False)
+        elif getattr(self, "dock_wf", None) is not None and getattr(self, "_prev_level", "") == "ultra":
+            if self._wf_bid() is not None:             # 7.57 : en quittant l'ultra simple, le waterfall revient
+                self._wf_show(True)
+        self._prev_level = level
         if getattr(self, "layer_box", None) is not None:
             self.layer_box.setVisible(not ultra)
         for k_, a_ in getattr(self, "level_acts", {}).items():
@@ -17485,6 +17875,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addSection("Réglages et affichage")
         mm.addAction("⚙ Réglages (seuils, bandes, son, langue…)…  Ctrl+,").triggered.connect(lambda *_: self.open_settings())
         mm.addAction("🔎 Chercher une fonction…  Ctrl+K").triggered.connect(lambda *_: self.open_feature_search())
+        mm.addAction("👤 Profils utilisateur (mes préférences)…").triggered.connect(lambda *_: self.open_user_profiles())
         self.win_menu.setTitle("🪟 Fenêtres et dispositions")
         mm.addMenu(self.win_menu)
         amenu = mm.addMenu("🎨 Apparence et langue")
@@ -18648,6 +19039,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.planning = planning_norm(data.get("planning"))
             self._plan_next = 0.0
         self.sound.cfg = sound_cfg_norm(data.get("sound"))
+        if isinstance(data.get("alarm_timing"), dict):      # 7.57 : rythme des alarmes du show / du profil
+            self.sound.cfg = sound_cfg_norm(dict(self.sound.cfg, **{k: v for k, v in data["alarm_timing"].items()
+                                                                    if k in ("confirm", "repeat")}))
         self.alarms.repeat_s = float(self.sound.cfg["repeat"])
         if "festival" in data:
             self.festival = festival_cfg_norm(data.get("festival"))
@@ -18739,6 +19133,10 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self.set_thr_auto(bool(data.get("thr_auto", getattr(self, "_first_run", False) if startup else self.thr_auto)))
         self.set_home(bool(data.get("home", True)))
+        if isinstance(data.get("user_name"), str):
+            self.user_name = data["user_name"][:60]
+        if isinstance(data.get("user_presets"), list):      # 7.57 : préréglages perso du PC + ceux du show / profil
+            self.user_presets = user_presets_merge(getattr(self, "user_presets", []), data["user_presets"])
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
             self.net_profiles = net_profiles_merge(self.net_profiles, data["net_profiles"])
         if "net_addr" in data:
@@ -18854,6 +19252,8 @@ class MainWindow(QtWidgets.QMainWindow):
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
             coord_tools=bool(getattr(self, "coord_on", False)), theme_v=2,
+            user_presets=user_presets_norm(getattr(self, "user_presets", [])), user_name=getattr(self, "user_name", ""),
+            alarm_timing=dict(confirm=int(self.sound.cfg.get("confirm", 3)), repeat=int(self.sound.cfg.get("repeat", 30))),
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
             home=bool(getattr(self, "home_on", True)),
             dev2=dict(self.dev2), devx=[dict(x) for x in self.devx], states=[dict(x) for x in self.states],
@@ -19042,6 +19442,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_meta = {k: "" for k in SHOW_META}
         self.show_path = ""
         self.update_title()
+        self.auto_view()                               # 7.57 : Vue directement sur l'UHF du pays
         self.edit_show_info("Nouveau show")
 
     def open_show_dir(self):
@@ -19933,6 +20334,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rebuild_band_table()
         self.refresh_view_combo()
         self.update_estimate()
+        if self._zoom is None and hasattr(self, "wf_hint"):
+            self._wf_show(self._wf_bid() is not None)      # une seule bande balayée : waterfall d'office (7.57)
 
     def show_band(self, bid):
         """Vue sur une bande (réactivée si elle n'était pas balayée)."""
@@ -20211,7 +20614,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.scan_follow:
             self._bump()
             self.update_estimate()
-        self._wf_show(self.view_id != -1)
+        self._wf_show(self._wf_bid() is not None)
         self.wf_hist, self.wf_id = None, None
         self._fit_x = True
         self.update_plot()
@@ -21985,6 +22388,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if scan_name:
             msg += f", scan « {scan_name} » gardé dans Scans par lieu"
         self.set_status(msg + ".")
+        if added:
+            self.offer_missing_bands()
         return added
 
     def open_import(self, text, source, preset=("", "")):
@@ -22024,6 +22429,8 @@ class MainWindow(QtWidgets.QMainWindow):
         extra = f", {moved} rangée(s) dans leur groupe" if moved else ""
         self.set_status(f"{added} fréquence(s) importée(s) depuis {source} "
                         f"({len(entries) - added} déjà présente(s){extra}).")
+        if added:
+            self.offer_missing_bands()
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -22194,8 +22601,46 @@ class MainWindow(QtWidgets.QMainWindow):
             self._hunt.feed(f, l)
         if self.view_id in (-1, bid):
             self.update_plot()
-        if self.view_id == bid:
+        if self._wf_bid() == bid:
             self.update_waterfall(bid, f, l)
+
+    def offer_missing_bands(self):
+        """7.57 : après un import, des fréquences hors des bandes balayées -> on propose d'ajouter les bandes qui
+        manquent (fenêtre non bloquante)."""
+        miss = missing_bands([w["freq"] for w in self.watch], self.bands)
+        if not miss:
+            return []
+        txt = "\n".join(f"• {a:g}–{z:g} MHz ({n} fréquence(s))" for a, z, n in miss)
+        box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Question, APP_NAME,
+                                    "Des fréquences de ta liste sont en dehors des bandes balayées : elles ne seraient "
+                                    "pas surveillées.\nAjouter ces bandes ?\n\n" + txt, parent=self)
+        yes = box.addButton("Ajouter les bandes", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Plus tard", QtWidgets.QMessageBox.ButtonRole.RejectRole)
+
+        def done(btn, miss=miss):
+            if btn is yes:
+                for a, z, _n in miss:
+                    self._append_band(f"{a:g}–{z:g} MHz", a, z, 100.0, True)
+                self._bands_changed()
+                self.set_status(f"📶 {len(miss)} bande(s) ajoutée(s) : toute ta liste est maintenant surveillée.")
+        box.buttonClicked.connect(done)
+        box.setModal(False)
+        self._band_offer = box
+        box.show()
+        return miss
+
+    def _wf_bid(self):
+        """Bande du waterfall (7.57) : la bande de la Vue, ou la seule bande balayée en « Toutes les bandes »."""
+        return single_band_view(self.view_id, self.bands, ZOOM_ID)
+
+    def auto_view(self):
+        """7.57 : Vue « Toutes les bandes » -> directement sur la bande UHF du pays (ou la seule bande balayée)."""
+        if self._zoom is not None or self.view_id != -1:
+            return
+        bid = default_view_band(self.bands, getattr(self, "country", "FR"))
+        i_ = self.view_combo.findData(bid) if bid is not None else -1
+        if i_ >= 0:
+            self.view_combo.setCurrentIndex(i_)
 
     def on_partial(self, bid, f, l, i, n):
         if bid in CALIB_IDS:
@@ -24132,7 +24577,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def apply_preset(self, key):
         """Applique le préréglage key (seulement des réglages : liste, scènes et bandes ne bougent pas)."""
-        p = quick_preset(key)
+        p = quick_preset(key, self.user_presets)
         if not p:
             return False
         st = p[3]
@@ -24153,8 +24598,48 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strong_spin.setValue(float(st["strong_lvl"]))
         self.hold_chk.setChecked(bool(st["hold"]))
         self.preset_last = key
-        self.set_status(f"⚡ Préréglage « {TR(p[1])} » appliqué (tout reste modifiable à la main).")
+        nm = p[1] if key.startswith("u:") else TR(p[1])
+        self.set_status(f"⚡ Préréglage « {nm} » appliqué (tout reste modifiable à la main).")
         return True
+
+    # ---------------------------------------------------- 👤 profils utilisateur (7.57)
+    def user_profile_save(self, name, path=None):
+        """Préférences actuelles -> fichier .tsauser (dans USER_DIR sauf chemin donné). -> chemin ou None."""
+        doc = user_doc(self._collect_config(True), name, APP_VER)
+        try:
+            p_ = Path(path) if path else USER_DIR / user_filename(doc["name"])
+            p_.parent.mkdir(parents=True, exist_ok=True)
+            p_.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        except OSError as e:
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Profil non enregistré :\n{e}")
+            return None
+        self.user_name = doc["name"]
+        self.set_status(f"👤 Profil « {doc['name']} » enregistré ({p_.name}).")
+        return p_
+
+    def user_profile_load(self, path):
+        """Charge un profil : ses préférences remplacent les tiennes, le show ne bouge pas."""
+        try:
+            doc = read_user(Path(path).read_text(encoding="utf-8"))
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Profil illisible :\n{e}")
+            return False
+        self._apply_config(user_apply(self._collect_config(True), doc))
+        if "ui_level" in doc["prefs"]:
+            self.set_level(doc["prefs"]["ui_level"])
+        self.user_name = doc["name"]
+        self.set_status(f"👤 Profil « {doc['name']} » chargé : affichage, seuils, alarmes et préréglages perso appliqués.")
+        return True
+
+    def open_user_profiles(self):
+        if getattr(self, "_userprof", None) is not None:
+            self._userprof.refresh()
+            self._userprof.show()
+            self._userprof.raise_()
+            return self._userprof
+        self._userprof = UserProfilesDialog(self)
+        self._userprof.show()
+        return self._userprof
 
     def open_presets(self):
         if getattr(self, "_presets", None) is not None:

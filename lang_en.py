@@ -4797,3 +4797,77 @@ TEMPLATES.update({
     "<div style='font-size:18px; margin-top:6px'>→ {}</div>": "<div style='font-size:18px; margin-top:6px'>→ {}</div>",
 })
 TEMPLATES.update({" · vitesse {} points/s ({} ms par point)": " · speed {} points/s ({} ms per point)"})
+
+# 7.57 : déduire tout seul
+EXACT.update({
+    "Ajouter les bandes": "Add the bands",
+    "Des fréquences de ta liste sont en dehors des bandes balayées : elles ne seraient pas surveillées.\nAjouter ces bandes ?\n\n":
+        "Some frequencies in your list are outside the swept bands: they would not be monitored.\nAdd these bands?\n\n",
+    "Des fréquences de ta liste sont en dehors des bandes balayées : elles ne seraient pas surveillées.":
+        "Some frequencies in your list are outside the swept bands: they would not be monitored.",
+    "Ajouter ces bandes ?": "Add these bands?",
+})
+TEMPLATES.update({
+    "• {}–{} MHz ({} fréquence(s))": "• {}–{} MHz ({} frequency(ies))",
+    "📶 {} bande(s) ajoutée(s) : toute ta liste est maintenant surveillée.": "📶 {} band(s) added: your whole list is now monitored.",
+})
+EXACT.update({
+    "Crée un préréglage perso avec tes réglages actuels (seuils, mesure, rémanence, alarmes).\nIl est gardé dans l'appli, dans le show enregistré et dans ton profil.":
+        "Creates a custom preset from your current settings (thresholds, measurement, persistence, alarms).\nIt is kept in the app, in the saved show and in your profile.",
+    "Les situations types, puis tes préréglages perso (⭐). Celui qui correspond à tes réglages actuels est marqué ✓.":
+        "Typical situations, then your custom presets (⭐). The one matching your current settings is marked ✓.",
+    "Nom du préréglage (ex. « Concert jazz », « Théâtre du Rond-Point ») :": "Preset name (e.g. “Jazz gig”, “City theatre”):",
+    "Pour quoi ? (une phrase, facultatif) :": "What for? (one sentence, optional):",
+    "Préréglage perso": "Custom preset",
+    "Préréglage perso.": "Custom preset.",
+    "Supprime ce préréglage perso (les préréglages intégrés restent).": "Deletes this custom preset (built-in presets stay).",
+    "⭐ Enregistrer mes réglages actuels…": "⭐ Save my current settings…",
+})
+TEMPLATES.update({
+    "Préréglage perso « {} » supprimé.": "Custom preset “{}” deleted.",
+    "⭐ Préréglage perso « {} » enregistré.": "⭐ Custom preset “{}” saved.",
+    "« {} » existe déjà : le remplacer ?": "“{}” already exists: replace it?",
+})
+
+# 7.57 : 👤 profils utilisateur
+EXACT.update({
+    "Ajoute un profil reçu (fichier .tsauser) à la liste et le charge.": "Adds a received profile (.tsauser file) to the list and loads it.",
+    "Applique les préférences de ce profil (le show en cours ne bouge pas).": "Applies this profile's preferences (the current show stays as it is).",
+    "Aucun profil pour l'instant : « 💾 Enregistrer mes préférences » crée le tien.": "No profile yet: “💾 Save my preferences” creates yours.",
+    "Ce n'est pas un profil utilisateur TinySA Monitor.": "This is not a TinySA Monitor user profile.",
+    "Charger ce profil": "Load this profile",
+    "Crée ou met à jour un profil avec tes préférences actuelles.": "Creates or updates a profile with your current preferences.",
+    "Enregistre / charge tes préférences (affichage, seuils, alarmes, préréglages perso) et passe-les à un collègue.":
+        "Saves / loads your preferences (display, thresholds, alarms, custom presets) and hands them to a colleague.",
+    "Enregistre le profil choisi ailleurs (clé USB, mail…) pour le passer à quelqu'un.": "Saves the chosen profile elsewhere (USB stick, e-mail…) to hand it to someone.",
+    "Exporter le profil": "Export the profile",
+    "Fichier illisible (pas du JSON).": "Unreadable file (not JSON).",
+    "Importer un profil": "Import a profile",
+    "Les profils du dossier Documents › TinySA Monitor › Profils. ✓ = le profil chargé.": "Profiles in Documents › TinySA Monitor › Profils. ✓ = the loaded profile.",
+    "Nom du profil (ton prénom, ton poste…) :": "Profile name (your first name, your job…):",
+    "Ouvre le dossier des profils.": "Opens the profiles folder.",
+    "Profil": "Profile",
+    "Profil utilisateur": "User profile",
+    "Profils": "Profiles",
+    "Profils TinySA Monitor (*.tsauser)": "TinySA Monitor profiles (*.tsauser)",
+    "Profils utilisateur": "User profiles",
+    "Supprime le fichier du profil choisi (tes préférences actuelles ne bougent pas).": "Deletes the chosen profile's file (your current preferences stay).",
+    "Tes préférences (affichage, couleurs, seuils, alarmes, préréglages perso) dans un\nfichier : à recharger sur n'importe quel PC ou à passer à un collègue.":
+        "Your preferences (display, colours, thresholds, alarms, custom presets) in a\nfile: reload them on any PC or hand them to a colleague.",
+    "Un profil garde TES préférences : affichage (thème, niveau, unité, colonnes), mots et couleurs, seuils, alarmes et son (sauf la sortie audio), préréglages perso. Il ne touche jamais au show (fréquences, scènes, bandes, tinySA) : charge ton profil sur n'importe quel PC, ou passe-le à un collègue.":
+        "A profile keeps YOUR preferences: display (theme, level, unit, columns), words and colours, thresholds, alarms and sound (except the audio output), custom presets. It never touches the show (frequencies, stages, bands, tinySA): load your profile on any PC, or hand it to a colleague.",
+    "thème perso": "custom theme",
+    "👤 Profils utilisateur": "👤 User profiles",
+    "👤 Profils utilisateur (mes préférences)…": "👤 User profiles (my preferences)…",
+    "💾 Enregistrer mes préférences…": "💾 Save my preferences…",
+    "📂 Dossier": "📂 Folder",
+    "📤 Exporter…": "📤 Export…",
+})
+TEMPLATES.update({
+    "👤 Profil « {} » chargé : affichage, seuils, alarmes et préréglages perso appliqués.": "👤 Profile “{}” loaded: display, thresholds, alarms and custom presets applied.",
+    "📤 Profil exporté : {}": "📤 Profile exported: {}",
+    "👤 Profil « {} » enregistré ({}).": "👤 Profile “{}” saved ({}).",
+    "Profil non enregistré :\n{}": "Profile not saved:\n{}",
+    "{} préférence(s) · {} · {} préréglage(s) perso · {}": "{} preference(s) · {} · {} custom preset(s) · {}",
+    "Supprimer le fichier du profil « {} » ?": "Delete the file of profile “{}”?",
+})
