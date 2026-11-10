@@ -134,59 +134,74 @@ THEME_KEYS = [
     ("st_none", "Pas encore de mesure", "Etats du signal"),
 ]
 
-# Thèmes 7.12 (Clément : « le rouge et le vert sont horribles ») : couleurs d'état désaturées, lisibles en texte
-# blanc ou noir ; « Daltonien » = palette Okabe-Ito (OK bleu, problème vermillon) ; défaut = « Sombre doux ».
 DEFAULT_THEME = "Pro sombre"
-# 7.54 (Clément : « pro, type soft Apple ») : gris graphite, couleurs système d'Apple, la couleur réservée aux états.
+# 7.54 (Clément : « pro, type soft Apple », « le rouge et le vert c'est pas beau », « plusieurs daltoniens ») :
+# - plus de vert / rouge purs : OK = menthe, problème = corail (thèmes de style) ;
+# - palettes d'éditeurs connus (Catppuccin, Tokyo Night, Dracula, Rosé Pine, Gruvbox, Nord), couleurs reprises de
+#   leurs palettes publiées ;
+# - un thème par type de daltonisme, vérifié par simulation (Machado 2009, ΔE entre états critiques : OK / occupé /
+#   faible / réserve libre ≥ ≈ 30 pour la vision visée ; l'ancien « Sombre doux » tombait à 9 en deutéranopie) ;
+#   Okabe-Ito (deutéranopie, protanopie), Paul Tol (tritanopie), niveaux de gris (achromatopsie).
+_G = dict(ui_bg="#1c1c1e", ui_base="#232326", ui_button="#2c2c2e", ui_text="#f2f2f7", ui_accent="#0a84ff",
+          plot_bg="#161618", plot_fg="#8e8e93")                      # base graphite commune
 THEMES = {
-    "Pro sombre": dict(ui_bg="#1c1c1e", ui_base="#232326", ui_button="#2c2c2e", ui_text="#f2f2f7",
-                       ui_accent="#0a84ff", plot_bg="#161618", plot_fg="#8e8e93", curve="#64d2ff",
-                       maxhold="#ff9f0a", thr="#ff6961", thr_weak="#ffd60a", st_free="#30d158",
-                       st_libre="#409cff", st_weak="#ffb340", st_occ="#ff453a", st_unk="#bf5af2",
-                       st_none="#636366", ref="#bf5af2", wf="Viridis"),
+    "Pro sombre": dict(_G, curve="#64d2ff", maxhold="#ffb340", thr="#ff6b6b", thr_weak="#ffc35c",
+                       st_free="#4fd1c5", st_libre="#5e9eff", st_weak="#ffc35c", st_occ="#ff6b6b",
+                       st_unk="#c48bff", st_none="#636366", ref="#c48bff", wf="Viridis"),
     "Pro clair": dict(ui_bg="#f5f5f7", ui_base="#ffffff", ui_button="#e9e9ee", ui_text="#1d1d1f",
                       ui_accent="#007aff", plot_bg="#ffffff", plot_fg="#6e6e73", curve="#007aff",
-                      maxhold="#ff9500", thr="#ff3b30", thr_weak="#d4a106", st_free="#34c759",
-                      st_libre="#007aff", st_weak="#ff9500", st_occ="#ff3b30", st_unk="#af52de",
-                      st_none="#8e8e93", ref="#af52de", wf="Gris"),
-    "Sombre doux": dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
-                        ui_accent="#528bff", plot_bg="#181a1f", plot_fg="#abb2bf", curve="#61afef",
-                        maxhold="#d19a66", thr="#e06c75", thr_weak="#e5c07b", st_free="#4f9d69",
-                        st_libre="#4d8fd6", st_weak="#d4a94e", st_occ="#c95c5c", st_unk="#d19a66",
-                        st_none="#5c6370", ref="#c678dd", wf="Viridis"),
+                      maxhold="#e8890c", thr="#f2545b", thr_weak="#d99a1e", st_free="#12a89d",
+                      st_libre="#3478f6", st_weak="#e8a33c", st_occ="#f2545b", st_unk="#a55bd8",
+                      st_none="#8e8e93", ref="#a55bd8", wf="Gris"),
+    "Catppuccin (Mocha)": dict(ui_bg="#1e1e2e", ui_base="#181825", ui_button="#313244", ui_text="#cdd6f4",
+                               ui_accent="#89b4fa", plot_bg="#11111b", plot_fg="#a6adc8", curve="#89dceb",
+                               maxhold="#fab387", thr="#f38ba8", thr_weak="#f9e2af", st_free="#94e2d5",
+                               st_libre="#89b4fa", st_weak="#f9e2af", st_occ="#f38ba8", st_unk="#cba6f7",
+                               st_none="#6c7086", ref="#cba6f7", wf="Viridis"),
+    "Tokyo Night": dict(ui_bg="#1a1b26", ui_base="#16161e", ui_button="#292e42", ui_text="#c0caf5",
+                        ui_accent="#7aa2f7", plot_bg="#13141c", plot_fg="#a9b1d6", curve="#7dcfff",
+                        maxhold="#ff9e64", thr="#f7768e", thr_weak="#e0af68", st_free="#73daca",
+                        st_libre="#7aa2f7", st_weak="#e0af68", st_occ="#f7768e", st_unk="#bb9af7",
+                        st_none="#565f89", ref="#bb9af7", wf="Viridis"),
+    "Dracula": dict(ui_bg="#282a36", ui_base="#21222c", ui_button="#44475a", ui_text="#f8f8f2",
+                    ui_accent="#bd93f9", plot_bg="#1e1f29", plot_fg="#c5c8d6", curve="#8be9fd",
+                    maxhold="#ffb86c", thr="#ff5555", thr_weak="#f1fa8c", st_free="#8be9fd",
+                    st_libre="#bd93f9", st_weak="#f1fa8c", st_occ="#ff5555", st_unk="#ffb86c",
+                    st_none="#6272a4", ref="#ff79c6", wf="Inferno"),
+    "Rosé Pine": dict(ui_bg="#191724", ui_base="#1f1d2e", ui_button="#26233a", ui_text="#e0def4",
+                      ui_accent="#c4a7e7", plot_bg="#14121e", plot_fg="#908caa", curve="#9ccfd8",
+                      maxhold="#f6c177", thr="#eb6f92", thr_weak="#f6c177", st_free="#9ccfd8",
+                      st_libre="#c4a7e7", st_weak="#f6c177", st_occ="#eb6f92", st_unk="#ebbcba",
+                      st_none="#6e6a86", ref="#ebbcba", wf="Inferno"),
+    "Gruvbox": dict(ui_bg="#282828", ui_base="#1d2021", ui_button="#3c3836", ui_text="#ebdbb2",
+                    ui_accent="#83a598", plot_bg="#1d2021", plot_fg="#bdae93", curve="#83a598",
+                    maxhold="#fe8019", thr="#fb4934", thr_weak="#fabd2f", st_free="#8ec07c",
+                    st_libre="#83a598", st_weak="#fabd2f", st_occ="#fb4934", st_unk="#d3869b",
+                    st_none="#928374", ref="#d3869b", wf="Chaud"),
     "Nord": dict(ui_bg="#2e3440", ui_base="#272c36", ui_button="#3b4252", ui_text="#e5e9f0",
                  ui_accent="#88c0d0", plot_bg="#242933", plot_fg="#d8dee9", curve="#88c0d0",
-                 maxhold="#ebcb8b", thr="#bf616a", thr_weak="#ebcb8b", st_free="#a3be8c", st_libre="#5e81ac",
+                 maxhold="#ebcb8b", thr="#bf616a", thr_weak="#ebcb8b", st_free="#8fbcbb", st_libre="#5e81ac",
                  st_weak="#ebcb8b", st_occ="#bf616a", st_unk="#d08770", st_none="#4c566a", ref="#b48ead",
                  wf="Viridis"),
-    "Ardoise": dict(ui_bg="#1e1f22", ui_base="#18191b", ui_button="#2b2d31", ui_text="#dcdde0",
-                    ui_accent="#6e9ecf", plot_bg="#141517", plot_fg="#a6a9ae", curve="#7cc4e8",
-                    maxhold="#e0a96d", thr="#d46a6a", thr_weak="#d8b35a", st_free="#5a9e78", st_libre="#5b8cc4",
-                    st_weak="#c9a648", st_occ="#c25b5b", st_unk="#d4875a", st_none="#5d6066", ref="#b48ad6",
-                    wf="Inferno"),
-    "Daltonien (bleu / orange)": dict(ui_bg="#1c1f24", ui_base="#15181c", ui_button="#2a2e35", ui_text="#e6e6e6",
-                                      ui_accent="#56b4e9", plot_bg="#111316", plot_fg="#c9ccd1", curve="#56b4e9",
-                                      maxhold="#e69f00", thr="#d55e00", thr_weak="#f0e442", st_free="#0072b2",
-                                      st_libre="#56b4e9", st_weak="#e6c229", st_occ="#d55e00", st_unk="#cc79a7",
-                                      st_none="#666b73", ref="#cc79a7", wf="Viridis"),
-    "Clair doux": dict(ui_bg="#f4f5f7", ui_base="#ffffff", ui_button="#e6e8eb", ui_text="#24292f",
-                       ui_accent="#0969da", plot_bg="#ffffff", plot_fg="#57606a", curve="#0969da",
-                       maxhold="#bc4c00", thr="#cf222e", thr_weak="#9a6700", st_free="#4ea56b", st_libre="#6a9fd8",
-                       st_weak="#d4a72c", st_occ="#d1453b", st_unk="#bc4c00", st_none="#8c959f", ref="#8250df",
-                       wf="Gris"),
-    "Sombre": dict(ui_bg="#1b2027", ui_base="#11151a", ui_button="#262d36", ui_text="#dfe6ee",
-                   ui_accent="#2f81f7", plot_bg="#0f1318", plot_fg="#c8d0d8", curve="#4fd0ff",
-                   maxhold="#ffb347", thr="#ff6666", thr_weak="#e0b43c", st_free="#3fa66a",
-                   st_weak="#e0b43c", st_occ="#e05555", st_unk="#ffa94d", st_none="#7d8896",
-                   wf="Inferno"),
-    "Clair": dict(ui_bg="#f0f2f5", ui_base="#ffffff", ui_button="#e1e6ec", ui_text="#1d232b",
-                  ui_accent="#2f81f7", plot_bg="#ffffff", plot_fg="#2b333d", curve="#0b6fb8",
-                  maxhold="#d9822b", thr="#d62f2f", thr_weak="#c79a00", st_free="#1e9e57",
-                  st_weak="#c79a00", st_occ="#d62f2f", st_unk="#e07a1f", st_none="#8a94a0",
-                  wf="Gris"),
+    "Daltonien · deutéranopie (vert)": dict(_G, curve="#9ad0f5", maxhold="#e69f00", thr="#e66100", thr_weak="#f0e442",
+                                            st_free="#56b4e9", st_libre="#c9d3dd", st_weak="#f0e442",
+                                            st_occ="#e66100", st_unk="#cc79a7", st_none="#636366",
+                                            ref="#cc79a7", wf="Viridis"),
+    "Daltonien · protanopie (rouge)": dict(_G, curve="#9ad0f5", maxhold="#ffe680", thr="#ff7f00", thr_weak="#ffe680",
+                                           st_free="#4f8fe6", st_libre="#c9d3dd", st_weak="#ffe680",
+                                           st_occ="#ff7f00", st_unk="#a07bd6", st_none="#636366",
+                                           ref="#a07bd6", wf="Viridis"),
+    "Daltonien · tritanopie (bleu / jaune)": dict(_G, curve="#33bbee", maxhold="#f5e6c8", thr="#ee3377",
+                                                  thr_weak="#f5e6c8", st_free="#33bbee", st_libre="#8c8c8c",
+                                                  st_weak="#f5e6c8", st_occ="#ee3377", st_unk="#bbbbbb",
+                                                  st_none="#555558", ref="#ee3377", wf="Inferno"),
+    "Monochrome (sans couleur)": dict(_G, ui_accent="#8e8e93", curve="#e0e0e0", maxhold="#8a8a8a", thr="#ffffff",
+                                      thr_weak="#b0b0b0", st_free="#9a9a9a", st_libre="#5a5a5a",
+                                      st_weak="#c8c8c8", st_occ="#ffffff", st_unk="#767676", st_none="#2e2e30",
+                                      ref="#b0b0b0", wf="Gris"),
     "Haut contraste": dict(ui_bg="#000000", ui_base="#000000", ui_button="#242424", ui_text="#ffffff",
                            ui_accent="#0078ff", plot_bg="#000000", plot_fg="#ffffff", curve="#00ffff",
-                           maxhold="#ffff00", thr="#ff3030", thr_weak="#ffa500", st_free="#00ff66",
+                           maxhold="#ffff00", thr="#ff3030", thr_weak="#ffa500", st_free="#00e5ff",
                            st_weak="#ffe600", st_occ="#ff2d2d", st_unk="#ff9d00", st_none="#9a9a9a",
                            wf="Chaud"),
     "Nuit (rouge)": dict(ui_bg="#140000", ui_base="#0b0000", ui_button="#2a0707", ui_text="#ff7a7a",
@@ -200,6 +215,12 @@ THEMES = {
                            st_weak="#ffd84a", st_occ="#ff4d4d", st_unk="#ffa94d", st_none="#4a7a56",
                            wf="Viridis"),
 }
+# l'ancien thème par défaut (7.12) : une config qui l'a gardé tel quel passe au nouveau (voir _apply_config)
+OLD_DEFAULT_THEME = dict(ui_bg="#21252b", ui_base="#1b1f24", ui_button="#2c313a", ui_text="#d7dae0",
+                         ui_accent="#528bff", plot_bg="#181a1f", plot_fg="#abb2bf", curve="#61afef",
+                         maxhold="#d19a66", thr="#e06c75", thr_weak="#e5c07b", st_free="#4f9d69",
+                         st_libre="#4d8fd6", st_weak="#d4a94e", st_occ="#c95c5c", st_unk="#d19a66",
+                         st_none="#5c6370", ref="#c678dd")
 
 WF_MAPS = {
     "Inferno": [(0.0, (0, 0, 4)), (0.25, (87, 16, 110)), (0.5, (188, 55, 84)),
@@ -307,17 +328,17 @@ def make_stylesheet(t):
     on = contrast_text(acc)
     return """
 QWidget { font-family: "Segoe UI Variable Text", "Segoe UI", "SF Pro Text", "Helvetica Neue", "Inter", sans-serif; }
-QGroupBox { border:1px solid %(bd)s; border-radius:10px; margin-top:14px; padding:12px 8px 8px 8px; }
+QGroupBox { border:1px solid %(bd)s; border-radius:10px; margin-top:12px; padding:9px 6px 6px 6px; }
 QGroupBox::title { subcontrol-origin: margin; left:12px; padding:0 4px; color:%(sub)s; font-weight:600; }
 QToolTip { color:%(txt)s; background:%(btn)s; border:1px solid %(bd2)s; border-radius:6px; padding:5px 7px; }
-QPushButton, QToolButton { background:%(btn)s; border:1px solid %(bd)s; border-radius:7px; padding:4px 11px; }
+QPushButton, QToolButton { background:%(btn)s; border:1px solid %(bd)s; border-radius:7px; padding:3px 10px; }
 QPushButton:hover, QToolButton:hover { background:%(hov)s; border-color:%(bd2)s; }
 QPushButton:pressed, QToolButton:pressed { background:%(prs)s; }
 QPushButton:checked, QToolButton:checked { background:%(acc)s; color:%(on)s; border-color:%(acc)s; }
 QPushButton:disabled, QToolButton:disabled { color:%(sub)s; background:%(bg)s; }
 QPushButton:default { border:1px solid %(acc)s; }
 QToolButton[popupMode="1"], QToolButton[popupMode="2"] { padding-right:18px; }
-QToolBar { background:%(bg)s; border:0; spacing:5px; padding:4px 6px; }
+QToolBar { background:%(bg)s; border:0; spacing:4px; padding:2px 6px; }
 QToolBar QToolButton { background:transparent; border:1px solid transparent; }
 QToolBar QToolButton:hover { background:%(hov)s; border-color:%(bd)s; }
 QToolBar QToolButton:checked { background:%(acc)s; color:%(on)s; }
@@ -8220,7 +8241,7 @@ QToolButton::menu-arrow {{ image:url({chev}); width:10px; height:10px; }}
 QPushButton::menu-indicator {{ image:url({chev}); subcontrol-origin:padding; subcontrol-position:right center;
     right:5px; width:10px; height:10px; }}
 QComboBox {{ background:{base}; border:1px solid {blend(t["ui_text"], t["ui_bg"], 0.16)}; border-radius:6px;
-    padding:3px 24px 3px 8px; }}
+    padding:2px 22px 2px 8px; }}
 QComboBox:hover {{ border-color:{bd}; }}
 QComboBox:focus {{ border-color:{acc}; }}
 QComboBox::drop-down {{ border:0; width:22px; }}
@@ -8231,7 +8252,6 @@ QCheckBox::indicator, QGroupBox::indicator {{ width:15px; height:15px; border-ra
 QCheckBox::indicator:hover {{ border-color:{acc}; }}
 QCheckBox::indicator:checked, QGroupBox::indicator:checked {{ background:{acc}; border-color:{acc}; image:url({chk}); }}
 QCheckBox::indicator:disabled {{ background:{t["ui_bg"]}; }}
-QPushButton, QToolButton {{ min-height:20px; }}
 """
     except Exception:  # noqa: BLE001  — pas d'image : on garde les flèches / coches de Qt
         return ""
@@ -16494,7 +16514,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "📊 Scans et rapports": "Rapport de show, scans WSM / WWB (référence, conversion, export).",
         "🔗 Connexions": "Alertes téléphone et page web, relais réseau (2ᵉ tinySA), diagnostic.",
         "🎨 Apparence": "Couleurs et thèmes, statuts, mots de la colonne Signal, langue.",
-        "🎨 Couleurs": "Thèmes (Sombre doux, Nord, Daltonien…) et chaque couleur à la main.",
+        "🎨 Couleurs": "Thèmes (Pro sombre, Catppuccin, Nord, Daltonien…) et chaque couleur à la main.",
         "🏷 Statuts": "Tes statuts (Libre, En service…) : couleur, « doit rester libre » / « doit émettre ».",
         "🌐 Langue": "Français / English (appliqué au redémarrage).",
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
@@ -16530,6 +16550,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _install_tips(self):
         """Une explication sur chaque bouton / case / liste, aussi recopiée dans la barre d'état au survol."""
         tips_text = {TR(k): t for k, t in self.TIPS_TEXT.items()}      # les boutons affichent le texte traduit
+        tips_text.update({plain_btn_text(k): t for k, t in list(tips_text.items())})   # 7.54 : boutons sans emoji
         tips_menu = [(TR(k), t) for k, t in self.TIPS_MENU.items()]
         for name, tip in self.TIPS_ATTR.items():
             w_ = getattr(self, name, None)
@@ -18121,7 +18142,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.focus_chk.setChecked(bool(data.get("focus", False)))
         th = data.get("theme")
         if isinstance(th, dict) and not data.get("theme_v") and all(
-                th.get(k) == v for k, v in THEMES["Sombre doux"].items() if k != "wf"):
+                th.get(k) == v for k, v in OLD_DEFAULT_THEME.items()):
             th = None                             # 7.54 : l'ancien thème par défaut, jamais retouché -> « Pro sombre »
         if isinstance(th, dict):
             base = dict(THEMES[DEFAULT_THEME])

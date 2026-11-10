@@ -903,6 +903,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   les tests comparent via `plain_btn_text(...)`. `qss_icons(t)` dessine (QPainter → PNG dans le dossier temporaire)
   la flèche de menu et la coche aux couleurs du thème + styles QComboBox / QCheckBox / hauteur mini des boutons. **Rendu Windows réel pas vu par Claude** (captures de
   la CI seulement) ; un écran mis à l'échelle peut changer les tailles mini (gui_reel les vérifie).
+  **Thèmes (Clément : « plusieurs daltoniens, le rouge et vert c'est pas beau, regarde d'autres softs »)** : 15 thèmes ;
+  défaut « Pro sombre » = menthe #4fd1c5 (libre) / corail #ff6b6b (occupé) ; inspirés (de mémoire, palettes publiques)
+  de Catppuccin Mocha, Tokyo Night, Dracula, Rosé Pine, Gruvbox, Nord ; daltoniens par type : deutéranopie (Okabe-Ito
+  bleu / orange), protanopie, tritanopie (Paul Tol), Monochrome. `OLD_DEFAULT_THEME` (« Sombre doux ») → migré. Tests
+  test_v7 : simulation Machado 2009 (sévérité 1) + ΔE CIE Lab entre états critiques (libre/occupé, réserve/occupé,
+  faible/occupé…) ≥ 17 pour la vision visée (ancien défaut : ΔE 9 en deutéranopie) ; tous les thèmes ont toutes les
+  THEME_KEYS. Bulles `_install_tips` : clés aussi en `plain_btn_text` (sinon 3 boutons sans bulle) ; marges QSS
+  réduites (hauteur mini 687 px en expert sous Linux). **Pas vu par un vrai daltonien.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
