@@ -38,9 +38,9 @@ jobs:
           fi
           if git merge --no-edit -m "Fusion automatique de la V7 (ui-validation) dans la V8" origin/ui-validation; then
             git push origin v8-sdr
-            # un push fait par ce robot ne relance pas la compilation tout seul : on la demande
-            gh workflow run build-exe.yml --ref v8-sdr || true
-            echo "::notice::V8 à jour avec la V7 ($(git rev-parse --short origin/ui-validation)) ; pré-release test-v8-sdr en cours."
+            # 11/2026 : plus de recompilation automatique de la V8 à chaque synchro (≈ 40 % du quota de minutes).
+            # Pour une nouvelle pré-release test-v8-sdr : Actions › Build TinySA-Monitor.exe › Run workflow › v8-sdr.
+            echo "::notice::V8 à jour avec la V7 ($(git rev-parse --short origin/ui-validation)). Pré-release test-v8-sdr : à lancer à la main si besoin."
           else
             files=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
             git merge --abort

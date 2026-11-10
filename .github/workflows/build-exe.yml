@@ -4,13 +4,46 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
+    # notes de travail seulement : pas de compilation (économie de minutes)
+    paths-ignore: ["CLAUDE.md", "README.md", "apercu/**", ".github/workflows/menage-releases.yml"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Économie de minutes (quota GitHub épuisé le 10/11/2026 : une minute Windows compte double) :
+# - un nouveau push sur la même branche annule la compilation en cours (jamais sur main : c'est la release) ;
+# - sur main, le commit a déjà été testé sur ui-validation : tests et captures d'interface sautés, seulement
+#   compilation + auto-test de l'exe + release, et RIEN si la release de cette version existe déjà ;
+# - la V8 n'est plus recompilée à chaque synchro (sync-v8.yml) : à la demande (Actions › Run workflow › v8-sdr).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
+  # petit job Linux (≈ 10 s) : sur main, faut-il compiler ? (non si la release de APP_VER existe déjà)
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.g.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: g
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          go=true
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            ver=$(grep -m1 -oP '^APP_VER = "\K[^"]+' tinysa_monitor.py)
+            if gh release view "v$ver" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              go=false; echo "::notice::Release v$ver déjà publiée : pas de compilation (monte APP_VER pour publier)."
+            fi
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
     runs-on: windows-latest
     env:
       PYTHONIOENCODING: utf-8
@@ -28,6 +61,7 @@ jobs:
           python -m pip install -r requirements.txt pyinstaller
 
       - name: Tests (logique + GUI simulée)
+        if: github.ref != 'refs/heads/main'
         shell: bash
         run: |
           bad=0
@@ -47,6 +81,7 @@ jobs:
           exit $bad
 
       - name: Interface réelle (vrai Qt Windows)
+        if: github.ref != 'refs/heads/main'
         continue-on-error: true
         shell: bash
         timeout-minutes: 8
@@ -64,6 +99,7 @@ jobs:
           exit $rc
 
       - name: Interface en anglais (vrai Qt Windows)
+        if: github.ref != 'refs/heads/main'
         continue-on-error: true
         shell: bash
         timeout-minutes: 6
@@ -79,7 +115,7 @@ jobs:
           exit $rc
 
       - name: Captures de l'interface
-        if: always()
+        if: always() && github.ref != 'refs/heads/main'
         continue-on-error: true            # quota d'artefacts plein : ne doit jamais bloquer l'exe ni la release
         uses: actions/upload-artifact@v4
         with:
@@ -180,6 +216,7 @@ jobs:
 
   # Tests qui ont besoin d'un port série virtuel (pty) : impossibles sous Windows (revue de code 7.41).
   linux-tests:
+    if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       QT_QPA_PLATFORM: offscreen
