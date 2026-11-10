@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.55.0"
+APP_VER = "7.56.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1487,9 +1487,19 @@ def floor_curve(F, L, win=2.0, step=0.5, q=20.0):
     d = np.minimum(np.abs(F[near] - c), np.abs(F[near - 1] - c))
     st = float(np.median(np.diff(F))) if len(F) > 1 else step
     out = np.full(len(c), np.nan)
-    for i in range(len(c)):
-        if hi[i] - lo[i] >= 5 and d[i] <= max(step, 4 * st):
-            out[i] = np.percentile(L[lo[i]:hi[i]], q)
+    ok = ((hi - lo) >= 5) & (d <= max(step, 4 * st))
+    if ok.any():
+        # 7.56 : toutes les fenêtres d'un coup (avant : une boucle Python + un centile par fenêtre, ≈ 3 % de processeur)
+        lo_, n_ = lo[ok], (hi - lo)[ok]
+        idx = lo_[:, None] + np.arange(int(n_.max()))[None, :]
+        inside = idx < (lo_ + n_)[:, None]
+        vals = np.sort(np.where(inside, L[np.minimum(idx, len(L) - 1)], np.inf), axis=1)   # les « trous » à la fin
+        k = (n_ - 1) * (q / 100.0)                       # centile « linéaire », comme np.percentile
+        k0 = np.floor(k).astype(int)
+        k1 = np.minimum(k0 + 1, n_ - 1)
+        r = np.arange(len(n_))
+        a0, a1 = vals[r, k0], vals[r, k1]
+        out[ok] = a0 + (a1 - a0) * (k - k0)
     return c, out
 
 
@@ -4069,6 +4079,27 @@ def _svg_spectrum(F, L, marks, thr, width=1000, height=260):
     return "".join(s)
 
 
+# 7.56 : rapports (bilan du matin, rapport de show, étude de site) au look « pro » des thèmes de l'appli : clair pour
+# l'impression, typo système, cartes arrondies, tableaux aérés, couleurs système. Ajouté APRÈS les styles d'origine.
+REPORT_PRO_CSS = (
+    "body{font:14px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI Variable Text','Segoe UI',Roboto,"
+    "sans-serif;color:#1d1d1f;background:#fff;-webkit-font-smoothing:antialiased}"
+    "h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}"
+    "h2{font-size:19px;font-weight:650;letter-spacing:-.01em;margin:34px 0 10px;border:0;padding:0}"
+    "h2::before{content:'';display:inline-block;width:4px;height:18px;border-radius:2px;background:#007aff;"
+    "vertical-align:-3px;margin-right:9px}h3{font-weight:650}.muted{color:#6e6e73}"
+    ".cards{gap:12px}.card{border:0;border-radius:14px;background:#f5f5f7;padding:14px 18px;min-width:140px;"
+    "color:#6e6e73}.card b{color:#1d1d1f;font-size:30px;font-weight:700;letter-spacing:-.02em}"
+    ".card.bad{background:#fff1f0}.card.bad b{color:#d70015}"
+    "table{border-collapse:separate;border-spacing:0;border:1px solid #e5e5ea;border-radius:12px;overflow:hidden}"
+    "th,td{border-bottom:1px solid #f0f0f3;padding:7px 10px}th{background:#f5f5f7;color:#6e6e73;font-weight:600;"
+    "font-size:12px;letter-spacing:.02em}tr:last-child td{border-bottom:0}tr:nth-child(even) td{background:#fbfbfd}"
+    ".tag{border-radius:999px;padding:1px 9px}"
+    "svg.spec{border:1px solid #e5e5ea;border-radius:14px;background:#fff}.grid{stroke:#ececf0}.ax{fill:#86868b}"
+    ".curve{stroke:#ff9500;stroke-width:1.3}.mk{stroke:#34c759}.mk.hot{stroke:#ff3b30;opacity:.6}.thr{stroke:#ff3b30}"
+)
+
+
 def build_report_html(d):
     """Rapport autonome (un seul fichier, sans connexion) : à ouvrir dans le navigateur puis imprimer en PDF."""
     e = html_esc
@@ -4098,7 +4129,7 @@ def build_report_html(d):
          "svg.spec{width:100%;height:auto;border:1px solid #d8dde8;border-radius:8px;background:#fbfcfe}",
          ".grid{stroke:#e3e7ef}.ax{font-size:11px;fill:#6b7488}.curve{fill:none;stroke:#e08a1e;stroke-width:1.2}",
          ".mk{stroke:#2e8b57;stroke-width:1;opacity:.55}.mk.hot{stroke:#d33;stroke-width:1.6;opacity:.9}",
-         ".thr{stroke:#d33;stroke-dasharray:5 4}",
+         ".thr{stroke:#d33;stroke-dasharray:5 4}", REPORT_PRO_CSS,
          "@media print{body{padding:0}h2{break-after:avoid}tr{break-inside:avoid}th{position:static}}",
          "</style></head><body>",
          f"<h1>{e(d.get('title') or 'Rapport de show')}</h1>",
@@ -4364,8 +4395,52 @@ def notify_wanted(prio, mode):
     return (mode == "crit" and prio >= 2) or (mode == "all" and prio >= 1)
 
 
+# 7.56 (revue UX : « distinguer détecté / déduit / recommandé ») : chaque alarme dit ce qui est MESURÉ (sûr), ce qu'on
+# en DÉDUIT (cause probable, jamais certaine) et ce qu'on CONSEILLE de faire.
+ALARM_HELP = {
+    "CONFLIT": ("Quelqu'un émet sur une fréquence qui doit rester libre : un émetteur d'une autre équipe, un talkie, "
+                "ou un de tes émetteurs mal réglé.",
+                "Chasse au brouilleur pour le trouver ; si ça dure, Fréquence de secours."),
+    "INTERMOD": ("Probablement un produit d'intermodulation de tes propres émetteurs (formule indiquée) : il apparaît "
+                 "quand ils émettent ensemble.",
+                 "Coupe ou éloigne un des émetteurs cités pour confirmer ; sinon change de fréquence (Fréquence de "
+                 "secours)."),
+    "ABSENT": ("L'émetteur est éteint, à court de piles, hors de portée ou coupé.",
+               "Vérifie le pack et les piles. S'il est éteint exprès : clic droit › Éteint (je sais)."),
+    "TROP FORT": ("Un émetteur est très près de l'antenne (talkie, pack posé à côté) : il peut saturer les récepteurs "
+                  "et le tinySA.",
+                  "Éloigne l'émetteur ou l'antenne ; si c'est le tien, baisse sa puissance."),
+    "APPAREIL": ("Câble USB ou réseau débranché, tinySA éteint ou figé.",
+                 "Vérifie le câble et l'alimentation : l'appli réessaie toute seule. Si rien ne revient, débranche et "
+                 "rebranche le tinySA."),
+}
+
+
+def alarm_explain(a, now, level_txt="", thr_txt=""):
+    """Alarme (dict AlarmBook) -> {measured, deduced, advice} : mesuré (sûr), cause probable, quoi faire.
+    level_txt / thr_txt : niveau et seuil déjà mis dans l'unité de l'appli (vides = pas affichés)."""
+    kind = a.get("kind", "")
+    f = a.get("freq") or 0.0
+    t0, t1 = a.get("t0"), a.get("t_end")
+    dur = fmt_duration(max(0.0, (now if t1 is None else t1) - (now if t0 is None else t0)))
+    info = str(a.get("info") or "")
+    if kind == "ABSENT":
+        meas = f"Plus de signal sur {f:.3f} MHz depuis {dur}"
+    elif kind == "APPAREIL":
+        meas = f"Plus de réponse du tinySA depuis {dur}"
+    else:
+        lv = level_txt or ("—" if a.get("level") is None else f"{a['level']:.0f} dBm")
+        meas = (f"{lv} sur {f:.3f} MHz (seuil {thr_txt}), depuis {dur}" if thr_txt else
+                f"{lv} sur {f:.3f} MHz, depuis {dur}")
+        if info:
+            meas += " · " + info
+    ded, adv = ALARM_HELP.get(kind, ("", ""))
+    return dict(measured=meas, deduced=ded, advice=adv)
+
+
 def notify_text(a, site=""):
-    """Alarme (dict AlarmBook) -> (titre, corps) courts, lisibles sur un écran verrouillé."""
+    """Alarme (dict AlarmBook) -> (titre, corps) courts, lisibles sur un écran verrouillé.
+    7.56 : + une ligne « quoi faire » (conseil d'ALARM_HELP)."""
     title = f"⚠ {a['kind']} — {a['name']}"
     bits = []
     if a.get("freq"):
@@ -4378,6 +4453,9 @@ def notify_text(a, site=""):
     body = " · ".join(bits) or "alarme"
     if site:
         body = f"[{site}] " + body
+    adv = ALARM_HELP.get(a.get("kind", ""), ("", ""))[1]
+    if adv:
+        body += "\n" + adv
     return title, body
 
 
@@ -4635,7 +4713,8 @@ def web_state(rows, alarms, info):
                         scene=r.get("scene") or "", group=r.get("group") or "", paused=bool(r.get("paused")),
                         alarm="ABSENT" if r.get("absent") else ("CONFLIT" if r.get("conflict") else "")))
     al = [dict(id=int(a.get("id", 0)), kind=a["kind"], name=a["name"], freq=round(float(a["freq"] or 0), 4), prio=int(a["prio"]),
-               acked=bool(a["acked"]), layer=a.get("layer") or "", info=a.get("info") or "", t0=a["t0"])
+               acked=bool(a["acked"]), layer=a.get("layer") or "", info=a.get("info") or "", t0=a["t0"],
+               hint=ALARM_HELP.get(a["kind"], ("", ""))[1])            # 7.56 : quoi faire
           for a in alarms if a.get("t_end") is None]
     return dict(rows=out, alarms=al, **info)
 
@@ -4651,7 +4730,7 @@ WEB_PAGE = r"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 body{background:var(--bg);color:var(--fg);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;
 -webkit-tap-highlight-color:transparent}
 button,input,select{font:inherit;color:inherit}
-.hidden{display:none!important}.mut{color:var(--mut)}
+.hidden{display:none!important}.mut{color:var(--mut)}.hint{display:block;margin-top:3px;font-weight:500;opacity:.85}
 .rg-al{margin:10px 16px;border-radius:20px;padding:16px 22px;font-weight:700;font-size:clamp(22px,3.6vw,46px);line-height:1.15;letter-spacing:-.01em}
 .rg-al.ok{background:rgba(48,209,88,.14);color:var(--fg);border:1px solid rgba(48,209,88,.45)}
 .rg-al.warn{background:rgba(255,159,10,.16);color:var(--fg);border:1px solid rgba(255,159,10,.5)}.rg-al.bad{background:var(--bad);color:#fff;animation:rgp .8s ease-in-out infinite alternate}
@@ -4825,7 +4904,7 @@ function render(){if(!D)return;const st=D.state,v0=route(),v=(v0===""||D.views.i
  $("#nav").innerHTML=`<a href="#/" class="${v===""?"on":""}">🏠 Accueil</a>`+D.views.map(k=>`<a href="#/${k}" class="${v===k?"on":""}">${VIEWS[k][0]} ${VIEWS[k][1]}</a>`).join("");
  $("#al").innerHTML=(v==="alarmes"||v==="regie")?"":st.alarms.filter(a=>!a.acked).slice(0,3).map(alHtml).join("");
  if(mounted!==v){mounted=v;wf=null;mount(v)}update(v)}
-function alHtml(a){return `<div class="al${a.acked?" ack":""}"><div class="x">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}</small></div>${D.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}</div>`}
+function alHtml(a){return `<div class="al${a.acked?" ack":""}"><div class="x">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}${a.acked?" · acquittée":""}${a.hint?`<span class="hint">→ ${esc(a.hint)}</span>`:""}</small></div>${D.ack&&!a.acked?`<button data-id="${a.id}">Acquitter</button>`:""}</div>`}
 document.addEventListener("click",e=>{const b=e.target.closest("button[data-id]");if(b)ack(b.dataset.id==="all"?"all":+b.dataset.id)});
 async function ack(id){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
  let r;try{r=await post("acquitter",{pin:pin,id:id})}catch(e){alert("PC injoignable");return}
@@ -4903,7 +4982,7 @@ function update(v){const st=D.state;
   const hb=!st.running?`<div class="rg-al bad">■ Surveillance arrêtée<small>Rien n'est surveillé en ce moment.</small></div>`
    :!hd?`<div class="rg-al bad">⚠ État de surveillance indéterminé</div>`
    :hd.tone!=="ok"?`<div class="rg-al ${hd.tone==="bad"?"bad":"warn"}">${esc(hd.text)}</div>`:"";
-  $("#ra").innerHTML=(un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:""):"")
+  $("#ra").innerHTML=(un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}${a.hint?`<span class="hint">→ ${esc(a.hint)}</span>`:""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:""):"")
    +(hb||(un.length?"":`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)</small></div>`));
   const G={};rs.forEach(r=>{const k=lay(r)||"Sans scène";(G[k]=G[k]||[]).push(r)});
   const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
@@ -4939,7 +5018,7 @@ function update(v){const st=D.state;
   if(tm.dataset.k!==ok){const want=tm.value||LS.get("tmh","*");tm.innerHTML=`<option value="">Max hold : aucun</option><option value="*">Max hold : toutes les scènes</option>`+scm.map(x=>`<option value="${esc(x)}">Max hold : ${esc(x)}</option>`).join("");tm.value=[""].concat(["*"],scm).includes(want)?want:"*";tm.dataset.k=ok}
   if(spec&&spec.t!==specT)specT=spec.t;draw();return}
  if(v==="alarmes"){const al=st.alarms,un=al.filter(a=>!a.acked).length;$("#aa").innerHTML=D.ack&&un>1?'<button class="btn" data-id="all">✔ Tout acquitter</button>':"";
-  $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
+  $("#g").innerHTML=al.map(a=>`<div class="row${a.acked?" ack":""}"><div class="x"><b>⚠ ${esc(a.kind)} — ${esc(a.name)}</b><div class="mut">${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""} · depuis ${new Date(a.t0*1000).toLocaleTimeString("fr-FR",{hour12:false})}${a.acked?" · acquittée":""}${a.hint?`<span class="hint">→ ${esc(a.hint)}</span>`:""}</div></div>${D.ack&&!a.acked?`<button class="ackbtn" data-id="${a.id}">Acquitter</button>`:""}</div>`).join("")||'<div class="empty">✔ Aucune alarme en cours</div>';
   if(!D.ack&&al.length)$("#g").insertAdjacentHTML("beforeend",'<div class="who">Acquittement depuis le téléphone désactivé (code PIN à régler sur le PC).</div>');return}
  if(v==="spectre"||v==="waterfall"){const b=$("#band"),bs=(spec&&spec.bands)||[],want=LS.get("band","*");
   const opts='<option value="*">Toutes les bandes</option>'+bs.map(x=>`<option${x.name===want?" selected":""}>${esc(x.name)}</option>`).join("");
@@ -5005,33 +5084,39 @@ function marks(c,w,h,f0,f1,top){if(!$("#mk")||!$("#mk").checked)return;const X=f
   if(r.bw){const x0=X(r.freq-r.bw/2),x1=X(r.freq+r.bw/2);c.fillStyle=cc+"22";c.fillRect(x0,top,x1-x0,h-PB-top);c.strokeRect(x0,top,x1-x0,h-PB-top)}
   else{c.setLineDash([3,3]);c.beginPath();c.moveTo(x,top);c.lineTo(x,h-PB);c.stroke();c.setLineDash([])}
   c.globalAlpha=1;if(x-lastX>46){c.fillStyle=cc;c.font="600 11px system-ui";c.textAlign="center";c.fillText(r.name.slice(0,10),x,top-6);lastX=x}})}
-// rémanence : chaque balayage laisse une trace qui s'estompe (ce qui revient souvent marque, comme un analyseur temps réel)
+// couleurs du spectre = thème de l'appli (7.56) ; « crt » = gamme Analyseur (grille et trace phosphore)
+function PC(){const p=Object.assign({bg:"#0b0d10",fg:"#8b95a5",curve:"#ff9f1c",mh:"#ff9f1c",thr:"#ef4444",crt:false},(D.state&&D.state.plot)||{});
+ p.grid=p.crt?p.fg+"66":"#272d38";p.txt=p.crt?p.fg:"#8b95a5";return p}
+// rémanence : chaque balayage laisse une trace qui s'estompe ; les traces s'ADDITIONNENT (ce qui revient souvent brille,
+// comme la persistance d'un analyseur numérique)
 let pers=null;
-function persLayer(c,w,h,ss,X,Y,key){const cv=$("#cv"),k=key+"|"+cv.width+"x"+cv.height;
+function persLayer(c,w,h,ss,X,Y,key){const cv=$("#cv"),P=PC(),k=key+"|"+cv.width+"x"+cv.height+"|"+P.curve;
  if(!pers||pers.k!==k){const b=document.createElement("canvas");b.width=cv.width;b.height=cv.height;const g=b.getContext("2d");g.scale(cv.width/w,cv.height/h);pers={c:b,g:g,k:k,t:0,n:0}}
  if(spec.t!==pers.t){pers.t=spec.t;pers.n++;const g=pers.g;g.globalCompositeOperation="destination-out";g.fillStyle="rgba(0,0,0,.13)";g.fillRect(0,0,w,h);g.globalCompositeOperation="source-over";
-  ss.forEach(s=>{g.beginPath();s.l.forEach((v,i)=>{const x=X(s.f[i]),y=Y(v);i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle="rgba(56,189,248,.45)";g.lineWidth=2.2;g.stroke()})}
+  g.globalCompositeOperation="lighter";
+  ss.forEach(s=>{g.beginPath();s.l.forEach((v,i)=>{const x=X(s.f[i]),y=Y(v);i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle=P.curve+"40";g.lineWidth=1.8;g.stroke()});
+  g.globalCompositeOperation="source-over"}
  c.drawImage(pers.c,0,0,w,h)}
 function draw(){const cv=$("#cv");if(!cv||!spec)return;const ss=segs(),sp=span(ss),lg=$("#lg");
  const H=mounted==="spectre"?Math.max(240,Math.min(innerHeight-230,520)):mounted==="terrain"?Math.max(220,Math.min(innerHeight*.45,420)):Math.max(260,innerHeight-220);
- const[c,w,h]=setup(cv,H);c.clearRect(0,0,w,h);if(!sp){c.fillStyle="#8b95a5";c.font="15px system-ui";c.textAlign="center";c.fillText(spec.bands.length?"…":"Pas encore de balayage",w/2,h/2);return}
+ const[c,w,h]=setup(cv,H),P=PC();c.clearRect(0,0,w,h);c.fillStyle=P.bg;c.fillRect(PL,PT,w-PL-8,h-PT-PB);if(!sp){c.fillStyle="#8b95a5";c.font="15px system-ui";c.textAlign="center";c.fillText(spec.bands.length?"…":"Pas encore de balayage",w/2,h/2);return}
  const[f0,f1]=sp,X=f=>PL+(f-f0)/(f1-f0)*(w-PL-8);
- c.font="11px system-ui";c.fillStyle="#8b95a5";c.strokeStyle="#272d38";c.lineWidth=1;c.textAlign="center";
+ c.font="11px system-ui";c.fillStyle=P.txt;c.strokeStyle=P.grid;c.lineWidth=1;c.textAlign="center";
  ticks(f0,f1,Math.max(3,Math.floor(w/90))).forEach(f=>{const x=X(f);c.beginPath();c.moveTo(x,PT);c.lineTo(x,h-PB);c.stroke();c.fillText(f.toFixed(f1-f0<5?2:(f1-f0<50?1:0)),x,h-8)});
  if(mounted==="waterfall"){wfDraw(c,w,h,f0,f1);marks(c,w,h,f0,f1,PT);lg.innerHTML='<span>Récent en haut · une ligne par balayage (il se remplit tant que la vue est ouverte)</span><span><i style="background:linear-gradient(90deg,#0b1e5b,#1d9bf0,#22c55e,#eab308,#ef4444)"></i>faible → fort</span>';return}
  const tsm=mounted==="terrain"&&$("#tmh")?$("#tmh").value:"",scs=Object.entries((spec&&spec.scenes)||{}).filter(([k])=>tsm==="*"||k===tsm);
  const lo=-120,hi=Math.max(-20,Math.ceil((Math.max(...ss.flatMap(s=>s.mh||s.l),...scs.flatMap(([k,o])=>o.segs.flatMap(g=>g.l)))+5)/10)*10),Y=v=>PT+(hi-v)/(hi-lo)*(h-PT-PB);
- c.textAlign="right";for(let v=lo;v<=hi;v+=10){const y=Y(v);c.strokeStyle="#272d38";c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.fillText(v,PL-6,y+4)}
+ c.textAlign="right";for(let v=lo;v<=hi;v+=10){const y=Y(v);c.strokeStyle=P.grid;c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.fillText(v,PL-6,y+4)}
  const line=(arr,f,col,lw,fill)=>{c.beginPath();arr.forEach((v,i)=>{const x=X(f[i]),y=Y(Math.max(lo,v));i?c.lineTo(x,y):c.moveTo(x,y)});c.strokeStyle=col;c.lineWidth=lw;c.stroke();
-  if(fill){c.lineTo(X(f[f.length-1]),h-PB);c.lineTo(X(f[0]),h-PB);c.closePath();const g=c.createLinearGradient(0,PT,0,h-PB);g.addColorStop(0,"#ff9f1c55");g.addColorStop(1,"#ff9f1c05");c.fillStyle=g;c.fill()}};
+  if(fill){c.lineTo(X(f[f.length-1]),h-PB);c.lineTo(X(f[0]),h-PB);c.closePath();const g=c.createLinearGradient(0,PT,0,h-PB);g.addColorStop(0,P.curve+"55");g.addColorStop(1,P.curve+"05");c.fillStyle=g;c.fill()}};
  const mh=$("#mh")&&$("#mh").checked,rm=$("#rm")&&$("#rm").checked;if(rm)persLayer(c,w,h,ss,X,Y,[$("#band")?$("#band").value:"*",f0,f1,hi].join("|"));
  scs.forEach(([k,o])=>o.segs.forEach(g=>{const f=g.f.filter((x,i)=>x>=f0&&x<=f1),idx=g.f.map((x,i)=>i).filter(i=>g.f[i]>=f0&&g.f[i]<=f1);
   if(idx.length>1)line(idx.map(i=>g.l[i]),f,o.color||"#a3e635",1.4,false)}));
- ss.forEach(s=>{if(mh&&s.mh)line(s.mh,s.f,"#ff9f1c55",1,false);line(s.l,s.f,"#ff9f1c",rm?1.2:1.6,!rm)});
- if(D.state.thr!=null){const y=Y(D.state.thr);c.setLineDash([6,4]);c.strokeStyle="#ef4444";c.lineWidth=1.2;c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.setLineDash([]);c.fillStyle="#ef4444";c.textAlign="left";c.fillText("seuil "+D.state.thr+" dBm",PL+4,y-4)}
- marks(c,w,h,f0,f1,PT);c.fillStyle="#8b95a5";c.textAlign="left";c.fillText("dBm",4,PT-8);
+ ss.forEach(s=>{if(mh&&s.mh)line(s.mh,s.f,P.mh+"88",1,false);line(s.l,s.f,P.curve,rm?1.2:1.6,!rm)});
+ if(D.state.thr!=null){const y=Y(D.state.thr);c.setLineDash([6,4]);c.strokeStyle=P.thr;c.lineWidth=1.2;c.beginPath();c.moveTo(PL,y);c.lineTo(w-8,y);c.stroke();c.setLineDash([]);c.fillStyle=P.thr;c.textAlign="left";c.fillText("seuil "+D.state.thr+" dBm",PL+4,y-4)}
+ marks(c,w,h,f0,f1,PT);c.fillStyle=P.txt;c.textAlign="left";c.fillText("dBm",4,PT-8);
  const scLg=scs.map(([k,o])=>{const t="max hold "+k;return `<span><i style="background:${esc(o.color||"#a3e635")}"></i>${esc(t)}</span>`}).join("");
- lg.innerHTML=scLg+'<span><i style="background:#ff9f1c"></i>en direct</span>'+(mh?'<span><i style="background:#ff9f1c55"></i>max hold</span>':"")+(rm?'<span><i style="background:#38bdf8"></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)</span>':"")+'<span><i style="background:#ef4444"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
+ lg.innerHTML=scLg+'<span><i style="background:'+P.curve+'"></i>en direct</span>'+(mh?'<span><i style="background:'+P.mh+'88"></i>max hold</span>':"")+(rm?'<span><i style="background:'+P.curve+'66"></i>rémanence (plus c’est épais et vif, plus le signal est souvent là)</span>':"")+'<span><i style="background:'+P.thr+'"></i>seuil « occupé »</span><span><i style="background:#22c55e"></i>mes fréquences (couleur = état)</span>'}
 function levelAt(f){let best=null,bd=1e9;segs().forEach(s=>{let lo=0,hi=s.f.length-1;while(hi-lo>1){const m=(lo+hi)>>1;s.f[m]<f?lo=m:hi=m}[lo,hi].forEach(i=>{const d=Math.abs(s.f[i]-f);if(d<bd){bd=d;best=s.l[i]}})});return best}
 function readout(e){const cv=$("#cv"),sp=span(segs());if(!sp)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,f=sp[0]+(x-PL)/(r.width-PL-8)*(sp[1]-sp[0]);
  if(f<sp[0]||f>sp[1]){$("#rd").textContent="";return}const l=levelAt(f),near=D.state.rows.filter(w=>Math.abs(w.freq-f)<Math.max(.15,(w.bw||0)/2)).sort((a,b)=>Math.abs(a.freq-f)-Math.abs(b.freq-f))[0];
@@ -5499,6 +5584,7 @@ STEPS = (
     ("show", "🎚 Surveiller", "Pendant le show : démarrer, vérifier que tout est prêt, mode Show plein écran, appel des\n"
      "micros, mur pour un 2ᵉ écran, fréquence de secours, alertes sur téléphone.",
      (("§Avant d'ouvrir les portes", None),
+      ("⚡ Préréglages rapides (festival, salle, nuit…)…", "open_presets"),
       ("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"),
       ("🎤 Appel des micros (line check)…  Ctrl+L", "open_linecheck"),
       ("§Pendant le show", None),
@@ -5704,6 +5790,94 @@ def sound_cfg_norm(d):
         pass
     out["occ_beep"] = bool(d.get("occ_beep", False))
     return out
+
+
+# 7.56 : ⚡ Préréglages rapides (revue UX : « profils de configuration rapides »). Un clic règle d'un coup les seuils, la
+# mesure, la rémanence et les alarmes pour une situation type ; la fenêtre montre AVANT ce qui va changer.
+# Réglages : thr_auto (seuils auto), auto_occ / auto_weak (marges dB), points (donnée de AUTO_POINTS), persist
+# (rémanence, balayages), absent (s), confirm (CONFLIT confirmé après, s), repeat (son rejoué, s, 0 = jamais),
+# strong / strong_lvl (alerte trop fort), hold (pics gardés). « after » = fenêtre proposée ensuite (méthode).
+QUICK_PRESETS = (
+    ("festival", "🎪 Festival plein air",
+     "Beaucoup de monde, des talkies, de la télé, des équipes qui arrivent avec leur matériel : seuils automatiques "
+     "un peu larges, une occupation doit durer 3 s pour sonner, rémanence pour voir passer les brouilleurs.",
+     dict(thr_auto=True, auto_occ=12, auto_weak=6, points=0, persist=10, absent=20, confirm=3, repeat=30,
+          strong=True, strong_lvl=-25.0, hold=True), None),
+    ("salle", "🎭 Salle / théâtre",
+     "Lieu fermé et calme, émetteurs près de l'antenne : détection plus sensible, mesure plus fine, alarmes plus "
+     "rapides ; l'alerte « trop fort » monte un peu (les micros sont tout près).",
+     dict(thr_auto=True, auto_occ=10, auto_weak=5, points=-2, persist=5, absent=10, confirm=2, repeat=30,
+          strong=True, strong_lvl=-20.0, hold=True), None),
+    ("nuit", "🌙 Nuit de surveillance",
+     "Personne devant l'écran : balayage rapide, une occupation doit durer 5 s pour sonner (moins de fausses "
+     "alertes), son rejoué toutes les minutes, pas de rémanence (moins de processeur). Pense au mode festival : "
+     "relance automatique, PC qui ne s'endort pas, bilan chaque matin.",
+     dict(thr_auto=True, auto_occ=12, auto_weak=6, points=-1, persist=0, absent=30, confirm=5, repeat=60,
+          strong=True, strong_lvl=-25.0, hold=True), "open_festival"),
+    ("scan", "🔭 Scan de repérage",
+     "Avant le show, pour trouver la place libre : mesure détaillée, pics gardés, rémanence longue, alarmes "
+     "discrètes (un seul son, pas d'alerte « trop fort »). Ensuite : 📋 Préparer › Ajouter depuis le scan.",
+     dict(thr_auto=True, auto_occ=10, auto_weak=5, points=-2, persist=20, absent=60, confirm=5, repeat=0,
+          strong=False, strong_lvl=-25.0, hold=True), None),
+)
+PRESET_LABELS = (("thr_auto", "Seuils automatiques"), ("auto_occ", "Occupé dès"), ("auto_weak", "Faible dès"),
+                 ("points", "Points par balayage"), ("persist", "Rémanence"), ("absent", "TX absent après"),
+                 ("confirm", "Conflit confirmé après"), ("repeat", "Alarme rejouée"),
+                 ("strong", "Alerte « trop fort »"), ("hold", "Pics gardés"))
+
+
+def quick_preset(key):
+    """(clé, nom, explication, réglages, fenêtre proposée ensuite) du préréglage, ou None."""
+    return next((p for p in QUICK_PRESETS if p[0] == key), None)
+
+
+def preset_value_text(k, v, cfg=None):
+    """Texte lisible d'un réglage de préréglage (« bruit + 12 dB », « 10 balayages », « toutes les 30 s »…)."""
+    cfg = cfg or {}
+    if v is None:
+        return "—"
+    if k in ("thr_auto", "hold"):
+        return "oui" if v else "non"
+    if k in ("auto_occ", "auto_weak"):
+        return f"bruit + {int(v)} dB"
+    if k == "points":
+        return next((n for d, n, _b in AUTO_POINTS if d == v), "à la main")
+    if k == "persist":
+        return "aucune" if not v else f"{int(v)} balayages"
+    if k in ("absent", "confirm"):
+        return f"{int(v)} s" if v else "tout de suite"
+    if k == "repeat":
+        return dict(ALARM_REPEATS).get(int(v), f"{int(v)} s")
+    if k == "strong":
+        return f"au-dessus de {float(cfg.get('strong_lvl', -25.0)):.0f} dBm" if v else "non"
+    return str(v)
+
+
+def preset_changes(cur, key):
+    """Ce que le préréglage key va changer par rapport aux réglages actuels cur (mêmes clés) :
+    [(libellé, maintenant, après)] ; seulement les réglages qui changent vraiment."""
+    p = quick_preset(key)
+    if not p:
+        return []
+    new = p[3]
+    out = []
+    for k, lab in PRESET_LABELS:
+        if k not in new:
+            continue
+        a, b = cur.get(k), new[k]
+        same = a == b
+        if k == "strong":
+            same = bool(a) == bool(b) and (not b or abs(float(cur.get("strong_lvl", 0)) - float(new["strong_lvl"])) < 0.05)
+        if k in ("auto_occ", "auto_weak") and not new.get("thr_auto"):
+            continue
+        if not same:
+            out.append((lab, preset_value_text(k, a, cur), preset_value_text(k, b, new)))
+    return out
+
+
+def preset_match(cur):
+    """Clé du préréglage dont TOUS les réglages valent les réglages actuels, sinon "" (réglé à la main)."""
+    return next((p[0] for p in QUICK_PRESETS if not preset_changes(cur, p[0])), "")
 
 
 def net_text(nbytes, dt, rtt):
@@ -6249,7 +6423,7 @@ def site_report_html(scans, thr, title="Étude de site", venue="", generated="",
          "svg.spec{width:100%;height:auto;border:1px solid #d8dde8;border-radius:8px;background:#fbfcfe}",
          ".grid{stroke:#e3e7ef}.ax{font-size:11px;fill:#6b7488}.thr{stroke:#d33;stroke-dasharray:5 4}",
          ".lg span{display:inline-block;margin-right:14px}.lg i{display:inline-block;width:14px;height:3px;"
-         "vertical-align:middle;margin-right:5px}",
+         "vertical-align:middle;margin-right:5px}", REPORT_PRO_CSS,
          "@media print{body{padding:0}h2{break-before:page}h2:first-of-type{break-before:auto}tr{break-inside:avoid}}",
          "</style></head><body>", f"<h1>{e(title)}</h1>",
          f"<div class='muted'>{e(venue) + ' · ' if venue else ''}{e(generated)} · {len(scans)} scan(s) gardé(s) · "
@@ -7162,7 +7336,7 @@ class ScanWorker(QtCore.QThread):
         # statistiques (🩺 diagnostic) : où passe le temps, combien de balayages incomplets / reconnexions
         self.sweep_t = {}                         # id bande -> heure de la dernière mesure (time.time)
         self.stats = dict(segments=0, seg_s=0.0, seg_max=0.0, cycles=0, cycle_s=0.0, short=0, invalid=0,
-                          reconnects=0, refused=0, settings_s=0.0)
+                          reconnects=0, refused=0, settings_s=0.0, pts=0)
         self._warned = {}                          # message -> dernière fois affiché (pas de répétition chaque cycle)                  # commandes à glisser entre deux bandes (identifier, numéroter)
 
     def force_close(self):
@@ -7186,9 +7360,13 @@ class ScanWorker(QtCore.QThread):
         s_ = self.stats
         avg = s_["seg_s"] / s_["segments"] if s_["segments"] else 0.0
         cyc = s_["cycle_s"] / s_["cycles"] if s_["cycles"] else 0.0
+        spd = ""
+        if s_.get("pts") and s_["seg_s"] > 0:
+            spd = (f" · vitesse {s_['pts'] / s_['seg_s']:.0f} points/s "
+                   f"({1000.0 * s_['seg_s'] / s_['pts']:.1f} ms par point)")
         return (f"segments {s_['segments']} (moy. {avg:.2f} s, max {s_['seg_max']:.2f} s) · cycles {s_['cycles']} "
                 f"(moy. {cyc:.1f} s) · réglages {s_['settings_s']:.1f} s · incomplets {s_['short']} · invalides "
-                f"{s_['invalid']} · refus {s_['refused']} · reconnexions {s_['reconnects']}")
+                f"{s_['invalid']} · refus {s_['refused']} · reconnexions {s_['reconnects']}" + spd)
 
     def _tr(self, txt):
         self.trace.append(f"{datetime.now():%H:%M:%S.%f}"[:-3] + " " + txt)
@@ -7384,6 +7562,7 @@ class ScanWorker(QtCore.QThread):
                 dt = time.monotonic() - t_seg
                 self.stats["segments"] += 1
                 self.stats["seg_s"] += dt
+                self.stats["pts"] += int(pts)              # 7.56 : vitesse réelle du tinySA (points / s) au 🩺
                 self.stats["seg_max"] = max(self.stats["seg_max"], dt)
                 fr, state, note = scan_check(fr, lv, a, z, pts)
                 if state == "invalide":
@@ -13611,7 +13790,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.unit_combo.setToolTip("Unité d'affichage des niveaux (les fichiers restent en dBm).")
         self.unit_combo.activated.connect(lambda *_: o.set_unit(self.unit_combo.currentData()))
         col_btn = QtWidgets.QPushButton("🎨 Couleurs et thèmes…")
-        col_btn.setToolTip("Thèmes (sombre doux, clair, daltonien…) et chaque couleur une par une.")
+        col_btn.setToolTip("Thèmes (Pro sombre, gamme Analyseur, daltoniens…) et chaque couleur une par une.")
         col_btn.clicked.connect(lambda *_: o.edit_colors())
         lab_btn = QtWidgets.QPushButton("🔤 Mots et couleurs (OK, libre, ABSENT…)…")
         lab_btn.setToolTip("Les mots de la colonne Signal et leurs couleurs.")
@@ -13619,6 +13798,10 @@ class SettingsDialog(QtWidgets.QDialog):
         f.addRow("Langue / Language :", self.lang_combo)
         f.addRow("Interface :", self.level_combo)
         f.addRow("Unité des niveaux :", self.unit_combo)
+        pre_btn = QtWidgets.QPushButton("⚡ Préréglages rapides (festival, salle, nuit…)…")
+        pre_btn.setToolTip("Règle d'un coup les seuils, la mesure, la rémanence et les alarmes pour une situation type.")
+        pre_btn.clicked.connect(lambda *_: o.open_presets())
+        f.addRow(pre_btn)
         f.addRow(col_btn)
         f.addRow(lab_btn)
         self.smooth_chk = QtWidgets.QCheckBox("Courbes lissées (plus joli, mais plus gourmand en processeur)")
@@ -14249,7 +14432,11 @@ class ShowModeWindow(QtWidgets.QWidget):
             more = f"<div style='font-size:18px'>+ {len(cur) - 6} autre(s)</div>" if len(cur) > 6 else ""
             extra = (f"<div style='font-size:20px; margin-top:6px'>{_hesc(hl['text'])}</div>"
                      if hl["tone"] != "ok" else "")
-            self.banner.setText(rows + more + extra)
+            # 7.56 : quoi faire pour l'alarme la plus récente non acquittée (sinon la première)
+            a0 = next((a for a in cur if not a["acked"]), cur[0])
+            adv = ALARM_HELP.get(a0["kind"], ("", ""))[1]
+            hint = (f"<div style='font-size:18px; margin-top:6px'>→ {_hesc(TR(adv))}</div>" if adv else "")
+            self.banner.setText(rows + more + hint + extra)
             self.banner.setStyleSheet(f"background:{th['st_occ']}; color:white; border-radius:10px; padding:10px")
         elif hl["tone"] != "ok":                 # pas d'alarme MAIS arrêtée / mesures absentes / périmées / partielles
             self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
@@ -14315,6 +14502,104 @@ class ShowModeWindow(QtWidgets.QWidget):
         if getattr(self.owner, "_show_mode", None) is self:
             self.owner._show_mode = None
         super().closeEvent(e)
+
+
+class PresetDialog(QtWidgets.QDialog):
+    """⚡ Préréglages rapides (7.56) : une situation type à gauche, ce qui va changer à droite (maintenant → après),
+    Appliquer. Rien n'est touché avant le clic."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Préréglages rapides")
+        lay = QtWidgets.QVBoxLayout(self)
+        head = QtWidgets.QLabel("Choisis ta situation : l'appli règle d'un coup les seuils, la mesure, la rémanence et les "
+                                "alarmes. Tu vois ce qui change avant d'appliquer, et tout reste modifiable ensuite.")
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        row = QtWidgets.QHBoxLayout()
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setMaximumWidth(230)
+        self.lst.setToolTip("Les situations types. Celle qui correspond à tes réglages actuels est marquée ✓.")
+        for key, name, _d, _st, _a in QUICK_PRESETS:
+            it = QtWidgets.QListWidgetItem(name)
+            it.setData(Qt.ItemDataRole.UserRole, key)
+            self.lst.addItem(it)
+        row.addWidget(self.lst)
+        right = QtWidgets.QVBoxLayout()
+        self.desc = QtWidgets.QLabel()
+        self.desc.setWordWrap(True)
+        self.desc.setMinimumHeight(70)
+        self.desc.setAlignment(Qt.AlignmentFlag.AlignTop)
+        right.addWidget(self.desc)
+        self.tab = QtWidgets.QTableWidget(0, 3)
+        self.tab.setHorizontalHeaderLabels(["Réglage", "Maintenant", "Après"])
+        self.tab.verticalHeader().setVisible(False)
+        self.tab.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tab.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tab.setToolTip("Ce que ce préréglage va changer par rapport à tes réglages actuels.")
+        right.addWidget(self.tab, 1)
+        self.note = QtWidgets.QLabel()
+        self.note.setWordWrap(True)
+        right.addWidget(self.note)
+        row.addLayout(right, 1)
+        lay.addLayout(row, 1)
+        bb = QtWidgets.QHBoxLayout()
+        bb.addStretch(1)
+        self.apply_btn = QtWidgets.QPushButton("Appliquer")
+        self.apply_btn.setToolTip("Règle l'appli selon ce préréglage (tout reste modifiable à la main ensuite).")
+        self.apply_btn.clicked.connect(lambda *_: self.apply())
+        close_btn = QtWidgets.QPushButton("Fermer")
+        close_btn.setToolTip("Ferme sans rien changer de plus.")
+        close_btn.clicked.connect(lambda *_: self.close())
+        bb.addWidget(self.apply_btn)
+        bb.addWidget(close_btn)
+        lay.addLayout(bb)
+        self.lst.currentRowChanged.connect(lambda *_: self.refresh())
+        cur = preset_match(owner.preset_current())
+        keys = [p[0] for p in QUICK_PRESETS]
+        self.lst.setCurrentRow(keys.index(cur) if cur in keys else 0)
+        fit_dialog(self, 760, 460)
+        self.refresh()
+
+    def key(self):
+        it = self.lst.currentItem()
+        return it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+
+    def refresh(self):
+        cur = self.owner.preset_current()
+        match = preset_match(cur)
+        for i in range(self.lst.count()):
+            it = self.lst.item(i)
+            k = it.data(Qt.ItemDataRole.UserRole)
+            p = quick_preset(k)
+            it.setText(TR(p[1]) + ("  ✓" if k == match else ""))
+        p = quick_preset(self.key())
+        if not p:
+            return
+        self.desc.setText(f"<b>{_hesc(TR(p[1]))}</b><br>{_hesc(TR(p[2]))}")
+        ch = preset_changes(cur, p[0])
+        self.tab.setRowCount(len(ch))
+        for r, (lab, a, b) in enumerate(ch):
+            for c, txt in enumerate((lab, a, b)):
+                self.tab.setItem(r, c, QtWidgets.QTableWidgetItem(TR(txt)))
+        self.note.setText("✓ Tes réglages correspondent déjà à ce préréglage." if not ch else
+                          f"{len(ch)} réglage(s) vont changer. Les fréquences, scènes et bandes ne bougent pas.")
+        self.apply_btn.setEnabled(bool(ch))
+
+    def apply(self):
+        k = self.key()
+        if not k:
+            return
+        self.owner.apply_preset(k)
+        self.refresh()
+        after = quick_preset(k)[4]
+        if after and hasattr(self.owner, after):
+            r = QtWidgets.QMessageBox.question(
+                self, "Préréglages rapides", "Préréglage appliqué. Ouvrir aussi le mode festival (relance automatique, "
+                "PC qui ne s'endort pas, bilan chaque matin) ?")
+            if r == QtWidgets.QMessageBox.StandardButton.Yes:
+                getattr(self.owner, after)()
 
 
 class ReadyDialog(QtWidgets.QDialog):
@@ -16700,6 +16985,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "⚡ Préréglages rapides": "Festival plein air, salle, nuit de surveillance, scan de repérage : règle d'un coup\n"
+                                 "les seuils, la mesure, la rémanence et les alarmes (tu vois ce qui change avant).",
         "🔒 Outils de coordination": "Vérifier le plan, coordonner, intermod et profils d'appareil sont cachés :\n"
                                     "⚙ Réglages › Général › « Outils de coordination (avancé) » pour les afficher.",
         "▶ Scanner ici": "Démarre le balayage et remet les pics à zéro : laisse tourner quelques minutes pour voir\n"
@@ -19473,13 +19760,16 @@ class MainWindow(QtWidgets.QMainWindow):
             title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
             hunt=self.hunt_state(), terrain=self.terrain_state(), health=self.health(),
-            thr=round(float(self.thr_spin.value()), 1)))
+            thr=round(float(self.thr_spin.value()), 1),
+            # 7.56 : le spectre de la page web prend les couleurs du thème de l'appli (gamme Analyseur comprise)
+            plot=dict(bg=self.theme["plot_bg"], fg=self.theme["plot_fg"], curve=self.theme["curve"],
+                      mh=self.theme["maxhold"], thr=self.theme["thr"], crt=self.theme.get("plot_style") == "crt")))
         out = {"fr": json.dumps(st, ensure_ascii=False).encode("utf-8")}
         tr = en_translator()                              # chaque personne choisit sa langue sur la page
         for r in st["rows"]:
             r.update(state_txt=tr(r["state_txt"]), status=tr(r["status"]), alarm=tr(r["alarm"]))
         for a in st["alarms"]:
-            a.update(kind=tr(a["kind"]), info=tr(a["info"]))
+            a.update(kind=tr(a["kind"]), info=tr(a["info"]), hint=tr(a.get("hint") or ""))
         if st.get("health"):
             d_ = st["health"].get("data")
             st["health"] = dict(st["health"], text=tr(st["health"]["text"]),
@@ -22002,6 +22292,7 @@ class MainWindow(QtWidgets.QMainWindow):
             thr, weak = eff_thresholds(w["thr"], ref_l, rel, margin, gthr, gweak,
                                        w.get("afl") if self.thr_auto else None, self.auto_margins())
             w["athr"] = thr if self.thr_auto and w["thr"] is None else None
+            w["ethr"] = thr                         # seuil réellement appliqué (explication des alarmes, 7.56)
             prev = w["state"]
             new = next_state(prev, lvl, thr, weak, weak_on)
             t0 = w["t_acc"]
@@ -23829,6 +24120,52 @@ class MainWindow(QtWidgets.QMainWindow):
         w.showFullScreen()
         return w
 
+    # ---------------------------------------------------- ⚡ préréglages rapides (7.56)
+    def preset_current(self):
+        """Réglages actuels, avec les clés des préréglages (voir QUICK_PRESETS)."""
+        return dict(thr_auto=bool(getattr(self, "thr_auto", False)), auto_occ=self.auto_occ_spin.value(),
+                    auto_weak=self.auto_weak_spin.value(), points=self.points_combo.currentData(),
+                    persist=self.persist_combo.currentData() or 0, absent=self.absent_spin.value(),
+                    confirm=int(self.sound.cfg.get("confirm", 0)), repeat=int(self.sound.cfg.get("repeat", 30)),
+                    strong=self.strong_chk.isChecked(), strong_lvl=round(float(self.strong_spin.value()), 1),
+                    hold=self.hold_chk.isChecked())
+
+    def apply_preset(self, key):
+        """Applique le préréglage key (seulement des réglages : liste, scènes et bandes ne bougent pas)."""
+        p = quick_preset(key)
+        if not p:
+            return False
+        st = p[3]
+        self.thr_auto_btn.setChecked(bool(st["thr_auto"]))
+        self.set_thr_auto(bool(st["thr_auto"]))
+        self.auto_occ_spin.setValue(int(st["auto_occ"]))
+        self.auto_weak_spin.setValue(int(st["auto_weak"]))
+        i = self.points_combo.findData(st["points"])
+        if i >= 0 and i != self.points_combo.currentIndex():
+            self.set_points_choice(i)
+        i = self.persist_combo.findData(st["persist"])
+        if i >= 0:
+            self.persist_combo.setCurrentIndex(i)
+        self.absent_spin.setValue(int(st["absent"]))
+        self.sound.cfg = sound_cfg_norm(dict(self.sound.cfg, confirm=st["confirm"], repeat=st["repeat"]))
+        self.alarms.repeat_s = float(self.sound.cfg["repeat"])
+        self.strong_chk.setChecked(bool(st["strong"]))
+        self.strong_spin.setValue(float(st["strong_lvl"]))
+        self.hold_chk.setChecked(bool(st["hold"]))
+        self.preset_last = key
+        self.set_status(f"⚡ Préréglage « {TR(p[1])} » appliqué (tout reste modifiable à la main).")
+        return True
+
+    def open_presets(self):
+        if getattr(self, "_presets", None) is not None:
+            self._presets.refresh()
+            self._presets.show()
+            self._presets.raise_()
+            return self._presets
+        self._presets = PresetDialog(self)
+        self._presets.show()
+        return self._presets
+
     def open_ready(self):
         if getattr(self, "_ready", None) is not None:
             self._ready.refresh()
@@ -24582,6 +24919,7 @@ class MainWindow(QtWidgets.QMainWindow):
             active = a["t_end"] is None
             end = now if active else a["t_end"]
             state = ("à acquitter" if not a["acked"] else "acquittée") if active else "terminée"
+            why_tip = self.alarm_why_text(a, html=False)
             vals = (ALARM_PRIO.get(a["prio"], "?"), a["kind"], a["name"], f'{a["freq"]:.3f}' if a["freq"] else "—",
                     fmt_clock(a["t0"]), fmt_dur(end - a["t0"]), self.lvl(a["level"], suffix=True),
                     " · ".join(x for x in (a["layer"], "" if a["kind"] == "ABSENT" else a.get("info", "")) if x),
@@ -24600,7 +24938,42 @@ class MainWindow(QtWidgets.QMainWindow):
                     it.setForeground(QtGui.QColor(contrast_text(bg)))
                 else:
                     it.setForeground(QtGui.QColor(th["st_none"]))
+                it.setToolTip(why_tip)
                 t.setItem(r, c, it)
+        self._alarm_why_update()
+
+    def alarm_explain(self, a):
+        """{measured, deduced, advice} de l'alarme a, avec le niveau et le seuil dans l'unité de l'appli."""
+        thr = None
+        if a.get("kind") == "TROP FORT":
+            thr = self.strong_spin.value()
+        elif a.get("freq"):
+            w = next((w_ for w_ in self.watch if abs(w_["freq"] - a["freq"]) < 1e-6), None)
+            thr = w.get("ethr") if w is not None else None
+        return alarm_explain(a, time.time(), self.lvl(a["level"], True) if a.get("level") is not None else "",
+                             self.lvl(thr, True) if thr is not None else "")
+
+    def alarm_why_text(self, a, html=True):
+        e = self.alarm_explain(a)
+        rows = (("Mesuré", e["measured"]), ("Cause probable", e["deduced"]), ("À faire", e["advice"]))
+        if html:
+            return "<br>".join(f"<b>{_hesc(TR(k))} :</b> {_hesc(TR(v))}" for k, v in rows if v)
+        return "\n".join(f"{TR(k)} : {TR(v)}" for k, v in rows if v)
+
+    def _alarm_why_update(self):
+        lab = getattr(self, "alarm_why", None)
+        if lab is None:
+            return
+        ids = self._alarm_selected_ids()
+        items = self.alarms.listing()
+        a = next((x for x in items if ids and x["id"] == ids[0]), None)
+        if a is None:
+            a = next((x for x in items if x["t_end"] is None and not x["acked"]), None)
+        if a is None:
+            lab.setVisible(False)
+            return
+        lab.setText(f"<b>{_hesc(a['kind'])} — {_hesc(a.get('name') or '')}</b><br>" + self.alarm_why_text(a))
+        lab.setVisible(True)
 
     def _alarm_selected_ids(self):
         rows = sorted({i.row() for i in self.alarm_table.selectedIndexes()})
@@ -24983,6 +25356,15 @@ class MainWindow(QtWidgets.QMainWindow):
         bar.addLayout(self._flow(b_ack, b_all, b_clr, self.snooze_btn), 2)
         lay.addLayout(bar)
         lay.addWidget(self.alarm_table, 1)
+        # 7.56 : l'alarme choisie (sinon la plus récente à acquitter) expliquée : mesuré / cause probable / quoi faire
+        self.alarm_why = QtWidgets.QLabel("")
+        self.alarm_why.setWordWrap(True)
+        self.alarm_why.setTextFormat(Qt.TextFormat.RichText)
+        self.alarm_why.setToolTip("Ce qui est MESURÉ (sûr), ce qu'on en DÉDUIT (cause probable, à vérifier) et ce qu'on "
+                                  "CONSEILLE.\nClique une alarme dans la liste pour l'expliquer.")
+        self.alarm_why.setVisible(False)
+        lay.addWidget(self.alarm_why)
+        self.alarm_table.itemSelectionChanged.connect(lambda *_: self._alarm_why_update())
         tip = QtWidgets.QLabel("⚠ CONFLIT : un signal sur une fréquence « Doit rester libre » · ⚠ ABSENT : une fréquence "
                                "« Doit émettre » reste sans signal. Double-clic = voir sur le spectre. Priorité "
                                "(Critique ❗ / Normale / Info 🔕) : clic droit sur un groupe. Critique = son rejoué "

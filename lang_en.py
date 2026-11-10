@@ -4714,3 +4714,86 @@ EXACT.update({
     "Rémanence façon analyseur : les anciens balayages restent à l'écran en lueur.\nCe qui revient à chaque balayage brille, un signal passager laisse une trace pâle.":
         "Analyser-style persistence: older sweeps stay on screen as a glow.\nWhat comes back every sweep shines, a passing signal leaves a faint trace.",
 })
+
+# 7.56 : ⚡ préréglages rapides
+EXACT.update({
+    "Alarme rejouée": "Alarm repeated",
+    "Alerte « trop fort »": "“Too strong” alert",
+    "Avant le show, pour trouver la place libre : mesure détaillée, pics gardés, rémanence longue, alarmes discrètes (un seul son, pas d'alerte « trop fort »). Ensuite : 📋 Préparer › Ajouter depuis le scan.":
+        "Before the show, to find free space: detailed measurement, peaks kept, long persistence, discreet alarms (a single sound, no “too strong” alert). Then: 📋 Prepare › Add from scan.",
+    "Beaucoup de monde, des talkies, de la télé, des équipes qui arrivent avec leur matériel : seuils automatiques un peu larges, une occupation doit durer 3 s pour sonner, rémanence pour voir passer les brouilleurs.":
+        "Lots of people, walkie-talkies, TV, crews arriving with their own gear: slightly wide automatic thresholds, a signal must last 3 s before it sounds, persistence to see interferers go by.",
+    "Ce que ce préréglage va changer par rapport à tes réglages actuels.": "What this preset will change compared with your current settings.",
+    "Choisis ta situation : l'appli règle d'un coup les seuils, la mesure, la rémanence et les alarmes. Tu vois ce qui change avant d'appliquer, et tout reste modifiable ensuite.":
+        "Pick your situation: the app sets thresholds, measurement, persistence and alarms in one go. You see what changes before applying, and everything stays adjustable afterwards.",
+    "Conflit confirmé après": "Conflict confirmed after",
+    "Ferme sans rien changer de plus.": "Closes without changing anything else.",
+    "Festival plein air, salle, nuit de surveillance, scan de repérage : règle d'un coup\nles seuils, la mesure, la rémanence et les alarmes (tu vois ce qui change avant).":
+        "Outdoor festival, venue, overnight monitoring, site survey: sets thresholds,\nmeasurement, persistence and alarms in one go (you see what changes first).",
+    "Les situations types. Celle qui correspond à tes réglages actuels est marquée ✓.": "Typical situations. The one matching your current settings is marked ✓.",
+    "Lieu fermé et calme, émetteurs près de l'antenne : détection plus sensible, mesure plus fine, alarmes plus rapides ; l'alerte « trop fort » monte un peu (les micros sont tout près).":
+        "Quiet indoor venue, transmitters close to the antenna: more sensitive detection, finer measurement, faster alarms; the “too strong” alert is raised a little (mics are very close).",
+    "Maintenant": "Now",
+    "Occupé dès": "Busy from",
+    "Personne devant l'écran : balayage rapide, une occupation doit durer 5 s pour sonner (moins de fausses alertes), son rejoué toutes les minutes, pas de rémanence (moins de processeur). Pense au mode festival : relance automatique, PC qui ne s'endort pas, bilan chaque matin.":
+        "Nobody at the screen: fast sweep, a signal must last 5 s before it sounds (fewer false alarms), sound repeated every minute, no persistence (less CPU). Think of festival mode: automatic restart, PC that never sleeps, report every morning.",
+    "Points par balayage": "Points per sweep",
+    "Préréglage appliqué. Ouvrir aussi le mode festival (relance automatique, PC qui ne s'endort pas, bilan chaque matin) ?":
+        "Preset applied. Also open festival mode (automatic restart, PC that never sleeps, report every morning)?",
+    "Préréglages rapides": "Quick presets",
+    "Règle d'un coup les seuils, la mesure, la rémanence et les alarmes pour une situation type.": "Sets thresholds, measurement, persistence and alarms in one go for a typical situation.",
+    "Règle l'appli selon ce préréglage (tout reste modifiable à la main ensuite).": "Sets the app up with this preset (everything stays adjustable by hand afterwards).",
+    "Réglage": "Setting",
+    "Seuils automatiques": "Automatic thresholds",
+    "Thèmes (Pro sombre, gamme Analyseur, daltoniens…) et chaque couleur une par une.": "Themes (Pro dark, Analyser range, colour-blind…) and every colour one by one.",
+    "tout de suite": "immediately",
+    "à la main": "by hand",
+    "⚡ Préréglages rapides": "⚡ Quick presets",
+    "⚡ Préréglages rapides (festival, salle, nuit…)…": "⚡ Quick presets (festival, venue, night…)…",
+    "✓ Tes réglages correspondent déjà à ce préréglage.": "✓ Your settings already match this preset.",
+    "🌙 Nuit de surveillance": "🌙 Overnight monitoring",
+    "🎪 Festival plein air": "🎪 Outdoor festival",
+    "🎭 Salle / théâtre": "🎭 Venue / theatre",
+    "🔭 Scan de repérage": "🔭 Site survey",
+})
+TEMPLATES.update({
+    "<b>{}</b><br>{}": "<b>{}</b><br>{}",
+    "bruit + {} dB": "noise + {} dB",
+    "⚡ Préréglage « {} » appliqué (tout reste modifiable à la main).": "⚡ Preset “{}” applied (everything stays adjustable by hand).",
+    "au-dessus de {} dBm": "above {} dBm",
+    "{} réglage(s) vont changer. Les fréquences, scènes et bandes ne bougent pas.": "{} setting(s) will change. Frequencies, stages and bands stay as they are.",
+})
+
+# 7.56 : alarmes expliquées (mesuré / cause probable / à faire)
+EXACT.update({
+    "Cause probable": "Probable cause",
+    "Ce qui est MESURÉ (sûr), ce qu'on en DÉDUIT (cause probable, à vérifier) et ce qu'on CONSEILLE.\nClique une alarme dans la liste pour l'expliquer.":
+        "What is MEASURED (certain), what we DEDUCE from it (probable cause, to be checked) and what we ADVISE.\nClick an alarm in the list to explain it.",
+    "Chasse au brouilleur pour le trouver ; si ça dure, Fréquence de secours.": "Interference hunt to find it; if it lasts, Backup frequency.",
+    "Coupe ou éloigne un des émetteurs cités pour confirmer ; sinon change de fréquence (Fréquence de secours).":
+        "Switch off or move one of the listed transmitters to confirm; otherwise change frequency (Backup frequency).",
+    "Câble USB ou réseau débranché, tinySA éteint ou figé.": "USB or network cable unplugged, tinySA off or frozen.",
+    "L'émetteur est éteint, à court de piles, hors de portée ou coupé.": "The transmitter is off, out of battery, out of range or muted.",
+    "Mesuré": "Measured",
+    "Probablement un produit d'intermodulation de tes propres émetteurs (formule indiquée) : il apparaît quand ils émettent ensemble.":
+        "Probably an intermodulation product of your own transmitters (formula shown): it appears when they transmit together.",
+    "Quelqu'un émet sur une fréquence qui doit rester libre : un émetteur d'une autre équipe, un talkie, ou un de tes émetteurs mal réglé.":
+        "Someone is transmitting on a frequency that must stay free: another crew's transmitter, a walkie-talkie, or one of your transmitters set wrong.",
+    "Un émetteur est très près de l'antenne (talkie, pack posé à côté) : il peut saturer les récepteurs et le tinySA.":
+        "A transmitter is very close to the antenna (walkie-talkie, pack lying next to it): it can overload the receivers and the tinySA.",
+    "Vérifie le câble et l'alimentation : l'appli réessaie toute seule. Si rien ne revient, débranche et rebranche le tinySA.":
+        "Check the cable and power: the app retries on its own. If nothing comes back, unplug and replug the tinySA.",
+    "Vérifie le pack et les piles. S'il est éteint exprès : clic droit › Éteint (je sais).":
+        "Check the pack and batteries. If it is off on purpose: right-click › Off (I know).",
+    "À faire": "What to do",
+    "Éloigne l'émetteur ou l'antenne ; si c'est le tien, baisse sa puissance.": "Move the transmitter or the antenna away; if it is yours, lower its power.",
+})
+TEMPLATES.update({
+    "{} sur {} MHz, depuis {}": "{} on {} MHz, for {}",
+    "{} sur {} MHz (seuil {}), depuis {}": "{} on {} MHz (threshold {}), for {}",
+    "Plus de signal sur {} MHz depuis {}": "No signal on {} MHz for {}",
+    "Plus de réponse du tinySA depuis {}": "No answer from the tinySA for {}",
+    "<b>{} — {}</b><br>": "<b>{} — {}</b><br>",
+    "<div style='font-size:18px; margin-top:6px'>→ {}</div>": "<div style='font-size:18px; margin-top:6px'>→ {}</div>",
+})
+TEMPLATES.update({" · vitesse {} points/s ({} ms par point)": " · speed {} points/s ({} ms per point)"})

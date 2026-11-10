@@ -686,6 +686,12 @@ _w._apply_settings(_d, _cfg)
 check("réglage accepté : noté, plus renvoyé", _w.st["rbw"] == 30 and _w.st["front"] == (False, "auto")
       and _d.rbw_calls == _n, str(_w.st))
 check("réglage refusé : compté dans les statistiques", _w.stats["refused"] >= 2 and "refus" in _w.stats_text())
+_st0 = dict(_w.stats)
+check("🩺 sans balayage : pas de vitesse affichée", "points/s" not in _w.stats_text())
+_w.stats.update(pts=4500, seg_s=1.5, segments=3)
+check("🩺 vitesse réelle du balayage (points/s) dans les statistiques (7.56)",
+      "vitesse 3000 points/s (0.3 ms par point)" in _w.stats_text(), _w.stats_text())
+_w.stats.clear(); _w.stats.update(_st0)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
