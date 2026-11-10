@@ -4671,3 +4671,4 @@ EXACT.update({
 })
 TEMPLATES.update({"<div style='font-size:20px; margin-top:6px'>{}</div>": "<div style='font-size:20px; margin-top:6px'>{}</div>"})
 WEB += [('>■ Surveillance arrêtée<', '>■ Monitoring stopped<'), ("<small>Rien n'est surveillé en ce moment.</small>", "<small>Nothing is being monitored right now.</small>")]
+TEMPLATES.update({"max pendant l'occupation : {}": "max while busy: {}"})
