@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.54.1"
+APP_VER = "7.54.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -206,7 +206,7 @@ THEMES = {
                            wf="Chaud"),
     # 7.54.1 (Clément : « le filtre rouge ou vert c'est pas beau », photo d'un vieil analyseur à tube : « plutôt comme
     # ça ») : interface neutre, SPECTRE façon écran cathodique (plot_style « crt » : grille bien visible, trace
-    # phosphore avec halo, une seule teinte pour la grille, les axes et la trace).
+    # phosphore, une seule teinte pour la grille, les axes et la trace).
     "Nuit (rouge)": dict(_G, ui_accent="#c2453d", plot_bg="#0c0505", plot_fg="#ff6f5e", curve="#ffc2b8",
                          maxhold="#c0503f", thr="#ffe0da", thr_weak="#e89080", st_free="#5fb3a1",
                          st_libre="#7a8fd6", st_weak="#e0b050", st_occ="#ff5c5c", st_unk="#b48ad6",
@@ -22206,6 +22206,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     it.setClipToView(True)                 # fluidité (7.31.1) : seulement la partie visible,
                     it.setDownsampling(auto=True, method="peak")   # ~1 point par pixel, pics gardés
                     it.setZValue(-1)
+                    # 7.54.2 : la rémanence ne change qu'une fois par balayage mais était redessinée à chaque
+                    # rafraîchissement (5 fois / s) -> image gardée en cache, refaite seulement si elle change
+                    it.curve.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
                     self.spec.getPlotItem().addItem(it)
                     self._hist_items.append(it)
                 c = QtGui.QColor(base)
@@ -22744,13 +22747,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     a.setTextPen(pg.mkPen(t["plot_fg"]))
             crt = t.get("plot_style") == "crt"
             self.curve.setPen(pg.mkPen(t["curve"], width=1.8 if crt else 1.6))
-            try:                                  # halo du phosphore (écran cathodique)
-                glow = QtGui.QColor(t["plot_fg"])
-                glow.setAlpha(70)
-                self.curve.setShadowPen(pg.mkPen(glow, width=6) if crt else None)
-            except Exception:
-                pass
+            # 7.54.2 (fluidité, mesuré en démo à 1920 × 1080) : la grille fine (sous-graduations) coûtait ~16 % de
+            # processeur à elle seule -> grands carreaux seulement, pour tous les thèmes (59 % -> 43 %). Le halo du
+            # phosphore (stylo de plus d'1 px sous la trace) doublait le coût du dessin (43 % -> 87 %) : retiré.
             self.spec.getPlotItem().showGrid(x=True, y=True, alpha=0.40 if crt else 0.25)
+            for ax in ("bottom", "left"):
+                a_ = self.spec.getPlotItem().getAxis(ax)
+                a_.setStyle(maxTickLevel=0, maxTextLevel=0)
+                a_.setTickDensity(2.6 if ax == "left" else 1.6)
             self.maxcurve.setPen(pg.mkPen(t["maxhold"], width=1))
             self.refcurve.setPen(pg.mkPen(t["ref"], width=1.3, style=Qt.PenStyle.DashLine))
             self.thr_line.setPen(pg.mkPen(t["thr"], width=1.5, style=Qt.PenStyle.DashLine))
