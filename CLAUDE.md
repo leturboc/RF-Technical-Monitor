@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.54.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.54.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -926,6 +926,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (annulable). Thèmes « analyseur » : bandeaux du bas (`bp_*`) en nuances assombries du phosphore. 💤 : la case Signal ne dit « éteint » que si le micro ne capte rien (sinon elle
   montre la mesure) → la case **Statut** affiche « 💤 éteint · statut » (ou « 💤 hors état » pour un état 📸) et la ligne
   est grisée (`dim` dans `update_watch_table`), même si le micro émet encore.
+- **7.54.2 (Clément : « go petit plus visuel + fluidité »)** — mesuré en démo (1920 × 1080, 30 fréquences, rémanence 10,
+  profil cProfile, script de la session) : la grille FINE de pyqtgraph (sous-graduations, `AxisItem.paint` → `QPicture.play`
+  15 ms) coûtait ~16 % de processeur → **grands carreaux seulement pour tous les thèmes** (`setStyle(maxTickLevel=0,
+  maxTextLevel=0)`, `setTickDensity` 1,6 en fréquence / 2,6 en dB ≈ 10 dB par carreau, dans `apply_theme`). Le halo
+  phosphore (`setShadowPen` > 1 px) doublait le dessin (43 → 87 %) : retiré. Rémanence : `DeviceCoordinateCache` sur les
+  courbes (refaites seulement à chaque balayage, pas à chaque rafraîchissement). Total démo : Pro sombre 59 → 39 %,
+  Analyseur vert 87 → ~45 %. Reste : rémanence ≈ +10 % (idée : image de densité au lieu de N courbes), `floor_curve` ≈ 3 %
+  (centiles en boucle). **Pas mesuré sur le PC de Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
