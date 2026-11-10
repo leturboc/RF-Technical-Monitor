@@ -866,6 +866,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     déclenchera des reconnexions → regarder le 🩺 diagnostic (compteur « invalides »).
   - **Relais sans liste d'IP** : avertissement dans `RelayWindow` (« tout appareil du réseau peut piloter ce tinySA »)
     et dans le journal du Pi. Pas d'authentification ni de chiffrement (réseau technique de confiance seulement).
+  - **4ᵉ audit (UX, même jour)** : surveillance ARRÊTÉE = jamais « tout va bien » : PURE `STOPPED_HEALTH` ; mode Show :
+    `hl` = arrêtée / `health()["data"]` / indéterminé, et les alarmes S'AFFICHENT AVEC l'état de surveillance (ligne
+    en dessous) au lieu de le masquer ; vue Régie : `hb` (arrêtée / indéterminé / problème) affiché sous les alarmes,
+    « ✔ Tout va bien » seulement en surveillance, sans alarme et mesures fraîches. gui_reel : `is_running` forcé à
+    False → bannière « arrêtée ».
   - Pas fait (proposé) : concaténations de `_scan_band` (à mesurer d'abord), mesure de cadence réelle par segment.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.

@@ -4609,10 +4609,12 @@ function update(v){const st=D.state;
   g.style.setProperty("--tw",tw+"px");g.style.setProperty("--th",th+"px");g.style.setProperty("--fs",Math.max(13,Math.min(40,th*.17,tw/9))+"px");
   g.innerHTML=rs.map(r=>`<div class="t ${r.tone}${r.alarm?" alarm":""}"${r.color&&!r.alarm&&r.tone!=="none"?` style="background:${r.color}${r.tone==="bad"?"aa":"55"};border-color:${r.color}"`:""}><div class="n">${r.alarm?"⚠ ":""}${esc(r.name)}</div><div class="f">${r.freq.toFixed(3)} MHz</div><div class="l">${esc(r.state_txt)}${r.level_txt?" · "+esc(r.level_txt):""}</div></div>`).join("")||'<div class="empty">Rien à afficher</div>';return}
  if(v==="regie"){const rs=st.rows.filter(inLayer),un=st.alarms.filter(a=>!a.acked);
-  $("#ra").innerHTML=un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:"")
-   :(st.running&&!(st.health&&st.health.data)?`<div class="rg-al bad">⚠ État de surveillance indéterminé</div>`
-   :st.health&&st.running&&st.health.data&&st.health.data.tone!=="ok"?`<div class="rg-al ${st.health.data.tone==="bad"?"bad":"warn"}">${esc(st.health.data.text)}</div>`
-   :`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)${st.running?"":" · ⚠ surveillance arrêtée"}</small></div>`);
+  const hd=st.health&&st.health.data;
+  const hb=!st.running?`<div class="rg-al bad">■ Surveillance arrêtée<small>Rien n'est surveillé en ce moment.</small></div>`
+   :!hd?`<div class="rg-al bad">⚠ État de surveillance indéterminé</div>`
+   :hd.tone!=="ok"?`<div class="rg-al ${hd.tone==="bad"?"bad":"warn"}">${esc(hd.text)}</div>`:"";
+  $("#ra").innerHTML=(un.length?un.slice(0,4).map(a=>`<div class="rg-al bad">⚠ ${esc(a.kind)} — ${esc(a.name)}<small>${a.freq?a.freq.toFixed(3)+" MHz":""}${a.layer?" · "+esc(a.layer):""}${a.info?" · "+esc(a.info):""}</small></div>`).join("")+(un.length>4?`<div class="who">+ ${un.length-4} autre(s) alarme(s)</div>`:""):"")
+   +(hb||(un.length?"":`<div class="rg-al ok">✔ Tout va bien<small>${rs.length} fréquence(s) surveillée(s)</small></div>`));
   const G={};rs.forEach(r=>{const k=lay(r)||"Sans scène";(G[k]=G[k]||[]).push(r)});
   const ks=Object.keys(G).sort(),g=$("#g"),n=Math.max(1,ks.length),W=g.clientWidth||innerWidth,cols=Math.min(n,W<700?1:(W<1200?2:3));
   g.style.setProperty("--rw",Math.max(220,W/cols-16)+"px");g.style.setProperty("--rf",Math.max(18,Math.min(44,(W/cols)/11))+"px");
@@ -6443,6 +6445,7 @@ SNR_GOOD, SNR_OK, SNR_LOW = 20.0, 10.0, 6.0       # marge au-dessus du bruit (dB
 # Saturation : niveau MAX reçu par le tinySA au-delà duquel ses mesures deviennent douteuses (compression, faux
 # signaux). Valeurs de départ prudentes, PAS mesurées sur un vrai tinySA Ultra (atténuateur auto) : à ajuster.
 SAT_WARN, SAT_BAD = -25.0, -15.0
+STOPPED_HEALTH = "■ Surveillance arrêtée : rien n'est surveillé en ce moment."
 UNKNOWN_HEALTH = ("⚠ État de surveillance indéterminé : impossible de vérifier la fraîcheur des mesures "
                   "(voir crash.log). Vérifie le spectre et la liste.")
 SAT_LNA_SHIFT = 15.0                                # préampli (LNA) en marche : sature ~15 dB plus tôt
@@ -13878,24 +13881,30 @@ class ShowModeWindow(QtWidgets.QWidget):
         self.state_btn.setText(f"📸 {o.state_cur}" if o.state_cur else "📸 Tout actif")
         self.state_btn.setVisible(bool(o.states))
         cur = [a for a in o.alarms.listing() if a.get("t_end") is None]
-        if cur:
+        # état de la surveillance (audit 7.52, fail-safe) : arrêtée ou indéterminée n'est JAMAIS « tout va bien »
+        if not run:
+            hl = dict(tone="bad", text=STOPPED_HEALTH)
+        else:
+            try:
+                hl = o.health().get("data") or dict(tone="bad", text=UNKNOWN_HEALTH)
+            except Exception:  # noqa: BLE001
+                hl = dict(tone="bad", text=UNKNOWN_HEALTH)
+        if cur:                                  # les alarmes ET un éventuel problème de surveillance, ensemble
             rows = "".join(
                 f"<div style='font-size:30px; font-weight:bold; margin:4px'>{'🔔' if not a['acked'] else '🔕'} "
                 f"{_hesc(self.alarm_line(a))}</div>" for a in cur[:6])
             more = f"<div style='font-size:18px'>+ {len(cur) - 6} autre(s)</div>" if len(cur) > 6 else ""
-            self.banner.setText(rows + more)
+            extra = (f"<div style='font-size:20px; margin-top:6px'>{_hesc(hl['text'])}</div>"
+                     if hl["tone"] != "ok" else "")
+            self.banner.setText(rows + more + extra)
             self.banner.setStyleSheet(f"background:{th['st_occ']}; color:white; border-radius:10px; padding:10px")
+        elif hl["tone"] != "ok":                 # pas d'alarme MAIS arrêtée / mesures absentes / périmées / partielles
+            self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
+            bg = th["st_occ"] if hl["tone"] == "bad" else th["st_weak"]
+            self.banner.setStyleSheet(f"background:{bg}; color:{contrast_text(bg)}; border-radius:10px; padding:8px")
         else:
-            hl = o.health().get("data") if run else dict(tone="ok", text="")
-            if hl is None:                       # audit 7.52 : en surveillance, pas d'état = inconnu, pas « OK »
-                hl = dict(tone="bad", text=UNKNOWN_HEALTH)
-            if hl["tone"] in ("warn", "bad", "wait"):    # pas d'alarme MAIS mesures absentes / périmées / partielles
-                self.banner.setText(f"<div style='font-size:24px; font-weight:bold'>{_hesc(hl['text'])}</div>")
-                bg = th["st_occ"] if hl["tone"] == "bad" else th["st_weak"]
-                self.banner.setStyleSheet(f"background:{bg}; color:{contrast_text(bg)}; border-radius:10px; padding:8px")
-            else:
-                self.banner.setText("<div style='font-size:30px; font-weight:bold'>✔ Tout va bien</div>")
-                self.banner.setStyleSheet(f"background:{th['st_free']}; color:white; border-radius:10px; padding:8px")
+            self.banner.setText("<div style='font-size:30px; font-weight:bold'>✔ Tout va bien</div>")
+            self.banner.setStyleSheet(f"background:{th['st_free']}; color:white; border-radius:10px; padding:8px")
         ws = [w for w in o.scope_ws() if not w.get("off")]
         sig = tuple((w["name"], round(w["freq"], 4)) for w in ws)
         cols = max(1, self.scroll.viewport().width() // 260)
