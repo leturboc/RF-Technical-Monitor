@@ -81,7 +81,7 @@ check("info FR 760 (mobile)", si(740.0, fr_plan, fr_tv)[1], "pmse")
 check("info FR 770 (mobile)", si(770.0, fr_plan, fr_tv)[1], "mobile")
 check("describe contient canal", "CH 25" in ns["describe_freq"](506.0, fr_plan, fr_tv) or "Canal UHF 25" in ns["describe_freq"](506.0, fr_plan, fr_tv), True)
 check("describe sans attribution", "aucune attribution" in ns["describe_freq"](862.5, fr_plan, fr_tv), True)
-check("Nuit: couleurs rouges", ns["THEMES"]["Nuit (rouge)"]["bp_tv"], "#8a2a2a")
+check("Nuit: courbe rouge", ns["THEMES"]["Nuit (rouge)"]["curve"], "#ff6a5c")
 
 
 def ok(label, cond, extra=""):

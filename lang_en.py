@@ -4694,3 +4694,7 @@ EXACT.update({
     "Thèmes (Pro sombre, Catppuccin, Nord, Daltonien…) et chaque couleur à la main.":
         "Themes (Pro dark, Catppuccin, Nord, Colour-blind…) and every colour by hand.",
 })
+
+# 7.54.1 : 💤 dans la case Statut de la liste
+EXACT.update({"💤 éteint": "💤 off", "💤 éteint · ": "💤 off · ", "💤 hors état": "💤 not in state",
+              "💤 hors état · ": "💤 not in state · "})
