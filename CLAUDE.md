@@ -979,7 +979,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   ne s'affiche pas de lui-même ; pouvoir créer ces préréglages ; tout ça dans les shows ; un mode préférences user »)** :
   - **Déduire** : PURE `COUNTRY_UHF` / `country_uhf` (US / CA 470-608, sinon 470-694), `default_view_band(bandes, pays)`
     (la bande balayée qui recouvre le plus l'UHF, la plus étroite à égalité ; une seule bande -> elle),
-    `country_from_locale` (« fr_FR » -> FR), `single_band_view` (waterfall : la bande de la Vue, ou la SEULE bande balayée
+    `country_from_locale` (« fr_FR » -> FR ; système en ANGLAIS -> rien : la CI Windows en_US passait en États-Unis), `single_band_view` (waterfall : la bande de la Vue, ou la SEULE bande balayée
     en « Toutes les bandes » — avant, le waterfall disait « choisis une bande »), `missing_bands(fréquences, bandes)`
     (bandes à proposer, ± 2 MHz, réunies à 10 MHz). MainWindow : `_wf_bid`, `auto_view` (nouveau show via
     `clear_show_data`, 1er lancement dans `_late_layout` avec le pays de `QLocale`), `_bands_changed` montre le waterfall
