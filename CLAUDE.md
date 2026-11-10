@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.52.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.53.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -854,6 +854,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   faisait 815 px de haut au minimum (> écran portable mis à l'échelle) → contenu dans un `QScrollArea`, OK / Annuler
   toujours en bas ; `fit_dialog(dlg, w, h)` borne la taille à l'écran (à réutiliser pour toute grande fenêtre).
   gui_reel : hauteur mini ≤ 600. Plus haute fenêtre restante mesurée : CoordDialog 639 px (cachée par défaut).
+- **7.53.0 (3ᵉ audit externe, sur la 7.52.2)** :
+  - **Jamais « OK » par défaut** : `health()` en exception → ton « bad » + PURE `UNKNOWN_HEALTH` (« État de surveillance
+    indéterminé »), noté dans crash.log au plus toutes les 10 min (`_health_err_t`) ; `data` vaut maintenant
+    `{tone: ok}` quand les mesures sont fraîches (avant : None = OK, indistinguable de « inconnu ») et None seulement
+    surveillance arrêtée ; mode Show : pas de data en surveillance = indéterminé ; vue Régie : idem (`st.running` sans
+    `health.data`) ; `update_home` en exception affiche UNKNOWN_HEALTH en rouge (avant : l'ancienne phrase restait).
+  - **`scan_check`** : fréquences EXPLICITES mais incohérentes (dupliquées, hors bande, plus d'½ pas d'écart avec la
+    grille) → « invalide » (avant : grille théorique reconstruite en silence) ; écart ≤ ½ pas (arrondi) → grille, ok.
+    **Pas vérifié sur un vrai tinySA** : si un vrai Ultra renvoie des fréquences « bizarres » mais justes, ça
+    déclenchera des reconnexions → regarder le 🩺 diagnostic (compteur « invalides »).
+  - **Relais sans liste d'IP** : avertissement dans `RelayWindow` (« tout appareil du réseau peut piloter ce tinySA »)
+    et dans le journal du Pi. Pas d'authentification ni de chiffrement (réseau technique de confiance seulement).
+  - Pas fait (proposé) : concaténations de `_scan_band` (à mesurer d'abord), mesure de cadence réelle par segment.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

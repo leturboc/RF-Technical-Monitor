@@ -1099,10 +1099,14 @@ check("refus du tinySA reconnu (try_cmd)", bool(ns["tinysa_refusal"](["USB disk 
 check("scan vide / absurde : invalide", (_sc(None, [-90.0], 470e6, 480e6, 101)[1],
                                          _sc(None, np.full(50, 900.0), 470e6, 480e6, 50)[1]), ("invalide", "invalide"))
 _bad = _F.copy(); _bad[10] = _bad[9]
-check("fréquences non croissantes du tinySA : grille refaite", bool(np.all(np.diff(_sc(_bad, np.full(101, -90.0), 470e6,
-                                                                                    480e6, 101)[0]) > 0)), True)
-check("fréquences hors de la bande demandée : grille refaite",
-      float(_sc(_F + 50e6, np.full(101, -90.0), 470e6, 480e6, 101)[0][0]), 470e6)
+check("audit 7.52 : fréquence dupliquée (un pas de travers) : refusé", _sc(_bad, np.full(101, -90.0), 470e6, 480e6,
+                                                                         101)[1], "invalide")
+check("audit 7.52 : fréquences hors de la bande demandée : refusé",
+      _sc(_F + 50e6, np.full(101, -90.0), 470e6, 480e6, 101)[1], "invalide")
+_jit = _F.copy(); _jit[10] += 0.5e5; _jit[11] -= 0.5e5     # arrondi : 2 points confondus à ½ pas près
+_r = _sc(_jit, np.full(101, -90.0), 470e6, 480e6, 101)
+check("simple arrondi (< ½ pas) : grille théorique, accepté", (_r[1], bool(np.all(np.diff(_r[0]) > 0))), ("ok", True))
+check("sans fréquences, complet : grille théorique", _sc(None, np.full(101, -90.0), 470e6, 480e6, 101)[1], "ok")
 _rng = np.random.default_rng(3)
 _mk = lambda off, k: [(np.linspace(500, 510, 201), -95 + off + _rng.normal(0, 2, 201)) for _ in range(k)]
 _a, _b = _mk(0, 3), _mk(0, 9)
