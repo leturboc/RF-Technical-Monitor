@@ -913,7 +913,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   réduites (hauteur mini 687 px en expert sous Linux). **Pas vu par un vrai daltonien.**
 - **7.54.1 (Clément : « Nuit rouge / Analyseur vert : le filtre rouge ou vert c'est pas beau du tout », « je vois plus le
   éteint dans mes fréquences »)** : ces 2 thèmes ont des surfaces NEUTRES (seuls courbes / accents colorés ; `_NIGHT_BP`
-  supprimé, bandeaux = couleurs normales). 💤 : la case Signal ne dit « éteint » que si le micro ne capte rien (sinon elle
+  supprimé, bandeaux = couleurs normales) ; leur SPECTRE est façon vieil analyseur à tube (photo de Clément) : clé de thème
+  `plot_style` « crt » (« normal » ailleurs) → grille plus visible (alpha 0,40), trace phosphore + halo (`setShadowPen`),
+  grille / axes / trace d'une seule teinte ; LUT « Phosphore vert ». 💤 : la case Signal ne dit « éteint » que si le micro ne capte rien (sinon elle
   montre la mesure) → la case **Statut** affiche « 💤 éteint · statut » (ou « 💤 hors état » pour un état 📸) et la ligne
   est grisée (`dim` dans `update_watch_table`), même si le micro émet encore.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),

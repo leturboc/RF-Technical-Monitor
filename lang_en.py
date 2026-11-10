@@ -4698,3 +4698,4 @@ EXACT.update({
 # 7.54.1 : 💤 dans la case Statut de la liste
 EXACT.update({"💤 éteint": "💤 off", "💤 éteint · ": "💤 off · ", "💤 hors état": "💤 not in state",
               "💤 hors état · ": "💤 not in state · "})
+EXACT.update({"Phosphore vert": "Green phosphor"})
