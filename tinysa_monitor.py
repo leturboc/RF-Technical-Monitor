@@ -933,6 +933,22 @@ def default_view_band(bands, country):
     return best
 
 
+def uhf_band_needed(bands, country, cover=0.8):
+    """7.57 : bande UHF des micros du pays du show. -> None (déjà balayée : une bande cochée en couvre ≥ 80 %),
+    ("enable", id) (une bande décochée la couvre : la réactiver) ou ("add", nom, début, fin, pas) (à créer)."""
+    lo, hi = country_uhf(country)
+    need = cover * (hi - lo)
+
+    def ov(b):
+        return min(float(b["stop"]), hi) - max(float(b["start"]), lo)
+    if any(b.get("enabled", True) and ov(b) >= need for b in bands):
+        return None
+    off = [b for b in bands if not b.get("enabled", True) and ov(b) >= need]
+    if off:
+        return ("enable", min(off, key=lambda b: float(b["stop"]) - float(b["start"]))["id"])
+    return ("add", f"UHF {lo:g}–{hi:g} MHz", lo, hi, 200.0)
+
+
 def country_from_locale(name):
     """Code pays de l'appli d'après la langue / région du système (« fr_FR » -> « FR », « de_CH » -> « CH ») ;
     inconnu -> "". Un système en ANGLAIS ne dit rien de sûr (beaucoup de techniciens ont un Windows « en_US » en
@@ -16495,10 +16511,10 @@ class LabelsDialog(QtWidgets.QDialog):
 class ShowInfoDialog(QtWidgets.QDialog):
     """Infos d'un show : nom, lieu, dates, notes (pour le retrouver l'année suivante)."""
 
-    def __init__(self, parent, meta, title="Infos du show"):
+    def __init__(self, parent, meta, title="Infos du show", country=None):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.resize(480, 380)
+        self.resize(480, 400)
         self.name = QtWidgets.QLineEdit(meta.get("name", ""))
         self.name.setPlaceholderText("ex. Festival des Vieilles Charrues")
         self.venue = QtWidgets.QLineEdit(meta.get("venue", ""))
@@ -16517,6 +16533,17 @@ class ShowInfoDialog(QtWidgets.QDialog):
         f.addRow("Lieu / scène :", self.venue)
         f.addRow("Du :", self.d_from)
         f.addRow("Au :", self.d_to)
+        # 7.57 (Clément : « demander où se situe le show pour déduire la bande ») : pays -> plan de fréquences du pays,
+        # bande UHF des micros ajoutée si besoin, Vue posée dessus
+        self.country_combo = None
+        if country is not None:
+            self.country_combo = QtWidgets.QComboBox()
+            for code, nm in COUNTRIES:
+                self.country_combo.addItem(nm, code)
+            self.country_combo.setCurrentIndex(max(0, self.country_combo.findData(country)))
+            self.country_combo.setToolTip("Le pays où a lieu le show : l'appli prend son plan de fréquences (télé,\n"
+                                          "bandes autorisées) et balaye directement la bande UHF des micros.")
+            f.addRow("Pays du show :", self.country_combo)
         lay = QtWidgets.QVBoxLayout(self)
         lay.addLayout(f)
         lay.addWidget(QtWidgets.QLabel("Notes :"))
@@ -16534,6 +16561,9 @@ class ShowInfoDialog(QtWidgets.QDialog):
         return dict(name=self.name.text().strip(), venue=self.venue.text().strip(),
                     date_from=a.toString("yyyy-MM-dd"), date_to=b.toString("yyyy-MM-dd"),
                     notes=self.notes.toPlainText().strip())
+
+    def country(self):
+        return self.country_combo.currentData() if self.country_combo is not None else None
 
 
 class UserProfilesDialog(QtWidgets.QDialog):
@@ -19333,12 +19363,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle(f"{APP_NAME} {APP_VER}{show}" + (f" — {self.scope_text()}" if self.scope else ""))
 
     def edit_show_info(self, title="Infos du show"):
-        dlg = ShowInfoDialog(self, self.show_meta, title)
+        cur = getattr(self, "country", None) or self.country_combo.currentData() or "FR"
+        dlg = ShowInfoDialog(self, self.show_meta, title, country=cur)
         if not dlg.exec():
             return False
         self.show_meta = dlg.values()
         self.update_title()
+        new = dlg.country() if hasattr(dlg, "country") else None
+        if new and (new != cur or title == "Nouveau show"):
+            self.set_show_country(new, fresh=title == "Nouveau show")
         return True
+
+    def set_show_country(self, code, fresh=False):
+        """7.57 : pays du show -> plan du pays, bande UHF des micros balayée (ajoutée / réactivée si besoin),
+        Vue posée dessus (toujours pour un nouveau show ; sinon seulement en « Toutes les bandes »)."""
+        i_ = self.country_combo.findData(code)
+        if i_ >= 0 and i_ != self.country_combo.currentIndex():
+            self.country_combo.setCurrentIndex(i_)            # -> rebuild_plan
+        need = uhf_band_needed(self.bands, code)
+        if need and need[0] == "enable":
+            self.set_band_enabled(need[1], True)
+        elif need:
+            _k, nm, lo, hi, st = need
+            self._append_band(nm, lo, hi, st, True)
+            self._bands_changed()
+        if fresh and self._zoom is None:
+            i_ = self.view_combo.findData(None)
+            if i_ >= 0:
+                self.view_combo.setCurrentIndex(i_)
+        self.auto_view()
+        nm_ = dict(COUNTRIES).get(code, code)
+        lo, hi = country_uhf(code)
+        self.set_status(f"🌍 Show en {nm_} : plan de fréquences du pays, bande UHF {lo:g}–{hi:g} MHz balayée et affichée.")
 
     def save_show(self, as_new=False):
         if not self.show_meta.get("name"):
@@ -19401,6 +19457,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if r != QtWidgets.QMessageBox.StandardButton.Yes:
                 return False
         self._apply_config(show_apply(self._collect_config(True), doc))
+        self.auto_view()                             # 7.57 : Vue sur l'UHF du pays du show (si « Toutes les bandes »)
         if doc["ref"]:
             self._set_ref([(np.array(f), np.array(l)) for f, l in doc["ref"]])
             self._save_ref_file(REF_PATH)

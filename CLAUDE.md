@@ -985,6 +985,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `clear_show_data`, 1er lancement dans `_late_layout` avec le pays de `QLocale`), `_bands_changed` montre le waterfall
     si une seule bande, `set_level` rend le waterfall en quittant l'ultra simple (`_prev_level`),
     `offer_missing_bands` (fenêtre NON bloquante `_band_offer` après `open_import` / `apply_ezrf`).
+    **Pays du show** (Clément : « demander où se situe le show pour déduire la bande ») : `ShowInfoDialog(..., country=)`
+    → champ « Pays du show » (`country_combo`, `country()`), `edit_show_info` → `set_show_country(code, fresh)` (plan du
+    pays, PURE `uhf_band_needed(bandes, pays)` → None / ("enable", id) / ("add", nom, début, fin, pas), Vue remise sur
+    « Toutes » puis `auto_view` pour un nouveau show) ; `open_show` appelle aussi `auto_view`.
   - **⭐ Préréglages perso** : PURE `user_presets_norm` ({name, desc, st} ≤ 30, réglages bancals -> ceux du festival),
     `user_presets_merge` (à nom égal le nouveau gagne), `presets_all(user)` (clé « u:nom », « ⭐ nom ») ; `quick_preset` /
     `preset_changes` / `preset_match` prennent `user`. `self.user_presets` (config + SHOW_KEYS, FUSIONNÉS dans

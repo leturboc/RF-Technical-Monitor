@@ -45,8 +45,12 @@ info = {"meta": None}
 
 
 class FakeInfo:
-    def __init__(self, parent, meta, title=""):
+    def __init__(self, parent, meta, title="", country=None):
         self.meta = dict(meta)
+        self._country = country
+
+    def country(self):                       # 7.57 : pays du show (inchangé dans ce test)
+        return self._country
 
     def exec(self):
         return info["meta"] is not None
