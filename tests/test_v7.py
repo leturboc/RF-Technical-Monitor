@@ -1480,5 +1480,13 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.57 : pays du show -> bande UHF
+_ub = ns["uhf_band_needed"]
+ok("7.57 : France, 470-694 déjà balayée -> rien", _ub([dict(id=1, start=470.0, stop=694.0, enabled=True)], "FR") is None)
+ok("7.57 : États-Unis avec 470-694 : couvert (470-608 dedans) -> rien", _ub([dict(id=1, start=470.0, stop=694.0, enabled=True)], "US") is None)
+ok("7.57 : rien d'UHF -> bande à créer", _ub([dict(id=1, start=823.0, stop=832.0, enabled=True)], "FR") == ("add", "UHF 470–694 MHz", 470.0, 694.0, 200.0))
+ok("7.57 : UHF décochée -> la réactiver", _ub([dict(id=1, start=823.0, stop=832.0, enabled=True),
+                                               dict(id=7, start=470.0, stop=694.0, enabled=False)], "FR") == ("enable", 7))
+ok("7.57 : bande trop petite (moins de 80 %) -> à créer", _ub([dict(id=1, start=470.0, stop=550.0, enabled=True)], "FR")[0] == "add")
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

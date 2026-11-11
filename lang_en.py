@@ -4871,3 +4871,12 @@ TEMPLATES.update({
     "{} préférence(s) · {} · {} préréglage(s) perso · {}": "{} preference(s) · {} · {} custom preset(s) · {}",
     "Supprimer le fichier du profil « {} » ?": "Delete the file of profile “{}”?",
 })
+EXACT.update({
+    "Le pays où a lieu le show : l'appli prend son plan de fréquences (télé,\nbandes autorisées) et balaye directement la bande UHF des micros.":
+        "The country where the show takes place: the app uses its frequency plan (TV,\nallowed bands) and sweeps the mic UHF band straight away.",
+    "Pays du show :": "Show country:",
+})
+TEMPLATES.update({
+    "🌍 Show en {} : plan de fréquences du pays, bande UHF {}–{} MHz balayée et affichée.": "🌍 Show in {}: the country's frequency plan, UHF band {}–{} MHz swept and shown.",
+    "UHF {}–{} MHz": "UHF {}–{} MHz",
+})
