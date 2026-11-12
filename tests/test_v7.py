@@ -1324,9 +1324,12 @@ ok("7.54 : tous les thèmes ont toutes les couleurs", all(all(k in t for k, *_ i
 _tp = ns["theme_pal"]
 ok("7.54.1 : chaque thème a une palette d'au moins 7 couleurs", all(len(_tp(t)) >= 7 for t in _TH.values()))
 _av = _tp(_TH["Analyseur vert"])
-ok("7.54.1 : palette Analyseur vert = nuances du phosphore (vert dominant)",
-   all(int(c[3:5], 16) >= int(c[1:3], 16) and int(c[3:5], 16) >= int(c[5:7], 16) for c in _av))
-ok("7.54.1 : nuances distinctes", len(set(_av)) == len(_av))
+ok("7.57.1 : thèmes analo : autour neutre (palette, accent, bandeaux de Pro sombre), spectre phosphore",
+   all(_tp(_TH[n]) == _tp(_TH["Pro sombre"]) and _TH[n]["ui_accent"] == _TH["Pro sombre"]["ui_accent"]
+       and _TH[n]["bp_tv"] == _TH["Pro sombre"]["bp_tv"] and _TH[n]["plot_style"] == "crt"
+       for n in ("Analyseur vert", "Analyseur bleu", "Analyseur ambre", "Nuit (rouge)")))
+_oc = ns["OLD_CRT_THEMES"]["Analyseur vert"]
+ok("7.57.1 : ancienne version analo connue (migration)", _oc["ui_accent"] == "#2fbf71" and len(set(_oc["pal"].split(","))) == 8)
 _sc = [dict(name="A", color="#000000", groups=[dict(name="g1", color="#000000"), dict(name="g2", color="#000000")]),
        dict(name="B", color="#000000", groups=[])]
 _st = [dict(name="Libre", color="#000000", free=True), dict(name="En service", color="#000000", on=True),

@@ -210,20 +210,20 @@ THEMES = {
     # 7.54.1 (Clément : « le filtre rouge ou vert c'est pas beau », photo d'un vieil analyseur à tube : « plutôt comme
     # ça ») : interface neutre, SPECTRE façon écran cathodique (plot_style « crt » : grille bien visible, trace
     # phosphore, une seule teinte pour la grille, les axes et la trace).
-    "Nuit (rouge)": dict(_G, ui_accent="#c2453d", plot_bg="#0c0505", plot_fg="#ff6f5e", curve="#ffc2b8",
+    "Nuit (rouge)": dict(_G, plot_bg="#0c0505", plot_fg="#ff6f5e", curve="#ffc2b8",
                          maxhold="#c0503f", thr="#ffe0da", thr_weak="#e89080", st_free="#5fb3a1",
                          st_libre="#7a8fd6", st_weak="#e0b050", st_occ="#ff5c5c", st_unk="#b48ad6",
                          st_none="#4a4240", ref="#d08a8a", wf="Rouge (nuit)", plot_style="crt"),
-    "Analyseur vert": dict(_G, ui_accent="#2fbf71", plot_bg="#06100b", plot_fg="#5fe39a", curve="#b8ffd6",
+    "Analyseur vert": dict(_G, plot_bg="#06100b", plot_fg="#5fe39a", curve="#b8ffd6",
                            maxhold="#3a9e64", thr="#e2ffee", thr_weak="#9ad8b0", st_free="#3ddc84",
                            st_libre="#5e9eff", st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff",
                            st_none="#636366", ref="#8fd6b0", wf="Phosphore vert", plot_style="crt"),
     # gamme « analyseur à tube » (Clément : « un bleu aussi, genre une gamme de thèmes analo »)
-    "Analyseur bleu": dict(_G, ui_accent="#3a8dff", plot_bg="#050a14", plot_fg="#6fb4ff", curve="#cfe6ff",
+    "Analyseur bleu": dict(_G, plot_bg="#050a14", plot_fg="#6fb4ff", curve="#cfe6ff",
                            maxhold="#3f78c0", thr="#e6f2ff", thr_weak="#9cc4f0", st_free="#4fd1c5",
                            st_libre="#8f9cff", st_weak="#ffc35c", st_occ="#ff6b6b", st_unk="#c48bff",
                            st_none="#636366", ref="#a8c8f0", wf="Phosphore bleu", plot_style="crt"),
-    "Analyseur ambre": dict(_G, ui_accent="#e08a1e", plot_bg="#0f0904", plot_fg="#ffae42", curve="#ffe0b0",
+    "Analyseur ambre": dict(_G, plot_bg="#0f0904", plot_fg="#ffae42", curve="#ffe0b0",
                             maxhold="#b8742a", thr="#fff0d8", thr_weak="#e8b070", st_free="#4fd1c5",
                             st_libre="#5e9eff", st_weak="#ffd60a", st_occ="#ff6b6b", st_unk="#c48bff",
                             st_none="#636366", ref="#e8c08a", wf="Phosphore ambre", plot_style="crt"),
@@ -890,16 +890,27 @@ def layers_recolor(scenes, statuses, t):
     return sc_out, st_out
 
 
+# 7.57.1 (Clément : « les thèmes analo sont trop unis, ça fait trop vert, c'est surtout la visu qui est cool ») : seul
+# le SPECTRE (fond, grille, axes, trace, waterfall) est façon tube ; autour (accent, scènes / groupes, bandeaux) = comme
+# « Pro sombre ». OLD_CRT_THEMES = ce que ces thèmes étaient en 7.54.1-7.57.0 (accent, palette et bandeaux du phosphore)
+# pour migrer une config qui les a gardés tels quels.
+_OLD_CRT_ACC = {"Nuit (rouge)": "#c2453d", "Analyseur vert": "#2fbf71", "Analyseur bleu": "#3a8dff",
+                "Analyseur ambre": "#e08a1e"}
+OLD_CRT_THEMES = {}
 for _n, _t in THEMES.items():
     _t.setdefault("ref", "#c084fc")
     _t.setdefault("plot_style", "normal")       # « crt » = spectre façon écran cathodique (7.54.1)
-    _t.setdefault("pal", ",".join(THEME_PALETTES.get(_n) or phosphor_shades(_t["plot_fg"])
-                                  if _t["plot_style"] == "crt" else THEME_PALETTES.get(_n) or GROUP_COLORS_DEF))
+    _t.setdefault("pal", ",".join(THEME_PALETTES.get(_n) or (THEME_PALETTES["Pro sombre"] if _t["plot_style"] == "crt"
+                                                             else GROUP_COLORS_DEF)))
     _t.setdefault("st_libre", "#3b82f6")
-    _sh = phosphor_shades(_t["plot_fg"]) if _t.get("plot_style") == "crt" else None
     for _i, (_k, (_lab, _col)) in enumerate(CATEGORIES.items()):
-        # thèmes « analyseur » : bandeaux du bas en nuances du phosphore, assombries (7.54.1)
-        _t.setdefault("bp_" + _k, blend(_sh[_i % len(_sh)], _t["plot_bg"], 0.55) if _sh else _col)
+        _t.setdefault("bp_" + _k, _col)
+    if _t["plot_style"] == "crt":
+        _sh = phosphor_shades(_t["plot_fg"])
+        _o = dict(pal=",".join(_sh), ui_accent=_OLD_CRT_ACC.get(_n, _t["ui_accent"]))
+        for _i, (_k, (_lab, _col)) in enumerate(CATEGORIES.items()):
+            _o["bp_" + _k] = blend(_sh[_i % len(_sh)], _t["plot_bg"], 0.55)
+        OLD_CRT_THEMES[_n] = _o
 
 COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "Allemagne"),
              ("GB", "Royaume-Uni"), ("IT", "Italie"), ("ES", "Espagne"), ("NL", "Pays-Bas"),
@@ -21211,6 +21222,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if isinstance(th, dict) and not data.get("theme_v") and all(
                 th.get(k) == v for k, v in OLD_DEFAULT_THEME.items()):
             th = None                             # 7.54 : l'ancien thème par défaut, jamais retouché -> « Pro sombre »
+        if isinstance(th, dict) and int(data.get("theme_v") or 0) < 3:
+            for _nm, _old in OLD_CRT_THEMES.items():   # 7.57.1 : thème analo d'avant -> autour neutre, spectre gardé
+                if th.get("curve") == THEMES[_nm]["curve"] and all(th.get(k) == v for k, v in _old.items()):
+                    th = dict(th, **{k: THEMES[_nm][k] for k in _old})
+                    break
         if isinstance(th, dict):
             base = dict(THEMES[DEFAULT_THEME])
             base.update({k: v for k, v in th.items() if k in base and isinstance(v, str)})
@@ -21472,7 +21488,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            coord_tools=bool(getattr(self, "coord_on", False)), theme_v=2,
+            coord_tools=bool(getattr(self, "coord_on", False)), theme_v=3,
             user_presets=user_presets_norm(getattr(self, "user_presets", [])), user_name=getattr(self, "user_name", ""),
             alarm_timing=dict(confirm=int(self.sound.cfg.get("confirm", 3)), repeat=int(self.sound.cfg.get("repeat", 30))),
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
