@@ -1471,6 +1471,19 @@ def floor_track(prev, cur, dt, busy=False, rise=AUTO_RISE_S, fall=AUTO_FALL_S):
     return float(out) if out.ndim == 0 else out
 
 
+def speed_table(by):
+    """7.57.1 : vitesse réelle du tinySA par réglage {(rbw, pas kHz, lna): [points, secondes]} -> lignes du 🩺."""
+    if not by:
+        return ""
+    rows = []
+    for (rbw, stp, lna), (n, t) in sorted(by.items(), key=lambda kv: (float(kv[0][0] or 0), kv[0][1], kv[0][2])):
+        if n and t > 0:
+            rbw_t = "auto" if rbw in (None, 0, "0", "auto") else f"{rbw} kHz"
+            rows.append(f"\n    RBW {rbw_t} · pas {stp} kHz · LNA {'oui' if lna else 'non'} : {n / t:.0f} points/s "
+                        f"({1000.0 * t / n:.2f} ms par point, {n} points mesurés)")
+    return ("\n  Vitesse par réglage :" + "".join(rows)) if rows else ""
+
+
 def density_raster(traces, x0, x1, y0, y1, W, H, weights=None):
     """Rémanence façon analyseur numérique (7.55) : densité des anciens balayages sur une grille de W × H pixels.
     traces = [(x, y)] du plus récent au plus ancien (NaN = coupure entre bandes) ; weights = poids de chacun (défaut 1).
@@ -7549,7 +7562,8 @@ class ScanWorker(QtCore.QThread):
                    f"({1000.0 * s_['seg_s'] / s_['pts']:.1f} ms par point)")
         return (f"segments {s_['segments']} (moy. {avg:.2f} s, max {s_['seg_max']:.2f} s) · cycles {s_['cycles']} "
                 f"(moy. {cyc:.1f} s) · réglages {s_['settings_s']:.1f} s · incomplets {s_['short']} · invalides "
-                f"{s_['invalid']} · refus {s_['refused']} · reconnexions {s_['reconnects']}" + spd)
+                f"{s_['invalid']} · refus {s_['refused']} · reconnexions {s_['reconnects']}" + spd
+                + speed_table(s_.get("by")))
 
     def _tr(self, txt):
         self.trace.append(f"{datetime.now():%H:%M:%S.%f}"[:-3] + " " + txt)
@@ -7746,6 +7760,10 @@ class ScanWorker(QtCore.QThread):
                 self.stats["segments"] += 1
                 self.stats["seg_s"] += dt
                 self.stats["pts"] += int(pts)              # 7.56 : vitesse réelle du tinySA (points / s) au 🩺
+                kb = (cfg["rbw"] or 0, int(round((z - a) / max(1, pts - 1) / 1e3)), bool(cfg["lna"] is True))
+                sp = self.stats.setdefault("by", {}).setdefault(kb, [0, 0.0])   # 7.57.1 : vitesse par réglage
+                sp[0] += int(pts)
+                sp[1] += dt
                 self.stats["seg_max"] = max(self.stats["seg_max"], dt)
                 fr, state, note = scan_check(fr, lv, a, z, pts)
                 if state == "invalide":

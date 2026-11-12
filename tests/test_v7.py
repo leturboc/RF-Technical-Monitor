@@ -1480,6 +1480,10 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.57.1 : vitesse par réglage au 🩺
+_st = ns["speed_table"]({(100, 75, True): [3000, 4.2], (None, 125, True): [1793, 1.0]})
+ok("7.57.1 : vitesse par réglage", "RBW 100 kHz · pas 75 kHz · LNA oui : 714 points/s" in _st and "RBW auto · pas 125 kHz" in _st
+   and ns["speed_table"]({}) == "", _st)
 # 7.57.1 : la disposition des fenêtres suit le profil
 _lay = dict(_cfg, geometry="R0VP", docks="RE9D", panel_windows=dict(dock_list=dict(geo="x", mode="max")), layout_ver=4)
 _ul = ns["user_doc"](_lay, "A")
