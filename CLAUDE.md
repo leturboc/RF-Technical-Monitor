@@ -1046,6 +1046,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   = True) appliqué par `tnt_measure_now` ; TntDialog : double-clic = `cycle` (auto → tv → free → auto), clic droit =
   `_man_menu` (plusieurs lignes, `set_manual`), état « (à la main) » ; `tnt_mark_saved` (QTimer après `_apply_config`) :
   les canaux grisés à la main reviennent sur le spectre à l'ouverture, sans mesure.
+  Aussi (Clément : « que ça puisse suivre le plan .ezrf3 au cas où ») : `ChTVActifList` de TOUS les groupes réunis
+  (avant : 1er groupe) → `tnt_cfg["plan"]` / `plan_src` (nom du fichier) via `tnt_set_plan` (dans `apply_ezrf` si le
+  doc a des canaux TV, et dans `_ezrf_tick` pour le fichier suivi : mis à jour en silence + barre d'état, vidé si le
+  plan suivi n'en a plus) ; priorité main > plan > mesure (`tnt_apply_manual(res, manual, plan)`, `src`), état
+  « 📺 TNT (plan) », `plan_lbl` dans TntDialog. Sens de « True » dans `ChTVActifList` = canal TV présent : **supposé**
+  (lu sur les fichiers d'essai, pas vérifié dans le logiciel de coord).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

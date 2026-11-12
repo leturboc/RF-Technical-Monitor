@@ -1403,7 +1403,7 @@ def tnt_summary(res):
     return " · ".join(parts)
 
 
-TNT_DEFAULT = dict(place="", radius=60, margin=10, mark=True, manual={})
+TNT_DEFAULT = dict(place="", radius=60, margin=10, mark=True, manual={}, plan=[], plan_src="")
 
 
 def tnt_cfg_norm(c):
@@ -1426,17 +1426,32 @@ def tnt_cfg_norm(c):
         if 1 <= n <= 99 and v in ("tv", "free"):
             man[str(n)] = v
     out["manual"] = man
+    plan = []
+    for v in c.get("plan") or [] if isinstance(c.get("plan"), list) else []:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= 99 and n not in plan:
+            plan.append(n)
+    out["plan"] = sorted(plan)
+    out["plan_src"] = " ".join(str(c.get("plan_src") or "").split())[:80] if plan else ""
     return out
 
 
-def tnt_apply_manual(res, manual):
-    """Choix faits à la main (« tv » = griser, « free » = pas de TNT) par-dessus la mesure : rows copiées, clé
-    « manual » = True sur les canaux forcés."""
-    manual = manual or {}
+def tnt_apply_manual(res, manual, plan=None):
+    """Choix faits à la main (« tv » = griser, « free » = pas de TNT) puis canaux TV du plan de coordination importé
+    (7.58.2), par-dessus la mesure : rows copiées ; « src » = manual | plan | "" (mesure), « manual » = forcé à la main."""
+    manual, plan = manual or {}, set(plan or [])
     rows = []
     for r in (res or {}).get("rows") or []:
         m = manual.get(str(r["ch"]))
-        rows.append(dict(r, state=m, manual=True) if m in ("tv", "free") else dict(r, manual=False))
+        if m in ("tv", "free"):
+            rows.append(dict(r, state=m, manual=True, src="manual"))
+        elif r["ch"] in plan:
+            rows.append(dict(r, state="tv", manual=False, src="plan"))
+        else:
+            rows.append(dict(r, manual=False, src=""))
     return dict(res or {}, rows=rows)
 
 
@@ -2693,11 +2708,12 @@ def parse_ezrf3(data):
         except Exception:                          # scan illisible : le reste du document reste bon
             scan = None
     tv = []
-    for g in groups[:1]:
+    for g in groups:                               # 7.58.2 : canaux TV de TOUS les groupes / zones (réunis)
         for ln in (g.findtext("ChTVActifList") or "").splitlines():
             a, _, b = ln.partition(";")
-            if b.strip().lower() == "true" and a.strip().isdigit():
+            if b.strip().lower() == "true" and a.strip().isdigit() and int(a) not in tv:
                 tv.append(int(a))
+    tv.sort()
     info = root.find("InformsDt")
     gi = getter(info) if info is not None else (lambda k: "")
     if not rows:
@@ -12270,7 +12286,7 @@ class EzrfImportDialog(QtWidgets.QDialog):
         lay.addWidget(self.replace)
         if doc["tv"]:
             tv = QtWidgets.QLabel("Canaux TV actifs dans le document : " + ", ".join(map(str, doc["tv"]))
-                                  + " (pas importés : le scan les montre).")
+                                  + " (grisés sur le spectre et dans 📺 Canaux TNT ; suivis si tu suis le fichier).")
             tv.setWordWrap(True)
             lay.addWidget(tv)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -17257,6 +17273,10 @@ class TntDialog(QtWidgets.QDialog):
         self.tab.customContextMenuRequested.connect(lambda pos: self._man_menu(pos))
         self.tab.cellDoubleClicked.connect(lambda r, c: self.cycle(r))
         l1.addWidget(self.tab, 1)
+        self.plan_lbl = QtWidgets.QLabel()
+        self.plan_lbl.setWordWrap(True)
+        self.plan_lbl.setVisible(False)
+        l1.addWidget(self.plan_lbl)
         hint = QtWidgets.QLabel("Double-clic sur un canal (ou clic droit, plusieurs à la fois) pour le griser ou le "
                                 "dégriser à la main : ton choix passe avant la mesure et reste avec le show.")
         hint.setWordWrap(True)
@@ -17370,6 +17390,11 @@ class TntDialog(QtWidgets.QDialog):
         self.sum_lbl.setText(tnt_summary(res))
         txt = {"tv": "📺 TNT", "other": "autre signal", "free": "libre", "none": "pas mesuré"}
         mtxt = {"tv": "📺 TNT (à la main)", "free": "libre (à la main)"}
+        plan = self.owner.tnt_cfg.get("plan") or []
+        self.plan_lbl.setVisible(bool(plan))
+        if plan:
+            self.plan_lbl.setText(f"📋 Canaux TV du plan « {self.owner.tnt_cfg.get('plan_src') or '?'} » : "
+                                  f"{', '.join(map(str, plan))} (grisés « (plan) » ; mis à jour si tu suis le fichier).")
         col = {"tv": self.owner.theme.get("bp_tv", "#3b82f6"), "other": self.owner.theme.get("st_weak", "#ffc35c"),
                "free": self.owner.theme.get("st_free", "#4fd1c5")}
         rows = res.get("rows") or []
@@ -17378,7 +17403,8 @@ class TntDialog(QtWidgets.QDialog):
             vals = [str(r["ch"]), f"{r['lo']:g}–{r['hi']:g}",
                     self.owner.lvl(r["level"]) if r["level"] is not None else "—",
                     f"+{r['above']:.0f} dB" if r["above"] is not None else "—",
-                    mtxt[r["state"]] if r.get("manual") else txt[r["state"]]]
+                    mtxt[r["state"]] if r.get("manual") else
+                    "📺 TNT (plan)" if r.get("src") == "plan" else txt[r["state"]]]
             for j, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
                 if j == 4 and r["state"] in col:
@@ -22363,7 +22389,7 @@ class MainWindow(QtWidgets.QMainWindow):
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
         data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None,
-                    tnt=dict(self.tnt_cfg, place="", manual={}))
+                    tnt=dict(self.tnt_cfg, place="", manual={}, plan=[], plan_src=""))
         self.tnt_mark(None)
         for k in list(self.site_mh):
             self.forget_site(k)
@@ -25314,6 +25340,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._append_watch(f"Ext. {f:.3f}", f, "", None, "", "")
                     by_key[k] = self.watch[-1]
                     n_ext += 1
+        if doc.get("tv"):                          # 7.58.2 : canaux TV du plan -> 📺 grisés sur le spectre
+            self.tnt_set_plan(doc["tv"], os.path.basename(str(path)) if path else source)
         scan_name = ""
         if opts.get("scan") and doc["scan"] is not None:
             names = {d["name"] for d in self.site_scans}
@@ -27279,6 +27307,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » illisible : {e}")
             return None
         doc = plan_fill_pending(doc, lk.get("manual") or {})   # canaux complétés à la main (récepteurs Wisycom)
+        fname = os.path.basename(str(lk["path"]))
+        if doc.get("tv") or self.tnt_cfg.get("plan_src") == fname:  # 7.58.2 : canaux TV du plan suivis aussi
+            if self.tnt_set_plan(doc.get("tv") or [], fname):
+                self.set_status(f"📺 Canaux TV du plan « {fname} » mis à jour : "
+                                f"{', '.join(map(str, self.tnt_cfg['plan'])) or 'aucun'}.")
         d = ezrf_diff(ezrf_entries(doc, lk.get("skip_off", True)), self._ezrf_cur(lk))
         d["add"] = [e for e in d["add"] if not any(abs(w["freq"] - e[1]) < 1e-6 for w in self.watch)]
         if not (d["add"] or d["change"] or d["remove"]):
@@ -27677,12 +27710,24 @@ class MainWindow(QtWidgets.QMainWindow):
             F = L = None
         chans = tnt_channel_list(self.country_combo.currentData() or "FR")
         res = tnt_measure(F, L, chans, float(margin if margin is not None else self.tnt_cfg["margin"]))
-        return tnt_apply_manual(res, self.tnt_cfg.get("manual"))
+        return tnt_apply_manual(res, self.tnt_cfg.get("manual"), self.tnt_cfg.get("plan"))
+
+    def tnt_set_plan(self, chans, src=""):
+        """7.58.2 : canaux TV actifs du plan de coordination importé / suivi -> grisés « (plan) » sur le spectre."""
+        old = list(self.tnt_cfg.get("plan") or [])
+        self.tnt_cfg = tnt_cfg_norm(dict(self.tnt_cfg, plan=list(chans or []), plan_src=src))
+        try:
+            self.tnt_mark(self.tnt_measure_now())
+            if getattr(self, "_tnt", None) is not None and self._tnt.isVisible():
+                self._tnt.measure()
+        except Exception:  # noqa: BLE001
+            pass
+        return old != self.tnt_cfg["plan"]
 
     def tnt_mark_saved(self):
         """Canaux grisés À LA MAIN (show / config) remis sur le spectre, même sans mesure."""
         try:
-            if any(v == "tv" for v in (self.tnt_cfg.get("manual") or {}).values()):
+            if any(v == "tv" for v in (self.tnt_cfg.get("manual") or {}).values()) or self.tnt_cfg.get("plan"):
                 self.tnt_mark(self.tnt_measure_now())
         except Exception:  # noqa: BLE001
             pass

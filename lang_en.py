@@ -2923,7 +2923,7 @@ EXACT = {
     'scan Wisycom : le plus fort des voies A / B (et de leurs max), dBµV convertis en dBm (dBm = dBµV − 107)': 'Wisycom scan: the strongest of channels A / B (and their max), dBµV converted to dBm (dBm = dBµV − 107)',
     'Comme les vrais exports de chaque logiciel :\nWWB : « 470.000,-104.531 » (MHz, dBm), sans en-tête.\nWSM : en-tête du scan, kHz, niveau en dB µV.\nWisycom : « Freq2D;RFA;RFB;MaxRFA;MaxRFB », MHz, dBµV.\nTTI : « 470.0000,-88.0 » (MHz, dBm).\nCSV : à toi de choisir séparateur, décimale, unités.': "Like each software's real exports:\nWWB: “470.000,-104.531” (MHz, dBm), no header.\nWSM: scan header, kHz, level in dBµV.\nWisycom: “Freq2D;RFA;RFB;MaxRFA;MaxRFB”, MHz, dBµV.\nTTI: “470.0000,-88.0” (MHz, dBm).\nCSV: you choose separator, decimal mark, units.",
     'Comme les exports de chaque logiciel : WWB, WSM, Wisycom Manager, TTI · CSV : EazyRF, Excel…': "Like each software's exports: WWB, WSM, Wisycom Manager, TTI · CSV: EazyRF, Excel…",
-    ' (pas importés : le scan les montre).': ' (not imported: the scan shows them).',
+    ' (grisés sur le spectre et dans 📺 Canaux TNT ; suivis si tu suis le fichier).': ' (greyed on the spectrum and in 📺 DTT channels; followed if you follow the file).',
     'Canaux TV actifs dans le document : ': 'Active TV channels in the document: ',
     'Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe.': 'What will arrive in My frequencies: EazyRF group = scene, section = group.',
     "Coché : la liste actuelle est vidée avant l'import (Ctrl+Z pour revenir).": 'Checked: the current list is emptied before the import (Ctrl+Z to go back).',
@@ -5012,4 +5012,12 @@ EXACT.update({
     "📺 TNT (à la main)": "📺 DTT (by hand)",
     "📺 TNT = canal pris par la télé ; autre signal = quelque chose d'étroit (micro, porteuse) ; libre = rien au-dessus du bruit ; pas mesuré = hors de tes bandes balayées.\nDouble-clic ou clic droit : griser / dégriser un canal à la main.":
         "📺 DTT = channel taken by TV; other signal = something narrow (mic, carrier); free = nothing above the noise; not measured = outside your swept bands.\nDouble-click or right-click: grey out / clear a channel by hand.",
+})
+
+# 7.58.2 : canaux TV du plan de coordination
+EXACT.update({"📺 TNT (plan)": "📺 DTT (plan)"})
+TEMPLATES.update({
+    "📋 Canaux TV du plan « {} » : {} (grisés « (plan) » ; mis à jour si tu suis le fichier).":
+        "📋 TV channels of plan “{}”: {} (greyed “(plan)”; updated if you follow the file).",
+    "📺 Canaux TV du plan « {} » mis à jour : {}.": "📺 TV channels of plan “{}” updated: {}.",
 })

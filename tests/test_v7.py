@@ -1526,7 +1526,7 @@ _api = dict(resources=[dict(title="Tables de référence octobre 2026", url="r1"
                        dict(title="Tables supports antennes émetteurs bandes octobre 2026", url="d1", last_modified="2026-10-06"),
                        dict(title="Tables de référence novembre 2026", url="r2", last_modified="2026-11-06")])
 ok("7.58 : data.gouv : fichiers les plus récents", ns["anfr_pick"](_api) == ("d2", "r2", "2026-11-06"), str(ns["anfr_pick"](_api)))
-ok("7.58 : réglages TNT bornés", ns["tnt_cfg_norm"](dict(radius=999, margin=1, place="  75  007 ")) == dict(place="75 007", radius=200, margin=3, mark=True, manual={}))
+ok("7.58 : réglages TNT bornés", ns["tnt_cfg_norm"](dict(radius=999, margin=1, place="  75  007 ")) == dict(place="75 007", radius=200, margin=3, mark=True, manual={}, plan=[], plan_src=""))
 ok("7.58.1 : canaux à la main gardés, valeurs bancales retirées",
    ns["tnt_cfg_norm"](dict(manual={"23": "tv", 30: "free", "x": "tv", "41": "bof", "200": "tv"}))["manual"] == {"23": "tv", "30": "free"})
 _rm = ns["tnt_apply_manual"](_r, {"22": "tv", "23": "free"})
@@ -1534,6 +1534,12 @@ _sm = {r["ch"]: (r["state"], r["manual"]) for r in _rm["rows"]}
 ok("7.58.1 : la main passe avant la mesure", _sm[22] == ("tv", True) and _sm[23] == ("free", True) and _sm[30] == ("tv", False), str(_sm))
 ok("7.58.1 : la mesure d'origine n'est pas modifiée", {r["ch"]: r["state"] for r in _r["rows"]}[23] == "tv")
 _rn = ns["tnt_apply_manual"](ns["tnt_measure"](None, None, _ch), {"33": "tv"})
+_rp = ns["tnt_apply_manual"](ns["tnt_measure"](None, None, _ch), {"41": "free"}, [23, 41])
+_sp = {r["ch"]: (r["state"], r["src"]) for r in _rp["rows"]}
+ok("7.58.2 : canaux TV du plan grisés « plan », la main passe avant", _sp[23] == ("tv", "plan") and _sp[41] == ("free", "manual")
+   and _sp[30] == ("none", ""), str({k: v for k, v in _sp.items() if k in (23, 30, 41)}))
+ok("7.58.2 : canaux du plan gardés dans les réglages", ns["tnt_cfg_norm"](dict(plan=[41, "23", 23, 0, "x"], plan_src="a.ezrf3"))["plan"] == [23, 41]
+   and ns["tnt_cfg_norm"](dict(plan=[], plan_src="a.ezrf3"))["plan_src"] == "")
 ok("7.58.1 : griser à la main sans aucune mesure", [r["ch"] for r in _rn["rows"] if r["state"] == "tv"] == [33])
 # 7.57.1 : « Prêt ? » propose la RBW Auto si le balayage est lent avec une RBW forcée
 _sp = lambda **k: [c for c in ns["ready_checks"](dict(dict(running=True, devs=[dict(name="1", live=True)], sweep_age=1.0), **k)) if c["key"] == "speed"]
