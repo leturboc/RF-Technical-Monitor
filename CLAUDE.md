@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.59.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.59.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1088,6 +1088,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     l'accueil est affiché (aussi en expert) ; `open_manual(chapitre)` + boutons « ❓ Manuel » (TNT → arrivee,
     assistant → vue, seuil auto → seuils).
   Testé : PURE (test_v7), vraie appli (script de session + gui_reel). **Pas essayé par Clément.**
+- **7.59.1 (Clément : « pas sûr de toutes les bandes par pays »)** : Europe revérifiée dans le tableau OFFICIEL CEPT EFIS
+  « Annex 4 : national conditions for audio PMSE » (ERC/REC 25-10, rempli par chaque régulateur ;
+  efis.cept.org/report/report2510AnnexImplementation.do?annexId=1, lu le 12/11/2026). Corrigé : **608-614 MHz interdit aux
+  micros en Allemagne** (radioastronomie), **Suisse** (près de Bleien), **Pays-Bas** (604-614 + petits créneaux
+  556-558… réservés aux liaisons audio, régulateur = RDI), Belgique (470-786 « possible » selon la CEPT, à confirmer),
+  Italie 694-698 / 736-738, Allemagne 1350-1400 / 1518-1525 en intérieur (au lieu de 1492-1525), UK bande de garde
+  694-703, NZ **502-698** (622-698 aussi permis, RSM), Canada 614-617 / 652-663 (ISED), Australie + 1790-1800.
+  `COUNTRY_NOTES` réécrites, `PLAN_OVERRIDES` DE / GB / CH / NL / IT (pas de chevauchement entre lignes d'un même pays :
+  test_plan), tableau du chapitre `pays` du manuel. Hors Europe : sources nationales (FCC, ISED, ACMA, RSM, MIC), pas de
+  tableau commun. apwpt.org et testefis.cept.org bloqués par le réseau de la session (efis.cept.org autorisé).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

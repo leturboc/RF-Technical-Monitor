@@ -85,7 +85,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.59.0"
+APP_VER = "7.59.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -921,10 +921,10 @@ COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "All
 # 7.57 (Clément : « mettre la Vue sur UHF 470-694 direct si on est en France pour un nouveau show, déduire tout ça
 # rapidement ») : bande UHF des micros par pays (télé + micros HF) ; États-Unis / Canada : 470-608 après le « repack ».
 # 7.58.3 (Clément : « quand je change de pays ça garde 470-694 ; on add des pays ? ») : recherches du 13/11/2026 (ACMA
-# LIPD 2025 : 520-694 ; RSM GUSL 272800 + GURL-SRD : 502-606 ; tableau MIC Japon : 470-710 + 710-714 ; Ofcom :
+# LIPD 2025 : 520-694 ; RSM GUSL 272800 + GURL-SRD : 502-606 + 622-698 (7.59.1 : 502-698) ; tableau MIC Japon : 470-710 + 710-714 ; Ofcom :
 # spectre entrelacé ≈ 470-702) — INDICATIF, la bande principale seulement (les petits bouts sont dans COUNTRY_NOTES).
 COUNTRY_UHF = {"US": (470.0, 608.0), "CA": (470.0, 608.0), "GB": (470.0, 702.0), "AU": (520.0, 694.0),
-               "NZ": (502.0, 606.0), "JP": (470.0, 714.0)}
+               "NZ": (502.0, 698.0), "JP": (470.0, 714.0)}
 COUNTRY_UHF_DEFAULT = (470.0, 694.0)
 
 
@@ -1014,24 +1014,41 @@ def single_band_view(view_id, bands, zoom_id):
 
 
 COUNTRY_NOTES = {
-    "FR": "Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48, canal 38 compris) / micros HF ; 700 et 800 MHz attribués "
-          "à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux "
-          "police / pompiers / secours.",
-    "DE": "Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.",
-    "GB": "Plan indicatif (Ofcom). Micros HF dans le spectre TV entrelacé ≈ 470-702 MHz (coordonné par Ofcom) ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 703-790 MHz interdit depuis 2020.",
-    "CH": "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.",
-    "BE": "Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.",
-    "IT": "Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.",
-    "ES": "Plan indicatif (CNMC / SETID). 700 MHz libéré en 2020.",
-    "NL": "Plan indicatif (Agentschap Telecom).",
-    "EU": "Plan harmonisé CEPT / UIT région 1, indicatif.",
-    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37), plus quelques bouts : "
-          "614-616 MHz et une partie de 653-663 MHz ; 941-960 et 1435-1525 MHz avec licence.",
-    "CA": "Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.",
+    # 7.59.1 (Clément : « pas sûr de toutes les bandes par pays ») : Europe revérifiée dans le tableau officiel CEPT EFIS
+    # « Annex 4 : national conditions for audio PMSE » (ERC/REC 25-10, rempli par chaque régulateur), novembre 2026.
+    "FR": "Plan indicatif (ANFR / ARCEP ; tableau CEPT, 2026). Micros HF en usage secondaire, 50 mW : 470-694 MHz partagés "
+          "avec la TNT (canaux 21-48, canal 38 compris), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; "
+          "1350-1400 MHz sur autorisation temporaire ; 694-790 MHz interdit depuis le 1er juillet 2019 ; 380-400 MHz : "
+          "réseaux police / pompiers / secours.",
+    "DE": "Plan indicatif (BNetzA ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz SAUF 608-614 MHz (radioastronomie), "
+          "174-230 MHz, 736-753 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 et 1518-1525 MHz en intérieur.",
+    "GB": "Plan indicatif (Ofcom ; tableau CEPT, 2026). Micros HF dans le spectre TV entrelacé 470-694 MHz (licence Ofcom, "
+          "coordonné) + bande de garde 694-703 MHz ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans "
+          "licence ; 823-832, 1518-1525 et 1785-1805 MHz avec licence ; 703-790 MHz interdit depuis 2020.",
+    "CH": "Plan indicatif (OFCOM ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz (DVB-T éteint en 2019 ; 608-614 MHz "
+          "interdit près de Bleien, radioastronomie), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; "
+          "1350-1400 MHz en intérieur.",
+    "BE": "Plan indicatif (IBPT ; tableau CEPT, 2026). Micros HF : 470-694 MHz (le tableau CEPT indique même 470-786 MHz "
+          "possible : à confirmer auprès de l'IBPT), 821,5-832 MHz, 863-865 MHz, 1785-1804,8 MHz.",
+    "IT": "Plan indicatif (MIMIT ; tableau CEPT, 2026). Micros HF : 470-694 MHz, 174-223 MHz, 694-698 et 736-738 MHz, "
+          "823-832 MHz, 863-865 MHz, 1518-1525 MHz, 1785-1805 MHz.",
+    "ES": "Plan indicatif (SETID ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz dans les canaux TV libres, "
+          "821,5-832 MHz, 863-865 MHz, 1785-1805 MHz ; 174-216 MHz : 5 canaux seulement ; 694-790 MHz interdit.",
+    "NL": "Plan indicatif (RDI, ex-Agentschap Telecom ; tableau CEPT, 2026). Micros HF sans licence, 100 mW : 470-694 MHz "
+          "SAUF 556-558, 564-566, 572-574, 580-582, 588-590 et 604-614 MHz (liaisons audio ; 608-614 : licence, "
+          "radioastronomie de Westerbork), 736-753 MHz, 821,5-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 et "
+          "1518-1525 MHz avec licence.",
+    "EU": "Plan harmonisé indicatif (CEPT, décision 2014/641/UE) : 470-694 MHz dans les canaux TV libres, 823-832 MHz, "
+          "863-865 MHz, 1785-1805 MHz ; le reste dépend du pays.",
+    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37, 608-614), bande de garde "
+          "614-616 MHz (sans licence), 653-657 MHz (avec licence) et 657-663 MHz (sans licence) ; 902-928 MHz (ISM), "
+          "1920-1930 MHz (DECT) ; morceaux de 941-960 MHz et 1435-1525 MHz avec licence.",
+    "CA": "Plan proche des USA (ISED). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, bande de garde 614-617 MHz et écart "
+          "duplex 652-663 MHz (657-663 MHz : licence volontaire).",
     "AU": "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de "
-          "7 MHz) ; 694-820 MHz interdit depuis 2015.",
-    "NZ": "Plan indicatif (RSM). Micros HF sur 502-606 MHz (licences GUSL 272800 et GURL-SRD) ; 622-698 MHz à vérifier "
-          "(envisagé pour la 5G) ; 698-806 MHz interdit depuis 2015.",
+          "7 MHz) et sur 1790-1800 MHz ; 694-820 MHz interdit depuis 2015.",
+    "NZ": "Plan indicatif (RSM). Micros HF sur 502-606 MHz et 622-698 MHz (licences GUSL 272800 et GURL-SRD) ; "
+          "606-622 MHz exclu ; 698-806 MHz interdit depuis 2015.",
     "JP": "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée "
           "710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.",
 }
@@ -1171,15 +1188,28 @@ PLAN_OVERRIDES = {
 470-694|tv|TNT (DVB-T2) + micros HF pros : usage partagé|
 """,
     "DE": """
+608-614|other|608-614 MHz : radioastronomie, interdit aux micros (Allemagne)|
 736-753|pmse|Micros HF professionnels sans licence (Allemagne)|
-1492-1525|pmse|Micros HF : enregistrement requis, intérieur|
+1350-1400|pmse|Micros HF en intérieur (Allemagne)|
+1518-1525|pmse|Micros HF en intérieur (Allemagne)|
 """,
     "GB": """
 606-614|pmse|Canal 38 : micros HF, licence Ofcom partagée (UK)|
+694-703|pmse|Bande de garde 700 MHz : micros HF (licence Ofcom)|
 863-865|pmse|Canal 70 : micros HF sans licence (UK)|
 """,
     "CH": """
-470-694|pmse|UHF : DVB-T éteint (2019), micros HF : vérifier OFCOM|
+470-608|pmse|UHF : DVB-T éteint (2019), micros HF autorisés (50 mW)|
+608-614|other|608-614 MHz : interdit près de Bleien (radioastronomie)|
+614-694|pmse|UHF : DVB-T éteint (2019), micros HF autorisés (50 mW)|
+""",
+    "NL": """
+604-614|other|604-614 MHz : pas pour les micros sans licence (608-614 : licence, radioastronomie)|
+736-753|pmse|Micros HF sans licence (Pays-Bas)|
+""",
+    "IT": """
+694-698|pmse|Micros HF (Italie, limité)|
+736-738|pmse|Micros HF (Italie, limité)|
 """,
 }
 

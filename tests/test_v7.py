@@ -1502,9 +1502,9 @@ _b = [dict(id=1, name="UHF 470–694 MHz", start=470.0, stop=694.0, enabled=True
 ok("7.58.3 : France -> rien à changer", ns["uhf_band_needed"](_b, "FR") is None)
 ok("7.58.3 : USA -> la bande UHF est recalée sur 470-608", ns["uhf_band_needed"](_b, "US") == ("resize", 1, "UHF 470–608 MHz", 470.0, 608.0),
    str(ns["uhf_band_needed"](_b, "US")))
-ok("7.58.3 : Australie 520-694, Japon 470-714, Nouvelle-Zélande 502-606",
+ok("7.58.3 : Australie 520-694, Japon 470-714, Nouvelle-Zélande 502-698 (7.59.1 : + 622-698)",
    ns["uhf_band_needed"](_b, "AU")[3:] == (520.0, 694.0) and ns["uhf_band_needed"](_b, "JP")[3:] == (470.0, 714.0)
-   and ns["uhf_band_needed"](_b, "NZ")[3:] == (502.0, 606.0))
+   and ns["uhf_band_needed"](_b, "NZ")[3:] == (502.0, 698.0))
 ok("7.58.3 : une bande perso (pas « UHF … ») n'est jamais modifiée",
    ns["uhf_band_needed"]([dict(id=2, name="Ma bande", start=470.0, stop=694.0, enabled=True)], "US") is None)
 _au = ns["tnt_channel_list"]("AU"); _jp = ns["tnt_channel_list"]("JP")

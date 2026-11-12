@@ -104,6 +104,14 @@ for f, cat in [(0.162, "broadcast"), (1.0, "broadcast"), (27.0, "civ"), (98.0, "
     if f == 462.6: c = si(f, ns["build_plan"]("US"), ns["tv_channels"]("US"))[1]
     ok(f"info {f} MHz -> {exp}", c == exp, str(c))
 ok("police dans le plan FR", "police" in ns["describe_freq"](390.0, fr_plan, fr_tv).lower(), ns["describe_freq"](390.0, fr_plan, fr_tv))
+# 7.59.1 : bandes revérifiées dans le tableau CEPT EFIS (radioastronomie 608-614 en DE / CH / NL, 622-698 en NZ)
+for _c, _f in (("DE", 610.0), ("CH", 610.0), ("NL", 610.0)):
+    _p = ns["build_plan"](_c)
+    ok(f"7.59.1 : {_c} 610 MHz = radioastronomie", "radioastronomie" in ns["describe_freq"](_f, _p, ns["tv_channels"](_c)).lower(),
+       ns["describe_freq"](_f, _p, ns["tv_channels"](_c)))
+ok("7.59.1 : NZ 502-698", ns["country_uhf"]("NZ") == (502.0, 698.0))
+ok("7.59.1 : notes européennes tirées du tableau CEPT",
+   all("CEPT" in ns["COUNTRY_NOTES"][c] for c in ("FR", "DE", "GB", "CH", "BE", "IT", "ES", "NL", "EU")))
 ok("GNSS 1575", si(1575.42, fr_plan, fr_tv)[1] == "sat")
 ok("ADS-B 1090", si(1090.0, fr_plan, fr_tv)[1] == "aero")
 ok("Wi-Fi 2,4", si(2437.0, fr_plan, fr_tv)[1] == "ism")
