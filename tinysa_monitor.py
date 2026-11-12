@@ -6973,6 +6973,9 @@ def feature_match(items, query):
 READY_ICONS = {"ok": "✅", "warn": "⚠️", "bad": "❌", "info": "ℹ️"}
 
 
+SLOW_CYCLE_S = 2.5          # 7.57.1 : tour complet plus long -> « Prêt ? » propose la RBW Auto si elle est forcée
+
+
 def ready_checks(i):
     """Vérification avant le show. i = état de l'appli (dict, clés facultatives). -> liste de dict(key, level
     ok|warn|bad|info, title, text, fix) ; fix = nom d'une méthode de MainWindow qui ouvre le bon réglage (ou "")."""
@@ -6994,6 +6997,12 @@ def ready_checks(i):
         nd, cy = len(devs) or 1, float(i.get("cycle") or 0)
         add("run", "ok", "Surveillance", f"{nd} tinySA, cycle de {cy:.1f} s (démo : pas de vrai tinySA)."
             if i.get("demo") else f"{nd} tinySA, cycle de {cy:.1f} s.")
+    rbw, cy = i.get("rbw"), float(i.get("cycle") or 0)
+    if i.get("running") and not i.get("demo") and rbw and cy >= SLOW_CYCLE_S:
+        add("speed", "warn", "Vitesse du balayage",
+            f"Un tour complet prend {cy:.1f} s, avec la finesse de mesure (RBW) forcée à {rbw:g} kHz. En Auto, le tinySA "
+            "choisit une RBW adaptée au pas et balaye souvent 2 à 4 fois plus vite (deux micros très proches se "
+            "séparent alors moins bien : le zoom live garde une RBW fine).", "set_rbw_auto")
     if i.get("demo") and i.get("running"):
         add("demo", "bad", "Mode démo", "Le mode démo est coché : ce n'est pas le vrai spectre !", "toggle_demo_off")
     n, unc = int(i.get("watch_n") or 0), int(i.get("uncovered") or 0)
@@ -24589,7 +24598,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     web_url=self.web_urls_text() if self.web is not None else "",
                     web_pin=bool(self.web_cfg.get("pin")), show_path=self.show_path,
                     session_rec=bool(self.session_cfg.get("rec")), disk_gb=disk,
-                    windows=sys.platform == "win32", guarded=self.guarded(),
+                    windows=sys.platform == "win32", guarded=self.guarded(), rbw=self._cfg.get("rbw"),
                     **(self.quality_info() if self.is_running() else {}))
 
     def quality_info(self):
@@ -24637,6 +24646,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def open_measure(self):
         self.open_settings("measure")
+
+    def set_rbw_auto(self):
+        """7.57.1 : « Régler » de la vitesse du balayage (Prêt ?) : finesse de mesure (RBW) en Auto."""
+        i = self.rbw_combo.findData(None)
+        if i >= 0:
+            self.rbw_combo.setCurrentIndex(i)
+        self.set_status("Finesse de mesure (RBW) en Auto : le tinySA choisit selon le pas (balayage plus rapide).")
 
     def open_show_mode(self):
         """🖥 Mode Show plein écran (sur l'écran de la fenêtre principale)."""
