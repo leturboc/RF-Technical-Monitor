@@ -4885,3 +4885,12 @@ TEMPLATES.update({
 EXACT.update({"\n  Vitesse par réglage :": "\n  Speed per setting:", "oui": "yes", "non": "no"})
 TEMPLATES.update({"\n    RBW {} · pas {} kHz · LNA {} : {} points/s ({} ms par point, {} points mesurés)":
                   "\n    RBW {} · step {} kHz · LNA {}: {} points/s ({} ms per point, {} points measured)"})
+EXACT.update({
+    "Vitesse du balayage": "Sweep speed",
+    "Finesse de mesure (RBW) en Auto : le tinySA choisit selon le pas (balayage plus rapide).":
+        "Measurement resolution (RBW) set to Auto: the tinySA picks it from the step (faster sweep).",
+})
+TEMPLATES.update({
+    "Un tour complet prend {} s, avec la finesse de mesure (RBW) forcée à {} kHz. En Auto, le tinySA choisit une RBW adaptée au pas et balaye souvent 2 à 4 fois plus vite (deux micros très proches se séparent alors moins bien : le zoom live garde une RBW fine).":
+        "A full cycle takes {} s, with the measurement resolution (RBW) forced to {} kHz. In Auto, the tinySA picks an RBW suited to the step and often sweeps 2 to 4 times faster (two very close mics are then harder to tell apart: live zoom keeps a fine RBW).",
+})

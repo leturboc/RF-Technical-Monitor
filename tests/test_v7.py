@@ -1480,6 +1480,11 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.57.1 : « Prêt ? » propose la RBW Auto si le balayage est lent avec une RBW forcée
+_sp = lambda **k: [c for c in ns["ready_checks"](dict(dict(running=True, devs=[dict(name="1", live=True)], sweep_age=1.0), **k)) if c["key"] == "speed"]
+ok("7.57.1 : RBW 100 forcée + 4,2 s -> conseil RBW Auto", len(_sp(rbw=100, cycle=4.2)) == 1 and _sp(rbw=100, cycle=4.2)[0]["fix"] == "set_rbw_auto")
+ok("7.57.1 : RBW Auto, cycle rapide ou démo -> rien", not _sp(rbw=None, cycle=4.2) and not _sp(rbw=100, cycle=1.0)
+   and not _sp(rbw=100, cycle=4.2, demo=True))
 # 7.57.1 : vitesse par réglage au 🩺
 _st = ns["speed_table"]({(100, 75, True): [3000, 4.2], (None, 125, True): [1793, 1.0]})
 ok("7.57.1 : vitesse par réglage", "RBW 100 kHz · pas 75 kHz · LNA oui : 714 points/s" in _st and "RBW auto · pas 125 kHz" in _st
