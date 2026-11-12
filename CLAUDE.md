@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.57.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.58.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1022,6 +1022,25 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (fond, grille, axes, trace, waterfall phosphore) reste façon tube ; accent, palette des scènes / groupes et bandeaux
   du bas = ceux de « Pro sombre ». `OLD_CRT_THEMES` (accent / palette / bandeaux 7.54.1-7.57.0) → une config au
   `theme_v` < 3 qui les a gardés tels quels est migrée dans `_apply_config` (`theme_v` = 3).
+- **7.58.0 (Clément : « une base à jour des bandes / TNT par internet ? » → « canaux, bonus ANFR et possibilité de faire
+  sans »)** : constat (12/11/2026) : AUCUNE base ouverte « canaux TNT par émetteur » : la base ANFR (data.gouv.fr, jeu
+  « installations radioélectriques de plus de 5 watts ») donne pour chaque émetteur DVB-T toute la bande (470-694 /
+  470-790), le plan TNT de data.gouv date de 2015 (lien mort), « Ma couverture TNT » (Arcom) n'est qu'un outil en ligne
+  (pas aspiré, pas d'accord de Clément). Donc **📺 canaux TNT MESURÉS** (sans internet) : PURE `tnt_channel_list(pays)`
+  (canaux 8 MHz 21-48, USA / Canada 6 MHz ≤ 608), `tnt_measure(F, L, canaux, marge)` (bruit = 10ᵉ centile ; « tv » =
+  médiane ≥ bruit + marge ET ≥ `TNT_FILL` 60 % des points au-dessus ; « other » = signal étroit ; « free » ; « none » =
+  < 4 points), `tnt_summary`. **Bonus ANFR** (facultatif) : PURE `anfr_text` (UTF-8 sinon latin-1 : les fichiers
+  mélangent), `anfr_tnt_sites(SUP_EMETTEUR, SUP_SUPPORT, SUP_STATION, SUP_EXPLOITANT)` → sites [lat, lon, multiplex,
+  hauteur, lieu (sinon adresse), CP, exploitant] réunis par position + `cp` {code postal: centre des supports} (lieu sans
+  internet), `anfr_pick` (ressources data.gouv les plus récentes), `geo_km`, `place_parse` (CP ou « lat, lon »),
+  `tnt_sites_near`, `tnt_near_text`, `TNT_DEFAULT` / `tnt_cfg_norm`. Qt : `anfr_read_files` (.zip ou SUP_*.txt),
+  `anfr_download(job)` (fil, sans Qt, dict partagé), `TntDialog` (`self._tnt`, onglets « Canaux mesurés ici » /
+  « Émetteurs proches (ANFR) »), `open_tnt`, `tnt_measure_now(src)` (via `coord_FL`), `tnt_mark` (LinearRegionItem +
+  InfLineLabel « TNT n », `_tnt_items`), `tnt_db` / `tnt_db_save` (`TNT_DB_PATH` = anfr_tnt.json à côté de config.json,
+  ≈ 0,3 Mo). Config + SHOW_KEYS « tnt » {place, radius, margin, mark} ; nouveau show = lieu vidé, marques effacées.
+  Menu 📋 Préparer › 1. Scanner le lieu. Vrai téléchargement testé dans la session (65 Mo, 18 s, 2 370 sites, Tour
+  Eiffel = 7 multiplex) ; essai inventé `tests/data/anfr_essai_data.zip` / `anfr_essai_ref.zip`. **Pas essayé par
+  Clément ; seuils de la détection (10 dB, 60 %) = choix de Claude, pas mesurés sur une vraie TNT.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
