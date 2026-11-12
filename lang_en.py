@@ -4880,3 +4880,8 @@ TEMPLATES.update({
     "🌍 Show en {} : plan de fréquences du pays, bande UHF {}–{} MHz balayée et affichée.": "🌍 Show in {}: the country's frequency plan, UHF band {}–{} MHz swept and shown.",
     "UHF {}–{} MHz": "UHF {}–{} MHz",
 })
+
+# 7.57.1 : vitesse par réglage au 🩺
+EXACT.update({"\n  Vitesse par réglage :": "\n  Speed per setting:", "oui": "yes", "non": "no"})
+TEMPLATES.update({"\n    RBW {} · pas {} kHz · LNA {} : {} points/s ({} ms par point, {} points mesurés)":
+                  "\n    RBW {} · step {} kHz · LNA {}: {} points/s ({} ms per point, {} points measured)"})
