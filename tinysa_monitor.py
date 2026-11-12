@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.58.1"
+APP_VER = "7.58.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -15148,6 +15148,18 @@ class TntDialog(QtWidgets.QDialog):
         self.mark_chk.toggled.connect(lambda *_: self.set_mark(self.mark_chk.isChecked()))
         r2.addWidget(self.mark_chk)
         r2.addStretch(1)
+        self.reset_btn = QtWidgets.QToolButton()
+        self.reset_btn.setText("↺ Nouveau lieu")
+        self.reset_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.reset_btn.setToolTip("En tournée ou après un nouveau plan : remettre les canaux TV en libre et les "
+                                  "remesurer.")
+        rm = QtWidgets.QMenu(self.reset_btn)
+        rm.addAction("Tout remettre en automatique (oublier les choix à la main et les canaux du plan)").triggered.connect(
+            lambda *_: owner.tnt_reset(False))
+        rm.addAction("Tout remettre à zéro et effacer les pics gardés (rescanner ce lieu)").triggered.connect(
+            lambda *_: owner.tnt_reset(True))
+        self.reset_btn.setMenu(rm)
+        r2.addWidget(self.reset_btn)
         self.copy_btn = QtWidgets.QPushButton("Copier")
         self.copy_btn.setToolTip("Copie le tableau (pour un mail, un tableur, le plan de coordination).")
         self.copy_btn.clicked.connect(lambda *_: self.copy())
@@ -23170,8 +23182,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._append_watch(f"Ext. {f:.3f}", f, "", None, "", "")
                     by_key[k] = self.watch[-1]
                     n_ext += 1
-        if doc.get("tv"):                          # 7.58.2 : canaux TV du plan -> 📺 grisés sur le spectre
-            self.tnt_set_plan(doc["tv"], os.path.basename(str(path)) if path else source)
+        if doc.get("tv") or opts.get("replace"):   # 7.58.2 : canaux TV du plan -> 📺 grisés ; liste remplacée (tournée,
+            self.tnt_set_plan(doc.get("tv") or [], os.path.basename(str(path)) if path else source)  # nouveau lieu) :
+            # ceux de l'ancien plan repartent, même si le nouveau n'en a pas
         scan_name = ""
         if opts.get("scan") and doc["scan"] is not None:
             names = {d["name"] for d in self.site_scans}
@@ -25516,6 +25529,21 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:  # noqa: BLE001
             pass
         return old != self.tnt_cfg["plan"]
+
+    def tnt_reset(self, clear_peaks=False):
+        """↺ Nouveau lieu (tournée) : canaux grisés à la main et canaux TV du plan oubliés -> tout redevient
+        automatique (d'après la mesure) ; clear_peaks = pics gardés effacés aussi, pour rescanner le lieu."""
+        self.tnt_cfg = tnt_cfg_norm(dict(self.tnt_cfg, manual={}, plan=[], plan_src=""))
+        if clear_peaks:
+            self.reset_max()
+        self.tnt_mark(None)
+        if getattr(self, "_tnt", None) is not None:
+            try:
+                self._tnt.measure()
+            except RuntimeError:
+                pass
+        self.set_status("📺 Canaux TNT remis à zéro : laisse scanner quelques minutes puis clique « Mesurer »."
+                        if clear_peaks else "📺 Canaux TNT remis en automatique (d'après la mesure).")
 
     def tnt_mark_saved(self):
         """Canaux grisés À LA MAIN (show / config) remis sur le spectre, même sans mesure."""

@@ -5021,3 +5021,17 @@ TEMPLATES.update({
         "📋 TV channels of plan “{}”: {} (greyed “(plan)”; updated if you follow the file).",
     "📺 Canaux TV du plan « {} » mis à jour : {}.": "📺 TV channels of plan “{}” updated: {}.",
 })
+
+# 7.58.2 : ↺ Nouveau lieu (canaux TNT remis à zéro)
+EXACT.update({
+    "En tournée ou après un nouveau plan : remettre les canaux TV en libre et les remesurer.":
+        "On tour or after a new plan: set the TV channels back to free and measure them again.",
+    "Tout remettre en automatique (oublier les choix à la main et les canaux du plan)":
+        "Back to automatic (forget the by-hand choices and the plan's channels)",
+    "Tout remettre à zéro et effacer les pics gardés (rescanner ce lieu)":
+        "Reset everything and clear the peak hold (rescan this venue)",
+    "↺ Nouveau lieu": "↺ New venue",
+    "📺 Canaux TNT remis en automatique (d'après la mesure).": "📺 DTT channels back to automatic (from the measurement).",
+    "📺 Canaux TNT remis à zéro : laisse scanner quelques minutes puis clique « Mesurer ».":
+        "📺 DTT channels reset: let it scan for a few minutes then click “Measure”.",
+})
