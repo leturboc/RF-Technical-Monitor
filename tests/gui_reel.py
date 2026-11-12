@@ -1657,6 +1657,11 @@ m.TNT_DB_PATH = m.Path(tempfile.mkdtemp()) / "anfr_tnt.json"
 _tnt = win.open_tnt()
 wait(200)
 check("TNT : un état par canal 21-48", _tnt.tab.rowCount() == 28, str(_tnt.tab.rowCount()))
+_tnt.cycle(12)                                  # canal 33 grisé à la main (7.58.1)
+check("TNT : griser un canal à la main", win.tnt_cfg["manual"] == {"33": "tv"} and len(win._tnt_items) >= 1,
+      str(win.tnt_cfg["manual"]))
+_tnt.cycle(12); _tnt.cycle(12)
+check("TNT : retour à l'automatique", win.tnt_cfg["manual"] == {})
 shot(_tnt, "tnt_canaux")
 _tnt.tabs.setCurrentIndex(1)
 _tnt.import_files([os.path.join(HERE, "data", "anfr_essai_data.zip"), os.path.join(HERE, "data", "anfr_essai_ref.zip")])

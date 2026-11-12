@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.58.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.58.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1041,6 +1041,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Menu 📋 Préparer › 1. Scanner le lieu. Vrai téléchargement testé dans la session (65 Mo, 18 s, 2 370 sites, Tour
   Eiffel = 7 multiplex) ; essai inventé `tests/data/anfr_essai_data.zip` / `anfr_essai_ref.zip`. **Pas essayé par
   Clément ; seuils de la détection (10 dB, 60 %) = choix de Claude, pas mesurés sur une vraie TNT.**
+  **7.58.1 (Clément : « on peut pas griser manuellement »)** : `tnt_cfg["manual"]` {n° canal: « tv » | « free »}
+  (config + shows via « tnt » ; nouveau show = vidé) ; PURE `tnt_apply_manual(res, manual)` (lignes copiées, `manual`
+  = True) appliqué par `tnt_measure_now` ; TntDialog : double-clic = `cycle` (auto → tv → free → auto), clic droit =
+  `_man_menu` (plusieurs lignes, `set_manual`), état « (à la main) » ; `tnt_mark_saved` (QTimer après `_apply_config`) :
+  les canaux grisés à la main reviennent sur le spectre à l'ouverture, sans mesure.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

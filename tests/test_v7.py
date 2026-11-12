@@ -1526,7 +1526,15 @@ _api = dict(resources=[dict(title="Tables de référence octobre 2026", url="r1"
                        dict(title="Tables supports antennes émetteurs bandes octobre 2026", url="d1", last_modified="2026-10-06"),
                        dict(title="Tables de référence novembre 2026", url="r2", last_modified="2026-11-06")])
 ok("7.58 : data.gouv : fichiers les plus récents", ns["anfr_pick"](_api) == ("d2", "r2", "2026-11-06"), str(ns["anfr_pick"](_api)))
-ok("7.58 : réglages TNT bornés", ns["tnt_cfg_norm"](dict(radius=999, margin=1, place="  75  007 ")) == dict(place="75 007", radius=200, margin=3, mark=True))
+ok("7.58 : réglages TNT bornés", ns["tnt_cfg_norm"](dict(radius=999, margin=1, place="  75  007 ")) == dict(place="75 007", radius=200, margin=3, mark=True, manual={}))
+ok("7.58.1 : canaux à la main gardés, valeurs bancales retirées",
+   ns["tnt_cfg_norm"](dict(manual={"23": "tv", 30: "free", "x": "tv", "41": "bof", "200": "tv"}))["manual"] == {"23": "tv", "30": "free"})
+_rm = ns["tnt_apply_manual"](_r, {"22": "tv", "23": "free"})
+_sm = {r["ch"]: (r["state"], r["manual"]) for r in _rm["rows"]}
+ok("7.58.1 : la main passe avant la mesure", _sm[22] == ("tv", True) and _sm[23] == ("free", True) and _sm[30] == ("tv", False), str(_sm))
+ok("7.58.1 : la mesure d'origine n'est pas modifiée", {r["ch"]: r["state"] for r in _r["rows"]}[23] == "tv")
+_rn = ns["tnt_apply_manual"](ns["tnt_measure"](None, None, _ch), {"33": "tv"})
+ok("7.58.1 : griser à la main sans aucune mesure", [r["ch"] for r in _rn["rows"] if r["state"] == "tv"] == [33])
 # 7.57.1 : « Prêt ? » propose la RBW Auto si le balayage est lent avec une RBW forcée
 _sp = lambda **k: [c for c in ns["ready_checks"](dict(dict(running=True, devs=[dict(name="1", live=True)], sweep_age=1.0), **k)) if c["key"] == "speed"]
 ok("7.57.1 : RBW 100 forcée + 4,2 s -> conseil RBW Auto", len(_sp(rbw=100, cycle=4.2)) == 1 and _sp(rbw=100, cycle=4.2)[0]["fix"] == "set_rbw_auto")
