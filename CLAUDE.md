@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.58.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.58.3**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1058,6 +1058,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `apply_ezrf` avec « Remplacer ma liste » remplace les canaux TV du plan (vidés si le nouveau plan n'en a pas).
   La 7.58.1 n'a PAS de release (compilation sur main refusée : paiement / limite de dépense GitHub, 12/11/2026) ;
   l'exe était dans la pré-release `test-ui-validation`.
+  **7.58.3 (Clément : « quand je change de pays ça garde 470-694 ; on add des pays ? fais les recherches »)** :
+  `COUNTRY_UHF` + GB 470-702, AU 520-694, NZ 502-606, JP 470-714 (recherches du 13/11/2026 : ACMA LIPD 2025, RSM GUSL
+  272800 / GURL-SRD, tableau MIC, Ofcom entrelacé ; **indicatif**, bouts annexes dans `COUNTRY_NOTES`) ; COUNTRIES + AU,
+  NZ, JP ; `tv_channels` AU (7 MHz, 27-51) et JP (6 MHz, 13-52) ; `uhf_band_needed` → ("resize", …) pour une bande
+  cochée dont le nom commence par « UHF » (créée par l'appli) ; `set_show_country` l'applique ; le combo Pays des
+  réglages appelle `set_show_country` sur `activated` (choix à la main seulement, pas au chargement). Pas trouvé de
+  source fiable pour BR / MX / IN / ZA : pas ajoutés. Seuil auto « qui suit la TNT » (capture de Clément) : voulu
+  (bruit LOCAL + marge ; sur le vrai bruit, un micro dans un canal TNT serait toujours « occupé » → ABSENT muet).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

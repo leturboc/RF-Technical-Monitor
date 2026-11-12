@@ -2006,7 +2006,6 @@ EXACT = {
     'Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.': 'Indicative plan (BIPT). Very little DTT use: to be checked.',
     'Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.': 'Indicative plan (MIMIT/AGCOM). DVB-T2 transition: to be checked.',
     "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.": 'Indicative plan (OFCOM). DVB-T stopped in 2019: check wireless mic use in UHF.',
-    'Plan indicatif (Ofcom). Canal 38 (606-614) : micros HF avec licence Ofcom partagée ; canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.': 'Indicative plan (Ofcom). Channel 38 (606-614): wireless mics with a shared Ofcom licence; channel 70 (863-865) licence-free; 700 MHz cleared in 2020, 694-703 MHz guard band kept.',
     'Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.': 'Plan close to the USA (ISED). 6 MHz TV channels; check the Canadian rules.',
     'Plein écran sur cet écran (F11 ; Échap pour sortir).': 'Full screen on this screen (F11; Esc to exit).',
     "Plusieurs personnes ? Chacun s'abonne au même canal sur son téléphone.": 'Several people? Everyone subscribes to the same channel on their phone.',
@@ -5035,3 +5034,21 @@ EXACT.update({
     "📺 Canaux TNT remis à zéro : laisse scanner quelques minutes puis clique « Mesurer ».":
         "📺 DTT channels reset: let it scan for a few minutes then click “Measure”.",
 })
+
+# 7.58.3 : pays ajoutés (bandes UHF des micros)
+EXACT.update({
+    "AU": "AU", "JP": "JP", "NZ": "NZ",
+    "Australie": "Australia", "Japon": "Japan", "Nouvelle-Zélande": "New Zealand",
+    "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de 7 MHz) ; 694-820 MHz interdit depuis 2015.":
+        "Indicative plan (ACMA, 2025 LIPD class licence). Wireless mics in the free TV channels of 520-694 MHz (7 MHz channels); 694-820 MHz banned since 2015.",
+    "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37), plus quelques bouts : 614-616 MHz et une partie de 653-663 MHz ; 941-960 et 1435-1525 MHz avec licence.":
+        "Indicative plan (FCC). 6 MHz TV channels; wireless mics on 470-608 MHz (except channel 37), plus a few slices: 614-616 MHz and part of 653-663 MHz; 941-960 and 1435-1525 MHz with a licence.",
+    "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée 710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.":
+        "Indicative plan (MIC). Mics in the TV white spaces 470-710 MHz (6 MHz channels) + dedicated band 710-714 MHz; low-power mics also on 806-810 and 1240-1260 MHz.",
+    "Plan indicatif (Ofcom). Micros HF dans le spectre TV entrelacé ≈ 470-702 MHz (coordonné par Ofcom) ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 703-790 MHz interdit depuis 2020.":
+        "Indicative plan (Ofcom). Wireless mics in the interleaved TV spectrum ≈ 470-702 MHz (coordinated by Ofcom); channel 38 (606-614): shared Ofcom licence; channel 70 (863-865) licence-free; 703-790 MHz banned since 2020.",
+    "Plan indicatif (RSM). Micros HF sur 502-606 MHz (licences GUSL 272800 et GURL-SRD) ; 622-698 MHz à vérifier (envisagé pour la 5G) ; 698-806 MHz interdit depuis 2015.":
+        "Indicative plan (RSM). Wireless mics on 502-606 MHz (GUSL 272800 and GURL-SRD licences); 622-698 MHz to be checked (considered for 5G); 698-806 MHz banned since 2015.",
+})
+TEMPLATES.update({"Canal UHF {} (7 MHz) : {}-{} MHz": "UHF channel {} (7 MHz): {}-{} MHz",
+                  "Canal UHF {} (6 MHz) : {}-{} MHz": "UHF channel {} (6 MHz): {}-{} MHz"})

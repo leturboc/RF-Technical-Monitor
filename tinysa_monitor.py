@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.58.2"
+APP_VER = "7.58.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -913,11 +913,16 @@ for _n, _t in THEMES.items():
 
 COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "Allemagne"),
              ("GB", "Royaume-Uni"), ("IT", "Italie"), ("ES", "Espagne"), ("NL", "Pays-Bas"),
-             ("EU", "Europe (générique CEPT)"), ("US", "États-Unis"), ("CA", "Canada")]
+             ("EU", "Europe (générique CEPT)"), ("US", "États-Unis"), ("CA", "Canada"),
+             ("AU", "Australie"), ("NZ", "Nouvelle-Zélande"), ("JP", "Japon")]
 
 # 7.57 (Clément : « mettre la Vue sur UHF 470-694 direct si on est en France pour un nouveau show, déduire tout ça
 # rapidement ») : bande UHF des micros par pays (télé + micros HF) ; États-Unis / Canada : 470-608 après le « repack ».
-COUNTRY_UHF = {"US": (470.0, 608.0), "CA": (470.0, 608.0)}
+# 7.58.3 (Clément : « quand je change de pays ça garde 470-694 ; on add des pays ? ») : recherches du 13/11/2026 (ACMA
+# LIPD 2025 : 520-694 ; RSM GUSL 272800 + GURL-SRD : 502-606 ; tableau MIC Japon : 470-710 + 710-714 ; Ofcom :
+# spectre entrelacé ≈ 470-702) — INDICATIF, la bande principale seulement (les petits bouts sont dans COUNTRY_NOTES).
+COUNTRY_UHF = {"US": (470.0, 608.0), "CA": (470.0, 608.0), "GB": (470.0, 702.0), "AU": (520.0, 694.0),
+               "NZ": (502.0, 606.0), "JP": (470.0, 714.0)}
 COUNTRY_UHF_DEFAULT = (470.0, 694.0)
 
 
@@ -947,12 +952,20 @@ def default_view_band(bands, country):
 
 def uhf_band_needed(bands, country, cover=0.8):
     """7.57 : bande UHF des micros du pays du show. -> None (déjà balayée : une bande cochée en couvre ≥ 80 %),
-    ("enable", id) (une bande décochée la couvre : la réactiver) ou ("add", nom, début, fin, pas) (à créer)."""
+    ("resize", id, nom, début, fin) (7.58.3 : la bande « UHF … » de l'appli est recalée sur le pays), ("enable", id)
+    (une bande décochée la couvre : la réactiver) ou ("add", nom, début, fin, pas) (à créer)."""
     lo, hi = country_uhf(country)
     need = cover * (hi - lo)
 
     def ov(b):
         return min(float(b["stop"]), hi) - max(float(b["start"]), lo)
+    auto = [b for b in bands if b.get("enabled", True) and str(b.get("name", "")).startswith("UHF")
+            and ov(b) >= 0.5 * (hi - lo)]
+    if auto:                                      # bande créée par l'appli (ou nommée « UHF … ») : suit le pays
+        b = max(auto, key=ov)
+        if abs(float(b["start"]) - lo) > 0.5 or abs(float(b["stop"]) - hi) > 0.5:
+            return ("resize", b["id"], f"UHF {lo:g}–{hi:g} MHz", lo, hi)
+        return None
     if any(b.get("enabled", True) and ov(b) >= need for b in bands):
         return None
     off = [b for b in bands if not b.get("enabled", True) and ov(b) >= need]
@@ -1003,15 +1016,22 @@ COUNTRY_NOTES = {
           "à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux "
           "police / pompiers / secours.",
     "DE": "Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.",
-    "GB": "Plan indicatif (Ofcom). Canal 38 (606-614) : micros HF avec licence Ofcom partagée ; canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.",
+    "GB": "Plan indicatif (Ofcom). Micros HF dans le spectre TV entrelacé ≈ 470-702 MHz (coordonné par Ofcom) ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 703-790 MHz interdit depuis 2020.",
     "CH": "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.",
     "BE": "Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.",
     "IT": "Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.",
     "ES": "Plan indicatif (CNMC / SETID). 700 MHz libéré en 2020.",
     "NL": "Plan indicatif (Agentschap Telecom).",
     "EU": "Plan harmonisé CEPT / UIT région 1, indicatif.",
-    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; bande 600 MHz vendue aux opérateurs mobiles ; micros HF limités après 2020.",
+    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37), plus quelques bouts : "
+          "614-616 MHz et une partie de 653-663 MHz ; 941-960 et 1435-1525 MHz avec licence.",
     "CA": "Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.",
+    "AU": "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de "
+          "7 MHz) ; 694-820 MHz interdit depuis 2015.",
+    "NZ": "Plan indicatif (RSM). Micros HF sur 502-606 MHz (licences GUSL 272800 et GURL-SRD) ; 622-698 MHz à vérifier "
+          "(envisagé pour la 5G) ; 698-806 MHz interdit depuis 2015.",
+    "JP": "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée "
+          "710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.",
 }
 
 # début-fin (MHz) | catégorie | libellé | note
@@ -1317,6 +1337,16 @@ def tv_channels(code):
         for n in range(14, 37):
             add(n, 470 + 6 * (n - 14))
         add(37, 608, "other", "Canal 37 : radioastronomie / télémétrie médicale")
+        return out
+    if code == "AU":                                 # 7.58.3 : canaux de 7 MHz (UHF 27 = 519-526 … 51 = 687-694)
+        for n in range(27, 52):
+            a = 519 + 7 * (n - 27)
+            out.append((a, a + 7, f"CH {n}", "tv", f"Canal UHF {n} (7 MHz) : {a}-{a + 7} MHz"))
+        return out
+    if code == "JP":                                 # 7.58.3 : canaux de 6 MHz (13 = 470-476 … 52 = 704-710)
+        for n in range(13, 53):
+            a = 470 + 6 * (n - 13)
+            out.append((a, a + 6, f"CH {n}", "tv", f"Canal UHF {n} (6 MHz) : {a}-{a + 6} MHz"))
         return out
     for n in range(5, 13):
         a = 174 + 7 * (n - 5)
@@ -18892,6 +18922,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.country_combo = self._combo([(name, code) for code, name in COUNTRIES], "FR")
         self.country_combo.currentIndexChanged.connect(self.on_country)
+        # 7.58.3 : choisi À LA MAIN (pas au chargement d'une config) -> la bande UHF suit le pays, comme pour un show
+        self.country_combo.activated.connect(lambda *_: self.set_show_country(self.country_combo.currentData() or "FR"))
         self.alloc_chk = QtWidgets.QCheckBox("Attributions (4G/5G, TNT, militaire…)")
         self.alloc_chk.setChecked(True)
         self.tv_chk = QtWidgets.QCheckBox("Canaux TV")
@@ -20140,7 +20172,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if i_ >= 0 and i_ != self.country_combo.currentIndex():
             self.country_combo.setCurrentIndex(i_)            # -> rebuild_plan
         need = uhf_band_needed(self.bands, code)
-        if need and need[0] == "enable":
+        if need and need[0] == "resize":                 # 7.58.3 : la bande « UHF … » suit le pays
+            _k, bid, nm, lo, hi = need
+            b = next((x for x in self.bands if x["id"] == bid), None)
+            if b is not None:
+                with self.lock:
+                    b.update(name=nm, start=lo, stop=hi)
+                self._bands_changed()
+        elif need and need[0] == "enable":
             self.set_band_enabled(need[1], True)
         elif need:
             _k, nm, lo, hi, st = need

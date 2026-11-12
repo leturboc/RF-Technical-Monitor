@@ -1435,7 +1435,7 @@ _B2 = [dict(id=1, start=400.0, stop=1000.0, enabled=True), dict(id=2, start=470.
 ok("7.57 : États-Unis : 470-608, la bande la plus étroite qui la couvre", ns["default_view_band"](_B2, "US") == 2
    and ns["country_uhf"]("US") == (470.0, 608.0) and ns["country_uhf"]("FR") == (470.0, 694.0))
 ok("7.57 : pays d'après Windows", ns["country_from_locale"]("fr_FR") == "FR" and ns["country_from_locale"]("fr-BE") == "BE"
-   and ns["country_from_locale"]("de_CH") == "CH" and ns["country_from_locale"]("ja_JP") == "" and ns["country_from_locale"]("") == "")
+   and ns["country_from_locale"]("de_CH") == "CH" and ns["country_from_locale"]("ja_JP") == "JP" and ns["country_from_locale"]("zh_CN") == "" and ns["country_from_locale"]("") == "")
 ok("7.57 : Windows en anglais = rien de sûr (la France reste)", ns["country_from_locale"]("en_US") == ""
    and ns["country_from_locale"]("en_GB") == "")
 ok("7.57 : waterfall en « toutes les bandes » avec une seule bande balayée", ns["single_band_view"](-1, [_B[0], _B[2]], -2) == 1
@@ -1483,6 +1483,19 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.58.3 : la bande « UHF … » suit le pays ; pays ajoutés
+_b = [dict(id=1, name="UHF 470–694 MHz", start=470.0, stop=694.0, enabled=True)]
+ok("7.58.3 : France -> rien à changer", ns["uhf_band_needed"](_b, "FR") is None)
+ok("7.58.3 : USA -> la bande UHF est recalée sur 470-608", ns["uhf_band_needed"](_b, "US") == ("resize", 1, "UHF 470–608 MHz", 470.0, 608.0),
+   str(ns["uhf_band_needed"](_b, "US")))
+ok("7.58.3 : Australie 520-694, Japon 470-714, Nouvelle-Zélande 502-606",
+   ns["uhf_band_needed"](_b, "AU")[3:] == (520.0, 694.0) and ns["uhf_band_needed"](_b, "JP")[3:] == (470.0, 714.0)
+   and ns["uhf_band_needed"](_b, "NZ")[3:] == (502.0, 606.0))
+ok("7.58.3 : une bande perso (pas « UHF … ») n'est jamais modifiée",
+   ns["uhf_band_needed"]([dict(id=2, name="Ma bande", start=470.0, stop=694.0, enabled=True)], "US") is None)
+_au = ns["tnt_channel_list"]("AU"); _jp = ns["tnt_channel_list"]("JP")
+ok("7.58.3 : canaux Australie (7 MHz) et Japon (6 MHz)", _au[0] == (28, 526.0, 533.0) and _au[-1] == (51, 687.0, 694.0)
+   and _jp[0] == (13, 470.0, 476.0) and _jp[-1] == (52, 704.0, 710.0), f"{_au[:1]} {_au[-1:]} {_jp[:1]} {_jp[-1:]}")
 # 7.58 : 📺 canaux TNT mesurés + émetteurs proches (ANFR)
 _ch = ns["tnt_channel_list"]("FR")
 ok("7.58 : France = canaux 21 à 48 de 8 MHz", _ch[0] == (21, 470.0, 478.0) and _ch[-1] == (48, 686.0, 694.0) and len(_ch) == 28, str(_ch[:2]))
