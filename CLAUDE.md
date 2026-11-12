@@ -1018,6 +1018,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   « ✅ Prêt ? » : clé `speed` (warn) si RBW forcée ET tour complet ≥ `SLOW_CYCLE_S` (2,5 s) hors démo → « Régler » =
   `set_rbw_auto`. **RBW par défaut = Auto** (demande de Clément ; `_cfg` et `rbw_combo`) : une config qui a déjà « rbw »
   (toutes celles enregistrées) garde sa valeur.
+  **Thèmes analo (Clément : « trop unis, ça fait trop vert, c'est surtout la visu qui est cool »)** : seul le spectre
+  (fond, grille, axes, trace, waterfall phosphore) reste façon tube ; accent, palette des scènes / groupes et bandeaux
+  du bas = ceux de « Pro sombre ». `OLD_CRT_THEMES` (accent / palette / bandeaux 7.54.1-7.57.0) → une config au
+  `theme_v` < 3 qui les a gardés tels quels est migrée dans `_apply_config` (`theme_v` = 3).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
