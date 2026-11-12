@@ -1490,7 +1490,7 @@ win.update_home()
 check("accueil : phrase d'état remplie", win.home.status.text() != "", win.home.status.text())
 _lvl0 = win.ui_level
 win.set_level("expert")
-check("accueil : en expert, Port / Démarrer reviennent en haut", win._port_act.isVisible())
+check("accueil : en expert aussi, Port / Démarrer en double cachés (accueil affiché)", not win._port_act.isVisible())
 win.set_level(_lvl0)
 win.set_home(False)
 check("accueil : masqué -> Port / Démarrer de retour", not win.home_bar.isVisible() and win._port_act.isVisible())
