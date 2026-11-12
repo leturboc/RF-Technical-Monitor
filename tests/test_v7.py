@@ -1480,6 +1480,14 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.57.1 : la disposition des fenêtres suit le profil
+_lay = dict(_cfg, geometry="R0VP", docks="RE9D", panel_windows=dict(dock_list=dict(geo="x", mode="max")), layout_ver=4)
+_ul = ns["user_doc"](_lay, "A")
+ok("7.57.1 : profil avec disposition des fenêtres", _ul["prefs"].get("layout") == dict(
+    geometry="R0VP", docks="RE9D", panel_windows=dict(dock_list=dict(geo="x", mode="max")), layout_ver=4), str(_ul["prefs"].keys()))
+_rl = ns["read_user"](_js.dumps(_ul))
+ok("7.57.1 : disposition relue, pas recopiée dans la config", _rl["prefs"]["layout"]["docks"] == "RE9D"
+   and "layout" not in ns["user_apply"]({}, _rl) and "docks" not in ns["user_apply"]({}, _rl))
 # 7.57 : pays du show -> bande UHF
 _ub = ns["uhf_band_needed"]
 ok("7.57 : France, 470-694 déjà balayée -> rien", _ub([dict(id=1, start=470.0, stop=694.0, enabled=True)], "FR") is None)

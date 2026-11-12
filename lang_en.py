@@ -1421,8 +1421,8 @@ EXACT = {
     'Canada': 'Canada',
     'Canal (selon le pays choisi) :': 'Channel (for the chosen country):',
     'Canal 37 : radioastronomie / télémétrie médicale': 'Channel 37: radio astronomy / medical telemetry',
-    'Canal 38 : hors micros HF en France (radioastronomie)': 'Channel 38: no wireless mics in France (radio astronomy)',
-    'Canal 38 : micros HF sans licence (UK)': 'Channel 38: licence-free wireless mics (UK)',
+    'Canal 38 (606-614) utilisable par les micros HF': 'Channel 38 (606-614) usable by wireless mics',
+    'Canal 38 : micros HF, licence Ofcom partagée (UK)': 'Channel 38: wireless mics, shared Ofcom licence (UK)',
     'Canal 70 : micros HF sans licence (UK)': 'Channel 70: licence-free wireless mics (UK)',
     'Canal :': 'Channel:',
     'Canal TV et attribution du spectre à cette fréquence (selon le pays).': 'TV channel and spectrum allocation at this frequency (by country).',
@@ -2006,7 +2006,7 @@ EXACT = {
     'Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.': 'Indicative plan (BIPT). Very little DTT use: to be checked.',
     'Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.': 'Indicative plan (MIMIT/AGCOM). DVB-T2 transition: to be checked.',
     "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.": 'Indicative plan (OFCOM). DVB-T stopped in 2019: check wireless mic use in UHF.',
-    'Plan indicatif (Ofcom). Canal 38 (606-614) et canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.': 'Indicative plan (Ofcom). Channel 38 (606-614) and channel 70 (863-865) licence-free; 700 MHz cleared in 2020, 694-703 MHz guard band kept.',
+    'Plan indicatif (Ofcom). Canal 38 (606-614) : micros HF avec licence Ofcom partagée ; canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.': 'Indicative plan (Ofcom). Channel 38 (606-614): wireless mics with a shared Ofcom licence; channel 70 (863-865) licence-free; 700 MHz cleared in 2020, 694-703 MHz guard band kept.',
     'Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.': 'Plan close to the USA (ISED). 6 MHz TV channels; check the Canadian rules.',
     'Plein écran sur cet écran (F11 ; Échap pour sortir).': 'Full screen on this screen (F11; Esc to exit).',
     "Plusieurs personnes ? Chacun s'abonne au même canal sur son téléphone.": 'Several people? Everyone subscribes to the same channel on their phone.',
@@ -4852,10 +4852,10 @@ EXACT.update({
     "Profils TinySA Monitor (*.tsauser)": "TinySA Monitor profiles (*.tsauser)",
     "Profils utilisateur": "User profiles",
     "Supprime le fichier du profil choisi (tes préférences actuelles ne bougent pas).": "Deletes the chosen profile's file (your current preferences stay).",
-    "Tes préférences (affichage, couleurs, seuils, alarmes, préréglages perso) dans un\nfichier : à recharger sur n'importe quel PC ou à passer à un collègue.":
-        "Your preferences (display, colours, thresholds, alarms, custom presets) in a\nfile: reload them on any PC or hand them to a colleague.",
-    "Un profil garde TES préférences : affichage (thème, niveau, unité, colonnes), mots et couleurs, seuils, alarmes et son (sauf la sortie audio), préréglages perso. Il ne touche jamais au show (fréquences, scènes, bandes, tinySA) : charge ton profil sur n'importe quel PC, ou passe-le à un collègue.":
-        "A profile keeps YOUR preferences: display (theme, level, unit, columns), words and colours, thresholds, alarms and sound (except the audio output), custom presets. It never touches the show (frequencies, stages, bands, tinySA): load your profile on any PC, or hand it to a colleague.",
+    "Tes préférences (affichage, disposition des fenêtres, couleurs, seuils, alarmes, préréglages perso) dans un\nfichier : à recharger sur n'importe quel PC ou à passer à un collègue.":
+        "Your preferences (display, window layout, colours, thresholds, alarms, custom presets) in a\nfile: reload them on any PC or hand them to a colleague.",
+    "Un profil garde TES préférences : affichage (thème, niveau, unité, colonnes), mots et couleurs, seuils, alarmes et son (sauf la sortie audio), préréglages perso, disposition des fenêtres. Il ne touche jamais au show (fréquences, scènes, bandes, tinySA) : charge ton profil sur n'importe quel PC, ou passe-le à un collègue.":
+        "A profile keeps YOUR preferences: display (theme, level, unit, columns), words and colours, thresholds, alarms and sound (except the audio output), custom presets, window layout. It never touches the show (frequencies, stages, bands, tinySA): load your profile on any PC, or hand it to a colleague.",
     "thème perso": "custom theme",
     "👤 Profils utilisateur": "👤 User profiles",
     "👤 Profils utilisateur (mes préférences)…": "👤 User profiles (my preferences)…",
@@ -4864,7 +4864,7 @@ EXACT.update({
     "📤 Exporter…": "📤 Export…",
 })
 TEMPLATES.update({
-    "👤 Profil « {} » chargé : affichage, seuils, alarmes et préréglages perso appliqués.": "👤 Profile “{}” loaded: display, thresholds, alarms and custom presets applied.",
+    "👤 Profil « {} » chargé : affichage, disposition des fenêtres, seuils, alarmes et préréglages perso appliqués.": "👤 Profile “{}” loaded: display, window layout, thresholds, alarms and custom presets applied.",
     "📤 Profil exporté : {}": "📤 Profile exported: {}",
     "👤 Profil « {} » enregistré ({}).": "👤 Profile “{}” saved ({}).",
     "Profil non enregistré :\n{}": "Profile not saved:\n{}",
