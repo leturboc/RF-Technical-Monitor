@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.58.0"
+APP_VER = "7.58.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1401,7 +1401,7 @@ def tnt_summary(res):
     return " · ".join(parts)
 
 
-TNT_DEFAULT = dict(place="", radius=60, margin=10, mark=True)
+TNT_DEFAULT = dict(place="", radius=60, margin=10, mark=True, manual={})
 
 
 def tnt_cfg_norm(c):
@@ -1415,7 +1415,27 @@ def tnt_cfg_norm(c):
         except (TypeError, ValueError):
             pass
     out["mark"] = bool(c.get("mark", True))
+    man = {}
+    for k, v in (c.get("manual") or {}).items() if isinstance(c.get("manual"), dict) else []:
+        try:
+            n = int(k)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= 99 and v in ("tv", "free"):
+            man[str(n)] = v
+    out["manual"] = man
     return out
+
+
+def tnt_apply_manual(res, manual):
+    """Choix faits à la main (« tv » = griser, « free » = pas de TNT) par-dessus la mesure : rows copiées, clé
+    « manual » = True sur les canaux forcés."""
+    manual = manual or {}
+    rows = []
+    for r in (res or {}).get("rows") or []:
+        m = manual.get(str(r["ch"]))
+        rows.append(dict(r, state=m, manual=True) if m in ("tv", "free") else dict(r, manual=False))
+    return dict(res or {}, rows=rows)
 
 
 ANFR_DATASET = ("https://www.data.gouv.fr/api/1/datasets/"
@@ -15090,8 +15110,17 @@ class TntDialog(QtWidgets.QDialog):
         self.tab.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tab.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.tab.setToolTip("📺 TNT = canal pris par la télé ; autre signal = quelque chose d'étroit (micro, porteuse) ; "
-                            "libre = rien au-dessus du bruit ; pas mesuré = hors de tes bandes balayées.")
+                            "libre = rien au-dessus du bruit ; pas mesuré = hors de tes bandes balayées.\n"
+                            "Double-clic ou clic droit : griser / dégriser un canal à la main.")
+        self.tab.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tab.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tab.customContextMenuRequested.connect(lambda pos: self._man_menu(pos))
+        self.tab.cellDoubleClicked.connect(lambda r, c: self.cycle(r))
         l1.addWidget(self.tab, 1)
+        hint = QtWidgets.QLabel("Double-clic sur un canal (ou clic droit, plusieurs à la fois) pour le griser ou le "
+                                "dégriser à la main : ton choix passe avant la mesure et reste avec le show.")
+        hint.setWordWrap(True)
+        l1.addWidget(hint)
         r2 = QtWidgets.QHBoxLayout()
         self.mark_chk = QtWidgets.QCheckBox("Griser les canaux TNT sur le spectre")
         self.mark_chk.setChecked(bool(owner.tnt_cfg.get("mark", True)))
@@ -15200,6 +15229,7 @@ class TntDialog(QtWidgets.QDialog):
         self.res = res
         self.sum_lbl.setText(tnt_summary(res))
         txt = {"tv": "📺 TNT", "other": "autre signal", "free": "libre", "none": "pas mesuré"}
+        mtxt = {"tv": "📺 TNT (à la main)", "free": "libre (à la main)"}
         col = {"tv": self.owner.theme.get("bp_tv", "#3b82f6"), "other": self.owner.theme.get("st_weak", "#ffc35c"),
                "free": self.owner.theme.get("st_free", "#4fd1c5")}
         rows = res.get("rows") or []
@@ -15207,7 +15237,8 @@ class TntDialog(QtWidgets.QDialog):
         for i, r in enumerate(rows):
             vals = [str(r["ch"]), f"{r['lo']:g}–{r['hi']:g}",
                     self.owner.lvl(r["level"]) if r["level"] is not None else "—",
-                    f"+{r['above']:.0f} dB" if r["above"] is not None else "—", txt[r["state"]]]
+                    f"+{r['above']:.0f} dB" if r["above"] is not None else "—",
+                    mtxt[r["state"]] if r.get("manual") else txt[r["state"]]]
             for j, v in enumerate(vals):
                 it = QtWidgets.QTableWidgetItem(v)
                 if j == 4 and r["state"] in col:
@@ -15215,6 +15246,43 @@ class TntDialog(QtWidgets.QDialog):
                 self.tab.setItem(i, j, it)
         n = self.owner.tnt_mark(res)
         return n
+
+    def _rows_sel(self):
+        rows = sorted({i.row() for i in self.tab.selectedIndexes()})
+        return [self.res["rows"][i]["ch"] for i in rows if self.res and i < len(self.res["rows"])]
+
+    def set_manual(self, chans, state):
+        """Force des canaux : « tv » (griser), « free » (pas de TNT) ou None (automatique, d'après la mesure)."""
+        man = dict(self.owner.tnt_cfg.get("manual") or {})
+        for ch in chans:
+            if state in ("tv", "free"):
+                man[str(ch)] = state
+            else:
+                man.pop(str(ch), None)
+        self.owner.tnt_cfg = tnt_cfg_norm(dict(self.owner.tnt_cfg, manual=man))
+        sel = self._rows_sel()
+        self.measure()
+        for i, r in enumerate(self.res["rows"]):
+            if r["ch"] in sel:
+                self.tab.selectRow(i)
+
+    def cycle(self, row):
+        """Double-clic : automatique → TNT → libre → automatique."""
+        if not self.res or row >= len(self.res["rows"]):
+            return
+        ch = self.res["rows"][row]["ch"]
+        cur = (self.owner.tnt_cfg.get("manual") or {}).get(str(ch))
+        self.set_manual([ch], {None: "tv", "tv": "free", "free": None}[cur])
+
+    def _man_menu(self, pos):
+        chans = self._rows_sel()
+        if not chans:
+            return
+        m = QtWidgets.QMenu(self)
+        for label, st in (("📺 Griser (TNT, à la main)", "tv"), ("Libre (pas de TNT, à la main)", "free"),
+                          ("Automatique (d'après la mesure)", None)):
+            m.addAction(label).triggered.connect(lambda *_, st=st: self.set_manual(chans, st))
+        m.exec(self.tab.viewport().mapToGlobal(pos))
 
     def set_mark(self, on):
         self._save()
@@ -19822,6 +19890,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.user_name = data["user_name"][:60]
         if "tnt" in data:
             self.tnt_cfg = tnt_cfg_norm(data.get("tnt"))
+            QtCore.QTimer.singleShot(0, self.tnt_mark_saved)
         if isinstance(data.get("user_presets"), list):      # 7.57 : préréglages perso du PC + ceux du show / profil
             self.user_presets = user_presets_merge(getattr(self, "user_presets", []), data["user_presets"])
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
@@ -20139,7 +20208,7 @@ class MainWindow(QtWidgets.QMainWindow):
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
         data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None,
-                    tnt=dict(self.tnt_cfg, place=""))
+                    tnt=dict(self.tnt_cfg, place="", manual={}))
         self.tnt_mark(None)
         for k in list(self.site_mh):
             self.forget_site(k)
@@ -25394,10 +25463,22 @@ class MainWindow(QtWidgets.QMainWindow):
         return self._tnt
 
     def tnt_measure_now(self, src="live", margin=None):
-        """Canaux TNT d'après le spectre choisi (max hold, tout le site ou une scène) -> résultat de tnt_measure."""
-        F, L = self.coord_FL(src)
+        """Canaux TNT d'après le spectre choisi (max hold, tout le site ou une scène) + choix faits à la main."""
+        try:
+            F, L = self.coord_FL(src)
+        except Exception:  # noqa: BLE001 — pas encore de spectre (démarrage)
+            F = L = None
         chans = tnt_channel_list(self.country_combo.currentData() or "FR")
-        return tnt_measure(F, L, chans, float(margin if margin is not None else self.tnt_cfg["margin"]))
+        res = tnt_measure(F, L, chans, float(margin if margin is not None else self.tnt_cfg["margin"]))
+        return tnt_apply_manual(res, self.tnt_cfg.get("manual"))
+
+    def tnt_mark_saved(self):
+        """Canaux grisés À LA MAIN (show / config) remis sur le spectre, même sans mesure."""
+        try:
+            if any(v == "tv" for v in (self.tnt_cfg.get("manual") or {}).values()):
+                self.tnt_mark(self.tnt_measure_now())
+        except Exception:  # noqa: BLE001
+            pass
 
     def tnt_mark(self, res):
         """Grise les canaux TNT mesurés sur le spectre (None = tout effacer)."""

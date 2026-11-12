@@ -5000,3 +5000,16 @@ EXACT.update({"Les canaux pris par la TNT, d'après ton scan (sans internet), gr
               "Channels taken by DTT, from your scan (no internet), greyed on the spectrum;\nand DTT transmitters near the venue (open ANFR database, optional)."})
 EXACT.update({"📺 Canaux TNT": "📺 DTT channels"})
 TEMPLATES.update({"Base ANFR importée le {} : {} sites TNT, {} codes postaux.": "ANFR database imported on {}: {} DTT sites, {} postcodes."})
+
+# 7.58.1 : canaux TNT grisés à la main
+EXACT.update({
+    "Automatique (d'après la mesure)": "Automatic (from the measurement)",
+    "Double-clic sur un canal (ou clic droit, plusieurs à la fois) pour le griser ou le dégriser à la main : ton choix passe avant la mesure et reste avec le show.":
+        "Double-click a channel (or right-click, several at once) to grey it out or clear it by hand: your choice overrides the measurement and stays with the show.",
+    "Libre (pas de TNT, à la main)": "Free (no DTT, by hand)",
+    "libre (à la main)": "free (by hand)",
+    "📺 Griser (TNT, à la main)": "📺 Grey out (DTT, by hand)",
+    "📺 TNT (à la main)": "📺 DTT (by hand)",
+    "📺 TNT = canal pris par la télé ; autre signal = quelque chose d'étroit (micro, porteuse) ; libre = rien au-dessus du bruit ; pas mesuré = hors de tes bandes balayées.\nDouble-clic ou clic droit : griser / dégriser un canal à la main.":
+        "📺 DTT = channel taken by TV; other signal = something narrow (mic, carrier); free = nothing above the noise; not measured = outside your swept bands.\nDouble-click or right-click: grey out / clear a channel by hand.",
+})
