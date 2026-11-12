@@ -4894,3 +4894,109 @@ TEMPLATES.update({
     "Un tour complet prend {} s, avec la finesse de mesure (RBW) forcée à {} kHz. En Auto, le tinySA choisit une RBW adaptée au pas et balaye souvent 2 à 4 fois plus vite (deux micros très proches se séparent alors moins bien : le zoom live garde une RBW fine).":
         "A full cycle takes {} s, with the measurement resolution (RBW) forced to {} kHz. In Auto, the tinySA picks an RBW suited to the step and often sweeps 2 to 4 times faster (two very close mics are then harder to tell apart: live zoom keeps a fine RBW).",
 })
+
+# 7.58 : 📺 canaux TNT mesurés + émetteurs proches (ANFR)
+EXACT.update({
+    "Analyse le spectre choisi canal par canal.": "Analyses the chosen spectrum channel by channel.",
+    "Au-dessus du bruit": "Above noise",
+    "Aucun émetteur TNT dans ce rayon : la TNT reçue vient de loin, elle devrait être faible.":
+        "No DTT transmitter within this radius: the DTT received comes from far away, it should be weak.",
+    "Aucun émetteur TNT trouvé dans ces fichiers.": "No DTT transmitter found in these files.",
+    "Base ANFR (*.zip *.txt)": "ANFR database (*.zip *.txt)",
+    "Canaux TNT et émetteurs proches": "DTT channels and nearby transmitters",
+    "Canaux mesurés ici": "Channels measured here",
+    "Chercher": "Search",
+    "Code postal": "Postcode",
+    "Code postal à 5 chiffres, ou latitude, longitude en degrés décimaux (clic droit sur une carte en ligne pour les copier). Gardé avec le show.":
+        "5-digit French postcode, or latitude, longitude in decimal degrees (right-click an online map to copy them). Kept with the show.",
+    "Copie le tableau (pour un mail, un tableur, le plan de coordination).":
+        "Copies the table (for an email, a spreadsheet, the coordination plan).",
+    "Distance": "Distance",
+    "Downloads": "Downloads",
+    "Exploitant": "Operator",
+    "Facultatif. La base ouverte de l'ANFR liste les émetteurs TNT de France avec leur position : on en déduit les sites proches du lieu du show (pas leurs canaux : la base ne les donne pas). À télécharger une fois (≈ 65 Mo) ou à importer, ensuite tout marche sans internet.":
+        "Optional. The open ANFR database lists the DTT transmitters in France with their position: we deduce the sites near the show venue (not their channels: the database does not give them). Download it once (≈ 65 MB) or import it, then everything works offline.",
+    "Ferme la fenêtre (les canaux grisés restent sur le spectre).":
+        "Closes the window (the greyed channels stay on the spectrum).",
+    "Fichiers ANFR": "ANFR files",
+    "Griser les canaux TNT sur le spectre": "Grey out DTT channels on the spectrum",
+    "Hauteur": "Height",
+    "Il faut au moins les tables SUP_EMETTEUR et SUP_SUPPORT (fichier « Tables supports antennes émetteurs bandes » de l'ANFR).":
+        "At least the SUP_EMETTEUR and SUP_SUPPORT tables are needed (ANFR file “Tables supports antennes emetteurs bandes”).",
+    "Il faut d'abord la base ANFR (bouton au-dessus).": "The ANFR database is needed first (button above).",
+    "La TNT occupe des canaux entiers (8 MHz) : un plateau plat bien au-dessus du bruit. L'appli les repère dans ton scan, au lieu même du show : pas besoin d'internet. Scanne d'abord (pics gardés), puis clique « Mesurer ».":
+        "DTT occupies whole channels (8 MHz): a flat plateau well above the noise. The app finds them in your scan, at the show venue itself: no internet needed. Scan first (peak hold), then click “Measure”.",
+    "Le spectre analysé : les pics gardés actuels, tout le site (scans par lieu) ou une scène.":
+        "The analysed spectrum: current peak hold, the whole site (scans per location) or one stage.",
+    "Lecture des émetteurs TNT…": "Reading DTT transmitters…",
+    "Les canaux pris par la TNT apparaissent en bandes grisées « TNT n » sur le spectre.":
+        "Channels taken by DTT appear as greyed “TNT n” bands on the spectrum.",
+    "Les sites TNT à moins de cette distance du lieu.": "DTT sites closer than this to the venue.",
+    "Lieu du show :": "Show venue:",
+    "Lieu non reconnu : tape un code postal à 5 chiffres (75007) ou « latitude, longitude » (48.8584, 2.2945).":
+        "Venue not recognised: type a 5-digit French postcode (75007) or “latitude, longitude” (48.8584, 2.2945).",
+    "Liste les sites TNT proches, du plus proche au plus loin.": "Lists nearby DTT sites, nearest first.",
+    "Mesurer": "Measure",
+    "Multiplex": "Multiplexes",
+    "Multiplex = nombre de programmes TNT émis par ce site (5 à 7 pour un site principal).":
+        "Multiplexes = number of DTT multiplexes broadcast by this site (5 to 7 for a main site).",
+    "Pas de mesure sur la bande UHF : lance un scan (▶ Scanner ici) puis recommence.":
+        "No measurement on the UHF band: run a scan (▶ Scan here) then try again.",
+    "Pas encore de base ANFR sur ce PC : télécharge-la (internet, une fois) ou importe les fichiers. Les canaux mesurés marchent sans.":
+        "No ANFR database on this PC yet: download it (internet, once) or import the files. Measured channels work without it.",
+    "Plateau dès": "Plateau from",
+    "RDF DVB-T": "RDF DVB-T",
+    "Rayon": "Radius",
+    "Recherche de la dernière version de la base ANFR…": "Looking for the latest ANFR database…",
+    "Si tu as déjà les fichiers : le .zip « Tables supports antennes émetteurs bandes » (et, en plus, le .zip « Tables de référence » pour le nom des exploitants), ou les fichiers SUP_*.txt dézippés.":
+        "If you already have the files: the “Tables supports antennes emetteurs bandes” .zip (plus the “Tables de reference” .zip for operator names), or the unzipped SUP_*.txt files.",
+    "Site": "Site",
+    "Source : ANFR, « Données sur les installations radioélectriques de plus de 5 watts », data.gouv.fr (Licence Ouverte Etalab).":
+        "Source: ANFR, “Donnees sur les installations radioelectriques de plus de 5 watts”, data.gouv.fr (Etalab Open Licence).",
+    "TinySA-Monitor": "TinySA-Monitor",
+    "Télécharge la dernière base ANFR depuis data.gouv.fr et n'en garde que les sites TNT (≈ 0,3 Mo sur le PC).":
+        "Downloads the latest ANFR database from data.gouv.fr and keeps only the DTT sites (≈ 0.3 MB on the PC).",
+    "Un canal est « TNT » si son plateau dépasse le bruit de fond d'au moins cette valeur sur plus de la moitié de sa largeur.":
+        "A channel is “DTT” if its plateau is at least this much above the noise floor over more than half its width.",
+    "annulé": "cancelled",
+    "assez loin : TNT moyenne à faible": "fairly far: medium to weak DTT",
+    "autre signal": "other signal",
+    "base vide": "empty database",
+    "code postal (75007) ou GPS (48.8584, 2.2945)": "postcode (75007) or GPS (48.8584, 2.2945)",
+    "fichier des émetteurs introuvable sur data.gouv.fr": "transmitter file not found on data.gouv.fr",
+    "pas mesuré": "not measured",
+    "proche : TNT forte sur ses canaux": "close: strong DTT on its channels",
+    "très proche : attends-toi à une TNT très forte, garde de la marge autour des canaux pris":
+        "very close: expect very strong DTT, keep a margin around the busy channels",
+    "Émetteurs proches (ANFR)": "Nearby transmitters (ANFR)",
+    "⬇ Mettre à jour la base ANFR (≈ 65 Mo)": "⬇ Update the ANFR database (≈ 65 MB)",
+    "⬇ Télécharger la base ANFR (≈ 65 Mo)": "⬇ Download the ANFR database (≈ 65 MB)",
+    "📂 Importer les fichiers ANFR…": "📂 Import ANFR files…",
+    "📺 Base ANFR enregistrée sur ce PC.": "📺 ANFR database saved on this PC.",
+    "📺 Canaux TNT du lieu et émetteurs proches…": "📺 Local DTT channels and nearby transmitters…",
+    "📺 TNT": "📺 DTT",
+    "📺 TNT = canal pris par la télé ; autre signal = quelque chose d'étroit (micro, porteuse) ; libre = rien au-dessus du bruit ; pas mesuré = hors de tes bandes balayées.":
+        "📺 DTT = channel taken by TV; other signal = something narrow (mic, carrier); free = nothing above the noise; not measured = outside your swept bands.",
+    "📺 Tableau des canaux TNT copié.": "📺 DTT channel table copied.",
+})
+TEMPLATES.update({
+    "TNT {}": "DTT {}",
+    "autres signaux : {}": "other signals: {}",
+    "📺 TNT sur {} canal(aux) : {}": "📺 DTT on {} channel(s): {}",
+    "Émetteur le plus proche : {} à {} km ({} multiplex{}) — {}.": "Nearest transmitter: {} at {} km ({} multiplexes{}) — {}.",
+    "Téléchargement : {} Mo": "Downloading: {} MB",
+    "Téléchargement : {} / {} Mo": "Downloading: {} / {} MB",
+    "pas mesurés : {}": "not measured: {}",
+    "⚠ Téléchargement impossible : {}. Vérifie la connexion, ou importe les fichiers depuis data.gouv.fr.":
+        "⚠ Download failed: {}. Check the connection, or import the files from data.gouv.fr.",
+    "Base ANFR du {} : {} sites TNT, {} codes postaux (sur ce PC depuis le {}).":
+        "ANFR database of {}: {} DTT sites, {} postcodes (on this PC since {}).",
+    "+{} dB": "+{} dB",
+    "libres : {}": "free: {}",
+    "Fichiers ANFR illisibles :\n{}": "Unreadable ANFR files:\n{}",
+})
+SAME_TEMPLATES = list(SAME_TEMPLATES) + ["anfr_{}.zip"]
+EXACT.update({"Les canaux pris par la TNT, d'après ton scan (sans internet), grisés sur le spectre ;\net les émetteurs TNT proches du lieu (base ouverte de l'ANFR, facultatif).":
+              "Channels taken by DTT, from your scan (no internet), greyed on the spectrum;\nand DTT transmitters near the venue (open ANFR database, optional)."})
+EXACT.update({"📺 Canaux TNT": "📺 DTT channels"})
+TEMPLATES.update({"Base ANFR importée le {} : {} sites TNT, {} codes postaux.": "ANFR database imported on {}: {} DTT sites, {} postcodes."})

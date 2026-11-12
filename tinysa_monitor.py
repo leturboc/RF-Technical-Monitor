@@ -85,7 +85,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.57.1"
+APP_VER = "7.58.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -112,6 +112,7 @@ STOP_FORCE_MS = 4000
 LAYOUT_VER = 4                # à monter quand la disposition de base change (les anciennes sont ignorées)          # « Arrêter » : au-delà, on ferme le port pour débloquer
 LOG_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Journaux"
 SHOW_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Shows"
+TNT_DB_PATH = CFG_PATH.parent / "anfr_tnt.json"     # 📺 base ANFR réduite aux sites TNT (7.58)
 USER_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Profils"      # 👤 profils utilisateur (7.57)
 
 # ===== PURE-BEGIN  (code sans interface graphique, testé séparément)
@@ -1336,6 +1337,228 @@ def tv_channels(code):
             cat, note = "tv_off", f"Ancien canal {n} : {a}-{a + 8} MHz, réattribué à la 4G (800 MHz)"
         out.append((a, a + 8, f"CH {n}", cat, note))
     return out
+
+
+# 7.58 (Clément : « une base à jour des bandes / de la TNT ») : 📺 canaux TNT MESURÉS au lieu du show (sans internet) +
+# émetteurs TNT proches d'après la base ouverte de l'ANFR (position, exploitant, nombre de multiplex ; la base ne donne
+# PAS les canaux : elle indique toute la bande 470-694 / 470-790 pour chaque émetteur).
+TNT_MARGIN_DB = 10.0          # un canal est « TNT » si son plateau est à ≥ 10 dB au-dessus du bruit de fond…
+TNT_FILL = 0.6                # … sur au moins 60 % de sa largeur (une porteuse étroite seule = « autre signal »)
+
+
+def tnt_channel_list(code):
+    """Canaux TV de la bande UHF des micros du pays : [(n°, début, fin)] (8 MHz en Europe, 6 MHz aux USA / Canada)."""
+    lo, hi = country_uhf(code)
+    out = []
+    for (a, b, lab, cat, note) in tv_channels(code):
+        if cat in ("tv", "tv_off") and a >= lo - 1e-6 and b <= hi + 1e-6:
+            try:
+                out.append((int(str(lab).split()[-1]), float(a), float(b)))
+            except ValueError:
+                pass
+    return out
+
+
+def tnt_measure(F, L, chans, margin=TNT_MARGIN_DB, floor=None):
+    """Canaux TNT d'après un spectre mesuré. -> dict(floor, rows=[dict(ch, lo, hi, state, level, peak, above, fill)]) ;
+    state : « tv » (plateau large au-dessus du bruit), « other » (signal étroit, micro, porteuse…), « free », « none »
+    (pas mesuré). floor = bruit de fond (10ᵉ centile du spectre si None)."""
+    F = np.asarray(F, dtype=float) if F is not None else np.zeros(0)
+    L = np.asarray(L, dtype=float) if L is not None else np.zeros(0)
+    ok = np.isfinite(F) & np.isfinite(L)
+    F, L = F[ok], L[ok]
+    if floor is None:
+        floor = float(np.percentile(L, 10)) if len(L) >= 8 else None
+    rows = []
+    for n, a, b in chans:
+        m = (F >= a + 0.5) & (F <= b - 0.5)
+        r = dict(ch=int(n), lo=float(a), hi=float(b), state="none", level=None, peak=None, above=None, fill=None)
+        if floor is not None and int(m.sum()) >= 4:
+            lv = L[m]
+            med = float(np.median(lv))
+            fill = float(np.mean(lv >= floor + margin))
+            r.update(level=med, peak=float(lv.max()), above=med - floor, fill=fill)
+            if fill >= TNT_FILL and med - floor >= margin:
+                r["state"] = "tv"
+            elif float(lv.max()) >= floor + margin:
+                r["state"] = "other"
+            else:
+                r["state"] = "free"
+        rows.append(r)
+    return dict(floor=floor, rows=rows)
+
+
+def tnt_summary(res):
+    """Phrase courte : canaux TNT pris / libres / autres signaux / pas mesurés."""
+    rows = res.get("rows") or []
+    by = {k: [str(r["ch"]) for r in rows if r["state"] == k] for k in ("tv", "other", "free", "none")}
+    if not rows or len(by["none"]) == len(rows):
+        return "Pas de mesure sur la bande UHF : lance un scan (▶ Scanner ici) puis recommence."
+    parts = [f"📺 TNT sur {len(by['tv'])} canal(aux) : {', '.join(by['tv']) or 'aucun'}",
+             f"libres : {', '.join(by['free']) or 'aucun'}"]
+    if by["other"]:
+        parts.append(f"autres signaux : {', '.join(by['other'])}")
+    if by["none"]:
+        parts.append(f"pas mesurés : {', '.join(by['none'])}")
+    return " · ".join(parts)
+
+
+TNT_DEFAULT = dict(place="", radius=60, margin=10, mark=True)
+
+
+def tnt_cfg_norm(c):
+    """Réglages 📺 TNT (config + show) : lieu tapé, rayon km, marge dB, canaux grisés sur le spectre."""
+    c = c if isinstance(c, dict) else {}
+    out = dict(TNT_DEFAULT)
+    out["place"] = " ".join(str(c.get("place") or "").split())[:60]
+    for k, lo, hi in (("radius", 5, 200), ("margin", 3, 30)):
+        try:
+            out[k] = int(min(hi, max(lo, int(c.get(k, out[k])))))
+        except (TypeError, ValueError):
+            pass
+    out["mark"] = bool(c.get("mark", True))
+    return out
+
+
+ANFR_DATASET = ("https://www.data.gouv.fr/api/1/datasets/"
+                "donnees-sur-les-installations-radioelectriques-de-plus-de-5-watts-1/")
+ANFR_TNT_SYSTEM = "RDF DVB-T"
+
+
+def anfr_text(raw):
+    """Ligne d'un fichier ANFR (octets) -> texte : UTF-8 si possible, sinon latin-1 (les fichiers mélangent)."""
+    if isinstance(raw, str):
+        return raw
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")
+
+
+def _anfr_dms(d, m, s_, h):
+    v = int(d) + int(m) / 60.0 + float(str(s_).replace(",", ".")) / 3600.0
+    return -v if h in ("S", "W", "O") else v
+
+
+def anfr_tnt_sites(emetteur, support, station=(), exploitant=()):
+    """Fichiers de la base ANFR (lignes texte, avec leur en-tête) -> dict(sites=[[lat, lon, multiplex, hauteur m, lieu,
+    code postal, exploitant]], cp={code postal: [lat, lon]}) ; sites = supports d'émetteurs TNT réunis par position
+    (un multiplex = un émetteur DVB-T) ; cp = centre des supports de chaque code postal (pour trouver un lieu sans
+    internet)."""
+    tnt = {}
+    for ln in emetteur:
+        p = anfr_text(ln).rstrip("\r\n").split(";")
+        if len(p) > 2 and p[1].strip() == ANFR_TNT_SYSTEM:
+            tnt[p[2].strip()] = tnt.get(p[2].strip(), 0) + 1
+    names = {}
+    for ln in exploitant:
+        p = anfr_text(ln).rstrip("\r\n").split(";")
+        if len(p) > 1:
+            names[p[0].strip()] = p[1].strip()
+    adm = {}
+    for ln in station:
+        p = anfr_text(ln).rstrip("\r\n").split(";")
+        if len(p) > 1 and p[0].strip() in tnt:
+            adm[p[0].strip()] = names.get(p[1].strip(), "")
+    sites, cps, seen = {}, {}, set()
+    for ln in support:
+        p = anfr_text(ln).rstrip("\r\n").split(";")
+        if len(p) < 19:
+            continue
+        try:
+            lat = _anfr_dms(p[3], p[4], p[5], p[6].strip())
+            lon = _anfr_dms(p[7], p[8], p[9], p[10].strip())
+        except (ValueError, TypeError):
+            continue
+        cp = p[17].strip()
+        if re.fullmatch(r"\d{5}", cp):
+            c = cps.setdefault(cp, [0.0, 0.0, 0])
+            c[0] += lat
+            c[1] += lon
+            c[2] += 1
+        sta = p[1].strip()
+        if sta in tnt and sta not in seen:
+            seen.add(sta)
+            k = (round(lat, 3), round(lon, 3))
+            st = sites.setdefault(k, [round(lat, 4), round(lon, 4), 0, 0, "", cp, ""])
+            st[2] += tnt[sta]
+            try:
+                st[3] = max(st[3], int(float(p[11].replace(",", "."))))
+            except ValueError:
+                pass
+            st[4] = st[4] or " ".join(p[13].split()) or " ".join(p[14].split())
+            st[6] = st[6] or adm.get(sta, "")
+    return dict(sites=list(sites.values()),
+                cp={k: [round(v[0] / v[2], 4), round(v[1] / v[2], 4)] for k, v in cps.items() if v[2]})
+
+
+def anfr_pick(api):
+    """Réponse JSON de data.gouv.fr (jeu ANFR) -> (url des tables « supports … émetteurs », url des tables de référence,
+    date) des fichiers les plus récents ; (None, None, "") si introuvable."""
+    def plain(t):
+        return unicodedata.normalize("NFKD", str(t or "")).encode("ascii", "ignore").decode().lower()
+    data = ref = None
+    for r in sorted(api.get("resources") or [], key=lambda r_: str(r_.get("last_modified") or ""), reverse=True):
+        t, u = plain(r.get("title")), r.get("url")
+        if data is None and "support" in t and "emetteur" in t:
+            data = (u, str(r.get("last_modified") or "")[:10])
+        elif ref is None and "reference" in t:
+            ref = u
+    return (data[0] if data else None), ref, (data[1] if data else "")
+
+
+def geo_km(lat1, lon1, lat2, lon2):
+    """Distance à vol d'oiseau en km (formule de haversine)."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 6371.0 * 2 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def place_parse(text, cps=None):
+    """Lieu tapé par l'utilisateur -> (lat, lon, libellé) ou None : « 48.8584, 2.2945 », « 48,8584 2,2945 » (degrés
+    décimaux) ou un code postal à 5 chiffres (centre des supports ANFR de ce code)."""
+    t = " ".join(str(text or "").split())
+    m = re.fullmatch(r"(-?\d{1,2}(?:[.,]\d+)?)\s*[;, ]\s*(-?\d{1,3}(?:[.,]\d+)?)", t)
+    if m:
+        lat, lon = float(m.group(1).replace(",", ".")), float(m.group(2).replace(",", "."))
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            return lat, lon, f"{lat:.4f}, {lon:.4f}"
+    m = re.fullmatch(r"(\d{5})", t)
+    if m and cps and m.group(1) in cps:
+        lat, lon = cps[m.group(1)]
+        return float(lat), float(lon), m.group(1)
+    return None
+
+
+def tnt_sites_near(sites, lat, lon, radius=60.0, n=40):
+    """Sites TNT à moins de radius km -> [(km, site)] du plus proche au plus loin (n au plus)."""
+    out = []
+    for s_ in sites or []:
+        try:
+            d = geo_km(lat, lon, float(s_[0]), float(s_[1]))
+        except (TypeError, ValueError, IndexError):
+            continue
+        if d <= radius:
+            out.append((d, s_))
+    out.sort(key=lambda x: x[0])
+    return out[:n]
+
+
+def tnt_near_text(near):
+    """Phrase de conseil d'après le site TNT le plus proche."""
+    if not near:
+        return "Aucun émetteur TNT dans ce rayon : la TNT reçue vient de loin, elle devrait être faible."
+    d, s_ = near[0]
+    big = int(s_[2] or 0) >= 4
+    if d < 5:
+        how = "très proche : attends-toi à une TNT très forte, garde de la marge autour des canaux pris"
+    elif d < 20:
+        how = "proche : TNT forte sur ses canaux"
+    else:
+        how = "assez loin : TNT moyenne à faible"
+    return (f"Émetteur le plus proche : {s_[4] or s_[5]} à {d:.1f} km ({int(s_[2] or 0)} multiplex"
+            f"{', site principal' if big else ''}) — {how}.")
 
 
 def spectrum_text(f, plan, tv):
@@ -4029,7 +4252,8 @@ SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_o
              "thr", "weak_thr", "weak_on", "win", "absent_s", "occ_minutes", "ref_rel", "ref_margin",
              "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx", "states",
              "state_cur", "ezrf_link", "thr_auto", "auto_occ", "auto_weak",
-             "user_presets", "persist", "hold", "alarm_timing")      # 7.57 : préréglages perso + leurs réglages
+             "user_presets", "persist", "hold", "alarm_timing",      # 7.57 : préréglages perso + leurs réglages
+             "tnt")                                                  # 7.58 : lieu du show pour les émetteurs TNT
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 # 7.57 (Clément : « un mode préférences utilisateur, qu'on puisse se passer les préférences : affichage, seuils,
 # préréglages perso… comme des bases user ») : ce qu'un 👤 profil utilisateur emporte. PAS le show (fréquences, scènes,
@@ -6466,6 +6690,7 @@ STEPS = (
      (("§1. Scanner le lieu", None),
       ("▶ Scanner ici (pics remis à zéro)", "step_scan"),
       ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"),
+      ("📺 Canaux TNT du lieu et émetteurs proches…", "open_tnt"),
       ("§2. Ma liste de fréquences", None),
       ("📥 Importer une liste ou un plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…", "import_watch"),
       ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"),
@@ -16870,6 +17095,379 @@ class ShowModeWindow(QtWidgets.QWidget):
         super().closeEvent(e)
 
 
+def anfr_read_files(paths):
+    """Fichiers ANFR choisis par l'utilisateur (les .zip de data.gouv.fr ou les SUP_*.txt dézippés) -> base réduite."""
+    import zipfile
+    want = ("SUP_EMETTEUR", "SUP_SUPPORT", "SUP_STATION", "SUP_EXPLOITANT")
+    found, zips = {}, []
+    for p_ in paths:
+        p_ = Path(p_)
+        if p_.suffix.lower() == ".zip":
+            z = zipfile.ZipFile(p_)
+            zips.append(z)
+            for n in z.namelist():
+                stem = Path(n).stem.upper()
+                if stem in want and stem not in found:
+                    found[stem] = (z, n)
+        elif p_.stem.upper() in want:
+            found[p_.stem.upper()] = (None, p_)
+    if "SUP_EMETTEUR" not in found or "SUP_SUPPORT" not in found:
+        for z in zips:
+            z.close()
+        raise ValueError("Il faut au moins les tables SUP_EMETTEUR et SUP_SUPPORT (fichier « Tables supports "
+                         "antennes émetteurs bandes » de l'ANFR).")
+    opened = []
+
+    def lines(k):
+        if k not in found:
+            return []
+        z, n = found[k]
+        f = z.open(n) if z is not None else open(n, "rb")
+        opened.append(f)
+        return f
+    try:
+        return anfr_tnt_sites(lines("SUP_EMETTEUR"), lines("SUP_SUPPORT"), lines("SUP_STATION"),
+                              lines("SUP_EXPLOITANT"))
+    finally:
+        for f in opened:
+            f.close()
+        for z in zips:
+            z.close()
+
+
+def anfr_download(job):
+    """Fil de travail : télécharge la base ANFR (data.gouv.fr), la réduit aux sites TNT. job = dict partagé (pct, msg,
+    done, err, db, date). Aucun objet Qt ici."""
+    tmpd = Path(tempfile.mkdtemp(prefix="tsm_anfr_"))
+    hdr = {"User-Agent": "TinySA-Monitor"}
+    try:
+        job["msg"] = "Recherche de la dernière version de la base ANFR…"
+        with urllib.request.urlopen(urllib.request.Request(ANFR_DATASET, headers=hdr), timeout=30) as r:
+            api = json.loads(r.read().decode("utf-8"))
+        data_url, ref_url, date = anfr_pick(api)
+        if not data_url:
+            raise RuntimeError("fichier des émetteurs introuvable sur data.gouv.fr")
+        paths = []
+        for i, u in enumerate([data_url] + ([ref_url] if ref_url else [])):
+            dst = tmpd / f"anfr_{i}.zip"
+            with urllib.request.urlopen(urllib.request.Request(u, headers=hdr), timeout=60) as r, open(dst, "wb") as f:
+                tot = int(r.headers.get("Content-Length") or 0)
+                got = 0
+                while True:
+                    if job.get("cancel"):
+                        raise RuntimeError("annulé")
+                    b = r.read(1 << 18)
+                    if not b:
+                        break
+                    f.write(b)
+                    got += len(b)
+                    if i == 0:
+                        job["pct"] = int(90 * got / tot) if tot else 0
+                        job["msg"] = f"Téléchargement : {got / 1e6:.0f} / {tot / 1e6:.0f} Mo" if tot else \
+                            f"Téléchargement : {got / 1e6:.0f} Mo"
+            paths.append(dst)
+        job["msg"] = "Lecture des émetteurs TNT…"
+        job["db"] = anfr_read_files(paths)
+        job["date"] = date
+        job["pct"] = 100
+    except Exception as e:  # noqa: BLE001
+        job["err"] = str(e)
+    finally:
+        import shutil
+        shutil.rmtree(tmpd, ignore_errors=True)
+        job["done"] = True
+
+
+class TntDialog(QtWidgets.QDialog):
+    """📺 Canaux TNT du lieu (7.58) : canaux pris / libres d'après le spectre MESURÉ (sans internet), et émetteurs TNT
+    proches d'après la base ouverte de l'ANFR (facultatif : à télécharger une fois ou à importer)."""
+
+    COLS = ("Canal", "MHz", "Niveau", "Au-dessus du bruit", "État")
+    SCOLS = ("Distance", "Site", "Code postal", "Multiplex", "Hauteur", "Exploitant")
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.res = None
+        self._job = None
+        self.setWindowTitle("Canaux TNT et émetteurs proches")
+        lay = QtWidgets.QVBoxLayout(self)
+        self.tabs = QtWidgets.QTabWidget()
+        lay.addWidget(self.tabs, 1)
+        # --- onglet 1 : canaux mesurés
+        w1 = QtWidgets.QWidget()
+        l1 = QtWidgets.QVBoxLayout(w1)
+        h1 = QtWidgets.QLabel("La TNT occupe des canaux entiers (8 MHz) : un plateau plat bien au-dessus du bruit. "
+                              "L'appli les repère dans ton scan, au lieu même du show : pas besoin d'internet. "
+                              "Scanne d'abord (pics gardés), puis clique « Mesurer ».")
+        h1.setWordWrap(True)
+        l1.addWidget(h1)
+        r1 = QtWidgets.QHBoxLayout()
+        self.spec_combo = QtWidgets.QComboBox()
+        owner.fill_coord_combo(self.spec_combo)
+        self.spec_combo.setToolTip("Le spectre analysé : les pics gardés actuels, tout le site (scans par lieu) ou une "
+                                   "scène.")
+        r1.addWidget(self.spec_combo, 1)
+        r1.addWidget(QtWidgets.QLabel("Plateau dès"))
+        self.margin_spin = QtWidgets.QSpinBox()
+        self.margin_spin.setRange(3, 30)
+        self.margin_spin.setSuffix(" dB")
+        self.margin_spin.setValue(int(owner.tnt_cfg["margin"]))
+        self.margin_spin.setToolTip("Un canal est « TNT » si son plateau dépasse le bruit de fond d'au moins cette "
+                                    "valeur sur plus de la moitié de sa largeur.")
+        r1.addWidget(self.margin_spin)
+        self.measure_btn = QtWidgets.QPushButton("Mesurer")
+        self.measure_btn.setToolTip("Analyse le spectre choisi canal par canal.")
+        self.measure_btn.clicked.connect(lambda *_: self.measure())
+        r1.addWidget(self.measure_btn)
+        l1.addLayout(r1)
+        self.sum_lbl = QtWidgets.QLabel()
+        self.sum_lbl.setWordWrap(True)
+        l1.addWidget(self.sum_lbl)
+        self.tab = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.tab.setHorizontalHeaderLabels(list(self.COLS))
+        self.tab.verticalHeader().setVisible(False)
+        self.tab.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tab.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tab.setToolTip("📺 TNT = canal pris par la télé ; autre signal = quelque chose d'étroit (micro, porteuse) ; "
+                            "libre = rien au-dessus du bruit ; pas mesuré = hors de tes bandes balayées.")
+        l1.addWidget(self.tab, 1)
+        r2 = QtWidgets.QHBoxLayout()
+        self.mark_chk = QtWidgets.QCheckBox("Griser les canaux TNT sur le spectre")
+        self.mark_chk.setChecked(bool(owner.tnt_cfg.get("mark", True)))
+        self.mark_chk.setToolTip("Les canaux pris par la TNT apparaissent en bandes grisées « TNT n » sur le spectre.")
+        self.mark_chk.toggled.connect(lambda *_: self.set_mark(self.mark_chk.isChecked()))
+        r2.addWidget(self.mark_chk)
+        r2.addStretch(1)
+        self.copy_btn = QtWidgets.QPushButton("Copier")
+        self.copy_btn.setToolTip("Copie le tableau (pour un mail, un tableur, le plan de coordination).")
+        self.copy_btn.clicked.connect(lambda *_: self.copy())
+        r2.addWidget(self.copy_btn)
+        l1.addLayout(r2)
+        self.tabs.addTab(w1, "Canaux mesurés ici")
+        # --- onglet 2 : émetteurs proches (ANFR)
+        w2 = QtWidgets.QWidget()
+        l2 = QtWidgets.QVBoxLayout(w2)
+        h2 = QtWidgets.QLabel("Facultatif. La base ouverte de l'ANFR liste les émetteurs TNT de France avec leur "
+                              "position : on en déduit les sites proches du lieu du show (pas leurs canaux : la base ne "
+                              "les donne pas). À télécharger une fois (≈ 65 Mo) ou à importer, ensuite tout marche "
+                              "sans internet.")
+        h2.setWordWrap(True)
+        l2.addWidget(h2)
+        self.db_lbl = QtWidgets.QLabel()
+        self.db_lbl.setWordWrap(True)
+        l2.addWidget(self.db_lbl)
+        r3 = QtWidgets.QHBoxLayout()
+        self.dl_btn = QtWidgets.QPushButton("⬇ Télécharger la base ANFR (≈ 65 Mo)")
+        self.dl_btn.setToolTip("Télécharge la dernière base ANFR depuis data.gouv.fr et n'en garde que les sites TNT "
+                               "(≈ 0,3 Mo sur le PC).")
+        self.dl_btn.clicked.connect(lambda *_: self.download())
+        self.imp_btn = QtWidgets.QPushButton("📂 Importer les fichiers ANFR…")
+        self.imp_btn.setToolTip("Si tu as déjà les fichiers : le .zip « Tables supports antennes émetteurs bandes » "
+                                "(et, en plus, le .zip « Tables de référence » pour le nom des exploitants), ou les "
+                                "fichiers SUP_*.txt dézippés.")
+        self.imp_btn.clicked.connect(lambda *_: self.import_files())
+        r3.addWidget(self.dl_btn)
+        r3.addWidget(self.imp_btn)
+        r3.addStretch(1)
+        l2.addLayout(r3)
+        self.prog = QtWidgets.QProgressBar()
+        self.prog.setRange(0, 100)
+        self.prog.setVisible(False)
+        l2.addWidget(self.prog)
+        r4 = QtWidgets.QHBoxLayout()
+        r4.addWidget(QtWidgets.QLabel("Lieu du show :"))
+        self.place_edit = QtWidgets.QLineEdit(owner.tnt_cfg.get("place", ""))
+        self.place_edit.setPlaceholderText("code postal (75007) ou GPS (48.8584, 2.2945)")
+        self.place_edit.setToolTip("Code postal à 5 chiffres, ou latitude, longitude en degrés décimaux (clic droit sur "
+                                   "une carte en ligne pour les copier). Gardé avec le show.")
+        self.place_edit.returnPressed.connect(lambda: self.search())
+        r4.addWidget(self.place_edit, 1)
+        r4.addWidget(QtWidgets.QLabel("Rayon"))
+        self.radius_spin = QtWidgets.QSpinBox()
+        self.radius_spin.setRange(5, 200)
+        self.radius_spin.setSuffix(" km")
+        self.radius_spin.setValue(int(owner.tnt_cfg["radius"]))
+        self.radius_spin.setToolTip("Les sites TNT à moins de cette distance du lieu.")
+        r4.addWidget(self.radius_spin)
+        self.search_btn = QtWidgets.QPushButton("Chercher")
+        self.search_btn.setToolTip("Liste les sites TNT proches, du plus proche au plus loin.")
+        self.search_btn.clicked.connect(lambda *_: self.search())
+        r4.addWidget(self.search_btn)
+        l2.addLayout(r4)
+        self.near_lbl = QtWidgets.QLabel()
+        self.near_lbl.setWordWrap(True)
+        l2.addWidget(self.near_lbl)
+        self.stab = QtWidgets.QTableWidget(0, len(self.SCOLS))
+        self.stab.setHorizontalHeaderLabels(list(self.SCOLS))
+        self.stab.verticalHeader().setVisible(False)
+        self.stab.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.stab.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.stab.setToolTip("Multiplex = nombre de programmes TNT émis par ce site (5 à 7 pour un site principal).")
+        l2.addWidget(self.stab, 1)
+        src = QtWidgets.QLabel("Source : ANFR, « Données sur les installations radioélectriques de plus de 5 watts », "
+                               "data.gouv.fr (Licence Ouverte Etalab).")
+        src.setWordWrap(True)
+        l2.addWidget(src)
+        self.tabs.addTab(w2, "Émetteurs proches (ANFR)")
+        bb = QtWidgets.QHBoxLayout()
+        bb.addStretch(1)
+        close_btn = QtWidgets.QPushButton("Fermer")
+        close_btn.setToolTip("Ferme la fenêtre (les canaux grisés restent sur le spectre).")
+        close_btn.clicked.connect(lambda *_: self.close())
+        bb.addWidget(close_btn)
+        lay.addLayout(bb)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._poll)
+        fit_dialog(self, 760, 560)
+        self.refresh()
+
+    def _save(self):
+        self.owner.tnt_cfg = tnt_cfg_norm(dict(self.owner.tnt_cfg, place=self.place_edit.text(),
+                                               radius=self.radius_spin.value(), margin=self.margin_spin.value(),
+                                               mark=self.mark_chk.isChecked()))
+
+    def refresh(self):
+        self.measure()
+        self.show_db()
+        if self.owner.tnt_cfg.get("place") and self.owner.tnt_db():
+            self.search()
+
+    # ----- canaux mesurés
+    def measure(self):
+        self._save()
+        res = self.owner.tnt_measure_now(self.spec_combo.currentData() or "live", self.margin_spin.value())
+        self.res = res
+        self.sum_lbl.setText(tnt_summary(res))
+        txt = {"tv": "📺 TNT", "other": "autre signal", "free": "libre", "none": "pas mesuré"}
+        col = {"tv": self.owner.theme.get("bp_tv", "#3b82f6"), "other": self.owner.theme.get("st_weak", "#ffc35c"),
+               "free": self.owner.theme.get("st_free", "#4fd1c5")}
+        rows = res.get("rows") or []
+        self.tab.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            vals = [str(r["ch"]), f"{r['lo']:g}–{r['hi']:g}",
+                    self.owner.lvl(r["level"]) if r["level"] is not None else "—",
+                    f"+{r['above']:.0f} dB" if r["above"] is not None else "—", txt[r["state"]]]
+            for j, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                if j == 4 and r["state"] in col:
+                    it.setForeground(QtGui.QColor(col[r["state"]]))
+                self.tab.setItem(i, j, it)
+        n = self.owner.tnt_mark(res)
+        return n
+
+    def set_mark(self, on):
+        self._save()
+        self.owner.tnt_mark(self.res if on else None)
+
+    def copy(self):
+        lines = ["\t".join(self.COLS)]
+        for i in range(self.tab.rowCount()):
+            lines.append("\t".join(self.tab.item(i, j).text() if self.tab.item(i, j) else ""
+                                   for j in range(self.tab.columnCount())))
+        QtWidgets.QApplication.clipboard().setText("\n".join(lines))
+        self.owner.set_status("📺 Tableau des canaux TNT copié.")
+
+    # ----- base ANFR
+    def show_db(self):
+        db = self.owner.tnt_db()
+        busy = self._job is not None and not self._job.get("done")
+        self.dl_btn.setEnabled(not busy)
+        self.imp_btn.setEnabled(not busy)
+        if busy:
+            return
+        if not db:
+            self.db_lbl.setText("Pas encore de base ANFR sur ce PC : télécharge-la (internet, une fois) ou importe les "
+                                "fichiers. Les canaux mesurés marchent sans.")
+            self.dl_btn.setText("⬇ Télécharger la base ANFR (≈ 65 Mo)")
+        else:
+            n_s, n_c, made = len(db.get("sites") or []), len(db.get("cp") or {}), db.get("made") or "?"
+            if db.get("date"):
+                self.db_lbl.setText(f"Base ANFR du {db['date']} : {n_s} sites TNT, {n_c} codes postaux (sur ce PC "
+                                    f"depuis le {made}).")
+            else:
+                self.db_lbl.setText(f"Base ANFR importée le {made} : {n_s} sites TNT, {n_c} codes postaux.")
+            self.dl_btn.setText("⬇ Mettre à jour la base ANFR (≈ 65 Mo)")
+
+    def download(self):
+        if self._job is not None and not self._job.get("done"):
+            return
+        self._job = dict(pct=0, msg="", done=False, err=None, db=None, date="")
+        self.prog.setValue(0)
+        self.prog.setVisible(True)
+        threading.Thread(target=anfr_download, args=(self._job,), daemon=True).start()
+        self.timer.start(300)
+        self.show_db()
+
+    def _poll(self):
+        j = self._job
+        if j is None:
+            self.timer.stop()
+            return
+        self.prog.setValue(int(j.get("pct") or 0))
+        self.db_lbl.setText(j.get("msg") or "")
+        if not j.get("done"):
+            return
+        self.timer.stop()
+        self.prog.setVisible(False)
+        if j.get("err") or not j.get("db"):
+            self.db_lbl.setText(f"⚠ Téléchargement impossible : {j.get('err') or 'base vide'}. Vérifie la connexion, ou "
+                                f"importe les fichiers depuis data.gouv.fr.")
+        else:
+            self.owner.tnt_db_save(j["db"], j.get("date", ""), "data.gouv.fr")
+            self.show_db()
+            self.owner.set_status("📺 Base ANFR enregistrée sur ce PC.")
+            if self.place_edit.text().strip():
+                self.search()
+        self.dl_btn.setEnabled(True)
+        self.imp_btn.setEnabled(True)
+
+    def import_files(self, paths=None):
+        if paths is None:
+            paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+                self, "Fichiers ANFR", str(Path.home() / "Downloads"), "Base ANFR (*.zip *.txt)")
+        if not paths:
+            return False
+        try:
+            db = anfr_read_files(paths)
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Fichiers ANFR illisibles :\n{e}")
+            return False
+        if not db.get("sites"):
+            QtWidgets.QMessageBox.warning(self, APP_NAME, "Aucun émetteur TNT trouvé dans ces fichiers.")
+            return False
+        self.owner.tnt_db_save(db, "", "import")
+        self.show_db()
+        if self.place_edit.text().strip():
+            self.search()
+        return True
+
+    def search(self):
+        self._save()
+        db = self.owner.tnt_db()
+        self.stab.setRowCount(0)
+        if not db:
+            self.near_lbl.setText("Il faut d'abord la base ANFR (bouton au-dessus).")
+            return []
+        pl = place_parse(self.place_edit.text(), db.get("cp"))
+        if pl is None:
+            self.near_lbl.setText("Lieu non reconnu : tape un code postal à 5 chiffres (75007) ou « latitude, "
+                                  "longitude » (48.8584, 2.2945).")
+            return []
+        near = tnt_sites_near(db.get("sites"), pl[0], pl[1], self.radius_spin.value())
+        self.near_lbl.setText(tnt_near_text(near))
+        self.stab.setRowCount(len(near))
+        for i, (d, s_) in enumerate(near):
+            vals = [f"{d:.1f} km", s_[4] or "—", s_[5] or "—", str(s_[2]), f"{s_[3]} m" if s_[3] else "—", s_[6] or "—"]
+            for j, v in enumerate(vals):
+                self.stab.setItem(i, j, QtWidgets.QTableWidgetItem(v))
+        return near
+
+    def closeEvent(self, e):
+        self._save()
+        super().closeEvent(e)
+
+
 class PresetDialog(QtWidgets.QDialog):
     """⚡ Préréglages rapides (7.56) : une situation type à gauche, ce qui va changer à droite (maintenant → après),
     Appliquer. Rien n'est touché avant le clic."""
@@ -19267,6 +19865,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.thr_auto = False
         self.user_presets = []                     # ⭐ préréglages perso (7.57)
         self.user_name = ""                        # 👤 profil utilisateur chargé (7.57)
+        self.tnt_cfg = dict(TNT_DEFAULT)           # 📺 canaux TNT / émetteurs proches (7.58)
+        self._tnt_items, self._tnt_db = [], None
         self._acurve = None                     # (Fc, Lc, t) : bruit de fond appris le long du spectre (seuils auto)
         self.tour_done = CFG_PATH.exists()
         self._tour = None
@@ -19588,6 +20188,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "📺 Canaux TNT": "Les canaux pris par la TNT, d'après ton scan (sans internet), grisés sur le spectre ;\n"
+                         "et les émetteurs TNT proches du lieu (base ouverte de l'ANFR, facultatif).",
         "👤 Profils utilisateur": "Tes préférences (affichage, disposition des fenêtres, couleurs, seuils, alarmes, préréglages perso) dans un\n"
                                  "fichier : à recharger sur n'importe quel PC ou à passer à un collègue.",
         "⚡ Préréglages rapides": "Festival plein air, salle, nuit de surveillance, scan de repérage : règle d'un coup\n"
@@ -21372,6 +21974,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.set_home(bool(data.get("home", True)))
         if isinstance(data.get("user_name"), str):
             self.user_name = data["user_name"][:60]
+        if "tnt" in data:
+            self.tnt_cfg = tnt_cfg_norm(data.get("tnt"))
         if isinstance(data.get("user_presets"), list):      # 7.57 : préréglages perso du PC + ceux du show / profil
             self.user_presets = user_presets_merge(getattr(self, "user_presets", []), data["user_presets"])
         if isinstance(data.get("net_profiles"), list):      # adresses du PC + celles du show
@@ -21488,7 +22092,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            coord_tools=bool(getattr(self, "coord_on", False)), theme_v=3,
+            coord_tools=bool(getattr(self, "coord_on", False)), theme_v=3, tnt=dict(self.tnt_cfg),
             user_presets=user_presets_norm(getattr(self, "user_presets", [])), user_name=getattr(self, "user_name", ""),
             alarm_timing=dict(confirm=int(self.sound.cfg.get("confirm", 3)), repeat=int(self.sound.cfg.get("repeat", 30))),
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
@@ -21689,7 +22293,9 @@ class MainWindow(QtWidgets.QMainWindow):
         en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None)
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None,
+                    tnt=dict(self.tnt_cfg, place=""))
+        self.tnt_mark(None)
         for k in list(self.site_mh):
             self.forget_site(k)
         self.dev_scenes = {d: [] for d in self.dev_scenes}
@@ -26982,6 +27588,71 @@ class MainWindow(QtWidgets.QMainWindow):
         self._userprof = UserProfilesDialog(self)
         self._userprof.show()
         return self._userprof
+
+    # ---------------------------------------------------------------- 📺 TNT (7.58)
+    def open_tnt(self):
+        if getattr(self, "_tnt", None) is not None:
+            self._tnt.refresh()
+            self._tnt.show()
+            self._tnt.raise_()
+            return self._tnt
+        self._tnt = TntDialog(self)
+        self._tnt.show()
+        return self._tnt
+
+    def tnt_measure_now(self, src="live", margin=None):
+        """Canaux TNT d'après le spectre choisi (max hold, tout le site ou une scène) -> résultat de tnt_measure."""
+        F, L = self.coord_FL(src)
+        chans = tnt_channel_list(self.country_combo.currentData() or "FR")
+        return tnt_measure(F, L, chans, float(margin if margin is not None else self.tnt_cfg["margin"]))
+
+    def tnt_mark(self, res):
+        """Grise les canaux TNT mesurés sur le spectre (None = tout effacer)."""
+        pi = self.spec.getPlotItem()
+        for it in self._tnt_items:
+            try:
+                pi.removeItem(it)
+            except Exception:  # noqa: BLE001
+                pass
+        self._tnt_items = []
+        if not res or not self.tnt_cfg.get("mark", True):
+            return 0
+        c = QtGui.QColor(self.theme.get("bp_tv", "#3b82f6"))
+        c.setAlpha(46)
+        lc = QtGui.QColor(self.theme.get("plot_fg", "#8e8e93"))
+        for r in res.get("rows") or []:
+            if r["state"] != "tv":
+                continue
+            reg = pg.LinearRegionItem(values=(r["lo"], r["hi"]), movable=False, brush=pg.mkBrush(c),
+                                      pen=pg.mkPen(None))
+            reg.setZValue(-20)
+            for ln in reg.lines:
+                ln.setPen(pg.mkPen(None))
+            pg.InfLineLabel(reg.lines[0], text=f"TNT {r['ch']}", position=0.97, anchor=(0, 0),
+                            color=lc)
+            pi.addItem(reg, ignoreBounds=True)
+            self._tnt_items.append(reg)
+        return len(self._tnt_items)
+
+    def tnt_db(self):
+        """Base ANFR réduite (sites TNT + codes postaux) ou None si pas encore téléchargée / importée."""
+        if self._tnt_db is None and TNT_DB_PATH.exists():
+            try:
+                d = json.loads(TNT_DB_PATH.read_text(encoding="utf-8"))
+                if isinstance(d, dict) and isinstance(d.get("sites"), list):
+                    self._tnt_db = d
+            except Exception:  # noqa: BLE001
+                self._tnt_db = None
+        return self._tnt_db
+
+    def tnt_db_save(self, db, date="", source=""):
+        db = dict(db, date=date, made=datetime.now().strftime("%Y-%m-%d"), source=source)
+        TNT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = TNT_DB_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(db, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, TNT_DB_PATH)
+        self._tnt_db = db
+        return db
 
     def open_presets(self):
         if getattr(self, "_presets", None) is not None:

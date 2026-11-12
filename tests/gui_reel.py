@@ -1651,6 +1651,24 @@ m.USER_DIR = _ud_old
 check("7.57 : waterfall = la seule bande balayée en « toutes les bandes »",
       m.single_band_view(-1, [b for b in win.bands if b["enabled"]][:1], m.ZOOM_ID) is not None)
 
+# 📺 canaux TNT mesurés + émetteurs proches (7.58) : base ANFR d'essai (inventée) dans un dossier temporaire
+_tdb_old = m.TNT_DB_PATH
+m.TNT_DB_PATH = m.Path(tempfile.mkdtemp()) / "anfr_tnt.json"
+_tnt = win.open_tnt()
+wait(200)
+check("TNT : un état par canal 21-48", _tnt.tab.rowCount() == 28, str(_tnt.tab.rowCount()))
+shot(_tnt, "tnt_canaux")
+_tnt.tabs.setCurrentIndex(1)
+_tnt.import_files([os.path.join(HERE, "data", "anfr_essai_data.zip"), os.path.join(HERE, "data", "anfr_essai_ref.zip")])
+_tnt.place_edit.setText("75007")
+check("TNT : base ANFR d'essai importée, sites proches trouvés", len(_tnt.search()) == 2 and _tnt.stab.rowCount() == 2,
+      _tnt.near_lbl.text())
+shot(_tnt, "tnt_emetteurs")
+_tnt.close()
+check("TNT : lieu gardé dans la config", win._collect_config(True)["tnt"]["place"] == "75007")
+win.tnt_mark(None)
+m.TNT_DB_PATH = _tdb_old
+
 # ✅ Prêt pour le show ? / 🖥 Mode Show / 🛡 garde (7.39, « on fortifie »)
 _rd = win.open_ready()
 wait(300)

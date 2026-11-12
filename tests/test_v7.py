@@ -1483,6 +1483,50 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.58 : 📺 canaux TNT mesurés + émetteurs proches (ANFR)
+_ch = ns["tnt_channel_list"]("FR")
+ok("7.58 : France = canaux 21 à 48 de 8 MHz", _ch[0] == (21, 470.0, 478.0) and _ch[-1] == (48, 686.0, 694.0) and len(_ch) == 28, str(_ch[:2]))
+ok("7.58 : USA = canaux de 6 MHz jusqu'à 608", ns["tnt_channel_list"]("US")[0] == (14, 470.0, 476.0) and ns["tnt_channel_list"]("US")[-1][2] <= 608)
+_F = np.arange(470.0, 694.0, 0.1)
+_rng = np.random.default_rng(3)
+_L = -100 + _rng.normal(0, 1, len(_F))
+for _c in (23, 30, 41):                                  # 3 plateaux TNT à -70
+    _m = (_F >= 470 + 8 * (_c - 21)) & (_F < 478 + 8 * (_c - 21))
+    _L[_m] = -70 + _rng.normal(0, 1, int(_m.sum()))
+_L[np.argmin(abs(_F - 606.5))] = -60                     # une porteuse étroite (micro) dans le canal 38
+_L[(_F > 652) & (_F < 672)] = np.nan                     # pas de mesure sur 44-45 (654-670)
+_r = ns["tnt_measure"](_F, _L, _ch)
+_st = {r["ch"]: r["state"] for r in _r["rows"]}
+ok("7.58 : canaux TNT trouvés", [c for c, v in _st.items() if v == "tv"] == [23, 30, 41], str(_st))
+ok("7.58 : micro étroit = autre signal, pas TNT", _st[38] == "other")
+ok("7.58 : trou de mesure = pas mesuré", _st[44] == "none" and _st[45] == "none" and _st[22] == "free", str(_st))
+_su = ns["tnt_summary"](_r)
+ok("7.58 : résumé", "23, 30, 41" in _su and "38" in _su, _su)
+ok("7.58 : rien mesuré -> conseil", "Scanner" in ns["tnt_summary"](ns["tnt_measure"](None, None, _ch)))
+import zipfile as _zf
+_z1, _z2 = _zf.ZipFile("tests/data/anfr_essai_data.zip"), _zf.ZipFile("tests/data/anfr_essai_ref.zip")
+_db = ns["anfr_tnt_sites"](_z1.open("SUP_EMETTEUR.txt"), _z1.open("SUP_SUPPORT.txt"), _z1.open("SUP_STATION.txt"),
+                           _z2.open("SUP_EXPLOITANT.txt"))
+_sites = sorted(_db["sites"], key=lambda x: -x[2])
+ok("7.58 : ANFR : 2 émetteurs DVB-T au même endroit = 1 site à 2 multiplex (FM et GSM ignorés)",
+   len(_sites) == 3 and _sites[0][2] == 2 and _sites[0][4] == "Tour d'essai" and _sites[0][6] == "TDF", str(_sites))
+ok("7.58 : ANFR : lieu vide -> adresse ; exploitant", any(x[4] == "Rue des Essais" and x[6] == "TOWERCAST" for x in _sites))
+ok("7.58 : ANFR : coordonnées DMS", abs(_sites[0][0] - (48 + 51 / 60 + 30 / 3600)) < 1e-3 and abs(_sites[0][1] - (2 + 17 / 60 + 40 / 3600)) < 1e-3)
+ok("7.58 : ANFR : centre des codes postaux", set(_db["cp"]) == {"75007", "94200", "13001", "75001"})
+_pl = ns["place_parse"]("75007", _db["cp"])
+ok("7.58 : lieu = code postal", _pl is not None and _pl[2] == "75007")
+ok("7.58 : lieu = GPS (point ou virgule)", ns["place_parse"]("48.8584, 2.2945")[:2] == (48.8584, 2.2945)
+   and ns["place_parse"]("48,8584 2,2945")[:2] == (48.8584, 2.2945) and ns["place_parse"]("Paris", _db["cp"]) is None)
+_nr = ns["tnt_sites_near"](_db["sites"], _pl[0], _pl[1], 60)
+ok("7.58 : sites proches triés (Marseille hors rayon)", len(_nr) == 2 and _nr[0][0] <= _nr[1][0], str(_nr))
+ok("7.58 : distance Paris-Marseille ≈ 660 km", 640 < ns["geo_km"](48.857, 2.352, 43.296, 5.37) < 680)
+ok("7.58 : conseil d'après le site proche", "Tour d'essai" in ns["tnt_near_text"](_nr) and "aucun" in ns["tnt_near_text"]([]).lower())
+_api = dict(resources=[dict(title="Tables de référence octobre 2026", url="r1", last_modified="2026-10-06"),
+                       dict(title="Tables supports antennes émetteurs bandes novembre 2026", url="d2", last_modified="2026-11-06"),
+                       dict(title="Tables supports antennes émetteurs bandes octobre 2026", url="d1", last_modified="2026-10-06"),
+                       dict(title="Tables de référence novembre 2026", url="r2", last_modified="2026-11-06")])
+ok("7.58 : data.gouv : fichiers les plus récents", ns["anfr_pick"](_api) == ("d2", "r2", "2026-11-06"), str(ns["anfr_pick"](_api)))
+ok("7.58 : réglages TNT bornés", ns["tnt_cfg_norm"](dict(radius=999, margin=1, place="  75  007 ")) == dict(place="75 007", radius=200, margin=3, mark=True))
 # 7.57.1 : « Prêt ? » propose la RBW Auto si le balayage est lent avec une RBW forcée
 _sp = lambda **k: [c for c in ns["ready_checks"](dict(dict(running=True, devs=[dict(name="1", live=True)], sweep_age=1.0), **k)) if c["key"] == "speed"]
 ok("7.57.1 : RBW 100 forcée + 4,2 s -> conseil RBW Auto", len(_sp(rbw=100, cycle=4.2)) == 1 and _sp(rbw=100, cycle=4.2)[0]["fix"] == "set_rbw_auto")
