@@ -93,6 +93,20 @@ signals). Away from LED screens, power supplies and computers, which raise the n
     morning</td></tr>
   <tr><td>After</td><td><b>8. Review, report, keep</b></td><td>Report, replay, show reusable next year</td></tr>
 </table>
+<h3>The « new show » assistant</h3>
+<p><b>🧭 Assistant</b> (on the home bar, or first in 📋 Prepare, and by itself after « New show ») walks you through,
+in order: <b>1. the show</b> (name, country, venue postcode), <b>2. your mics</b> (import, paste, add), <b>3. scan the
+venue</b> (5 minutes recommended, elapsed time shown), <b>4. DTT channels</b> (« Measure and grey out »), <b>5. ready
+for the show</b> (check, start, Show mode). Each step says <b>why</b> and <b>how</b>, with the buttons that do it;
+✓ = done. You can skip a step, come back, and keep working in the app while the assistant is open.</p>
+<h3>The app suggests what's next</h3>
+<p>A discreet banner above the spectrum suggests the next move at the right time: after 5 minutes of scan, « N DTT
+channels found: grey them? »; if monitoring runs with an empty list, « add from the scan or import? »; when the country
+adjusts the band, « band adjusted to 470–608 MHz » with <b>Cancel</b>. ✕ = don't suggest again for this show.</p>
+<h3>The spectrum legend</h3>
+<p>At the top left of the spectrum: <b>Live · Peak hold · Threshold (auto) · DTT · My mics</b>, in their colours.
+Clicking a chip = what it is and what to do (clear peaks, how the auto threshold works, see DTT channels, choose
+markers…). The main windows have a <b>❓ Manual</b> button that opens the right chapter.</p>
 <div class="box">Small event, a single stage? Do steps 1, 2, 4, 5, 6, 8; it takes about an hour.</div>
 
 <!--CH avant|Step 1 — Prepare at home-->
@@ -163,7 +177,9 @@ your scan, without internet:</p>
     better than the measurement? <b>Double-click</b> a channel (automatic → DTT → free → automatic) or <b>right-click</b>
     several: your « by hand » choice overrides the measurement, is kept with the show and greyed again when it opens,
     even without a scan. Importing an <code>.ezrf3</code> plan? Its active TV channels are greyed « DTT (plan) » too,
-    and updated automatically if you follow the file.</li>
+    and updated automatically if you follow the file. On tour, <b>↺ New venue</b> sets everything back to automatic
+    (by-hand choices and plan channels forgotten), or resets everything and clears the peak hold to rescan; importing a
+    new plan with « Replace my list » also replaces the old plan's TV channels.</li>
   <li><b>Nearby transmitters (ANFR)</b>, optional: the open ANFR database (data.gouv.fr) lists DTT transmitters in France
     with their position. Download it once (≈ 65 MB, 0.3 MB stays on the PC) or import the files if you already have
     them, then type the show venue (postcode or « latitude, longitude »): the app lists nearby DTT sites (distance,
@@ -351,3 +367,44 @@ rules; the receiver filter changes the result a lot (Filter chapter).</p>
 <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> tells you what is missing.</p>
 <h3>Can I use the app in English?</h3>
 <p>Yes: ☰ More › 🌐 Langue / Language, then restart. The web page is chosen per person (FR / EN button).</p>
+
+<!--CH pays|TV bands and channels by country-->
+<p>When you pick the <b>show country</b> (show info window, or ⚙ Settings › Country), the app uses that country's mic UHF
+band, its TV channels (strips under the spectrum, 📺 DTT channels) and its notes. Everything is <b>indicative</b>: the
+rule that counts is the national regulator's, to be checked before every tour. Research done on 13 November 2026.</p>
+<table>
+  <tr><th>Country</th><th>Mic UHF band (swept)</th><th>TV channels</th><th>Other useful bands</th><th>Source</th></tr>
+  <tr><td>France</td><td>470–694 MHz, shared with DTT (channel 38 included)</td><td>21 to 48, 8 MHz</td>
+    <td>823–832, 863–865, 1785–1805 MHz</td><td>ANFR (national frequency allocation table)</td></tr>
+  <tr><td>Belgium, Italy, Spain, Netherlands, Europe</td><td>470–694 MHz</td><td>21 to 48, 8 MHz</td>
+    <td>823–832, 863–865, 1785–1805 MHz (harmonised in Europe)</td><td>CEPT (ERC Recommendation 70-03) and national
+    regulator</td></tr>
+  <tr><td>Germany</td><td>470–694 MHz</td><td>21 to 48, 8 MHz</td><td>736–753 MHz (licence-free), 1492–1525 MHz
+    (registration, indoor), 823–832, 1785–1805 MHz</td><td>BNetzA</td></tr>
+  <tr><td>Switzerland</td><td>470–694 MHz (DTT switched off in 2019)</td><td>21 to 48, 8 MHz</td><td>—</td><td>OFCOM (Switzerland)</td></tr>
+  <tr><td>United Kingdom</td><td>470–702 MHz: « interleaved » TV spectrum coordinated by Ofcom</td><td>21 to 48, 8 MHz</td>
+    <td>Channel 38 (606–614) with a shared licence; channel 70 (863–865) licence-free; 703–790 banned since 2020</td>
+    <td><a href="https://www.ofcom.org.uk/manage-your-licence/radiocommunication-licences/pmse/pmse-technical-info/mics-monitors/co-ordinated">Ofcom – PMSE</a></td></tr>
+  <tr><td>United States</td><td>470–608 MHz (except channel 37, 608–614: radio astronomy)</td><td>14 to 36, 6 MHz</td>
+    <td>614–616 and part of 653–663 MHz; 941–960 and 1435–1525 MHz with a licence</td><td>FCC</td></tr>
+  <tr><td>Canada</td><td>470–608 MHz</td><td>14 to 36, 6 MHz</td><td>Close to the US</td><td>ISED</td></tr>
+  <tr><td>Australia</td><td>520–694 MHz, in the venue's free TV channels (LIPD class licence)</td>
+    <td>27 to 51, 7 MHz</td><td>694–820 MHz banned since 2015</td>
+    <td><a href="https://www.acma.gov.au/wireless-microphones">ACMA – wireless microphones</a></td></tr>
+  <tr><td>New Zealand</td><td>502–606 MHz (GUSL 272800 and GURL-SRD licences)</td><td>8 MHz</td>
+    <td>622–698 MHz to be checked (considered for 5G); 698–806 banned since 2015</td>
+    <td><a href="https://www.rsm.govt.nz/licensing/frequencies-for-anyone/radio-microphone-devices-gusl">RSM – Radio microphone devices</a></td></tr>
+  <tr><td>Japan</td><td>470–714 MHz: TV white spaces 470–710 + dedicated band 710–714</td><td>13 to 52, 6 MHz</td>
+    <td>806–810 and 1240–1260 MHz (low-power mics)</td>
+    <td><a href="https://www.soumu.go.jp/main_content/001085598.pdf">MIC (band table)</a></td></tr>
+</table>
+<h3>Working out a channel</h3>
+<ul>
+  <li><b>Europe, UK, New Zealand</b> (8 MHz): channel n runs from 470 + 8 × (n − 21) to 8 MHz higher. Channel 21 =
+    470–478, channel 38 = 606–614, channel 48 = 686–694.</li>
+  <li><b>US, Canada</b> (6 MHz): channel n starts at 470 + 6 × (n − 14). Channel 14 = 470–476, channel 36 = 602–608.</li>
+  <li><b>Australia</b> (7 MHz): channel n starts at 526 + 7 × (n − 28). Channel 28 = 526–533, channel 51 = 687–694.</li>
+  <li><b>Japan</b> (6 MHz): channel n starts at 470 + 6 × (n − 13). Channel 13 = 470–476, channel 52 = 704–710.</li>
+</ul>
+<div class="box warn">A country not in the list uses the European plan (470–694 MHz). For Brazil, Mexico, India, South
+Africa… check with the regulator (Anatel, IFT, WPC, ICASA) and add your band in ⚙ Settings › Bands to sweep.</div>

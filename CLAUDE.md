@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.58.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.59.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1052,6 +1052,42 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   plan suivi n'en a plus) ; priorité main > plan > mesure (`tnt_apply_manual(res, manual, plan)`, `src`), état
   « 📺 TNT (plan) », `plan_lbl` dans TntDialog. Sens de « True » dans `ChTVActifList` = canal TV présent : **supposé**
   (lu sur les fichiers d'essai, pas vérifié dans le logiciel de coord).
+  **7.58.2 (Clément, retour terrain : « tout fonctionne », mais « remettre les canaux TV en libre et que ça soit
+  remesurable, import de fréquences en tournée »)** : `MainWindow.tnt_reset(clear_peaks)` (manual + plan oubliés,
+  marques effacées, `reset_max` si demandé) ← bouton `reset_btn` « ↺ Nouveau lieu » (menu à 2 choix) de TntDialog ;
+  `apply_ezrf` avec « Remplacer ma liste » remplace les canaux TV du plan (vidés si le nouveau plan n'en a pas).
+  La 7.58.1 n'a PAS de release (compilation sur main refusée : paiement / limite de dépense GitHub, 12/11/2026) ;
+  l'exe était dans la pré-release `test-ui-validation`.
+  **7.58.3 (Clément : « quand je change de pays ça garde 470-694 ; on add des pays ? fais les recherches »)** :
+  `COUNTRY_UHF` + GB 470-702, AU 520-694, NZ 502-606, JP 470-714 (recherches du 13/11/2026 : ACMA LIPD 2025, RSM GUSL
+  272800 / GURL-SRD, tableau MIC, Ofcom entrelacé ; **indicatif**, bouts annexes dans `COUNTRY_NOTES`) ; COUNTRIES + AU,
+  NZ, JP ; `tv_channels` AU (7 MHz, 27-51) et JP (6 MHz, 13-52) ; `uhf_band_needed` → ("resize", …) pour une bande
+  cochée dont le nom commence par « UHF » (créée par l'appli) ; `set_show_country` l'applique ; le combo Pays des
+  réglages appelle `set_show_country` sur `activated` (choix à la main seulement, pas au chargement). Pas trouvé de
+  source fiable pour BR / MX / IN / ZA : pas ajoutés. Seuil auto « qui suit la TNT » (capture de Clément) : voulu
+  (bruit LOCAL + marge ; sur le vrai bruit, un micro dans un canal TNT serait toujours « occupé » → ABSENT muet).
+  Expliqué partout (Clément : « faut bien l'expliquer ») : PURE `AUTO_THR_HELP` / `auto_thr_help_html(tr)` → fiche
+  ❓ `show_auto_thr_help` (`auto_help_btn` dans la barre des seuils, `_auto_help`), ligne « Seuil auto (tirets) » de la
+  légende des courbes, bulle de Auto, lexique « Seuil auto », manuel (chapitre Seuils). Nouveau chapitre manuel
+  **`pays` « Bandes et canaux TV par pays »** (partie B, `docs/src/nouveaux_*.html`) : tableau bande / canaux / autres
+  bandes / source + formules de canaux (Clément : « que tu sources tous les canaux dans le manuel en fonction des pays »).
+- **7.59.0 (Clément : « comment on rend tout ça intuitif, compréhensible ? » → les 4 propositions)** :
+  - **🧭 Assistant « nouveau show »** : PURE `WIZARD_STEPS` (clé, titre, pourquoi, comment), `WIZARD_SCAN_S` (300 s),
+    `wizard_status(info)` ; `ShowWizard` (non modal, `self._wizard`, liste à ✓ + pages de boutons, rafraîchi 2 s),
+    `open_wizard(step)`, `wizard_info()` ; entrées : accueil (`HomeBar.wiz_btn`), 📋 Préparer en tête, et tout seul
+    après `clear_show_data` (étape 2).
+  - **Propositions** : PURE `hint_due(info, done)` (TNT trouvée après `HINT_TNT_S` de scan, liste vide après
+    `HINT_EMPTY_S` de surveillance) ; `HintBar` (`self.hint_bar`, au-dessus de `thr_bar`, caché d'office, 2 boutons +
+    ✕ → `_hints_done`, remis à zéro par un nouveau show), `_hints_tick` (5 s, dans `_alarm_tick`), `hint_info`,
+    `show_hint`, `hint_tnt_mark` ; pays qui recale la bande → proposition « Annuler » (`_band_restore`).
+  - **Légende** : PURE `LEGEND_ITEMS` ; `SpecLegend` = cadre ENFANT de `self.spec` (posé en haut à gauche, ne change
+    pas la mise en page), pastilles à menu (explication + actions), `refresh()` chaque seconde (pastilles visibles
+    selon ce qui est affiché). Étiquettes TNT descendues (0,87 / 0,80) pour passer sous la légende.
+  - **Nettoyages** : étiquettes TNT de canaux collés en alternance ; port « COM4 — Périphérique série USB » (plus de
+    « (COM4) » en double) ; note du plan FR raccourcie (ligne de survol) ; Port / Démarrer en double cachés dès que
+    l'accueil est affiché (aussi en expert) ; `open_manual(chapitre)` + boutons « ❓ Manuel » (TNT → arrivee,
+    assistant → vue, seuil auto → seuils).
+  Testé : PURE (test_v7), vraie appli (script de session + gui_reel). **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

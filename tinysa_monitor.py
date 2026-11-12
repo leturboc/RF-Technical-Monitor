@@ -85,7 +85,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.58.1"
+APP_VER = "7.59.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -915,11 +915,16 @@ for _n, _t in THEMES.items():
 
 COUNTRIES = [("FR", "France"), ("BE", "Belgique"), ("CH", "Suisse"), ("DE", "Allemagne"),
              ("GB", "Royaume-Uni"), ("IT", "Italie"), ("ES", "Espagne"), ("NL", "Pays-Bas"),
-             ("EU", "Europe (générique CEPT)"), ("US", "États-Unis"), ("CA", "Canada")]
+             ("EU", "Europe (générique CEPT)"), ("US", "États-Unis"), ("CA", "Canada"),
+             ("AU", "Australie"), ("NZ", "Nouvelle-Zélande"), ("JP", "Japon")]
 
 # 7.57 (Clément : « mettre la Vue sur UHF 470-694 direct si on est en France pour un nouveau show, déduire tout ça
 # rapidement ») : bande UHF des micros par pays (télé + micros HF) ; États-Unis / Canada : 470-608 après le « repack ».
-COUNTRY_UHF = {"US": (470.0, 608.0), "CA": (470.0, 608.0)}
+# 7.58.3 (Clément : « quand je change de pays ça garde 470-694 ; on add des pays ? ») : recherches du 13/11/2026 (ACMA
+# LIPD 2025 : 520-694 ; RSM GUSL 272800 + GURL-SRD : 502-606 ; tableau MIC Japon : 470-710 + 710-714 ; Ofcom :
+# spectre entrelacé ≈ 470-702) — INDICATIF, la bande principale seulement (les petits bouts sont dans COUNTRY_NOTES).
+COUNTRY_UHF = {"US": (470.0, 608.0), "CA": (470.0, 608.0), "GB": (470.0, 702.0), "AU": (520.0, 694.0),
+               "NZ": (502.0, 606.0), "JP": (470.0, 714.0)}
 COUNTRY_UHF_DEFAULT = (470.0, 694.0)
 
 
@@ -949,12 +954,20 @@ def default_view_band(bands, country):
 
 def uhf_band_needed(bands, country, cover=0.8):
     """7.57 : bande UHF des micros du pays du show. -> None (déjà balayée : une bande cochée en couvre ≥ 80 %),
-    ("enable", id) (une bande décochée la couvre : la réactiver) ou ("add", nom, début, fin, pas) (à créer)."""
+    ("resize", id, nom, début, fin) (7.58.3 : la bande « UHF … » de l'appli est recalée sur le pays), ("enable", id)
+    (une bande décochée la couvre : la réactiver) ou ("add", nom, début, fin, pas) (à créer)."""
     lo, hi = country_uhf(country)
     need = cover * (hi - lo)
 
     def ov(b):
         return min(float(b["stop"]), hi) - max(float(b["start"]), lo)
+    auto = [b for b in bands if b.get("enabled", True) and str(b.get("name", "")).startswith("UHF")
+            and ov(b) >= 0.5 * (hi - lo)]
+    if auto:                                      # bande créée par l'appli (ou nommée « UHF … ») : suit le pays
+        b = max(auto, key=ov)
+        if abs(float(b["start"]) - lo) > 0.5 or abs(float(b["stop"]) - hi) > 0.5:
+            return ("resize", b["id"], f"UHF {lo:g}–{hi:g} MHz", lo, hi)
+        return None
     if any(b.get("enabled", True) and ov(b) >= need for b in bands):
         return None
     off = [b for b in bands if not b.get("enabled", True) and ov(b) >= need]
@@ -1001,19 +1014,26 @@ def single_band_view(view_id, bands, zoom_id):
 
 
 COUNTRY_NOTES = {
-    "FR": "Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48) / micros HF ; 700 et 800 MHz attribués "
+    "FR": "Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48, canal 38 compris) / micros HF ; 700 et 800 MHz attribués "
           "à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux "
           "police / pompiers / secours.",
     "DE": "Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.",
-    "GB": "Plan indicatif (Ofcom). Canal 38 (606-614) : micros HF avec licence Ofcom partagée ; canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.",
+    "GB": "Plan indicatif (Ofcom). Micros HF dans le spectre TV entrelacé ≈ 470-702 MHz (coordonné par Ofcom) ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 703-790 MHz interdit depuis 2020.",
     "CH": "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.",
     "BE": "Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.",
     "IT": "Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.",
     "ES": "Plan indicatif (CNMC / SETID). 700 MHz libéré en 2020.",
     "NL": "Plan indicatif (Agentschap Telecom).",
     "EU": "Plan harmonisé CEPT / UIT région 1, indicatif.",
-    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; bande 600 MHz vendue aux opérateurs mobiles ; micros HF limités après 2020.",
+    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37), plus quelques bouts : "
+          "614-616 MHz et une partie de 653-663 MHz ; 941-960 et 1435-1525 MHz avec licence.",
     "CA": "Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.",
+    "AU": "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de "
+          "7 MHz) ; 694-820 MHz interdit depuis 2015.",
+    "NZ": "Plan indicatif (RSM). Micros HF sur 502-606 MHz (licences GUSL 272800 et GURL-SRD) ; 622-698 MHz à vérifier "
+          "(envisagé pour la 5G) ; 698-806 MHz interdit depuis 2015.",
+    "JP": "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée "
+          "710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.",
 }
 
 # début-fin (MHz) | catégorie | libellé | note
@@ -1148,7 +1168,7 @@ PLAN_OVERRIDES = {
     "FR": """
 174-223|broadcast|DAB+ (VHF III) : micros HF libres, interférences régionales|
 380-400|safety|Police / gendarmerie / pompiers / SAMU (réseaux INPT, Tetrapol)|Numérique, souvent chiffré : on ne mesure que le niveau
-470-694|tv|TNT (DVB-T2) + micros HF pros : usage partagé|Canal 38 (606-614) utilisable par les micros HF
+470-694|tv|TNT (DVB-T2) + micros HF pros : usage partagé|
 """,
     "DE": """
 736-753|pmse|Micros HF professionnels sans licence (Allemagne)|
@@ -1319,6 +1339,16 @@ def tv_channels(code):
         for n in range(14, 37):
             add(n, 470 + 6 * (n - 14))
         add(37, 608, "other", "Canal 37 : radioastronomie / télémétrie médicale")
+        return out
+    if code == "AU":                                 # 7.58.3 : canaux de 7 MHz (UHF 27 = 519-526 … 51 = 687-694)
+        for n in range(27, 52):
+            a = 519 + 7 * (n - 27)
+            out.append((a, a + 7, f"CH {n}", "tv", f"Canal UHF {n} (7 MHz) : {a}-{a + 7} MHz"))
+        return out
+    if code == "JP":                                 # 7.58.3 : canaux de 6 MHz (13 = 470-476 … 52 = 704-710)
+        for n in range(13, 53):
+            a = 470 + 6 * (n - 13)
+            out.append((a, a + 6, f"CH {n}", "tv", f"Canal UHF {n} (6 MHz) : {a}-{a + 6} MHz"))
         return out
     for n in range(5, 13):
         a = 174 + 7 * (n - 5)
@@ -6723,7 +6753,8 @@ UI_LEVELS = (("ultra", "🟢 Ultra simple : spectre, liste et alarmes"),
 STEPS = (
     ("prep", "📋 Préparer", "Avant le show : scanner le lieu, ta liste de fréquences (importer, ajouter, nommer),\n"
      "le planning des plateaux et les états.",
-     (("§1. Scanner le lieu", None),
+     (("🧭 Assistant « nouveau show » (pas à pas)…", "open_wizard"),
+      ("§1. Scanner le lieu", None),
       ("▶ Scanner ici (pics remis à zéro)", "step_scan"),
       ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"),
       ("📺 Canaux TNT du lieu et émetteurs proches…", "open_tnt"),
@@ -7878,6 +7909,120 @@ TOURS = [
 ]
 TOUR_KEYS = [k for k, *_ in TOURS]
 
+# 7.59 (Clément : « comment on rend tout ça intuitif, compréhensible ? ») : 🧭 assistant « Nouveau show » pas à pas,
+# légende cliquable posée sur le spectre, propositions au bon moment (bandeau au-dessus du spectre).
+WIZARD_STEPS = (
+    ("show", "1. Le show", "Le pays donne la bande UHF des micros et les canaux TV ; le lieu (code postal) sert à "
+     "trouver les émetteurs TNT proches.", "Donne un nom au show, choisis le pays, tape le code postal du lieu."),
+    ("micros", "2. Mes micros", "La liste des fréquences à surveiller : ce que tu as coordonné (plan importé) ou ce que "
+     "tu ajoutes à la main.", "Importe ton plan (EazyRF, WWB, WSM, Wisycom, DPA, tableau), colle une liste ou ajoute "
+     "tes fréquences. Tu peux aussi le faire après le scan (« Depuis le scan »)."),
+    ("scan", "3. Scanner le lieu", "Avant de surveiller, il faut savoir ce qui occupe déjà les ondes : TNT, autres "
+     "équipes, talkies, écrans LED.", "Branche le tinySA là où seront les récepteurs, clique « Scanner ici » et laisse "
+     "tourner au moins 5 minutes (idéalement pendant les essais lumière et écrans)."),
+    ("tnt", "4. Les canaux TNT", "La TNT occupe des canaux entiers : il vaut mieux ne pas y poser de micros, ou alors "
+     "bien au-dessus.", "Clique « Mesurer et griser » : les canaux pris par la TNT sont grisés sur le spectre. Tu peux "
+     "en griser ou dégriser à la main dans le détail."),
+    ("ready", "5. Prêt pour le show", "Une dernière vérification : tinySA, liste, son, alertes, enregistrement.",
+     "Ouvre « Prêt pour le show ? », règle ce qui est en orange ou rouge, puis démarre la surveillance."),
+)
+WIZARD_SCAN_S = 300          # durée de scan conseillée (5 min)
+
+
+def wizard_status(i):
+    """État de chaque étape de l'assistant. i = dict(name, country_name, place, n_watch, running, scan_s, tnt_done,
+    tnt_tv, ready) -> [(clé, fait ?, texte)]."""
+    out = []
+    nm = i.get("name") or ""
+    out.append(("show", bool(nm),
+                (f"Show « {nm} » · {i.get('country_name') or '?'}" if nm else "Pas encore de nom")
+                + (f" · lieu {i['place']}" if i.get("place") else "")))
+    n = int(i.get("n_watch") or 0)
+    out.append(("micros", n > 0, f"{n} fréquence(s) dans ta liste" if n else "Liste vide"))
+    sc = i.get("scan_s")
+    if sc is None:
+        out.append(("scan", False, "Pas de scan en cours"))
+    else:
+        m_, s_ = int(sc) // 60, int(sc) % 60
+        ok = sc >= WIZARD_SCAN_S
+        out.append(("scan", ok, f"Scan depuis {m_} min {s_:02d} s" + ("" if ok else " (5 min conseillées)")))
+    if i.get("tnt_done"):
+        out.append(("tnt", True, f"{int(i.get('tnt_tv') or 0)} canal(aux) TNT grisé(s)"))
+    else:
+        out.append(("tnt", False, "Pas encore mesuré"))
+    lvl = i.get("ready")
+    txt = {"ok": "Tout est prêt", "warn": "Quelques points à vérifier", "bad": "Il reste des problèmes"}.get(
+        lvl, "Pas encore vérifié")
+    out.append(("ready", lvl == "ok" and bool(i.get("running")),
+                txt + (" · surveillance en cours" if i.get("running") else "")))
+    return out
+
+
+HINT_TNT_S = 300             # après 5 min de scan : « N canaux TNT trouvés »
+HINT_EMPTY_S = 120           # surveillance sans liste depuis 2 min : « ajoute tes micros depuis le scan »
+
+
+def hint_due(i, done):
+    """Proposition à faire maintenant (une seule) ou None. i = dict(running, scan_s, tnt_tv, tnt_chs, tnt_marked,
+    n_watch, run_s) ; done = clés déjà proposées. -> (clé, texte, [(libellé, méthode)])."""
+    if (i.get("running") and (i.get("scan_s") or 0) >= HINT_TNT_S and int(i.get("tnt_tv") or 0) > 0
+            and not i.get("tnt_marked") and "tnt" not in done):
+        chs = ", ".join(str(c) for c in (i.get("tnt_chs") or [])[:8])
+        return ("tnt", f"📺 {int(i['tnt_tv'])} canal(aux) TNT trouvé(s) dans ton scan ({chs}). Les griser sur le "
+                       f"spectre pour ne pas y poser de micros ?",
+                [("Griser", "hint_tnt_mark"), ("Voir le détail", "open_tnt")])
+    if i.get("running") and (i.get("run_s") or 0) >= HINT_EMPTY_S and not i.get("n_watch") and "empty" not in done:
+        return ("empty", "📡 Ta liste est vide : rien n'est surveillé. Ajouter les signaux vus dans le scan, ou "
+                         "importer ton plan ?",
+                [("Depuis le scan", "open_scan_add"), ("Importer", "import_watch")])
+    return None
+
+
+LEGEND_ITEMS = (
+    ("curve", "Direct", "curve", "Le dernier balayage : ce que reçoit le tinySA maintenant. Le « tapis » du bas est le "
+     "bruit de fond, une bosse qui en sort est un émetteur."),
+    ("hold", "Pics gardés", "maxhold", "Le plus haut niveau vu à chaque fréquence depuis le dernier « Effacer les "
+     "pics » : garde la trace des signaux brefs (talkie, brouilleur qui passe)."),
+    ("thr", "Seuil", "thr", "Au-dessus, une fréquence est « occupée ». En Auto (tirets) : bruit de fond local + 12 dB, "
+     "qui monte sur la TNT."),
+    ("tnt", "TNT", "bp_tv", "Bandes bleutées « TNT n » : canaux pris par la télévision (mesurés, grisés à la main ou "
+     "venus de ton plan). Évite d'y poser des micros."),
+    ("mk", "Mes micros", "st_free", "Un trait par fréquence de ta liste, coloré selon l'état : vert OK, bleu libre, "
+     "rouge problème, jaune faible."),
+)
+
+
+# 7.58.3 (Clément : « faut bien expliquer le seuil auto ») : fiche ❓ à côté de « Auto » (titre, paragraphes).
+AUTO_THR_HELP = (
+    ("La courbe en tirets", "C'est le seuil « occupé » de chaque fréquence : le bruit de fond LOCAL (mesuré sur ± 2 MHz "
+     "autour) plus une marge, + 12 dB d'origine. Entre les canaux TV, le fond est le bruit du lieu (vers −100 dBm) : la "
+     "courbe est donc vers −88. Elle bouge toute seule quand le lieu change (écran LED allumé, TNT qui varie)."),
+    ("Pourquoi elle monte sur la TNT", "Dans un canal TNT, le fond local, c'est la TNT elle-même. Le seuil est donc "
+     "« TNT + 12 dB » : ce n'est pas une erreur, c'est voulu."),
+    ("Ce que ça change pour toi", "Un micro posé dans un canal TNT doit sortir 12 dB au-dessus de la TNT pour compter. "
+     "S'il s'éteint, l'alarme ABSENT part bien. Avec un seuil sur le bruit pur, la TNT seule dépasserait le seuil : le "
+     "canal serait toujours « occupé », l'ABSENT ne partirait jamais, et une réserve « doit rester libre » posée sur la "
+     "TNT serait en CONFLIT en permanence."),
+    ("La limite", "Dans un canal TNT, un signal plus faible que TNT + 12 dB ne se voit pas (le tinySA ne peut de toute "
+     "façon pas le séparer d'une TNT forte). Pour savoir quels canaux sont pris par la TNT, utilise 📋 Préparer › "
+     "📺 Canaux TNT : lui compare au vrai bruit du lieu."),
+    ("Le bruit appris", "Le fond est appris en continu : il redescend vite (quelques secondes) mais remonte lentement "
+     "(environ 10 minutes) et ne remonte jamais pendant qu'une fréquence est occupée. Un brouilleur qui s'installe ne "
+     "peut donc pas « effacer » sa propre alarme en relevant le seuil."),
+    ("Régler", "« bruit + 12 dB » (occupé) et « bruit + 6 dB » (faible) se règlent dans la barre au-dessus du spectre : "
+     "plus petit = plus sensible, plus de fausses alertes. Une fréquence capricieuse (station faible pile au seuil) : "
+     "clic droit › Seuil propre à la fréquence, il passe avant l'auto. Décoche Auto pour revenir à un seuil fixe pour "
+     "tout le spectre."),
+    ("Exemple", "Bruit du lieu −100 dBm, canal TNT à −82 dBm. Entre deux canaux : occupé dès −88. Dans le canal TNT : "
+     "occupé dès −70, donc ton micro à −55 est vu, et s'il s'éteint, ABSENT."),
+)
+
+
+def auto_thr_help_html(tr=lambda t: t):
+    """Fiche du seuil auto en HTML (chaque morceau traduit à part)."""
+    return "".join(f"<p><b>{tr(t)}</b><br>{tr(x)}</p>" for t, x in AUTO_THR_HELP)
+
+
 GLOSSARY = [
     ("HF", "Ici : tout ce qui passe par les ondes radio (micros sans fil, ears, talkies). Dans le métier on dit "
      "« la HF » pour l'ensemble des liaisons sans fil d'un spectacle."),
@@ -7904,6 +8049,9 @@ GLOSSARY = [
     ("Rémanence", "Chaque balayage laisse une trace qui s'estompe peu à peu, comme sur un analyseur : ce qui est "
      "souvent là brille, ce qui passe rarement laisse une trace pâle (spectre de l'appli, bouton ⋯, et vues web "
      "Spectre / Terrain)."),
+    ("Seuil auto", "Un seuil par fréquence = son bruit de fond local + une marge (+ 12 dB d'origine), dessiné en "
+     "tirets. Sur un canal TNT, le fond local est la TNT : le seuil monte avec elle, pour qu'un micro posé dans ce "
+     "canal reste surveillé (ABSENT). Fiche complète : bouton ❓ à côté de « Auto »."),
     ("Seuil « occupé »", "La ligne rouge : au-dessus, une fréquence est considérée comme occupée (quelqu'un émet). "
      "« Auto » le place un peu au-dessus du bruit de fond."),
     ("Seuil « faible »", "En dessous du seuil occupé : un signal qui dépasse ce niveau sans atteindre « occupé » est "
@@ -9901,7 +10049,8 @@ class RelayWindow(QtWidgets.QWidget):
         ports.sort(key=lambda p: not (p.vid == TINYSA_VID and p.pid == TINYSA_PID))
         for p in ports:
             tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
-            self.port_combo.addItem(f"{p.device} — {p.description}{tag}", p.device)
+            desc = str(p.description or "").replace(f" ({p.device})", "")      # 7.59 : « (COM4) » en double
+            self.port_combo.addItem(f"{p.device} — {desc}{tag}", p.device)
         if not ports:
             self.port_combo.addItem("Aucun port détecté", None)
 
@@ -16685,6 +16834,10 @@ class HomeBar(QtWidgets.QWidget):
         self.hide_btn.setToolTip("Masquer l'accueil (☰ Plus › 👁 Affichage › 🏠 Accueil pour le remettre).")
         self.hide_btn.clicked.connect(lambda *_: o.set_home(False))
         side.addWidget(self.hide_btn, 0, Qt.AlignmentFlag.AlignRight)
+        self.wiz_btn = QtWidgets.QPushButton("🧭 Assistant")
+        self.wiz_btn.setToolTip("L'assistant pas à pas : show, micros, scan, canaux TNT, prêt pour le show.")
+        self.wiz_btn.clicked.connect(lambda *_: o.open_wizard())
+        side.addWidget(self.wiz_btn)
         side.addWidget(self.tour_btn)
         side.addStretch(1)
         row.addLayout(side)
@@ -17214,6 +17367,279 @@ def anfr_download(job):
         job["done"] = True
 
 
+class HintBar(QtWidgets.QFrame):
+    """7.59 : bandeau discret au-dessus du spectre : une proposition au bon moment (TNT trouvée, liste vide, bande
+    recalée…) avec 1-2 boutons et ✕. Caché quand il n'y a rien à proposer."""
+
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = owner
+        self.key = None
+        h = QtWidgets.QHBoxLayout(self)
+        h.setContentsMargins(8, 3, 4, 3)
+        self.lbl = QtWidgets.QLabel()
+        self.lbl.setWordWrap(True)
+        h.addWidget(self.lbl, 1)
+        self.btns = []
+        for _i in range(2):
+            b = QtWidgets.QPushButton()
+            b.setVisible(False)
+            b.setToolTip("Le faire maintenant.")
+            h.addWidget(b)
+            self.btns.append(b)
+        x = QtWidgets.QToolButton()
+        x.setText("✕")
+        x.setAutoRaise(True)
+        x.setToolTip("Ne plus proposer (pour ce show).")
+        x.clicked.connect(lambda *_: self.dismiss())
+        h.addWidget(x)
+        self.setVisible(False)
+
+    def show_hint(self, key, text, actions):
+        self.key = key
+        self.lbl.setText(text)
+        t = self.owner.theme
+        self.setStyleSheet("HintBar { " + soft_style(t.get("ui_accent", "#0a84ff"), t.get("ui_bg", "#1c1c1e"),
+                                                    t.get("ui_text", "#f2f2f7")) + " }")
+        for b, act in zip(self.btns, list(actions) + [None, None]):
+            try:
+                b.clicked.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            b.setVisible(act is not None)
+            if act is not None:
+                lab, fn = act
+                b.setText(lab)
+                b.clicked.connect(lambda *_, f=fn: self._do(f))
+        self.setVisible(True)
+
+    def _do(self, fn):
+        f = fn if callable(fn) else getattr(self.owner, fn, None)
+        self.dismiss()
+        if f is not None:
+            f()
+
+    def dismiss(self):
+        if self.key:
+            self.owner._hints_done.add(self.key)
+        self.key = None
+        self.setVisible(False)
+
+
+class SpecLegend(QtWidgets.QFrame):
+    """7.59 : légende cliquable posée en haut à gauche du spectre : Direct · Pics gardés · Seuil · TNT · Mes micros.
+    Un clic = ce que c'est + quoi faire. Ne prend aucune place dans la mise en page (enfant du graphique)."""
+
+    def __init__(self, owner):
+        super().__init__(owner.spec)
+        self.owner = owner
+        self.sig = None
+        h = QtWidgets.QHBoxLayout(self)
+        h.setContentsMargins(4, 2, 4, 2)
+        h.setSpacing(2)
+        self.chips = {}
+        for key, name, _ck, _expl in LEGEND_ITEMS:
+            b = QtWidgets.QToolButton()
+            b.setText(name)
+            b.setAutoRaise(True)
+            b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+            m = QtWidgets.QMenu(b)
+            m.aboutToShow.connect(lambda k=key, mm=m: self._fill(k, mm))
+            b.setMenu(m)
+            b.setToolTip("Clique : ce que c'est et quoi faire.")
+            h.addWidget(b)
+            self.chips[key] = b
+        owner.spec.installEventFilter(self)
+        self.refresh()
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.Type.Resize:
+            self._place()
+        return False
+
+    def _place(self):
+        try:
+            x0 = int(self.owner.spec.getPlotItem().getAxis("left").width()) + 10
+        except Exception:  # noqa: BLE001
+            x0 = 70
+        self.adjustSize()
+        self.move(x0, 6)
+        self.raise_()
+
+    def _fill(self, key, m):
+        o = self.owner
+        m.clear()
+        expl = next(x for k, _n, _c, x in LEGEND_ITEMS if k == key)
+        if key == "thr" and o.thr_auto:
+            expl = AUTO_THR_HELP[0][1]
+        lbl = QtWidgets.QLabel(TR(expl))
+        lbl.setWordWrap(True)
+        lbl.setMaximumWidth(360)
+        lbl.setContentsMargins(10, 6, 10, 6)
+        wa = QtWidgets.QWidgetAction(m)
+        wa.setDefaultWidget(lbl)
+        m.addAction(wa)
+        m.addSeparator()
+        if key == "curve":
+            m.addAction("❓ Toutes les courbes du spectre…").triggered.connect(lambda *_: o.open_spectrum_legend())
+        elif key == "hold":
+            m.addAction("Effacer les pics").triggered.connect(lambda *_: o.reset_max())
+            m.addAction("Masquer les pics gardés").triggered.connect(lambda *_: o.hold_chk.setChecked(False))
+        elif key == "thr":
+            m.addAction("❓ Comment marche le seuil auto").triggered.connect(lambda *_: o.show_auto_thr_help())
+            m.addAction("⚙ Réglages des seuils…").triggered.connect(lambda *_: o.open_settings("detect"))
+        elif key == "tnt":
+            m.addAction("📺 Canaux TNT du lieu…").triggered.connect(lambda *_: o.open_tnt())
+            m.addAction("Ne plus griser").triggered.connect(lambda *_: o.tnt_mark(None))
+        elif key == "mk":
+            m.addAction("📍 Choisir les repères…").triggered.connect(lambda *_: o.mk_menu.exec(QtGui.QCursor.pos()))
+
+    def refresh(self):
+        """Chaque seconde : pastilles visibles selon ce qui est à l'écran, couleurs du thème."""
+        o = self.owner
+        th = o.theme
+        vis = {"curve": True, "hold": o.hold_chk.isChecked(), "thr": True, "tnt": bool(o._tnt_items),
+               "mk": bool(o.watch)}
+        sig = (tuple(sorted(vis.items())), bool(o.thr_auto), th.get("curve"), th.get("plot_bg"))
+        if sig == self.sig:
+            return
+        self.sig = sig
+        for key, name, ck, _x in LEGEND_ITEMS:
+            b = self.chips[key]
+            b.setVisible(vis[key])
+            nm = "Seuil auto" if (key == "thr" and o.thr_auto) else name
+            b.setText(("╍ " if key == "thr" and o.thr_auto else "━ ") + TR(nm))
+            b.setStyleSheet("QToolButton { color: %s; font-size: 11px; padding: 1px 4px; border: none; } "
+                            "QToolButton::menu-indicator { image: none; width: 0; }" % th.get(ck, "#8e8e93"))
+        bg = QtGui.QColor(th.get("plot_bg", "#161618"))
+        self.setStyleSheet("SpecLegend { background: rgba(%d,%d,%d,200); border-radius: 6px; }"
+                           % (bg.red(), bg.green(), bg.blue()))
+        self._place()
+
+
+class ShowWizard(QtWidgets.QDialog):
+    """7.59 🧭 Assistant « nouveau show » : les 5 étapes dans l'ordre (show, micros, scan, canaux TNT, prêt), chacune
+    avec pourquoi / comment / les boutons qui le font. Non bloquant : on peut travailler dans l'appli à côté."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Assistant nouveau show")
+        lay = QtWidgets.QHBoxLayout(self)
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setMaximumWidth(250)
+        self.lst.setToolTip("Les étapes : ✓ = fait. Clique pour y aller.")
+        for _k, title, _w, _h in WIZARD_STEPS:
+            self.lst.addItem(title)
+        lay.addWidget(self.lst)
+        right = QtWidgets.QVBoxLayout()
+        lay.addLayout(right, 1)
+        self.title = QtWidgets.QLabel()
+        self.title.setStyleSheet("font-size: 18px; font-weight: 600;")
+        right.addWidget(self.title)
+        self.why = QtWidgets.QLabel()
+        self.why.setWordWrap(True)
+        right.addWidget(self.why)
+        self.how = QtWidgets.QLabel()
+        self.how.setWordWrap(True)
+        right.addWidget(self.how)
+        self.stack = QtWidgets.QStackedWidget()
+        right.addWidget(self.stack)
+        self.state = QtWidgets.QLabel()
+        self.state.setWordWrap(True)
+        right.addWidget(self.state)
+        right.addStretch(1)
+
+        def page(*ws):
+            w = QtWidgets.QWidget()
+            g = QtWidgets.QVBoxLayout(w)
+            g.setContentsMargins(0, 6, 0, 6)
+            for x in ws:
+                g.addWidget(x)
+            self.stack.addWidget(w)
+            return w
+
+        def btn(txt, fn, tip):
+            b = QtWidgets.QPushButton(txt)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda *_: (fn(), self.refresh()))
+            return b
+        self.place = QtWidgets.QLineEdit(o.tnt_cfg.get("place", ""))
+        self.place.setPlaceholderText("Code postal du lieu (75007) ou GPS (48.8584, 2.2945) — facultatif")
+        self.place.setToolTip("Sert à trouver les émetteurs TNT proches (📺 Canaux TNT › Émetteurs proches). "
+                              "Gardé avec le show.")
+        self.place.editingFinished.connect(
+            lambda: setattr(o, "tnt_cfg", tnt_cfg_norm(dict(o.tnt_cfg, place=self.place.text()))))
+        page(btn("✏ Nom, dates et pays du show…", lambda: o.edit_show_info("Infos du show"),
+                 "Le nom, les dates et le pays du show (le pays règle la bande UHF et les canaux TV)."), self.place)
+        page(btn("📥 Importer un plan ou une liste…", o.import_watch, "EazyRF, WWB, WSM, Wisycom, DPA, CSV…"),
+             btn("📋 Coller une liste…", o.paste_watch, "Colle une liste copiée d'un tableur ou d'un mail."),
+             btn("＋ Ajouter une fréquence…", o.add_watch_dialog, "Ajoute une fréquence à la main."),
+             btn("📡 Depuis le scan…", o.open_scan_add, "Ajoute les signaux vus dans le scan (après l'étape 3)."))
+        page(btn("▶ Scanner ici", o.step_scan, "Démarre le balayage et repart de pics gardés vides."))
+        page(btn("📺 Mesurer et griser", self.measure_tnt, "Repère les canaux TNT dans le scan et les grise."),
+             btn("Voir le détail (griser à la main, émetteurs proches)…", o.open_tnt,
+                 "La fenêtre 📺 Canaux TNT complète."))
+        page(btn("✅ Prêt pour le show ?", o.open_ready, "La vérification complète, avec « Régler » sur chaque point."),
+             btn("▶ Démarrer la surveillance", lambda: (None if o.is_running() else o.toggle_run()),
+                 "Lance la surveillance si elle ne tourne pas déjà."),
+             btn("🖥 Mode Show (plein écran)", o.open_show_mode, "Le grand écran pour la régie."))
+        nav = QtWidgets.QHBoxLayout()
+        man = QtWidgets.QPushButton("❓ Manuel")
+        man.setToolTip("Le chapitre du manuel « Les étapes d'un festival ».")
+        man.clicked.connect(lambda *_: o.open_manual("vue"))
+        nav.addWidget(man)
+        nav.addStretch(1)
+        self.prev_btn = QtWidgets.QPushButton("◀ Précédent")
+        self.prev_btn.setToolTip("Étape précédente.")
+        self.prev_btn.clicked.connect(lambda *_: self.go(self.lst.currentRow() - 1))
+        self.next_btn = QtWidgets.QPushButton("Suivant ▶")
+        self.next_btn.setToolTip("Étape suivante (tu peux sauter une étape et y revenir).")
+        self.next_btn.clicked.connect(lambda *_: self.go(self.lst.currentRow() + 1))
+        close_btn = QtWidgets.QPushButton("Fermer")
+        close_btn.setToolTip("Ferme l'assistant (🧭 Assistant sur l'accueil ou 📋 Préparer pour le rouvrir).")
+        close_btn.clicked.connect(lambda *_: self.close())
+        for b in (self.prev_btn, self.next_btn, close_btn):
+            nav.addWidget(b)
+        right.addLayout(nav)
+        self.lst.currentRowChanged.connect(self._show)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(2000)
+        fit_dialog(self, 760, 440)
+        self.go(0)
+
+    def measure_tnt(self):
+        res = self.owner.tnt_measure_now()
+        self.owner.tnt_mark(res)
+        self.owner.set_status(tnt_summary(res))
+
+    def go(self, i):
+        self.lst.setCurrentRow(max(0, min(len(WIZARD_STEPS) - 1, i)))
+
+    def _show(self, i):
+        if i < 0:
+            return
+        _k, title, why, how = WIZARD_STEPS[i]
+        self.title.setText(TR(title))
+        self.why.setText("<b>" + TR("Pourquoi ?") + "</b> " + TR(why))
+        self.how.setText("<b>" + TR("Comment ?") + "</b> " + TR(how))
+        self.stack.setCurrentIndex(i)
+        self.prev_btn.setEnabled(i > 0)
+        self.next_btn.setEnabled(i < len(WIZARD_STEPS) - 1)
+        self.refresh()
+
+    def refresh(self):
+        st = wizard_status(self.owner.wizard_info())
+        for r, (_k, done, _t) in enumerate(st):
+            it = self.lst.item(r)
+            if it is not None:
+                it.setText(("✓ " if done else "   ") + TR(WIZARD_STEPS[r][1]))
+        i = self.lst.currentRow()
+        if 0 <= i < len(st):
+            self.state.setText(("✓ " if st[i][1] else "• ") + TR(st[i][2]))
+
+
 class TntDialog(QtWidgets.QDialog):
     """📺 Canaux TNT du lieu (7.58) : canaux pris / libres d'après le spectre MESURÉ (sans internet), et émetteurs TNT
     proches d'après la base ouverte de l'ANFR (facultatif : à télécharger une fois ou à importer)."""
@@ -17288,6 +17714,18 @@ class TntDialog(QtWidgets.QDialog):
         self.mark_chk.toggled.connect(lambda *_: self.set_mark(self.mark_chk.isChecked()))
         r2.addWidget(self.mark_chk)
         r2.addStretch(1)
+        self.reset_btn = QtWidgets.QToolButton()
+        self.reset_btn.setText("↺ Nouveau lieu")
+        self.reset_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.reset_btn.setToolTip("En tournée ou après un nouveau plan : remettre les canaux TV en libre et les "
+                                  "remesurer.")
+        rm = QtWidgets.QMenu(self.reset_btn)
+        rm.addAction("Tout remettre en automatique (oublier les choix à la main et les canaux du plan)").triggered.connect(
+            lambda *_: owner.tnt_reset(False))
+        rm.addAction("Tout remettre à zéro et effacer les pics gardés (rescanner ce lieu)").triggered.connect(
+            lambda *_: owner.tnt_reset(True))
+        self.reset_btn.setMenu(rm)
+        r2.addWidget(self.reset_btn)
         self.copy_btn = QtWidgets.QPushButton("Copier")
         self.copy_btn.setToolTip("Copie le tableau (pour un mail, un tableur, le plan de coordination).")
         self.copy_btn.clicked.connect(lambda *_: self.copy())
@@ -17360,6 +17798,10 @@ class TntDialog(QtWidgets.QDialog):
         l2.addWidget(src)
         self.tabs.addTab(w2, "Émetteurs proches (ANFR)")
         bb = QtWidgets.QHBoxLayout()
+        man_btn = QtWidgets.QPushButton("❓ Manuel")
+        man_btn.setToolTip("Le chapitre du manuel sur les canaux TNT et le scan du lieu.")
+        man_btn.clicked.connect(lambda *_: owner.open_manual("arrivee"))
+        bb.addWidget(man_btn)
         bb.addStretch(1)
         close_btn = QtWidgets.QPushButton("Fermer")
         close_btn.setToolTip("Ferme la fenêtre (les canaux grisés restent sur le spectre).")
@@ -19124,6 +19566,10 @@ class SpectrumLegendDialog(QtWidgets.QDialog):
              "émettre. Ligne déplaçable à la souris sur le spectre. Règle-le quelques dB au-dessus du tapis "
              "(« Auto » le fait d'après le bruit mesuré).",
              ctrls(lspin(o.thr_spin))),
+            (swatch(th["thr"], "- - -"), "Seuil auto (tirets)",
+             "Avec « Auto » : un seuil par fréquence = bruit de fond local + marge. Il monte sur les canaux TNT "
+             "(le fond local, c'est la TNT) pour qu'un micro posé dedans reste surveillé.",
+             ctrls(btn("❓ Comment ça marche", o.show_auto_thr_help, "La fiche complète du seuil auto."))),
             (swatch(th["thr_weak"], "┈┈┈"), "Niveau « faible »",
              "Entre ce niveau et le seuil occupé : signal faible (micro loin, pile faible, porteuse lointaine). "
              "Ne déclenche pas de CONFLIT, mais s'affiche en jaune.",
@@ -19961,6 +20407,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.user_name = ""                        # 👤 profil utilisateur chargé (7.57)
         self.tnt_cfg = dict(TNT_DEFAULT)           # 📺 canaux TNT / émetteurs proches (7.58)
         self._tnt_items, self._tnt_db = [], None
+        self._hints_done, self._hint_next, self._tnt_measured = set(), 0.0, False   # 7.59 : propositions
         self._acurve = None                     # (Fc, Lc, t) : bruit de fond appris le long du spectre (seuils auto)
         self.tour_done = CFG_PATH.exists()
         self._tour = None
@@ -20282,6 +20729,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "🧭 Assistant": "Pas à pas pour un nouveau show : le show (pays, lieu), tes micros, le scan du lieu,\n"
+                        "les canaux TNT, puis « Prêt pour le show ? ».",
         "📺 Canaux TNT": "Les canaux pris par la TNT, d'après ton scan (sans internet), grisés sur le spectre ;\n"
                          "et les émetteurs TNT proches du lieu (base ouverte de l'ANFR, facultatif).",
         "👤 Profils utilisateur": "Tes préférences (affichage, disposition des fenêtres, couleurs, seuils, alarmes, préréglages perso) dans un\n"
@@ -20452,7 +20901,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if getattr(self, "steps_bar", None) is not None:
             self.steps_bar.setVisible(full)
         for a_ in getattr(self, "_dup_acts", []):
-            a_.setVisible(full)
+            a_.setVisible(not self.home_on)      # 7.59 : avec l'accueil, Port / Démarrer n'apparaissent qu'une fois
 
     def home_info(self):
         lost = [self.dev_name(d) for d in self.dev_list()
@@ -20925,7 +21374,8 @@ class MainWindow(QtWidgets.QMainWindow):
         auto_btn.setToolTip("Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\n"
                             "Le bruit est appris en continu (il redescend vite, remonte lentement en 10 min, et ne\n"
                             "remonte jamais pendant qu'une fréquence est occupée). Courbe en tirets sur le spectre.\n"
-                            "Un seuil propre à une fréquence (colonne Seuil) reste prioritaire. Décoche = seuils fixes.")
+                            "Un seuil propre à une fréquence (colonne Seuil) reste prioritaire. Décoche = seuils fixes.\n"
+                            "Sur un canal TNT, le fond local est la TNT : la courbe monte avec elle (voulu, ❓ explique).")
         auto_btn.toggled.connect(lambda on: self.set_thr_auto(bool(on)))
         self.thr_auto_btn = auto_btn
         self.auto_occ_spin = QtWidgets.QSpinBox()
@@ -21021,6 +21471,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.country_combo = self._combo([(name, code) for code, name in COUNTRIES], "FR")
         self.country_combo.currentIndexChanged.connect(self.on_country)
+        # 7.58.3 : choisi À LA MAIN (pas au chargement d'une config) -> la bande UHF suit le pays, comme pour un show
+        self.country_combo.activated.connect(lambda *_: self.set_show_country(self.country_combo.currentData() or "FR"))
         self.alloc_chk = QtWidgets.QCheckBox("Attributions (4G/5G, TNT, militaire…)")
         self.alloc_chk.setChecked(True)
         self.tv_chk = QtWidgets.QCheckBox("Canaux TV")
@@ -21350,14 +21802,23 @@ class MainWindow(QtWidgets.QMainWindow):
         thr_set.setAutoRaise(True)
         thr_set.setToolTip("Tous les réglages des seuils et des alarmes (⚙ Réglages).")
         thr_set.clicked.connect(lambda *_: self.open_settings("detect"))
+        auto_help = QtWidgets.QToolButton()
+        auto_help.setText("❓")
+        auto_help.setAutoRaise(True)
+        auto_help.setToolTip("Comment marche le seuil auto (et pourquoi la courbe monte sur la TNT).")
+        auto_help.clicked.connect(lambda *_: self.show_auto_thr_help())
+        self.auto_help_btn = auto_help
         self.thr_bar = QtWidgets.QWidget()
-        tl = self._flow(("Occupé au-dessus de", self.thr_spin, self.auto_occ_spin, auto_btn),
+        tl = self._flow(("Occupé au-dessus de", self.thr_spin, self.auto_occ_spin, auto_btn, auto_help),
                         (self.weak_chk, self.weak_spin, self.auto_weak_spin),
                         ("TX absent après", self.absent_spin), thr_set)
         tl.setContentsMargins(0, 0, 0, 0)
         self.thr_bar.setLayout(tl)
+        self.hint_bar = HintBar(self)                     # 7.59 : propositions au bon moment (caché d'office)
+        cl.addWidget(self.hint_bar)
         cl.addWidget(self.thr_bar)
         cl.addWidget(self.spec, 1)
+        self.spec_legend = SpecLegend(self)               # 7.59 : légende cliquable posée sur le spectre
         cl.addWidget(self.bandw)
 
         # --- droite : fréquences + journal
@@ -22283,7 +22744,21 @@ class MainWindow(QtWidgets.QMainWindow):
         if i_ >= 0 and i_ != self.country_combo.currentIndex():
             self.country_combo.setCurrentIndex(i_)            # -> rebuild_plan
         need = uhf_band_needed(self.bands, code)
-        if need and need[0] == "enable":
+        if need and need[0] == "resize":                 # 7.58.3 : la bande « UHF … » suit le pays
+            _k, bid, nm, lo, hi = need
+            b = next((x for x in self.bands if x["id"] == bid), None)
+            if b is not None:
+                old = (b["name"], b["start"], b["stop"])
+                with self.lock:
+                    b.update(name=nm, start=lo, stop=hi)
+                self._bands_changed()
+                try:
+                    self.show_hint("country:" + str(code),
+                                   f"🌍 Bande recalée sur {lo:g}–{hi:g} MHz ({dict(COUNTRIES).get(code, code)}).",
+                                   [("Annuler", lambda b=b, old=old: self._band_restore(b, old))])
+                except Exception:  # noqa: BLE001
+                    pass
+        elif need and need[0] == "enable":
             self.set_band_enabled(need[1], True)
         elif need:
             _k, nm, lo, hi, st = need
@@ -22410,6 +22885,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_title()
         self.auto_view()                               # 7.57 : Vue directement sur l'UHF du pays
         self.edit_show_info("Nouveau show")
+        self._hints_done, self._tnt_measured = set(), False
+        try:
+            self.open_wizard(1)                       # 7.59 : la suite pas à pas (étape 1 faite par la fenêtre d'infos)
+        except Exception:  # noqa: BLE001
+            pass
 
     def open_show_dir(self):
         try:
@@ -22483,7 +22963,8 @@ class MainWindow(QtWidgets.QMainWindow):
             add_net(*x)
         for p in ports:
             tag = "  ✔ tinySA" if (p.vid == TINYSA_VID and p.pid == TINYSA_PID) else ""
-            self.port_combo.addItem(f"{p.device} — {p.description}{tag}", p.device)
+            desc = str(p.description or "").replace(f" ({p.device})", "")      # 7.59 : « (COM4) » en double
+            self.port_combo.addItem(f"{p.device} — {desc}{tag}", p.device)
         for x in nets:
             if x not in first:
                 add_net(*x)
@@ -23311,6 +23792,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_estimate()
         if self._zoom is None and hasattr(self, "wf_hint"):
             self._wf_show(self._wf_bid() is not None)      # une seule bande balayée : waterfall d'office (7.57)
+
+    def _band_restore(self, b, old):
+        with self.lock:
+            b.update(name=old[0], start=old[1], stop=old[2])
+        self._bands_changed()
+        self.set_status(f"Bande remise sur {old[1]:g}–{old[2]:g} MHz.")
 
     def show_band(self, bid):
         """Vue sur une bande (réactivée si elle n'était pas balayée)."""
@@ -25340,8 +25827,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._append_watch(f"Ext. {f:.3f}", f, "", None, "", "")
                     by_key[k] = self.watch[-1]
                     n_ext += 1
-        if doc.get("tv"):                          # 7.58.2 : canaux TV du plan -> 📺 grisés sur le spectre
-            self.tnt_set_plan(doc["tv"], os.path.basename(str(path)) if path else source)
+        if doc.get("tv") or opts.get("replace"):   # 7.58.2 : canaux TV du plan -> 📺 grisés ; liste remplacée (tournée,
+            self.tnt_set_plan(doc.get("tv") or [], os.path.basename(str(path)) if path else source)  # nouveau lieu) :
+            # ceux de l'ancien plan repartent, même si le nouveau n'en a pas
         scan_name = ""
         if opts.get("scan") and doc["scan"] is not None:
             names = {d["name"] for d in self.site_scans}
@@ -26393,6 +26881,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self._auto_curve_draw()
         self.reeval()
 
+    def show_auto_thr_help(self):
+        """❓ Fiche « Comment marche le seuil auto ? » (non bloquante)."""
+        d = getattr(self, "_auto_help", None)
+        if d is None:
+            d = QtWidgets.QDialog(self)
+            d.setWindowTitle("Comment marche le seuil auto ?")
+            lay = QtWidgets.QVBoxLayout(d)
+            lb = QtWidgets.QLabel(auto_thr_help_html(TR))
+            lb.setWordWrap(True)
+            lb.setTextFormat(Qt.TextFormat.RichText)
+            sc = QtWidgets.QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setWidget(lb)
+            lay.addWidget(sc, 1)
+            row = QtWidgets.QHBoxLayout()
+            man = QtWidgets.QPushButton("❓ Manuel")
+            man.setToolTip("Le chapitre du manuel sur les seuils.")
+            man.clicked.connect(lambda *_: self.open_manual("seuils"))
+            tnt = QtWidgets.QPushButton("📺 Canaux TNT…")
+            tnt.setToolTip("Les canaux pris par la TNT, comparés au vrai bruit du lieu.")
+            tnt.clicked.connect(lambda *_: self.open_tnt())
+            ok_ = QtWidgets.QPushButton("Fermer")
+            ok_.setToolTip("Ferme la fiche.")
+            ok_.clicked.connect(lambda *_: d.close())
+            row.addWidget(man)
+            row.addWidget(tnt)
+            row.addStretch(1)
+            row.addWidget(ok_)
+            lay.addLayout(row)
+            fit_dialog(d, 620, 560)
+            self._auto_help = d
+        d.show()
+        d.raise_()
+        return d
+
     def _auto_curve_update(self, now=None):
         """Bruit de fond le long du spectre (courbe en tirets) + valeurs « typiques » des seuils globaux (utilisées par
         les outils : coordination, scans…)."""
@@ -27039,13 +27562,16 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.information(None, APP_NAME, "Relance l'appli à la main pour changer de langue.\n"
                                               "Restart the app by hand to change the language.")
 
-    def open_manual(self):
+    def open_manual(self, chapter=None):
         p_ = self.manual_path()
         if p_ is None:
             QtWidgets.QMessageBox.information(self, APP_NAME, "Manuel introuvable à côté de l'appli : il est aussi "
                                               "dans le dépôt GitHub, fichier docs/manuel.html.")
             return
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p_)))
+        url = QtCore.QUrl.fromLocalFile(str(p_))
+        if chapter:                               # 7.59 : ❓ d'une fenêtre -> son chapitre
+            url.setFragment(str(chapter))
+        QtGui.QDesktopServices.openUrl(url)
         self.set_status("Manuel ouvert dans le navigateur.")
 
     def show_about(self):
@@ -27724,6 +28250,79 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         return old != self.tnt_cfg["plan"]
 
+    def tnt_reset(self, clear_peaks=False):
+        """↺ Nouveau lieu (tournée) : canaux grisés à la main et canaux TV du plan oubliés -> tout redevient
+        automatique (d'après la mesure) ; clear_peaks = pics gardés effacés aussi, pour rescanner le lieu."""
+        self.tnt_cfg = tnt_cfg_norm(dict(self.tnt_cfg, manual={}, plan=[], plan_src=""))
+        if clear_peaks:
+            self.reset_max()
+        self.tnt_mark(None)
+        if getattr(self, "_tnt", None) is not None:
+            try:
+                self._tnt.measure()
+            except RuntimeError:
+                pass
+        self.set_status("📺 Canaux TNT remis à zéro : laisse scanner quelques minutes puis clique « Mesurer »."
+                        if clear_peaks else "📺 Canaux TNT remis en automatique (d'après la mesure).")
+
+    # ---------------------------------------------------------------- 🧭 7.59 : assistant, propositions, légende
+    def open_wizard(self, step=0):
+        d = getattr(self, "_wizard", None)
+        if d is None:
+            d = self._wizard = ShowWizard(self)
+        d.go(step)
+        d.refresh()
+        d.show()
+        d.raise_()
+        return d
+
+    def _scan_s(self, now=None):
+        now = time.time() if now is None else now
+        t0 = getattr(self, "_mh_t0", None)
+        return (now - t0) if (self.is_running() and t0) else None
+
+    def wizard_info(self):
+        q = None
+        try:
+            q = ready_summary(ready_checks(self.ready_info()))[0]
+        except Exception:  # noqa: BLE001
+            pass
+        code = self.country_combo.currentData() or "FR"
+        return dict(name=self.show_meta.get("name", ""), country_name=dict(COUNTRIES).get(code, code),
+                    place=self.tnt_cfg.get("place", ""), n_watch=len(self.watch), running=self.is_running(),
+                    scan_s=self._scan_s(), tnt_done=bool(self._tnt_items) or self._tnt_measured,
+                    tnt_tv=len(self._tnt_items), ready=q)
+
+    def hint_info(self, now=None):
+        now = time.time() if now is None else now
+        sc = self._scan_s(now)
+        chs = []
+        if sc is not None and sc >= HINT_TNT_S and not self._tnt_items and "tnt" not in self._hints_done:
+            try:
+                chs = [r["ch"] for r in self.tnt_measure_now()["rows"] if r["state"] == "tv"]
+            except Exception:  # noqa: BLE001
+                chs = []
+        t0 = getattr(self, "_run_t0", None)
+        return dict(running=self.is_running(), scan_s=sc, tnt_tv=len(chs), tnt_chs=chs,
+                    tnt_marked=bool(self._tnt_items), n_watch=len(self.watch),
+                    run_s=(now - t0) if (t0 and self.is_running()) else 0)
+
+    def _hints_tick(self, now):
+        if now < self._hint_next or self.hint_bar.isVisible():
+            return
+        self._hint_next = now + 5.0
+        h = hint_due(self.hint_info(now), self._hints_done)
+        if h:
+            self.hint_bar.show_hint(*h)
+
+    def show_hint(self, key, text, actions=()):
+        self.hint_bar.show_hint(key, text, actions)
+
+    def hint_tnt_mark(self):
+        res = self.tnt_measure_now()
+        self.tnt_mark(res)
+        self.set_status(tnt_summary(res))
+
     def tnt_mark_saved(self):
         """Canaux grisés À LA MAIN (show / config) remis sur le spectre, même sans mesure."""
         try:
@@ -27734,6 +28333,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def tnt_mark(self, res):
         """Grise les canaux TNT mesurés sur le spectre (None = tout effacer)."""
+        if res:
+            self._tnt_measured = True
         pi = self.spec.getPlotItem()
         for it in self._tnt_items:
             try:
@@ -27746,15 +28347,18 @@ class MainWindow(QtWidgets.QMainWindow):
         c = QtGui.QColor(self.theme.get("bp_tv", "#3b82f6"))
         c.setAlpha(46)
         lc = QtGui.QColor(self.theme.get("plot_fg", "#8e8e93"))
+        prev_hi, alt = None, False
         for r in res.get("rows") or []:
             if r["state"] != "tv":
                 continue
+            alt = (not alt) if prev_hi is not None and abs(r["lo"] - prev_hi) < 0.01 else False   # canaux collés
+            prev_hi = r["hi"]
             reg = pg.LinearRegionItem(values=(r["lo"], r["hi"]), movable=False, brush=pg.mkBrush(c),
                                       pen=pg.mkPen(None))
             reg.setZValue(-20)
             for ln in reg.lines:
                 ln.setPen(pg.mkPen(None))
-            pg.InfLineLabel(reg.lines[0], text=f"TNT {r['ch']}", position=0.97, anchor=(0, 0),
+            pg.InfLineLabel(reg.lines[0], text=f"TNT {r['ch']}", position=0.80 if alt else 0.87, anchor=(0, 0),   # sous la légende
                             color=lc)
             pi.addItem(reg, ignoreBounds=True)
             self._tnt_items.append(reg)
@@ -28485,6 +29089,11 @@ class MainWindow(QtWidgets.QMainWindow):
             guard_beat()
             self._reap_dialogs(now)
         self.update_home()
+        try:                                          # 7.59 : propositions + légende du spectre
+            self._hints_tick(now)
+            self.spec_legend.refresh()
+        except Exception:  # noqa: BLE001
+            pass
         self._planning_tick(now)
         self._ezrf_tick(now)
         self._sites_tick(now)

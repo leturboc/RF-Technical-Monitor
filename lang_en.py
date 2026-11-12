@@ -1998,7 +1998,7 @@ EXACT = {
     'Plan : la couche active': 'Plan: the active layer',
     'Plan : toute la liste': 'Plan: the whole list',
     'Plan harmonisé CEPT / UIT région 1, indicatif.': 'Harmonised CEPT / ITU region 1 plan, indicative.',
-    'Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48) / micros HF ; 700 et 800 MHz attribués à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux police / pompiers / secours.': 'Indicative plan (ANFR / TNRBF). 470-694 MHz shared between DTT (channels 21-48) / wireless mics; 700 and 800 MHz allocated to 4G/5G; 823-832, 863-865 and 1785-1805 MHz free for wireless mics; 380-400 MHz: police / fire / emergency networks.',
+    'Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48, canal 38 compris) / micros HF ; 700 et 800 MHz attribués à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux police / pompiers / secours.': 'Indicative plan (ANFR / TNRBF). 470-694 MHz shared between DTT (channels 21-48, channel 38 included) / wireless mics; 700 and 800 MHz allocated to 4G/5G; 823-832, 863-865 and 1785-1805 MHz free for wireless mics; 380-400 MHz: police / fire / emergency networks.',
     'Plan indicatif (Agentschap Telecom).': 'Indicative plan (Agentschap Telecom).',
     'Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.': 'Indicative plan (BNetzA). DVB-T2 on channels 21-48; 736-753 MHz licence-free wireless mics; 823-832 MHz and 1785-1805 MHz free.',
     'Plan indicatif (CNMC / SETID). 700 MHz libéré en 2020.': 'Indicative plan (CNMC / SETID). 700 MHz cleared in 2020.',
@@ -2006,7 +2006,6 @@ EXACT = {
     'Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.': 'Indicative plan (BIPT). Very little DTT use: to be checked.',
     'Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.': 'Indicative plan (MIMIT/AGCOM). DVB-T2 transition: to be checked.',
     "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.": 'Indicative plan (OFCOM). DVB-T stopped in 2019: check wireless mic use in UHF.',
-    'Plan indicatif (Ofcom). Canal 38 (606-614) : micros HF avec licence Ofcom partagée ; canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.': 'Indicative plan (Ofcom). Channel 38 (606-614): wireless mics with a shared Ofcom licence; channel 70 (863-865) licence-free; 700 MHz cleared in 2020, 694-703 MHz guard band kept.',
     'Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.': 'Plan close to the USA (ISED). 6 MHz TV channels; check the Canadian rules.',
     'Plein écran sur cet écran (F11 ; Échap pour sortir).': 'Full screen on this screen (F11; Esc to exit).',
     "Plusieurs personnes ? Chacun s'abonne au même canal sur son téléphone.": 'Several people? Everyone subscribes to the same channel on their phone.',
@@ -4624,10 +4623,11 @@ EXACT.update({
     "Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\nLe bruit est appris "
     "en continu (il redescend vite, remonte lentement en 10 min, et ne\nremonte jamais pendant qu'une fréquence est "
     "occupée). Courbe en tirets sur le spectre.\nUn seuil propre à une fréquence (colonne Seuil) reste prioritaire. "
-    "Décoche = seuils fixes.":
+    "Décoche = seuils fixes.\nSur un canal TNT, le fond local est la TNT : la courbe monte avec elle (voulu, ❓ explique).":
         "Automatic thresholds: each frequency gets its own threshold = its noise floor + a margin.\nThe noise is learnt "
         "continuously (it drops fast, rises slowly over 10 min, and never\nrises while a frequency is busy). Dashed "
-        "curve on the spectrum.\nA threshold set on a frequency (Threshold column) still wins. Untick = fixed thresholds.",
+        "curve on the spectrum.\nA threshold set on a frequency (Threshold column) still wins. Untick = fixed thresholds.\n"
+        "On a DTT channel the local floor is the DTT: the curve rises with it (on purpose, ❓ explains).",
     "bruit + ": "noise + ",
 })
 
@@ -5021,3 +5021,183 @@ TEMPLATES.update({
         "📋 TV channels of plan “{}”: {} (greyed “(plan)”; updated if you follow the file).",
     "📺 Canaux TV du plan « {} » mis à jour : {}.": "📺 TV channels of plan “{}” updated: {}.",
 })
+
+# 7.58.2 : ↺ Nouveau lieu (canaux TNT remis à zéro)
+EXACT.update({
+    "En tournée ou après un nouveau plan : remettre les canaux TV en libre et les remesurer.":
+        "On tour or after a new plan: set the TV channels back to free and measure them again.",
+    "Tout remettre en automatique (oublier les choix à la main et les canaux du plan)":
+        "Back to automatic (forget the by-hand choices and the plan's channels)",
+    "Tout remettre à zéro et effacer les pics gardés (rescanner ce lieu)":
+        "Reset everything and clear the peak hold (rescan this venue)",
+    "↺ Nouveau lieu": "↺ New venue",
+    "📺 Canaux TNT remis en automatique (d'après la mesure).": "📺 DTT channels back to automatic (from the measurement).",
+    "📺 Canaux TNT remis à zéro : laisse scanner quelques minutes puis clique « Mesurer ».":
+        "📺 DTT channels reset: let it scan for a few minutes then click “Measure”.",
+})
+
+# 7.58.3 : pays ajoutés (bandes UHF des micros)
+EXACT.update({
+    "AU": "AU", "JP": "JP", "NZ": "NZ",
+    "Australie": "Australia", "Japon": "Japan", "Nouvelle-Zélande": "New Zealand",
+    "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de 7 MHz) ; 694-820 MHz interdit depuis 2015.":
+        "Indicative plan (ACMA, 2025 LIPD class licence). Wireless mics in the free TV channels of 520-694 MHz (7 MHz channels); 694-820 MHz banned since 2015.",
+    "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37), plus quelques bouts : 614-616 MHz et une partie de 653-663 MHz ; 941-960 et 1435-1525 MHz avec licence.":
+        "Indicative plan (FCC). 6 MHz TV channels; wireless mics on 470-608 MHz (except channel 37), plus a few slices: 614-616 MHz and part of 653-663 MHz; 941-960 and 1435-1525 MHz with a licence.",
+    "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée 710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.":
+        "Indicative plan (MIC). Mics in the TV white spaces 470-710 MHz (6 MHz channels) + dedicated band 710-714 MHz; low-power mics also on 806-810 and 1240-1260 MHz.",
+    "Plan indicatif (Ofcom). Micros HF dans le spectre TV entrelacé ≈ 470-702 MHz (coordonné par Ofcom) ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 703-790 MHz interdit depuis 2020.":
+        "Indicative plan (Ofcom). Wireless mics in the interleaved TV spectrum ≈ 470-702 MHz (coordinated by Ofcom); channel 38 (606-614): shared Ofcom licence; channel 70 (863-865) licence-free; 703-790 MHz banned since 2020.",
+    "Plan indicatif (RSM). Micros HF sur 502-606 MHz (licences GUSL 272800 et GURL-SRD) ; 622-698 MHz à vérifier (envisagé pour la 5G) ; 698-806 MHz interdit depuis 2015.":
+        "Indicative plan (RSM). Wireless mics on 502-606 MHz (GUSL 272800 and GURL-SRD licences); 622-698 MHz to be checked (considered for 5G); 698-806 MHz banned since 2015.",
+})
+TEMPLATES.update({"Canal UHF {} (7 MHz) : {}-{} MHz": "UHF channel {} (7 MHz): {}-{} MHz",
+                  "Canal UHF {} (6 MHz) : {}-{} MHz": "UHF channel {} (6 MHz): {}-{} MHz"})
+
+# 7.58.3 : fiche « seuil auto »
+EXACT.update({
+    "Avec « Auto » : un seuil par fréquence = bruit de fond local + marge. Il monte sur les canaux TNT (le fond local, c'est la TNT) pour qu'un micro posé dedans reste surveillé.":
+        "With « Auto »: one threshold per frequency = local noise floor + margin. It rises on DTT channels (the local floor is the DTT) so a mic placed there stays monitored.",
+    "Bruit du lieu −100 dBm, canal TNT à −82 dBm. Entre deux canaux : occupé dès −88. Dans le canal TNT : occupé dès −70, donc ton micro à −55 est vu, et s'il s'éteint, ABSENT.":
+        "Venue noise −100 dBm, DTT channel at −82 dBm. Between two channels: busy from −88. In the DTT channel: busy from −70, so your mic at −55 is seen, and if it goes off, ABSENT.",
+    "C'est le seuil « occupé » de chaque fréquence : le bruit de fond LOCAL (mesuré sur ± 2 MHz autour) plus une marge, + 12 dB d'origine. Entre les canaux TV, le fond est le bruit du lieu (vers −100 dBm) : la courbe est donc vers −88. Elle bouge toute seule quand le lieu change (écran LED allumé, TNT qui varie).":
+        "It is the « busy » threshold of each frequency: the LOCAL noise floor (measured over ± 2 MHz around it) plus a margin, + 12 dB by default. Between TV channels the floor is the venue noise (around −100 dBm), so the curve sits near −88. It moves on its own when the venue changes (LED wall switched on, DTT varying).",
+    "Ce que ça change pour toi": "What it means for you",
+    "Comment marche le seuil auto (et pourquoi la courbe monte sur la TNT).": "How the auto threshold works (and why the curve rises on DTT).",
+    "Comment marche le seuil auto ?": "How does the auto threshold work?",
+    "Dans un canal TNT, le fond local, c'est la TNT elle-même. Le seuil est donc « TNT + 12 dB » : ce n'est pas une erreur, c'est voulu.":
+        "In a DTT channel, the local floor is the DTT itself. So the threshold is « DTT + 12 dB »: not a bug, it is on purpose.",
+    "Dans un canal TNT, un signal plus faible que TNT + 12 dB ne se voit pas (le tinySA ne peut de toute façon pas le séparer d'une TNT forte). Pour savoir quels canaux sont pris par la TNT, utilise 📋 Préparer › 📺 Canaux TNT : lui compare au vrai bruit du lieu.":
+        "In a DTT channel, a signal weaker than DTT + 12 dB is not seen (the tinySA cannot separate it from strong DTT anyway). To know which channels DTT takes, use 📋 Prepare › 📺 DTT channels: it compares against the real venue noise.",
+    "Exemple": "Example",
+    "Ferme la fiche.": "Closes the sheet.",
+    "La courbe en tirets": "The dashed curve",
+    "La fiche complète du seuil auto.": "The full auto-threshold sheet.",
+    "La limite": "The limit",
+    "Le bruit appris": "The learnt noise",
+    "Le fond est appris en continu : il redescend vite (quelques secondes) mais remonte lentement (environ 10 minutes) et ne remonte jamais pendant qu'une fréquence est occupée. Un brouilleur qui s'installe ne peut donc pas « effacer » sa propre alarme en relevant le seuil.":
+        "The floor is learnt continuously: it drops fast (a few seconds) but rises slowly (about 10 minutes) and never rises while a frequency is busy. A jammer that settles in cannot « erase » its own alarm by raising the threshold.",
+    "Les canaux pris par la TNT, comparés au vrai bruit du lieu.": "Channels taken by DTT, compared with the real venue noise.",
+    "Pourquoi elle monte sur la TNT": "Why it rises on DTT",
+    "Seuil auto": "Auto threshold",
+    "Seuil auto (tirets)": "Auto threshold (dashed)",
+    "Un micro posé dans un canal TNT doit sortir 12 dB au-dessus de la TNT pour compter. S'il s'éteint, l'alarme ABSENT part bien. Avec un seuil sur le bruit pur, la TNT seule dépasserait le seuil : le canal serait toujours « occupé », l'ABSENT ne partirait jamais, et une réserve « doit rester libre » posée sur la TNT serait en CONFLIT en permanence.":
+        "A mic placed in a DTT channel must stand 12 dB above the DTT to count. If it goes off, the ABSENT alarm fires. With a threshold on pure noise, the DTT alone would exceed it: the channel would always be « busy », ABSENT would never fire, and a « must stay free » reserve on the DTT would be in CONFLICT all the time.",
+    "Un seuil par fréquence = son bruit de fond local + une marge (+ 12 dB d'origine), dessiné en tirets. Sur un canal TNT, le fond local est la TNT : le seuil monte avec elle, pour qu'un micro posé dans ce canal reste surveillé (ABSENT). Fiche complète : bouton ❓ à côté de « Auto ».":
+        "One threshold per frequency = its local noise floor + a margin (+ 12 dB by default), drawn dashed. On a DTT channel the local floor is the DTT: the threshold rises with it, so a mic placed in that channel stays monitored (ABSENT). Full sheet: ❓ button next to « Auto ».",
+    "« bruit + 12 dB » (occupé) et « bruit + 6 dB » (faible) se règlent dans la barre au-dessus du spectre : plus petit = plus sensible, plus de fausses alertes. Une fréquence capricieuse (station faible pile au seuil) : clic droit › Seuil propre à la fréquence, il passe avant l'auto. Décoche Auto pour revenir à un seuil fixe pour tout le spectre.":
+        "« noise + 12 dB » (busy) and « noise + 6 dB » (weak) are set in the bar above the spectrum: smaller = more sensitive, more false alerts. A fussy frequency (weak station right at the threshold): right-click › Threshold for this frequency, it wins over auto. Untick Auto to go back to one fixed threshold for the whole spectrum.",
+    "❓ Comment ça marche": "❓ How it works",
+    "📺 Canaux TNT…": "📺 DTT channels…",
+})
+
+# 7.59 : assistant « nouveau show », légende du spectre, propositions
+EXACT.update({
+    " (5 min conseillées)": " (5 min recommended)",
+    " · surveillance en cours": " · monitoring running",
+    "1. Le show": "1. The show", "2. Mes micros": "2. My mics", "4. Les canaux TNT": "4. DTT channels",
+    "5. Prêt pour le show": "5. Ready for the show",
+    "Ajoute les signaux vus dans le scan (après l'étape 3).": "Adds the signals seen in the scan (after step 3).",
+    "Ajoute une fréquence à la main.": "Adds a frequency by hand.",
+    "Assistant nouveau show": "New show assistant",
+    "Au-dessus, une fréquence est « occupée ». En Auto (tirets) : bruit de fond local + 12 dB, qui monte sur la TNT.":
+        "Above it, a frequency is « busy ». In Auto (dashed): local noise floor + 12 dB, which rises on DTT.",
+    "Avant de surveiller, il faut savoir ce qui occupe déjà les ondes : TNT, autres équipes, talkies, écrans LED.":
+        "Before monitoring, you need to know what already uses the air: DTT, other teams, walkie-talkies, LED walls.",
+    "Bandes bleutées « TNT n » : canaux pris par la télévision (mesurés, grisés à la main ou venus de ton plan). Évite d'y poser des micros.":
+        "Bluish « TNT n » bands: channels taken by TV (measured, greyed by hand or from your plan). Avoid putting mics there.",
+    "Branche le tinySA là où seront les récepteurs, clique « Scanner ici » et laisse tourner au moins 5 minutes (idéalement pendant les essais lumière et écrans).":
+        "Plug the tinySA in where the receivers will be, click « Scan here » and let it run at least 5 minutes (ideally during lighting and screen tests).",
+    "Clique : ce que c'est et quoi faire.": "Click: what it is and what to do.",
+    "Clique « Mesurer et griser » : les canaux pris par la TNT sont grisés sur le spectre. Tu peux en griser ou dégriser à la main dans le détail.":
+        "Click « Measure and grey out »: channels taken by DTT are greyed on the spectrum. You can grey or clear some by hand in the details.",
+    "Code postal du lieu (75007) ou GPS (48.8584, 2.2945) — facultatif": "Venue postcode (75007) or GPS (48.8584, 2.2945) — optional",
+    "Colle une liste copiée d'un tableur ou d'un mail.": "Paste a list copied from a spreadsheet or an email.",
+    "Comment ?": "How?", "Pourquoi ?": "Why?",
+    "Depuis le scan": "From the scan",
+    "Donne un nom au show, choisis le pays, tape le code postal du lieu.": "Name the show, pick the country, type the venue postcode.",
+    "Démarre le balayage et repart de pics gardés vides.": "Starts sweeping with an empty peak hold.",
+    "EazyRF, WWB, WSM, Wisycom, DPA, CSV…": "EazyRF, WWB, WSM, Wisycom, DPA, CSV…",
+    "Ferme l'assistant (🧭 Assistant sur l'accueil ou 📋 Préparer pour le rouvrir).":
+        "Closes the assistant (🧭 Assistant on the home bar or 📋 Prepare to reopen it).",
+    "Griser": "Grey out",
+    "HintBar { ": "HintBar { ",
+    "Il reste des problèmes": "Problems remain",
+    "Importe ton plan (EazyRF, WWB, WSM, Wisycom, DPA, tableau), colle une liste ou ajoute tes fréquences. Tu peux aussi le faire après le scan (« Depuis le scan »).":
+        "Import your plan (EazyRF, WWB, WSM, Wisycom, DPA, spreadsheet), paste a list or add your frequencies. You can also do it after the scan (« From the scan »).",
+    "L'assistant pas à pas : show, micros, scan, canaux TNT, prêt pour le show.":
+        "The step-by-step assistant: show, mics, scan, DTT channels, ready for the show.",
+    "La TNT occupe des canaux entiers : il vaut mieux ne pas y poser de micros, ou alors bien au-dessus.":
+        "DTT takes whole channels: better not to put mics there, or only well above it.",
+    "La fenêtre 📺 Canaux TNT complète.": "The full 📺 DTT channels window.",
+    "La liste des fréquences à surveiller : ce que tu as coordonné (plan importé) ou ce que tu ajoutes à la main.":
+        "The list of frequencies to monitor: what you coordinated (imported plan) or what you add by hand.",
+    "La vérification complète, avec « Régler » sur chaque point.": "The full check, with « Fix » on each point.",
+    "Lance la surveillance si elle ne tourne pas déjà.": "Starts monitoring if it is not already running.",
+    "Le chapitre du manuel sur les canaux TNT et le scan du lieu.": "The manual chapter on DTT channels and scanning the venue.",
+    "Le chapitre du manuel sur les seuils.": "The manual chapter on thresholds.",
+    "Le chapitre du manuel « Les étapes d'un festival ».": "The manual chapter « The steps of a festival ».",
+    "Le dernier balayage : ce que reçoit le tinySA maintenant. Le « tapis » du bas est le bruit de fond, une bosse qui en sort est un émetteur.":
+        "The latest sweep: what the tinySA receives now. The « carpet » at the bottom is the noise floor; a bump above it is a transmitter.",
+    "Le faire maintenant.": "Do it now.",
+    "Le grand écran pour la régie.": "The big screen for the control room.",
+    "Le nom, les dates et le pays du show (le pays règle la bande UHF et les canaux TV).":
+        "The show's name, dates and country (the country sets the UHF band and TV channels).",
+    "Le pays donne la bande UHF des micros et les canaux TV ; le lieu (code postal) sert à trouver les émetteurs TNT proches.":
+        "The country gives the mic UHF band and the TV channels; the venue (postcode) is used to find nearby DTT transmitters.",
+    "Le plus haut niveau vu à chaque fréquence depuis le dernier « Effacer les pics » : garde la trace des signaux brefs (talkie, brouilleur qui passe).":
+        "The highest level seen at each frequency since the last « Clear peaks »: keeps track of brief signals (walkie, passing interferer).",
+    "Les étapes : ✓ = fait. Clique pour y aller.": "The steps: ✓ = done. Click to go there.",
+    "Liste vide": "Empty list",
+    "Masquer les pics gardés": "Hide the peak hold",
+    "Mes micros": "My mics",
+    "Ne plus griser": "Stop greying",
+    "Ne plus proposer (pour ce show).": "Don't suggest again (for this show).",
+    "Ouvre « Prêt pour le show ? », règle ce qui est en orange ou rouge, puis démarre la surveillance.":
+        "Open « Ready for the show? », fix what is orange or red, then start monitoring.",
+    "Pas de scan en cours": "No scan running",
+    "Pas encore de nom": "No name yet",
+    "Pas encore mesuré": "Not measured yet",
+    "Pas encore vérifié": "Not checked yet",
+    "Quelques points à vérifier": "A few points to check",
+    "Repère les canaux TNT dans le scan et les grise.": "Finds the DTT channels in the scan and greys them.",
+    "Sert à trouver les émetteurs TNT proches (📺 Canaux TNT › Émetteurs proches). Gardé avec le show.":
+        "Used to find nearby DTT transmitters (📺 DTT channels › Nearby transmitters). Kept with the show.",
+    "Tout est prêt": "All ready",
+    "Un trait par fréquence de ta liste, coloré selon l'état : vert OK, bleu libre, rouge problème, jaune faible.":
+        "One line per frequency of your list, coloured by state: green OK, blue free, red problem, yellow weak.",
+    "Une dernière vérification : tinySA, liste, son, alertes, enregistrement.":
+        "A last check: tinySA, list, sound, alerts, recording.",
+    "Voir le détail": "See details",
+    "Voir le détail (griser à la main, émetteurs proches)…": "See details (grey by hand, nearby transmitters)…",
+    "font-size: 18px; font-weight: 600;": "font-size: 18px; font-weight: 600;",
+    "Étape suivante (tu peux sauter une étape et y revenir).": "Next step (you can skip a step and come back).",
+    "⚙ Réglages des seuils…": "⚙ Threshold settings…",
+    "✅ Prêt pour le show ?": "✅ Ready for the show?",
+    "✏ Nom, dates et pays du show…": "✏ Show name, dates and country…",
+    "❓ Comment marche le seuil auto": "❓ How the auto threshold works",
+    "❓ Manuel": "❓ Manual",
+    "❓ Toutes les courbes du spectre…": "❓ All the spectrum curves…",
+    "📍 Choisir les repères…": "📍 Choose the markers…",
+    "📡 Depuis le scan…": "📡 From the scan…",
+    "📡 Ta liste est vide : rien n'est surveillé. Ajouter les signaux vus dans le scan, ou importer ton plan ?":
+        "📡 Your list is empty: nothing is monitored. Add the signals seen in the scan, or import your plan?",
+    "📥 Importer un plan ou une liste…": "📥 Import a plan or a list…",
+    "📺 Canaux TNT du lieu…": "📺 Venue DTT channels…",
+    "📺 Mesurer et griser": "📺 Measure and grey out",
+    "🖥 Mode Show (plein écran)": "🖥 Show mode (full screen)",
+    "🧭 Assistant": "🧭 Assistant",
+    "🧭 Assistant « nouveau show » (pas à pas)…": "🧭 « New show » assistant (step by step)…",
+})
+TEMPLATES.update({
+    "🌍 Bande recalée sur {}–{} MHz ({}).": "🌍 Band adjusted to {}–{} MHz ({}).",
+    "Bande remise sur {}–{} MHz.": "Band set back to {}–{} MHz.",
+    "Show « {} » · {}": "Show “{}” · {}",
+    "Scan depuis {} min {} s": "Scanning for {} min {} s",
+    "{} canal(aux) TNT grisé(s)": "{} DTT channel(s) greyed",
+    "📺 {} canal(aux) TNT trouvé(s) dans ton scan ({}). Les griser sur le spectre pour ne pas y poser de micros ?":
+        "📺 {} DTT channel(s) found in your scan ({}). Grey them on the spectrum so you don't put mics there?",
+    " · lieu {}": " · venue {}",
+})
+EXACT.update({"Pas à pas pour un nouveau show : le show (pays, lieu), tes micros, le scan du lieu,\nles canaux TNT, puis « Prêt pour le show ? ».":
+              "Step by step for a new show: the show (country, venue), your mics, the venue scan,\nthe DTT channels, then « Ready for the show? »."})
