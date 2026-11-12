@@ -1016,7 +1016,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   pts en 1,0 s). L'appli n'ajoute rien (< 1 ms entre deux commandes). → 🩺 « Vitesse par réglage » (PURE `speed_table`,
   `ScanWorker.stats["by"]` {(rbw, pas kHz, lna): [points, s]}) : un seul diagnostic suffit pour comparer.
   « ✅ Prêt ? » : clé `speed` (warn) si RBW forcée ET tour complet ≥ `SLOW_CYCLE_S` (2,5 s) hors démo → « Régler » =
-  `set_rbw_auto`. ⚠ La RBW par défaut d'une nouvelle installation reste 100 kHz (pas changée : à décider avec Clément).
+  `set_rbw_auto`. **RBW par défaut = Auto** (demande de Clément ; `_cfg` et `rbw_combo`) : une config qui a déjà « rbw »
+  (toutes celles enregistrées) garde sa valeur.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

@@ -19363,7 +19363,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sections_open = dict(self.SECTIONS_OPEN)
         self._zoom = None
         self._zoom_view = None
-        self._cfg = dict(rbw=100, zrbw=None, zpts=None, input="auto", lna=None, att="auto", offset=0.0,
+        self._cfg = dict(rbw=None, zrbw=None, zpts=None, input="auto", lna=None, att="auto", offset=0.0,
                          seg=None, points=1000)
         self._build_ui()
         self._load_config()
@@ -20153,7 +20153,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                      "petite zone, plus large sur toute l'UHF) pour garder un cycle de quelques secondes.\n"
                                      "Rapide ≈ 2 000 points par cycle · équilibré ≈ 4 500 · détaillé ≈ 9 000.")
         self.points_combo.activated.connect(self.apply_points)
-        self.rbw_combo = self._combo([("Auto", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST], 100)
+        self.rbw_combo = self._combo([("Auto", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])   # 7.57.1 : Auto par défaut
         self.zrbw_combo = self._combo([("Auto (selon zoom)", None)] + [(f"{v:g} kHz", v) for v in RBW_LIST])
         self.zpts_combo = self._combo([("Auto (selon zoom)", None)]
                                       + [(f"{p:,}".replace(",", " "), p) for p in POINTS_CHOICES])
