@@ -1066,6 +1066,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   réglages appelle `set_show_country` sur `activated` (choix à la main seulement, pas au chargement). Pas trouvé de
   source fiable pour BR / MX / IN / ZA : pas ajoutés. Seuil auto « qui suit la TNT » (capture de Clément) : voulu
   (bruit LOCAL + marge ; sur le vrai bruit, un micro dans un canal TNT serait toujours « occupé » → ABSENT muet).
+  Expliqué partout (Clément : « faut bien l'expliquer ») : PURE `AUTO_THR_HELP` / `auto_thr_help_html(tr)` → fiche
+  ❓ `show_auto_thr_help` (`auto_help_btn` dans la barre des seuils, `_auto_help`), ligne « Seuil auto (tirets) » de la
+  légende des courbes, bulle de Auto, lexique « Seuil auto », manuel (chapitre Seuils). Nouveau chapitre manuel
+  **`pays` « Bandes et canaux TV par pays »** (partie B, `docs/src/nouveaux_*.html`) : tableau bande / canaux / autres
+  bandes / source + formules de canaux (Clément : « que tu sources tous les canaux dans le manuel en fonction des pays »).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

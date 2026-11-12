@@ -1589,6 +1589,11 @@ check("TNT : base ANFR d'essai importée, sites proches trouvés", len(_tnt.sear
 shot(_tnt, "tnt_emetteurs")
 _tnt.close()
 check("TNT : lieu gardé dans la config", win._collect_config(True)["tnt"]["place"] == "75007")
+_ah = win.show_auto_thr_help()
+wait(100)
+check("seuil auto : fiche ❓ ouverte", _ah.isVisible())
+shot(_ah, "seuil_auto_fiche")
+_ah.close()
 win.tnt_mark(None)
 m.TNT_DB_PATH = _tdb_old
 

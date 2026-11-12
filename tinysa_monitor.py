@@ -7165,6 +7165,37 @@ TOURS = [
 ]
 TOUR_KEYS = [k for k, *_ in TOURS]
 
+# 7.58.3 (Clément : « faut bien expliquer le seuil auto ») : fiche ❓ à côté de « Auto » (titre, paragraphes).
+AUTO_THR_HELP = (
+    ("La courbe en tirets", "C'est le seuil « occupé » de chaque fréquence : le bruit de fond LOCAL (mesuré sur ± 2 MHz "
+     "autour) plus une marge, + 12 dB d'origine. Entre les canaux TV, le fond est le bruit du lieu (vers −100 dBm) : la "
+     "courbe est donc vers −88. Elle bouge toute seule quand le lieu change (écran LED allumé, TNT qui varie)."),
+    ("Pourquoi elle monte sur la TNT", "Dans un canal TNT, le fond local, c'est la TNT elle-même. Le seuil est donc "
+     "« TNT + 12 dB » : ce n'est pas une erreur, c'est voulu."),
+    ("Ce que ça change pour toi", "Un micro posé dans un canal TNT doit sortir 12 dB au-dessus de la TNT pour compter. "
+     "S'il s'éteint, l'alarme ABSENT part bien. Avec un seuil sur le bruit pur, la TNT seule dépasserait le seuil : le "
+     "canal serait toujours « occupé », l'ABSENT ne partirait jamais, et une réserve « doit rester libre » posée sur la "
+     "TNT serait en CONFLIT en permanence."),
+    ("La limite", "Dans un canal TNT, un signal plus faible que TNT + 12 dB ne se voit pas (le tinySA ne peut de toute "
+     "façon pas le séparer d'une TNT forte). Pour savoir quels canaux sont pris par la TNT, utilise 📋 Préparer › "
+     "📺 Canaux TNT : lui compare au vrai bruit du lieu."),
+    ("Le bruit appris", "Le fond est appris en continu : il redescend vite (quelques secondes) mais remonte lentement "
+     "(environ 10 minutes) et ne remonte jamais pendant qu'une fréquence est occupée. Un brouilleur qui s'installe ne "
+     "peut donc pas « effacer » sa propre alarme en relevant le seuil."),
+    ("Régler", "« bruit + 12 dB » (occupé) et « bruit + 6 dB » (faible) se règlent dans la barre au-dessus du spectre : "
+     "plus petit = plus sensible, plus de fausses alertes. Une fréquence capricieuse (station faible pile au seuil) : "
+     "clic droit › Seuil propre à la fréquence, il passe avant l'auto. Décoche Auto pour revenir à un seuil fixe pour "
+     "tout le spectre."),
+    ("Exemple", "Bruit du lieu −100 dBm, canal TNT à −82 dBm. Entre deux canaux : occupé dès −88. Dans le canal TNT : "
+     "occupé dès −70, donc ton micro à −55 est vu, et s'il s'éteint, ABSENT."),
+)
+
+
+def auto_thr_help_html(tr=lambda t: t):
+    """Fiche du seuil auto en HTML (chaque morceau traduit à part)."""
+    return "".join(f"<p><b>{tr(t)}</b><br>{tr(x)}</p>" for t, x in AUTO_THR_HELP)
+
+
 GLOSSARY = [
     ("HF", "Ici : tout ce qui passe par les ondes radio (micros sans fil, ears, talkies). Dans le métier on dit "
      "« la HF » pour l'ensemble des liaisons sans fil d'un spectacle."),
@@ -7191,6 +7222,9 @@ GLOSSARY = [
     ("Rémanence", "Chaque balayage laisse une trace qui s'estompe peu à peu, comme sur un analyseur : ce qui est "
      "souvent là brille, ce qui passe rarement laisse une trace pâle (spectre de l'appli, bouton ⋯, et vues web "
      "Spectre / Terrain)."),
+    ("Seuil auto", "Un seuil par fréquence = son bruit de fond local + une marge (+ 12 dB d'origine), dessiné en "
+     "tirets. Sur un canal TNT, le fond local est la TNT : le seuil monte avec elle, pour qu'un micro posé dans ce "
+     "canal reste surveillé (ABSENT). Fiche complète : bouton ❓ à côté de « Auto »."),
     ("Seuil « occupé »", "La ligne rouge : au-dessus, une fréquence est considérée comme occupée (quelqu'un émet). "
      "« Auto » le place un peu au-dessus du bruit de fond."),
     ("Seuil « faible »", "En dessous du seuil occupé : un signal qui dépasse ce niveau sans atteindre « occupé » est "
@@ -17026,6 +17060,10 @@ class SpectrumLegendDialog(QtWidgets.QDialog):
              "émettre. Ligne déplaçable à la souris sur le spectre. Règle-le quelques dB au-dessus du tapis "
              "(« Auto » le fait d'après le bruit mesuré).",
              ctrls(lspin(o.thr_spin))),
+            (swatch(th["thr"], "- - -"), "Seuil auto (tirets)",
+             "Avec « Auto » : un seuil par fréquence = bruit de fond local + marge. Il monte sur les canaux TNT "
+             "(le fond local, c'est la TNT) pour qu'un micro posé dedans reste surveillé.",
+             ctrls(btn("❓ Comment ça marche", o.show_auto_thr_help, "La fiche complète du seuil auto."))),
             (swatch(th["thr_weak"], "┈┈┈"), "Niveau « faible »",
              "Entre ce niveau et le seuil occupé : signal faible (micro loin, pile faible, porteuse lointaine). "
              "Ne déclenche pas de CONFLIT, mais s'affiche en jaune.",
@@ -18826,7 +18864,8 @@ class MainWindow(QtWidgets.QMainWindow):
         auto_btn.setToolTip("Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\n"
                             "Le bruit est appris en continu (il redescend vite, remonte lentement en 10 min, et ne\n"
                             "remonte jamais pendant qu'une fréquence est occupée). Courbe en tirets sur le spectre.\n"
-                            "Un seuil propre à une fréquence (colonne Seuil) reste prioritaire. Décoche = seuils fixes.")
+                            "Un seuil propre à une fréquence (colonne Seuil) reste prioritaire. Décoche = seuils fixes.\n"
+                            "Sur un canal TNT, le fond local est la TNT : la courbe monte avec elle (voulu, ❓ explique).")
         auto_btn.toggled.connect(lambda on: self.set_thr_auto(bool(on)))
         self.thr_auto_btn = auto_btn
         self.auto_occ_spin = QtWidgets.QSpinBox()
@@ -19253,8 +19292,14 @@ class MainWindow(QtWidgets.QMainWindow):
         thr_set.setAutoRaise(True)
         thr_set.setToolTip("Tous les réglages des seuils et des alarmes (⚙ Réglages).")
         thr_set.clicked.connect(lambda *_: self.open_settings("detect"))
+        auto_help = QtWidgets.QToolButton()
+        auto_help.setText("❓")
+        auto_help.setAutoRaise(True)
+        auto_help.setToolTip("Comment marche le seuil auto (et pourquoi la courbe monte sur la TNT).")
+        auto_help.clicked.connect(lambda *_: self.show_auto_thr_help())
+        self.auto_help_btn = auto_help
         self.thr_bar = QtWidgets.QWidget()
-        tl = self._flow(("Occupé au-dessus de", self.thr_spin, self.auto_occ_spin, auto_btn),
+        tl = self._flow(("Occupé au-dessus de", self.thr_spin, self.auto_occ_spin, auto_btn, auto_help),
                         (self.weak_chk, self.weak_spin, self.auto_weak_spin),
                         ("TX absent après", self.absent_spin), thr_set)
         tl.setContentsMargins(0, 0, 0, 0)
@@ -24274,6 +24319,37 @@ class MainWindow(QtWidgets.QMainWindow):
     def _auto_margins_changed(self):
         self._auto_curve_draw()
         self.reeval()
+
+    def show_auto_thr_help(self):
+        """❓ Fiche « Comment marche le seuil auto ? » (non bloquante)."""
+        d = getattr(self, "_auto_help", None)
+        if d is None:
+            d = QtWidgets.QDialog(self)
+            d.setWindowTitle("Comment marche le seuil auto ?")
+            lay = QtWidgets.QVBoxLayout(d)
+            lb = QtWidgets.QLabel(auto_thr_help_html(TR))
+            lb.setWordWrap(True)
+            lb.setTextFormat(Qt.TextFormat.RichText)
+            sc = QtWidgets.QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setWidget(lb)
+            lay.addWidget(sc, 1)
+            row = QtWidgets.QHBoxLayout()
+            tnt = QtWidgets.QPushButton("📺 Canaux TNT…")
+            tnt.setToolTip("Les canaux pris par la TNT, comparés au vrai bruit du lieu.")
+            tnt.clicked.connect(lambda *_: self.open_tnt())
+            ok_ = QtWidgets.QPushButton("Fermer")
+            ok_.setToolTip("Ferme la fiche.")
+            ok_.clicked.connect(lambda *_: d.close())
+            row.addWidget(tnt)
+            row.addStretch(1)
+            row.addWidget(ok_)
+            lay.addLayout(row)
+            fit_dialog(d, 620, 560)
+            self._auto_help = d
+        d.show()
+        d.raise_()
+        return d
 
     def _auto_curve_update(self, now=None):
         """Bruit de fond le long du spectre (courbe en tirets) + valeurs « typiques » des seuils globaux (utilisées par

@@ -4623,10 +4623,11 @@ EXACT.update({
     "Seuils automatiques : chaque fréquence a son propre seuil = son bruit de fond + une marge.\nLe bruit est appris "
     "en continu (il redescend vite, remonte lentement en 10 min, et ne\nremonte jamais pendant qu'une fréquence est "
     "occupée). Courbe en tirets sur le spectre.\nUn seuil propre à une fréquence (colonne Seuil) reste prioritaire. "
-    "Décoche = seuils fixes.":
+    "Décoche = seuils fixes.\nSur un canal TNT, le fond local est la TNT : la courbe monte avec elle (voulu, ❓ explique).":
         "Automatic thresholds: each frequency gets its own threshold = its noise floor + a margin.\nThe noise is learnt "
         "continuously (it drops fast, rises slowly over 10 min, and never\nrises while a frequency is busy). Dashed "
-        "curve on the spectrum.\nA threshold set on a frequency (Threshold column) still wins. Untick = fixed thresholds.",
+        "curve on the spectrum.\nA threshold set on a frequency (Threshold column) still wins. Untick = fixed thresholds.\n"
+        "On a DTT channel the local floor is the DTT: the curve rises with it (on purpose, ❓ explains).",
     "bruit + ": "noise + ",
 })
 
@@ -5052,3 +5053,40 @@ EXACT.update({
 })
 TEMPLATES.update({"Canal UHF {} (7 MHz) : {}-{} MHz": "UHF channel {} (7 MHz): {}-{} MHz",
                   "Canal UHF {} (6 MHz) : {}-{} MHz": "UHF channel {} (6 MHz): {}-{} MHz"})
+
+# 7.58.3 : fiche « seuil auto »
+EXACT.update({
+    "Avec « Auto » : un seuil par fréquence = bruit de fond local + marge. Il monte sur les canaux TNT (le fond local, c'est la TNT) pour qu'un micro posé dedans reste surveillé.":
+        "With « Auto »: one threshold per frequency = local noise floor + margin. It rises on DTT channels (the local floor is the DTT) so a mic placed there stays monitored.",
+    "Bruit du lieu −100 dBm, canal TNT à −82 dBm. Entre deux canaux : occupé dès −88. Dans le canal TNT : occupé dès −70, donc ton micro à −55 est vu, et s'il s'éteint, ABSENT.":
+        "Venue noise −100 dBm, DTT channel at −82 dBm. Between two channels: busy from −88. In the DTT channel: busy from −70, so your mic at −55 is seen, and if it goes off, ABSENT.",
+    "C'est le seuil « occupé » de chaque fréquence : le bruit de fond LOCAL (mesuré sur ± 2 MHz autour) plus une marge, + 12 dB d'origine. Entre les canaux TV, le fond est le bruit du lieu (vers −100 dBm) : la courbe est donc vers −88. Elle bouge toute seule quand le lieu change (écran LED allumé, TNT qui varie).":
+        "It is the « busy » threshold of each frequency: the LOCAL noise floor (measured over ± 2 MHz around it) plus a margin, + 12 dB by default. Between TV channels the floor is the venue noise (around −100 dBm), so the curve sits near −88. It moves on its own when the venue changes (LED wall switched on, DTT varying).",
+    "Ce que ça change pour toi": "What it means for you",
+    "Comment marche le seuil auto (et pourquoi la courbe monte sur la TNT).": "How the auto threshold works (and why the curve rises on DTT).",
+    "Comment marche le seuil auto ?": "How does the auto threshold work?",
+    "Dans un canal TNT, le fond local, c'est la TNT elle-même. Le seuil est donc « TNT + 12 dB » : ce n'est pas une erreur, c'est voulu.":
+        "In a DTT channel, the local floor is the DTT itself. So the threshold is « DTT + 12 dB »: not a bug, it is on purpose.",
+    "Dans un canal TNT, un signal plus faible que TNT + 12 dB ne se voit pas (le tinySA ne peut de toute façon pas le séparer d'une TNT forte). Pour savoir quels canaux sont pris par la TNT, utilise 📋 Préparer › 📺 Canaux TNT : lui compare au vrai bruit du lieu.":
+        "In a DTT channel, a signal weaker than DTT + 12 dB is not seen (the tinySA cannot separate it from strong DTT anyway). To know which channels DTT takes, use 📋 Prepare › 📺 DTT channels: it compares against the real venue noise.",
+    "Exemple": "Example",
+    "Ferme la fiche.": "Closes the sheet.",
+    "La courbe en tirets": "The dashed curve",
+    "La fiche complète du seuil auto.": "The full auto-threshold sheet.",
+    "La limite": "The limit",
+    "Le bruit appris": "The learnt noise",
+    "Le fond est appris en continu : il redescend vite (quelques secondes) mais remonte lentement (environ 10 minutes) et ne remonte jamais pendant qu'une fréquence est occupée. Un brouilleur qui s'installe ne peut donc pas « effacer » sa propre alarme en relevant le seuil.":
+        "The floor is learnt continuously: it drops fast (a few seconds) but rises slowly (about 10 minutes) and never rises while a frequency is busy. A jammer that settles in cannot « erase » its own alarm by raising the threshold.",
+    "Les canaux pris par la TNT, comparés au vrai bruit du lieu.": "Channels taken by DTT, compared with the real venue noise.",
+    "Pourquoi elle monte sur la TNT": "Why it rises on DTT",
+    "Seuil auto": "Auto threshold",
+    "Seuil auto (tirets)": "Auto threshold (dashed)",
+    "Un micro posé dans un canal TNT doit sortir 12 dB au-dessus de la TNT pour compter. S'il s'éteint, l'alarme ABSENT part bien. Avec un seuil sur le bruit pur, la TNT seule dépasserait le seuil : le canal serait toujours « occupé », l'ABSENT ne partirait jamais, et une réserve « doit rester libre » posée sur la TNT serait en CONFLIT en permanence.":
+        "A mic placed in a DTT channel must stand 12 dB above the DTT to count. If it goes off, the ABSENT alarm fires. With a threshold on pure noise, the DTT alone would exceed it: the channel would always be « busy », ABSENT would never fire, and a « must stay free » reserve on the DTT would be in CONFLICT all the time.",
+    "Un seuil par fréquence = son bruit de fond local + une marge (+ 12 dB d'origine), dessiné en tirets. Sur un canal TNT, le fond local est la TNT : le seuil monte avec elle, pour qu'un micro posé dans ce canal reste surveillé (ABSENT). Fiche complète : bouton ❓ à côté de « Auto ».":
+        "One threshold per frequency = its local noise floor + a margin (+ 12 dB by default), drawn dashed. On a DTT channel the local floor is the DTT: the threshold rises with it, so a mic placed in that channel stays monitored (ABSENT). Full sheet: ❓ button next to « Auto ».",
+    "« bruit + 12 dB » (occupé) et « bruit + 6 dB » (faible) se règlent dans la barre au-dessus du spectre : plus petit = plus sensible, plus de fausses alertes. Une fréquence capricieuse (station faible pile au seuil) : clic droit › Seuil propre à la fréquence, il passe avant l'auto. Décoche Auto pour revenir à un seuil fixe pour tout le spectre.":
+        "« noise + 12 dB » (busy) and « noise + 6 dB » (weak) are set in the bar above the spectrum: smaller = more sensitive, more false alerts. A fussy frequency (weak station right at the threshold): right-click › Threshold for this frequency, it wins over auto. Untick Auto to go back to one fixed threshold for the whole spectrum.",
+    "❓ Comment ça marche": "❓ How it works",
+    "📺 Canaux TNT…": "📺 DTT channels…",
+})

@@ -365,3 +365,46 @@ règles « Standard » ; le filtre récepteur change beaucoup le résultat (chap
 Pi : <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> dit ce qui manque.</p>
 <h3>Je peux utiliser l'appli en anglais ?</h3>
 <p>Oui : ☰ Plus › 🌐 Langue / Language, puis redémarrer. La page web se choisit par personne (bouton FR / EN).</p>
+
+<!--CH pays|Bandes et canaux TV par pays-->
+<p>Quand tu choisis le <b>pays du show</b> (fenêtre d'infos du show, ou ⚙ Réglages › Pays), l'appli prend la bande UHF
+des micros de ce pays, les canaux TV correspondants (bandeaux sous le spectre, 📺 Canaux TNT) et ses notes. Tout est
+<b>indicatif</b> : la règle qui compte est celle du régulateur du pays, à vérifier avant chaque tournée. Recherches
+faites le 13 novembre 2026.</p>
+<table>
+  <tr><th>Pays</th><th>Bande UHF des micros (balayée)</th><th>Canaux TV</th><th>Autres bandes utiles</th><th>Source</th></tr>
+  <tr><td>France</td><td>470–694 MHz, partagée avec la TNT (canal 38 compris)</td><td>21 à 48, 8 MHz</td>
+    <td>823–832, 863–865, 1785–1805 MHz</td><td>ANFR (tableau national de répartition des bandes)</td></tr>
+  <tr><td>Belgique, Italie, Espagne, Pays-Bas, Europe</td><td>470–694 MHz</td><td>21 à 48, 8 MHz</td>
+    <td>823–832, 863–865, 1785–1805 MHz (bandes harmonisées en Europe)</td><td>CEPT (recommandation ERC 70-03) et
+    régulateur national</td></tr>
+  <tr><td>Allemagne</td><td>470–694 MHz</td><td>21 à 48, 8 MHz</td><td>736–753 MHz (sans licence), 1492–1525 MHz
+    (avec enregistrement, en intérieur), 823–832, 1785–1805 MHz</td><td>BNetzA</td></tr>
+  <tr><td>Suisse</td><td>470–694 MHz (TNT éteinte en 2019)</td><td>21 à 48, 8 MHz</td><td>—</td><td>OFCOM (Suisse)</td></tr>
+  <tr><td>Royaume-Uni</td><td>470–702 MHz : spectre TV « entrelacé » coordonné par l'Ofcom</td><td>21 à 48, 8 MHz</td>
+    <td>Canal 38 (606–614) avec licence partagée ; canal 70 (863–865) sans licence ; 703–790 interdit depuis 2020</td>
+    <td><a href="https://www.ofcom.org.uk/manage-your-licence/radiocommunication-licences/pmse/pmse-technical-info/mics-monitors/co-ordinated">Ofcom – PMSE</a></td></tr>
+  <tr><td>États-Unis</td><td>470–608 MHz (hors canal 37, 608–614 : radioastronomie)</td><td>14 à 36, 6 MHz</td>
+    <td>614–616 et une partie de 653–663 MHz ; 941–960 et 1435–1525 MHz avec licence</td><td>FCC</td></tr>
+  <tr><td>Canada</td><td>470–608 MHz</td><td>14 à 36, 6 MHz</td><td>Proche des États-Unis</td><td>ISED</td></tr>
+  <tr><td>Australie</td><td>520–694 MHz, dans les canaux TV libres du lieu (licence de classe LIPD)</td>
+    <td>27 à 51, 7 MHz</td><td>694–820 MHz interdit depuis 2015</td>
+    <td><a href="https://www.acma.gov.au/wireless-microphones">ACMA – wireless microphones</a></td></tr>
+  <tr><td>Nouvelle-Zélande</td><td>502–606 MHz (licences GUSL 272800 et GURL-SRD)</td><td>8 MHz</td>
+    <td>622–698 MHz à vérifier (envisagé pour la 5G) ; 698–806 interdit depuis 2015</td>
+    <td><a href="https://www.rsm.govt.nz/licensing/frequencies-for-anyone/radio-microphone-devices-gusl">RSM – Radio microphone devices</a></td></tr>
+  <tr><td>Japon</td><td>470–714 MHz : espaces blancs TV 470–710 + bande dédiée 710–714</td><td>13 à 52, 6 MHz</td>
+    <td>806–810 et 1240–1260 MHz (micros basse puissance)</td>
+    <td><a href="https://www.soumu.go.jp/main_content/001085598.pdf">MIC (tableau des bandes)</a></td></tr>
+</table>
+<h3>Calculer un canal</h3>
+<ul>
+  <li><b>Europe, Royaume-Uni, Nouvelle-Zélande</b> (8 MHz) : le canal n va de 470 + 8 × (n − 21) à 8 MHz plus haut.
+    Canal 21 = 470–478, canal 38 = 606–614, canal 48 = 686–694.</li>
+  <li><b>États-Unis, Canada</b> (6 MHz) : le canal n va de 470 + 6 × (n − 14). Canal 14 = 470–476, canal 36 = 602–608.</li>
+  <li><b>Australie</b> (7 MHz) : le canal n va de 526 + 7 × (n − 28). Canal 28 = 526–533, canal 51 = 687–694.</li>
+  <li><b>Japon</b> (6 MHz) : le canal n va de 470 + 6 × (n − 13). Canal 13 = 470–476, canal 52 = 704–710.</li>
+</ul>
+<div class="box warn">Un pays qui n'est pas dans la liste prend le plan européen (470–694 MHz). Pour le Brésil, le
+Mexique, l'Inde, l'Afrique du Sud… renseigne-toi auprès du régulateur (Anatel, IFT, WPC, ICASA) et ajoute ta bande dans
+⚙ Réglages › Bandes à balayer.</div>

@@ -22,7 +22,7 @@ import lang_en  # noqa: E402
 
 PARTS = [
     ("A", "Pour commencer", "Getting started", ["lire", "intro", "materiel", "install", "ecran", "aide-in"]),
-    ("B", "Comprendre la HF", "Understanding RF", ["rf", "spectre"]),
+    ("B", "Comprendre la HF", "Understanding RF", ["rf", "spectre", "pays"]),
     ("C", "Le festival pas à pas", "The festival step by step",
      ["vue", "avant", "arrivee", "terrain", "plan", "portes", "reagir", "nuit", "apres"]),
     ("D", "Référence des outils", "Tool reference",
