@@ -1483,6 +1483,20 @@ ok("7.57 : nom de fichier sûr", ns["user_filename"]('Clé: "A/B"?') == "Clé AB
    ns["user_filename"]('Clé: "A/B"?'))
 ok("7.57 : un profil n'emporte rien du show", not (set(ns["USER_KEYS"]) & {"watch", "scenes", "bands", "statuses", "dev2", "devx",
                                                                              "site_scans", "web", "notify"}))
+# 7.59 : assistant, propositions
+_ws = ns["wizard_status"](dict(name="Roc", country_name="France", place="83600", n_watch=12, running=True, scan_s=400,
+                               tnt_done=True, tnt_tv=3, ready="ok"))
+ok("7.59 : assistant : tout fait", all(d for _k, d, _t in _ws) and "Roc" in _ws[0][2] and "83600" in _ws[0][2], str(_ws))
+_ws0 = ns["wizard_status"](dict(running=False, scan_s=None))
+ok("7.59 : assistant : rien de fait", not any(d for _k, d, _t in _ws0) and _ws0[2][2] == "Pas de scan en cours")
+ok("7.59 : scan trop court = pas fait", not ns["wizard_status"](dict(scan_s=100))[2][1])
+_hd = ns["hint_due"]
+ok("7.59 : proposition TNT après 5 min de scan", _hd(dict(running=True, scan_s=310, tnt_tv=2, tnt_chs=[23, 30]), set())[0] == "tnt")
+ok("7.59 : pas deux fois, pas si déjà grisé, pas trop tôt",
+   _hd(dict(running=True, scan_s=310, tnt_tv=2), {"tnt"}) is None and _hd(dict(running=True, scan_s=310, tnt_tv=2, tnt_marked=True), set()) is None
+   and _hd(dict(running=True, scan_s=100, tnt_tv=2), set()) is None)
+ok("7.59 : liste vide après 2 min de surveillance", _hd(dict(running=True, run_s=130, n_watch=0), set())[0] == "empty"
+   and _hd(dict(running=True, run_s=130, n_watch=3), set()) is None)
 # 7.58.3 : la bande « UHF … » suit le pays ; pays ajoutés
 _b = [dict(id=1, name="UHF 470–694 MHz", start=470.0, stop=694.0, enabled=True)]
 ok("7.58.3 : France -> rien à changer", ns["uhf_band_needed"](_b, "FR") is None)

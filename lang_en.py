@@ -1998,7 +1998,7 @@ EXACT = {
     'Plan : la couche active': 'Plan: the active layer',
     'Plan : toute la liste': 'Plan: the whole list',
     'Plan harmonisé CEPT / UIT région 1, indicatif.': 'Harmonised CEPT / ITU region 1 plan, indicative.',
-    'Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48) / micros HF ; 700 et 800 MHz attribués à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux police / pompiers / secours.': 'Indicative plan (ANFR / TNRBF). 470-694 MHz shared between DTT (channels 21-48) / wireless mics; 700 and 800 MHz allocated to 4G/5G; 823-832, 863-865 and 1785-1805 MHz free for wireless mics; 380-400 MHz: police / fire / emergency networks.',
+    'Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48, canal 38 compris) / micros HF ; 700 et 800 MHz attribués à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux police / pompiers / secours.': 'Indicative plan (ANFR / TNRBF). 470-694 MHz shared between DTT (channels 21-48, channel 38 included) / wireless mics; 700 and 800 MHz allocated to 4G/5G; 823-832, 863-865 and 1785-1805 MHz free for wireless mics; 380-400 MHz: police / fire / emergency networks.',
     'Plan indicatif (Agentschap Telecom).': 'Indicative plan (Agentschap Telecom).',
     'Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.': 'Indicative plan (BNetzA). DVB-T2 on channels 21-48; 736-753 MHz licence-free wireless mics; 823-832 MHz and 1785-1805 MHz free.',
     'Plan indicatif (CNMC / SETID). 700 MHz libéré en 2020.': 'Indicative plan (CNMC / SETID). 700 MHz cleared in 2020.',
@@ -5090,3 +5090,114 @@ EXACT.update({
     "❓ Comment ça marche": "❓ How it works",
     "📺 Canaux TNT…": "📺 DTT channels…",
 })
+
+# 7.59 : assistant « nouveau show », légende du spectre, propositions
+EXACT.update({
+    " (5 min conseillées)": " (5 min recommended)",
+    " · surveillance en cours": " · monitoring running",
+    "1. Le show": "1. The show", "2. Mes micros": "2. My mics", "4. Les canaux TNT": "4. DTT channels",
+    "5. Prêt pour le show": "5. Ready for the show",
+    "Ajoute les signaux vus dans le scan (après l'étape 3).": "Adds the signals seen in the scan (after step 3).",
+    "Ajoute une fréquence à la main.": "Adds a frequency by hand.",
+    "Assistant nouveau show": "New show assistant",
+    "Au-dessus, une fréquence est « occupée ». En Auto (tirets) : bruit de fond local + 12 dB, qui monte sur la TNT.":
+        "Above it, a frequency is « busy ». In Auto (dashed): local noise floor + 12 dB, which rises on DTT.",
+    "Avant de surveiller, il faut savoir ce qui occupe déjà les ondes : TNT, autres équipes, talkies, écrans LED.":
+        "Before monitoring, you need to know what already uses the air: DTT, other teams, walkie-talkies, LED walls.",
+    "Bandes bleutées « TNT n » : canaux pris par la télévision (mesurés, grisés à la main ou venus de ton plan). Évite d'y poser des micros.":
+        "Bluish « TNT n » bands: channels taken by TV (measured, greyed by hand or from your plan). Avoid putting mics there.",
+    "Branche le tinySA là où seront les récepteurs, clique « Scanner ici » et laisse tourner au moins 5 minutes (idéalement pendant les essais lumière et écrans).":
+        "Plug the tinySA in where the receivers will be, click « Scan here » and let it run at least 5 minutes (ideally during lighting and screen tests).",
+    "Clique : ce que c'est et quoi faire.": "Click: what it is and what to do.",
+    "Clique « Mesurer et griser » : les canaux pris par la TNT sont grisés sur le spectre. Tu peux en griser ou dégriser à la main dans le détail.":
+        "Click « Measure and grey out »: channels taken by DTT are greyed on the spectrum. You can grey or clear some by hand in the details.",
+    "Code postal du lieu (75007) ou GPS (48.8584, 2.2945) — facultatif": "Venue postcode (75007) or GPS (48.8584, 2.2945) — optional",
+    "Colle une liste copiée d'un tableur ou d'un mail.": "Paste a list copied from a spreadsheet or an email.",
+    "Comment ?": "How?", "Pourquoi ?": "Why?",
+    "Depuis le scan": "From the scan",
+    "Donne un nom au show, choisis le pays, tape le code postal du lieu.": "Name the show, pick the country, type the venue postcode.",
+    "Démarre le balayage et repart de pics gardés vides.": "Starts sweeping with an empty peak hold.",
+    "EazyRF, WWB, WSM, Wisycom, DPA, CSV…": "EazyRF, WWB, WSM, Wisycom, DPA, CSV…",
+    "Ferme l'assistant (🧭 Assistant sur l'accueil ou 📋 Préparer pour le rouvrir).":
+        "Closes the assistant (🧭 Assistant on the home bar or 📋 Prepare to reopen it).",
+    "Griser": "Grey out",
+    "HintBar { ": "HintBar { ",
+    "Il reste des problèmes": "Problems remain",
+    "Importe ton plan (EazyRF, WWB, WSM, Wisycom, DPA, tableau), colle une liste ou ajoute tes fréquences. Tu peux aussi le faire après le scan (« Depuis le scan »).":
+        "Import your plan (EazyRF, WWB, WSM, Wisycom, DPA, spreadsheet), paste a list or add your frequencies. You can also do it after the scan (« From the scan »).",
+    "L'assistant pas à pas : show, micros, scan, canaux TNT, prêt pour le show.":
+        "The step-by-step assistant: show, mics, scan, DTT channels, ready for the show.",
+    "La TNT occupe des canaux entiers : il vaut mieux ne pas y poser de micros, ou alors bien au-dessus.":
+        "DTT takes whole channels: better not to put mics there, or only well above it.",
+    "La fenêtre 📺 Canaux TNT complète.": "The full 📺 DTT channels window.",
+    "La liste des fréquences à surveiller : ce que tu as coordonné (plan importé) ou ce que tu ajoutes à la main.":
+        "The list of frequencies to monitor: what you coordinated (imported plan) or what you add by hand.",
+    "La vérification complète, avec « Régler » sur chaque point.": "The full check, with « Fix » on each point.",
+    "Lance la surveillance si elle ne tourne pas déjà.": "Starts monitoring if it is not already running.",
+    "Le chapitre du manuel sur les canaux TNT et le scan du lieu.": "The manual chapter on DTT channels and scanning the venue.",
+    "Le chapitre du manuel sur les seuils.": "The manual chapter on thresholds.",
+    "Le chapitre du manuel « Les étapes d'un festival ».": "The manual chapter « The steps of a festival ».",
+    "Le dernier balayage : ce que reçoit le tinySA maintenant. Le « tapis » du bas est le bruit de fond, une bosse qui en sort est un émetteur.":
+        "The latest sweep: what the tinySA receives now. The « carpet » at the bottom is the noise floor; a bump above it is a transmitter.",
+    "Le faire maintenant.": "Do it now.",
+    "Le grand écran pour la régie.": "The big screen for the control room.",
+    "Le nom, les dates et le pays du show (le pays règle la bande UHF et les canaux TV).":
+        "The show's name, dates and country (the country sets the UHF band and TV channels).",
+    "Le pays donne la bande UHF des micros et les canaux TV ; le lieu (code postal) sert à trouver les émetteurs TNT proches.":
+        "The country gives the mic UHF band and the TV channels; the venue (postcode) is used to find nearby DTT transmitters.",
+    "Le plus haut niveau vu à chaque fréquence depuis le dernier « Effacer les pics » : garde la trace des signaux brefs (talkie, brouilleur qui passe).":
+        "The highest level seen at each frequency since the last « Clear peaks »: keeps track of brief signals (walkie, passing interferer).",
+    "Les étapes : ✓ = fait. Clique pour y aller.": "The steps: ✓ = done. Click to go there.",
+    "Liste vide": "Empty list",
+    "Masquer les pics gardés": "Hide the peak hold",
+    "Mes micros": "My mics",
+    "Ne plus griser": "Stop greying",
+    "Ne plus proposer (pour ce show).": "Don't suggest again (for this show).",
+    "Ouvre « Prêt pour le show ? », règle ce qui est en orange ou rouge, puis démarre la surveillance.":
+        "Open « Ready for the show? », fix what is orange or red, then start monitoring.",
+    "Pas de scan en cours": "No scan running",
+    "Pas encore de nom": "No name yet",
+    "Pas encore mesuré": "Not measured yet",
+    "Pas encore vérifié": "Not checked yet",
+    "Quelques points à vérifier": "A few points to check",
+    "Repère les canaux TNT dans le scan et les grise.": "Finds the DTT channels in the scan and greys them.",
+    "Sert à trouver les émetteurs TNT proches (📺 Canaux TNT › Émetteurs proches). Gardé avec le show.":
+        "Used to find nearby DTT transmitters (📺 DTT channels › Nearby transmitters). Kept with the show.",
+    "Tout est prêt": "All ready",
+    "Un trait par fréquence de ta liste, coloré selon l'état : vert OK, bleu libre, rouge problème, jaune faible.":
+        "One line per frequency of your list, coloured by state: green OK, blue free, red problem, yellow weak.",
+    "Une dernière vérification : tinySA, liste, son, alertes, enregistrement.":
+        "A last check: tinySA, list, sound, alerts, recording.",
+    "Voir le détail": "See details",
+    "Voir le détail (griser à la main, émetteurs proches)…": "See details (grey by hand, nearby transmitters)…",
+    "font-size: 18px; font-weight: 600;": "font-size: 18px; font-weight: 600;",
+    "Étape suivante (tu peux sauter une étape et y revenir).": "Next step (you can skip a step and come back).",
+    "⚙ Réglages des seuils…": "⚙ Threshold settings…",
+    "✅ Prêt pour le show ?": "✅ Ready for the show?",
+    "✏ Nom, dates et pays du show…": "✏ Show name, dates and country…",
+    "❓ Comment marche le seuil auto": "❓ How the auto threshold works",
+    "❓ Manuel": "❓ Manual",
+    "❓ Toutes les courbes du spectre…": "❓ All the spectrum curves…",
+    "📍 Choisir les repères…": "📍 Choose the markers…",
+    "📡 Depuis le scan…": "📡 From the scan…",
+    "📡 Ta liste est vide : rien n'est surveillé. Ajouter les signaux vus dans le scan, ou importer ton plan ?":
+        "📡 Your list is empty: nothing is monitored. Add the signals seen in the scan, or import your plan?",
+    "📥 Importer un plan ou une liste…": "📥 Import a plan or a list…",
+    "📺 Canaux TNT du lieu…": "📺 Venue DTT channels…",
+    "📺 Mesurer et griser": "📺 Measure and grey out",
+    "🖥 Mode Show (plein écran)": "🖥 Show mode (full screen)",
+    "🧭 Assistant": "🧭 Assistant",
+    "🧭 Assistant « nouveau show » (pas à pas)…": "🧭 « New show » assistant (step by step)…",
+})
+TEMPLATES.update({
+    "🌍 Bande recalée sur {}–{} MHz ({}).": "🌍 Band adjusted to {}–{} MHz ({}).",
+    "Bande remise sur {}–{} MHz.": "Band set back to {}–{} MHz.",
+    "Show « {} » · {}": "Show “{}” · {}",
+    "Scan depuis {} min {} s": "Scanning for {} min {} s",
+    "{} canal(aux) TNT grisé(s)": "{} DTT channel(s) greyed",
+    "📺 {} canal(aux) TNT trouvé(s) dans ton scan ({}). Les griser sur le spectre pour ne pas y poser de micros ?":
+        "📺 {} DTT channel(s) found in your scan ({}). Grey them on the spectrum so you don't put mics there?",
+    " · lieu {}": " · venue {}",
+})
+EXACT.update({"Pas à pas pour un nouveau show : le show (pays, lieu), tes micros, le scan du lieu,\nles canaux TNT, puis « Prêt pour le show ? ».":
+              "Step by step for a new show: the show (country, venue), your mics, the venue scan,\nthe DTT channels, then « Ready for the show? »."})
