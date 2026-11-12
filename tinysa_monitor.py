@@ -85,7 +85,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.57.0"
+APP_VER = "7.57.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -993,7 +993,7 @@ COUNTRY_NOTES = {
           "à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux "
           "police / pompiers / secours.",
     "DE": "Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.",
-    "GB": "Plan indicatif (Ofcom). Canal 38 (606-614) et canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.",
+    "GB": "Plan indicatif (Ofcom). Canal 38 (606-614) : micros HF avec licence Ofcom partagée ; canal 70 (863-865) sans licence ; 700 MHz libéré en 2020, bande de garde 694-703 MHz conservée.",
     "CH": "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.",
     "BE": "Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.",
     "IT": "Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.",
@@ -1136,16 +1136,14 @@ PLAN_OVERRIDES = {
     "FR": """
 174-223|broadcast|DAB+ (VHF III) : micros HF libres, interférences régionales|
 380-400|safety|Police / gendarmerie / pompiers / SAMU (réseaux INPT, Tetrapol)|Numérique, souvent chiffré : on ne mesure que le niveau
-470-606|tv|TNT (DVB-T2) + micros HF pros : usage partagé|
-606-614|other|Canal 38 : hors micros HF en France (radioastronomie)|
-614-694|tv|TNT (DVB-T2) + micros HF pros : usage partagé|
+470-694|tv|TNT (DVB-T2) + micros HF pros : usage partagé|Canal 38 (606-614) utilisable par les micros HF
 """,
     "DE": """
 736-753|pmse|Micros HF professionnels sans licence (Allemagne)|
 1492-1525|pmse|Micros HF : enregistrement requis, intérieur|
 """,
     "GB": """
-606-614|pmse|Canal 38 : micros HF sans licence (UK)|
+606-614|pmse|Canal 38 : micros HF, licence Ofcom partagée (UK)|
 863-865|pmse|Canal 70 : micros HF sans licence (UK)|
 """,
     "CH": """
@@ -4015,12 +4013,17 @@ SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 USER_KEYS = ("theme", "theme_v", "unit", "smooth", "coord_tools", "home", "expert", "ui_level", "labels", "sig_colors",
              "spec_more", "wall_size", "markers", "mark", "names", "watch_cols", "watch_cols_v", "log_kinds",
              "persist", "hold", "points_sel", "points_auto", "thr_auto", "auto_occ", "auto_weak", "thr", "weak_thr",
-             "weak_on", "win", "absent_s", "strong_on", "strong_thr", "sound", "alarm_timing", "user_presets")
+             "weak_on", "win", "absent_s", "strong_on", "strong_thr", "sound", "alarm_timing", "user_presets",
+             "layout")
+LAYOUT_PARTS = ("geometry", "docks", "panel_windows", "layout_ver")   # 7.57.1 : disposition des fenêtres du profil
 
 
 def user_doc(cfg, name, app_ver=""):
     """Fichier profil utilisateur (.tsauser) : nom + préférences (clés USER_KEYS présentes dans la config)."""
     prefs = {k: cfg[k] for k in USER_KEYS if k in cfg}
+    lay = {k: cfg[k] for k in LAYOUT_PARTS if k in cfg}
+    if lay:
+        prefs["layout"] = lay                     # fenêtre principale, panneaux, vraies fenêtres (écrans)
     if isinstance(prefs.get("sound"), dict):
         prefs["sound"] = {k: v for k, v in prefs["sound"].items() if k != "device"}   # la sortie audio reste au PC
     return dict(format="tinysa-user", version=1, app=app_ver, name=" ".join(str(name or "").split())[:60] or "Profil",
@@ -4048,6 +4051,8 @@ def user_apply(cfg_now, doc):
         if k == "sound" and isinstance(v, dict):
             dev = (cfg_now.get("sound") or {}).get("device", "")
             v = dict(v, device=dev)
+        if k == "layout":
+            continue                              # appliquée à part par la fenêtre (restoreState…)
         out[k] = v
     return out
 
@@ -18717,7 +18722,7 @@ class UserProfilesDialog(QtWidgets.QDialog):
         lay = QtWidgets.QVBoxLayout(self)
         head = QtWidgets.QLabel(
             "Un profil garde TES préférences : affichage (thème, niveau, unité, colonnes), mots et couleurs, seuils, "
-            "alarmes et son (sauf la sortie audio), préréglages perso. Il ne touche jamais au show (fréquences, scènes, "
+            "alarmes et son (sauf la sortie audio), préréglages perso, disposition des fenêtres. Il ne touche jamais au show (fréquences, scènes, "
             "bandes, tinySA) : charge ton profil sur n'importe quel PC, ou passe-le à un collègue.")
         head.setWordWrap(True)
         lay.addWidget(head)
@@ -19545,7 +19550,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
-        "👤 Profils utilisateur": "Tes préférences (affichage, couleurs, seuils, alarmes, préréglages perso) dans un\n"
+        "👤 Profils utilisateur": "Tes préférences (affichage, disposition des fenêtres, couleurs, seuils, alarmes, préréglages perso) dans un\n"
                                  "fichier : à recharger sur n'importe quel PC ou à passer à un collègue.",
         "⚡ Préréglages rapides": "Festival plein air, salle, nuit de surveillance, scan de repérage : règle d'un coup\n"
                                  "les seuils, la mesure, la rémanence et les alarmes (tu vois ce qui change avant).",
@@ -26896,8 +26901,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_config(user_apply(self._collect_config(True), doc))
         if "ui_level" in doc["prefs"]:
             self.set_level(doc["prefs"]["ui_level"])
+        self.user_apply_layout(doc["prefs"].get("layout"))
         self.user_name = doc["name"]
-        self.set_status(f"👤 Profil « {doc['name']} » chargé : affichage, seuils, alarmes et préréglages perso appliqués.")
+        self.set_status(f"👤 Profil « {doc['name']} » chargé : affichage, disposition des fenêtres, seuils, alarmes et préréglages perso appliqués.")
+        return True
+
+    def user_apply_layout(self, lay):
+        """7.57.1 : disposition des fenêtres d'un profil (taille de la fenêtre, panneaux, vraies fenêtres)."""
+        if not isinstance(lay, dict) or int(lay.get("layout_ver", 0) or 0) < LAYOUT_VER:
+            return False
+        try:
+            if self.wall_is_fullscreen():
+                self.wall_fullscreen(False)
+            self.panel_attach_all()
+            if lay.get("geometry"):
+                self.restoreGeometry(QtCore.QByteArray.fromBase64(str(lay["geometry"]).encode()))
+            if lay.get("docks"):
+                self.restoreState(QtCore.QByteArray.fromBase64(str(lay["docks"]).encode()))
+            self.panel_restore(lay.get("panel_windows"))
+        except Exception:  # noqa: BLE001 — écran absent, données illisibles : on garde la disposition actuelle
+            return False
         return True
 
     def open_user_profiles(self):
