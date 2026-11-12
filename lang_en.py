@@ -1138,7 +1138,6 @@ EXACT = {
     'La langue changera au prochain démarrage. Redémarrer maintenant ?\nThe language will change at the next start. Restart now?': 'The language will change at the next start. Restart now?\nLa langue changera au prochain démarrage. Redémarrer maintenant ?',
     '\n(plan modifié par toi)': '\n(plan edited by you)',
     '\n0 = ignoré.': '\n0 = ignored.',
-    '\n470-694|pmse|UHF : DVB-T éteint (2019), micros HF : vérifier OFCOM|\n': '\n470-694|pmse|UHF: DVB-T switched off (2019), wireless mics: check with OFCOM|\n',
     "\nAucune combinaison de ces émetteurs n'explique ce signal : il vient peut-être d'ailleurs (émetteur absent de la liste, intermod dans un ampli, source extérieure…).": '\nNo combination of these transmitters explains this signal: it may come from elsewhere (transmitter missing from the list, intermod in an amplifier, external source…).',
     "\nDécoché : la vue n'apparaît pas sur la page.": '\nUnticked: the view does not appear on the page.',
     '\nIndicatif : vérifie toujours auprès du régulateur de ton pays.': "\nIndicative only: always check with your country's regulator.",
@@ -1848,7 +1847,6 @@ EXACT = {
     'Mesure': 'Measurement',
     'Mesuré dBm': 'Measured dBm',
     'Micros HF / PMSE': 'Wireless mics / PMSE',
-    'Micros HF : enregistrement requis, intérieur': 'Wireless mics: registration required, indoor',
     'Micros HF libres 863-865 MHz (10 mW)': 'Licence-free wireless mics 863-865 MHz (10 mW)',
     'Micros HF professionnels sans licence (Allemagne)': 'Licence-free professional wireless mics (Germany)',
     'Mobile 2G / 3G / 4G / 5G': 'Mobile 2G / 3G / 4G / 5G',
@@ -1997,16 +1995,6 @@ EXACT = {
     'Plage (liste complète) :': 'Range (full list):',
     'Plan : la couche active': 'Plan: the active layer',
     'Plan : toute la liste': 'Plan: the whole list',
-    'Plan harmonisé CEPT / UIT région 1, indicatif.': 'Harmonised CEPT / ITU region 1 plan, indicative.',
-    'Plan indicatif (ANFR / TNRBF). 470-694 MHz partagés TNT (canaux 21-48, canal 38 compris) / micros HF ; 700 et 800 MHz attribués à la 4G/5G ; 823-832, 863-865 et 1785-1805 MHz libres pour les micros HF ; 380-400 MHz : réseaux police / pompiers / secours.': 'Indicative plan (ANFR / TNRBF). 470-694 MHz shared between DTT (channels 21-48, channel 38 included) / wireless mics; 700 and 800 MHz allocated to 4G/5G; 823-832, 863-865 and 1785-1805 MHz free for wireless mics; 380-400 MHz: police / fire / emergency networks.',
-    'Plan indicatif (Agentschap Telecom).': 'Indicative plan (Agentschap Telecom).',
-    'Plan indicatif (BNetzA). DVB-T2 sur les canaux 21-48 ; 736-753 MHz micros HF sans licence ; 823-832 MHz et 1785-1805 MHz libres.': 'Indicative plan (BNetzA). DVB-T2 on channels 21-48; 736-753 MHz licence-free wireless mics; 823-832 MHz and 1785-1805 MHz free.',
-    'Plan indicatif (CNMC / SETID). 700 MHz libéré en 2020.': 'Indicative plan (CNMC / SETID). 700 MHz cleared in 2020.',
-    'Plan indicatif (FCC). Canaux TV de 6 MHz ; bande 600 MHz vendue aux opérateurs mobiles ; micros HF limités après 2020.': 'Indicative plan (FCC). 6 MHz TV channels; 600 MHz band sold to mobile operators; wireless mics restricted after 2020.',
-    'Plan indicatif (IBPT). Usage de la TNT très réduit : à vérifier.': 'Indicative plan (BIPT). Very little DTT use: to be checked.',
-    'Plan indicatif (MIMIT/AGCOM). Transition DVB-T2 : à vérifier.': 'Indicative plan (MIMIT/AGCOM). DVB-T2 transition: to be checked.',
-    "Plan indicatif (OFCOM). DVB-T arrêté en 2019 : à vérifier pour l'usage des micros HF en UHF.": 'Indicative plan (OFCOM). DVB-T stopped in 2019: check wireless mic use in UHF.',
-    'Plan proche des USA (ISED). Canaux TV de 6 MHz ; vérifier les règles canadiennes.': 'Plan close to the USA (ISED). 6 MHz TV channels; check the Canadian rules.',
     'Plein écran sur cet écran (F11 ; Échap pour sortir).': 'Full screen on this screen (F11; Esc to exit).',
     "Plusieurs personnes ? Chacun s'abonne au même canal sur son téléphone.": 'Several people? Everyone subscribes to the same channel on their phone.',
     'Points': 'Points',
@@ -5040,16 +5028,8 @@ EXACT.update({
 EXACT.update({
     "AU": "AU", "JP": "JP", "NZ": "NZ",
     "Australie": "Australia", "Japon": "Japan", "Nouvelle-Zélande": "New Zealand",
-    "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de 7 MHz) ; 694-820 MHz interdit depuis 2015.":
-        "Indicative plan (ACMA, 2025 LIPD class licence). Wireless mics in the free TV channels of 520-694 MHz (7 MHz channels); 694-820 MHz banned since 2015.",
-    "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37), plus quelques bouts : 614-616 MHz et une partie de 653-663 MHz ; 941-960 et 1435-1525 MHz avec licence.":
-        "Indicative plan (FCC). 6 MHz TV channels; wireless mics on 470-608 MHz (except channel 37), plus a few slices: 614-616 MHz and part of 653-663 MHz; 941-960 and 1435-1525 MHz with a licence.",
     "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée 710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.":
         "Indicative plan (MIC). Mics in the TV white spaces 470-710 MHz (6 MHz channels) + dedicated band 710-714 MHz; low-power mics also on 806-810 and 1240-1260 MHz.",
-    "Plan indicatif (Ofcom). Micros HF dans le spectre TV entrelacé ≈ 470-702 MHz (coordonné par Ofcom) ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 703-790 MHz interdit depuis 2020.":
-        "Indicative plan (Ofcom). Wireless mics in the interleaved TV spectrum ≈ 470-702 MHz (coordinated by Ofcom); channel 38 (606-614): shared Ofcom licence; channel 70 (863-865) licence-free; 703-790 MHz banned since 2020.",
-    "Plan indicatif (RSM). Micros HF sur 502-606 MHz (licences GUSL 272800 et GURL-SRD) ; 622-698 MHz à vérifier (envisagé pour la 5G) ; 698-806 MHz interdit depuis 2015.":
-        "Indicative plan (RSM). Wireless mics on 502-606 MHz (GUSL 272800 and GURL-SRD licences); 622-698 MHz to be checked (considered for 5G); 698-806 MHz banned since 2015.",
 })
 TEMPLATES.update({"Canal UHF {} (7 MHz) : {}-{} MHz": "UHF channel {} (7 MHz): {}-{} MHz",
                   "Canal UHF {} (6 MHz) : {}-{} MHz": "UHF channel {} (6 MHz): {}-{} MHz"})
@@ -5201,3 +5181,49 @@ TEMPLATES.update({
 })
 EXACT.update({"Pas à pas pour un nouveau show : le show (pays, lieu), tes micros, le scan du lieu,\nles canaux TNT, puis « Prêt pour le show ? ».":
               "Step by step for a new show: the show (country, venue), your mics, the venue scan,\nthe DTT channels, then « Ready for the show? »."})
+
+# 7.59.1 : bandes par pays revérifiées (tableau CEPT EFIS)
+EXACT.update({
+    '604-614 MHz : pas pour les micros sans licence (608-614 : licence, radioastronomie)':
+        '604-614 MHz: not for licence-free mics (608-614: licence, radio astronomy)',
+    '608-614 MHz : interdit près de Bleien (radioastronomie)':
+        '608-614 MHz: not allowed near Bleien (radio astronomy)',
+    '608-614 MHz : radioastronomie, interdit aux micros (Allemagne)':
+        '608-614 MHz: radio astronomy, not allowed for mics (Germany)',
+    'Bande de garde 700 MHz : micros HF (licence Ofcom)':
+        '700 MHz guard band: wireless mics (Ofcom licence)',
+    'Micros HF (Italie, limité)':
+        'Wireless mics (Italy, limited)',
+    'Micros HF en intérieur (Allemagne)':
+        'Wireless mics indoors (Germany)',
+    'Micros HF sans licence (Pays-Bas)':
+        'Licence-free wireless mics (Netherlands)',
+    'UHF : DVB-T éteint (2019), micros HF autorisés (50 mW)':
+        'UHF: DVB-T switched off (2019), wireless mics allowed (50 mW)',
+    'Plan harmonisé indicatif (CEPT, décision 2014/641/UE) : 470-694 MHz dans les canaux TV libres, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; le reste dépend du pays.':
+        'Indicative harmonised plan (CEPT, decision 2014/641/EU): 470-694 MHz in the free TV channels, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; the rest depends on the country.',
+    'Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de 7 MHz) et sur 1790-1800 MHz ; 694-820 MHz interdit depuis 2015.':
+        'Indicative plan (ACMA, 2025 LIPD class licence). Wireless mics in the free TV channels of 520-694 MHz (7 MHz channels) and on 1790-1800 MHz; 694-820 MHz forbidden since 2015.',
+    'Plan indicatif (ANFR / ARCEP ; tableau CEPT, 2026). Micros HF en usage secondaire, 50 mW : 470-694 MHz partagés avec la TNT (canaux 21-48, canal 38 compris), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 MHz sur autorisation temporaire ; 694-790 MHz interdit depuis le 1er juillet 2019 ; 380-400 MHz : réseaux police / pompiers / secours.':
+        'Indicative plan (ANFR / ARCEP; CEPT table, 2026). Wireless mics on a secondary basis, 50 mW: 470-694 MHz shared with DTT (channels 21-48, channel 38 included), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; 1350-1400 MHz with a temporary licence; 694-790 MHz forbidden since 1 July 2019; 380-400 MHz: police / fire / emergency networks.',
+    'Plan indicatif (BNetzA ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz SAUF 608-614 MHz (radioastronomie), 174-230 MHz, 736-753 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 et 1518-1525 MHz en intérieur.':
+        'Indicative plan (BNetzA; CEPT table, 2026). Wireless mics, 50 mW: 470-694 MHz EXCEPT 608-614 MHz (radio astronomy), 174-230 MHz, 736-753 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; 1350-1400 and 1518-1525 MHz indoors.',
+    'Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37, 608-614), bande de garde 614-616 MHz (sans licence), 653-657 MHz (avec licence) et 657-663 MHz (sans licence) ; 902-928 MHz (ISM), 1920-1930 MHz (DECT) ; morceaux de 941-960 MHz et 1435-1525 MHz avec licence.':
+        'Indicative plan (FCC). 6 MHz TV channels; wireless mics on 470-608 MHz (except channel 37, 608-614), 614-616 MHz guard band (unlicensed), 653-657 MHz (licensed) and 657-663 MHz (unlicensed); 902-928 MHz (ISM), 1920-1930 MHz (DECT); parts of 941-960 MHz and 1435-1525 MHz with a licence.',
+    "Plan indicatif (IBPT ; tableau CEPT, 2026). Micros HF : 470-694 MHz (le tableau CEPT indique même 470-786 MHz possible : à confirmer auprès de l'IBPT), 821,5-832 MHz, 863-865 MHz, 1785-1804,8 MHz.":
+        'Indicative plan (BIPT; CEPT table, 2026). Wireless mics: 470-694 MHz (the CEPT table even says 470-786 MHz possible: confirm with the BIPT), 821.5-832 MHz, 863-865 MHz, 1785-1804.8 MHz.',
+    'Plan indicatif (MIMIT ; tableau CEPT, 2026). Micros HF : 470-694 MHz, 174-223 MHz, 694-698 et 736-738 MHz, 823-832 MHz, 863-865 MHz, 1518-1525 MHz, 1785-1805 MHz.':
+        'Indicative plan (MIMIT; CEPT table, 2026). Wireless mics: 470-694 MHz, 174-223 MHz, 694-698 and 736-738 MHz, 823-832 MHz, 863-865 MHz, 1518-1525 MHz, 1785-1805 MHz.',
+    'Plan indicatif (OFCOM ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz (DVB-T éteint en 2019 ; 608-614 MHz interdit près de Bleien, radioastronomie), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 MHz en intérieur.':
+        'Indicative plan (OFCOM; CEPT table, 2026). Wireless mics, 50 mW: 470-694 MHz (DVB-T switched off in 2019; 608-614 MHz not allowed near Bleien, radio astronomy), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; 1350-1400 MHz indoors.',
+    'Plan indicatif (Ofcom ; tableau CEPT, 2026). Micros HF dans le spectre TV entrelacé 470-694 MHz (licence Ofcom, coordonné) + bande de garde 694-703 MHz ; canal 38 (606-614) : licence Ofcom partagée ; canal 70 (863-865) sans licence ; 823-832, 1518-1525 et 1785-1805 MHz avec licence ; 703-790 MHz interdit depuis 2020.':
+        'Indicative plan (Ofcom; CEPT table, 2026). Wireless mics in the interleaved TV spectrum 470-694 MHz (Ofcom licence, coordinated) + 694-703 MHz guard band; channel 38 (606-614): shared Ofcom licence; channel 70 (863-865) licence-free; 823-832, 1518-1525 and 1785-1805 MHz with a licence; 703-790 MHz forbidden since 2020.',
+    'Plan indicatif (RDI, ex-Agentschap Telecom ; tableau CEPT, 2026). Micros HF sans licence, 100 mW : 470-694 MHz SAUF 556-558, 564-566, 572-574, 580-582, 588-590 et 604-614 MHz (liaisons audio ; 608-614 : licence, radioastronomie de Westerbork), 736-753 MHz, 821,5-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 et 1518-1525 MHz avec licence.':
+        'Indicative plan (RDI, formerly Agentschap Telecom; CEPT table, 2026). Licence-free wireless mics, 100 mW: 470-694 MHz EXCEPT 556-558, 564-566, 572-574, 580-582, 588-590 and 604-614 MHz (audio links; 608-614: licence, Westerbork radio astronomy), 736-753 MHz, 821.5-832 MHz, 863-865 MHz, 1785-1805 MHz; 1350-1400 and 1518-1525 MHz with a licence.',
+    'Plan indicatif (RSM). Micros HF sur 502-606 MHz et 622-698 MHz (licences GUSL 272800 et GURL-SRD) ; 606-622 MHz exclu ; 698-806 MHz interdit depuis 2015.':
+        'Indicative plan (RSM). Wireless mics on 502-606 MHz and 622-698 MHz (GUSL 272800 and GURL-SRD licences); 606-622 MHz excluded; 698-806 MHz forbidden since 2015.',
+    'Plan indicatif (SETID ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz dans les canaux TV libres, 821,5-832 MHz, 863-865 MHz, 1785-1805 MHz ; 174-216 MHz : 5 canaux seulement ; 694-790 MHz interdit.':
+        'Indicative plan (SETID; CEPT table, 2026). Wireless mics, 50 mW: 470-694 MHz in the free TV channels, 821.5-832 MHz, 863-865 MHz, 1785-1805 MHz; 174-216 MHz: 5 channels only; 694-790 MHz forbidden.',
+    'Plan proche des USA (ISED). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, bande de garde 614-617 MHz et écart duplex 652-663 MHz (657-663 MHz : licence volontaire).':
+        'Plan close to the USA (ISED). 6 MHz TV channels; wireless mics on 470-608 MHz, 614-617 MHz guard band and 652-663 MHz duplex gap (657-663 MHz: voluntary licence).',
+})
