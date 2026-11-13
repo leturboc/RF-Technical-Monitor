@@ -61,6 +61,7 @@ import shutil
 import subprocess
 import socket
 import sys
+import subprocess
 import threading
 import time
 import tempfile
@@ -85,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.60.1"
+APP_VER = "7.60.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3755,13 +3756,40 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
     return out
 
 
+COORD_ORDERS = (("random", "🎲 Réparties au hasard (meilleur de 3 essais)"),
+                ("random1", "🎲 Réparties au hasard (1 essai, plus rapide)"),
+                ("low", "⬆ À la suite (la plus basse d'abord)"))
+COORD_TRIES = {"random": 3, "random1": 1, "low": 1}
+
+
+def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed, busy, max_check):
+    """La fréquence compatible la plus proche de `seed` dans [lo, hi] (None si aucune). 7.60.2 : recherche par
+    FENÊTRES qui s'élargissent autour de la graine (2, 6, 20, 60 MHz, puis tout) : pf_suggest ne contrôle plus
+    toute la bande au pas de l'appareil à chaque ajout (40 fréquences = 7 min 30 avant) ; même résultat, car on
+    garde la plus proche et une plus proche serait déjà dans la fenêtre."""
+    for w in (2.0, 6.0, 20.0, 60.0, None):
+        a = lo if w is None else max(lo, seed - w)
+        z = hi if w is None else min(hi, seed + w)
+        if z - a < step:
+            continue
+        sg = pf_suggest(len(F), F + [seed], T + [True], B + [0.0], SP + [new_sep], TL + [new_tol], None,
+                        lo=a, hi=z, step=step, n=1, busy=busy, max_check=max_check, filt=FL + [new_filt])
+        if sg:
+            return sg[0][0]
+        if w is None or (a <= lo and z >= hi):
+            break
+    return None
+
+
 def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, new_sep=PF_SEP, new_tol=None,
-            new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800):
+            new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800, order="low", rng=None):
     """Coordination automatique : n_new fréquences compatibles avec le plan existant (freqs, réglages par fréquence
     comme pf_check) ET entre elles, pour un appareil (new_sep / new_tol / new_filt, pas `step`), dans [lo, hi],
-    en évitant ce que busy(c) dit occupé. Ajout une par une (la plus basse compatible à chaque fois, comme un
-    logiciel de coordination qui remplit la bande), chaque ajout vérifié par pf_suggest (aucun problème pour elle,
-    aucun nouveau pour les autres). -> liste des MHz trouvés (peut être plus courte que n_new : bande pleine)."""
+    en évitant ce que busy(c) dit occupé. Ajout une par une, chaque ajout vérifié par pf_suggest (aucun problème pour
+    elle, aucun nouveau pour les autres). order « low » : la plus basse compatible d'abord (tout se tasse en bas de
+    la plage) ; « random » (7.60.2, Clément : « à la suite ça marche pas en général ») : à chaque ajout, la compatible
+    la plus proche d'un point tiré AU HASARD dans la plage -> fréquences réparties. rng = np.random.Generator.
+    -> liste des MHz trouvés (peut être plus courte que n_new : bande pleine)."""
     F = [float(x) for x in freqs]
     m = len(F)
     T = [True] * m if is_tx is None else [bool(x) for x in is_tx]
@@ -3770,14 +3798,20 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
     def per(x, d):
         return list(x) if isinstance(x, (list, tuple)) else [x] * m
     SP, TL, FL = per(sep, PF_SEP), per(tol, None), per(filt, 0.0)
+    rng = rng if rng is not None else np.random.default_rng()
     out = []
     for _k in range(int(n_new)):
-        seed = lo - step                                   # graine juste sous la plage : la plus basse d'abord
-        sg = pf_suggest(len(F), F + [seed], T + [True], B + [0.0], SP + [new_sep], TL + [new_tol], None,
-                        lo=lo, hi=hi, step=step, n=1, busy=busy, max_check=max_check, filt=FL + [new_filt])
-        if not sg:
+        if order == "low":
+            c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, lo - step, busy, max_check)
+        else:
+            c = None
+            for _t in range(3):              # graine malchanceuse (zone pleine) : on retire au hasard, puis tout
+                c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step,
+                             float(rng.uniform(lo, hi)) + 1e-7, busy, max_check)
+                if c is not None:
+                    break
+        if c is None:
             break
-        c = sg[0][0]
         out.append(c)
         F.append(c)
         T.append(True)
@@ -3788,33 +3822,55 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
     return out
 
 
-def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=800):
+def _fill_score(got):
+    """Pour garder le meilleur essai : le plus de fréquences trouvées, puis le plus grand écart minimum."""
+    allf = sorted(c for g in got for c in g)
+    gap = min((b - a for a, b in zip(allf, allf[1:])), default=0.0)
+    return (len(allf), gap)
+
+
+def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=800,
+                 order="low", tries=1, seed=None, progress=None, cancel=None):
     """Coordination entre appareils : plusieurs lots {n, sep, tol, filt, lo, hi, step} (ex. 8 × QLX-D + 6 × PSM 1000),
     cherchés l'un après l'autre ; chaque fréquence trouvée rejoint le plan avec les règles de SON appareil, donc les
-    lots suivants doivent lui être compatibles (et elle à eux : pf_suggest vérifie les deux sens).
-    -> une liste de MHz par lot (dans l'ordre des lots). Conseil : l'appareil le plus exigeant en premier."""
-    F = [float(x) for x in freqs]
-    m = len(F)
-    T = [True] * m if is_tx is None else [bool(x) for x in is_tx]
-    B = [0.0] * m if bws is None else [float(x or 0.0) for x in bws]
+    lots suivants doivent lui être compatibles (et elle à eux : pf_suggest vérifie les deux sens). order / tries
+    (7.60.2) : « random » refait le tirage `tries` fois et garde le meilleur (_fill_score). progress(essai, total)
+    et cancel() -> True (arrêt) sont facultatifs. -> une liste de MHz par lot (dans l'ordre des lots).
+    Conseil : l'appareil le plus exigeant en premier."""
+    rng = np.random.default_rng(seed)
+    best = None
+    n_try = max(1, int(tries)) if order != "low" else 1
+    for t in range(n_try):
+        if cancel is not None and cancel():
+            break
+        if progress is not None:
+            progress(t + 1, n_try)
+        F = [float(x) for x in freqs]
+        m = len(F)
+        T = [True] * m if is_tx is None else [bool(x) for x in is_tx]
+        B = [0.0] * m if bws is None else [float(x or 0.0) for x in bws]
 
-    def per(x):
-        return list(x) if isinstance(x, (list, tuple)) else [x] * m
-    SP, TL, FL = per(sep), per(tol), per(filt)
-    out = []
-    for lot in lots:
-        got = pf_fill(int(lot.get("n", 0)), F, T, B, SP, TL, FL, lot.get("sep", PF_SEP), lot.get("tol"),
-                      lot.get("filt", 0.0), lot.get("lo", 470.0), lot.get("hi", 694.0), lot.get("step", 0.025), busy,
-                      max_check)
-        out.append(got)
-        for c in got:
-            F.append(c)
-            T.append(True)
-            B.append(0.0)
-            SP.append(lot.get("sep", PF_SEP))
-            TL.append(lot.get("tol"))
-            FL.append(lot.get("filt", 0.0))
-    return out
+        def per(x):
+            return list(x) if isinstance(x, (list, tuple)) else [x] * m
+        SP, TL, FL = per(sep), per(tol), per(filt)
+        out = []
+        for lot in lots:
+            got = pf_fill(int(lot.get("n", 0)), F, T, B, SP, TL, FL, lot.get("sep", PF_SEP), lot.get("tol"),
+                          lot.get("filt", 0.0), lot.get("lo", 470.0), lot.get("hi", 694.0), lot.get("step", 0.025),
+                          busy, max_check, order="low" if order == "low" else "random", rng=rng)
+            out.append(got)
+            for c in got:
+                F.append(c)
+                T.append(True)
+                B.append(0.0)
+                SP.append(lot.get("sep", PF_SEP))
+                TL.append(lot.get("tol"))
+                FL.append(lot.get("filt", 0.0))
+        if best is None or _fill_score(out) > _fill_score(best):
+            best = out
+        if sum(len(g) for g in out) >= sum(int(l.get("n", 0)) for l in lots) and order == "low":
+            break
+    return best if best is not None else [[] for _l in lots]
 
 
 def im3_clash(c, F, guard, guard3=None):
@@ -19586,9 +19642,25 @@ class CoordDialog(QtWidgets.QDialog):
         lv.addWidget(self.lot_hint)
         lay.addWidget(lbox)
         go = QtWidgets.QPushButton("🪄 Chercher")
-        go.setToolTip("Cherche les fréquences (quelques secondes avec beaucoup d'émetteurs).")
+        self.go_btn, self._job = go, None
+        go.setToolTip("Cherche les fréquences. Le calcul tourne en arrière-plan : l'appli reste utilisable, et le bouton\n"
+                      "devient « Annuler le calcul » pendant ce temps.")
         go.clicked.connect(lambda *_: self.compute())
-        lay.addWidget(go)
+        # 7.60.2 (Clément : « une méthode aléatoire aussi, à la suite ça fonctionne pas en général »)
+        self.order_combo = QtWidgets.QComboBox()
+        for k_, lab_ in COORD_ORDERS:
+            self.order_combo.addItem(lab_, k_)
+        self.order_combo.setCurrentIndex(max(0, self.order_combo.findData(o.plan_opts.get("coord_order", "random"))))
+        self.order_combo.setToolTip("Comment placer les nouvelles fréquences :\n"
+                                    "🎲 au hasard : chaque fréquence part d'un point tiré au hasard dans la plage, donc\n"
+                                    "elles sont réparties ; « meilleur de 3 essais » refait le tirage 3 fois et garde\n"
+                                    "celui qui en trouve le plus (puis le plus espacé). Bien plus rapide avec beaucoup\n"
+                                    "de fréquences.\n"
+                                    "⬆ à la suite : la plus basse compatible d'abord, tout se tasse en bas de la plage\n"
+                                    "(lent et souvent moins bon avec beaucoup de fréquences).")
+        self.order_combo.currentIndexChanged.connect(
+            lambda *_: o.plan_opts.__setitem__("coord_order", self.order_combo.currentData()))
+        lay.addLayout(o._row(QtWidgets.QLabel("Méthode :"), self.order_combo, go))
         self.res = QtWidgets.QListWidget()
         self.res.setToolTip("Fréquences trouvées, compatibles avec ta liste et entre elles.")
         lay.addWidget(self.res, 1)
@@ -19674,7 +19746,16 @@ class CoordDialog(QtWidgets.QDialog):
         return d
 
     def compute(self):
+        """7.60.2 (Clément : 40 fréquences, plusieurs appareils -> plus de 90 s de calcul, interface figée, la garde
+        relançait l'appli) : le calcul tourne dans un fil à part (MainWindow.run_heavy) ; le bouton devient
+        « Annuler le calcul » pendant ce temps."""
         o = self.owner
+        if self._job is not None and not self._job["done"]:
+            self._job["cancel"] = True
+            self._job = None
+            self.go_btn.setText(TR("🪄 Chercher"))
+            self.msg.setText("Calcul annulé.")
+            return
         ws = list(o.watch)
         P = [rx_profile(o.rx_of(w)) or self._new_profile() for w in ws]
         busy = None
@@ -19684,19 +19765,41 @@ class CoordDialog(QtWidgets.QDialog):
                 lim = o.thr_spin.value()
                 win = max(0.05, o.win_spin.value() / 1000.0)
                 busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
-        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         lots = list(self.lots) or [self._lot_now()]
         spec = []
         for L_ in lots:
             d = self._lot_profile(L_["rx"])
             spec.append(dict(n=L_["n"], sep=d["sep"], tol=d["tol"], filt=d["filt"], lo=L_["lo"], hi=L_["hi"],
                              step=d["step"]))
-        try:
-            got = pf_fill_lots(spec, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
-                               [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P],
-                               [q["filt"] for q in P], o.reg_busy(busy))
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
+        args = (spec, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
+                [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P],
+                [q["filt"] for q in P], o.reg_busy(busy))
+        self.res.clear()
+        self.go_btn.setText(TR("■ Annuler le calcul"))
+        order = self.order_combo.currentData() or "random"
+        info = {}
+        self._job = o.run_heavy(
+            lambda: pf_fill_lots(*args, order="low" if order == "low" else "random", tries=COORD_TRIES.get(order, 1),
+                                 progress=lambda k, n: info.update(step=(k, n)),
+                                 cancel=lambda: bool(self._job is None or self._job.get("cancel"))),
+            lambda got, err: self._computed(lots, got, err), self.msg, "Recherche des fréquences",
+            status=lambda: (TR("essai {} / {}").format(*info["step"]) if info.get("step") and info["step"][1] > 1
+                            else ""))
+
+    def closeEvent(self, e):
+        if self._job is not None:
+            self._job["cancel"] = True             # le fil finit seul en arrière-plan ; son résultat est ignoré
+            self._job = None
+            self.go_btn.setText(TR("🪄 Chercher"))
+        super().closeEvent(e)
+
+    def _computed(self, lots, got, err):
+        o = self.owner
+        self._job = None
+        self.go_btn.setText(TR("🪄 Chercher"))
+        if err is not None:
+            self.msg.setText(f"Calcul impossible : {err}")
+            return
         self.found = [(L_, c) for L_, cs in zip(lots, got) for c in cs]
         self.res.clear()
         for L_, cs in zip(lots, got):
@@ -22800,6 +22903,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if isinstance(po, dict):
             if rx_profile(po.get("prof")) is not None:
                 self.plan_opts["prof"] = po["prof"]
+            if po.get("coord_order") in dict(COORD_ORDERS):
+                self.plan_opts["coord_order"] = po["coord_order"]
             for k_ in ("sep", "filt", "step"):
                 try:
                     self.plan_opts[k_] = float(po[k_]) if k_ == "filt" else int(po[k_])
@@ -28341,6 +28446,44 @@ class MainWindow(QtWidgets.QMainWindow):
             if k not in alive:
                 seen.pop(k, None)
 
+    # ---------------------------------------------------------------- 7.60.2 : calculs longs hors de l'interface
+    def run_heavy(self, fn, done, label=None, what="Calcul", status=None):
+        """Lance fn() (calcul PUR, sans Qt) dans un fil à part ; done(résultat, erreur) est appelé ensuite dans le fil
+        de l'interface. L'appli reste réactive pendant un long calcul : le battement de la garde continue (avant :
+        une coordination de 40 fréquences figeait l'interface plus de 90 s et la garde la relançait).
+        -> job {done, cancel} ; mettre job["cancel"] = True pour ignorer le résultat."""
+        job = dict(res=None, err=None, done=False, cancel=False, t0=time.time())
+
+        def work():
+            try:
+                job["res"] = fn()
+            except Exception as e:  # noqa: BLE001
+                job["err"] = e
+            job["done"] = True
+        threading.Thread(target=work, daemon=True, name="calcul").start()
+        tm = QtCore.QTimer(self)
+        tm.setInterval(250)
+
+        def poll():
+            if job["cancel"]:
+                tm.stop()
+                tm.deleteLater()
+                return
+            if job["done"]:
+                tm.stop()
+                tm.deleteLater()
+                done(job["res"], job["err"])
+            elif label is not None:
+                try:
+                    st = status() if status is not None else ""
+                    label.setText(f"⏳ {TR(what)} en cours… {int(time.time() - job['t0'])} s"
+                                  + (f" · {st}" if st else "") + " (l'appli reste utilisable)")
+                except RuntimeError:              # fenêtre fermée entre-temps
+                    job["cancel"] = True
+        tm.timeout.connect(poll)
+        tm.start()
+        return job
+
     # ---------------------------------------------------------------- 7.60 : bandes autorisées du pays
     def country_code(self):
         return self.country_combo.currentData() or "FR"
@@ -30695,6 +30838,51 @@ def _guard_env(beat, restarted):
     return env
 
 
+def _beat_pid(beat):
+    """N° de processus de l'appli écrit dans le battement (7.60.2), ou None."""
+    try:
+        parts = Path(beat).read_text(encoding="utf-8").split()
+        return int(parts[1]) if len(parts) > 1 else None
+    except (OSError, ValueError):
+        return None
+
+
+def _pid_alive(pid):
+    """Le processus pid tourne-t-il encore ?"""
+    if not pid:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            h = k.OpenProcess(0x1000 | 0x00100000, False, int(pid))   # QUERY_LIMITED_INFORMATION | SYNCHRONIZE
+            if not h:
+                return False
+            try:
+                return k.WaitForSingleObject(h, 0) == 0x102           # WAIT_TIMEOUT = encore vivant
+            finally:
+                k.CloseHandle(h)
+        except Exception:  # noqa: BLE001
+            return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _kill_pid(pid):
+    try:
+        if os.name == "nt":
+            subprocess.run("taskkill /F /T /PID".split() + [str(pid)], capture_output=True, timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            import signal
+            os.kill(int(pid), signal.SIGKILL)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _kill_tree(pr):
     """Ferme de force l'appli ET ses processus enfants. L'exe PyInstaller « un seul fichier » = un lanceur + l'appli
     Python dans un 2ᵉ processus : tuer le seul lanceur laissait l'appli figée vivante (port COM gardé, puis 2 appli
@@ -30778,7 +30966,20 @@ def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_
                 return restarts
             if act == "kill":
                 why = f"figée (plus de signe de vie depuis {int(age if age is not None else now - t0)} s) : fermée de force"
+                app_pid = _beat_pid(beat)
                 _kill_tree(pr)
+                # 7.60.2 (Clément : « l'autre s'est pas arrêtée, le tiny est bloqué ») : on vise AUSSI l'appli par son
+                # propre n° (écrit dans le battement) et on attend qu'elle soit vraiment fermée avant de relancer —
+                # sinon la nouvelle n'a pas le port COM.
+                for _try in range(6):
+                    if not _pid_alive(app_pid):
+                        break
+                    _kill_pid(app_pid)
+                    time.sleep(2.0)
+                if _pid_alive(app_pid):
+                    note(f"⚠ l'appli figée (processus {app_pid}) ne se ferme pas : le port du tinySA peut rester pris")
+                elif app_pid:
+                    note(f"appli figée (processus {app_pid}) bien fermée")
             else:
                 why = f"arrêtée avec le code {pr.returncode} (plantage)"
             break
@@ -30802,7 +31003,7 @@ def guard_beat(path=None):
     if not path:
         return False
     try:
-        Path(path).write_text(str(time.time()), encoding="utf-8")
+        Path(path).write_text(f"{time.time()} {os.getpid()}", encoding="utf-8")   # 7.60.2 : + n° du processus
         return True
     except OSError:
         return False

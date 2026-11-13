@@ -5334,3 +5334,25 @@ TEMPLATES.update({
     '⚠ Réglementation inconnue pour {} : propositions NON vérifiées réglementairement.': '⚠ Unknown regulations for {}: suggestions NOT checked against the regulations.',
     "Aucune liste de bandes autorisées pour {} : rien n'est vérifié réglementairement (renseigne-toi auprès du régulateur).": 'No list of allowed bands for {}: nothing is checked against the regulations (ask the regulator).',
 })
+# 7.60.2 : calculs en arrière-plan, coordination au hasard, garde
+EXACT.update({
+    " (l'appli reste utilisable)": ' (the app stays usable)',
+    'Calcul': 'Calculation',
+    'Calcul annulé.': 'Calculation cancelled.',
+    "Cherche les fréquences. Le calcul tourne en arrière-plan : l'appli reste utilisable, et le bouton\ndevient « Annuler le calcul » pendant ce temps.": 'Searches the frequencies. The calculation runs in the background: the app stays usable, and the button\nbecomes "Cancel the calculation" meanwhile.',
+    "Comment placer les nouvelles fréquences :\n🎲 au hasard : chaque fréquence part d'un point tiré au hasard dans la plage, donc\nelles sont réparties ; « meilleur de 3 essais » refait le tirage 3 fois et garde\ncelui qui en trouve le plus (puis le plus espacé). Bien plus rapide avec beaucoup\nde fréquences.\n⬆ à la suite : la plus basse compatible d'abord, tout se tasse en bas de la plage\n(lent et souvent moins bon avec beaucoup de fréquences).": 'How to place the new frequencies:\n🎲 at random: each frequency starts from a random point in the range, so\nthey are spread out; "best of 3 tries" draws 3 times and keeps the one\nthat finds the most (then the most spaced). Much faster with many\nfrequencies.\n⬆ one after the other: the lowest compatible first, everything packs at the bottom of the range\n(slow and often worse with many frequencies).',
+    'Méthode :': 'Method:',
+    'Recherche des fréquences': 'Frequency search',
+    '■ Annuler le calcul': '■ Cancel the calculation',
+    "⬆ À la suite (la plus basse d'abord)": '⬆ One after the other (lowest first)',
+    '🎲 Réparties au hasard (1 essai, plus rapide)': '🎲 Spread at random (1 try, faster)',
+    '🎲 Réparties au hasard (meilleur de 3 essais)': '🎲 Spread at random (best of 3 tries)',
+})
+TEMPLATES.update({
+    'essai {} / {}': 'try {} / {}',
+    '⏳ {} en cours… {} s': '⏳ {} in progress… {} s',
+    'Calcul impossible : {}': 'Calculation impossible: {}',
+    'appli figée (processus {}) bien fermée': 'frozen app (process {}) properly closed',
+    "⚠ l'appli figée (processus {}) ne se ferme pas : le port du tinySA peut rester pris": '⚠ the frozen app (process {}) does not close: the tinySA port may stay taken',
+})
+EXACT['essai {} / {}'] = 'try {} / {}'
