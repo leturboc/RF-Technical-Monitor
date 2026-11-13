@@ -1639,6 +1639,12 @@ ok("7.60 : détail : puissance, sources et date", "50 mW e.r.p." in _det and "CE
    and "novembre 2026" in _det, _det)
 ok("7.60 : chaque pays de la liste a des plages autorisées et des sources",
    all(ns["country_bands"](c)["allowed"] and ns["country_bands"](c)["sources"] for c, _n in ns["COUNTRIES"]))
+_lo = ns["lora_overlap"]
+ok("7.60 : LoRa : bande micros 863-865 hors LoRaWAN, 868,3 dedans (Europe)", _lo("FR", 864.0) == "" and _lo("FR", 868.3) == "EU863-870")
+ok("7.60 : LoRa : USA 905, Australie / NZ 920, Japon 921", _lo("US", 905.0) == "US902-928" and _lo("NZ", 920.0) == "AU915-928"
+   and _lo("JP", 921.0) == "AS920-923" and _lo("XX", 868.0) == "")
+_rc2 = ns["ready_checks"](dict(running=True, lora=["IEM 1 (905.000)"]))
+ok("7.60 : « Prêt ? » : émetteur dans une bande LoRa (info)", any(c["key"] == "lora" and c["level"] == "info" for c in _rc2))
 ok("7.60 : résumé lisible", ns["reg_summary"]("DE").startswith("174-230, 470-608, 614-694"))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

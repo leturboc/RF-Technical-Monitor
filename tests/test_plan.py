@@ -109,6 +109,13 @@ for _c, _f in (("DE", 610.0), ("CH", 610.0), ("NL", 610.0)):
     _p = ns["build_plan"](_c)
     ok(f"7.59.1 : {_c} 610 MHz = radioastronomie", "radioastronomie" in ns["describe_freq"](_f, _p, ns["tv_channels"](_c)).lower(),
        ns["describe_freq"](_f, _p, ns["tv_channels"](_c)))
+for _c in ("AU", "NZ", "JP"):
+    _p = ns["build_plan"](_c)
+    _d = ns["describe_freq"](922.0, _p, ns["tv_channels"](_c))
+    ok(f"7.60 : {_c} 922 MHz = LoRaWAN / ISM, plus de GSM-R européen", "lorawan" in _d.lower() and "gsm-r" not in _d.lower(), _d)
+ok("7.60 : Japon 808 MHz = micros basse puissance",
+   "micros" in ns["describe_freq"](808.0, ns["build_plan"]("JP"), ns["tv_channels"]("JP")).lower())
+ok("7.60 : Europe 868,3 MHz = LoRaWAN", "lorawan" in ns["describe_freq"](868.3, ns["build_plan"]("FR"), ns["tv_channels"]("FR")).lower())
 ok("7.59.1 : NZ 502-698", ns["country_uhf"]("NZ") == (502.0, 698.0))
 ok("7.59.1 : notes européennes tirées du tableau CEPT",
    all("CEPT" in ns["COUNTRY_NOTES"][c] for c in ("FR", "DE", "GB", "CH", "BE", "IT", "ES", "NL", "EU")))

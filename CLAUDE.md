@@ -1117,6 +1117,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (« novembre 2026 ») ; `country_bands` → power / sources / checked ; `reg_detail(pays, tr)` = bulle de `reg_lbl`
   (plage · condition · puissance, sources, date). Environnement de la session : + www.itu.int, www.ofcom.org.uk
   (bloqué par Cloudflare), www.bakom.admin.ch, apwpt.org, www.anfr.fr, www.bundesnetzagentur.de.
+  Puis **LoRaWAN / IoT** (Clément : thethingsnetwork.org « frequencies by country », site ajouté) : PURE `LORA_PLANS`
+  (EU863-870 : 867,0-868,6 / 868,7-868,9 / 869,4-869,65 + EU433 ; US902-928 ; AU915-928 ; AS920-923), `LORA_COUNTRY`,
+  `lora_overlap(pays, f, bw)` → `reg_info` « lora » → `ready_checks` clé « lora » (info). Bandeaux : PLAN_EU 433,05-434,79
+  et 865-870 (LoRaWAN), US 902-928 ; **AU / NZ / JP ont maintenant leurs propres bandeaux 790-960 MHz** (avant : plan
+  européen, « GSM-R (trains) » sur 915-925 = faux) : mobile « plan du pays », ISM / LoRa 915-928, JP 806-810 micros.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
