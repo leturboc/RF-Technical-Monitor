@@ -1150,6 +1150,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     suite 450-500 s, au hasard 1 essai 19,5 s, 0 problème au pf_check. `CoordDialog.order_combo` « Méthode »
     (`plan_opts["coord_order"]`, défaut random). Manuel (chapitre coordination). PlanCheck / secours / intermod
     restent dans le fil de l'interface (calculs courts).
+  - **Vitesse** : « occupé ? » vectorisé (PURE `level_at_many`, `busy_pred` avec `.vec`, `reg_allowed_pred(...).vec`,
+    `MainWindow.reg_busy` avec `.vec`) : `pf_suggest` filtre toutes les candidates d'un coup ; `pf_suggest(..., skip,
+    stats)` + budget de vérifications partagé entre les fenêtres de `_pf_pick` (sans ça, un cas SANS place refaisait 800
+    vérifications exactes par fenêtre : 214 s → 55 s). Cas de gui_reel « coord par scène » (17 fréquences de démo, Wisycom
+    au pas de 5 kHz, aucune place) : ≈ 60 s, en arrière-plan. gui_reel : `coord_order` = random1 (8 min max sur la CI).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
