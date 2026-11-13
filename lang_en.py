@@ -5028,8 +5028,6 @@ EXACT.update({
 EXACT.update({
     "AU": "AU", "JP": "JP", "NZ": "NZ",
     "Australie": "Australia", "Japon": "Japan", "Nouvelle-Zélande": "New Zealand",
-    "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée 710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.":
-        "Indicative plan (MIC). Mics in the TV white spaces 470-710 MHz (6 MHz channels) + dedicated band 710-714 MHz; low-power mics also on 806-810 and 1240-1260 MHz.",
 })
 TEMPLATES.update({"Canal UHF {} (7 MHz) : {}-{} MHz": "UHF channel {} (7 MHz): {}-{} MHz",
                   "Canal UHF {} (6 MHz) : {}-{} MHz": "UHF channel {} (6 MHz): {}-{} MHz"})
@@ -5202,14 +5200,10 @@ EXACT.update({
         'UHF: DVB-T switched off (2019), wireless mics allowed (50 mW)',
     'Plan harmonisé indicatif (CEPT, décision 2014/641/UE) : 470-694 MHz dans les canaux TV libres, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; le reste dépend du pays.':
         'Indicative harmonised plan (CEPT, decision 2014/641/EU): 470-694 MHz in the free TV channels, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; the rest depends on the country.',
-    'Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de 7 MHz) et sur 1790-1800 MHz ; 694-820 MHz interdit depuis 2015.':
-        'Indicative plan (ACMA, 2025 LIPD class licence). Wireless mics in the free TV channels of 520-694 MHz (7 MHz channels) and on 1790-1800 MHz; 694-820 MHz forbidden since 2015.',
     'Plan indicatif (ANFR / ARCEP ; tableau CEPT, 2026). Micros HF en usage secondaire, 50 mW : 470-694 MHz partagés avec la TNT (canaux 21-48, canal 38 compris), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 MHz sur autorisation temporaire ; 694-790 MHz interdit depuis le 1er juillet 2019 ; 380-400 MHz : réseaux police / pompiers / secours.':
         'Indicative plan (ANFR / ARCEP; CEPT table, 2026). Wireless mics on a secondary basis, 50 mW: 470-694 MHz shared with DTT (channels 21-48, channel 38 included), 174-223 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; 1350-1400 MHz with a temporary licence; 694-790 MHz forbidden since 1 July 2019; 380-400 MHz: police / fire / emergency networks.',
     'Plan indicatif (BNetzA ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz SAUF 608-614 MHz (radioastronomie), 174-230 MHz, 736-753 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz ; 1350-1400 et 1518-1525 MHz en intérieur.':
         'Indicative plan (BNetzA; CEPT table, 2026). Wireless mics, 50 mW: 470-694 MHz EXCEPT 608-614 MHz (radio astronomy), 174-230 MHz, 736-753 MHz, 823-832 MHz, 863-865 MHz, 1785-1805 MHz; 1350-1400 and 1518-1525 MHz indoors.',
-    'Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37, 608-614), bande de garde 614-616 MHz (sans licence), 653-657 MHz (avec licence) et 657-663 MHz (sans licence) ; 902-928 MHz (ISM), 1920-1930 MHz (DECT) ; morceaux de 941-960 MHz et 1435-1525 MHz avec licence.':
-        'Indicative plan (FCC). 6 MHz TV channels; wireless mics on 470-608 MHz (except channel 37, 608-614), 614-616 MHz guard band (unlicensed), 653-657 MHz (licensed) and 657-663 MHz (unlicensed); 902-928 MHz (ISM), 1920-1930 MHz (DECT); parts of 941-960 MHz and 1435-1525 MHz with a licence.',
     "Plan indicatif (IBPT ; tableau CEPT, 2026). Micros HF : 470-694 MHz (le tableau CEPT indique même 470-786 MHz possible : à confirmer auprès de l'IBPT), 821,5-832 MHz, 863-865 MHz, 1785-1804,8 MHz.":
         'Indicative plan (BIPT; CEPT table, 2026). Wireless mics: 470-694 MHz (the CEPT table even says 470-786 MHz possible: confirm with the BIPT), 821.5-832 MHz, 863-865 MHz, 1785-1804.8 MHz.',
     'Plan indicatif (MIMIT ; tableau CEPT, 2026). Micros HF : 470-694 MHz, 174-223 MHz, 694-698 et 736-738 MHz, 823-832 MHz, 863-865 MHz, 1518-1525 MHz, 1785-1805 MHz.':
@@ -5224,8 +5218,6 @@ EXACT.update({
         'Indicative plan (RSM). Wireless mics on 502-606 MHz and 622-698 MHz (GUSL 272800 and GURL-SRD licences); 606-622 MHz excluded; 698-806 MHz forbidden since 2015.',
     'Plan indicatif (SETID ; tableau CEPT, 2026). Micros HF, 50 mW : 470-694 MHz dans les canaux TV libres, 821,5-832 MHz, 863-865 MHz, 1785-1805 MHz ; 174-216 MHz : 5 canaux seulement ; 694-790 MHz interdit.':
         'Indicative plan (SETID; CEPT table, 2026). Wireless mics, 50 mW: 470-694 MHz in the free TV channels, 821.5-832 MHz, 863-865 MHz, 1785-1805 MHz; 174-216 MHz: 5 channels only; 694-790 MHz forbidden.',
-    'Plan proche des USA (ISED). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, bande de garde 614-617 MHz et écart duplex 652-663 MHz (657-663 MHz : licence volontaire).':
-        'Plan close to the USA (ISED). 6 MHz TV channels; wireless mics on 470-608 MHz, 614-617 MHz guard band and 652-663 MHz duplex gap (657-663 MHz: voluntary licence).',
 })
 
 # 7.60 : bandes autorisées par pays (séparées de la plage balayée)
@@ -5244,3 +5236,40 @@ TEMPLATES.update({
     "Micros autorisés (indicatif) : {}\nBalayé : {}-{} MHz (mesurer n'est pas émettre).": 'Mics allowed (indicative): {}\nSwept: {}-{} MHz (measuring is not transmitting).',
     '{} émetteur(s) hors des bandes indiquées pour {} : {}. Indicatif : vérifie auprès du régulateur.': '{} transmitter(s) outside the bands listed for {}: {}. Indicative: check with the regulator.',
 })
+EXACT['Plan indicatif (FCC ; base ITU-R ENG 09/2026). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37, 608-614), bande de garde 614-616 MHz (sans licence, 20 mW), 653-657 MHz (avec licence) et 657-663 MHz (sans licence) ; 54-72, 76-88 et 174-216 MHz ; 902-928 MHz (ISM), 1920-1930 MHz (DECT) ; 169-172 MHz, morceaux de 941-960 MHz et 1435-1525 MHz avec licence.'] = 'Indicative plan (FCC; ITU-R ENG database 09/2026). 6 MHz TV channels; wireless mics on 470-608 MHz (except channel 37, 608-614), 614-616 MHz guard band (unlicensed, 20 mW), 653-657 MHz (licensed) and 657-663 MHz (unlicensed); 54-72, 76-88 and 174-216 MHz; 902-928 MHz (ISM), 1920-1930 MHz (DECT); 169-172 MHz, parts of 941-960 MHz and 1435-1525 MHz with a licence.'
+EXACT['Plan proche des USA (ISED ; base ITU-R ENG 09/2026). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, 54-72, 76-88 et 174-216 MHz ; bande de garde 614-616 MHz et 657-663 MHz sans licence, 653-657 MHz avec licence ; 902-928 et 1920-1930 MHz ; morceaux de 941-960 MHz et 1435-1492 MHz avec licence.'] = 'Plan close to the USA (ISED; ITU-R ENG database 09/2026). 6 MHz TV channels; wireless mics on 470-608 MHz, 54-72, 76-88 and 174-216 MHz; 614-616 MHz guard band and 657-663 MHz unlicensed, 653-657 MHz licensed; 902-928 and 1920-1930 MHz; parts of 941-960 MHz and 1435-1492 MHz with a licence.'
+EXACT['Plan indicatif (ACMA, licence LIPD 2025 ; base ITU-R ENG 09/2026). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de 7 MHz, 100 mW e.i.r.p.), sur 174-230 MHz et 1790-1800 MHz ; 694-820 MHz interdit depuis 2015.'] = 'Indicative plan (ACMA, 2025 LIPD class licence; ITU-R ENG database 09/2026). Wireless mics in the free TV channels of 520-694 MHz (7 MHz channels, 100 mW e.i.r.p.), on 174-230 MHz and 1790-1800 MHz; 694-820 MHz forbidden since 2015.'
+EXACT['Plan indicatif (MIC ; base ITU-R ENG 09/2026). Micros professionnels dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée 710-714 MHz, AVEC licence ; micros basse puissance sans licence sur 806-810 MHz ; 1240-1260 MHz avec licence.'] = 'Indicative plan (MIC; ITU-R ENG database 09/2026). Professional mics in the TV white spaces 470-710 MHz (6 MHz channels) + dedicated band 710-714 MHz, WITH a licence; low-power licence-free mics on 806-810 MHz; 1240-1260 MHz with a licence.'
+EXACT.update({
+    '10 mW e.i.r.p.': '10 mW e.i.r.p.',
+    '10 mW e.r.p.': '10 mW e.r.p.',
+    '100 mW e.i.r.p.': '100 mW e.i.r.p.',
+    '100 mW e.i.r.p. (823-826 main : 82 mW)': '100 mW e.i.r.p. (823-826 handheld: 82 mW)',
+    '20 mW': '20 mW',
+    '20 mW main / 100 mW corps e.i.r.p.': '20 mW handheld / 100 mW body-worn e.i.r.p.',
+    '20 mW main / 100 mW corps e.r.p.': '20 mW handheld / 100 mW body-worn e.r.p.',
+    '20 mW main / 50 mW corps e.i.r.p.': '20 mW handheld / 50 mW body-worn e.i.r.p.',
+    '20 à 50 mW e.i.r.p.': '20 to 50 mW e.i.r.p.',
+    '50 mW e.r.p.': '50 mW e.r.p.',
+    '50 mW e.r.p. (habituel)': '50 mW e.r.p. (usual)',
+    '82 mW e.i.r.p.': '82 mW e.i.r.p.',
+    'ACMA, licence LIPD 2025': 'ACMA, 2025 LIPD class licence',
+    'ANFR / ARCEP': 'ANFR / ARCEP',
+    'Bundesnetzagentur': 'Bundesnetzagentur',
+    'CEPT EFIS, ERC/REC 25-10 annexe 4': 'CEPT EFIS, ERC/REC 25-10 annex 4',
+    'FCC, § 74.802 et part 15': 'FCC, § 74.802 and part 15',
+    'IBPT': 'BIPT',
+    'ISED': 'ISED',
+    'ITU-R, base ENG/PMSE (09/2026)': 'ITU-R, ENG/PMSE database (09/2026)',
+    'MIMIT': 'MIMIT',
+    'OFCOM (Suisse)': 'OFCOM (Switzerland)',
+    'Ofcom': 'Ofcom',
+    'RDI': 'RDI',
+    'RSM': 'RSM',
+    'SETID': 'SETID',
+    'Sources : ': 'Sources: ',
+    'Vérifié en ': 'Checked in ',
+    'autorisé': 'allowed',
+    'novembre 2026': 'November 2026',
+})
+SAME_TEMPLATES += ["{}-{} MHz · "]

@@ -1108,6 +1108,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   condition, Régler = `open_country`) ; case `reg_chk` (`reg_only`, config sur la ligne `coord_tools=`, défaut vrai)
   + `reg_lbl` (« Micros autorisés … / Balayé … ») dans ⚙ › Pays. Manuel : chapitre `pays`, encadré « Balayé, autorisé,
   occupé ». Pays sans liste = pas de filtre. **Pas essayé par Clément.**
+  Puis (Clément transmet les sources conseillées : ITU, EFIS, régulateurs) : **base ITU-R ENG/PMSE 09/2026** lue
+  (xlsx R0A0700004B0001XLSE, couleurs de cases : indexed 19 = licence, 17 = sans licence, 16 = les deux, 18 = rien) →
+  Japon 470-714 AVEC licence (+ 806-810 sans, 1240-1260 licence), Canada 653-657 licence / 657-663 sans (comme les USA)
+  + VHF, 902-928, 941-960, 1435-1492, 1920-1930, Australie + 174-230, USA + 169-172. Contradictions ITU ↔ régulateur
+  (Suisse « licence » alors que l'OFCOM dit sans licence ; UK / FR 863-865) → **ordre de confiance : régulateur > CEPT
+  EFIS > ITU**. `COUNTRY_ALLOWED` = (début, fin, condition, puissance) ; `COUNTRY_SOURCES` + `REG_CHECKED`
+  (« novembre 2026 ») ; `country_bands` → power / sources / checked ; `reg_detail(pays, tr)` = bulle de `reg_lbl`
+  (plage · condition · puissance, sources, date). Environnement de la session : + www.itu.int, www.ofcom.org.uk
+  (bloqué par Cloudflare), www.bakom.admin.ch, apwpt.org, www.anfr.fr, www.bundesnetzagentur.de.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

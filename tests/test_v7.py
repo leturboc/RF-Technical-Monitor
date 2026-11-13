@@ -1629,6 +1629,16 @@ ok("7.60 : sans filtre (case décochée) : 608-614 possible", any(608.0 < x["f"]
 _rc = ns["ready_checks"](dict(running=True, reg_out=["HF 2 (611.000)"], country_name="Allemagne"))
 ok("7.60 : « Prêt ? » signale l'émetteur hors bandes", any(c["key"] == "reg" and c["level"] == "warn"
                                                            and c["fix"] == "open_country" for c in _rc))
+ok("7.60 : Japon 600 MHz = sous licence (base ITU), 808 MHz sans licence",
+   _rs("JP", 600.0) == ("cond", "licence") and _rs("JP", 808.0) == ("ok", ""))
+ok("7.60 : Canada 655 MHz sous licence, 660 MHz sans (base ITU, comme les USA)",
+   _rs("CA", 655.0) == ("cond", "licence") and _rs("CA", 660.0) == ("ok", ""))
+ok("7.60 : Australie 200 MHz (VHF) autorisé", _rs("AU", 200.0) == ("ok", ""))
+_det = ns["reg_detail"]("DE")
+ok("7.60 : détail : puissance, sources et date", "50 mW e.r.p." in _det and "CEPT EFIS" in _det and "ITU-R" in _det
+   and "novembre 2026" in _det, _det)
+ok("7.60 : chaque pays de la liste a des plages autorisées et des sources",
+   all(ns["country_bands"](c)["allowed"] and ns["country_bands"](c)["sources"] for c, _n in ns["COUNTRIES"]))
 ok("7.60 : résumé lisible", ns["reg_summary"]("DE").startswith("174-230, 470-608, 614-694"))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

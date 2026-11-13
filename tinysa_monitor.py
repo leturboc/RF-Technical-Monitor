@@ -1040,17 +1040,21 @@ COUNTRY_NOTES = {
           "1518-1525 MHz avec licence.",
     "EU": "Plan harmonisé indicatif (CEPT, décision 2014/641/UE) : 470-694 MHz dans les canaux TV libres, 823-832 MHz, "
           "863-865 MHz, 1785-1805 MHz ; le reste dépend du pays.",
-    "US": "Plan indicatif (FCC). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal 37, 608-614), bande de garde "
-          "614-616 MHz (sans licence), 653-657 MHz (avec licence) et 657-663 MHz (sans licence) ; 902-928 MHz (ISM), "
-          "1920-1930 MHz (DECT) ; morceaux de 941-960 MHz et 1435-1525 MHz avec licence.",
-    "CA": "Plan proche des USA (ISED). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, bande de garde 614-617 MHz et écart "
-          "duplex 652-663 MHz (657-663 MHz : licence volontaire).",
-    "AU": "Plan indicatif (ACMA, licence LIPD 2025). Micros HF dans les canaux TV libres de 520-694 MHz (canaux de "
-          "7 MHz) et sur 1790-1800 MHz ; 694-820 MHz interdit depuis 2015.",
+    "US": "Plan indicatif (FCC ; base ITU-R ENG 09/2026). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz (hors canal "
+          "37, 608-614), bande de garde 614-616 MHz (sans licence, 20 mW), 653-657 MHz (avec licence) et 657-663 MHz "
+          "(sans licence) ; 54-72, 76-88 et 174-216 MHz ; 902-928 MHz (ISM), 1920-1930 MHz (DECT) ; 169-172 MHz, "
+          "morceaux de 941-960 MHz et 1435-1525 MHz avec licence.",
+    "CA": "Plan proche des USA (ISED ; base ITU-R ENG 09/2026). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, 54-72, "
+          "76-88 et 174-216 MHz ; bande de garde 614-616 MHz et 657-663 MHz sans licence, 653-657 MHz avec licence ; "
+          "902-928 et 1920-1930 MHz ; morceaux de 941-960 MHz et 1435-1492 MHz avec licence.",
+    "AU": "Plan indicatif (ACMA, licence LIPD 2025 ; base ITU-R ENG 09/2026). Micros HF dans les canaux TV libres de "
+          "520-694 MHz (canaux de 7 MHz, 100 mW e.i.r.p.), sur 174-230 MHz et 1790-1800 MHz ; 694-820 MHz interdit "
+          "depuis 2015.",
     "NZ": "Plan indicatif (RSM). Micros HF sur 502-606 MHz et 622-698 MHz (licences GUSL 272800 et GURL-SRD) ; "
           "606-622 MHz exclu ; 698-806 MHz interdit depuis 2015.",
-    "JP": "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée "
-          "710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.",
+    "JP": "Plan indicatif (MIC ; base ITU-R ENG 09/2026). Micros professionnels dans les espaces blancs TV 470-710 MHz "
+          "(canaux de 6 MHz) + bande dédiée 710-714 MHz, AVEC licence ; micros basse puissance sans licence sur 806-810"
+          " MHz ; 1240-1260 MHz avec licence.",
 }
 
 # 7.60 (audit externe : « séparer ce qu'on balaye, ce qui est autorisé et ce qui est occupé ») : TROIS notions distinctes.
@@ -1061,36 +1065,71 @@ COUNTRY_NOTES = {
 #   3. ce qui est OCCUPÉ ici : la mesure (seuils, canaux TNT mesurés).
 # Condition : "" = utilisable sous les conditions générales (puissance limitée, usage secondaire) ; « licence » ;
 # « intérieur » ; « limité » (créneaux ou lieux restreints : voir la note du pays).
-COUNTRY_ALLOWED = {
-    "FR": [(174, 223, ""), (470, 694, ""), (823, 832, ""), (863, 865, ""), (1350, 1400, "licence"), (1785, 1805, "")],
-    "DE": [(174, 230, ""), (470, 608, ""), (614, 694, ""), (736, 753, ""), (823, 832, ""), (863, 865, ""),
-           (1350, 1400, "intérieur"), (1518, 1525, "intérieur"), (1785, 1805, "")],
-    "GB": [(174, 216, "limité"), (470, 703, "licence"), (823, 832, "licence"), (863, 865, ""), (1518, 1525, "licence"),
-           (1785, 1805, "licence")],
-    "CH": [(174, 223, ""), (470, 608, ""), (608, 614, "limité"), (614, 694, ""), (823, 832, ""), (863, 865, ""),
-           (1350, 1400, "intérieur"), (1785, 1805, "")],
-    "BE": [(174, 216, "limité"), (470, 694, ""), (821.5, 832, ""), (863, 865, ""), (1785, 1804.8, "")],
-    "NL": [(195, 202, ""), (470, 556, ""), (558, 564, ""), (566, 572, ""), (574, 580, ""), (582, 588, ""), (590, 604, ""),
-           (608, 614, "licence"), (614, 694, ""), (736, 753, ""), (821.5, 832, ""), (863, 865, ""),
-           (1350, 1400, "licence"), (1518, 1525, "licence"), (1785, 1805, "")],
-    "IT": [(174, 223, ""), (470, 694, ""), (694, 698, "limité"), (736, 738, "limité"), (823, 832, ""), (863, 865, ""),
-           (1518, 1525, ""), (1785, 1805, "")],
-    "ES": [(174, 180, "limité"), (470, 694, ""), (821.5, 832, ""), (863, 865, ""), (1785, 1805, "")],
-    "EU": [(470, 694, ""), (823, 832, ""), (863, 865, ""), (1785, 1805, "")],
-    "US": [(54, 72, ""), (76, 88, ""), (174, 216, ""), (470, 608, ""), (614, 616, ""), (653, 657, "licence"),
-           (657, 663, ""), (902, 928, ""), (941.5, 944, "licence"), (944, 952, "licence"), (952.85, 956.25, "licence"),
-           (956.45, 959.85, "licence"), (1435, 1525, "licence"), (1920, 1930, "")],
-    "CA": [(174, 216, ""), (470, 608, ""), (614, 617, ""), (652, 657, ""), (657, 663, "licence")],
-    "AU": [(520, 694, ""), (1790, 1800, "")],
-    "NZ": [(502, 606, ""), (622, 698, "")],
-    "JP": [(470, 714, ""), (806, 810, ""), (1240, 1260, "")],
+COUNTRY_ALLOWED = {        # (début, fin, condition, puissance max indiquée par la source ; "" = non précisée)
+    "FR": [(174, 223, "", "50 mW e.r.p."), (470, 694, "", "50 mW e.r.p."), (823, 832, "", "20 mW main / 100 mW corps e.i.r.p."),
+           (863, 865, "", "10 mW e.r.p."), (1350, 1400, "licence", ""), (1785, 1805, "", "20 à 50 mW e.i.r.p.")],
+    "DE": [(174, 230, "", "50 mW e.r.p."), (470, 608, "", "50 mW e.r.p."), (614, 694, "", "50 mW e.r.p."),
+           (736, 753, "", "50 mW e.r.p."), (823, 832, "", "100 mW e.i.r.p. (823-826 main : 82 mW)"),
+           (863, 865, "", "10 mW e.i.r.p."), (1350, 1400, "intérieur", "50 mW e.r.p."),
+           (1518, 1525, "intérieur", "50 mW e.r.p."), (1785, 1805, "", "82 mW e.i.r.p.")],
+    "GB": [(174, 216, "limité", "50 mW e.r.p."), (470, 703, "licence", "50 mW e.r.p."), (823, 832, "licence", ""),
+           (863, 865, "", ""), (1518, 1525, "licence", ""), (1785, 1805, "licence", "50 mW e.r.p.")],
+    "CH": [(174, 223, "", "50 mW e.r.p."), (470, 608, "", "50 mW e.r.p."), (608, 614, "limité", "50 mW e.r.p."),
+           (614, 694, "", "50 mW e.r.p."), (823, 832, "", "20 mW main / 100 mW corps e.i.r.p."),
+           (863, 865, "", "10 mW e.r.p."), (1350, 1400, "intérieur", ""), (1785, 1805, "", "20 à 50 mW e.i.r.p.")],
+    "BE": [(174, 216, "limité", ""), (470, 694, "", ""), (821.5, 832, "", ""), (863, 865, "", ""), (1785, 1804.8, "", "")],
+    "NL": [(195, 202, "", "100 mW e.i.r.p."), (470, 556, "", "100 mW e.i.r.p."), (558, 564, "", "100 mW e.i.r.p."),
+           (566, 572, "", "100 mW e.i.r.p."), (574, 580, "", "100 mW e.i.r.p."), (582, 588, "", "100 mW e.i.r.p."),
+           (590, 604, "", "100 mW e.i.r.p."), (608, 614, "licence", ""), (614, 694, "", "100 mW e.i.r.p."),
+           (736, 753, "", "50 mW e.r.p."), (821.5, 832, "", "20 mW main / 100 mW corps e.i.r.p."),
+           (863, 865, "", "10 mW e.r.p."), (1350, 1400, "licence", ""), (1518, 1525, "licence", ""),
+           (1785, 1805, "", "20 mW main / 50 mW corps e.i.r.p.")],
+    "IT": [(174, 223, "", ""), (470, 694, "", ""), (694, 698, "limité", ""), (736, 738, "limité", ""), (823, 832, "", ""),
+           (863, 865, "", ""), (1518, 1525, "", ""), (1785, 1805, "", "")],
+    "ES": [(174, 180, "limité", "50 mW e.r.p."), (470, 694, "", "50 mW e.r.p."),
+           (821.5, 832, "", "20 mW main / 100 mW corps e.r.p."), (863, 865, "", "10 mW e.r.p."), (1785, 1805, "", "")],
+    "EU": [(470, 694, "", "50 mW e.r.p. (habituel)"), (823, 832, "", "20 mW main / 100 mW corps e.i.r.p."),
+           (863, 865, "", "10 mW e.r.p."), (1785, 1805, "", "20 à 50 mW e.i.r.p.")],
+    "US": [(54, 72, "", ""), (76, 88, "", ""), (169, 172, "licence", ""), (174, 216, "", ""), (470, 608, "", ""),
+           (614, 616, "", "20 mW"), (653, 657, "licence", ""), (657, 663, "", "20 mW"), (902, 928, "", ""),
+           (941.5, 944, "licence", ""), (944, 952, "licence", ""), (952.85, 956.25, "licence", ""),
+           (956.45, 959.85, "licence", ""), (1435, 1525, "licence", ""), (1920, 1930, "", "")],
+    "CA": [(54, 72, "", ""), (76, 88, "", ""), (174, 216, "", ""), (470, 608, "", ""), (614, 616, "", ""),
+           (653, 657, "licence", ""), (657, 663, "", ""), (902, 928, "", ""), (941.5, 944, "licence", ""),
+           (944, 952, "licence", ""), (952.85, 956.25, "licence", ""), (956.85, 959.85, "licence", ""),
+           (1435, 1492, "licence", ""), (1920, 1930, "", "")],
+    "AU": [(174, 230, "", ""), (520, 694, "", "100 mW e.i.r.p."), (1790, 1800, "", "")],
+    "NZ": [(502, 606, "", ""), (622, 698, "", "")],
+    "JP": [(470, 714, "licence", ""), (806, 810, "", ""), (1240, 1260, "licence", "")],
+}
+# Sources (ordre de confiance : régulateur national > tableau CEPT EFIS > base ITU-R ENG/PMSE) et date de vérification.
+REG_CHECKED = "novembre 2026"
+_SRC_CEPT = ("CEPT EFIS, ERC/REC 25-10 annexe 4", "https://efis.cept.org/report/report2510AnnexImplementation.do?annexId=1")
+_SRC_ITU = ("ITU-R, base ENG/PMSE (09/2026)", "https://www.itu.int/en/ITU-R/study-groups/rsg6/rwp6a/Pages/engdb.aspx")
+COUNTRY_SOURCES = {
+    "FR": [("ANFR / ARCEP", "https://www.anfr.fr/"), _SRC_CEPT, _SRC_ITU],
+    "DE": [("Bundesnetzagentur", "https://www.bundesnetzagentur.de/"), _SRC_CEPT, _SRC_ITU],
+    "GB": [("Ofcom", "https://www.ofcom.org.uk/spectrum/radio-equipment/mics-monitors"), _SRC_CEPT, _SRC_ITU],
+    "CH": [("OFCOM (Suisse)", "https://www.bakom.admin.ch/en/radio_microphones"), _SRC_CEPT, _SRC_ITU],
+    "BE": [("IBPT", "https://www.ibpt.be/"), _SRC_CEPT, _SRC_ITU],
+    "NL": [("RDI", "https://www.rdi.nl/"), _SRC_CEPT, _SRC_ITU],
+    "IT": [("MIMIT", "https://www.mimit.gov.it/"), _SRC_CEPT, _SRC_ITU],
+    "ES": [("SETID", "https://avancedigital.mineco.gob.es/"), _SRC_CEPT, _SRC_ITU],
+    "EU": [_SRC_CEPT, _SRC_ITU],
+    "US": [("FCC, § 74.802 et part 15", "https://www.fcc.gov/wireless-microphones"), _SRC_ITU],
+    "CA": [("ISED", "https://www.ised-isde.canada.ca/site/spectrum-management-telecommunications/en/node/1621"), _SRC_ITU],
+    "AU": [("ACMA, licence LIPD 2025", "https://www.acma.gov.au/wireless-microphones"), _SRC_ITU],
+    "NZ": [("RSM", "https://www.rsm.govt.nz/licensing/frequencies-for-anyone/radio-microphone-devices-gusl"), _SRC_ITU],
+    "JP": [("MIC", "https://www.soumu.go.jp/main_content/001085598.pdf"), _SRC_ITU],
 }
 
 
 def country_bands(code):
     """Les deux premières notions pour un pays : {scan: (début, fin) balayé, allowed: [(début, fin, condition)]}."""
     c = str(code or "").upper()
-    return dict(scan=country_uhf(c), allowed=[(float(a), float(b), k) for a, b, k in COUNTRY_ALLOWED.get(c, [])])
+    return dict(scan=country_uhf(c), allowed=[(float(t[0]), float(t[1]), t[2]) for t in COUNTRY_ALLOWED.get(c, [])],
+                power=[(float(t[0]), float(t[1]), t[3] if len(t) > 3 else "") for t in COUNTRY_ALLOWED.get(c, [])],
+                sources=list(COUNTRY_SOURCES.get(c, [])), checked=REG_CHECKED)
 
 
 def reg_status(code, f, bw=0.0):
@@ -1140,6 +1179,20 @@ def reg_issues(code, items):
         elif st == "cond":
             cond.append((name, float(f), k))
     return out, cond
+
+
+def reg_detail(code, tr=None):
+    """Tableau texte, une plage par ligne : « 470-608 MHz · autorisé · 50 mW e.r.p. », puis les sources et la date."""
+    tr = tr or (lambda x: x)
+    d = country_bands(code)
+    if not d["allowed"]:
+        return ""
+    f = lambda v: f"{v:g}".replace(".", ",")
+    lines = []
+    for (a, b, k), (_a, _b, pw) in zip(d["allowed"], d["power"]):
+        lines.append(f"{f(a)}-{f(b)} MHz · " + tr(k or "autorisé") + (f" · {tr(pw)}" if pw else ""))
+    src = "; ".join(n for n, _u in d["sources"])
+    return "\n".join(lines) + "\n" + tr("Sources : ") + src + "\n" + tr("Vérifié en ") + tr(d["checked"])
 
 
 def reg_summary(code, tr=None):
@@ -27315,6 +27368,7 @@ class MainWindow(QtWidgets.QMainWindow):
             note += "\n(plan modifié par toi)"
         self.country_note.setText(note + "\nIndicatif : vérifie toujours auprès du régulateur de ton pays.")
         rs = reg_summary(code, TR)
+        self.reg_lbl.setToolTip(reg_detail(code, TR))
         a_, b_ = country_uhf(code)
         self.reg_lbl.setText(f"Micros autorisés (indicatif) : {rs}\nBalayé : {a_:g}-{b_:g} MHz (mesurer n'est pas "
                              f"émettre)." if rs else "")
