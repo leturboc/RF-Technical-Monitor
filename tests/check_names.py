@@ -42,3 +42,17 @@ for cls in [c for c in tree.body if isinstance(c, ast.ClassDef)]:
                 and isinstance(n.ctx, ast.Load) and n.attr not in defined:
             missing.setdefault(n.attr, n.lineno)
     print(f"[{cls.name}] self.* non définis ici (hérités de Qt ?):", sorted(missing))
+
+# 7.60.2 : noms non définis au niveau du module (pyflakes). Un « undefined name » dans un try / except avalé ne se
+# voit pas (cas réel : `subprocess` absent dans _kill_tree -> la garde ne fermait jamais l'appli figée sous Windows).
+try:
+    import subprocess as _sp, sys as _sys
+    _out = _sp.run([_sys.executable, "-m", "pyflakes", __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "tinysa_monitor.py")], capture_output=True, text=True).stdout
+    _bad = [l for l in _out.splitlines() if "undefined name" in l]
+    print("noms indéfinis (pyflakes) :", _bad or "aucun")
+    if _bad:
+        print("ÉCHECS: 1")
+        _sys.exit(1)
+    print("ÉCHECS: 0")
+except FileNotFoundError:
+    pass

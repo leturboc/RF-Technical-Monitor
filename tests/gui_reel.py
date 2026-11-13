@@ -46,6 +46,15 @@ def wait(ms):
     loop.exec()
 
 shots = []
+def coord_wait(d, limit=240):
+    """7.60.2 : la coordination tourne dans un fil à part ; on attend la fin (l'interface reste vivante)."""
+    t0 = time.time()
+    while getattr(d, "_job", None) is not None and time.time() - t0 < limit:
+        QtWidgets.QApplication.processEvents()
+        time.sleep(0.05)
+    QtWidgets.QApplication.processEvents()
+
+
 def shot(widget, name):
     app.processEvents()
     p = os.path.join(OUT, f"{len(shots):02d}_{name}.png")
@@ -1041,6 +1050,7 @@ def _coord_act(d):
         d.hi.setValue(556.0)
         d.prefix.setText("COORD")
         d.compute()
+        coord_wait(d)
         shot(d, "coordination_auto")
         d.add()
     return "reject"
@@ -1973,6 +1983,9 @@ check("coord : « Spectre : scène … » proposé d'office pour la scène chois
       and _cd.spec_combo.findData("all") >= 0, str(_cd.spec_combo.currentData()))
 check("coord par scène : rangées dans cette scène", _cd.scene.currentText() == "Grande scène")
 _cd.compute()
+check("7.60.2 : coordination en arrière-plan (bouton « Annuler », interface libre)", _cd._job is not None
+      and "Annuler" in _cd.go_btn.text(), _cd.go_btn.text())
+coord_wait(_cd)
 check("coord par scène : propositions calculées", isinstance(_cd.found, list))
 shot(_cd, "coord_par_scene")
 _cd.close()
@@ -2005,6 +2018,7 @@ _cd.avoid.setChecked(False)
 _saved_watch = win.watch                # liste de démo sans appareil (donc sans filtre) : on part d'une liste vide
 win.watch = []
 _cd.compute()
+coord_wait(_cd)
 _rx = {}
 for L_, c in _cd.found:
     _rx.setdefault(L_["rx"], []).append(c)

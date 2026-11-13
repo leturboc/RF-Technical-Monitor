@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1131,6 +1131,25 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`reg_unknown`). `COUNTRY_REFS` (décisions ARCEP 2015-0830…, Vfg. BNetzA, RIR1009, 47 CFR § 74.802 / § 15.236, LIPD
   2025, GUSL 272800…) et `COUNTRY_DOUBTS` (BE 470-786, CH ITU ≠ OFCOM, CA 652-663, NZ 622-698…) dans `reg_detail`
   (+ « autorisé ≠ libre ici »). Restent des références « selon le tableau CEPT, texte national non lu » (ES, IT, BE).
+- **7.60.2 (Clément : coordination de 40 fréquences, plusieurs appareils -> interface figée > 90 s, la garde a relancé
+  l'appli MAIS l'ancienne ne s'est pas fermée -> « COM4 accès refusé » ; « une méthode aléatoire, à la suite ça
+  fonctionne pas en général »)** :
+  - **Vraie cause du COM4** : `subprocess` n'était PAS importé au niveau du module → dans `_kill_tree`, `taskkill`
+    levait NameError, avalé par `except` : la fermeture de l'arbre (7.52.1) n'a JAMAIS tourné sous Windows (le test 🧊
+    du 13/11 a dû réussir par chance). `import subprocess` en tête ; `guard_beat` écrit « heure pid » ; la garde lit le
+    pid (`_beat_pid`), le ferme (`_kill_pid`) et **attend qu'il soit vraiment mort** (`_pid_alive`, 6 essais) avant de
+    relancer, noté dans garde.log. `check_names.py` lance pyflakes et échoue sur tout « undefined name ».
+    test_garde : pid dans le battement, fermeture par n°. **Pas encore revérifié par Clément sous Windows.**
+  - **Calculs longs hors de l'interface** : `MainWindow.run_heavy(fn, done, label, what, status)` (fil `threading` +
+    QTimer 250 ms ; job {done, cancel}) ; `CoordDialog.compute` → `_computed`, bouton `go_btn` « ■ Annuler le calcul »,
+    `closeEvent` annule ; gui_reel `coord_wait`.
+  - **Coordination au hasard** : PURE `COORD_ORDERS` (random = meilleur de 3, random1, low), `COORD_TRIES`, `_pf_pick`
+    (recherche par FENÊTRES 2 / 6 / 20 / 60 MHz autour de la graine, puis tout), `pf_fill(..., order, rng)` (graine
+    tirée au hasard dans la plage, 3 retirages), `_fill_score` (le plus trouvé, puis le plus grand écart mini),
+    `pf_fill_lots(..., order, tries, seed, progress, cancel)`. Mesuré (2 lots × 20, Wisycom + QLX-D, 470-694) : à la
+    suite 450-500 s, au hasard 1 essai 19,5 s, 0 problème au pf_check. `CoordDialog.order_combo` « Méthode »
+    (`plan_opts["coord_order"]`, défaut random). Manuel (chapitre coordination). PlanCheck / secours / intermod
+    restent dans le fil de l'interface (calculs courts).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

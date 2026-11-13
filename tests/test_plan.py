@@ -220,6 +220,25 @@ check("coordination : évite l'occupé", (len(got2), any(busy_(c) for c in got2)
 got3 = pf_fill(50, [], new_sep=0.5, new_tol=tolW, new_filt=0.0, lo=600.0, hi=602.0, step=0.025)
 check("coordination : plage pleine → moins que demandé", 0 < len(got3) < 50, True)
 
+# 7.60.2 (Clément : « une méthode aléatoire, à la suite ça fonctionne pas en général ») : réparties au hasard
+_rng = np.random.default_rng(7)
+gotr = pf_fill(10, plan0, sep=0.5, tol=tolW, filt=32.0, new_sep=0.5, new_tol=tolW, new_filt=32.0,
+               lo=470.0, hi=694.0, step=0.025, order="random", rng=_rng)
+issr, _ = ns["pf_check"](plan0 + gotr, sep=0.5, tol=tolW, filt=32.0)
+check("hasard : 10 trouvées, plan sans aucun problème", (len(gotr), sum(len(x) for x in issr)), (10, 0))
+gotl = pf_fill(10, plan0, sep=0.5, tol=tolW, filt=32.0, new_sep=0.5, new_tol=tolW, new_filt=32.0,
+               lo=470.0, hi=694.0, step=0.025)
+check("hasard : réparties sur la plage (bien plus large qu'à la suite)",
+      (max(gotr) - min(gotr)) > 3 * (max(gotl) - min(gotl)), True)
+_lots = [dict(n=4, sep=0.5, tol=tolW, filt=32.0, lo=470.0, hi=694.0, step=0.025)]
+_a = ns["pf_fill_lots"](_lots, plan0, order="random", tries=2, seed=3)
+_b = ns["pf_fill_lots"](_lots, plan0, order="random", tries=2, seed=3)
+check("hasard : même graine = même résultat (reproductible)", _a, _b)
+_steps = []
+ns["pf_fill_lots"](_lots, plan0, order="random", tries=3, seed=1, progress=lambda k, n: _steps.append((k, n)))
+check("hasard : progression essai par essai", _steps, [(1, 3), (2, 3), (3, 3)])
+check("hasard : annulé avant de commencer -> rien", ns["pf_fill_lots"](_lots, plan0, order="random", tries=3,
+      cancel=lambda: True), [[]])
 # coordination entre appareils : 2 lots (QLX-D puis PSM 1000), chacun ses règles, tous compatibles entre eux
 rp = ns["rx_profile"]
 q_, p_ = rp("shure_dig"), rp("shure_psm1000")

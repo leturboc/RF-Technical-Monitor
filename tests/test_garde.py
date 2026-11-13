@@ -98,5 +98,16 @@ bp = os.path.join(tmp, "b2.txt")
 check("battement écrit", m.guard_beat(bp) and os.path.exists(bp))
 os.environ.pop("TSM_HEARTBEAT", None)
 check("sans garde : pas de battement", m.guard_beat() is False)
+
+# 7.60.2 : n° de processus dans le battement + fermeture vérifiée (Clément : « l'autre s'est pas arrêtée »)
+check("battement : n° de processus de l'appli", m._beat_pid(bp) == os.getpid())
+import subprocess as _sp
+_child = _sp.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+check("processus vivant détecté", m._pid_alive(_child.pid))
+m._kill_pid(_child.pid)
+_child.wait(10)
+check("fermé par son n° -> plus vivant", not m._pid_alive(_child.pid))
+check("_kill_tree a bien subprocess (sous Windows, taskkill ne tournait jamais : NameError avalé)",
+      hasattr(m, "subprocess"))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
