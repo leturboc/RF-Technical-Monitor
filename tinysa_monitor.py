@@ -19752,6 +19752,7 @@ class CoordDialog(QtWidgets.QDialog):
         o = self.owner
         if self._job is not None and not self._job["done"]:
             self._job["cancel"] = True
+            getattr(self, "_info", {})["cancel"] = True
             self._job = None
             self.go_btn.setText(TR("🪄 Chercher"))
             self.msg.setText("Calcul annulé.")
@@ -19777,18 +19778,19 @@ class CoordDialog(QtWidgets.QDialog):
         self.res.clear()
         self.go_btn.setText(TR("■ Annuler le calcul"))
         order = self.order_combo.currentData() or "random"
-        info = {}
+        info = self._info = {}          # partagé avec le fil : « cancel » posé par Annuler / la fermeture
         self._job = o.run_heavy(
             lambda: pf_fill_lots(*args, order="low" if order == "low" else "random", tries=COORD_TRIES.get(order, 1),
                                  progress=lambda k, n: info.update(step=(k, n)),
-                                 cancel=lambda: bool(self._job is None or self._job.get("cancel"))),
+                                 cancel=lambda: bool(info.get("cancel"))),
             lambda got, err: self._computed(lots, got, err), self.msg, "Recherche des fréquences",
             status=lambda: (TR("essai {} / {}").format(*info["step"]) if info.get("step") and info["step"][1] > 1
                             else ""))
 
     def closeEvent(self, e):
         if self._job is not None:
-            self._job["cancel"] = True             # le fil finit seul en arrière-plan ; son résultat est ignoré
+            self._job["cancel"] = True             # le fil s'arrête à la fin de l'essai en cours ; résultat ignoré
+            getattr(self, "_info", {})["cancel"] = True
             self._job = None
             self.go_btn.setText(TR("🪄 Chercher"))
         super().closeEvent(e)
