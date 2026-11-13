@@ -54,6 +54,7 @@ def coord_wait(d, limit=240):
         QtWidgets.QApplication.processEvents()
         time.sleep(0.05)
     QtWidgets.QApplication.processEvents()
+    print(f"   (coordination : {time.time() - t0:.1f} s)")
 
 
 def shot(widget, name):
@@ -136,6 +137,7 @@ _txt = (_bb.button(W.QDialogButtonBox.StandardButton.Yes).text(), _bb.button(W.Q
 check("boutons standard en français", _txt == ("&Oui", "&Annuler") or "Oui" in _txt[0], str(_txt))
 
 win = m.MainWindow()
+win.plan_opts["coord_order"] = "random1"   # 7.60.2 : 1 essai (3 par défaut) : la CI Windows a 8 min pour tout
 win.log_dir = m.Path(tmp) / "journaux"
 win.resize(1700, 980)
 win.show()

@@ -1237,7 +1237,20 @@ def reg_allowed_pred(code, bw=0.0, cond_ok=True):
     if not COUNTRY_ALLOWED.get(str(code or "").upper()):
         return None
     ok = ("ok", "cond") if cond_ok else ("ok",)
-    return lambda c: reg_status(code, c, bw)[0] in ok
+
+    def pred(c):
+        return reg_status(code, c, bw)[0] in ok
+    if not bw:                                      # fréquence simple : test vectorisé (plages qui se touchent = ok)
+        iv = [(a, b) for a, b, k in country_bands(code)["allowed"] if cond_ok or not k]
+
+        def vec(cs):
+            cs = np.asarray(cs, dtype=float)
+            m = np.zeros(len(cs), dtype=bool)
+            for a, b in iv:
+                m |= (cs >= a - 1e-6) & (cs <= b + 1e-6)
+            return m
+        pred.vec = vec
+    return pred
 
 
 def reg_issues(code, items):
@@ -1974,6 +1987,47 @@ def level_at(F, L, f, win, near=0.25):
         return None
     k = min(c, key=lambda k: abs(F[k] - f))
     return float(L[k]) if abs(F[k] - f) <= max(win, near) else None
+
+
+def level_at_many(F, L, cs, win, near=0.25):
+    """level_at pour tout un tableau de fréquences d'un coup (7.60.2 : la coordination testait « occupé ? » point par
+    point sur ~45 000 candidates). -> tableau (NaN = pas de mesure)."""
+    cs = np.asarray(cs, dtype=float)
+    out = np.full(len(cs), np.nan)
+    if F is None or len(F) == 0 or not len(cs):
+        return out
+    F = np.asarray(F, dtype=float)
+    L = np.asarray(L, dtype=float)
+    lo = np.searchsorted(F, cs - win)
+    hi = np.searchsorted(F, cs + win, side="right")
+    has = hi > lo
+    if has.any():
+        L2 = np.append(L, -np.inf)
+        idx = np.empty(2 * int(has.sum()), dtype=np.int64)
+        idx[0::2], idx[1::2] = lo[has], hi[has]
+        out[has] = np.maximum.reduceat(L2, idx)[0::2]
+    rest = np.nonzero(~has)[0]
+    if len(rest):                                   # sinon le point le plus proche, s'il est assez près
+        j = np.searchsorted(F, cs[rest])
+        a, b = np.clip(j - 1, 0, len(F) - 1), np.clip(j, 0, len(F) - 1)
+        k = np.where(np.abs(F[a] - cs[rest]) <= np.abs(F[b] - cs[rest]), a, b)
+        near_ok = np.abs(F[k] - cs[rest]) <= max(win, near)
+        out[rest[near_ok]] = L[k[near_ok]]
+    return out
+
+
+def busy_pred(F, L, lim, win):
+    """« Occupé » d'après un spectre mesuré : niveau max à ± win ≥ lim. Prédicat c -> bool, avec .vec(tableau) ->
+    tableau de bool (rapide : pf_suggest l'utilise sur toutes les candidates d'un coup)."""
+    def one(c):
+        v = level_at(F, L, c, win)
+        return v is not None and v >= lim
+
+    def vec(cs):
+        v = level_at_many(F, L, cs, win)
+        return np.nan_to_num(v, nan=-np.inf) >= lim
+    one.vec = vec
+    return one
 
 
 def level_block(F, L, f, bw, how="median"):
@@ -3652,7 +3706,7 @@ def pf_issue_text(it, names, freqs):
 
 
 def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, lo=None, hi=None, step=0.025,
-               n=5, busy=None, max_check=600, filt=0.0, img=0.0):
+               n=5, busy=None, max_check=600, filt=0.0, img=0.0, skip=None, stats=None):
     """Fréquences de remplacement pour la n° i, les plus proches d'abord : aucune incompatibilité pour elle,
     et pas de NOUVEAU problème pour les autres. busy(c) -> True si le spectre mesuré y est occupé (on évite).
     sep / tol / filt : comme pf_check (une valeur, ou une par fréquence). step : pas des fréquences proposées.
@@ -3737,14 +3791,22 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
                     bad |= hit.any(axis=(1, 2))
             ok[k0:k0 + 500] &= ~bad
     cand = grid[ok]
+    bvec = getattr(busy, "vec", None) if busy is not None else None
+    if bvec is not None and len(cand):              # 7.60.2 : « occupé ? » sur toutes les candidates d'un coup
+        cand = cand[~np.asarray(bvec(np.round(cand, 6)), dtype=bool)]
+        busy = None
     cand = cand[np.lexsort((cand, np.round(np.abs(cand - f0), 6)))]     # le plus proche, puis le plus bas
+    if skip is not None and len(cand):             # 7.60.2 : déjà examinées (fenêtre précédente de _pf_pick)
+        cand = cand[(cand < skip[0] - 1e-9) | (cand > skip[1] + 1e-9)]
     out, checked = [], 0
+    trunc = False
     for c in cand:
         c = round(float(c), 6)
         if busy is not None and busy(c):
             continue
         checked += 1
         if checked > max_check:
+            trunc = True
             break
         iss, _ = pf_check(Fo + [c], To + [T[i]], Bo + [bi], SPo + [float(SP[i])], TLo + [ti], max_tx,
                           FLo + [float(FL[i])], IMo + [float(IMv[i])])           # vérification exacte
@@ -3753,6 +3815,8 @@ def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None
         out.append((c, c - f0))
         if len(out) >= n:
             break
+    if stats is not None:
+        stats.update(checked=min(checked, max_check), trunc=trunc)
     return out
 
 
@@ -3767,17 +3831,22 @@ def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed
     FENÊTRES qui s'élargissent autour de la graine (2, 6, 20, 60 MHz, puis tout) : pf_suggest ne contrôle plus
     toute la bande au pas de l'appareil à chaque ajout (40 fréquences = 7 min 30 avant) ; même résultat, car on
     garde la plus proche et une plus proche serait déjà dans la fenêtre."""
+    budget, prev = int(max_check), None          # un seul budget de vérifications exactes pour toutes les fenêtres
     for w in (2.0, 6.0, 20.0, 60.0, None):
         a = lo if w is None else max(lo, seed - w)
         z = hi if w is None else min(hi, seed + w)
         if z - a < step:
             continue
+        st = {}
         sg = pf_suggest(len(F), F + [seed], T + [True], B + [0.0], SP + [new_sep], TL + [new_tol], None,
-                        lo=a, hi=z, step=step, n=1, busy=busy, max_check=max_check, filt=FL + [new_filt])
+                        lo=a, hi=z, step=step, n=1, busy=busy, max_check=budget, filt=FL + [new_filt],
+                        skip=prev, stats=st)
         if sg:
             return sg[0][0]
-        if w is None or (a <= lo and z >= hi):
+        budget -= int(st.get("checked", 0))
+        if budget <= 0 or st.get("trunc") or w is None or (a <= lo and z >= hi):
             break
+        prev = (a, z)                               # fenêtre entièrement examinée : la suivante la saute
     return None
 
 
@@ -3803,13 +3872,9 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
     for _k in range(int(n_new)):
         if order == "low":
             c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, lo - step, busy, max_check)
-        else:
-            c = None
-            for _t in range(3):              # graine malchanceuse (zone pleine) : on retire au hasard, puis tout
-                c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step,
-                             float(rng.uniform(lo, hi)) + 1e-7, busy, max_check)
-                if c is not None:
-                    break
+        else:                                # _pf_pick finit par toute la plage : rien = vraiment plus de place
+            c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step,
+                         float(rng.uniform(lo, hi)) + 1e-7, busy, max_check)
         if c is None:
             break
         out.append(c)
@@ -13508,7 +13573,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
             if Fm is not None:
                 lim = o.weak_spin.value() if o.weak_chk.isChecked() else o.thr_spin.value()
                 win = max(0.05, o.win_spin.value() / 1000.0)
-                busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
+                busy = busy_pred(Fm, Lm, lim, win)
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             kw = dict(n=6, busy=self.owner.reg_busy(busy), step=self._steps[r], filt=filt, img=self._imgs)   # pas de l'appareil de cette fréquence
@@ -19765,7 +19830,7 @@ class CoordDialog(QtWidgets.QDialog):
             if Fm is not None:                     # seuil « occupé » : le max hold du bruit dépasse souvent « faible »
                 lim = o.thr_spin.value()
                 win = max(0.05, o.win_spin.value() / 1000.0)
-                busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
+                busy = busy_pred(Fm, Lm, lim, win)
         lots = list(self.lots) or [self._lot_now()]
         spec = []
         for L_ in lots:
@@ -28504,7 +28569,20 @@ class MainWindow(QtWidgets.QMainWindow):
         p = self.reg_pred()
         if p is None:
             return busy
-        return lambda c: (not p(c)) or (busy is not None and bool(busy(c)))
+
+        def f(c):
+            return (not p(c)) or (busy is not None and bool(busy(c)))
+
+        def vec(cs):
+            cs = np.asarray(cs, dtype=float)
+            pv = getattr(p, "vec", None)
+            out = ~(pv(cs) if pv is not None else np.array([bool(p(float(c))) for c in cs], dtype=bool))
+            if busy is not None:
+                bv = getattr(busy, "vec", None)
+                out |= bv(cs) if bv is not None else np.array([bool(busy(float(c))) for c in cs], dtype=bool)
+            return out
+        f.vec = vec
+        return f
 
     def reg_note(self):
         """Phrase pour les fenêtres de secours / coordination."""
