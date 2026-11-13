@@ -1645,6 +1645,18 @@ ok("7.60 : LoRa : USA 905, Australie / NZ 920, Japon 921", _lo("US", 905.0) == "
    and _lo("JP", 921.0) == "AS920-923" and _lo("XX", 868.0) == "")
 _rc2 = ns["ready_checks"](dict(running=True, lora=["IEM 1 (905.000)"]))
 ok("7.60 : « Prêt ? » : émetteur dans une bande LoRa (info)", any(c["key"] == "lora" and c["level"] == "info" for c in _rc2))
+# 7.60.1 (audit) : une absence de données ne vaut jamais autorisation ; une plage sous licence n'est pas « prête »
+_tg = ns["reg_tag"]
+ok("7.60.1 : pays inconnu -> étiquette « réglementation inconnue »", _tg("XX", 600.0).startswith("réglementation inconnue"))
+ok("7.60.1 : Royaume-Uni 600 MHz -> « sous licence : autorisation à obtenir »", _tg("GB", 600.0).startswith("sous licence"))
+ok("7.60.1 : France 600 MHz -> rien à signaler", _tg("FR", 600.0) == "")
+ok("7.60.1 : Allemagne 611 MHz -> hors bandes", _tg("DE", 611.0) == "hors des bandes autorisées")
+ok("7.60.1 : « Prêt ? » : pays sans liste = avertissement", any(c["key"] == "reg" and c["level"] == "warn"
+   for c in ns["ready_checks"](dict(running=True, reg_unknown=True, country_name="Atlantide"))))
+_dfr = ns["reg_detail"]("FR")
+ok("7.60.1 : détail France : décision ARCEP citée + « autorisé ≠ libre ici »", "2015-0830" in _dfr and "libre ici" in _dfr, _dfr)
+ok("7.60.1 : détail Belgique : incertitude affichée", "470-786" in ns["reg_detail"]("BE"))
+ok("7.60.1 : chaque pays a ses textes de référence", all(ns["COUNTRY_REFS"].get(c) for c, _n in ns["COUNTRIES"]))
 ok("7.60 : résumé lisible", ns["reg_summary"]("DE").startswith("174-230, 470-608, 614-694"))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

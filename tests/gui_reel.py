@@ -1595,9 +1595,11 @@ check("7.60 : Allemagne : bandes autorisées affichées (608-614 exclu)", "470-6
 _wx = win._append_watch("Essai 611", 611.0, status="En service", scene="Show", group="Micros")
 check("7.60 : « Prêt ? » : émetteur à 611 MHz hors bandes en Allemagne",
       any(c["key"] == "reg" and "611" in c["text"] for c in m.ready_checks(win.ready_info())))
+check("7.60.1 : note de coordination : sous licence = autorisation AVANT d'émettre", "AVANT" in win.reg_note())
 check("7.60 : prédicat de coordination actif", win.reg_pred() is not None and not win.reg_pred()(611.0))
 win.reg_chk.setChecked(False)
 check("7.60 : case décochée -> pas de filtre", win.reg_pred() is None and win.reg_busy(None) is None)
+check("7.60.1 : case décochée -> propositions marquées « non vérifiée »", "non vérifi" in win.reg_tag(600.0) and "coupé" in win.reg_note())
 win.reg_chk.setChecked(True)
 win.watch = [w for w in win.watch if w.get("name") != "Essai 611"]
 win.update_watch_table(force=True)

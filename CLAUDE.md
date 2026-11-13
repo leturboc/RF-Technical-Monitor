@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1122,6 +1122,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `lora_overlap(pays, f, bw)` → `reg_info` « lora » → `ready_checks` clé « lora » (info). Bandeaux : PLAN_EU 433,05-434,79
   et 865-870 (LoRaWAN), US 902-928 ; **AU / NZ / JP ont maintenant leurs propres bandeaux 790-960 MHz** (avant : plan
   européen, « GSM-R (trains) » sur 915-925 = faux) : mobile « plan du pays », ISM / LoRa 915-928, JP 806-810 micros.
+- **7.60.1 (audit externe sur la 7.60.0)** : « une absence de données ne vaut jamais autorisation » : PURE `reg_known`,
+  `reg_tag(pays, f, bw)` (« » / sous licence : autorisation à obtenir avant d'émettre / intérieur / limité / hors bandes /
+  réglementation inconnue) collé sur CHAQUE proposition (secours : colonne Remarque ; coordination ; Vérifier le plan),
+  `MainWindow.reg_tag` (case décochée → « filtre coupé : non vérifiée »), `reg_note` toujours affichée (inconnue / coupé /
+  « libre ici = d'après la mesure, licence = AVANT d'émettre ») ; `ready_checks` : pays sans liste = warn
+  (`reg_unknown`). `COUNTRY_REFS` (décisions ARCEP 2015-0830…, Vfg. BNetzA, RIR1009, 47 CFR § 74.802 / § 15.236, LIPD
+  2025, GUSL 272800…) et `COUNTRY_DOUBTS` (BE 470-786, CH ITU ≠ OFCOM, CA 652-663, NZ 622-698…) dans `reg_detail`
+  (+ « autorisé ≠ libre ici »). Restent des références « selon le tableau CEPT, texte national non lu » (ES, IT, BE).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
