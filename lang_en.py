@@ -5295,3 +5295,42 @@ EXACT.update({
 TEMPLATES.update({
     '{} émetteur(s) dans une bande LoRaWAN / IoT ({}) : des capteurs peuvent y émettre par paquets courts, sans prévenir. Garde de la marge ou une fréquence de secours.': '{} transmitter(s) in a LoRaWAN / IoT band ({}): sensors may transmit there in short bursts, without warning. Keep some margin or a backup frequency.',
 })
+# 7.60.1 : références, incertitudes, étiquettes réglementaires
+EXACT.update({
+    '622-698 MHz : la base ITU ne le montre pas, la page du RSM oui : on suit le RSM.': '622-698 MHz: the ITU database does not show it, the RSM page does: we follow the RSM.',
+    'ACMA, Radiocommunications (Low Interference Potential Devices) Class Licence 2025.': 'ACMA, Radiocommunications (Low Interference Potential Devices) Class Licence 2025.',
+    'ARCEP, décision n° 2015-0830 (470-694, 823-832, 1785-1805 MHz) ; décisions n° 2010-0849 et 2010-0850 (174-223 MHz) ; décision n° 2016-0272 (fin de 694-790 MHz au 01/07/2019) ; décision n° 2014-1263 (863-865 MHz).': 'ARCEP, decision no. 2015-0830 (470-694, 823-832, 1785-1805 MHz); decisions no. 2010-0849 and 2010-0850 (174-223 MHz); decision no. 2016-0272 (end of 694-790 MHz on 1 July 2019); decision no. 2014-1263 (863-865 MHz).',
+    'Autorisé par le cadre réglementaire ne veut pas dire libre ici : la TNT et la mesure décident sur place.': 'Allowed by the regulations does not mean free here: DTT and the measurement decide on site.',
+    'BNetzA, Allgemeinzuteilungen « Mikrofone » : Vfg. 34/2020 modifiée par Vfg. 99/2022 (470-694), Vfg. 100/2022 (736-753), Vfg. 2/2015 (823-832), Vfg. 107/2018 (863-865), Vfg. 06/2022 (1350-1400), Vfg. 3/2015 (1785-1805), Vfg. 59/2015 (174-230).': 'BNetzA, general authorisations "Mikrofone": Vfg. 34/2020 amended by Vfg. 99/2022 (470-694), Vfg. 100/2022 (736-753), Vfg. 2/2015 (823-832), Vfg. 107/2018 (863-865), Vfg. 06/2022 (1350-1400), Vfg. 3/2015 (1785-1805), Vfg. 59/2015 (174-230).',
+    "Conditions de licence (coordination, lieu, durée) à voir avec l'Ofcom avant chaque événement.": 'Licence conditions (coordination, place, duration) to be checked with Ofcom before each event.',
+    'Décision 2014/641/UE (bandes PMSE audio harmonisées) ; ERC/REC 70-03 annexe 10 ; ERC/REC 25-10.': 'Decision 2014/641/EU (harmonised audio PMSE bands); ERC/REC 70-03 annex 10; ERC/REC 25-10.',
+    'ERC/REC 70-03 annexe 10 et décision 2014/641/UE, selon le tableau CEPT (texte national non lu).': 'ERC/REC 70-03 annex 10 and decision 2014/641/EU, according to the CEPT table (national text not read).',
+    'FCC 47 CFR § 74.802 (licence, partie 74) et § 15.236 (sans licence, partie 15).': 'FCC 47 CFR § 74.802 (licensed, part 74) and § 15.236 (unlicensed, part 15).',
+    'ISED, décision sur le cadre des microphones sans fil (2019) ; RSS-210 ; CPC-2-1-28.': 'ISED, decision on the wireless microphone framework (2019); RSS-210; CPC-2-1-28.',
+    'Incertitude : ': 'Uncertainty: ',
+    "La base ITU indique « sous licence » alors que l'OFCOM décrit ces bandes sans licence : on suit l'OFCOM.": 'The ITU database says "licensed" while OFCOM describes these bands as licence-free: we follow OFCOM.',
+    "Le tableau CEPT indique même 470-786 MHz possible : ancien, à confirmer auprès de l'IBPT.": 'The CEPT table even says 470-786 MHz possible: old, to be confirmed with the BIPT.',
+    'Les sources ne concordent pas toutes sur 652-663 MHz : on suit la base ITU (comme aux États-Unis).': 'Sources do not all agree on 652-663 MHz: we follow the ITU database (as in the United States).',
+    'Licence : démarches et conditions non détaillées ici.': 'Licence: procedure and conditions not detailed here.',
+    "OFCOM, prescriptions techniques d'interface RIR1009 (-02 174-223, -05 863-865, -09 1785-1805, -10 470-694, -13 et -18 823-832 MHz).": 'OFCOM, radio interface regulations RIR1009 (-02 174-223, -05 863-865, -09 1785-1805, -10 470-694, -13 and -18 823-832 MHz).',
+    "Ofcom : licences PMSE partagées / coordonnées, IR2030 (exemption 863-865 MHz), décision 2014/641/UE (selon le tableau CEPT ; la page Ofcom n'a pas pu être lue automatiquement).": 'Ofcom: shared / coordinated PMSE licences, IR2030 (863-865 MHz exemption), decision 2014/641/EU (according to the CEPT table; the Ofcom page could not be read automatically).',
+    'Plages 694-698 et 736-738 MHz limitées : conditions non détaillées.': '694-698 and 736-738 MHz ranges limited: conditions not detailed.',
+    'RSM, General User Spectrum Licence 272800 et General User Radio Licence for Short Range Devices (GURL-SRD).': 'RSM, General User Spectrum Licence 272800 and General User Radio Licence for Short Range Devices (GURL-SRD).',
+    'Selon le tableau CEPT (texte national non lu).': 'According to the CEPT table (national text not read).',
+    'Tableau des bandes du MIC et base ITU-R ENG/PMSE (régime de licence des micros professionnels).': 'MIC band table and ITU-R ENG/PMSE database (licence regime for professional mics).',
+    'Textes : ': 'Texts: ',
+    'en intérieur seulement': 'indoors only',
+    'filtre coupé : non vérifiée': 'filter off: not checked',
+    'hors des bandes autorisées': 'outside the allowed bands',
+    'réglementation inconnue : non vérifiée': 'unknown regulations: not checked',
+    "sous licence : autorisation à obtenir avant d'émettre": 'licensed: get the authorisation before transmitting',
+    'usage limité : voir la note du pays': 'limited use: see the country note',
+    '« Regeling gebruik van frequentieruimte zonder vergunning en zonder meldingsplicht » (sans licence) ; licence individuelle pour 608-614 MHz (protection du radiotélescope de Westerbork).': '"Regeling gebruik van frequentieruimte zonder vergunning en zonder meldingsplicht" (licence-free); individual licence for 608-614 MHz (protection of the Westerbork radio telescope).',
+    "⚠ Aucune liste de bandes autorisées pour ce pays : rien n'est vérifié réglementairement.": '⚠ No list of allowed bands for this country: nothing is checked against the regulations.',
+    '⚠ Filtre des bandes autorisées coupé (⚙ › Pays) : propositions non vérifiées réglementairement.': '⚠ Allowed-bands filter off (⚙ › Country): suggestions not checked against the regulations.',
+})
+TEMPLATES.update({
+    "Propositions dans les bandes autorisées pour {} (indicatif, ⚙ › Pays). Libre ici = d'après la mesure ; « sous licence » = autorisation à obtenir AVANT d'émettre.": 'Suggestions within the allowed bands for {} (indicative, ⚙ › Country). Free here = according to the measurement; "licensed" = get the authorisation BEFORE transmitting.',
+    '⚠ Réglementation inconnue pour {} : propositions NON vérifiées réglementairement.': '⚠ Unknown regulations for {}: suggestions NOT checked against the regulations.',
+    "Aucune liste de bandes autorisées pour {} : rien n'est vérifié réglementairement (renseigne-toi auprès du régulateur).": 'No list of allowed bands for {}: nothing is checked against the regulations (ask the regulator).',
+})

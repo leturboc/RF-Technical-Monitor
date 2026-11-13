@@ -83,7 +83,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.60.0"
+APP_VER = "7.60.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1120,6 +1120,38 @@ COUNTRY_SOURCES = {
     "NZ": [("RSM", "https://www.rsm.govt.nz/licensing/frequencies-for-anyone/radio-microphone-devices-gusl"), _SRC_ITU],
     "JP": [("MIC", "https://www.soumu.go.jp/main_content/001085598.pdf"), _SRC_ITU],
 }
+# 7.60.1 (audit : « le document exact, sa référence, et les incertitudes ») : textes cités par les sources lues.
+COUNTRY_REFS = {
+    "FR": "ARCEP, décision n° 2015-0830 (470-694, 823-832, 1785-1805 MHz) ; décisions n° 2010-0849 et 2010-0850 "
+          "(174-223 MHz) ; décision n° 2016-0272 (fin de 694-790 MHz au 01/07/2019) ; décision n° 2014-1263 (863-865 MHz).",
+    "DE": "BNetzA, Allgemeinzuteilungen « Mikrofone » : Vfg. 34/2020 modifiée par Vfg. 99/2022 (470-694), Vfg. 100/2022 "
+          "(736-753), Vfg. 2/2015 (823-832), Vfg. 107/2018 (863-865), Vfg. 06/2022 (1350-1400), Vfg. 3/2015 (1785-1805), "
+          "Vfg. 59/2015 (174-230).",
+    "CH": "OFCOM, prescriptions techniques d'interface RIR1009 (-02 174-223, -05 863-865, -09 1785-1805, -10 470-694, "
+          "-13 et -18 823-832 MHz).",
+    "NL": "« Regeling gebruik van frequentieruimte zonder vergunning en zonder meldingsplicht » (sans licence) ; licence "
+          "individuelle pour 608-614 MHz (protection du radiotélescope de Westerbork).",
+    "ES": "ERC/REC 70-03 annexe 10 et décision 2014/641/UE, selon le tableau CEPT (texte national non lu).",
+    "IT": "Selon le tableau CEPT (texte national non lu).",
+    "BE": "Selon le tableau CEPT (texte national non lu).",
+    "GB": "Ofcom : licences PMSE partagées / coordonnées, IR2030 (exemption 863-865 MHz), décision 2014/641/UE (selon le "
+          "tableau CEPT ; la page Ofcom n'a pas pu être lue automatiquement).",
+    "EU": "Décision 2014/641/UE (bandes PMSE audio harmonisées) ; ERC/REC 70-03 annexe 10 ; ERC/REC 25-10.",
+    "US": "FCC 47 CFR § 74.802 (licence, partie 74) et § 15.236 (sans licence, partie 15).",
+    "CA": "ISED, décision sur le cadre des microphones sans fil (2019) ; RSS-210 ; CPC-2-1-28.",
+    "AU": "ACMA, Radiocommunications (Low Interference Potential Devices) Class Licence 2025.",
+    "NZ": "RSM, General User Spectrum Licence 272800 et General User Radio Licence for Short Range Devices (GURL-SRD).",
+    "JP": "Tableau des bandes du MIC et base ITU-R ENG/PMSE (régime de licence des micros professionnels).",
+}
+COUNTRY_DOUBTS = {
+    "BE": "Le tableau CEPT indique même 470-786 MHz possible : ancien, à confirmer auprès de l'IBPT.",
+    "GB": "Conditions de licence (coordination, lieu, durée) à voir avec l'Ofcom avant chaque événement.",
+    "CH": "La base ITU indique « sous licence » alors que l'OFCOM décrit ces bandes sans licence : on suit l'OFCOM.",
+    "JP": "Licence : démarches et conditions non détaillées ici.",
+    "CA": "Les sources ne concordent pas toutes sur 652-663 MHz : on suit la base ITU (comme aux États-Unis).",
+    "NZ": "622-698 MHz : la base ITU ne le montre pas, la page du RSM oui : on suit le RSM.",
+    "IT": "Plages 694-698 et 736-738 MHz limitées : conditions non détaillées.",
+}
 
 
 # 7.60 (Clément : thethingsnetwork.org « LoRaWAN frequencies by country », lu le 13/11/2026) : bandes IoT / LoRaWAN où
@@ -1175,9 +1207,30 @@ def reg_status(code, f, bw=0.0):
     return ("out", "")
 
 
+def reg_known(code):
+    """Le pays a-t-il une liste de plages autorisées ?"""
+    return bool(COUNTRY_ALLOWED.get(str(code or "").upper()))
+
+
+def reg_tag(code, f, bw=0.0):
+    """7.60.1 (audit) : étiquette à coller sur une fréquence PROPOSÉE. "" = dans une plage sans condition ;
+    sinon ce qui reste à faire : licence à obtenir, intérieur seulement, usage limité, hors bandes, ou réglementation
+    inconnue (pays sans liste : une absence de données ne vaut JAMAIS autorisation)."""
+    st, k = reg_status(code, f, bw)
+    if st == "ok":
+        return ""
+    if st == "unknown":
+        return "réglementation inconnue : non vérifiée"
+    if st == "out":
+        return "hors des bandes autorisées"
+    return {"licence": "sous licence : autorisation à obtenir avant d'émettre",
+            "intérieur": "en intérieur seulement", "limité": "usage limité : voir la note du pays"}.get(k, k)
+
+
 def reg_allowed_pred(code, bw=0.0, cond_ok=True):
     """Pour la coordination / le secours : prédicat c -> True si la candidate est dans une plage autorisée
-    (cond_ok=False : seulement les plages sans condition). Pays sans liste -> tout est permis (None)."""
+    (cond_ok=False : seulement les plages sans condition). Pays sans liste -> None : on ne peut pas filtrer, et les
+    propositions sont alors marquées « réglementation inconnue » (reg_tag, reg_note) — jamais présentées comme validées."""
     if not COUNTRY_ALLOWED.get(str(code or "").upper()):
         return None
     ok = ("ok", "cond") if cond_ok else ("ok",)
@@ -1210,7 +1263,14 @@ def reg_detail(code, tr=None):
     for (a, b, k), (_a, _b, pw) in zip(d["allowed"], d["power"]):
         lines.append(f"{f(a)}-{f(b)} MHz · " + tr(k or "autorisé") + (f" · {tr(pw)}" if pw else ""))
     src = "; ".join(n for n, _u in d["sources"])
-    return "\n".join(lines) + "\n" + tr("Sources : ") + src + "\n" + tr("Vérifié en ") + tr(d["checked"])
+    c = str(code or "").upper()
+    out = "\n".join(lines) + "\n" + tr("Sources : ") + src
+    if COUNTRY_REFS.get(c):
+        out += "\n" + tr("Textes : ") + tr(COUNTRY_REFS[c])
+    if COUNTRY_DOUBTS.get(c):
+        out += "\n" + tr("Incertitude : ") + tr(COUNTRY_DOUBTS[c])
+    return out + "\n" + tr("Vérifié en ") + tr(d["checked"]) + "\n" + tr(
+        "Autorisé par le cadre réglementaire ne veut pas dire libre ici : la TNT et la mesure décident sur place.")
 
 
 def reg_summary(code, tr=None):
@@ -7692,6 +7752,9 @@ def ready_checks(i):
         add("stale", "warn", "Mesures anciennes",
             f"{stale} fréquence(s) sans mesure récente alors que la surveillance tourne.", "dump_diag")
     ro, rc, cn = i.get("reg_out") or [], i.get("reg_cond") or [], i.get("country_name") or ""
+    if i.get("reg_unknown"):
+        add("reg", "warn", "Bandes autorisées", f"Aucune liste de bandes autorisées pour {cn} : rien n'est vérifié "
+            "réglementairement (renseigne-toi auprès du régulateur).", "open_country")
     if ro:
         lst = ", ".join(ro[:6]) + (" …" if len(ro) > 6 else "")
         add("reg", "warn", "Bandes autorisées", f"{len(ro)} émetteur(s) hors des bandes indiquées pour {cn} : {lst}. "
@@ -10996,6 +11059,9 @@ class RescueDialog(QtWidgets.QDialog):
             nn = "—" if near is None else f'{near["name"]} ({near["freq"]:.3f})'
             dk = "" if near is None else f'{abs(near["freq"] - x["f"]) * 1000:.0f}'
             warn = x.get("warn")
+            rt = o.reg_tag(x["f"], self.width_spin.value())   # 7.60.1 : licence / inconnue = dit tout de suite
+            if rt:
+                warn = f"{warn} · {rt}" if warn else rt
             vals = (f'{x["f"]:.3f}', f'{x["level"]:.1f}', nn, dk, spectrum_info(x["f"], o.plan, o.tv)[0] or "—",
                     "⚠ " + warn if warn else "✔ libre, sans intermod")
             for c, v in enumerate(vals):
@@ -11022,7 +11088,7 @@ class RescueDialog(QtWidgets.QDialog):
             if d["alternatives"]:
                 txt += (f"\n⚠ {d['alternatives']} « moins mauvaise(s) » proposée(s) en orange : regarde la "
                         "remarque avant de t'en servir.")
-        if d.get("hors_bandes"):
+        if o.reg_note():
             txt += "\n" + o.reg_note()
         self.msg.setText(txt)
 
@@ -12476,7 +12542,9 @@ class PlanCheckDialog(QtWidgets.QDialog):
                                   "l'écart mini ou décoche « Éviter ce que le tinySA voit occupé ».")
             return
         for c, d in sg:
-            it = QtWidgets.QListWidgetItem(f"{c:.3f} MHz   ({d * 1000:+.0f} kHz)   pour {name}")
+            rt = self.owner.reg_tag(c)
+            it = QtWidgets.QListWidgetItem(f"{c:.3f} MHz   ({d * 1000:+.0f} kHz)   pour {name}"
+                                           + (f"   ⚠ {TR(rt)}" if rt else ""))
             it.setData(Qt.ItemDataRole.UserRole, c)
             self.sug_list.addItem(it)
         self.sug_list.setCurrentRow(0)
@@ -17493,8 +17561,10 @@ class CoordDialog(QtWidgets.QDialog):
         self.res.clear()
         for L_, cs in zip(lots, got):
             for k, c in enumerate(cs, 1):
+                rt = o.reg_tag(c)
                 self.res.addItem(f"{L_['prefix']} {k}   {c:.3f} MHz" + (f"   ({rx_short(L_['rx'])})" if len(lots) > 1
-                                                                        and L_["rx"] else ""))
+                                                                        and L_["rx"] else "")
+                                 + (f"   ⚠ {TR(rt)}" if rt else ""))
         short = [f"{len(cs)} / {L_['n']} {L_['prefix']}" for L_, cs in zip(lots, got) if len(cs) < L_["n"]]
         n_ = len(self.found)
         self.msg.setText((f"✔ {n_} fréquence(s) trouvée(s), toutes compatibles entre elles." if len(lots) > 1 else
@@ -25245,7 +25315,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.reg_lbl.setToolTip(reg_detail(code, TR))
         a_, b_ = country_uhf(code)
         self.reg_lbl.setText(f"Micros autorisés (indicatif) : {rs}\nBalayé : {a_:g}-{b_:g} MHz (mesurer n'est pas "
-                             f"émettre)." if rs else "")
+                             f"émettre)." if rs else "⚠ Aucune liste de bandes autorisées pour ce pays : rien n'est "
+                             "vérifié réglementairement.")
         self.update_strips()
         for w in self.watch:
             w["band"], w["cat"] = spectrum_info(w["freq"], self.plan, self.tv)
@@ -26082,9 +26153,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def reg_note(self):
         """Phrase pour les fenêtres de secours / coordination."""
+        code = self.country_code()
+        cn = TR(dict(COUNTRIES).get(code, code))
+        if not reg_known(code):
+            return f"⚠ Réglementation inconnue pour {cn} : propositions NON vérifiées réglementairement."
         if self.reg_pred() is None:
-            return ""
-        return f"Propositions limitées aux bandes autorisées pour {TR(dict(COUNTRIES).get(self.country_code(), self.country_code()))} (indicatif, ⚙ › Pays)."
+            return "⚠ Filtre des bandes autorisées coupé (⚙ › Pays) : propositions non vérifiées réglementairement."
+        return (f"Propositions dans les bandes autorisées pour {cn} (indicatif, ⚙ › Pays). Libre ici = d'après la mesure ; "
+                "« sous licence » = autorisation à obtenir AVANT d'émettre.")
+
+    def reg_tag(self, f, bw=0.0):
+        """Étiquette réglementaire d'une fréquence proposée ("" = rien à signaler)."""
+        if self.reg_pred() is None and reg_known(self.country_code()):
+            return "filtre coupé : non vérifiée"
+        return reg_tag(self.country_code(), f, bw)
 
     def reg_info(self, ws):
         code = self.country_code()
@@ -26095,6 +26177,7 @@ class MainWindow(QtWidgets.QMainWindow):
         lora = [f"{w.get('name') or '?'} ({w['freq']:.3f})" for w in ws if not self.is_keep_free(w.get("status"))
                 and lora_overlap(code, w["freq"], float(w.get("bw") or 0.0))]
         return dict(reg_out=[fmt(x) for x in out], reg_cond=[fmt(x) for x in cond], lora=lora,
+                    reg_unknown=not reg_known(code),
                     country_name=TR(dict(COUNTRIES).get(code, code)))
 
     def open_country(self):
