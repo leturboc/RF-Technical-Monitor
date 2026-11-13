@@ -1593,5 +1593,42 @@ ok("7.57 : rien d'UHF -> bande à créer", _ub([dict(id=1, start=823.0, stop=832
 ok("7.57 : UHF décochée -> la réactiver", _ub([dict(id=1, start=823.0, stop=832.0, enabled=True),
                                                dict(id=7, start=470.0, stop=694.0, enabled=False)], "FR") == ("enable", 7))
 ok("7.57 : bande trop petite (moins de 80 %) -> à créer", _ub([dict(id=1, start=470.0, stop=550.0, enabled=True)], "FR")[0] == "add")
+
+# 7.60 : bandes AUTORISÉES séparées de la plage BALAYÉE (audit externe)
+_rs = ns["reg_status"]
+ok("7.60 : Allemagne 600 MHz autorisé", _rs("DE", 600.0) == ("ok", ""))
+ok("7.60 : Allemagne 610 MHz hors bandes (radioastronomie)", _rs("DE", 610.0)[0] == "out")
+ok("7.60 : Allemagne balayée 470-694 mais autorisée en deux morceaux",
+   ns["country_bands"]("DE")["scan"] == (470.0, 694.0) and (470.0, 608.0, "") in ns["country_bands"]("DE")["allowed"])
+ok("7.60 : France 610 MHz autorisé (canal 38)", _rs("FR", 610.0) == ("ok", ""))
+ok("7.60 : Pays-Bas 610 MHz = sous licence", _rs("NL", 610.0) == ("cond", "licence"))
+ok("7.60 : Pays-Bas 557 MHz (liaisons audio) hors bandes", _rs("NL", 557.0)[0] == "out")
+ok("7.60 : Nouvelle-Zélande 610 MHz hors bandes, 650 ok", _rs("NZ", 610.0)[0] == "out" and _rs("NZ", 650.0)[0] == "ok")
+ok("7.60 : Royaume-Uni 600 MHz = sous licence", _rs("GB", 600.0) == ("cond", "licence"))
+ok("7.60 : États-Unis 610 MHz (canal 37) hors bandes", _rs("US", 610.0)[0] == "out")
+ok("7.60 : Allemagne 1520 MHz = en intérieur", _rs("DE", 1520.0) == ("cond", "intérieur"))
+ok("7.60 : bloc de 2 MHz à 607 (606-608) ok, à 608 (607-609) hors bandes en Allemagne",
+   _rs("DE", 607.0, 2.0)[0] == "ok" and _rs("DE", 608.0, 2.0)[0] == "out")
+ok("7.60 : bloc à cheval sur deux plages contiguës (Suisse 606-610) = sous condition",
+   _rs("CH", 608.0, 4.0) == ("cond", "limité"))
+ok("7.60 : pays sans liste -> inconnu, pas de filtre", _rs("XX", 600.0)[0] == "unknown"
+   and ns["reg_allowed_pred"]("XX") is None)
+_p = ns["reg_allowed_pred"]("DE")
+ok("7.60 : prédicat de coordination", _p(600.0) and not _p(611.0))
+_out, _cond = ns["reg_issues"]("DE", [("HF 1", 600.0, 0, True), ("HF 2", 611.0, 0, True), ("Réserve", 612.0, 0, False),
+                                      ("IEM", 1520.0, 0, True)])
+ok("7.60 : reg_issues : émetteurs seulement (une réserve n'émet pas)",
+   [x[0] for x in _out] == ["HF 2"] and [(x[0], x[2]) for x in _cond] == [("IEM", "intérieur")])
+_F = np.arange(600.0, 620.0, 0.025)
+_L = np.full(len(_F), -110.0)
+_res, _d = ns["find_free"](_F, _L, 600.0, 620.0, [], n=40, min_sep=0.3, guard=None, allowed=_p)
+ok("7.60 : secours : rien proposé entre 608 et 614 en Allemagne",
+   _res and all(not (608.01 < x["f"] < 613.99) for x in _res) and _d["hors_bandes"] > 0, (_d, [round(x["f"], 3) for x in _res if 606 < x["f"] < 616]))
+_res2, _ = ns["find_free"](_F, _L, 600.0, 620.0, [], n=40, min_sep=0.3, guard=None)
+ok("7.60 : sans filtre (case décochée) : 608-614 possible", any(608.0 < x["f"] < 614.0 for x in _res2))
+_rc = ns["ready_checks"](dict(running=True, reg_out=["HF 2 (611.000)"], country_name="Allemagne"))
+ok("7.60 : « Prêt ? » signale l'émetteur hors bandes", any(c["key"] == "reg" and c["level"] == "warn"
+                                                           and c["fix"] == "open_country" for c in _rc))
+ok("7.60 : résumé lisible", ns["reg_summary"]("DE").startswith("174-230, 470-608, 614-694"))
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

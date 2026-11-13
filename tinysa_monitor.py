@@ -85,7 +85,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.59.1"
+APP_VER = "7.60.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -1052,6 +1052,108 @@ COUNTRY_NOTES = {
     "JP": "Plan indicatif (MIC). Micros dans les espaces blancs TV 470-710 MHz (canaux de 6 MHz) + bande dédiée "
           "710-714 MHz ; micros basse puissance aussi sur 806-810 et 1240-1260 MHz.",
 }
+
+# 7.60 (audit externe : « séparer ce qu'on balaye, ce qui est autorisé et ce qui est occupé ») : TROIS notions distinctes.
+#   1. plage BALAYÉE (country_uhf, bandes à balayer) : ce que le tinySA mesure, souvent plus large que l'utilisable ;
+#   2. plages AUTORISÉES (COUNTRY_ALLOWED, ci-dessous) : où un micro / IEM peut émettre d'après les notes du pays,
+#      avec leurs exclusions et conditions — INDICATIF (tableau CEPT EFIS pour l'Europe, FCC / ISED / ACMA / RSM / MIC
+#      ailleurs, novembre 2026), jamais une validation juridique ;
+#   3. ce qui est OCCUPÉ ici : la mesure (seuils, canaux TNT mesurés).
+# Condition : "" = utilisable sous les conditions générales (puissance limitée, usage secondaire) ; « licence » ;
+# « intérieur » ; « limité » (créneaux ou lieux restreints : voir la note du pays).
+COUNTRY_ALLOWED = {
+    "FR": [(174, 223, ""), (470, 694, ""), (823, 832, ""), (863, 865, ""), (1350, 1400, "licence"), (1785, 1805, "")],
+    "DE": [(174, 230, ""), (470, 608, ""), (614, 694, ""), (736, 753, ""), (823, 832, ""), (863, 865, ""),
+           (1350, 1400, "intérieur"), (1518, 1525, "intérieur"), (1785, 1805, "")],
+    "GB": [(174, 216, "limité"), (470, 703, "licence"), (823, 832, "licence"), (863, 865, ""), (1518, 1525, "licence"),
+           (1785, 1805, "licence")],
+    "CH": [(174, 223, ""), (470, 608, ""), (608, 614, "limité"), (614, 694, ""), (823, 832, ""), (863, 865, ""),
+           (1350, 1400, "intérieur"), (1785, 1805, "")],
+    "BE": [(174, 216, "limité"), (470, 694, ""), (821.5, 832, ""), (863, 865, ""), (1785, 1804.8, "")],
+    "NL": [(195, 202, ""), (470, 556, ""), (558, 564, ""), (566, 572, ""), (574, 580, ""), (582, 588, ""), (590, 604, ""),
+           (608, 614, "licence"), (614, 694, ""), (736, 753, ""), (821.5, 832, ""), (863, 865, ""),
+           (1350, 1400, "licence"), (1518, 1525, "licence"), (1785, 1805, "")],
+    "IT": [(174, 223, ""), (470, 694, ""), (694, 698, "limité"), (736, 738, "limité"), (823, 832, ""), (863, 865, ""),
+           (1518, 1525, ""), (1785, 1805, "")],
+    "ES": [(174, 180, "limité"), (470, 694, ""), (821.5, 832, ""), (863, 865, ""), (1785, 1805, "")],
+    "EU": [(470, 694, ""), (823, 832, ""), (863, 865, ""), (1785, 1805, "")],
+    "US": [(54, 72, ""), (76, 88, ""), (174, 216, ""), (470, 608, ""), (614, 616, ""), (653, 657, "licence"),
+           (657, 663, ""), (902, 928, ""), (941.5, 944, "licence"), (944, 952, "licence"), (952.85, 956.25, "licence"),
+           (956.45, 959.85, "licence"), (1435, 1525, "licence"), (1920, 1930, "")],
+    "CA": [(174, 216, ""), (470, 608, ""), (614, 617, ""), (652, 657, ""), (657, 663, "licence")],
+    "AU": [(520, 694, ""), (1790, 1800, "")],
+    "NZ": [(502, 606, ""), (622, 698, "")],
+    "JP": [(470, 714, ""), (806, 810, ""), (1240, 1260, "")],
+}
+
+
+def country_bands(code):
+    """Les deux premières notions pour un pays : {scan: (début, fin) balayé, allowed: [(début, fin, condition)]}."""
+    c = str(code or "").upper()
+    return dict(scan=country_uhf(c), allowed=[(float(a), float(b), k) for a, b, k in COUNTRY_ALLOWED.get(c, [])])
+
+
+def reg_status(code, f, bw=0.0):
+    """Une fréquence (ou un bloc de largeur bw MHz) face aux plages autorisées du pays. -> (état, condition) :
+    « ok » (dans une plage sans condition), « cond » (dans une plage sous condition : licence, intérieur, limité),
+    « out » (hors de toutes les plages connues pour ce pays), « unknown » (pays sans liste). Un bloc doit tenir EN
+    ENTIER dans des plages contiguës ; à cheval sur une plage libre et une sous condition -> la condition."""
+    al = country_bands(code)["allowed"]
+    if not al:
+        return ("unknown", "")
+    lo, hi = float(f) - float(bw or 0) / 2.0, float(f) + float(bw or 0) / 2.0
+    eps = 1e-6
+    for a, b, k in al:                                      # 1) dans une seule plage
+        if a - eps <= lo and hi <= b + eps:
+            return ("ok" if not k else "cond", k)
+    segs = sorted(al)                                       # 2) bloc à cheval sur des plages qui se touchent
+    pos, conds = lo, []
+    for a, b, k in segs:
+        if a - eps <= pos < b:
+            conds.append(k)
+            pos = b
+            if pos >= hi - eps:
+                k2 = next((x for x in conds if x), "")
+                return ("ok" if not k2 else "cond", k2)
+    return ("out", "")
+
+
+def reg_allowed_pred(code, bw=0.0, cond_ok=True):
+    """Pour la coordination / le secours : prédicat c -> True si la candidate est dans une plage autorisée
+    (cond_ok=False : seulement les plages sans condition). Pays sans liste -> tout est permis (None)."""
+    if not COUNTRY_ALLOWED.get(str(code or "").upper()):
+        return None
+    ok = ("ok", "cond") if cond_ok else ("ok",)
+    return lambda c: reg_status(code, c, bw)[0] in ok
+
+
+def reg_issues(code, items):
+    """items = [(nom, MHz, largeur, émet)] -> (hors, sous condition) : [(nom, MHz, condition)] des ÉMETTEURS seulement
+    (une réserve « doit rester libre » n'émet pas : rien à autoriser)."""
+    out, cond = [], []
+    for name, f, bw, tx in items:
+        if not tx:
+            continue
+        st, k = reg_status(code, f, bw)
+        if st == "out":
+            out.append((name, float(f), ""))
+        elif st == "cond":
+            cond.append((name, float(f), k))
+    return out, cond
+
+
+def reg_summary(code, tr=None):
+    """Une ligne lisible : « 470-608, 614-694 MHz ; sous condition : 1350-1400 (intérieur)… » (tr = traduction des
+    mots, pour l'interface en anglais)."""
+    tr = tr or (lambda x: x)
+    al = country_bands(code)["allowed"]
+    if not al:
+        return ""
+    f = lambda v: f"{v:g}".replace(".", ",")
+    free = [f"{f(a)}-{f(b)}" for a, b, k in al if not k]
+    cnd = [f"{f(a)}-{f(b)} ({tr(k)})" for a, b, k in al if k]
+    return ", ".join(free) + " MHz" + (tr(" ; sous condition : ") + ", ".join(cnd) if cnd else "")
+
 
 # début-fin (MHz) | catégorie | libellé | note
 PLAN_EU = """
@@ -3607,17 +3709,19 @@ def im3_clash(c, F, guard, guard3=None):
 
 
 def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guard=0.2, grid=0.025,
-              max_check=600, guard3=None, emitters=None, filt=0.0, im3=True, alt=True):
+              max_check=600, guard3=None, emitters=None, filt=0.0, im3=True, alt=True, allowed=None):
     """Cherche n fréquences libres entre a et b (MHz) d'après un spectre mesuré (F trié, L en dBm) :
     niveau max sur ± width/2 sous thr, à plus de min_sep de toute fréquence existante ou déjà choisie,
     et sans intermodulation 3e ordre à ± guard avec les ÉMETTEURS (emitters, défaut = existing ; une réserve
     « doit rester libre » n'émet pas). filt (MHz) : filtre du récepteur, seuls les émetteurs à ± filt / 2 de la
     candidate comptent (0 = tous). im3=False : 2A − B seulement (A + B − C ignoré), guard=None : pas d'intermod.
     alt : s'il en manque, des « moins mauvaises » sont proposées (clé warn : ce qui cloche).
+    allowed : prédicat c -> True si la candidate est dans une plage autorisée du pays (7.60, reg_allowed_pred) ;
+    les autres ne sont jamais proposées, même en « moins mauvaises ».
     -> (liste de dict(f, level, dist[, warn]), diag)"""
     ex = sorted(float(x) for x in existing)
     em = sorted(float(x) for x in (existing if emitters is None else emitters))
-    diag = dict(grille=0, sans_mesure=0, bruyantes=0, trop_proches=0, intermod=0, alternatives=0)
+    diag = dict(grille=0, sans_mesure=0, bruyantes=0, trop_proches=0, intermod=0, alternatives=0, hors_bandes=0)
     res = []
     if F is None or len(F) == 0 or b <= a:
         return res, diag
@@ -3630,6 +3734,11 @@ def find_free(F, L, a, b, existing, n=3, width=0.2, min_sep=0.3, thr=-90.0, guar
         if x is not None:
             lv[i] = x
     diag["sans_mesure"] = int(np.isnan(lv).sum())
+    if allowed is not None:                     # 7.60 : hors des plages autorisées du pays = jamais proposée
+        legal = np.array([bool(allowed(float(c))) for c in cand], dtype=bool)
+        diag["hors_bandes"] = int((~legal).sum())
+        diag["sans_mesure"] = int((np.isnan(lv) & legal).sum())
+        lv[~legal] = np.nan
     good = ~np.isnan(lv)
     quiet = good & (lv <= thr)
     diag["bruyantes"] = int((good & ~quiet).sum())
@@ -8233,6 +8342,15 @@ def ready_checks(i):
     if stale and i.get("running"):
         add("stale", "warn", "Mesures anciennes",
             f"{stale} fréquence(s) sans mesure récente alors que la surveillance tourne.", "dump_diag")
+    ro, rc, cn = i.get("reg_out") or [], i.get("reg_cond") or [], i.get("country_name") or ""
+    if ro:
+        lst = ", ".join(ro[:6]) + (" …" if len(ro) > 6 else "")
+        add("reg", "warn", "Bandes autorisées", f"{len(ro)} émetteur(s) hors des bandes indiquées pour {cn} : {lst}. "
+            "Indicatif : vérifie auprès du régulateur.", "open_country")
+    elif rc:
+        lst = ", ".join(rc[:6]) + (" …" if len(rc) > 6 else "")
+        add("reg", "info", "Bandes autorisées", f"{len(rc)} émetteur(s) dans une bande sous condition ({cn}) : {lst}.",
+            "open_country")
     mu = int(i.get("muted") or 0)
     if mu:
         add("muted", "info", "Éteints (je sais)", f"{mu} fréquence(s) en 💤 éteint (je sais) : pas d'alarme ABSENT pour "
@@ -11699,7 +11817,7 @@ class RescueDialog(QtWidgets.QDialog):
         res, d = find_free(F, L, a, b, ex, self.n_spin.value(), self.width_spin.value(), self.sep_spin.value(),
                            self.thr_spin.value(), None if im == "none" else self.guard_spin.value(),
                            guard3=self.guard_spin.value() / 2.0, emitters=em, filt=self.filt_spin.value(),
-                           im3=im == "full")
+                           im3=im == "full", allowed=o.reg_pred())
         self.found = res
         exa = sorted(w["freq"] for w in o.watch)
         t = self.table
@@ -11735,6 +11853,8 @@ class RescueDialog(QtWidgets.QDialog):
             if d["alternatives"]:
                 txt += (f"\n⚠ {d['alternatives']} « moins mauvaise(s) » proposée(s) en orange : regarde la "
                         "remarque avant de t'en servir.")
+        if d.get("hors_bandes"):
+            txt += "\n" + o.reg_note()
         self.msg.setText(txt)
 
     def _sel(self):
@@ -13172,7 +13292,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
                 busy = (lambda c: (lambda v: v is not None and v >= lim)(level_at(Fm, Lm, c, win)))
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            kw = dict(n=6, busy=busy, step=self._steps[r], filt=filt, img=self._imgs)   # pas de l'appareil de cette fréquence
+            kw = dict(n=6, busy=self.owner.reg_busy(busy), step=self._steps[r], filt=filt, img=self._imgs)   # pas de l'appareil de cette fréquence
             sg = pf_suggest(r, F, T, B, sep, tol, mx, **kw)
             if not sg:                                  # rien tout près : on cherche dans toutes les bandes
                 ext = self.owner._band_extent()
@@ -19409,7 +19529,7 @@ class CoordDialog(QtWidgets.QDialog):
         try:
             got = pf_fill_lots(spec, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
                                [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P],
-                               [q["filt"] for q in P], busy)
+                               [q["filt"] for q in P], o.reg_busy(busy))
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self.found = [(L_, c) for L_, cs in zip(lots, got) for c in cs]
@@ -19425,6 +19545,8 @@ class CoordDialog(QtWidgets.QDialog):
                          if not short else
                          f"⚠ Seulement {', '.join(short)} : la plage est pleine pour ces règles. Élargis la plage, "
                          "choisis un appareil plus robuste (écart et tolérances plus serrés) ou des règles plus souples.")
+        if o.reg_note():
+            self.msg.setText(self.msg.text() + "\n" + o.reg_note())
 
     def add(self):
         o = self.owner
@@ -21506,6 +21628,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.country_combo.currentIndexChanged.connect(self.on_country)
         # 7.58.3 : choisi À LA MAIN (pas au chargement d'une config) -> la bande UHF suit le pays, comme pour un show
         self.country_combo.activated.connect(lambda *_: self.set_show_country(self.country_combo.currentData() or "FR"))
+        # 7.60 (audit : « séparer balayé / autorisé / occupé ») : secours et coordination restent dans les plages autorisées
+        self.reg_only = True
+        self.reg_chk = QtWidgets.QCheckBox("Secours et coordination : seulement dans les bandes autorisées du pays")
+        self.reg_chk.setChecked(True)
+        self.reg_chk.setToolTip("Les fréquences proposées (secours, coordination, Vérifier le plan) restent dans les\n"
+                                "plages où un micro peut émettre d'après la note du pays (indicatif).\n"
+                                "La plage BALAYÉE peut être plus large : mesurer n'est pas émettre.")
+        self.reg_chk.toggled.connect(lambda on: setattr(self, "reg_only", bool(on)))
+        self.reg_lbl = QtWidgets.QLabel("")
+        self.reg_lbl.setWordWrap(True)
         self.alloc_chk = QtWidgets.QCheckBox("Attributions (4G/5G, TNT, militaire…)")
         self.alloc_chk.setChecked(True)
         self.tv_chk = QtWidgets.QCheckBox("Canaux TV")
@@ -21533,6 +21665,8 @@ class MainWindow(QtWidgets.QMainWindow):
         pform.addRow(guide_btn)
         pform.addRow(plan_btn)
         pform.addRow(self.country_note)
+        pform.addRow(self.reg_lbl)
+        pform.addRow(self.reg_chk)
         pform.addRow(self.legend_lbl)
 
         bbox = QtWidgets.QGroupBox("Bandes à balayer")
@@ -22553,6 +22687,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if "smooth" in data:
             self.set_smooth(bool(data.get("smooth")))
         self.set_coord(bool(data.get("coord_tools", False)))
+        self.reg_only = bool(data.get("reg_only", True))
+        self.reg_chk.setChecked(self.reg_only)
         try:
             self.auto_occ_spin.setValue(int(data.get("auto_occ", AUTO_THR_DEFAULT[0])))
             self.auto_weak_spin.setValue(int(data.get("auto_weak", AUTO_THR_DEFAULT[1])))
@@ -22681,7 +22817,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            coord_tools=bool(getattr(self, "coord_on", False)), theme_v=3, tnt=dict(self.tnt_cfg),
+            coord_tools=bool(getattr(self, "coord_on", False)), reg_only=bool(getattr(self, "reg_only", True)), theme_v=3, tnt=dict(self.tnt_cfg),
             user_presets=user_presets_norm(getattr(self, "user_presets", [])), user_name=getattr(self, "user_name", ""),
             alarm_timing=dict(confirm=int(self.sound.cfg.get("confirm", 3)), repeat=int(self.sound.cfg.get("repeat", 30))),
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
@@ -27178,6 +27314,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if code in self.plan_custom:
             note += "\n(plan modifié par toi)"
         self.country_note.setText(note + "\nIndicatif : vérifie toujours auprès du régulateur de ton pays.")
+        rs = reg_summary(code, TR)
+        a_, b_ = country_uhf(code)
+        self.reg_lbl.setText(f"Micros autorisés (indicatif) : {rs}\nBalayé : {a_:g}-{b_:g} MHz (mesurer n'est pas "
+                             f"émettre)." if rs else "")
         self.update_strips()
         for w in self.watch:
             w["band"], w["cat"] = spectrum_info(w["freq"], self.plan, self.tv)
@@ -28032,6 +28172,41 @@ class MainWindow(QtWidgets.QMainWindow):
             if k not in alive:
                 seen.pop(k, None)
 
+    # ---------------------------------------------------------------- 7.60 : bandes autorisées du pays
+    def country_code(self):
+        return self.country_combo.currentData() or "FR"
+
+    def reg_pred(self, bw=0.0):
+        """Prédicat « dans une plage autorisée du pays » pour secours / coordination ; None = pas de filtre."""
+        if not getattr(self, "reg_only", True):
+            return None
+        return reg_allowed_pred(self.country_code(), bw)
+
+    def reg_busy(self, busy):
+        """busy(c) de la coordination + hors des plages autorisées = occupé (jamais proposé)."""
+        p = self.reg_pred()
+        if p is None:
+            return busy
+        return lambda c: (not p(c)) or (busy is not None and bool(busy(c)))
+
+    def reg_note(self):
+        """Phrase pour les fenêtres de secours / coordination."""
+        if self.reg_pred() is None:
+            return ""
+        return f"Propositions limitées aux bandes autorisées pour {TR(dict(COUNTRIES).get(self.country_code(), self.country_code()))} (indicatif, ⚙ › Pays)."
+
+    def reg_info(self, ws):
+        code = self.country_code()
+        items = [(w.get("name") or "", w["freq"], float(w.get("bw") or 0.0), not self.is_keep_free(w.get("status")))
+                 for w in ws]
+        out, cond = reg_issues(code, items)
+        fmt = lambda x: f"{x[0] or '?'} ({x[1]:.3f})" + (f" {TR(x[2])}" if x[2] else "")
+        return dict(reg_out=[fmt(x) for x in out], reg_cond=[fmt(x) for x in cond],
+                    country_name=TR(dict(COUNTRIES).get(code, code)))
+
+    def open_country(self):
+        self.open_settings("country")
+
     # ---------------------------------------------------------------- ✅ prêt pour le show ?
     def ready_info(self):
         """État de l'appli pour ready_checks (PURE)."""
@@ -28078,7 +28253,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     sweep_age=(now - max(ts)) if ts else None, cycle=getattr(self, "last_cycle", 0.0) or 0.0,
                     watch_n=len(ws), uncovered=sum(1 for w in ws if not covered(w)),
                     no_status=sum(1 for w in ws if not w.get("status")), plan_issues=plan,
-                    muted=sum(1 for w in ws if w.get("muted")),
+                    muted=sum(1 for w in ws if w.get("muted")), **self.reg_info(ws),
                     conflicts=sum(1 for a in self.alarms.active.values() if a.get("kind") != "APPAREIL")
                     if isinstance(self.alarms.active, dict) else len(self.alarms.active),
                     snooze=max(0.0, self.snooze_until - now) if self.snooze_until else 0.0,
