@@ -26267,7 +26267,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if job["done"]:
                 tm.stop()
                 tm.deleteLater()
-                done(job["res"], job["err"])
+                try:
+                    done(job["res"], job["err"])
+                except RuntimeError:              # fenêtre supprimée pendant le calcul : résultat ignoré
+                    pass
             elif label is not None:
                 try:
                     st = status() if status is not None else ""

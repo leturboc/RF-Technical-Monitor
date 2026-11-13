@@ -48,6 +48,7 @@ def wait(ms):
 shots = []
 def coord_wait(d, limit=240):
     """7.60.2 : la coordination tourne dans un fil à part ; on attend la fin (l'interface reste vivante)."""
+    d.show()                       # une fenêtre cachée plus de 10 s est libérée par le ménage (_reap_dialogs)
     t0 = time.time()
     while getattr(d, "_job", None) is not None and time.time() - t0 < limit:
         QtWidgets.QApplication.processEvents()
