@@ -5273,3 +5273,25 @@ EXACT.update({
     'novembre 2026': 'November 2026',
 })
 SAME_TEMPLATES += ["{}-{} MHz · "]
+# 7.60 : LoRaWAN / IoT
+EXACT.update({
+    'AS920-923': 'AS920-923',
+    'AU915-928': 'AU915-928',
+    'EU863-870': 'EU863-870',
+    'US902-928': 'US902-928',
+    'ISM 433 MHz : télécommandes, capteurs, LoRa (EU433)': 'ISM 433 MHz: remote controls, sensors, LoRa (EU433)',
+    'ISM 915-928 MHz : LoRaWAN AU915-928, RFID, IoT': 'ISM 915-928 MHz: LoRaWAN AU915-928, RFID, IoT',
+    'ISM 920 MHz : LoRaWAN AS920-923, RFID, IoT': 'ISM 920 MHz: LoRaWAN AS920-923, RFID, IoT',
+    'LoRaWAN : 867,1-868,5 MHz et 869,525 MHz (passerelles)': 'LoRaWAN: 867.1-868.5 MHz and 869.525 MHz (gateways)',
+    'LoRaWAN : montante 915-928 MHz, descendante 923-928 MHz': 'LoRaWAN: uplink 915-928 MHz, downlink 923-928 MHz',
+    'LoRaWAN AS920-923 : 920-923,5 MHz': 'LoRaWAN AS920-923: 920-923.5 MHz',
+    'LoRaWAN US902-928 : montante 902-915 MHz, descendante 923-928 MHz': 'LoRaWAN US902-928: uplink 902-915 MHz, downlink 923-928 MHz',
+    'Micros basse puissance sans licence (Japon)': 'Low-power licence-free mics (Japan)',
+    'Partagé avec le radioamateur 70 cm': 'Shared with the 70 cm amateur band',
+    'SRD / RFID / IoT 868 MHz (LoRaWAN EU863-870)': 'SRD / RFID / IoT 868 MHz (LoRaWAN EU863-870)',
+    'Téléphonie mobile 4G/5G (plan du pays)': '4G/5G mobile (country plan)',
+    "Bande partagée avec l'IoT": 'Band shared with IoT',
+})
+TEMPLATES.update({
+    '{} émetteur(s) dans une bande LoRaWAN / IoT ({}) : des capteurs peuvent y émettre par paquets courts, sans prévenir. Garde de la marge ou une fréquence de secours.': '{} transmitter(s) in a LoRaWAN / IoT band ({}): sensors may transmit there in short bursts, without warning. Keep some margin or a backup frequency.',
+})

@@ -1124,6 +1124,26 @@ COUNTRY_SOURCES = {
 }
 
 
+# 7.60 (Clément : thethingsnetwork.org « LoRaWAN frequencies by country », lu le 13/11/2026) : bandes IoT / LoRaWAN où
+# des capteurs émettent sans prévenir (souvent par paquets courts). Utile pour un micro posé dans une bande partagée.
+LORA_PLANS = {"EU": ("EU863-870", [(867.0, 868.6), (868.7, 868.9), (869.4, 869.65), (433.05, 434.79)]),
+              "US": ("US902-928", [(902.0, 915.0), (923.0, 928.0)]),
+              "AU": ("AU915-928", [(915.0, 928.0)]),
+              "JP": ("AS920-923", [(920.0, 923.5)])}
+LORA_COUNTRY = {"FR": "EU", "DE": "EU", "GB": "EU", "CH": "EU", "BE": "EU", "NL": "EU", "IT": "EU", "ES": "EU", "EU": "EU",
+                "US": "US", "CA": "US", "AU": "AU", "NZ": "AU", "JP": "JP"}
+
+
+def lora_overlap(code, f, bw=0.0):
+    """Nom du plan LoRaWAN du pays si la fréquence (ou le bloc) touche une de ses bandes, sinon ""."""
+    k = LORA_COUNTRY.get(str(code or "").upper())
+    if not k:
+        return ""
+    name, rngs = LORA_PLANS[k]
+    lo, hi = float(f) - float(bw or 0) / 2.0, float(f) + float(bw or 0) / 2.0
+    return name if any(lo < b and hi > a for a, b in rngs) else ""
+
+
 def country_bands(code):
     """Les deux premières notions pour un pays : {scan: (début, fin) balayé, allowed: [(début, fin, condition)]}."""
     c = str(code or "").upper()
@@ -1268,7 +1288,9 @@ PLAN_EU = """
 406-406.1|sat|Balises de détresse (COSPAS-SARSAT)|
 406.1-410|other|Radioastronomie / mobile|
 410-430|mil|Défense / radios pro (mobile)|
-430-440|amateur|Radioamateur 70 cm|
+430-433.05|amateur|Radioamateur 70 cm|
+433.05-434.79|ism|ISM 433 MHz : télécommandes, capteurs, LoRa (EU433)|Partagé avec le radioamateur 70 cm
+434.79-440|amateur|Radioamateur 70 cm|
 440-446|pro|UHF mobile professionnel|
 446-446.2|civ|PMR446 (talkies sans licence)|
 446.2-450|pro|UHF mobile professionnel|
@@ -1283,7 +1305,7 @@ PLAN_EU = """
 821-832|pmse|Écart duplex 800 MHz (micros HF 823-832)|
 832-862|mobile|4G 800 MHz : montant|
 863-865|pmse|Micros HF libres 863-865 MHz (10 mW)|
-865-870|ism|SRD / RFID / IoT 868 MHz|
+865-870|ism|SRD / RFID / IoT 868 MHz (LoRaWAN EU863-870)|LoRaWAN : 867,1-868,5 MHz et 869,525 MHz (passerelles)
 870-876|pro|Radios pro / SRD|
 876-880|pro|GSM-R (trains) : montant|
 880-915|mobile|2G/3G/4G 900 MHz : montant|
@@ -1362,6 +1384,23 @@ PLAN_OVERRIDES = {
 604-614|other|604-614 MHz : pas pour les micros sans licence (608-614 : licence, radioastronomie)|
 736-753|pmse|Micros HF sans licence (Pays-Bas)|
 """,
+    "AU": """
+790-915|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+915-928|ism|ISM 915-928 MHz : LoRaWAN AU915-928, RFID, IoT|LoRaWAN : montante 915-928 MHz, descendante 923-928 MHz
+928-960|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+""",
+    "NZ": """
+790-915|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+915-928|ism|ISM 915-928 MHz : LoRaWAN AU915-928, RFID, IoT|LoRaWAN : montante 915-928 MHz, descendante 923-928 MHz
+928-960|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+""",
+    "JP": """
+790-806|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+806-810|pmse|Micros basse puissance sans licence (Japon)|
+810-915|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+915-928|ism|ISM 920 MHz : LoRaWAN AS920-923, RFID, IoT|LoRaWAN AS920-923 : 920-923,5 MHz
+928-960|mobile|Téléphonie mobile 4G/5G (plan du pays)|
+""",
     "IT": """
 694-698|pmse|Micros HF (Italie, limité)|
 736-738|pmse|Micros HF (Italie, limité)|
@@ -1414,7 +1453,7 @@ PLAN_US = """
 824-849|mobile|Cellulaire 850 MHz : montant|
 851-869|pro|Sécurité publique / SMR 800 MHz|
 869-894|mobile|Cellulaire 850 MHz : descendant|
-902-928|ism|ISM 900 MHz (micros numériques, LoRa)|
+902-928|ism|ISM 900 MHz (micros numériques, LoRa)|LoRaWAN US902-928 : montante 902-915 MHz, descendante 923-928 MHz
 960-1215|aero|Aéronautique : DME / TACAN / radar secondaire / ADS-B 1090|
 1215-1350|mil|Radars / GNSS|
 1559-1610|sat|GNSS (GPS L1)|
@@ -8404,6 +8443,11 @@ def ready_checks(i):
         lst = ", ".join(rc[:6]) + (" …" if len(rc) > 6 else "")
         add("reg", "info", "Bandes autorisées", f"{len(rc)} émetteur(s) dans une bande sous condition ({cn}) : {lst}.",
             "open_country")
+    lo_ = i.get("lora") or []
+    if lo_:
+        lst = ", ".join(lo_[:6]) + (" …" if len(lo_) > 6 else "")
+        add("lora", "info", "Bande partagée avec l'IoT", f"{len(lo_)} émetteur(s) dans une bande LoRaWAN / IoT ({lst}) : des "
+            "capteurs peuvent y émettre par paquets courts, sans prévenir. Garde de la marge ou une fréquence de secours.")
     mu = int(i.get("muted") or 0)
     if mu:
         add("muted", "info", "Éteints (je sais)", f"{mu} fréquence(s) en 💤 éteint (je sais) : pas d'alarme ABSENT pour "
@@ -28255,7 +28299,9 @@ class MainWindow(QtWidgets.QMainWindow):
                  for w in ws]
         out, cond = reg_issues(code, items)
         fmt = lambda x: f"{x[0] or '?'} ({x[1]:.3f})" + (f" {TR(x[2])}" if x[2] else "")
-        return dict(reg_out=[fmt(x) for x in out], reg_cond=[fmt(x) for x in cond],
+        lora = [f"{w.get('name') or '?'} ({w['freq']:.3f})" for w in ws if not self.is_keep_free(w.get("status"))
+                and lora_overlap(code, w["freq"], float(w.get("bw") or 0.0))]
+        return dict(reg_out=[fmt(x) for x in out], reg_cond=[fmt(x) for x in cond], lora=lora,
                     country_name=TR(dict(COUNTRIES).get(code, code)))
 
     def open_country(self):

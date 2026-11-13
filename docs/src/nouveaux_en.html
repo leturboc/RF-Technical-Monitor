@@ -429,6 +429,13 @@ very handy to compare countries but sometimes coarser (it has no 608–614 MHz c
 ⚙ Settings › Country: each range is shown with its condition, the power given by the source, the sources and the
 check date (November 2026).</p>
 <p>European countries: from the official CEPT table, filled in by each regulator (<a href="https://efis.cept.org/report/report2510AnnexImplementation.do?annexId=1">CEPT EFIS – national conditions for audio PMSE</a>).</p>
+<h3>Bands shared with IoT (LoRaWAN)</h3>
+<p>Sensors (meters, car parks, weather…) transmit in short bursts, without warning, in open-access bands. The strips
+under the spectrum show them: in Europe 433.05–434.79 MHz and 865–870 MHz (LoRaWAN EU863-870: 867.1–868.5 and
+869.525 MHz; the 863–865 MHz mic band is not inside), in the United States and Canada 902–928 MHz (uplink 902–915,
+downlink 923–928), in Australia and New Zealand 915–928 MHz, in Japan 920–923.5 MHz. "✅ Ready for the show?" flags
+(for info) a transmitter of your list placed in one of these bands. Source:
+<a href="https://www.thethingsnetwork.org/docs/lorawan/frequencies-by-country/">The Things Network, LoRaWAN plans by country</a>.</p>
 <h3>Working out a channel</h3>
 <ul>
   <li><b>Europe, UK, New Zealand</b> (8 MHz): channel n runs from 470 + 8 × (n − 21) to 8 MHz higher. Channel 21 =

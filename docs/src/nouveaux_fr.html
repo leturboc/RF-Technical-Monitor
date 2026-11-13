@@ -445,6 +445,13 @@ elle indique « sous licence » alors que l'OFCOM suisse décrit ces bandes sans
 « Micros autorisés » de ⚙ Réglages › Pays : chaque plage s'affiche avec sa condition, la puissance indiquée par la source,
 les sources et la date de vérification (novembre 2026).</p>
 <p>Pays européens : d'après le tableau officiel de la CEPT, rempli par chaque régulateur (<a href="https://efis.cept.org/report/report2510AnnexImplementation.do?annexId=1">CEPT EFIS – conditions nationales PMSE audio</a>).</p>
+<h3>Bandes partagées avec l'IoT (LoRaWAN)</h3>
+<p>Des capteurs (compteurs, parkings, météo…) émettent par paquets courts, sans prévenir, dans des bandes libres
+d'accès. Les bandeaux sous le spectre les montrent : en Europe 433,05–434,79 MHz et 865–870 MHz (LoRaWAN EU863-870 :
+867,1–868,5 et 869,525 MHz ; la bande micros 863–865 MHz n'est pas dedans), aux États-Unis et au Canada 902–928 MHz
+(montante 902–915, descendante 923–928), en Australie et en Nouvelle-Zélande 915–928 MHz, au Japon 920–923,5 MHz.
+« ✅ Prêt pour le show ? » signale (pour info) un émetteur de ta liste posé dans une de ces bandes. Source :
+<a href="https://www.thethingsnetwork.org/docs/lorawan/frequencies-by-country/">The Things Network, plans LoRaWAN par pays</a>.</p>
 <h3>Calculer un canal</h3>
 <ul>
   <li><b>Europe, Royaume-Uni, Nouvelle-Zélande</b> (8 MHz) : le canal n va de 470 + 8 × (n − 21) à 8 MHz plus haut.
