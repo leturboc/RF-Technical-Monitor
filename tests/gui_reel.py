@@ -1501,6 +1501,23 @@ _wm["state"] = "free"
 check("éteint : « 💤 éteint (je sais) » dans la liste", win.sig_view(_wm)[0] == "💤 éteint (je sais)", win.sig_view(_wm)[0])
 check("éteint : gardé dans le show", any(x.get("muted") for x in win._collect_config(False)["watch"]))
 check("éteint : rappel dans Prêt pour le show ?", any(c["key"] == "muted" for c in m.ready_checks(win.ready_info())))
+# 7.60 : bandes AUTORISÉES séparées de la plage balayée
+_ci = win.country_combo.currentIndex()
+win.country_combo.setCurrentIndex(win.country_combo.findData("DE"))
+QtWidgets.QApplication.processEvents()
+check("7.60 : Allemagne : bandes autorisées affichées (608-614 exclu)", "470-608" in win.reg_lbl.text()
+      and "614-694" in win.reg_lbl.text(), win.reg_lbl.text())
+_wx = win._append_watch("Essai 611", 611.0, status="En service", scene="Show", group="Micros")
+check("7.60 : « Prêt ? » : émetteur à 611 MHz hors bandes en Allemagne",
+      any(c["key"] == "reg" and "611" in c["text"] for c in m.ready_checks(win.ready_info())))
+check("7.60 : prédicat de coordination actif", win.reg_pred() is not None and not win.reg_pred()(611.0))
+win.reg_chk.setChecked(False)
+check("7.60 : case décochée -> pas de filtre", win.reg_pred() is None and win.reg_busy(None) is None)
+win.reg_chk.setChecked(True)
+win.watch = [w for w in win.watch if w.get("name") != "Essai 611"]
+win.update_watch_table(force=True)
+win.country_combo.setCurrentIndex(_ci)
+QtWidgets.QApplication.processEvents()
 check("éteint : la page Tech rallume", "rallumé" in win.tech_do(dict(action="mute", key=_km, on=False))
       and not _wm.get("muted"))
 _rows = win._sel_rows

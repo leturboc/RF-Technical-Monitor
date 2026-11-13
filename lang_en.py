@@ -5227,3 +5227,20 @@ EXACT.update({
     'Plan proche des USA (ISED). Canaux TV de 6 MHz ; micros HF sur 470-608 MHz, bande de garde 614-617 MHz et écart duplex 652-663 MHz (657-663 MHz : licence volontaire).':
         'Plan close to the USA (ISED). 6 MHz TV channels; wireless mics on 470-608 MHz, 614-617 MHz guard band and 652-663 MHz duplex gap (657-663 MHz: voluntary licence).',
 })
+
+# 7.60 : bandes autorisées par pays (séparées de la plage balayée)
+EXACT.update({
+    'Bandes autorisées': 'Allowed bands',
+    "Les fréquences proposées (secours, coordination, Vérifier le plan) restent dans les\nplages où un micro peut émettre d'après la note du pays (indicatif).\nLa plage BALAYÉE peut être plus large : mesurer n'est pas émettre.": 'Suggested frequencies (backup, coordination, Check the plan) stay within the\nranges where a mic may transmit according to the country note (indicative).\nThe SWEPT range can be wider: measuring is not transmitting.',
+    'Secours et coordination : seulement dans les bandes autorisées du pays': "Backup and coordination: only in the country's allowed bands",
+    'intérieur': 'indoors',
+    'limité': 'limited',
+    'licence': 'licence',
+    ' ; sous condition : ': '; conditional: ',
+})
+TEMPLATES.update({
+    '{} émetteur(s) dans une bande sous condition ({}) : {}.': '{} transmitter(s) in a conditional band ({}): {}.',
+    'Propositions limitées aux bandes autorisées pour {} (indicatif, ⚙ › Pays).': 'Suggestions limited to the allowed bands for {} (indicative, ⚙ › Country).',
+    "Micros autorisés (indicatif) : {}\nBalayé : {}-{} MHz (mesurer n'est pas émettre).": 'Mics allowed (indicative): {}\nSwept: {}-{} MHz (measuring is not transmitting).',
+    '{} émetteur(s) hors des bandes indiquées pour {} : {}. Indicatif : vérifie auprès du régulateur.': '{} transmitter(s) outside the bands listed for {}: {}. Indicative: check with the regulator.',
+})

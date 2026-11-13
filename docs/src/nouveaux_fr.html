@@ -388,6 +388,19 @@ Pi : <code>python3 /opt/tinysa-relais/tinysa_relais.py --diag</code> dit ce qui 
 des micros de ce pays, les canaux TV correspondants (bandeaux sous le spectre, 📺 Canaux TNT) et ses notes. Tout est
 <b>indicatif</b> : la règle qui compte est celle du régulateur du pays, à vérifier avant chaque tournée. Recherches
 faites en novembre 2026.</p>
+<h3>Balayé, autorisé, occupé : trois choses différentes</h3>
+<ul>
+  <li><b>Balayé</b> : ce que le tinySA mesure (la bande « UHF … » de tes bandes à balayer). Elle peut être plus large
+    que ce qui est permis : <b>mesurer n'est pas émettre</b>, et voir ce qu'il y a à côté est utile.</li>
+  <li><b>Autorisé</b> : les plages où un micro ou un IEM peut émettre dans le pays, avec leurs trous (par exemple
+    608–614 MHz en Allemagne) et leurs conditions (licence, intérieur, créneaux limités). Elles sont écrites sous la
+    note du pays, dans ⚙ Réglages › Pays.</li>
+  <li><b>Occupé</b> : ce que la mesure montre ici et maintenant (seuils, canaux TNT mesurés).</li>
+</ul>
+<p>La fréquence de secours, la coordination et « Vérifier le plan » ne proposent que des fréquences dans les plages
+autorisées du pays (case « Secours et coordination : seulement dans les bandes autorisées du pays », cochée d'office).
+« ✅ Prêt pour le show ? » signale un émetteur de ta liste hors de ces plages, ou dans une plage sous condition.
+Ces plages restent <b>indicatives</b> : la règle qui compte est celle du régulateur.</p>
 <table>
   <tr><th>Pays</th><th>Bande UHF des micros (balayée)</th><th>Canaux TV</th><th>Autres bandes utiles</th><th>Source</th></tr>
   <tr><td>France</td><td>470–694 MHz, partagée avec la TNT (canal 38 compris), 50 mW</td><td>21 à 48, 8 MHz</td>

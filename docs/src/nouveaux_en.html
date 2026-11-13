@@ -372,6 +372,19 @@ rules; the receiver filter changes the result a lot (Filter chapter).</p>
 <p>When you pick the <b>show country</b> (show info window, or ⚙ Settings › Country), the app uses that country's mic UHF
 band, its TV channels (strips under the spectrum, 📺 DTT channels) and its notes. Everything is <b>indicative</b>: the
 rule that counts is the national regulator's, to be checked before every tour. Research done in November 2026.</p>
+<h3>Swept, allowed, occupied: three different things</h3>
+<ul>
+  <li><b>Swept</b>: what the tinySA measures (the "UHF …" band in your bands to sweep). It can be wider than what is
+    permitted: <b>measuring is not transmitting</b>, and seeing what is next door is useful.</li>
+  <li><b>Allowed</b>: the ranges where a mic or IEM may transmit in the country, with their gaps (for example
+    608–614 MHz in Germany) and their conditions (licence, indoors, limited slots). They are written under the
+    country note, in ⚙ Settings › Country.</li>
+  <li><b>Occupied</b>: what the measurement shows here and now (thresholds, measured DTT channels).</li>
+</ul>
+<p>The backup frequency, coordination and "Check the plan" only suggest frequencies inside the country's allowed
+ranges (box "Backup and coordination: only in the country's allowed bands", ticked by default). "✅ Ready for the
+show?" flags a transmitter of your list outside these ranges, or in a conditional range. These ranges stay
+<b>indicative</b>: the rule that counts is the regulator's.</p>
 <table>
   <tr><th>Country</th><th>Mic UHF band (swept)</th><th>TV channels</th><th>Other useful bands</th><th>Source</th></tr>
   <tr><td>France</td><td>470–694 MHz, shared with DTT (channel 38 included), 50 mW</td><td>21 to 48, 8 MHz</td>

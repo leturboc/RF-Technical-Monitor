@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.59.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1098,6 +1098,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `COUNTRY_NOTES` réécrites, `PLAN_OVERRIDES` DE / GB / CH / NL / IT (pas de chevauchement entre lignes d'un même pays :
   test_plan), tableau du chapitre `pays` du manuel. Hors Europe : sources nationales (FCC, ISED, ACMA, RSM, MIC), pas de
   tableau commun. apwpt.org et testefis.cept.org bloqués par le réseau de la session (efis.cept.org autorisé).
+- **7.60.0 (audit externe sur la 7.59.1 : « séparer plage balayée et plages réglementaires »)** : TROIS notions
+  distinctes : BALAYÉ (`country_uhf`, bandes à balayer), AUTORISÉ (PURE `COUNTRY_ALLOWED` {pays: [(début, fin,
+  condition "" | licence | intérieur | limité)]}, d'après les notes 7.59.1, indicatif), OCCUPÉ (mesure). PURE
+  `country_bands`, `reg_status(pays, f, bw)` → ok / cond / out / unknown (bloc : doit tenir dans des plages contiguës),
+  `reg_allowed_pred`, `reg_issues` (émetteurs seulement), `reg_summary(pays, tr)`. `find_free(..., allowed=)` (diag
+  `hors_bandes`). MainWindow : `country_code`, `reg_pred`, `reg_busy(busy)` (coordination `CoordDialog.compute`,
+  `PlanCheckDialog.suggest`), `reg_note`, `reg_info` → `ready_checks` clé « reg » (warn hors bandes / info sous
+  condition, Régler = `open_country`) ; case `reg_chk` (`reg_only`, config sur la ligne `coord_tools=`, défaut vrai)
+  + `reg_lbl` (« Micros autorisés … / Balayé … ») dans ⚙ › Pays. Manuel : chapitre `pays`, encadré « Balayé, autorisé,
+  occupé ». Pays sans liste = pas de filtre. **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
