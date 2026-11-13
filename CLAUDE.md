@@ -639,7 +639,7 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     Relancée → `_late_layout` reprend la surveillance si `festival.was_running` (même sans mode festival ; aussi
     `TSM_RESUME` posé par `relaunch_guarded`, bouton « 🛡 Relancer maintenant sous garde » du `FestivalDialog`).
     `festival["guard"]` (défaut True) → `_startup_cmd` ajoute `--garde`. Test `tests/test_garde.py` (vrai processus
-    enfant : plante, se fige, se ferme ; dans la CI). **✅ Vérifié par Clément (09/11/2026, exe Windows 7.50, bouton « 💥 Tester : plantage ») : l'appli se relance bien et la surveillance reprend toute seule.** Pas encore essayé : « 🧊 appli figée », un vrai plantage, la relance au démarrage de Windows.
+    enfant : plante, se fige, se ferme ; dans la CI). **✅ Vérifié par Clément (09/11/2026, exe Windows 7.50, bouton « 💥 Tester : plantage ») : l'appli se relance bien et la surveillance reprend toute seule.** « 🧊 appli figée » ✅ vérifié le 13/11/2026 (voir 7.52.1). Pas encore essayé : un vrai plantage, la relance au démarrage de Windows.
   - **✅ Prêt pour le show ?** : PURE `ready_checks(info)` (liste {key, level ok|warn|bad|info, title, text, fix =
     méthode de MainWindow}) / `ready_summary` ; `MainWindow.ready_info()` (devs, dernier balayage, fréquences hors des
     bandes balayées, `pf_check` si ≤ 80 fréquences, son, ntfy / Telegram, web, show, `session_cfg["rec"]`, disque,
@@ -855,7 +855,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   processus) : l'appli figée restait vivante, gardait COM4 → nouvelle instance « could not open port 'COM4':
   PermissionError » (diagnostics de Clément), puis 2 appli après le dégel. Corrigé : `_kill_tree(pr)` (`taskkill /F
   /T /PID` sous Windows, puis kill) ; relance par la garde (`TSM_GUARD_RESTART`) → `retry_first` sur le 1er tinySA
-  (l'ancienne instance peut mettre quelques secondes à libérer le port). **À refaire par Clément avec la 7.52.1.**
+  (l'ancienne instance peut mettre quelques secondes à libérer le port). **✅ Vérifié par Clément (13/11/2026, exe 7.60) :
+  « 🧊 appli figée » → test à 16:18:24, une seule REPRISE AUTO à 16:19:49, COM4 repris, une seule appli : « vérifié ».**
 - **7.52.2 (Clément : « je peux pas valider en cliquant OK sur la page web et notif, c'est caché »)** : `AlertsDialog`
   faisait 815 px de haut au minimum (> écran portable mis à l'échelle) → contenu dans un `QScrollArea`, OK / Annuler
   toujours en bas ; `fit_dialog(dlg, w, h)` borne la taille à l'écran (à réutiliser pour toute grande fenêtre).
