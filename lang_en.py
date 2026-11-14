@@ -5356,3 +5356,7 @@ TEMPLATES.update({
     "⚠ l'appli figée (processus {}) ne se ferme pas : le port du tinySA peut rester pris": '⚠ the frozen app (process {}) does not close: the tinySA port may stay taken',
 })
 EXACT['essai {} / {}'] = 'try {} / {}'
+# 7.60.3 : repli sur le 3ᵉ ordre
+EXACT["⚠ 5ᵉ ordre NON vérifié (trop de combinaisons) : seul le 3ᵉ ordre l'est."] = "⚠ 5th order NOT checked (too many combinations): only the 3rd order is."
+TEMPLATES["✔ {} / {} sans problème au 3ᵉ ordre. ⚠ 5ᵉ ordre NON vérifié : trop de combinaisons avec autant d'émetteurs (vérifie une couche à la fois pour l'avoir)."] = "✔ {} / {} without problems at the 3rd order. ⚠ 5th order NOT checked: too many combinations with so many transmitters (check one layer at a time to get it)."
+EXACT["\n⚠ 5ᵉ ordre NON vérifié (trop de combinaisons) : seul le 3ᵉ ordre l'est."] = "\n⚠ 5th order NOT checked (too many combinations): only the 3rd order is."
