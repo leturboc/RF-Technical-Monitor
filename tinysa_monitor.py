@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.60.2"
+APP_VER = "7.60.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3671,12 +3671,19 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
     if len(txi) >= 2 and orders:
         TV = {k: np.array([t.get(k, 0.0) for t in TL]) for k in ("2tx3", "3tx3", "5", "7")}
         rows, info = im_scan(F[txi], orders, max_tx, targets=F, guard=tmax, bws=B[txi], tbws=B, limit=20000)
+        o3 = [o for o in orders if o <= 3]
+        if info.get("too_big") and o3 and len(o3) < len(orders):
+            # 7.60.3 : trop de combinaisons avec le 5ᵉ ordre (dès ~60 émetteurs) -> on vérifie quand même le 3ᵉ ordre
+            # (avant : AUCUNE intermod, seulement les écarts) ; info["reduced"] le dit à l'écran.
+            rows, info2 = im_scan(F[txi], o3, max_tx, targets=F, guard=tmax, bws=B[txi], tbws=B, limit=20000)
+            if not info2.get("too_big"):
+                info = dict(info2, reduced=True)
         for r in rows:
             src = [(int(txi[i]), c) for i, c in r["terms"]]
             used = {k for k, _c in src}
             tv = TV.get(im_class(r["order"], r["ntx"]), TV["5"])
             g_ = np.abs(F - r["f"]) - r["hw"] - B / 2.0
-            for v in np.nonzero((tv > 0) & (g_ < tv - 1e-6))[0].tolist():   # « au-delà » = accepté (doc EazyRF)
+            for v in np.nonzero((tv > 0) & (g_ < tv - 1e-6))[0].tolist():   # « au-delà » = accepté (doc du logiciel de coord)
                 if v in used:
                     continue
                 if FL[v] > 0 and any(abs(F[k] - F[v]) > FL[v] + 1e-9 for k in used):
@@ -3892,7 +3899,7 @@ def _fill_score(got):
     return (len(allf), gap)
 
 
-def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=800,
+def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=300,
                  order="low", tries=1, seed=None, progress=None, cancel=None):
     """Coordination entre appareils : plusieurs lots {n, sep, tol, filt, lo, hi, step} (ex. 8 × QLX-D + 6 × PSM 1000),
     cherchés l'un après l'autre ; chaque fréquence trouvée rejoint le plan avec les règles de SON appareil, donc les
@@ -12607,6 +12614,9 @@ class PlanCheckDialog(QtWidgets.QDialog):
                                  "passe en « 2 TX seulement », ignore le 5ᵉ ordre, ou vérifie une couche à la fois.")
         elif not n:
             self.sum_lbl.setText("Aucune fréquence à vérifier.")
+        elif info.get("reduced") and not bad:
+            self.sum_lbl.setText(f"✔ {n} / {n} sans problème au 3ᵉ ordre. ⚠ 5ᵉ ordre NON vérifié : trop de combinaisons "
+                                 "avec autant d'émetteurs (vérifie une couche à la fois pour l'avoir).")
         elif not bad:
             self.sum_lbl.setText(f"✔ Plan compatible : {n} / {n} fréquences sans problème (pour ces règles).")
         else:
@@ -12619,7 +12629,9 @@ class PlanCheckDialog(QtWidgets.QDialog):
                                                           ("A + B − C", kinds["3tx3"]), ("5ᵉ ordre", kinds["5"]),
                                                           ("fréquence image", kinds["img"])) if v)
             self.sum_lbl.setText(f"✗ {bad} fréquence(s) à revoir sur {n} · ✔ {n - bad} compatibles ({det}). "
-                                 "Choisis une ligne ✗ puis « Proposer ».")
+                                 "Choisis une ligne ✗ puis « Proposer »."
+                                 + ("\n⚠ 5ᵉ ordre NON vérifié (trop de combinaisons) : seul le 3ᵉ ordre l'est."
+                                    if info.get("reduced") else ""))
         self.sum_lbl.setStyleSheet(f"color:{th['st_free'] if n and not bad else th['st_occ'] if bad else th['ui_text']}")
         self.sug_list.clear()
         self._target = None

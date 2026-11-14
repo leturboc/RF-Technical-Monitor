@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.3**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1155,6 +1155,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     stats)` + budget de vérifications partagé entre les fenêtres de `_pf_pick` (sans ça, un cas SANS place refaisait 800
     vérifications exactes par fenêtre : 214 s → 55 s). Cas de gui_reel « coord par scène » (17 fréquences de démo, Wisycom
     au pas de 5 kHz, aucune place) : ≈ 60 s, en arrière-plan. gui_reel : `coord_order` = random1 (8 min max sur la CI).
+- **7.60.3 (Clément : « on complète l'expérience » → vérifier le plan en arrière-plan + coordination plus rapide sans
+  place)** : mesuré, `pf_check` reste < 1 s jusqu'à 120 fréquences → PAS mis en arrière-plan ; MAIS dès ~60 émetteurs
+  avec le 5ᵉ ordre il était « trop gros » et ne vérifiait AUCUNE intermod (seulement les écarts) → repli sur le 3ᵉ ordre
+  (`info["reduced"]`, message « ⚠ 5ᵉ ordre NON vérifié » dans PlanCheckDialog ; vaut aussi pour pf_suggest et « Prêt ? »).
+  `pf_fill_lots(max_check=300)` (avant 800) : même résultat 40 / 40 sur 2 × 20, cas sans place 40 s → 15 s.
+  Bibliothèque `.lst4` (Clément ne la trouvait pas) : toujours mode expert + outils de coord › 🎛 Profils d'appareil ›
+  📚 ; gardée dans `%APPDATA%\TinySAMonitor\appareils_eazyrf.json` ; seuls ses appareils ont une PLAGE (`lo` / `hi`).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

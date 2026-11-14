@@ -239,6 +239,16 @@ ns["pf_fill_lots"](_lots, plan0, order="random", tries=3, seed=1, progress=lambd
 check("hasard : progression essai par essai", _steps, [(1, 3), (2, 3), (3, 3)])
 check("hasard : annulé avant de commencer -> rien", ns["pf_fill_lots"](_lots, plan0, order="random", tries=3,
       cancel=lambda: True), [[]])
+# 7.60.3 : 60 émetteurs avec le 5ᵉ ordre = trop de combinaisons -> le 3ᵉ ordre est quand même vérifié
+_rg60 = np.random.default_rng(3)
+_F60 = list(np.sort(_rg60.uniform(470, 694, 60)))
+_i60, _inf60 = ns["pf_check"](_F60, None, None, 0.5, tolW, None, 32.0)
+_im60 = sum(1 for x in _i60 for it in x if it["kind"] == "im")
+check("60 émetteurs, 5ᵉ ordre trop gros : repli sur le 3ᵉ ordre (intermod quand même vérifiée)",
+      (_inf60.get("reduced"), _inf60.get("too_big"), _im60 > 0), (True, False, True))
+_i60b, _ = ns["pf_check"](_F60, None, None, 0.5, dict(tolW, **{"5": 0.0}), None, 32.0)
+check("repli = même résultat que le 3ᵉ ordre seul", sorted((i, len(x)) for i, x in enumerate(_i60)),
+      sorted((i, len(x)) for i, x in enumerate(_i60b)))
 # coordination entre appareils : 2 lots (QLX-D puis PSM 1000), chacun ses règles, tous compatibles entre eux
 rp = ns["rx_profile"]
 q_, p_ = rp("shure_dig"), rp("shure_psm1000")
