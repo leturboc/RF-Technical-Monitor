@@ -9194,196 +9194,6 @@ def local_ips():
     return [ip for ip in ips if not ip.startswith("127.")]
 
 
-def qr_image(text, px=360, dark="#000000", light="#ffffff"):
-    """📱 7.63 : QR code (segno, niveau de correction M) -> QImage carrée d'environ px pixels, marge de 4 modules.
-    None si segno manque (l'adresse reste affichée en texte)."""
-    try:
-        import segno
-    except Exception:  # noqa: BLE001
-        return None
-    q = segno.make(text, error="m", micro=False)
-    rows = [list(r) for r in q.matrix]
-    n = len(rows) + 8
-    sc = max(2, px // n)
-    img = QtGui.QImage(n * sc, n * sc, QtGui.QImage.Format.Format_RGB32)
-    img.fill(QtGui.QColor(light))
-    p = QtGui.QPainter(img)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QtGui.QColor(dark))
-    for y, r in enumerate(rows):
-        for x, v in enumerate(r):
-            if v:
-                p.drawRect((x + 4) * sc, (y + 4) * sc, sc, sc)
-    p.end()
-    return img
-
-
-class HistoryDialog(QtWidgets.QDialog):
-    """🕘 7.63 : historique des modifications de la liste : heure, qui (PC / téléphone / plan suivi), quoi, avant,
-    après ; filtre, export CSV. Gardé dans le show."""
-
-    COLS = ["Heure", "Qui", "Quoi", "Micro", "Avant", "Après"]
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = o = owner
-        self.setWindowTitle("Historique des modifications")
-        lay = QtWidgets.QVBoxLayout(self)
-        self.q = QtWidgets.QLineEdit()
-        self.q.setPlaceholderText("🔎 Filtrer : nom, fréquence, qui…")
-        self.q.setClearButtonEnabled(True)
-        self.q.textChanged.connect(lambda *_: self.fill())
-        lay.addWidget(self.q)
-        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
-        self.table.setHorizontalHeaderLabels(self.COLS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.table.setToolTip("Chaque changement de ta liste : ajout, retrait, fréquence, nom, statut, scène › groupe.\n"
-                              "« 📱 nom » = fait depuis la page Tech d'un téléphone. Le plus récent en haut.")
-        lay.addWidget(self.table, 1)
-        self.msg = QtWidgets.QLabel("")
-        exp = QtWidgets.QPushButton("Exporter en CSV…")
-        exp.setToolTip("Pour l'archiver ou l'envoyer (tableur).")
-        exp.clicked.connect(lambda *_: self.export())
-        clr = QtWidgets.QPushButton("Vider l'historique")
-        clr.setToolTip("Efface l'historique de ce show (la liste ne change pas).")
-        clr.clicked.connect(lambda *_: self.clear())
-        close = QtWidgets.QPushButton("Fermer")
-        close.clicked.connect(self.close)
-        lay.addLayout(o._row(self.msg, None, exp, clr, close))
-        self.resize(820, 520)
-        self.fill()
-
-    def rows(self):
-        q = self.q.text().strip().lower()
-        out = []
-        for x in reversed(self.owner.mod_history):
-            vals = (datetime.fromtimestamp(x["t"]).strftime("%d/%m %H:%M:%S"), x["who"], TR(HIST_WHAT.get(x["what"], x["what"])),
-                    x["name"], x["old"], x["new"])
-            if q and q not in " ".join(vals).lower():
-                continue
-            out.append(vals)
-        return out
-
-    def fill(self):
-        rows = self.rows()
-        self.table.setRowCount(len(rows))
-        for r, vals in enumerate(rows):
-            for c, v in enumerate(vals):
-                self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
-        self.msg.setText(TR("{} changement(s)").format(len(rows)))
-
-    def export(self, path=None):
-        if path is None:
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter l'historique", "historique.csv", "CSV (*.csv)")
-            if not path:
-                return False
-        with open(path, "w", encoding="utf-8-sig", newline="") as fh:
-            wr = csv.writer(fh, delimiter=";")
-            wr.writerow([TR(c) for c in self.COLS])
-            wr.writerows(self.rows())
-        return True
-
-    def clear(self):
-        r = QtWidgets.QMessageBox.question(self, APP_NAME, TR("Vider l'historique des modifications de ce show ?"))
-        if r == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.owner.mod_history = []
-            self.fill()
-
-
-class QrDialog(QtWidgets.QDialog):
-    """📱 7.63 : QR code de la page web : l'équipe le scanne avec l'appareil photo du téléphone et arrive sur la bonne
-    vue (accueil, mur, alarmes, régie, Tech…), sans avoir à dicter l'adresse. Enregistrable en PNG pour l'imprimer."""
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = o = owner
-        self.setWindowTitle("QR code pour les téléphones")
-        lay = QtWidgets.QVBoxLayout(self)
-        self.info = QtWidgets.QLabel("Scanne ce code avec l'appareil photo du téléphone (même Wi-Fi / réseau que ce PC) : "
-                                     "la page s'ouvre directement sur la vue choisie.")
-        self.info.setWordWrap(True)
-        lay.addWidget(self.info)
-        self.ip_combo = QtWidgets.QComboBox()
-        self.ip_combo.setToolTip("Adresse de ce PC sur le réseau (s'il y en a plusieurs : celle du réseau de l'équipe).")
-        self.view_combo = QtWidgets.QComboBox()
-        self.view_combo.setToolTip("Vue ouverte en arrivant (seulement les vues partagées dans 📣 Alertes et page web).")
-        lay.addLayout(o._row("Adresse :", self.ip_combo, "Ouvrir sur :", self.view_combo, None))
-        self.qr = QtWidgets.QLabel("")
-        self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr.setMinimumSize(300, 300)
-        lay.addWidget(self.qr, 1)
-        self.url = QtWidgets.QLabel("")
-        self.url.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        f = self.url.font()
-        f.setPointSizeF(f.pointSizeF() * 1.3)
-        self.url.setFont(f)
-        lay.addWidget(self.url)
-        self.web_btn = QtWidgets.QPushButton("📣 Activer la page web…")
-        self.web_btn.setToolTip("La page web est coupée : l'activer dans 📣 Alertes et page web.")
-        self.web_btn.clicked.connect(lambda *_: o.open_alerts())
-        copy = QtWidgets.QPushButton("Copier l'adresse")
-        copy.setToolTip("Copie l'adresse dans le presse-papiers (pour un message à l'équipe).")
-        copy.clicked.connect(lambda *_: QtWidgets.QApplication.clipboard().setText(self.link()))
-        save = QtWidgets.QPushButton("Enregistrer en PNG…")
-        save.setToolTip("Image à imprimer et coller en régie ou au plateau.")
-        save.clicked.connect(lambda *_: self.save_png())
-        close = QtWidgets.QPushButton("Fermer")
-        close.clicked.connect(self.close)
-        lay.addLayout(o._row(self.web_btn, None, copy, save, close))
-        self.ip_combo.currentIndexChanged.connect(lambda *_: self.draw())
-        self.view_combo.currentIndexChanged.connect(lambda *_: self.draw())
-        self.fill()
-        self.resize(460, 560)
-
-    def fill(self):
-        o = self.owner
-        self.ip_combo.blockSignals(True)
-        self.view_combo.blockSignals(True)
-        self.ip_combo.clear()
-        for ip in local_ips() or ["127.0.0.1"]:
-            self.ip_combo.addItem(ip, ip)
-        self.view_combo.clear()
-        self.view_combo.addItem("🏠 Accueil", "")
-        views = (o.web_cfg or {}).get("views") or {}
-        for k, ic, name, _d in WEB_VIEWS:
-            if views.get(k, k not in WEB_VIEWS_HIDDEN):
-                self.view_combo.addItem(f"{ic} {name}", k)
-        self.ip_combo.blockSignals(False)
-        self.view_combo.blockSignals(False)
-        self.draw()
-
-    def link(self):
-        o = self.owner
-        port = o.web.port if o.web is not None else int((o.web_cfg or {}).get("port", 8080) or 8080)
-        return web_link(self.ip_combo.currentData() or "127.0.0.1", port, self.view_combo.currentData() or "")
-
-    def draw(self):
-        on = self.owner.web is not None
-        self.web_btn.setVisible(not on)
-        url = self.link()
-        self.url.setText(url if on else TR("Page web coupée : active-la pour que ce code fonctionne."))
-        img = qr_image(url, 360)
-        self._img = img
-        if img is None:
-            self.qr.setText("(QR code indisponible : ouvre l'adresse ci-dessous à la main)")
-        else:
-            self.qr.setPixmap(QtGui.QPixmap.fromImage(img))
-        self.qr.setEnabled(on)
-
-    def save_png(self, path=None):
-        if self._img is None:
-            return False
-        if path is None:
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Enregistrer le QR code", "tinysa_qr.png", "Image PNG (*.png)")
-            if not path:
-                return False
-        return bool(self._img.save(path, "PNG"))
-
-
 class SerialRelay(threading.Thread):
     """Relaie les octets entre un port série (le tinySA) et UN client TCP (TinySA Monitor sur l'autre PC).
     Un nouveau client remplace l'ancien (reconnexion après une coupure réseau). Port USB débranché :
@@ -18126,6 +17936,196 @@ class GlossaryDialog(QtWidgets.QDialog):
         self.view.setHtml("".join(f"<p><b>{html.escape(TR(t))}</b><br>{html.escape(TR(x))}</p>" for t, x in items)
                           or f"<p>{html.escape(TR('Aucun mot trouvé.'))}</p>")
         self.count = len(items)
+
+
+def qr_image(text, px=360, dark="#000000", light="#ffffff"):
+    """📱 7.63 : QR code (segno, niveau de correction M) -> QImage carrée d'environ px pixels, marge de 4 modules.
+    None si segno manque (l'adresse reste affichée en texte)."""
+    try:
+        import segno
+    except Exception:  # noqa: BLE001
+        return None
+    q = segno.make(text, error="m", micro=False)
+    rows = [list(r) for r in q.matrix]
+    n = len(rows) + 8
+    sc = max(2, px // n)
+    img = QtGui.QImage(n * sc, n * sc, QtGui.QImage.Format.Format_RGB32)
+    img.fill(QtGui.QColor(light))
+    p = QtGui.QPainter(img)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QtGui.QColor(dark))
+    for y, r in enumerate(rows):
+        for x, v in enumerate(r):
+            if v:
+                p.drawRect((x + 4) * sc, (y + 4) * sc, sc, sc)
+    p.end()
+    return img
+
+
+class HistoryDialog(QtWidgets.QDialog):
+    """🕘 7.63 : historique des modifications de la liste : heure, qui (PC / téléphone / plan suivi), quoi, avant,
+    après ; filtre, export CSV. Gardé dans le show."""
+
+    COLS = ["Heure", "Qui", "Quoi", "Micro", "Avant", "Après"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Historique des modifications")
+        lay = QtWidgets.QVBoxLayout(self)
+        self.q = QtWidgets.QLineEdit()
+        self.q.setPlaceholderText("🔎 Filtrer : nom, fréquence, qui…")
+        self.q.setClearButtonEnabled(True)
+        self.q.textChanged.connect(lambda *_: self.fill())
+        lay.addWidget(self.q)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Chaque changement de ta liste : ajout, retrait, fréquence, nom, statut, scène › groupe.\n"
+                              "« 📱 nom » = fait depuis la page Tech d'un téléphone. Le plus récent en haut.")
+        lay.addWidget(self.table, 1)
+        self.msg = QtWidgets.QLabel("")
+        exp = QtWidgets.QPushButton("Exporter en CSV…")
+        exp.setToolTip("Pour l'archiver ou l'envoyer (tableur).")
+        exp.clicked.connect(lambda *_: self.export())
+        clr = QtWidgets.QPushButton("Vider l'historique")
+        clr.setToolTip("Efface l'historique de ce show (la liste ne change pas).")
+        clr.clicked.connect(lambda *_: self.clear())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(self.msg, None, exp, clr, close))
+        self.resize(820, 520)
+        self.fill()
+
+    def rows(self):
+        q = self.q.text().strip().lower()
+        out = []
+        for x in reversed(self.owner.mod_history):
+            vals = (datetime.fromtimestamp(x["t"]).strftime("%d/%m %H:%M:%S"), x["who"], TR(HIST_WHAT.get(x["what"], x["what"])),
+                    x["name"], x["old"], x["new"])
+            if q and q not in " ".join(vals).lower():
+                continue
+            out.append(vals)
+        return out
+
+    def fill(self):
+        rows = self.rows()
+        self.table.setRowCount(len(rows))
+        for r, vals in enumerate(rows):
+            for c, v in enumerate(vals):
+                self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
+        self.msg.setText(TR("{} changement(s)").format(len(rows)))
+
+    def export(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter l'historique", "historique.csv", "CSV (*.csv)")
+            if not path:
+                return False
+        with open(path, "w", encoding="utf-8-sig", newline="") as fh:
+            wr = csv.writer(fh, delimiter=";")
+            wr.writerow([TR(c) for c in self.COLS])
+            wr.writerows(self.rows())
+        return True
+
+    def clear(self):
+        r = QtWidgets.QMessageBox.question(self, APP_NAME, TR("Vider l'historique des modifications de ce show ?"))
+        if r == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.owner.mod_history = []
+            self.fill()
+
+
+class QrDialog(QtWidgets.QDialog):
+    """📱 7.63 : QR code de la page web : l'équipe le scanne avec l'appareil photo du téléphone et arrive sur la bonne
+    vue (accueil, mur, alarmes, régie, Tech…), sans avoir à dicter l'adresse. Enregistrable en PNG pour l'imprimer."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("QR code pour les téléphones")
+        lay = QtWidgets.QVBoxLayout(self)
+        self.info = QtWidgets.QLabel("Scanne ce code avec l'appareil photo du téléphone (même Wi-Fi / réseau que ce PC) : "
+                                     "la page s'ouvre directement sur la vue choisie.")
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        self.ip_combo = QtWidgets.QComboBox()
+        self.ip_combo.setToolTip("Adresse de ce PC sur le réseau (s'il y en a plusieurs : celle du réseau de l'équipe).")
+        self.view_combo = QtWidgets.QComboBox()
+        self.view_combo.setToolTip("Vue ouverte en arrivant (seulement les vues partagées dans 📣 Alertes et page web).")
+        lay.addLayout(o._row("Adresse :", self.ip_combo, "Ouvrir sur :", self.view_combo, None))
+        self.qr = QtWidgets.QLabel("")
+        self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr.setMinimumSize(300, 300)
+        lay.addWidget(self.qr, 1)
+        self.url = QtWidgets.QLabel("")
+        self.url.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        f = self.url.font()
+        f.setPointSizeF(f.pointSizeF() * 1.3)
+        self.url.setFont(f)
+        lay.addWidget(self.url)
+        self.web_btn = QtWidgets.QPushButton("📣 Activer la page web…")
+        self.web_btn.setToolTip("La page web est coupée : l'activer dans 📣 Alertes et page web.")
+        self.web_btn.clicked.connect(lambda *_: o.open_alerts())
+        copy = QtWidgets.QPushButton("Copier l'adresse")
+        copy.setToolTip("Copie l'adresse dans le presse-papiers (pour un message à l'équipe).")
+        copy.clicked.connect(lambda *_: QtWidgets.QApplication.clipboard().setText(self.link()))
+        save = QtWidgets.QPushButton("Enregistrer en PNG…")
+        save.setToolTip("Image à imprimer et coller en régie ou au plateau.")
+        save.clicked.connect(lambda *_: self.save_png())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(self.web_btn, None, copy, save, close))
+        self.ip_combo.currentIndexChanged.connect(lambda *_: self.draw())
+        self.view_combo.currentIndexChanged.connect(lambda *_: self.draw())
+        self.fill()
+        self.resize(460, 560)
+
+    def fill(self):
+        o = self.owner
+        self.ip_combo.blockSignals(True)
+        self.view_combo.blockSignals(True)
+        self.ip_combo.clear()
+        for ip in local_ips() or ["127.0.0.1"]:
+            self.ip_combo.addItem(ip, ip)
+        self.view_combo.clear()
+        self.view_combo.addItem("🏠 Accueil", "")
+        views = (o.web_cfg or {}).get("views") or {}
+        for k, ic, name, _d in WEB_VIEWS:
+            if views.get(k, k not in WEB_VIEWS_HIDDEN):
+                self.view_combo.addItem(f"{ic} {name}", k)
+        self.ip_combo.blockSignals(False)
+        self.view_combo.blockSignals(False)
+        self.draw()
+
+    def link(self):
+        o = self.owner
+        port = o.web.port if o.web is not None else int((o.web_cfg or {}).get("port", 8080) or 8080)
+        return web_link(self.ip_combo.currentData() or "127.0.0.1", port, self.view_combo.currentData() or "")
+
+    def draw(self):
+        on = self.owner.web is not None
+        self.web_btn.setVisible(not on)
+        url = self.link()
+        self.url.setText(url if on else TR("Page web coupée : active-la pour que ce code fonctionne."))
+        img = qr_image(url, 360)
+        self._img = img
+        if img is None:
+            self.qr.setText("(QR code indisponible : ouvre l'adresse ci-dessous à la main)")
+        else:
+            self.qr.setPixmap(QtGui.QPixmap.fromImage(img))
+        self.qr.setEnabled(on)
+
+    def save_png(self, path=None):
+        if self._img is None:
+            return False
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Enregistrer le QR code", "tinysa_qr.png", "Image PNG (*.png)")
+            if not path:
+                return False
+        return bool(self._img.save(path, "PNG"))
 
 
 class ReplaceDialog(QtWidgets.QDialog):
