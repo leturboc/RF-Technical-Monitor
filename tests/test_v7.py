@@ -1694,5 +1694,40 @@ ok("matin : html (verdict, barres, instables)", "En un coup d'œil" in _mh and "
 ok("matin : dans le rapport", "En un coup d'œil" in ns["build_report_html"](dict(events=_ev, rows=[])))
 ok("rapport : plus de nom de logiciel de coord", "EazyRF" not in ns["build_report_html"](dict(events=[], rows=[])))
 
+# ---- 7.62 : saisie express, modèle de show
+_qe = ns["parse_quick_entry"]
+check("saisie : « HF1 558.2, HF2 574, IEM 606.5 PSM »", _qe("HF1 558.2, HF2 574, IEM 606.5 PSM")[0],
+      [dict(name="HF1", freq=558.2), dict(name="HF2", freq=574.0), dict(name="IEM PSM", freq=606.5)])
+check("saisie : virgule décimale et point-virgule", [x["freq"] for x in _qe("558,200 ; 574,000\n606.5")[0]],
+      [558.2, 574.0, 606.5])
+_m = _qe("Salut ! tes fréquences : HF1 = 558.200 / HF2 = 574.000 MHz. Rappel 06 12 34 56 78, rdv 20:30")
+check("saisie : message (téléphone, heure ignorés)", [(x["name"], x["freq"]) for x in _m[0]], [("HF1", 558.2), ("HF2", 574.0)])
+check("saisie : kHz", _qe("Chant lead 558200\nIEM 606500 kHz")[0], [dict(name="Chant lead", freq=558.2),
+                                                                     dict(name="IEM", freq=606.5)])
+check("saisie : tableau collé (tabulations, en-tête ignoré)", _qe("Nom\tMHz\nVoix 1\t558,200\nVoix 2\t574,000"),
+      ([dict(name="Voix 1", freq=558.2), dict(name="Voix 2", freq=574.0)], ["Nom\tMHz"]))
+check("saisie : « HF 12 : 600.125 MHz » (le 12 n'est pas une fréquence)", _qe("HF 12 : 600.125 MHz")[0],
+      [dict(name="HF 12", freq=600.125)])
+check("saisie : plusieurs fréquences sur une ligne", [x["name"] for x in _qe("Kick 470.1 471.2 472.3")[0]],
+      ["Kick 1", "Kick 2", "Kick 3"])
+check("saisie : doublons retirés", len(_qe("558.2, 558.200, 558200")[0]), 1)
+check("saisie : rien", _qe("bonjour, à demain 20:30")[0], [])
+check("saisie : noms des lignes sans nom", ns["quick_names"]([dict(name="", freq=1), dict(name="A", freq=2),
+                                                              dict(name="", freq=3)], "HF", {"HF 1"}), ["HF 2", "A", "HF 3"])
+_doc = dict(meta=dict(name="Festival 2025", venue="Parc", date_from="2025-07-01", date_to="", notes="x"), ref=[[1], [2]],
+            show=dict(watch=[dict(name="HF 1", freq=558.2)], scenes=[dict(name="Grande", groups=[dict(name="HF", rx=["wisycom"])])],
+                      statuses=[dict(name="En service")], bands=[1], site_scans=[1], states=[1], state_cur="a",
+                      ezrf_link=dict(path="x"), planning=dict(slots=[1]), thr=-80, tnt=dict(place="Paris", radius=30, manual={"21": "tv"})))
+_tp = ns["show_template"](_doc)
+check("modèle : liste, scans, états, plan suivi, planning, référence vidés",
+      [k for k in ("watch", "site_scans", "states", "state_cur", "ezrf_link", "planning") if k in _tp["show"]] + [_tp["ref"]], [[]])
+check("modèle : scènes (et appareils des groupes), statuts, bandes, seuils gardés",
+      (_tp["show"]["scenes"][0]["groups"][0]["rx"], _tp["show"]["statuses"], _tp["show"]["bands"], _tp["show"]["thr"]),
+      (["wisycom"], [dict(name="En service")], [1], -80))
+check("modèle : lieu TNT vidé, réglages gardés", _tp["show"]["tnt"], dict(place="", radius=30, manual={}, plan=[], plan_src=""))
+check("modèle : nouveau nom vide, lieu gardé", (_tp["meta"]["name"], _tp["meta"]["venue"], _tp["meta"]["date_from"], _tp["template"]),
+      ("", "Parc", "", "Festival 2025"))
+check("modèle : le show d'origine n'est pas modifié", len(_doc["show"]["watch"]), 1)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

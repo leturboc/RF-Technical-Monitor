@@ -1192,6 +1192,18 @@ check("nouveau show : courbe des scans et référence effacées du spectre",
       (win.sitecurve.getData()[0] is None or len(win.sitecurve.getData()[0]) == 0) and win._ref_F is None)
 win.watch, win.scenes, win.site_scans = _saved_show[0], _saved_show[1], _saved_show[2]
 win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
+# 📐 7.62 : nouveau show depuis un modèle (structure sans fréquences)
+_tpl = os.path.join(tmp, "modele.tsashow")
+win.show_meta = dict(win.show_meta, name="Modèle 2025", venue="Parc des expos")
+win.save_show_to(_tpl)
+_sc_names = [s_["name"] for s_ in win.scenes]
+_saved_show = (list(win.watch), [dict(s_) for s_ in win.scenes], list(win.site_scans))
+step("nouveau show depuis un modèle", lambda: win.new_show_from_template(_tpl))
+check("📐 modèle : scènes reprises, liste vide, lieu gardé, nom vide", [s_["name"] for s_ in win.scenes] == _sc_names
+      and not win.watch and win.show_meta.get("venue") == "Parc des expos" and not win.show_meta.get("name"),
+      f"{[s_['name'] for s_ in win.scenes]} {len(win.watch)} {win.show_meta}")
+win.watch, win.scenes, win.site_scans = _saved_show[0], _saved_show[1], _saved_show[2]
+win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
 
 # ↶ / ↷ et Suppr (demande de Clément 7.32)
 win.undo_track()
@@ -2104,6 +2116,42 @@ win.watch = _saved_watch
 win.set_group_rx(("Grande scène", "IEM"), "")
 win.rebuild_tree()
 win.rebuild_watch_table()
+# ⌨ 7.62 : saisie express
+_n0 = len(win.watch)
+_qa = win.add_watch_dialog("Voix lead 662.125, Guitare 663.375 ; IEM 664,500 PSM\nrdv 20:30")
+_qa.scene.setEditText("Scène express"); _qa.group.setEditText("HF")
+wait(100)
+check("⌨ saisie : aperçu (3 micros, l'heure ignorée)", _qa.table.rowCount() == 3 and "rdv" in _qa.msg.text(),
+      f"{_qa.table.rowCount()} {_qa.msg.text()}")
+shot(_qa, "saisie_express")
+check("⌨ saisie : ajoutés dans la scène / le groupe", _qa.add() == 3 and len(win.watch) == _n0 + 3
+      and any(w_["name"] == "IEM PSM" and w_["scene"] == "Scène express" and w_["group"] == "HF" for w_ in win.watch),
+      str([(w_["name"], w_["scene"], w_["group"]) for w_ in win.watch[-3:]]))
+_qa.edit.setPlainText("662.125")
+check("⌨ saisie : doublon ignoré", not _qa.add_btn.isEnabled())
+_qa.close()
+# 🆘 7.62 : remplacer un micro
+_wr = next(w_ for w_ in win.watch if w_["name"] == "Voix lead")
+_b0 = next(b_ for b_ in win.bands if b_["enabled"])
+win.set_watch_freq(_wr, round((_b0["start"] + _b0["stop"]) / 2.0, 3))     # dans une bande balayée (mesurée)
+_t0r = time.time()
+_sr = win.suggest_replacements(_wr, 3)
+print(f"    remplacer : {time.time() - _t0r:.1f} s, {[(x['f'], x['tag']) for x in _sr]}", flush=True)
+check("🆘 remplacer : propositions libres et compatibles (ou règles allégées signalées)", len(_sr) >= 1
+      and all(abs(x["f"] - _wr["freq"]) > 0.05 for x in _sr), str(_sr))
+_rpd = win.open_replace(_wr)
+t0_ = time.time()
+while _rpd._job is not None and time.time() - t0_ < 60:
+    wait(200)
+check("🆘 remplacer : la fenêtre propose des boutons", _rpd.box.count() >= 1, _rpd.msg.text())
+shot(_rpd, "remplacer_micro")
+_f_new = _rpd.found[0]["f"] if _rpd.found else None
+_rpd.found and _rpd.pick(_f_new)
+check("🆘 remplacer : un clic = remplacé + journal", _f_new is not None and abs(_wr["freq"] - _f_new) < 1e-6
+      and win.log_table.item(0, 4).text().startswith("NOUVELLE"), f"{_wr['freq']} {_f_new}")
+_rpd.close()
+win.watch = [w_ for w_ in win.watch if w_["scene"] != "Scène express"]
+win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
 _ns = win.open_night_summary()
 check("7.61 résumé de la nuit : page écrite", _ns is not None and "coup d'œil" in _ns.read_text(encoding="utf-8"), str(_ns))
 _rd = m.RescueDialog(win)
@@ -2460,6 +2508,31 @@ if win.web is not None:
     _tpost("/tech", dict(action="watch_del", key=623400))
     win._alarm_tick()
     check("tech (appli) : fréquence retirée", len(win.watch) == _n0, str(len(win.watch)))
+    # 📱 7.62 : saisie express et 🆘 remplacer depuis le téléphone
+    _tpost("/tech", dict(action="quick_add", text="Tel 1 641.125, Tel 2 642.375", scene="Club", group="HF", status=""))
+    win._alarm_tick()
+    _wt1 = next((w_ for w_ in win.watch if w_["name"] == "Tel 1"), None)
+    check("tech (appli) : ⌨ saisie express", _wt1 is not None and _wt1["scene"] == "Club"
+          and any(w_["name"] == "Tel 2" for w_ in win.watch), win._tech_msg)
+    _tpost("/tech", dict(action="suggest", key=641125))
+    win._alarm_tick()
+    check("tech (appli) : 🆘 calcul en arrière-plan (le PC ne fige pas)", win._tech_sugg is not None
+          and win._tech_sugg.get("busy") is True, str(win._tech_sugg))
+    _t0r = time.time()
+    while win._tech_sugg is not None and win._tech_sugg.get("busy") and time.time() - _t0r < 120:
+        wait(250)
+    win._alarm_tick()
+    _tj = _json.loads(_op.open(base + "/tech.json", timeout=5).read())
+    check("tech (appli) : 🆘 propositions dans l'état", _tj.get("sugg") and _tj["sugg"]["key"] == 641125
+          and len(_tj["sugg"]["cands"]) >= 1, str(_tj.get("sugg")))
+    if _tj.get("sugg") and _tj["sugg"]["cands"]:
+        _fr = _tj["sugg"]["cands"][0]["f"]
+        _tpost("/tech", dict(action="replace", key=641125, f=_fr))
+        win._alarm_tick()
+        check("tech (appli) : 🆘 remplacé", _wt1 is not None and abs(_wt1["freq"] - _fr) < 1e-6 and win._tech_sugg is None,
+              win._tech_msg)
+    win.watch = [w_ for w_ in win.watch if w_["name"] not in ("Tel 1", "Tel 2")]
+    win.rebuild_watch_table()
     win.snooze(0)
     win.web.revoke_tech()
     check("tech (appli) : accès retiré", _tpost("/tech", dict(action="ack_all"))[0] == 403)
