@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.61.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.62.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1188,6 +1188,32 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `appareils_eazyrf.json`, `EazyRFds`).
   Testé : test_plan / test_v7 (PURE), gui_reel (bibliothèque → groupe, plan hors bande, Proposer, secours, coord,
   résumé). **Pas essayé par Clément.**
+- **7.62.0 (Clément : « pour simplifier et aller vite » → 4 fonctions, « 1/2/3/4 »)** :
+  - **🆘 Remplacer ce micro** : `MainWindow.replace_args(w)` (plan actif, appareil + bande de chaque fréquence,
+    max hold occupé, pays, préparé dans le fil de l'interface) → `replace_compute(a, n)` (staticmethod, calcul PUR :
+    pas ≥ 25 kHz multiple du pas de l'appareil, ±10 puis ±40 MHz, `pf_suggest(n=14·n, max_check=80)`, propositions
+    espacées d'au moins max(200 kHz, écart) ; rien avec toutes les règles → 2A − B seulement, `relaxed` signalé
+    « règles allégées ») → `replace_decorate` (niveau, `reg_tag`) ; `suggest_replacements` (direct) ;
+    `replace_watch(w, f, how)` (alarmes CONFLIT / ABSENT de l'ancienne effacées, journal NOUVELLE FRÉQUENCE,
+    undo). `ReplaceDialog` (non modale, `self._replace`, `run_heavy`, gros boutons). Entrées : clic droit liste,
+    bouton « 🆘 Remplacer ce micro » du panneau des alarmes (`_alarm_watch`), tuiles du mur et du mode Show
+    (fenêtre au-dessus du plein écran), 🎚 Surveiller › « Un micro est brouillé ? ». Mesuré : ~1 s sur 35 émetteurs
+    tirés au hasard, 11 s sur la liste de démo très chargée (passe en 2A − B).
+  - **⌨ Saisie express** : PURE `parse_quick_entry(text)` (morceaux par ligne / « ; » / « , » non décimale / « / » ;
+    nombre à virgule ≥ 30 ou entier ≥ 100 = MHz, 30 000–6 000 000 ou « kHz » = kHz ; nom = mots avant (après le
+    dernier « : »), + 1–2 mots après ; plusieurs fréquences = « nom 1, nom 2 » ; doublons retirés) → (lignes,
+    ignorés) ; `quick_names(items, prefix, taken)`. `QuickAddDialog` (non modale, `self._quickadd`, aperçu,
+    scène / groupe modifiables, statut, préfixe, Ctrl+Entrée) ; `add_watch_dialog(text)` l'ouvre (l'ancienne saisie
+    d'UNE fréquence a disparu) ; `in_scanned_band(f)`.
+  - **📐 Nouveau show depuis un modèle** : PURE `show_template(doc)` (`TEMPLATE_DROP` : watch, site_scans, states,
+    state_cur, ezrf_link, planning, scope, focus ; tnt.place / manual / plan vidés ; ref vide ; meta vide sauf le
+    lieu ; `template` = nom d'origine) ; `new_show_from_template(path)` → `clear_show_data(template=doc)` ; 🎪 Shows.
+  - **📱 Page Tech** : actions `quick_add` {text, scene, group, status}, `suggest` {key} (calcul via `run_heavy`,
+    `self._tech_sugg` {key, name, freq, busy, cands} dans `tech_state` → `sugg`), `replace` {key, f}, `sugg_close`.
+    Page : zone « ⌨ Ajouter des micros » (textarea `#tqa`, scène / groupe avec `datalist` `#tscl` / `#tgrl`),
+    bouton 🆘 par micro (`data-trp`), encadré `#tsg` (boutons `data-trf`, confirmation).
+  Testé : test_v7 (saisie, modèle), test_alertes (page Tech dans Chromium), gui_reel (saisie, remplacer, modèle,
+  Tech). **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

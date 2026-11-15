@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.61.0"
+APP_VER = "7.62.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3095,6 +3095,68 @@ def parse_ezrf3(data):
 _EZ_DEV_RE = re.compile(r"^#\s*(\d+)\s*-\s*(.+)$")
 
 
+_QE_NUM = re.compile(r"(?<![\w.,])(\d{2,7}(?:[.,]\d{1,6})?)\s*(mhz|khz|m|k)?(?![\w])", re.I)
+
+
+def parse_quick_entry(text, max_items=300):
+    """⌨ 7.62 Saisie express : « HF1 558.2, HF2 574, IEM 606.5 PSM », ou un message collé (mail, WhatsApp, tableau) ->
+    [dict(name, freq)] (nom "" si aucun : l'appli numérote). Morceaux séparés par retour à la ligne, « ; », « , » (pas
+    une virgule décimale « 558,2 ») ou « / » entre espaces. Fréquence = nombre à virgule ≥ 30 MHz, ou entier ≥ 100
+    (MHz) ; entier de 30 000 à 6 000 000 ou suivi de « kHz » = kHz. Les petits nombres (HF 12, 20:30, téléphone)
+    sont ignorés. Plusieurs fréquences dans un morceau = « nom 1 », « nom 2 »… Doublons (au kHz) retirés.
+    -> (lignes, morceaux ignorés)."""
+    chunks = re.split(r"[\n\r;]+|,(?!\d)|(?<!\d),|\s/\s", str(text or ""))
+    out, ignored, seen = [], [], set()
+    for ch in chunks:
+        ch = ch.strip()
+        if not ch:
+            continue
+        hits = []
+        for m in _QE_NUM.finditer(ch):
+            raw, unit = m.group(1).replace(",", "."), (m.group(2) or "").lower()
+            v = float(raw)
+            dec = "." in raw
+            if unit in ("khz", "k") or (not dec and 30000 <= v <= 6e6 and unit not in ("mhz", "m")):
+                v /= 1000.0
+            elif not (30.0 <= v <= 6000.0 and (dec or v >= 100 or unit in ("mhz", "m"))):
+                continue
+            if 30.0 <= v <= 6000.0:
+                hits.append((m.start(), m.end(), round(v, 4)))
+        if not hits:
+            ignored.append(ch)
+            continue
+        before = ch[:hits[0][0]]
+        parts = [x for x in re.split(r"[:→>]", before) if x.strip(" \t=")]
+        before = parts[-1] if parts else ""
+        after = ch[hits[-1][1]:]
+        words = [x for x in re.split(r"[\s\-–—=:()\[\]]+", after) if x and not re.fullmatch(r"(?i)mhz|khz", x)]
+        name = " ".join([x for x in re.split(r"[\s=:]+", before) if x][-4:] + (words if len(words) <= 2 else []))
+        name = re.sub(r"\s+", " ", name).strip(" -–—:=.").strip()[:40]
+        for k, (_a, _b, f) in enumerate(hits, 1):
+            key = int(round(f * 1000))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(dict(name=(f"{name} {k}" if name and len(hits) > 1 else name), freq=f))
+            if len(out) >= max_items:
+                return out, ignored
+    return out, ignored
+
+
+def quick_names(items, prefix, taken):
+    """Noms des lignes sans nom : « prefix 1, prefix 2… » en sautant ceux déjà pris. -> liste de noms."""
+    taken, out, k = set(taken), [], 1
+    for it in items:
+        if it["name"]:
+            out.append(it["name"])
+            continue
+        while f"{prefix} {k}" in taken:
+            k += 1
+        out.append(f"{prefix} {k}")
+        taken.add(out[-1])
+    return out
+
+
 def is_ezrf_paste(text):
     """Texte copié depuis le plan de fréquences du logiciel de coord (Ctrl+C) : lignes « #7 - Appareil » + fréquences."""
     lines = [ln.rstrip("\t \r") for ln in str(text).splitlines()]
@@ -4949,6 +5011,22 @@ def show_apply(cfg_now, doc):
     return out
 
 
+TEMPLATE_DROP = ("watch", "site_scans", "states", "state_cur", "ezrf_link", "planning", "scope", "focus")
+
+
+def show_template(doc):
+    """📐 7.62 « Nouveau show depuis un modèle » : la STRUCTURE d'un show (scènes, groupes et leurs appareils, statuts,
+    bandes, seuils, alarmes, tinySA, profils d'appareil, préréglages) sans ce qui appartient à l'édition passée : liste
+    de fréquences, scans par lieu, états, plan suivi, planning, courbe de référence, dates, notes. Le lieu TNT est vidé
+    (réglages gardés). -> nouveau doc de show."""
+    sh = {k: v for k, v in doc["show"].items() if k not in TEMPLATE_DROP}
+    if isinstance(sh.get("tnt"), dict):
+        sh["tnt"] = dict(sh["tnt"], place="", manual={}, plan=[], plan_src="")
+    m = doc.get("meta") or {}
+    return dict(doc, show=sh, ref=[], meta=dict({k: "" for k in SHOW_META}, venue=str(m.get("venue") or "")),
+                template=str(m.get("name") or ""))
+
+
 def show_summary(doc):
     """Résumé pour la liste des shows."""
     sh, m = doc["show"], doc["meta"]
@@ -6072,7 +6150,7 @@ function mount(v){const el=$("#view");
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
   $("#hrs").onclick=()=>hunt("reset");return}
- if(v==="tech"){el.innerHTML=`<div id="tlog" class="hb hidden"><b>🛠 Accès Tech</b><div class="sub">Réservé à l’équipe HF : mot de passe Tech, puis accord sur le PC de surveillance.</div><div class="tools"><input class="in" id="tpw" type="password" placeholder="Mot de passe Tech" autocomplete="current-password"><button class="btn pri" id="tgo" style="width:auto;margin:0">Demander l’accès</button></div><div class="sub" id="terr"></div></div><div id="twait" class="hb hidden"><b>⏳ En attente</b><div class="sub">Accepte la demande sur le PC de surveillance (fenêtre « Accès Tech »).</div></div><div id="toff" class="hb hidden"><div class="sub">Page Tech désactivée : règle un mot de passe Tech sur le PC (🔔 Alertes et page web).</div></div><div id="tapp" class="hidden"><div class="tools"><b id="trun"></b><button class="btn pri" id="tstart" style="width:auto;margin:0">▶ Démarrer</button><button class="btn" id="tstop">■ Arrêter</button><button class="btn" id="tsnz">🔕 Silence 15 min</button><button class="btn" id="tack">✔ Tout acquitter</button><button class="btn" id="tsave">💾 Enregistrer</button><button class="btn" id="tout">Quitter Tech</button></div><div class="tools hidden" id="tstb"><b>📸 État</b><select class="in" id="tstate"></select></div><div class="mut" id="tmsg2" style="margin-bottom:12px"></div><div class="tools"><b>Seuils</b><label class="sw">Occupé au-dessus de <input class="in" id="tocc" type="number" step="1" style="width:90px;min-width:0;flex:none"> dBm</label><label class="sw"><input type="checkbox" id="twon"> Faible dès</label><input class="in" id="twk" type="number" step="1" style="width:90px;min-width:0;flex:none"><label class="sw">TX absent après <input class="in" id="tabs" type="number" step="1" style="width:80px;min-width:0;flex:none"> s</label><button class="btn" id="tthr">Appliquer</button></div><div class="tools"><b>📡 Mes tinySA</b></div><div class="alist" id="tdevs"></div><div class="tools"><b>📋 Fréquences</b><input class="in" id="tq" placeholder="Chercher…"></div><div class="alist" id="tws"></div><div class="tools"><b>＋ Ajouter</b><input class="in" id="tan" placeholder="Nom"><input class="in" id="taf" type="text" inputmode="decimal" placeholder="MHz" style="max-width:130px"><select class="in" id="tast"></select><input class="in" id="tasc" placeholder="Scène"><input class="in" id="tagr" placeholder="Groupe"><button class="btn pri" id="tadd" style="width:auto;margin:0">Ajouter</button></div><div class="tools"><b>👥 Connectés</b></div><div class="alist" id="tcl"></div></div>`;
+ if(v==="tech"){el.innerHTML=`<div id="tlog" class="hb hidden"><b>🛠 Accès Tech</b><div class="sub">Réservé à l’équipe HF : mot de passe Tech, puis accord sur le PC de surveillance.</div><div class="tools"><input class="in" id="tpw" type="password" placeholder="Mot de passe Tech" autocomplete="current-password"><button class="btn pri" id="tgo" style="width:auto;margin:0">Demander l’accès</button></div><div class="sub" id="terr"></div></div><div id="twait" class="hb hidden"><b>⏳ En attente</b><div class="sub">Accepte la demande sur le PC de surveillance (fenêtre « Accès Tech »).</div></div><div id="toff" class="hb hidden"><div class="sub">Page Tech désactivée : règle un mot de passe Tech sur le PC (🔔 Alertes et page web).</div></div><div id="tapp" class="hidden"><div class="tools"><b id="trun"></b><button class="btn pri" id="tstart" style="width:auto;margin:0">▶ Démarrer</button><button class="btn" id="tstop">■ Arrêter</button><button class="btn" id="tsnz">🔕 Silence 15 min</button><button class="btn" id="tack">✔ Tout acquitter</button><button class="btn" id="tsave">💾 Enregistrer</button><button class="btn" id="tout">Quitter Tech</button></div><div class="tools hidden" id="tstb"><b>📸 État</b><select class="in" id="tstate"></select></div><div class="mut" id="tmsg2" style="margin-bottom:12px"></div><div class="tools"><b>Seuils</b><label class="sw">Occupé au-dessus de <input class="in" id="tocc" type="number" step="1" style="width:90px;min-width:0;flex:none"> dBm</label><label class="sw"><input type="checkbox" id="twon"> Faible dès</label><input class="in" id="twk" type="number" step="1" style="width:90px;min-width:0;flex:none"><label class="sw">TX absent après <input class="in" id="tabs" type="number" step="1" style="width:80px;min-width:0;flex:none"> s</label><button class="btn" id="tthr">Appliquer</button></div><div class="tools"><b>📡 Mes tinySA</b></div><div class="alist" id="tdevs"></div><div id="tsg" class="hb hidden"></div><div class="tools"><b>⌨ Ajouter des micros</b></div><textarea class="in" id="tqa" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:8px" placeholder="HF1 558.2, HF2 574, IEM 606.5 PSM — ou colle un message"></textarea><div class="tools"><select class="in" id="tast"></select><input class="in" id="tasc" list="tscl" placeholder="Scène"><input class="in" id="tagr" list="tgrl" placeholder="Groupe"><datalist id="tscl"></datalist><datalist id="tgrl"></datalist><button class="btn pri" id="tadd" style="width:auto;margin:0">＋ Ajouter</button></div><div class="tools"><b>📋 Fréquences</b><input class="in" id="tq" placeholder="Chercher…"></div><div class="alist" id="tws"></div><div class="tools"><b>👥 Connectés</b></div><div class="alist" id="tcl"></div></div>`;
   techMount();return}
  if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📈 Ce que voit le tinySA</b><label class="sw"><input type="checkbox" id="rm" checked> Rémanence</label><label class="sw"><input type="checkbox" id="mk"> Mes fréquences</label><select class="in" id="tmh"></select></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
   $("#td").onchange=()=>{$("#tsc").dataset.k="";$("#tsc").dataset.dirty="";update(v)};
@@ -6159,12 +6237,16 @@ function techMount(){$("#tgo").onclick=tlogin;$("#tpw").onkeydown=e=>{if(e.key==
  $("#tsave").onclick=()=>tcmd({action:"save"});$("#tout").onclick=async()=>{await post("tech/logout",{});tick()};
  ["tocc","twk","tabs","twon"].forEach(k=>{$("#"+k).oninput=()=>{$("#tthr").dataset.dirty="1"}});
  $("#tthr").onclick=()=>{$("#tthr").dataset.dirty="";tcmd({action:"thr",occ:+$("#tocc").value,weak:+$("#twk").value,weak_on:$("#twon").checked,absent:+$("#tabs").value})};
- $("#tadd").onclick=()=>{const f=parseFloat(($("#taf").value||"").replace(",","."));if(!f){alert("Fréquence en MHz ?");return}
-  tcmd({action:"watch_add",name:$("#tan").value,freq:f,status:$("#tast").value,scene:$("#tasc").value,group:$("#tagr").value});$("#tan").value="";$("#taf").value=""};
+ $("#tadd").onclick=()=>{const t=($("#tqa").value||"").trim();if(!t){alert("Tape au moins une fréquence (ex. HF1 558.2)");return}
+  tcmd({action:"quick_add",text:t,status:$("#tast").value,scene:$("#tasc").value,group:$("#tagr").value});$("#tqa").value=""};
+ $("#tasc").oninput=()=>{$("#tgrl").dataset.k=""};
  $("#tq").oninput=()=>{$("#tws").dataset.k="";techUpdate()};
  $("#tstate").onchange=()=>{const v=$("#tstate").value;$("#tstate").dataset.k="";tcmd({action:"state",name:v})}}
-document.addEventListener("click",e=>{const b=e.target.closest("[data-tdel],[data-ted],[data-tid],[data-tmu]");if(!b||mounted!=="tech")return;
- if(b.dataset.tmu)tcmd({action:"mute",key:+b.dataset.tmu,on:b.dataset.on==="1"});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tdel],[data-ted],[data-tid],[data-tmu],[data-trp],[data-trf],[data-tsx]");if(!b||mounted!=="tech")return;
+ if(b.dataset.trp)tcmd({action:"suggest",key:+b.dataset.trp});
+ else if(b.dataset.trf){if(confirm("Remplacer « "+b.dataset.n+" » par "+b.dataset.trf+" MHz ?"))tcmd({action:"replace",key:+b.dataset.tk,f:+b.dataset.trf})}
+ else if(b.dataset.tsx)tcmd({action:"sugg_close"});
+ else if(b.dataset.tmu)tcmd({action:"mute",key:+b.dataset.tmu,on:b.dataset.on==="1"});
  else if(b.dataset.tdel){if(confirm("Retirer « "+b.dataset.n+" » de la liste ?"))tcmd({action:"watch_del",key:+b.dataset.tdel})}
  else if(b.dataset.ted){const n=prompt("Nom :",b.dataset.n);if(n==null)return;const f=prompt("Fréquence (MHz) :",b.dataset.f);if(f==null)return;
   tcmd({action:"watch_edit",key:+b.dataset.ted,name:n,freq:parseFloat(f.replace(",","."))})}
@@ -6183,12 +6265,16 @@ function techUpdate(){const sh=(id,on)=>$(id).classList.toggle("hidden",!on);
  if(!$("#tthr").dataset.dirty&&!["tocc","twk","tabs"].includes(act)){$("#tocc").value=Math.round(T.thr.occ);$("#twk").value=Math.round(T.thr.weak);$("#twon").checked=T.thr.weak_on;$("#tabs").value=T.thr.absent}
  const so=`<option value="">(aucun statut)</option>`+T.statuses.map(x=>`<option>${esc(x.name)}</option>`).join("");
  const ta=$("#tast");if(ta.dataset.k!==so){const v=ta.value;ta.innerHTML=so;ta.dataset.k=so;ta.value=v}
+ const scl=T.scenes.map(x=>`<option value="${esc(x.name)}">`).join("");if($("#tscl").dataset.k!==scl){$("#tscl").dataset.k=scl;$("#tscl").innerHTML=scl}
+ const sc0=T.scenes.find(x=>x.name===$("#tasc").value),grl=(sc0?sc0.groups:[]).map(g=>`<option value="${esc(g)}">`).join("");if($("#tgrl").dataset.k!==grl){$("#tgrl").dataset.k=grl;$("#tgrl").innerHTML=grl}
+ const sg=T.sugg,sgk=JSON.stringify(sg);if($("#tsg").dataset.k!==sgk){$("#tsg").dataset.k=sgk;$("#tsg").classList.toggle("hidden",!sg);
+  if(sg)$("#tsg").innerHTML=`<b>🆘 Remplacer ${esc(sg.name)} · ${sg.freq.toFixed(3)} MHz</b><div class="sub">Libres d’après la mesure, compatibles avec ton plan et l’appareil. Un appui = remplacer (puis règle l’émetteur ET le récepteur).</div>`+(sg.busy?`<div class="sub">⏳ Calcul en cours…</div>`:sg.cands.length?sg.cands.map(c=>`<button class="btn pri" style="margin:6px 0;width:100%" data-trf="${c.f}" data-tk="${sg.key}" data-n="${esc(sg.name)}">${c.f.toFixed(3)} MHz <span class="mut">(${c.d>0?"+":""}${c.d} kHz${c.level?" · "+esc(c.level):""})</span>${c.tag?" ⚠ "+esc(c.tag):""}</button>`).join(""):`<div class="sub">Rien de libre et compatible : essaie la fréquence de secours sur le PC.</div>`)+`<button class="btn" data-tsx="1">Fermer</button>`}
  const scn=T.scenes.map(x=>x.name),dk=JSON.stringify([T.devs,scn]);
  if($("#tdevs").dataset.k!==dk&&!inside("#tdevs")){$("#tdevs").dataset.k=dk;
   $("#tdevs").innerHTML=T.devs.map(d=>`<div class="row" style="border-left-color:${d.live?"var(--ok)":"var(--none)"}"><div class="x"><b>${esc(d.ord)} tinySA · ${esc(d.name)}</b><div class="mut">${d.live?"● en ligne":"○ pas connecté"} · ${esc(d.addr)}${d.cycle?" · cycle "+d.cycle+" s":""}</div></div><select class="in" data-tsc="${d.rank}" style="width:auto;flex:0 1 auto"><option value="">Tout le site</option>${scn.map(x=>`<option${d.scenes.length===1&&d.scenes[0]===x?" selected":""}>${esc(x)}</option>`).join("")}${d.scenes.length>1?`<option disabled selected>${esc(d.scenes.join(" + "))}</option>`:""}</select><button class="btn" data-tid="${d.rank}" title="Identifier">👋</button></div>`).join("")}
  const q=($("#tq").value||"").toLowerCase(),rows=T.watch.filter(w=>!q||(w.name+" "+w.freq+" "+w.scene+" "+w.group).toLowerCase().includes(q)),wk=JSON.stringify(rows)+so;
  if($("#tws").dataset.k!==wk&&!inside("#tws")){$("#tws").dataset.k=wk;
-  $("#tws").innerHTML=rows.map(w=>`<div class="row" style="border-left-color:${esc(w.color)}"><div class="x"><b>${esc(w.name)}</b> <span class="mut">${w.freq.toFixed(3)} MHz</span><div class="mut">${esc(w.sig)}${w.level?" · "+esc(w.level):""}${w.scene?" · "+esc(w.scene+(w.group?" › "+w.group:"")):""}</div></div><select class="in" data-tst="${w.key}" style="width:auto;flex:0 1 auto">${w.status?so.replace(`<option>${esc(w.status)}</option>`,`<option selected>${esc(w.status)}</option>`):so}</select><button class="btn" data-tmu="${w.key}" data-on="${w.muted?0:1}" title="${w.muted?"Rallumer":"Éteint (je sais) : pas d’alarme ABSENT"}">${w.muted?"🔔":"💤"}</button><button class="btn" data-ted="${w.key}" data-n="${esc(w.name)}" data-f="${w.freq}" title="Modifier">✏</button><button class="btn" data-tdel="${w.key}" data-n="${esc(w.name)}" title="Retirer">🗑</button></div>`).join("")||`<div class="empty">Aucune fréquence</div>`}
+  $("#tws").innerHTML=rows.map(w=>`<div class="row" style="border-left-color:${esc(w.color)}"><div class="x"><b>${esc(w.name)}</b> <span class="mut">${w.freq.toFixed(3)} MHz</span><div class="mut">${esc(w.sig)}${w.level?" · "+esc(w.level):""}${w.scene?" · "+esc(w.scene+(w.group?" › "+w.group:"")):""}</div></div><select class="in" data-tst="${w.key}" style="width:auto;flex:0 1 auto">${w.status?so.replace(`<option>${esc(w.status)}</option>`,`<option selected>${esc(w.status)}</option>`):so}</select><button class="btn" data-trp="${w.key}" title="Remplacer ce micro (3 propositions)">🆘</button><button class="btn" data-tmu="${w.key}" data-on="${w.muted?0:1}" title="${w.muted?"Rallumer":"Éteint (je sais) : pas d’alarme ABSENT"}">${w.muted?"🔔":"💤"}</button><button class="btn" data-ted="${w.key}" data-n="${esc(w.name)}" data-f="${w.freq}" title="Modifier">✏</button><button class="btn" data-tdel="${w.key}" data-n="${esc(w.name)}" title="Retirer">🗑</button></div>`).join("")||`<div class="empty">Aucune fréquence</div>`}
  $("#tcl").innerHTML=T.clients.map(c=>`<div class="row" style="border-left-color:${c.online?"var(--ok)":"var(--none)"}"><div class="x"><b>${esc(c.name)}</b>${c.tech==="ok"?" 🛠":c.tech==="pending"?" ⏳":""}<div class="mut">${esc(c.addr)}${c.view?" · "+esc(c.view):""}</div></div></div>`).join("")||`<div class="empty">—</div>`}
 // ---------- spectre / waterfall
 function segs(){const bs=(spec&&spec.bands)||[],k=$("#band")?$("#band").value:"*";return bs.filter(x=>k==="*"||x.name===k)}
@@ -7425,7 +7511,7 @@ STEPS = (
       ("📺 Canaux TNT du lieu et émetteurs proches…", "open_tnt"),
       ("§2. Ma liste de fréquences", None),
       ("📥 Importer une liste ou un plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…", "import_watch"),
-      ("＋ Ajouter une fréquence…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"),
+      ("⌨ Ajouter des micros (saisie express)…", "add_watch_dialog"), ("📋 Coller une liste…", "paste_watch"),
       ("📡 Ajouter depuis le scan (au-dessus d'un seuil)…", "open_scan_add"),
       ("📶 Ajouter un bloc Spectera / WMAS (canal 6 / 8 MHz)…", "add_block_dialog"),
       ("✏ Nommer la sélection (HF 1, HF 2…)…", "quick_name_dialog"),
@@ -7453,7 +7539,8 @@ STEPS = (
       ("🖥 Mode Show (plein écran, l'essentiel)  F10", "open_show_mode"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"),
       ("§Un micro est brouillé ?", None),
-      ("🆘 Fréquence de secours…", "open_rescue"),
+      ("🆘 Remplacer ce micro (3 propositions, 1 clic)…", "open_replace"),
+      ("🆘 Fréquence de secours (recherche détaillée)…", "open_rescue"),
       ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"),
       ("§À distance et la nuit", None),
       ("📣 Alertes téléphone et page web…", "open_alerts"),
@@ -8050,7 +8137,7 @@ def snapshot_name(scene, label, existing, hhmm):
 
 
 TECH_ACTIONS = ("run", "snooze", "ack_all", "thr", "watch_add", "watch_edit", "watch_del", "dev_scenes", "identify",
-                "save", "state", "mute")
+                "save", "state", "mute", "quick_add", "suggest", "replace", "sugg_close")
 
 
 def tech_request(req):
@@ -8085,6 +8172,13 @@ def tech_request(req):
     elif a == "watch_add":
         out.update(freq=num("freq", 1, 7000), name=txt("name", 40), status=txt("status", 30), scene=txt("scene", 60),
                    group=txt("group", 60))
+    elif a == "quick_add":                         # ⌨ 7.62 : saisie express depuis le téléphone
+        out.update(text=str(req.get("text") or "")[:4000], status=txt("status", 30), scene=txt("scene", 60),
+                   group=txt("group", 60))
+    elif a in ("suggest", "replace"):             # 🆘 7.62 : remplacer un micro
+        out["key"] = int(num("key", 1000, 7000000))
+        if a == "replace":
+            out["f"] = num("f", 1, 7000)
     elif a in ("watch_edit", "watch_del", "mute"):
         out["key"] = int(num("key", 1000, 7000000))
         if a == "mute":
@@ -17559,7 +17653,7 @@ class HomeBar(QtWidgets.QWidget):
         self.imp_btn.setToolTip("Importer ton plan de fréquences (EazyRF, WWB, WSM, Excel / CSV…).")
         self.imp_btn.clicked.connect(lambda *_: o.import_watch())
         self.add_btn = QtWidgets.QPushButton("＋ Ajouter")
-        self.add_btn.setToolTip("Ajouter une fréquence à la main (nom + MHz).")
+        self.add_btn.setToolTip("Ajouter des micros : tape ou colle « HF1 558.2, HF2 574… ».")
         self.add_btn.clicked.connect(lambda *_: o.add_watch_dialog())
         self.scan_btn = QtWidgets.QPushButton("📡 Depuis le scan")
         self.scan_btn.setToolTip("Ajouter les signaux que le tinySA voit en ce moment (au-dessus d'un seuil).")
@@ -18027,10 +18121,18 @@ class ShowModeWindow(QtWidgets.QWidget):
             return
         w = ws[i]
         m = QtWidgets.QMenu(self)
+        a_rep = m.addAction("🆘 Remplacer ce micro…")
         a = m.addAction("🔔 Rallumer (surveiller à nouveau)" if w.get("muted") else "💤 Éteint (je sais) : pas d'alarme ABSENT")
-        if m.exec(tile.mapToGlobal(pos)) is a:
+        act = m.exec(tile.mapToGlobal(pos))
+        if act is a:
             self.owner.set_muted([w], not w.get("muted"))
             self.refresh()
+        elif act is a_rep:
+            d = self.owner.open_replace(w)
+            if d is not None:                      # au-dessus du plein écran
+                d.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+                d.show()
+                d.raise_()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -18333,7 +18435,7 @@ class ShowWizard(QtWidgets.QDialog):
                  "Le nom, les dates et le pays du show (le pays règle la bande UHF et les canaux TV)."), self.place)
         page(btn("📥 Importer un plan ou une liste…", o.import_watch, "EazyRF, WWB, WSM, Wisycom, DPA, CSV…"),
              btn("📋 Coller une liste…", o.paste_watch, "Colle une liste copiée d'un tableur ou d'un mail."),
-             btn("＋ Ajouter une fréquence…", o.add_watch_dialog, "Ajoute une fréquence à la main."),
+             btn("⌨ Ajouter des micros…", o.add_watch_dialog, "Tape ou colle « HF1 558.2, HF2 574… »."),
              btn("📡 Depuis le scan…", o.open_scan_add, "Ajoute les signaux vus dans le scan (après l'étape 3)."))
         page(btn("▶ Scanner ici", o.step_scan, "Démarre le balayage et repart de pics gardés vides."))
         page(btn("📺 Mesurer et griser", self.measure_tnt, "Repère les canaux TNT dans le scan et les grise."),
@@ -19763,6 +19865,216 @@ class GlossaryDialog(QtWidgets.QDialog):
         self.count = len(items)
 
 
+class ReplaceDialog(QtWidgets.QDialog):
+    """🆘 7.62 Remplacer un micro brouillé : 3 propositions (son appareil, sa bande, compatibles avec tout le plan,
+    libres d'après la mesure), un clic = remplacé + journal. Le calcul tourne en arrière-plan."""
+
+    def __init__(self, owner, w):
+        super().__init__(owner)
+        self.owner, self.w = owner, w
+        o = owner
+        self.setWindowTitle("Remplacer un micro")
+        lay = QtWidgets.QVBoxLayout(self)
+        rx = o.rx_of(w)
+        self.head = QtWidgets.QLabel(f"<b style='font-size:16px'>🆘 {_hesc(w['name'])} · {w['freq']:.3f} MHz</b><br>"
+                                     + _hesc(TR("Appareil : {}").format(rx_short(rx) if rx else TR("réglages par défaut"))))
+        self.head.setTextFormat(Qt.TextFormat.RichText)
+        lay.addWidget(self.head)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.box = QtWidgets.QVBoxLayout()
+        lay.addLayout(self.box)
+        self.done_lbl = QtWidgets.QLabel("")
+        self.done_lbl.setWordWrap(True)
+        lay.addWidget(self.done_lbl)
+        again = QtWidgets.QPushButton("↻ Recalculer")
+        again.setToolTip("Refait les propositions avec la mesure actuelle.")
+        again.clicked.connect(lambda *_: self.compute())
+        more = QtWidgets.QPushButton("Plus d'options (fréquence de secours)…")
+        more.setToolTip("Recherche détaillée : plage, écart, intermod, spectre d'une scène…")
+        more.clicked.connect(lambda *_: o.open_rescue())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(again, more, None, close))
+        self.resize(520, 300)
+        self.found, self._job = [], None
+        self.compute()
+
+    def compute(self):
+        o = self.owner
+        if not any(x is self.w for x in o.watch):
+            self.msg.setText("Ce micro n'est plus dans la liste.")
+            return
+        while self.box.count():
+            it = self.box.takeAt(0)
+            if it.widget() is not None:
+                it.widget().deleteLater()
+        a = o.replace_args(self.w)
+        self._args = a
+        self._job = o.run_heavy(lambda: o.replace_compute(a, 3), self._computed, self.msg, "Recherche des remplaçantes")
+
+    def _computed(self, sg, err):
+        o = self.owner
+        self._job = None
+        if err is not None:
+            self.msg.setText(f"Calcul impossible : {err}")
+            return
+        self.found = o.replace_decorate(self._args, sg, self.w)
+        if not self.found:
+            self.msg.setText("Aucune fréquence libre et compatible trouvée avec ces règles"
+                             + (TR(" dans la bande de l'appareil ({}–{} MHz)").format(*self._args["band"])
+                                if self._args["band"] else "") + ". Essaie « Plus d'options ».")
+            return
+        bd = self._args["band"]
+        self.msg.setText(TR("Libres d'après la mesure, compatibles avec tout ton plan") + (
+            TR(", dans la bande de l'appareil ({}–{} MHz)").format(*bd) if bd else "") + TR(". Un clic = remplacer :"))
+        for x in self.found:
+            lv = f" · {o.lvl(x['level'], suffix=True)}" if x["level"] is not None else ""
+            b = QtWidgets.QPushButton(f"{x['f']:.3f} MHz   ({x['d'] * 1000:+.0f} kHz{lv})"
+                                      + (f"   ⚠ {TR(x['tag'])}" if x["tag"] else ""))
+            b.setMinimumHeight(40)
+            b.setToolTip("Remplace la fréquence dans la liste et le note au journal.\nPense à régler l'émetteur ET le "
+                         "récepteur.")
+            b.clicked.connect(lambda *_, f=x["f"]: self.pick(f))
+            self.box.addWidget(b)
+
+    def pick(self, f):
+        if self.owner.replace_watch(self.w, f):
+            self.done_lbl.setText(TR("✔ Remplacé : {} est maintenant sur {} MHz. Règle l'émetteur ET le récepteur."
+                                     ).format(self.w["name"], f"{f:.3f}"))
+            while self.box.count():
+                it = self.box.takeAt(0)
+                if it.widget() is not None:
+                    it.widget().deleteLater()
+
+    def closeEvent(self, e):
+        if self._job is not None:
+            self._job["cancel"] = True
+            self._job = None
+        super().closeEvent(e)
+
+
+class QuickAddDialog(QtWidgets.QDialog):
+    """⌨ 7.62 Saisie express : on tape ou on colle « HF1 558.2, HF2 574, IEM 606.5 PSM » (ou un message, un tableau),
+    l'aperçu se met à jour, « Ajouter » crée les micros dans la scène / le groupe choisis. Non modale."""
+
+    def __init__(self, owner, text="", preset=("", "")):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Ajouter des micros (saisie express)")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Tape ou colle tes fréquences, n'importe comment : « HF1 558.2, HF2 574, IEM 606.5 », "
+                                "une par ligne, ou un message reçu (mail, SMS). Les nombres qui ne sont pas des "
+                                "fréquences sont ignorés.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.edit = QtWidgets.QPlainTextEdit()
+        self.edit.setPlaceholderText("HF1 558.2, HF2 574\nIEM 606.5 PSM\nGuitare 470.125")
+        self.edit.setToolTip("Fréquences en MHz (558.2 ou 558,2) ou en kHz (558200). Le texte avant chaque\n"
+                             "fréquence devient son nom ; sans nom, l'appli numérote (HF 1, HF 2…).")
+        self.edit.setPlainText(text or "")
+        self.edit.textChanged.connect(lambda *_: self.refresh())
+        lay.addWidget(self.edit, 1)
+        self.table = QtWidgets.QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Nom", "MHz", "Remarque"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Ce qui va être ajouté.")
+        lay.addWidget(self.table, 1)
+        self.scene = QtWidgets.QComboBox()
+        self.scene.setEditable(True)
+        self.scene.addItems([""] + [sc["name"] for sc in o.scenes])
+        self.scene.setEditText(preset[0] or "")
+        self.scene.setToolTip("Scène (facultatif ; une nouvelle est créée si tu tapes un nom).")
+        self.group = QtWidgets.QComboBox()
+        self.group.setEditable(True)
+        self.group.setToolTip("Groupe dans la scène (facultatif).")
+        self.scene.currentTextChanged.connect(lambda *_: self._groups())
+        self._groups()
+        self.group.setEditText(preset[1] or "")
+        self.scene.setMinimumWidth(160)
+        self.group.setMinimumWidth(130)
+        self.status = QtWidgets.QComboBox()
+        self.status.addItem("(aucun statut)", "")
+        for st in o.statuses:
+            self.status.addItem(st["name"], st["name"])
+        self.status.setToolTip("Statut des nouveaux micros (« doit émettre » : alarme s'ils disparaissent).")
+        self.prefix = QtWidgets.QLineEdit("HF")
+        self.prefix.setMaximumWidth(90)
+        self.prefix.setToolTip("Nom donné aux fréquences sans nom : HF 1, HF 2…")
+        self.prefix.textChanged.connect(lambda *_: self.refresh())
+        lay.addLayout(o._row("Scène :", self.scene, "Groupe :", self.group, "Statut :", self.status,
+                             "Sans nom :", self.prefix, None))
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        self.add_btn = QtWidgets.QPushButton("＋ Ajouter")
+        self.add_btn.setToolTip("Ajoute ces micros à ta liste (Ctrl+Entrée).")
+        self.add_btn.clicked.connect(lambda *_: self.add())
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self, activated=self.add)
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(self.msg, None, self.add_btn, close))
+        self.resize(640, 520)
+        self.items = []
+        self.refresh()
+
+    def _groups(self):
+        sc = self.owner.scene_by_name(self.scene.currentText().strip())
+        cur = self.group.currentText()
+        self.group.blockSignals(True)
+        self.group.clear()
+        self.group.addItems([""] + ([g["name"] for g in sc["groups"]] if sc else []))
+        self.group.setEditText(cur)
+        self.group.blockSignals(False)
+
+    def refresh(self):
+        o = self.owner
+        self.items, ign = parse_quick_entry(self.edit.toPlainText())
+        names = quick_names(self.items, self.prefix.text().strip() or "HF", {w["name"] for w in o.watch})
+        have = {int(round(w["freq"] * 1000)) for w in o.watch}
+        self.table.setRowCount(len(self.items))
+        for r, (it, nm) in enumerate(zip(self.items, names)):
+            it["final"] = nm
+            dup = int(round(it["freq"] * 1000)) in have
+            it["dup"] = dup
+            rem = "déjà dans la liste : ignorée" if dup else ("" if o.in_scanned_band(it["freq"]) else
+                                                                   "hors des bandes balayées (proposées après l'ajout)")
+            for c, v in enumerate((nm, f"{it['freq']:.3f}", rem)):
+                cell = QtWidgets.QTableWidgetItem(v)
+                if dup:
+                    cell.setForeground(QtGui.QColor("#8b95a5"))
+                self.table.setItem(r, c, cell)
+        n = sum(1 for it in self.items if not it["dup"])
+        self.add_btn.setText(TR("＋ Ajouter {} micro(s)").format(n) if n else TR("＋ Ajouter"))
+        self.add_btn.setEnabled(n > 0)
+        self.msg.setText(TR("Ignoré (pas de fréquence) : {}").format(" · ".join(ign[:4]) + (" …" if len(ign) > 4 else ""))
+                         if ign else "")
+
+    def add(self):
+        o = self.owner
+        new = [it for it in self.items if not it.get("dup")]
+        if not new:
+            return 0
+        sc, gr = self.scene.currentText().strip(), self.group.currentText().strip()
+        if sc:
+            o.ensure_group(sc, gr)
+        st = self.status.currentData() or ""
+        for it in new:
+            o._append_watch(it["final"], it["freq"], st, None, sc, gr if sc else "")
+        o.sort_watch()
+        o.rebuild_tree()
+        o.rebuild_watch_table()
+        o._update_markers()
+        o.undo_track()
+        o.set_status(TR("⌨ {} micro(s) ajouté(s).").format(len(new)))
+        self.edit.clear()
+        self.msg.setText(TR("✔ {} micro(s) ajouté(s). Tu peux en taper d'autres.").format(len(new)))
+        o.offer_missing_bands()
+        return len(new)
+
+
 class ScanAddDialog(QtWidgets.QDialog):
     """📡 Ajouter depuis le scan : les signaux vus au-dessus d'un seuil deviennent des fréquences de la liste
     (à renommer, ranger, supprimer ensuite comme les autres)."""
@@ -21066,11 +21378,14 @@ class WallWindow(QtWidgets.QWidget):
             return
         m = QtWidgets.QMenu(self)
         w = self.owner.watch[k]
+        a_rep = m.addAction("🆘 Remplacer ce micro…")
         a_mute = m.addAction("🔔 Rallumer" if w.get("muted") else "💤 Éteint (je sais)")
         a_hide = m.addAction(f"Retirer « {w['name']} » du mur")
         a_pick = m.addAction("📋 Choisir les fréquences du mur…")
         act = m.exec(self.tiles[k].mapToGlobal(pos))
-        if act is a_mute:
+        if act is a_rep:
+            self.owner.open_replace(w)
+        elif act is a_mute:
             self.owner.set_muted([w], not w.get("muted"))
         elif act is a_hide:
             self.owner.set_wall_rows([k], False)
@@ -21345,6 +21660,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.undo_stack = UndoStack()            # ↶ / ↷ (Ctrl+Z / Ctrl+Y) : liste, scènes, bandes, statuts, scans
         self.alarms.repeat_s = float(self.sound.cfg["repeat"])
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
+        self._quickadd = None                  # ⌨ saisie express (7.62)
+        self._replace = None                   # 🆘 remplacer un micro (7.62)
+        self._tech_sugg = None                 # 🆘 propositions demandées depuis la page Tech
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
         self.site_scans = []                   # 📍 scans gardés par lieu [{name, t, f, l}]
         self.dev_scenes = {}                   # 📡 scènes de chaque tinySA {n° appareil: [scènes]} (en continu)
@@ -21605,7 +21923,10 @@ class MainWindow(QtWidgets.QMainWindow):
         "📍 Scans par lieu": "Un scan gardé par scène / lieu : comparer, fusionner, exporter, rapport d'étude de site.",
         "📡 Ajouter depuis le scan": "Ajoute à ta liste les signaux que le tinySA voit au-dessus d'un seuil.",
         "📥 Importer une liste": "Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Wisycom, DPA, Excel / CSV…).",
-        "＋ Ajouter une fréquence": "Une fréquence à la main : nom, MHz, statut, scène / groupe.",
+        "🆘 Remplacer ce micro": "Le micro choisi (liste ou alarme) est brouillé : 3 fréquences libres et compatibles\n"
+                                 "(son appareil, sa bande, tout ton plan), un clic remplace et note au journal.",
+        "⌨ Ajouter des micros": "Tape ou colle tes fréquences n'importe comment : « HF1 558.2, HF2 574, IEM 606.5 »,\n"
+                                "un message reçu, un tableau. Aperçu avant d'ajouter.",
         "📋 Coller une liste": "Colle des lignes « nom ; MHz » copiées d'un tableur ou d'un autre logiciel.",
         "🪄 Trouver N fréquences": "Coordination simple : l'appli cherche N fréquences compatibles avec ta liste et le\n"
                                   "spectre mesuré.",
@@ -22781,7 +23102,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plain_btns = []                  # boutons secondaires : emoji retiré après les bulles (7.28)
         # libellés courts (le panneau doit pouvoir rétrécir pour laisser la place au spectre) ; détail en bulle
         for txt, tip, fn, lay in [
-                ("＋ Ajouter", "Ajoute une fréquence à surveiller (dans la couche active).", self.add_watch_dialog, r1),
+                ("＋ Ajouter", "Ajoute des micros : tape ou colle « HF1 558.2, HF2 574… » (dans la couche active).", self.add_watch_dialog, r1),
                 ("📥 Importer", "Importe une liste de fréquences (EazyRF, WWB, WSM, Excel…). Tu peux aussi glisser\n"
                                "le fichier sur la fenêtre.", self.import_watch, r1),
                 ("📋 Coller", "Colle une liste copiée (Excel, mail…) : nom et fréquence par ligne.", self.paste_watch, r1),
@@ -23582,6 +23903,8 @@ class MainWindow(QtWidgets.QMainWindow):
         m.clear()
         cur = self.show_meta.get("name") or ""
         m.addAction("🆕 Nouveau show…").triggered.connect(lambda *_: self.new_show())
+        m.addAction("📐 Nouveau show depuis un modèle (un show existant)…").triggered.connect(
+            lambda *_: self.new_show_from_template())
         m.addAction("📂 Ouvrir un show…").triggered.connect(lambda *_: self.open_show_dialog())
         m.addAction(f"💾 Enregistrer « {cur} »  (Ctrl+S)" if cur else "💾 Enregistrer le show…  (Ctrl+S)"
                     ).triggered.connect(lambda *_: self.save_show())
@@ -23735,7 +24058,27 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.clear_show_data()
 
-    def clear_show_data(self):
+    def new_show_from_template(self, path=None):
+        """📐 Nouveau show qui reprend la structure d'un show existant (scènes, groupes, appareils, statuts, bandes,
+        réglages) sans ses fréquences ni ses scans."""
+        if path is None:
+            dlg = ShowOpenDialog(self, [(SHOW_DIR, "*" + SHOW_EXT), (PROFILE_DIR, "*.json")])
+            dlg.setWindowTitle(TR("Choisir le show qui sert de modèle"))
+            if not dlg.exec() or not dlg.path:
+                return False
+            path = dlg.path
+        try:
+            doc = show_template(read_show(Path(path).read_text(encoding="utf-8"), Path(path).stem))
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, f"Show illisible :\n{e}")
+            return False
+        self.clear_show_data(template=doc)
+        sc = doc["show"].get("scenes") or []
+        self.set_status(TR("📐 Nouveau show d'après « {} » : {} scène(s), {} groupe(s) ; liste et scans vides.").format(
+            doc["template"] or Path(path).stem, len(sc), sum(len(x.get("groups") or []) for x in sc)))
+        return True
+
+    def clear_show_data(self, template=None):
         """Nouveau show : tout ce qui appartient au show précédent part (liste, scènes, scans par lieu ET leur max hold
         en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
@@ -23747,6 +24090,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.forget_site(k)
         self.dev_scenes = {d: [] for d in self.dev_scenes}
         data["dev_scenes"] = {}
+        if template is not None:                   # 📐 7.62 : structure d'un show existant
+            data = show_apply(data, template)
         self._apply_config(data)
         self.site_scans = []
         self._set_ref([])
@@ -23758,6 +24103,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.reeval()
         self.update_site_curve()
         self.show_meta = {k: "" for k in SHOW_META}
+        if template is not None:
+            self.show_meta.update(venue=template["meta"].get("venue", ""))
         self.show_path = ""
         self.update_title()
         self.auto_view()                               # 7.57 : Vue directement sur l'UHF du pays
@@ -26268,6 +26615,7 @@ class MainWindow(QtWidgets.QMainWindow):
         lay_sub = self.assign_menu(m)
         lay_sub.setTitle("Scène › Groupe")
         m.addMenu(lay_sub)
+        a_rep = m.addAction("🆘 Remplacer ce micro (3 propositions)…")
         a_zoom = m.addAction("🔍 Zoom live sur cette fréquence")
         a_lis = m.addAction("🎧 Écouter avec le SDR…")
         a_rt = m.addAction("⏱ Temps réel autour de cette fréquence…")
@@ -26293,6 +26641,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if act is a_mute:
             self.set_muted([self.watch[r] for r in rows], not muted)
+        elif act is a_rep:
+            self.open_replace(self.watch[rows[0]])
         elif act is a_zoom:
             self.zoom_on(rows[0])
         elif act is a_lis:
@@ -26449,15 +26799,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_markers()
         self.set_status(f"Bloc « {name} » ajouté : {f - bw / 2:g}–{f + bw / 2:g} MHz (statut « {on or 'aucun'} »).")
 
-    def add_watch_dialog(self):
-        f, ok = QtWidgets.QInputDialog.getDouble(self, "Ajouter une fréquence", "Fréquence (MHz) :",
-                                                 500.0, 0.1, 6000.0, 3)
-        if ok:
-            sc, gr = self._scope_preset()
-            self._append_watch(f"{f:.3f}", f, scene=sc, group=gr)
-            self.sort_watch()
-            self.rebuild_watch_table()
-            self._update_markers()
+    def add_watch_dialog(self, text=""):
+        """⌨ 7.62 : « Ajouter » ouvre la saisie express (une ou plusieurs fréquences, nommées ou non)."""
+        if self._quickadd is not None and self._quickadd.isVisible():
+            if text:
+                self._quickadd.edit.setPlainText(text)
+            self._quickadd.raise_()
+            self._quickadd.activateWindow()
+            return self._quickadd
+        self._quickadd = QuickAddDialog(self, text, self._scope_preset())
+        self._quickadd.show()
+        return self._quickadd
+
+    def in_scanned_band(self, f):
+        """La fréquence est-elle dans une bande cochée (balayée) ?"""
+        return any(b.get("enabled", True) and b["start"] - 1e-6 <= f <= b["stop"] + 1e-6 for b in self.bands)
 
     def del_watch(self):
         rows = self._sel_rows()
@@ -28523,6 +28879,130 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_status("Réglages SDR enregistrés" + (" (appliqués au prochain cycle)." if self.is_running()
                                                           else "."))
 
+    # ------------------------------------------------------- 🆘 7.62 : remplacer un micro en un clic
+    def replace_args(self, w):
+        """Tout ce qu'il faut (préparé dans le fil de l'interface) pour chercher des remplaçantes de w : le plan actif,
+        l'appareil de chaque fréquence (bande comprise), ce que le tinySA voit occupé, les bandes du pays."""
+        ws = [x for x in self.watch if x is w or not x.get("off")]
+        i = next(k for k, x in enumerate(ws) if x is w)
+        po = self.plan_opts
+        dflt = dict(sep=po.get("sep", 300) / 1000.0, filt=float(po.get("filt", 32.0)), tol=IM_TOL_PRESETS[0][1],
+                    step=po.get("step", 25) / 1000.0)
+        P = [rx_profile(self.rx_of(x)) or dflt for x in ws]
+        busy = None
+        Fm, Lm = self.fresh_FL(use_max=True)
+        if Fm is not None:
+            lim = self.weak_spin.value() if self.weak_chk.isChecked() else self.thr_spin.value()
+            busy = busy_pred(Fm, Lm, lim, max(0.05, self.win_spin.value() / 1000.0))
+        F, B = [x["freq"] for x in ws], [float(x.get("bw") or 0.0) for x in ws]
+        bd = rx_band(P[i])
+        ext = self._band_extent()
+        return dict(i=i, F=F, T=[not self.is_keep_free(x["status"]) for x in ws], B=B, sep=[q["sep"] for q in P],
+                    tol=[q["tol"] for q in P], filt=[q["filt"] for q in P],
+                    img=[float(q.get("img") or 0.0) for q in P], step=P[i].get("step", 0.025), busy=self.reg_busy(busy),
+                    near=band_clip(F[i] - 10.0, F[i] + 10.0, bd, B[i]),
+                    ext=band_clip(ext[0], ext[1], bd, B[i]) if ext else (band_clip(bd[0], bd[1], bd, B[i]) if bd else None),
+                    band=bd, Fm=Fm, Lm=Lm)
+
+    @staticmethod
+    def replace_compute(a, n=3):
+        """Calcul PUR (peut tourner dans un fil à part) : jusqu'à n remplaçantes, les plus proches d'abord.
+        Rien avec toutes les règles (plan très chargé : les 3 TX recouvrent tout) -> nouvel essai en 2A − B seulement,
+        signalé (relaxed). -> [(MHz, écart, relaxed)]."""
+        st = float(a["step"] or 0.025)
+        step = st * max(1, math.ceil(0.025 / st - 1e-9))     # au moins 25 kHz, multiple du pas de l'appareil (rapide)
+        gap = max(0.2, float(a["sep"][a["i"]] or 0.0))         # 3 propositions vraiment différentes
+
+        def spread(sg, have):
+            out = list(have)
+            for c, d in sg:
+                if all(abs(c - x[0]) >= gap - 1e-9 for x in out):
+                    out.append((c, d))
+            return out
+
+        tol2 = [dict(t, **{"3tx3": 0.0, "5": 0.0, "7": 0.0}) for t in a["tol"]]
+        kw = dict(n=14 * n, busy=a["busy"], step=step, filt=a["filt"], img=a["img"], max_check=80)
+        f0, bd = a["F"][a["i"]], a["band"]
+        wins = []
+        for half in (10.0, 40.0):
+            win = band_clip(f0 - half, f0 + half, bd, a["B"][a["i"]])
+            if a["ext"] and win:                      # pas au-delà des bandes balayées (rien de mesuré)
+                win = (max(win[0], a["ext"][0]), min(win[1], a["ext"][1]))
+            if win and win[1] > win[0]:
+                wins.append(win)
+        for tol, rel in ((a["tol"], False), (tol2, True)):   # règles complètes, sinon 2A − B seulement (signalé)
+            got = []
+            for win in wins:                          # près d'abord, plus loin pour compléter
+                got = spread(pf_suggest(a["i"], a["F"], a["T"], a["B"], a["sep"], tol, None, lo=win[0], hi=win[1], **kw),
+                             got)
+                if len(got) >= n:
+                    break
+            if got:
+                got.sort(key=lambda x: abs(x[1]))
+                return [(c, d, rel) for c, d in got[:n]]
+        return []
+
+    def replace_decorate(self, a, sg, w):
+        """Propositions -> [dict(f, d, level, tag)] (niveau mesuré, réserve réglementaire)."""
+        out = []
+        for c, d, rel in sg:
+            lv = level_at(a["Fm"], a["Lm"], c, 0.1) if a["Fm"] is not None else None
+            tag = self.reg_tag(c, float(w.get("bw") or 0.0))
+            if rel:
+                tag = "règles allégées : 2A − B seulement" + (f" · {tag}" if tag else "")
+            out.append(dict(f=round(float(c), 4), d=float(d), level=lv, tag=tag, relaxed=rel))
+        return out
+
+    def suggest_replacements(self, w, n=3):
+        """Version directe (fil de l'interface) : page Tech, tests."""
+        a = self.replace_args(w)
+        return self.replace_decorate(a, self.replace_compute(a, n), w)
+
+    def replace_watch(self, w, f, how="🆘 remplacement"):
+        """Remplace la fréquence de w par f : alarmes de l'ancienne effacées, journal « NOUVELLE FRÉQUENCE »."""
+        if not any(x is w for x in self.watch):
+            return False
+        old = w["freq"]
+        k0 = int(round(old * 1000))
+        now = time.time()
+        for kind in ("CONFLIT", "ABSENT"):
+            self.alarms.clear((kind, k0), now)
+        self.set_watch_freq(w, f)
+        self.log_event(dict(name=w["name"], freq=0.0, note=f"{old:.3f} → {f:.3f} MHz ({how})"), 0.0, "NOUVELLE FRÉQUENCE")
+        self.refresh_alarms()
+        self.undo_track()
+        self.set_status(TR("🆘 {} : {} → {} MHz. Règle l'émetteur ET le récepteur sur la nouvelle fréquence.").format(
+            w["name"], f"{old:.3f}", f"{f:.3f}"))
+        return True
+
+    def open_replace(self, w=None):
+        """🆘 Fenêtre « Remplacer ce micro » : w = la fréquence (sinon celle choisie dans la liste, sinon l'alarme)."""
+        if w is None:
+            rows = self._sel_rows()
+            w = self.watch[rows[0]] if rows else self._alarm_watch()
+        if w is None:
+            self.set_status("Choisis d'abord le micro à remplacer (dans la liste ou dans les alarmes).")
+            return None
+        if self._replace is not None:
+            try:
+                self._replace.close()
+            except RuntimeError:
+                pass
+        self._replace = ReplaceDialog(self, w)
+        self._replace.show()
+        return self._replace
+
+    def _alarm_watch(self):
+        """La fréquence de la liste liée à l'alarme choisie (sinon la plus récente non acquittée)."""
+        ids = self._alarm_selected_ids()
+        items = self.alarms.listing()
+        a = next((x for x in items if ids and x["id"] == ids[0]), None) or next(
+            (x for x in items if x["t_end"] is None and not x["acked"] and x.get("freq")), None)
+        if a is None or not a.get("freq"):
+            return None
+        return min(self.watch, key=lambda x: abs(x["freq"] - a["freq"]), default=None) if any(
+            abs(x["freq"] - a["freq"]) < 0.0015 for x in self.watch) else None
+
     def open_scan_convert(self):
         self._conv_dlg = ScanConvertDialog(self)
         self._conv_dlg.show()
@@ -30358,7 +30838,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def tech_do(self, c):
         """Exécute une commande Tech (déjà vérifiée par tech_request) -> message pour la page."""
         a = c["action"]
-        names = [st["name"] for st in self.statuses]
+        names = names_ = [st["name"] for st in self.statuses]
         if a == "run":
             if c["on"] and not self.is_running():
                 self.toggle_run(auto=True)
@@ -30393,6 +30873,53 @@ class MainWindow(QtWidgets.QMainWindow):
             self.rebuild_watch_table()
             self._update_markers()
             return f"＋ {c['name'] or c['freq']} ({c['freq']:.3f} MHz) ajoutée"
+        if a == "quick_add":
+            items, ign = parse_quick_entry(c["text"])
+            have = {int(round(w["freq"] * 1000)) for w in self.watch}
+            items = [it for it in items if int(round(it["freq"] * 1000)) not in have]
+            if not items:
+                return "aucune nouvelle fréquence trouvée dans le texte" + (" (déjà dans la liste ?)" if not ign else "")
+            names = quick_names(items, "HF", {w["name"] for w in self.watch})
+            st = c["status"] if c["status"] in names_ else ""
+            if c["scene"]:
+                self.ensure_group(c["scene"], c["group"])
+            for it, nm in zip(items, names):
+                self._append_watch(nm, it["freq"], st, None, c["scene"], c["group"] if c["scene"] else "")
+            self.sort_watch()
+            self.rebuild_tree()
+            self.rebuild_watch_table()
+            self._update_markers()
+            self.undo_track()
+            return f"⌨ {len(items)} micro(s) ajouté(s) : " + ", ".join(names[:6]) + (" …" if len(names) > 6 else "")
+        if a == "sugg_close":
+            self._tech_sugg = None
+            return ""
+        if a in ("suggest", "replace"):
+            w = self._tech_w(c["key"])
+            if w is None:
+                return "fréquence introuvable (liste changée entre-temps ?)"
+            if a == "replace":
+                if self._tech_w(int(round(c["f"] * 1000))) is not None:
+                    return f"{c['f']:.3f} MHz déjà dans la liste"
+                old = w["freq"]
+                self.replace_watch(w, c["f"], "🆘 remplacement depuis le téléphone")
+                self._tech_sugg = None
+                return f"🆘 {w['name']} : {old:.3f} → {c['f']:.3f} MHz · règle l'émetteur ET le récepteur"
+            args = self.replace_args(w)              # 7.62 : calcul en arrière-plan (le PC ne fige jamais)
+            self._tech_sugg = dict(key=c["key"], name=w["name"], freq=round(w["freq"], 4), cands=[], busy=True)
+
+            def done(sg, err, w=w, key=c["key"]):
+                if self._tech_sugg is None or self._tech_sugg.get("key") != key:
+                    return                            # fermé ou autre micro demandé entre-temps
+                cands = [] if err is not None else self.replace_decorate(args, sg, w)
+                self._tech_sugg = dict(key=key, name=w["name"], freq=round(w["freq"], 4), busy=False,
+                                       cands=[dict(f=x["f"], d=round(x["d"] * 1000),
+                                                   level=self.lvl(x["level"], suffix=True) if x["level"] is not None else "",
+                                                   tag=TR(x["tag"]) if x["tag"] else "") for x in cands])
+                self._tech_msg = (f"🆘 {len(cands)} proposition(s) pour {w['name']}" if cands
+                                  else f"🆘 rien de libre et compatible pour {w['name']}")
+            self.run_heavy(lambda: self.replace_compute(args, 3), done)
+            return f"🆘 calcul des propositions pour {w['name']}…"
         if a in ("watch_edit", "watch_del", "mute"):
             w = self._tech_w(c["key"])
             if w is None:
@@ -30468,7 +30995,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     scenes=[dict(name=sc["name"], groups=[g["name"] for g in sc["groups"]]) for sc in self.scenes],
                     devs=devs, watch=rows, clients=clients, alarms=len(self.alarms.active),
                     show=self.show_meta.get("name", ""), saved=bool(self.show_path),
-                    states=[x["name"] for x in self.states], state_cur=self.state_cur)
+                    states=[x["name"] for x in self.states], state_cur=self.state_cur, sugg=self._tech_sugg)
 
     def _web_terrain_pending(self):
         """🎒 Commandes de la vue Terrain (téléphone) : où est le tinySA volant, garder / effacer des scans."""
@@ -30593,7 +31120,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.snooze_btn.setMenu(sm_)
         bar = QtWidgets.QHBoxLayout()
         bar.addWidget(self.alarm_lbl, 1)
-        bar.addLayout(self._flow(b_ack, b_all, b_clr, self.snooze_btn), 2)
+        b_rep = QtWidgets.QPushButton("🆘 Remplacer ce micro")
+        b_rep.setToolTip("Le micro de l'alarme choisie est brouillé ? 3 fréquences de remplacement libres et\n"
+                         "compatibles (son appareil, sa bande, ton plan), puis un clic pour remplacer.")
+        b_rep.clicked.connect(lambda *_: self.open_replace())
+        bar.addLayout(self._flow(b_ack, b_all, b_rep, b_clr, self.snooze_btn), 2)
         lay.addLayout(bar)
         lay.addWidget(self.alarm_table, 1)
         # 7.56 : l'alarme choisie (sinon la plus récente à acquitter) expliquée : mesuré / cause probable / quoi faire

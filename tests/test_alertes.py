@@ -681,22 +681,41 @@ else:
         _wait(1)
         check("tech (navigateur) : seuils appliqués", tcmds and tcmds[-1]["action"] == "thr" and tcmds[-1]["occ"] == -75.0,
               str(tcmds[-1:]))
-        pg.fill("#tan", "HF 9")
-        pg.fill("#taf", "612,125")
+        pg.fill("#tqa", "HF 9 612,125, HF 10 613.5")
+        pg.fill("#tasc", "Grande scène")
         pg.click("#tadd")
         _wait(2)
-        check("tech (navigateur) : fréquence ajoutée (virgule acceptée)", tcmds[-1]["action"] == "watch_add"
-              and tcmds[-1]["freq"] == 612.125 and tcmds[-1]["name"] == "HF 9", str(tcmds[-1:]))
-        pg.select_option("#tdevs .row:nth-child(2) select", "Club")
+        check("tech (navigateur) : ⌨ saisie express envoyée (texte brut, scène)", tcmds[-1]["action"] == "quick_add"
+              and "612,125" in tcmds[-1]["text"] and tcmds[-1]["scene"] == "Grande scène", str(tcmds[-1:]))
+        pg.wait_for_timeout(1300)
+        check("tech (navigateur) : groupes proposés pour la scène tapée",
+              'value="HF"' in pg.eval_on_selector("#tgrl", "e => e.innerHTML"))
+        pg.click("#tws .row:nth-child(1) [data-trp]")
         _wait(3)
+        check("tech (navigateur) : 🆘 demande des propositions", tcmds[-1] == dict(tcmds[-1], action="suggest", key=606500),
+              str(tcmds[-1:]))
+        tj["sugg"] = dict(key=606500, name="HF 1", freq=606.5,
+                          cands=[dict(f=606.825, d=325, level="-101 dBm", tag=""), dict(f=605.9, d=-600, level="", tag="")])
+        pg.wait_for_selector("#tsg [data-trf]", state="visible", timeout=6000)
+        check("tech (navigateur) : 🆘 propositions affichées", pg.locator("#tsg [data-trf]").count() == 2)
+        if CAP:
+            pg.screenshot(path=os.path.join(CAP, "web_tech_remplacer.png"), full_page=True)
+        pg.locator("#tsg [data-trf]").first.click()
+        _wait(4)
+        check("tech (navigateur) : 🆘 un appui = remplacer (confirmé)", tcmds[-1] == dict(tcmds[-1], action="replace",
+                                                                                       key=606500, f=606.825), str(tcmds[-1:]))
+        tj["sugg"] = None
+        pg.wait_for_selector("#tsg", state="hidden", timeout=6000)
+        pg.select_option("#tdevs .row:nth-child(2) select", "Club")
+        _wait(5)
         check("tech (navigateur) : 2ᵉ tinySA rattaché au Club", tcmds[-1] == dict(tcmds[-1], action="dev_scenes", dev=1,
                                                                                scenes=["Club"]), str(tcmds[-1:]))
         pg.click("#tws .row:nth-child(2) [data-tdel]")
-        _wait(4)
+        _wait(6)
         check("tech (navigateur) : retirer une fréquence (confirmé)", tcmds[-1] == dict(tcmds[-1], action="watch_del",
                                                                                      key=614000), str(tcmds[-1:]))
         pg.click("#tstop")
-        _wait(5)
+        _wait(7)
         check("tech (navigateur) : arrêter (confirmé)", tcmds[-1]["action"] == "run" and tcmds[-1]["on"] is False)
         if CAP:
             pg.screenshot(path=os.path.join(CAP, "web_tech.png"), full_page=True)
