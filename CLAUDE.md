@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.62.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.63.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1222,8 +1222,31 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   voir, 🆘 remplacer, 🔎 chasser, ⚡ d'où ça vient si coordination, ✔ acquitter). Manuel : la section « Un micro est
   brouillé » est GÉNÉRÉE depuis `docs/src/nouveaux_*.html` (chapitre reagir) — les ajouts 7.61 / 7.62 faits dans
   `docs/manuel.html` avaient été écrasés par make_manual : remis dans la source. Idées de l'audit NON faites (à
-  proposer à Clément) : QR code de la page web, comparaison avant / après installation, cloner un groupe, historique
-  des modifications, sauvegarde complète en ZIP, export PDF de préparation, détection de dérive.
+  proposer à Clément) : export PDF de préparation, détection de dérive (les 5 autres faites en 7.63).
+- **7.63.0 (Clément : « 1/2/3/4 5 !! » sur les idées de l'audit)** :
+  - **📱 QR code** : dépendance **`segno`** (pur Python, BSD ; requirements.txt, `--hidden-import segno` dans le workflow
+    et build.bat, vérifiée par `self_test`). PURE `web_link(ip, port, vue)` ; `qr_image(texte, px)` (QImage, niveau M,
+    marge 4) ; `QrDialog` (`self._qr`, adresse = `local_ips()`, vue = vues partagées, Copier, PNG) ; `open_qr` ;
+    🎚 Surveiller › À distance + bouton `qr_btn` dans AlertsDialog. gui_reel relit le PNG avec OpenCV si présent
+    (`opencv-python-headless`, PAS dans requirements : test local seulement).
+  - **📸 Avant / après** : PURE `scan_changes(FA, LA, FB, LB, thr)` (new = sous le seuil avant, gone = sous le seuil
+    après, up / down ≥ 6 dB ; via `compare_spectra` + `scan_peaks`), `CHANGE_LABELS` ; SitesDialog onglet « Comparer »
+    : `cmp_mode` (sites | time), `chg_table`, `_cmp_mode_changed` (A = le plus ancien), `_chg_view` ;
+    `open_sites(before_after)`, `open_before_after` (📊 Analyser).
+  - **⧉ Dupliquer** : PURE `copy_name` ; `duplicate_layer(key)` (groupe dans sa scène / scène + groupes, deepcopy,
+    sans fréquences) ; clic droit de l'arbre.
+  - **🕘 Historique** : PURE `watch_rows`, `watch_diff` (apparié par (nom, MHz), puis nom, puis MHz), `history_norm`,
+    `HIST_MAX` 1000, `HIST_WHAT`. ⚠ `self.history` = rémanence du spectre (dict) : le nôtre est **`self.mod_history`**
+    (clé de config / show « history », SHOW_KEYS, ligne `coord_tools=`) ; `history_track(who)` (chaque seconde dans
+    `_alarm_tick` ; « 📱 nom » autour de `tech_do`, « 🔗 plan » autour de `apply_ezrf_diff` → `_apply_ezrf_diff`,
+    « ↶ Annulé / ↷ Rétabli » dans `_undo_restore`) ; `_apply_config` remet `_hist_rows` à None (ouvrir un show ne crée
+    pas d'entrées) ; nouveau show / modèle = vidé (`TEMPLATE_DROP` + history). `HistoryDialog` (`self._hist_dlg`,
+    filtre, CSV, vider), `open_history` (📊 Analyser).
+  - **📦 Sauvegarde ZIP** : PURE `config_public` (sans `notify`, ni web pin / password / tech), `bundle_pick` (7 jours,
+    60 Mo, récents d'abord) ; `export_bundle(path)` : show.tsashow, config_sans_secrets.json, diagnostic frais,
+    journaux / rapports / diagnostics de la semaine, crash.log, garde.log, LISEZMOI.txt ; 🎪 Shows + 🔌 Matériel.
+  Testé : test_v7 (PURE), gui_reel (QR relu par OpenCV, dupliquer, historique, ZIP sans secret, avant / après).
+  **Pas essayé par Clément** (QR à scanner avec un vrai téléphone).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

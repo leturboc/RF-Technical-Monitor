@@ -1730,5 +1730,49 @@ check("modèle : nouveau nom vide, lieu gardé", (_tp["meta"]["name"], _tp["meta
       ("", "Parc", "", "Festival 2025"))
 check("modèle : le show d'origine n'est pas modifié", len(_doc["show"]["watch"]), 1)
 
+# ---- 7.63 : QR, avant / après, dupliquer, historique, sauvegarde
+check("QR : adresse de la vue", (ns["web_link"]("192.168.1.20", 8080), ns["web_link"]("10.0.0.2", 8081, "mur"),
+                                 ns["web_link"]("10.0.0.2", 8081, "pirate")),
+      ("http://192.168.1.20:8080/", "http://10.0.0.2:8081/#/mur", "http://10.0.0.2:8081/"))
+_Fx = np.arange(470.0, 520.0, 0.025)
+_LA = np.full(len(_Fx), -105.0)
+_LB = _LA.copy()
+_LA[(_Fx > 480.0) & (_Fx < 480.1)] = -60.0       # disparu après
+_LB[(_Fx > 490.0) & (_Fx < 490.1)] = -55.0       # apparu
+_LA[(_Fx > 500.0) & (_Fx < 500.1)] = -80.0       # monté de 12 dB
+_LB[(_Fx > 500.0) & (_Fx < 500.1)] = -68.0
+_LA[(_Fx > 510.0) & (_Fx < 510.1)] = -60.0       # inchangé
+_LB[(_Fx > 510.0) & (_Fx < 510.1)] = -61.0
+_ch = ns["scan_changes"](_Fx, _LA, _Fx, _LB, -90.0)
+check("avant / après : disparu, apparu, monté (l'inchangé n'est pas listé)", [(x["kind"], round(x["f"])) for x in _ch],
+      [("gone", 480), ("new", 490), ("up", 500)])
+check("avant / après : écart en dB", [x["delta"] for x in _ch if x["kind"] == "up"], [12.0])
+check("avant / après : rien en commun", ns["scan_changes"](_Fx, _LA, _Fx + 500, _LB, -90.0), [])
+check("dupliquer : noms de copie", (ns["copy_name"]("HF", ["HF"]), ns["copy_name"]("HF", ["HF", "HF (copie)"]),
+                                    ns["copy_name"]("HF (copie)", ["HF", "HF (copie)"])),
+      ("HF (copie)", "HF (copie 2)", "HF (copie 2)"))
+_r0 = ns["watch_rows"]([dict(name="HF 1", freq=558.2, status="En service", scene="A", group="HF"),
+                        dict(name="HF 2", freq=574.0), dict(name="IEM", freq=606.5)])
+_r1 = ns["watch_rows"]([dict(name="HF 1", freq=558.6, status="En service", scene="A", group="HF"),
+                        dict(name="Voix", freq=574.0), dict(name="Kick", freq=470.1, status="Libre")])
+_wd = ns["watch_diff"](_r0, _r1)
+check("historique : fréquence changée, renommée, retirée, ajoutée",
+      sorted((x["what"], x["name"], x["old"], x["new"]) for x in _wd),
+      sorted([("freq", "HF 1", "558.200", "558.600"), ("name", "Voix", "HF 2", "Voix"), ("del", "IEM", "606.500", ""),
+              ("add", "Kick", "", "470.100")]))
+check("historique : statut et couche", [(x["what"], x["old"], x["new"]) for x in ns["watch_diff"](
+    ns["watch_rows"]([dict(name="A", freq=1, status="x", scene="S")]),
+    ns["watch_rows"]([dict(name="A", freq=1, status="y", scene="S", group="G")]))],
+      [("status", "x", "y"), ("layer", "S", "S › G")])
+check("historique : rien changé", ns["watch_diff"](_r0, list(_r0)), [])
+check("historique : relu proprement (bancal écarté, limite)", len(ns["history_norm"](
+    [dict(t=1, what="add", name="A")] * 5 + [dict(what="pirate"), "x", dict(t="?", what="add")], limit=3)), 3)
+_cp = ns["config_public"](dict(notify=dict(token="SECRET"), web=dict(on=True, pin="1234", password="pw", tech="tt", port=8080),
+                               watch=[1]))
+check("sauvegarde : config sans secrets", _cp, dict(web=dict(on=True, port=8080), watch=[1]))
+check("sauvegarde : fichiers récents d'abord, 7 jours, plafond", ns["bundle_pick"](
+    [("vieux", 10, 0.0), ("a", 30e6, 9e6), ("b", 40e6, 9e6 - 1), ("c", 10, 9e6 - 2)], 9e6 + 3600, max_mb=60),
+      ["a", "c"])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

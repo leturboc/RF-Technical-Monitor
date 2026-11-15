@@ -132,7 +132,7 @@ jobs:
           extra=""; [ -f lang_en_v8.py ] && extra="--hidden-import lang_en_v8"     # V8 : ses traductions
           python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor \
             --icon assets/icone.ico --add-data "assets/icone.png;." --add-data "docs/manuel.html;docs" --add-data "docs/manual_en.html;docs" \
-            --add-data "$tr/qtbase_fr.qm;PySide6/Qt/translations" --hidden-import lang_en --hidden-import PySide6.QtMultimedia \
+            --add-data "$tr/qtbase_fr.qm;PySide6/Qt/translations" --hidden-import lang_en --hidden-import PySide6.QtMultimedia --hidden-import segno \
             --hidden-import serial.urlhandler.protocol_socket --hidden-import serial.urlhandler.protocol_rfc2217 $extra tinysa_monitor.py
 
       - name: Auto-test de l'exe (réseau, traductions, son, manuels)

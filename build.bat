@@ -22,7 +22,7 @@ echo [2/3] Compilation...
 for /f "delims=" %%T in ('python -c "from PySide6.QtCore import QLibraryInfo as Q; print(Q.path(Q.LibraryPath.TranslationsPath))"') do set QTTR=%%T
 set EXTRA=
 if exist lang_en_v8.py set EXTRA=--hidden-import lang_en_v8
-python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor --icon assets\icone.ico --add-data "assets\icone.png;." --add-data "docs\manuel.html;docs" --add-data "docs\manual_en.html;docs" --hidden-import lang_en --hidden-import PySide6.QtMultimedia --hidden-import serial.urlhandler.protocol_socket --hidden-import serial.urlhandler.protocol_rfc2217 %EXTRA% --add-data "%QTTR%\qtbase_fr.qm;PySide6/Qt/translations" tinysa_monitor.py
+python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor --icon assets\icone.ico --add-data "assets\icone.png;." --add-data "docs\manuel.html;docs" --add-data "docs\manual_en.html;docs" --hidden-import lang_en --hidden-import PySide6.QtMultimedia --hidden-import segno --hidden-import serial.urlhandler.protocol_socket --hidden-import serial.urlhandler.protocol_rfc2217 %EXTRA% --add-data "%QTTR%\qtbase_fr.qm;PySide6/Qt/translations" tinysa_monitor.py
 if errorlevel 1 goto erreur
 
 echo [3/3] Termine !

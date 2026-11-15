@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.62.1"
+APP_VER = "7.63.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4914,7 +4914,8 @@ SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_o
              "country", "plan_custom", "dev_names", "rx_custom", "net_profiles", "net_addr", "port_net", "dev2", "devx", "states",
              "state_cur", "ezrf_link", "thr_auto", "auto_occ", "auto_weak",
              "user_presets", "persist", "hold", "alarm_timing",      # 7.57 : préréglages perso + leurs réglages
-             "tnt")                                                  # 7.58 : lieu du show pour les émetteurs TNT
+             "tnt",                                                  # 7.58 : lieu du show pour les émetteurs TNT
+             "history")                                              # 7.63 : 🕘 historique des modifications
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 # 7.57 (Clément : « un mode préférences utilisateur, qu'on puisse se passer les préférences : affichage, seuils,
 # préréglages perso… comme des bases user ») : ce qu'un 👤 profil utilisateur emporte. PAS le show (fréquences, scènes,
@@ -5014,7 +5015,7 @@ def show_apply(cfg_now, doc):
     return out
 
 
-TEMPLATE_DROP = ("watch", "site_scans", "states", "state_cur", "ezrf_link", "planning", "scope", "focus")
+TEMPLATE_DROP = ("watch", "site_scans", "states", "state_cur", "ezrf_link", "planning", "scope", "focus", "history")
 
 
 def show_template(doc):
@@ -5792,6 +5793,11 @@ WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par 
              ("tech", "🛠", "Tech", "Gérer le serveur : surveillance, seuils, fréquences, tinySA (accès protégé)")]
 WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
 WEB_VIEWS_HIDDEN = ("terrain", "tech")             # cachées tant qu'on ne les coche pas (outils de l'équipe HF)
+
+
+def web_link(ip, port, view=""):
+    """📱 7.63 : adresse de la page web (QR code) : http://ip:port/ ou …/#/vue."""
+    return f"http://{ip}:{int(port)}/" + (f"#/{view}" if view in WEB_VIEW_KEYS else "")
 
 
 def web_views_norm(v):
@@ -6733,6 +6739,148 @@ def compare_spectra(F1, L1, F2, L2, thr, margin=10.0):
     return scan_peaks(F1[m1], a1, thr), scan_peaks(F2[m2], a2, thr)
 
 
+def scan_changes(FA, LA, FB, LB, thr, margin=10.0, step_db=6.0):
+    """📸 7.63 « avant / après » : A = scan d'avant (ex. avant l'installation des micros), B = après. -> liste triée
+    par fréquence de dict(kind new|gone|up|down, f MHz, before dBm ou None, after dBm ou None, delta dB) :
+    new = apparu (≥ margin dB au-dessus d'avant), gone = disparu, up / down = présent les deux fois mais monté /
+    baissé d'au moins step_db. « apparu » = sous le seuil avant ; « disparu » = sous le seuil après. Seulement là où les
+    deux ont mesuré."""
+    new, gone = compare_spectra(FB, LB, FA, LA, thr, margin)
+    FA, LA = _valid(FA, LA)
+    FB, LB = _valid(FB, LB)
+    if not len(FA) or not len(FB):
+        return []
+    oa, ob = np.argsort(FA), np.argsort(FB)
+    FA, LA, FB, LB = FA[oa], LA[oa], FB[ob], LB[ob]
+    lo, hi = max(FA[0], FB[0]), min(FA[-1], FB[-1])
+    out = []
+    for p in new:                                 # présent avant (au-dessus du seuil) = « plus fort », pas « apparu »
+        bf = float(np.interp(p["f"], FA, LA))
+        out.append(dict(kind="new" if bf < thr else "up", f=p["f"], before=bf, after=p["level"]))
+    for p in gone:
+        af = float(np.interp(p["f"], FB, LB))
+        out.append(dict(kind="gone" if af < thr else "down", f=p["f"], before=p["level"], after=af))
+    seen = [x["f"] for x in out]
+
+    def near(f):
+        return any(abs(f - g) < 0.3 for g in seen)
+    for F1, L1, F2, L2, kind in ((FB, LB, FA, LA, "up"), (FA, LA, FB, LB, "down")):
+        for p in scan_peaks(F1, L1, thr):
+            if not (lo <= p["f"] <= hi) or near(p["f"]):
+                continue
+            other = float(np.interp(p["f"], F2, L2))
+            if p["level"] - other >= step_db:
+                b_, a_ = (other, p["level"]) if kind == "up" else (p["level"], other)
+                out.append(dict(kind=kind, f=p["f"], before=b_, after=a_))
+                seen.append(p["f"])
+    for x in out:
+        x["delta"] = None if x["before"] is None or x["after"] is None else round(x["after"] - x["before"], 1)
+    return sorted(out, key=lambda x: x["f"])
+
+
+CHANGE_LABELS = {"new": "🆕 apparu", "gone": "➖ disparu", "up": "↑ plus fort", "down": "↓ plus faible"}
+
+
+def copy_name(name, taken):
+    """⧉ 7.63 : nom d'une copie : « X (copie) », puis « X (copie 2) »… jamais un nom déjà pris."""
+    base = re.sub(r"\s*\(copie(?: \d+)?\)$", "", str(name or "").strip()) or "Copie"
+    taken = set(taken)
+    cand, k = f"{base} (copie)", 2
+    while cand in taken:
+        cand, k = f"{base} (copie {k})", k + 1
+    return cand
+
+
+HIST_MAX = 1000
+HIST_WHAT = {"add": "ajoutée", "del": "retirée", "freq": "fréquence", "name": "renommée", "status": "statut",
+             "layer": "scène › groupe"}
+
+
+def watch_rows(watch):
+    """🕘 7.63 : ce qu'on suit dans l'historique : (nom, MHz au kHz, statut, scène › groupe) de chaque fréquence."""
+    return [(str(w.get("name") or ""), round(float(w.get("freq") or 0.0), 3), str(w.get("status") or ""),
+             " › ".join(x for x in (w.get("scene") or "", w.get("group") or "") if x)) for w in watch or []]
+
+
+def watch_diff(old, new):
+    """🕘 Changements entre deux watch_rows : apparié d'abord par (nom, MHz), puis par nom (fréquence changée), puis par
+    MHz (renommée) ; le reste = ajoutée / retirée. -> [dict(what, name, old, new)]."""
+    old, new = list(old), list(new)
+    out, used_o, used_n = [], set(), set()
+
+    def pair(key):
+        idx = {}
+        for i, r in enumerate(old):
+            if i not in used_o:
+                idx.setdefault(key(r), []).append(i)
+        for j, r in enumerate(new):
+            if j in used_n:
+                continue
+            lst = idx.get(key(r))
+            if lst:
+                i = lst.pop(0)
+                used_o.add(i)
+                used_n.add(j)
+                o = old[i]
+                if o[1] != r[1]:
+                    out.append(dict(what="freq", name=r[0], old=f"{o[1]:.3f}", new=f"{r[1]:.3f}"))
+                if o[0] != r[0]:
+                    out.append(dict(what="name", name=r[0], old=o[0], new=r[0]))
+                if o[2] != r[2]:
+                    out.append(dict(what="status", name=r[0], old=o[2], new=r[2]))
+                if o[3] != r[3]:
+                    out.append(dict(what="layer", name=r[0], old=o[3], new=r[3]))
+    pair(lambda r: (r[0], r[1]))
+    pair(lambda r: r[0])
+    pair(lambda r: r[1])
+    for i, o in enumerate(old):
+        if i not in used_o:
+            out.append(dict(what="del", name=o[0], old=f"{o[1]:.3f}", new=""))
+    for j, r in enumerate(new):
+        if j not in used_n:
+            out.append(dict(what="add", name=r[0], old="", new=f"{r[1]:.3f}"))
+    return out
+
+
+def history_norm(h, limit=HIST_MAX):
+    """Historique lu (config / show) -> liste propre [{t, who, what, name, old, new}], les `limit` derniers."""
+    out = []
+    for x in h if isinstance(h, list) else []:
+        if isinstance(x, dict) and x.get("what") in HIST_WHAT:
+            try:
+                t = float(x.get("t") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            out.append(dict(t=t, who=str(x.get("who") or "")[:40], what=x["what"], name=str(x.get("name") or "")[:60],
+                            old=str(x.get("old") or "")[:80], new=str(x.get("new") or "")[:80]))
+    return out[-limit:]
+
+
+SECRET_WEB = ("pin", "password", "tech")
+
+
+def config_public(cfg):
+    """📦 7.63 : config SANS secrets (jetons ntfy / Telegram, PIN, mots de passe de la page web) pour un envoi."""
+    out = {k: v for k, v in (cfg or {}).items() if k != "notify"}
+    if isinstance(out.get("web"), dict):
+        out["web"] = {k: v for k, v in out["web"].items() if k not in SECRET_WEB}
+    return out
+
+
+def bundle_pick(files, now, days=7.0, max_mb=60.0):
+    """📦 Fichiers à mettre dans la sauvegarde : files = [(chemin, taille octets, date modif)] -> chemins des fichiers
+    des `days` derniers jours, les plus récents d'abord, jusqu'à max_mb en tout."""
+    keep, total = [], 0
+    for path, size, mt in sorted(files, key=lambda x: -x[2]):
+        if now - mt > days * 86400.0:
+            continue
+        if total + size > max_mb * 1e6:
+            continue
+        keep.append(path)
+        total += size
+    return keep
+
+
 def store_occupancy(store, freqs, thr, hour_of, win=0.1):
     """Occupation de chaque fréquence (MHz) par heure, à partir des balayages d'un SweepStore : à chaque balayage,
     occupée si le niveau à ±win MHz atteint thr. hour_of(t) -> heure (0-23). -> {heure: (n balayages par
@@ -6806,13 +6954,16 @@ STEPS = (
       ("🔎 Chasse au brouilleur (bip qui suit le niveau)…", "open_hunt"),
       ("§À distance et la nuit", None),
       ("📣 Alertes téléphone et page web…", "open_alerts"),
+      ("📱 QR code de la page web (pour l'équipe)…", "open_qr"),
       ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "open_festival"))),
     ("after", "📊 Analyser", "Après le show : revoir ce qui s'est passé, rapport, occupation par heure, scans.",
      (("§Revoir le show", None),
       ("🌅 Résumé de la nuit (en un coup d'œil)…", "open_night_summary"),
+      ("🕘 Historique des modifications (qui a changé quoi)…", "open_history"),
       ("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
       ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"),
       ("📄 Rapport de show…", "make_report"),
+      ("📸 Comparer avant / après (ce qui a changé)…", "open_before_after"),
       ("§Scans des autres logiciels", None),
       ("📏 Importer un scan WSM / WWB comme référence…", "import_scan_as_ref"),
       ("🔁 Convertir / exporter un scan (WSM, WWB, CSV…)…", "open_scan_convert"))),
@@ -6828,7 +6979,8 @@ STEPS = (
       ("§Mesure et dépannage", None),
       ("🎛 Réglages de mesure (finesse, préampli, atténuateur)…", "open_measure"),
       ("📡 Mode émission (générateur : tester un récepteur)…", "open_emit"),
-      ("🩺 Diagnostic tinySA (fichier pour le support)…", "open_diag"))),
+      ("🩺 Diagnostic tinySA (fichier pour le support)…", "open_diag"),
+      ("📦 Tout envoyer pour un dépannage (ZIP)…", "export_bundle"))),
 )
 # anciennes clés du parcours (tutos, tests) -> famille
 STEP_ALIAS = dict(scan="prep", list="prep", plan="prep", im="prep")
@@ -9042,6 +9194,196 @@ def local_ips():
     return [ip for ip in ips if not ip.startswith("127.")]
 
 
+def qr_image(text, px=360, dark="#000000", light="#ffffff"):
+    """📱 7.63 : QR code (segno, niveau de correction M) -> QImage carrée d'environ px pixels, marge de 4 modules.
+    None si segno manque (l'adresse reste affichée en texte)."""
+    try:
+        import segno
+    except Exception:  # noqa: BLE001
+        return None
+    q = segno.make(text, error="m", micro=False)
+    rows = [list(r) for r in q.matrix]
+    n = len(rows) + 8
+    sc = max(2, px // n)
+    img = QtGui.QImage(n * sc, n * sc, QtGui.QImage.Format.Format_RGB32)
+    img.fill(QtGui.QColor(light))
+    p = QtGui.QPainter(img)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QtGui.QColor(dark))
+    for y, r in enumerate(rows):
+        for x, v in enumerate(r):
+            if v:
+                p.drawRect((x + 4) * sc, (y + 4) * sc, sc, sc)
+    p.end()
+    return img
+
+
+class HistoryDialog(QtWidgets.QDialog):
+    """🕘 7.63 : historique des modifications de la liste : heure, qui (PC / téléphone / plan suivi), quoi, avant,
+    après ; filtre, export CSV. Gardé dans le show."""
+
+    COLS = ["Heure", "Qui", "Quoi", "Micro", "Avant", "Après"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Historique des modifications")
+        lay = QtWidgets.QVBoxLayout(self)
+        self.q = QtWidgets.QLineEdit()
+        self.q.setPlaceholderText("🔎 Filtrer : nom, fréquence, qui…")
+        self.q.setClearButtonEnabled(True)
+        self.q.textChanged.connect(lambda *_: self.fill())
+        lay.addWidget(self.q)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("Chaque changement de ta liste : ajout, retrait, fréquence, nom, statut, scène › groupe.\n"
+                              "« 📱 nom » = fait depuis la page Tech d'un téléphone. Le plus récent en haut.")
+        lay.addWidget(self.table, 1)
+        self.msg = QtWidgets.QLabel("")
+        exp = QtWidgets.QPushButton("Exporter en CSV…")
+        exp.setToolTip("Pour l'archiver ou l'envoyer (tableur).")
+        exp.clicked.connect(lambda *_: self.export())
+        clr = QtWidgets.QPushButton("Vider l'historique")
+        clr.setToolTip("Efface l'historique de ce show (la liste ne change pas).")
+        clr.clicked.connect(lambda *_: self.clear())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(self.msg, None, exp, clr, close))
+        self.resize(820, 520)
+        self.fill()
+
+    def rows(self):
+        q = self.q.text().strip().lower()
+        out = []
+        for x in reversed(self.owner.mod_history):
+            vals = (datetime.fromtimestamp(x["t"]).strftime("%d/%m %H:%M:%S"), x["who"], TR(HIST_WHAT.get(x["what"], x["what"])),
+                    x["name"], x["old"], x["new"])
+            if q and q not in " ".join(vals).lower():
+                continue
+            out.append(vals)
+        return out
+
+    def fill(self):
+        rows = self.rows()
+        self.table.setRowCount(len(rows))
+        for r, vals in enumerate(rows):
+            for c, v in enumerate(vals):
+                self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
+        self.msg.setText(TR("{} changement(s)").format(len(rows)))
+
+    def export(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter l'historique", "historique.csv", "CSV (*.csv)")
+            if not path:
+                return False
+        with open(path, "w", encoding="utf-8-sig", newline="") as fh:
+            wr = csv.writer(fh, delimiter=";")
+            wr.writerow([TR(c) for c in self.COLS])
+            wr.writerows(self.rows())
+        return True
+
+    def clear(self):
+        r = QtWidgets.QMessageBox.question(self, APP_NAME, TR("Vider l'historique des modifications de ce show ?"))
+        if r == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.owner.mod_history = []
+            self.fill()
+
+
+class QrDialog(QtWidgets.QDialog):
+    """📱 7.63 : QR code de la page web : l'équipe le scanne avec l'appareil photo du téléphone et arrive sur la bonne
+    vue (accueil, mur, alarmes, régie, Tech…), sans avoir à dicter l'adresse. Enregistrable en PNG pour l'imprimer."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("QR code pour les téléphones")
+        lay = QtWidgets.QVBoxLayout(self)
+        self.info = QtWidgets.QLabel("Scanne ce code avec l'appareil photo du téléphone (même Wi-Fi / réseau que ce PC) : "
+                                     "la page s'ouvre directement sur la vue choisie.")
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        self.ip_combo = QtWidgets.QComboBox()
+        self.ip_combo.setToolTip("Adresse de ce PC sur le réseau (s'il y en a plusieurs : celle du réseau de l'équipe).")
+        self.view_combo = QtWidgets.QComboBox()
+        self.view_combo.setToolTip("Vue ouverte en arrivant (seulement les vues partagées dans 📣 Alertes et page web).")
+        lay.addLayout(o._row("Adresse :", self.ip_combo, "Ouvrir sur :", self.view_combo, None))
+        self.qr = QtWidgets.QLabel("")
+        self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr.setMinimumSize(300, 300)
+        lay.addWidget(self.qr, 1)
+        self.url = QtWidgets.QLabel("")
+        self.url.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        f = self.url.font()
+        f.setPointSizeF(f.pointSizeF() * 1.3)
+        self.url.setFont(f)
+        lay.addWidget(self.url)
+        self.web_btn = QtWidgets.QPushButton("📣 Activer la page web…")
+        self.web_btn.setToolTip("La page web est coupée : l'activer dans 📣 Alertes et page web.")
+        self.web_btn.clicked.connect(lambda *_: o.open_alerts())
+        copy = QtWidgets.QPushButton("Copier l'adresse")
+        copy.setToolTip("Copie l'adresse dans le presse-papiers (pour un message à l'équipe).")
+        copy.clicked.connect(lambda *_: QtWidgets.QApplication.clipboard().setText(self.link()))
+        save = QtWidgets.QPushButton("Enregistrer en PNG…")
+        save.setToolTip("Image à imprimer et coller en régie ou au plateau.")
+        save.clicked.connect(lambda *_: self.save_png())
+        close = QtWidgets.QPushButton("Fermer")
+        close.clicked.connect(self.close)
+        lay.addLayout(o._row(self.web_btn, None, copy, save, close))
+        self.ip_combo.currentIndexChanged.connect(lambda *_: self.draw())
+        self.view_combo.currentIndexChanged.connect(lambda *_: self.draw())
+        self.fill()
+        self.resize(460, 560)
+
+    def fill(self):
+        o = self.owner
+        self.ip_combo.blockSignals(True)
+        self.view_combo.blockSignals(True)
+        self.ip_combo.clear()
+        for ip in local_ips() or ["127.0.0.1"]:
+            self.ip_combo.addItem(ip, ip)
+        self.view_combo.clear()
+        self.view_combo.addItem("🏠 Accueil", "")
+        views = (o.web_cfg or {}).get("views") or {}
+        for k, ic, name, _d in WEB_VIEWS:
+            if views.get(k, k not in WEB_VIEWS_HIDDEN):
+                self.view_combo.addItem(f"{ic} {name}", k)
+        self.ip_combo.blockSignals(False)
+        self.view_combo.blockSignals(False)
+        self.draw()
+
+    def link(self):
+        o = self.owner
+        port = o.web.port if o.web is not None else int((o.web_cfg or {}).get("port", 8080) or 8080)
+        return web_link(self.ip_combo.currentData() or "127.0.0.1", port, self.view_combo.currentData() or "")
+
+    def draw(self):
+        on = self.owner.web is not None
+        self.web_btn.setVisible(not on)
+        url = self.link()
+        self.url.setText(url if on else TR("Page web coupée : active-la pour que ce code fonctionne."))
+        img = qr_image(url, 360)
+        self._img = img
+        if img is None:
+            self.qr.setText("(QR code indisponible : ouvre l'adresse ci-dessous à la main)")
+        else:
+            self.qr.setPixmap(QtGui.QPixmap.fromImage(img))
+        self.qr.setEnabled(on)
+
+    def save_png(self, path=None):
+        if self._img is None:
+            return False
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Enregistrer le QR code", "tinysa_qr.png", "Image PNG (*.png)")
+            if not path:
+                return False
+        return bool(self._img.save(path, "PNG"))
+
+
 class SerialRelay(threading.Thread):
     """Relaie les octets entre un port série (le tinySA) et UN client TCP (TinySA Monitor sur l'autre PC).
     Un nouveau client remplace l'ancien (reconnexion après une coupure réseau). Port USB débranché :
@@ -9654,6 +9996,9 @@ class AlertsDialog(QtWidgets.QDialog):
                                 "Vide : la page reste en lecture seule. 5 codes faux → l'adresse est bloquée 1 min.")
         self.w_lbl = QtWidgets.QLabel("")
         self.w_lbl.setWordWrap(True)
+        self.qr_btn = QtWidgets.QPushButton("📱 QR code…")
+        self.qr_btn.setToolTip("Un QR code à scanner avec le téléphone : la page s'ouvre directement.")
+        self.qr_btn.clicked.connect(lambda *_: owner.open_qr())
         self.w_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         help_w = QtWidgets.QLabel("Sur un téléphone ou un PC du même réseau, ouvre l'adresse affichée : état des "
                                   "fréquences et alarmes, filtre par scène / groupe, rafraîchi chaque seconde. "
@@ -9670,7 +10015,7 @@ class AlertsDialog(QtWidgets.QDialog):
         wf.addRow("🛠 Mot de passe Tech :", self.web_tech)
         wf.addRow("", self.web_tech_ok)
         wf.addRow("Vues partagées :", vbox)
-        wf.addRow(self.w_lbl)
+        wf.addRow(owner._row(self.w_lbl, self.qr_btn))
         wf.addRow("Connectés :", self.clients)
         cr = QtWidgets.QHBoxLayout()
         for b_ in (self.ren_btn, self.id_btn, self.untech_btn, self.kick_btn):
@@ -14433,7 +14778,13 @@ class SitesDialog(QtWidgets.QDialog):
         self.cmp_b.setToolTip("Le scan B (en orange), comparé à A.")
         for c_ in (self.cmp_a, self.cmp_b):
             c_.currentIndexChanged.connect(lambda *_: self.cmp_draw())
-        cv.addLayout(owner._row("A :", self.cmp_a, "comparé à B :", self.cmp_b, None))
+        self.cmp_mode = QtWidgets.QComboBox()
+        self.cmp_mode.addItem("Deux lieux", "sites")
+        self.cmp_mode.addItem("Avant → après (A = avant, B = après)", "time")
+        self.cmp_mode.setToolTip("Avant → après : garde un scan avant l'installation des micros (ou avant un changement),\n"
+                                 "un autre après : la liste dit ce qui est apparu, a disparu, est monté ou a baissé.")
+        self.cmp_mode.currentIndexChanged.connect(lambda *_: self._cmp_mode_changed())
+        cv.addLayout(owner._row(self.cmp_mode, "A :", self.cmp_a, "comparé à B :", self.cmp_b, None))
         self.cmp_plot = pg.PlotWidget()
         self.cmp_plot.showGrid(x=True, y=True, alpha=0.25)
         self.cmp_plot.setLabel("left", "Niveau (dBm)")
@@ -14449,7 +14800,18 @@ class SitesDialog(QtWidgets.QDialog):
         self.cmp_txt.setWordWrap(True)
         self.cmp_txt.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         cv.addWidget(self.cmp_txt)
-        self.tabs.addTab(cw, "Comparer deux lieux")
+        self.chg_table = QtWidgets.QTableWidget(0, 5)
+        self.chg_table.setHorizontalHeaderLabels(["Changement", "MHz", "Avant", "Après", "Écart"])
+        self.chg_table.verticalHeader().setVisible(False)
+        self.chg_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.chg_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.chg_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.chg_table.setToolTip("Ce qui a changé entre « avant » (A) et « après » (B). Double-clic = voir sur le spectre.")
+        self.chg_table.cellDoubleClicked.connect(lambda r, c: self._chg_view(r))
+        self.chg_table.setMaximumHeight(170)
+        self.chg_table.hide()
+        cv.addWidget(self.chg_table)
+        self.tabs.addTab(cw, "Comparer (lieux, avant / après)")
         # --- signaux du scan sélectionné
         sw = QtWidgets.QWidget()
         sv = QtWidgets.QVBoxLayout(sw)
@@ -14671,8 +15033,44 @@ class SitesDialog(QtWidgets.QDialog):
         def lst_(x):
             return ", ".join(f"{p['f']:.3f} ({p['level']:.0f} dBm)" for p in x[:12]) + (" …" if len(x) > 12 else "") \
                 or "rien"
+        if self.cmp_mode.currentData() == "time":
+            self._changes = scan_changes(a["f"], a["l"], b["f"], b["l"], thr)
+            t = self.chg_table
+            t.setRowCount(len(self._changes))
+            for r, x in enumerate(self._changes):
+                vals = (TR(CHANGE_LABELS[x["kind"]]), f"{x['f']:.3f}",
+                        "" if x["before"] is None else self.owner.lvl(x["before"], suffix=True),
+                        "" if x["after"] is None else self.owner.lvl(x["after"], suffix=True),
+                        "" if x["delta"] is None else f"{x['delta']:+.0f} dB")
+                for c_, v in enumerate(vals):
+                    t.setItem(r, c_, QtWidgets.QTableWidgetItem(v))
+            cnt = {k: sum(1 for x in self._changes if x["kind"] == k) for k in CHANGE_LABELS}
+            self.cmp_txt.setText("<b>" + TR("Avant « {} » → après « {} »").format(html_esc(a["name"]), html_esc(b["name"]))
+                                 + "</b> " + TR(": {} apparu(s), {} disparu(s), {} plus fort(s), {} plus faible(s).").format(
+                                     cnt["new"], cnt["gone"], cnt["up"], cnt["down"])
+                                 + ("" if self._changes else "<br>" + TR("Rien n'a changé au-dessus du seuil.")))
+            return
         self.cmp_txt.setText(f"<b>Seulement à « {html_esc(a['name'])} »</b> (≥ 10 dB de plus) : {lst_(na)}<br>"
                              f"<b>Seulement à « {html_esc(b['name'])} »</b> : {lst_(nb)}")
+
+    def _cmp_mode_changed(self):
+        """Avant → après : A = le plus ancien des deux, B = le plus récent (on peut les changer)."""
+        tm = self.cmp_mode.currentData() == "time"
+        self.chg_table.setVisible(tm)
+        if tm:
+            a, b = self._doc(self.cmp_a.currentText()), self._doc(self.cmp_b.currentText())
+            if a is not None and b is not None and float(a.get("t") or 0) > float(b.get("t") or 0):
+                ia, ib = self.cmp_a.currentIndex(), self.cmp_b.currentIndex()
+                self.cmp_a.blockSignals(True)
+                self.cmp_a.setCurrentIndex(ib)
+                self.cmp_a.blockSignals(False)
+                self.cmp_b.setCurrentIndex(ia)
+        self.cmp_draw()
+
+    def _chg_view(self, r):
+        ch = getattr(self, "_changes", [])
+        if 0 <= r < len(ch):
+            self.owner.view_range(ch[r]["f"] - 1.0, ch[r]["f"] + 1.0, TR("Changement à {} MHz").format(f"{ch[r]['f']:.3f}"))
 
     def peaks_fill(self):
         o = self.owner
@@ -19533,6 +19931,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._hunt = None                      # 🔎 chasse au brouilleur ouverte
         self._quickadd = None                  # ⌨ saisie express (7.62)
         self._replace = None                   # 🆘 remplacer un micro (7.62)
+        self._qr = None                        # 📱 QR code de la page web (7.63)
+        self.mod_history, self._hist_rows, self._hist_dlg = [], None, None     # 🕘 historique (7.63)
         self._tech_sugg = None                 # 🆘 propositions demandées depuis la page Tech
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
         self.site_scans = []                   # 📍 scans gardés par lieu [{name, t, f, l}]
@@ -19777,6 +20177,14 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "📦 Tout envoyer pour un dépannage": "Un seul ZIP avec le show, la config (sans jetons ni mots de passe), un\n"
+                                              "diagnostic tout frais, les journaux, rapports et diagnostics de la semaine.",
+        "🕘 Historique des modifications": "Chaque changement de ta liste (ajout, retrait, fréquence, nom, statut, scène),\n"
+                                           "avec l'heure et qui l'a fait (PC ou téléphone). Gardé dans le show.",
+        "📸 Comparer avant / après": "Deux scans gardés (avant l'installation des micros / après, ou avant / après un\n"
+                                     "changement) : ce qui est apparu, a disparu, est monté ou a baissé.",
+        "📱 QR code de la page web": "Un QR code à scanner : l'équipe ouvre la page web sur son téléphone sans taper\n"
+                                     "l'adresse (vue au choix : mur, alarmes, régie, Tech…). Imprimable.",
         "🌅 Résumé de la nuit": "Tout le journal en une page : verdict, événements par heure, alarmes regroupées,\n"
                                "fréquences instables ou changées. S'ouvre dans le navigateur.",
         "🧭 Assistant": "Pas à pas pour un nouveau show : le show (pays, lieu), tes micros, le scan du lieu,\n"
@@ -21576,6 +21984,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.set_coord(bool(data.get("coord_tools", False)))
         self.reg_only = bool(data.get("reg_only", True))
         self.reg_chk.setChecked(self.reg_only)
+        self.mod_history = history_norm(data.get("history"))       # 🕘 7.63
+        self._hist_rows = None                               # nouvelle référence au prochain tick (pas d'entrée)
         try:
             self.auto_occ_spin.setValue(int(data.get("auto_occ", AUTO_THR_DEFAULT[0])))
             self.auto_weak_spin.setValue(int(data.get("auto_weak", AUTO_THR_DEFAULT[1])))
@@ -21704,7 +22114,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            coord_tools=bool(getattr(self, "coord_on", False)), reg_only=bool(getattr(self, "reg_only", True)), theme_v=3, tnt=dict(self.tnt_cfg),
+            coord_tools=bool(getattr(self, "coord_on", False)), reg_only=bool(getattr(self, "reg_only", True)), theme_v=3, tnt=dict(self.tnt_cfg), history=list(getattr(self, "mod_history", [])),
             user_presets=user_presets_norm(getattr(self, "user_presets", [])), user_name=getattr(self, "user_name", ""),
             alarm_timing=dict(confirm=int(self.sound.cfg.get("confirm", 3)), repeat=int(self.sound.cfg.get("repeat", 30))),
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
@@ -21763,6 +22173,8 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction("📐 Nouveau show depuis un modèle (un show existant)…").triggered.connect(
             lambda *_: self.new_show_from_template())
         m.addAction("📂 Ouvrir un show…").triggered.connect(lambda *_: self.open_show_dialog())
+        m.addAction("📦 Sauvegarde complète (ZIP : show, journaux, rapports)…").triggered.connect(
+            lambda *_: self.export_bundle())
         m.addAction(f"💾 Enregistrer « {cur} »  (Ctrl+S)" if cur else "💾 Enregistrer le show…  (Ctrl+S)"
                     ).triggered.connect(lambda *_: self.save_show())
         m.addAction("💾 Enregistrer sous… (nouvelle édition, autre scène)").triggered.connect(
@@ -21940,7 +22352,7 @@ class MainWindow(QtWidgets.QMainWindow):
         en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None,
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None, history=[],
                     tnt=dict(self.tnt_cfg, place="", manual={}, plan=[], plan_src=""))
         self.tnt_mark(None)
         for k in list(self.site_mh):
@@ -22634,6 +23046,121 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.information(self, APP_NAME, msg)
 
     # ------------------------------------------------- alertes téléphone / page web
+    def export_bundle(self, path=None):
+        """📦 7.63 : sauvegarde complète en un ZIP (pour l'archiver ou l'envoyer en cas de souci) : le show (fréquences,
+        scènes, scans par lieu, historique…), la config SANS secrets, un diagnostic tout frais, et des 7 derniers jours :
+        journaux, rapports, diagnostics, crash.log, garde.log. Pas les enregistrements de spectre (trop gros).
+        -> chemin du ZIP ou None."""
+        import zipfile
+        now = datetime.now()
+        if path is None:
+            base = safe_filename(self.show_meta.get("name") or "TinySA", "TinySA")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, TR("Sauvegarde complète (ZIP)"), str(Path.home() / f"{base}_sauvegarde_{now:%Y%m%d_%H%M}.zip"),
+                "ZIP (*.zip)")
+            if not path:
+                return None
+        try:
+            diag = self.dump_diag("sauvegarde complète")
+        except Exception:  # noqa: BLE001
+            diag = None
+        cand = []
+        for folder, pat in ((self.log_dir, "journal_*.csv"), (self.log_dir / "rapports", "*.html"),
+                            (self.log_dir / "diagnostic", "*.txt")):
+            try:
+                for p_ in Path(folder).glob(pat):
+                    st = p_.stat()
+                    cand.append((str(p_), st.st_size, st.st_mtime))
+            except OSError:
+                pass
+        for p_ in (CRASH_PATH, GUARD_LOG):
+            try:
+                st = Path(p_).stat()
+                cand.append((str(p_), st.st_size, now.timestamp()))   # toujours (petits, souvent utiles)
+            except OSError:
+                pass
+        picked = bundle_pick(cand, now.timestamp())
+        if diag is not None and str(diag) not in picked:
+            picked.append(str(diag))
+        cfg = self._collect_config(True)
+        names = []
+        try:
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                doc = show_doc(cfg, self.show_meta, self.ref_curves, APP_VER)
+                z.writestr("show" + SHOW_EXT, json.dumps(doc, ensure_ascii=False, indent=1))
+                z.writestr("config_sans_secrets.json", json.dumps(config_public(cfg), ensure_ascii=False, indent=1,
+                                                                  default=str))
+                for p_ in picked:
+                    pp = Path(p_)
+                    sub = "journaux" if pp.name.startswith("journal_") else pp.parent.name if pp.parent.name in (
+                        "rapports", "diagnostic") else "journaux_appli"
+                    arc = f"{sub}/{pp.name}"
+                    z.write(p_, arc)
+                    names.append(arc)
+                readme = [f"{APP_NAME} {APP_VER} — sauvegarde complète du {now:%d/%m/%Y %H:%M}",
+                          f"Show : {self.show_meta.get('name') or '(sans nom)'} · {len(self.watch)} fréquence(s)",
+                          f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()} · {sys.platform}", "",
+                          "show.tsashow : à rouvrir avec 🎪 Shows › Ouvrir un show.",
+                          "config_sans_secrets.json : réglages (jetons, PIN et mots de passe retirés).", "",
+                          "Fichiers :"] + [f"  {n}" for n in names]
+                z.writestr("LISEZMOI.txt", "\n".join(readme) + "\n")
+        except Exception as e:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, APP_NAME, TR("Sauvegarde impossible :\n{}").format(e))
+            return None
+        self.set_status(TR("📦 Sauvegarde complète : {} ({} fichier(s) en plus du show).").format(path, len(names)))
+        return path
+
+    def history_track(self, who=None):
+        """🕘 Compare la liste à la dernière fois et note les changements (qui : « PC » par défaut)."""
+        rows = watch_rows(self.watch)
+        if self._hist_rows is None:
+            self._hist_rows = rows
+            return 0
+        if rows == self._hist_rows:
+            return 0
+        ch = watch_diff(self._hist_rows, rows)
+        self._hist_rows = rows
+        now = time.time()
+        for x in ch:
+            self.mod_history.append(dict(x, t=now, who=who or "PC"))
+        del self.mod_history[:-HIST_MAX]
+        if self._hist_dlg is not None:
+            try:
+                if self._hist_dlg.isVisible():
+                    self._hist_dlg.fill()
+            except RuntimeError:
+                self._hist_dlg = None
+        return len(ch)
+
+    def open_history(self):
+        """🕘 7.63 : historique des modifications de la liste (qui, quand, quoi)."""
+        self.history_track()
+        if self._hist_dlg is not None:
+            try:
+                self._hist_dlg.fill()
+                self._hist_dlg.show()
+                self._hist_dlg.raise_()
+                return self._hist_dlg
+            except RuntimeError:
+                pass
+        self._hist_dlg = HistoryDialog(self)
+        self._hist_dlg.show()
+        return self._hist_dlg
+
+    def open_qr(self):
+        """📱 7.63 : QR code de la page web pour les téléphones de l'équipe."""
+        if self._qr is not None:
+            try:
+                self._qr.fill()
+                self._qr.show()
+                self._qr.raise_()
+                return self._qr
+            except RuntimeError:
+                pass
+        self._qr = QrDialog(self)
+        self._qr.show()
+        return self._qr
+
     def open_alerts(self):
         dlg = AlertsDialog(self)
         if dlg.exec():
@@ -23243,6 +23770,32 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------- couches : scènes › groupes
     def scene_by_name(self, name):
         return next((x for x in self.scenes if x["name"] == name), None)
+
+    def duplicate_layer(self, key):
+        """⧉ 7.63 : copie d'un groupe (dans la même scène) ou d'une scène avec tous ses groupes : couleur, priorité,
+        appareils gardés ; AUCUNE fréquence copiée. -> nom de la copie."""
+        import copy as _copy
+        sc = self.scene_by_name(key[0])
+        if sc is None:
+            return None
+        if key[1]:
+            g = next((x for x in sc["groups"] if x["name"] == key[1]), None)
+            if g is None:
+                return None
+            ng = _copy.deepcopy(g)
+            ng["name"] = copy_name(g["name"], [x["name"] for x in sc["groups"]])
+            sc["groups"].insert(sc["groups"].index(g) + 1, ng)
+            new = ng["name"]
+            what = f"{sc['name']} › {new}"
+        else:
+            ns = _copy.deepcopy(sc)
+            ns["name"] = copy_name(sc["name"], [x["name"] for x in self.scenes])
+            self.scenes.insert(self.scenes.index(sc) + 1, ns)
+            new = what = ns["name"]
+        self.rebuild_tree()
+        self.undo_track()
+        self.set_status(TR("⧉ Copie créée : « {} » (sans fréquences). Renomme-la par clic droit si besoin.").format(what))
+        return new
 
     def ensure_group(self, scene, group=""):
         """Crée la scène (et le groupe) s'ils n'existent pas encore."""
@@ -23901,6 +24454,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     a_mu_on = m.addAction("💤 Tout éteindre (je sais) : pas d'alarme ABSENT")
                 if any(w.get("muted") for w in lws):
                     a_mu_off = m.addAction("🔔 Tout rallumer")
+            a_dup = m.addAction("⧉ Dupliquer ce groupe (sans les fréquences)" if key[1]
+                                else "⧉ Dupliquer cette scène et ses groupes (sans les fréquences)")
             a_ren = m.addAction("Renommer…")
             a_col = m.addAction("Couleur…")
             sub = QtWidgets.QMenu("🔔 Priorité des alarmes" + (" (ce groupe)" if key[1] else " (tous ses groupes)"), m)
@@ -23954,6 +24509,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.assign_rows(rows, key[0], key[1] or "")
         elif act is not None and act in (a_mu_on, a_mu_off):
             self.set_muted(self.layer_ws(key), act is a_mu_on)
+        elif act is a_dup:
+            self.duplicate_layer(key)
         elif act is a_ren:
             self.rename_layer(key)
         elif act is a_col:
@@ -24691,11 +25248,15 @@ class MainWindow(QtWidgets.QMainWindow):
     def _undo_restore(self, st, what):
         txt, sites = st
         self._undo_busy = True
+        self.history_track()
+        pre = self._hist_rows
         try:
             data = self._collect_config(True)
             data.update(json.loads(txt))
             data["site_scans"] = list(sites)
             self._apply_config(data)
+            self._hist_rows = pre                  # 🕘 l'annulation est notée (« ↶ Annulé »)
+            self.history_track(TR(what.split(" ·")[0]))
             self.site_scans = list(sites)
             self.update_site_curve()
             self.undo_stack.resync(self._undo_state()[1])
@@ -27034,7 +27595,13 @@ class MainWindow(QtWidgets.QMainWindow):
         return [(w["ez"], w["freq"]) for w in self.watch if w.get("ez") and w.get("ezsrc", src) == src]
 
     def apply_ezrf_diff(self, d, add, change, remove):
-        """Applique les changements cochés -> (ajoutées, modifiées, retirées)."""
+        """Applique les changements cochés -> (ajoutées, modifiées, retirées) ; 🕘 notés « 🔗 nom du plan »."""
+        self.history_track()
+        out = self._apply_ezrf_diff(d, add, change, remove)
+        self.history_track("🔗 " + ((self.ezrf_link or {}).get("name", "") or TR("plan suivi")))
+        return out
+
+    def _apply_ezrf_diff(self, d, add, change, remove):
         st = self._resolve_status(self.ezrf_link.get("status", "")) if self.ezrf_link and self.ezrf_link.get("status") else ""
         src = (self.ezrf_link or {}).get("name", "")
         by_ez = {w["ez"]: w for w in self.watch if w.get("ez") and w.get("ezsrc", src) == src}
@@ -27103,9 +27670,23 @@ class MainWindow(QtWidgets.QMainWindow):
         d = EmitDialog(self)
         d.exec()
 
-    def open_sites(self):
-        SitesDialog(self).exec()
+    def open_sites(self, before_after=False):
+        d = SitesDialog(self)
+        if before_after:                           # 📸 7.63 : directement sur « avant → après »
+            d.tabs.setCurrentIndex(1)
+            d.cmp_mode.setCurrentIndex(d.cmp_mode.findData("time"))
+        d.exec()
         self.update_site_curve()
+
+    def open_before_after(self):
+        """📸 7.63 : comparer un scan « avant » (installation, changement) et un scan « après »."""
+        if len(self.site_scans) < 2:
+            QtWidgets.QMessageBox.information(
+                self, APP_NAME, TR("Il faut deux scans gardés : un AVANT (📍 Scans par lieu › « 📍 Garder », avant "
+                                   "d'allumer les micros ou de changer quelque chose) puis un APRÈS. Ensuite reviens ici."))
+            if not self.site_scans:
+                return self.open_sites()
+        return self.open_sites(before_after=True)
 
     def coord_FL(self, src=None):
         """Spectre à éviter pour la coordination. src : « live » = max hold actuel ; « all » = tout le site (fusion de
@@ -28403,6 +28984,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._web_techreq_pending()
         self._web_tech_pending()
         self.undo_track()                          # ↶ : met de côté l'état d'avant chaque changement
+        self.history_track()                       # 🕘 7.63 : qui a changé quoi
         if self.web is not None:
             self._web_json = self.web_json()
             if self.web_cfg["views"].get("tech") and self.web.watching(("tech",)):
@@ -28630,10 +29212,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 c = self._web_tech.get_nowait()
             except queue.Empty:
                 return
+            self.history_track()                   # 🕘 ce qui précède est au PC ; la commande, au téléphone
             try:
                 msg = self.tech_do(c)
             except Exception as e:  # noqa: BLE001 — une commande ratée ne doit pas faire tomber l'appli
                 msg = f"⚠ impossible : {e}"
+            self.history_track(TR("📱 {}").format(c.get("by") or "?"))
             self._tech_msg = f"{time.strftime('%H:%M:%S')} · {c.get('by', '?')} : {msg}"
             self.set_status(f"🛠 {self._tech_msg}")
 
@@ -29954,6 +30538,7 @@ def self_test(path):
     check("tinySA en réseau (socket://, relais / Raspberry Pi)", net)
     check("traductions anglaises (lang_en)", lambda: importlib.import_module("lang_en"))
     check("son (PySide6.QtMultimedia)", lambda: importlib.import_module("PySide6.QtMultimedia"))
+    check("QR code (segno)", lambda: importlib.import_module("segno").make("http://192.168.1.2:8080/").matrix)
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     check("manuels embarqués (FR + EN)", lambda: [(base / "docs" / n).stat() for n in ("manuel.html", "manual_en.html")])
     out.append(f"ÉCHECS: {fails}")

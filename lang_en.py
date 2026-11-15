@@ -5545,3 +5545,77 @@ EXACT.update({
     "🔎 Chasser le brouilleur ici…": "🔎 Hunt the interferer here…",
     "✔ Acquitter": "✔ Acknowledge",
 })
+
+# ---- 7.63 : QR code, avant / après, dupliquer, historique, sauvegarde ZIP
+EXACT.update({
+    "(QR code indisponible : ouvre l'adresse ci-dessous à la main)": "(QR code unavailable: open the address below by hand)",
+    "(sans nom)": "(no name)",
+    ": {} apparu(s), {} disparu(s), {} plus fort(s), {} plus faible(s).": ": {} appeared, {} gone, {} stronger, {} weaker.",
+    "Adresse de ce PC sur le réseau (s'il y en a plusieurs : celle du réseau de l'équipe).": "Address of this PC on the network (if there are several: the team network's one).",
+    "Avant « {} » → après « {} »": "Before « {} » → after « {} »",
+    "Avant → après (A = avant, B = après)": "Before → after (A = before, B = after)",
+    "Avant → après : garde un scan avant l'installation des micros (ou avant un changement),\nun autre après : la liste dit ce qui est apparu, a disparu, est monté ou a baissé.":
+        "Before → after: keep a scan before installing the mics (or before a change),\nanother one after: the list says what appeared, disappeared, rose or fell.",
+    "Ce qui a changé entre « avant » (A) et « après » (B). Double-clic = voir sur le spectre.": "What changed between « before » (A) and « after » (B). Double-click = show on the spectrum.",
+    "Changement": "Change", "Changement à {} MHz": "Change at {} MHz",
+    "Chaque changement de ta liste (ajout, retrait, fréquence, nom, statut, scène),\navec l'heure et qui l'a fait (PC ou téléphone). Gardé dans le show.":
+        "Every change to your list (added, removed, frequency, name, status, stage),\nwith the time and who did it (PC or phone). Kept in the show.",
+    "Chaque changement de ta liste : ajout, retrait, fréquence, nom, statut, scène › groupe.\n« 📱 nom » = fait depuis la page Tech d'un téléphone. Le plus récent en haut.":
+        "Every change to your list: added, removed, frequency, name, status, stage › group.\n« 📱 name » = done from a phone's Tech page. Most recent at the top.",
+    "Comparer (lieux, avant / après)": "Compare (places, before / after)",
+    "Copie": "Copy",
+    "Copie l'adresse dans le presse-papiers (pour un message à l'équipe).": "Copies the address to the clipboard (for a message to the team).",
+    "Copier l'adresse": "Copy the address", "Deux lieux": "Two places",
+    "Deux scans gardés (avant l'installation des micros / après, ou avant / après un\nchangement) : ce qui est apparu, a disparu, est monté ou a baissé.":
+        "Two kept scans (before / after installing the mics, or before / after a\nchange): what appeared, disappeared, rose or fell.",
+    "Efface l'historique de ce show (la liste ne change pas).": "Clears this show's history (the list does not change).",
+    "Enregistrer en PNG…": "Save as PNG…", "Enregistrer le QR code": "Save the QR code",
+    "Exporter en CSV…": "Export as CSV…", "Exporter l'historique": "Export the history", "Fichiers :": "Files:",
+    "Historique des modifications": "Change history",
+    "Il faut deux scans gardés : un AVANT (📍 Scans par lieu › « 📍 Garder », avant d'allumer les micros ou de changer quelque chose) puis un APRÈS. Ensuite reviens ici.":
+        "You need two kept scans: a BEFORE (📍 Scans per place › « 📍 Keep », before switching the mics on or changing something) then an AFTER. Then come back here.",
+    "Image PNG (*.png)": "PNG image (*.png)",
+    "Image à imprimer et coller en régie ou au plateau.": "Image to print and stick up at FOH or on stage.",
+    "LISEZMOI.txt": "LISEZMOI.txt",
+    "La page web est coupée : l'activer dans 📣 Alertes et page web.": "The web page is off: turn it on in 📣 Alerts and web page.",
+    "Micro": "Mic", "Ouvrir sur :": "Open on:", "PC": "PC",
+    "Page web coupée : active-la pour que ce code fonctionne.": "Web page off: turn it on for this code to work.",
+    "Pour l'archiver ou l'envoyer (tableur).": "To archive or send it (spreadsheet).",
+    "QR code (segno)": "QR code (segno)", "QR code pour les téléphones": "QR code for phones", "Qui": "Who", "Quoi": "What",
+    "Rien n'a changé au-dessus du seuil.": "Nothing changed above the threshold.",
+    "Sauvegarde complète (ZIP)": "Full backup (ZIP)", "Sauvegarde impossible :\n{}": "Backup impossible:\n{}",
+    "Scanne ce code avec l'appareil photo du téléphone (même Wi-Fi / réseau que ce PC) : la page s'ouvre directement sur la vue choisie.":
+        "Scan this code with the phone's camera (same Wi-Fi / network as this PC): the page opens straight on the chosen view.",
+    "TinySA": "TinySA",
+    "Un QR code à scanner : l'équipe ouvre la page web sur son téléphone sans taper\nl'adresse (vue au choix : mur, alarmes, régie, Tech…). Imprimable.":
+        "A QR code to scan: the team opens the web page on their phone without typing\nthe address (view of your choice: wall, alarms, FOH, Tech…). Printable.",
+    "Un QR code à scanner avec le téléphone : la page s'ouvre directement.": "A QR code to scan with the phone: the page opens straight away.",
+    "Un seul ZIP avec le show, la config (sans jetons ni mots de passe), un\ndiagnostic tout frais, les journaux, rapports et diagnostics de la semaine.":
+        "A single ZIP with the show, the config (without tokens or passwords), a\nfresh diagnostic, the week's logs, reports and diagnostics.",
+    "Vider l'historique": "Clear the history", "Vider l'historique des modifications de ce show ?": "Clear this show's change history?",
+    "Vue ouverte en arrivant (seulement les vues partagées dans 📣 Alertes et page web).": "View opened on arrival (only the views shared in 📣 Alerts and web page).",
+    "ZIP (*.zip)": "ZIP (*.zip)", "ajoutée": "added",
+    "config_sans_secrets.json : réglages (jetons, PIN et mots de passe retirés).": "config_sans_secrets.json: settings (tokens, PINs and passwords removed).",
+    "plan suivi": "followed plan", "renommée": "renamed", "retirée": "removed", "sauvegarde complète": "full backup",
+    "scène › groupe": "stage › group", "fréquence": "frequency", "statut": "status",
+    "show.tsashow : à rouvrir avec 🎪 Shows › Ouvrir un show.": "show.tsashow: reopen it with 🎪 Shows › Open a show.",
+    "{} changement(s)": "{} change(s)", "↑ plus fort": "↑ stronger", "↓ plus faible": "↓ weaker", "➖ disparu": "➖ gone",
+    "⧉ Copie créée : « {} » (sans fréquences). Renomme-la par clic droit si besoin.": "⧉ Copy created: « {} » (no frequencies). Rename it by right-click if needed.",
+    "⧉ Dupliquer ce groupe (sans les fréquences)": "⧉ Duplicate this group (without the frequencies)",
+    "⧉ Dupliquer cette scène et ses groupes (sans les fréquences)": "⧉ Duplicate this stage and its groups (without the frequencies)",
+    "🆕 apparu": "🆕 appeared", "📣 Activer la page web…": "📣 Turn on the web page…",
+    "📦 Sauvegarde complète (ZIP : show, journaux, rapports)…": "📦 Full backup (ZIP: show, logs, reports)…",
+    "📦 Sauvegarde complète : {} ({} fichier(s) en plus du show).": "📦 Full backup: {} ({} file(s) besides the show).",
+    "📦 Tout envoyer pour un dépannage": "📦 Send everything for troubleshooting",
+    "📦 Tout envoyer pour un dépannage (ZIP)…": "📦 Send everything for troubleshooting (ZIP)…",
+    "📱 QR code de la page web": "📱 Web page QR code", "📱 QR code de la page web (pour l'équipe)…": "📱 Web page QR code (for the team)…",
+    "📱 QR code…": "📱 QR code…", "📸 Comparer avant / après": "📸 Compare before / after",
+    "📸 Comparer avant / après (ce qui a changé)…": "📸 Compare before / after (what changed)…",
+    "🔎 Filtrer : nom, fréquence, qui…": "🔎 Filter: name, frequency, who…",
+    "🕘 Historique des modifications": "🕘 Change history", "🕘 Historique des modifications (qui a changé quoi)…": "🕘 Change history (who changed what)…",
+    "↶ Annulé": "↶ Undone", "↷ Rétabli": "↷ Redone", "📱 {}": "📱 {}",
+    "Heure": "Time", "Avant": "Before", "Après": "After",
+})
+TEMPLATES.update({"{} (copie {})": "{} (copy {})", "Show : {} · {} fréquence(s)": "Show: {} · {} frequency(ies)",
+                  "📱 {}": "📱 {}"})
+SAME_TEMPLATES += ["{} {} — sauvegarde complète du {}", "{}_sauvegarde_{}.zip"]
