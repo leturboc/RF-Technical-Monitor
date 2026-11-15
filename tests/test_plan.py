@@ -289,5 +289,41 @@ ok("image : les propositions l'évitent", _sg and all(abs(abs(510.7 - c) - 10.7)
 _cd = ns["rx_custom_norm"]([dict(name="Analogique", sep=0.4, img=10.7)])
 check("image : gardée dans un profil perso", _cd[0][2].get("img"), 10.7)
 
+# ---- 7.61 : bande de l'appareil (bibliothèque / plan importé)
+check("bande : profil avec lo / hi", ns["rx_band"](dict(lo=470.0, hi=514.0)), (470.0, 514.0))
+check("bande : profil intégré sans bande", ns["rx_band"](dict(sep=0.3)), None)
+check("bande : dedans = pas de problème", ns["band_issue"](500.0, 0.0, (470.0, 514.0)), None)
+_bi = ns["band_issue"](520.0, 0.0, (470.0, 514.0))
+check("bande : dehors = problème « band » à 6 MHz", (_bi["kind"], round(_bi["gap"], 3)), ("band", 6.0))
+ok("bande : bloc large qui déborde", ns["band_issue"](512.0, 6.0, (470.0, 514.0)) is not None)
+ok("bande : sans bande connue = jamais de problème", ns["band_issue"](900.0, 0.0, None) is None)
+ok("bande : texte", "hors de la bande" in ns["pf_issue_text"](_bi, ["A"], [520.0]))
+check("bande : plage de recherche ramenée à la bande", ns["band_clip"](490.0, 530.0, (470.0, 514.0)), (490.0, 514.0))
+check("bande : bloc large -> il doit y tenir", ns["band_clip"](470.0, 530.0, (470.0, 514.0), 6.0), (473.0, 511.0))
+check("bande : plage entièrement dehors -> None", ns["band_clip"](600.0, 610.0, (470.0, 514.0)), None)
+check("bande : sans bande -> plage inchangée", ns["band_clip"](600.0, 610.0, None), (600.0, 610.0))
+_lib = ns["rx_custom_norm"]([ns["rx_from_library"](dict(name="SLX-D G58", sep=0.35, filt=16.0, step=0.025,
+                                                        tol={"2tx3": 0.1, "3tx3": 0.05, "5": 0.0}, lo=470.0, hi=514.0))])
+check("bande : un appareil de la bibliothèque garde sa bande", ns["rx_band"](_lib[0][2]), (470.0, 514.0))
+
+# ---- 7.61 : coordination, « pourquoi pas plus ? » et progression
+_al = lambda c: c < 480.0                                  # noqa: E731  « autorisé » sous 480
+_bz = lambda c: 475.0 <= c < 477.0                         # noqa: E731  « occupé » 475-477
+_bk = ns["coord_blockers"](470.0, 490.0, 0.025, [472.0], None, 0.4, None, _bz, _al)
+check("pourquoi : grille 470-490 au pas de 25 kHz", _bk["grid"], 801)
+check("pourquoi : hors bandes du pays (480-490)", _bk["illegal"], 401)
+check("pourquoi : occupé (475-477)", _bk["busy"], 80)
+check("pourquoi : trop près de 472 (± 400 kHz)", _bk["near"], 31)
+check("pourquoi : le reste = intermod", _bk["im"], 801 - 401 - 80 - 31)
+ok("pourquoi : texte, la cause principale d'abord", ns["coord_why_text"](_bk).startswith("hors des bandes"),
+   ns["coord_why_text"](_bk))
+ok("pourquoi : conseil", "bandes autorisées" in ns["coord_why_advice"](_bk))
+_fd = []
+_g = ns["pf_fill_lots"]([dict(n=3, sep=0.4, tol=None, filt=0.0, lo=470.0, hi=480.0, step=0.025)], [],
+                        found=lambda k, n: _fd.append((k, n)))
+check("progression : appelée à 0 puis à chaque trouvée", _fd, [(0, 3), (1, 3), (2, 3), (3, 3)])
+_g2 = ns["pf_fill_lots"]([dict(n=3, sep=0.4, lo=470.0, hi=480.0, step=0.025)], [], cancel=lambda: True)
+check("annuler : rien calculé", _g2, [[]])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -1670,5 +1670,29 @@ _rp = ns["reg_allowed_pred"]("NL")
 _cs2 = np.round(np.arange(460, 1900, 0.37), 3)
 ok("7.60.2 : plages autorisées vectorisées = point par point (Pays-Bas)", list(_rp.vec(_cs2)) == [_rp(c) for c in _cs2])
 ok("7.60 : résumé lisible", ns["reg_summary"]("DE").startswith("174-230, 470-608, 614-694"))
+# ---- 7.61 : résumé du matin
+_ev = [("22:10:00", "HF 1", "558.200", "-60", "OCCUPÉ", "", ""), ("23:05:00", "HF 2", "574.000", "-90", "ABSENT", "", ""),
+       ("23:06:00", "HF 2", "574.000", "-90", "ABSENT", "", ""), ("23:40:00", "HF 2", "574.000", "-60", "Retour", "", ""),
+       ("00:12:00", "?", "600.000", "-70", "INCONNU", "", ""),
+       ("02:00:00", "HF 3", "0", "0", "NOUVELLE FRÉQUENCE", "", "606.000 → 607.000 MHz")]
+_ev += [("03:%02d:00" % i, "RADIO 2", "99.000", "-80", "OCCUPÉ" if i % 2 else "Libre", "", "") for i in range(24)]
+_ms = ns["morning_summary"](_ev)
+check("matin : verdict = alarme", (_ms["verdict"], _ms["n_bad"]), ("bad", 2))
+check("matin : heures dans l'ordre, la nuit passe minuit", [h[0] for h in _ms["hours"]], ["22", "23", "00", "02", "03"])
+check("matin : 23 h = 2 alarmes + 1 autre", _ms["hours"][1][1:], (2, 0, 1))
+check("matin : heures chargées (03 h : 12 occupés, 23 h : 2 alarmes)", _ms["hot"][:2], ["03", "23"])
+check("matin : alarmes regroupées (2 ABSENT de HF 2 = 1 ligne)", [(g[0], g[1], g[3], g[4], g[5]) for g in _ms["groups"]][:1],
+      [("ABSENT", "HF 2", 2, "23:05:00", "23:06:00")])
+check("matin : instable", [(x[0], x[2]) for x in _ms["flap"]], [("RADIO 2", 12)])
+check("matin : fréquence changée", [m[1] for m in _ms["moved"]], ["HF 3"])
+check("matin : calme -> ok", ns["morning_summary"]([("10:00:00", "A", "500.000", "-60", "Retour", "", "")])["verdict"], "ok")
+check("matin : même heure le lendemain = case à part",
+      [h[0] for h in ns["morning_summary"]([("10:00:00", "A", "1", "", "OCCUPÉ"), ("11:00:00", "A", "1", "", "OCCUPÉ"),
+                                            ("10:00:00", "A", "1", "", "OCCUPÉ")])["hours"]], ["10", "11", "10'"])
+_mh = ns["morning_html"](_ms)
+ok("matin : html (verdict, barres, instables)", "En un coup d'œil" in _mh and "<svg" in _mh and "RADIO 2" in _mh)
+ok("matin : dans le rapport", "En un coup d'œil" in ns["build_report_html"](dict(events=_ev, rows=[])))
+ok("rapport : plus de nom de logiciel de coord", "EazyRF" not in ns["build_report_html"](dict(events=[], rows=[])))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

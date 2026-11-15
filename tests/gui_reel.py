@@ -2125,6 +2125,72 @@ win.rebuild_tree()
 win.rebuild_watch_table()
 win.set_group_rx(("Grande scène", "IEM"), "")
 check("📻 groupe : « aucun » efface", win.rx_of(_wi) == "")
+# ---- 7.61 : appareil de la bibliothèque (avec sa bande) -> plan, secours, coordination restent dans la bande
+win.set_rx_library([dict(name="Test SLX-D G58", type="Récepteur", lo=470.0, hi=514.0, sep=0.35, filt=16.0,
+                         step=0.025, tol={"2tx3": 0.1, "3tx3": 0.05, "5": 0.0}, img=0.0)])
+_ld = m.RxLibraryDialog(win, pick=True)
+_ld.q.setText("g58")
+_ld.table.selectRow(0)
+_ld.add()
+_lk = [k for k, n, _d, _w in m.RX_CUSTOM if n == "Test SLX-D G58"]
+check("7.61 bibliothèque : « Ajouter à ce groupe » crée le profil avec sa bande", len(_lk) == 1
+      and m.rx_band(m.rx_profile(_lk[0])) == (470.0, 514.0) and _ld.result() == 1, str(_lk))
+win.toggle_group_rx(("Grande scène", "IEM"), _lk[0], True)
+_saved_watch = win.watch
+win.watch = []
+win._append_watch("Test bande", 530.0, "", None, "Grande scène", "IEM")
+win._append_watch("Test dedans", 500.0, "", None, "Grande scène", "IEM")
+_pc = m.PlanCheckDialog(win)
+_pc.src_combo.setCurrentIndex(max(0, _pc.src_combo.findData("all")))
+_pc.compute()
+_txt = [_pc.table.item(r, 4).text() for r in range(_pc.table.rowCount())]
+check("7.61 plan : fréquence hors de la bande de son appareil signalée", any("hors de la bande" in t for t in _txt)
+      and "hors de la bande de l'appareil" in _pc.sum_lbl.text(), str(_txt) + " / " + _pc.sum_lbl.text())
+_r = next(r for r in range(_pc.table.rowCount()) if "hors de la bande" in _pc.table.item(r, 4).text())
+_pc.table.selectRow(_r)
+_pc.suggest()
+_sg = [_pc.sug_list.item(i).data(m.Qt.ItemDataRole.UserRole) for i in range(_pc.sug_list.count())]
+_sg = [c for c in _sg if c is not None]
+check("7.61 plan : « Proposer » reste dans la bande de l'appareil", _sg and all(470.0 <= c <= 514.0 for c in _sg),
+      str(_sg) + " " + str([_pc.sug_list.item(i).text() for i in range(_pc.sug_list.count())]))
+_pc.close()
+_rd = m.RescueDialog(win)
+_rd.rx_combo.setCurrentIndex(_rd.rx_combo.findData(_lk[0]))
+check("7.61 secours : la plage se cale sur la bande de l'appareil", 470.0 <= _rd.a_spin.value() < _rd.b_spin.value() <= 514.0
+      and "470" in _rd.band_lbl.text(), f"{_rd.a_spin.value()}–{_rd.b_spin.value()} {_rd.band_lbl.text()}")
+_rd.a_spin.setValue(470.0)
+_rd.b_spin.setValue(600.0)
+_rd.search()
+check("7.61 secours : jamais hors de la bande de l'appareil", all(470.0 <= x["f"] <= 514.0 for x in _rd.found)
+      and "bande de l'appareil" in _rd.msg.text(), str([x["f"] for x in _rd.found]) + " " + _rd.msg.text())
+_rd.found and _rd.table.selectRow(0)
+_rd.layer_combo.setCurrentIndex(next((i for i in range(_rd.layer_combo.count())
+                                     if tuple(_rd.layer_combo.itemData(i) or ()) == ("Grande scène", "IEM")), 0))
+_rd.on_add()
+check("7.61 secours : ajoutée avec l'appareil (hérité du groupe)", not _rd.found
+      or win.rx_of(win.watch[-1]) == _lk[0], str([(w["name"], win.rx_of(w)) for w in win.watch]))
+_rd.close()
+_cd = m.CoordDialog(win)
+_cd.prof.setCurrentIndex(_cd.prof.findData(_lk[0]))
+_cd.lo.setValue(470.0)
+_cd.hi.setValue(600.0)
+_cd.n_spin.setValue(80)
+_cd.avoid.setChecked(False)
+_cd.compute()
+check("7.61 coord : barre de progression", not _cd.bar.isHidden())
+coord_wait(_cd)
+check("7.61 coord : rien hors de la bande de l'appareil", _cd.found and all(470.0 <= c <= 514.0 for _L, c in _cd.found),
+      str([c for _L, c in _cd.found][:5]))
+check("7.61 coord : « plage ramenée » et « ce qui bloque »", "ramenée" in _cd.msg.text() and "Ce qui bloque" in _cd.msg.text(),
+      _cd.msg.text())
+shot(_cd, "coord_pourquoi")
+_cd.close()
+win.watch = _saved_watch
+win.set_group_rx(("Grande scène", "IEM"), "")
+win.rebuild_tree()
+win.rebuild_watch_table()
+_ns = win.open_night_summary()
+check("7.61 résumé de la nuit : page écrite", _ns is not None and "coup d'œil" in _ns.read_text(encoding="utf-8"), str(_ns))
 _rd = m.RescueDialog(win)
 check("secours : même choix de spectre", _rd.spec_combo.currentData() == "Grande scène")
 _rd.close()
