@@ -1245,6 +1245,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   - **📦 Sauvegarde ZIP** : PURE `config_public` (sans `notify`, ni web pin / password / tech), `bundle_pick` (7 jours,
     60 Mo, récents d'abord) ; `export_bundle(path)` : show.tsashow, config_sans_secrets.json, diagnostic frais,
     journaux / rapports / diagnostics de la semaine, crash.log, garde.log, LISEZMOI.txt ; 🎪 Shows + 🔌 Matériel.
+  ⚠ test_reseau exécute le morceau `def local_ips():` → `class Notifier:` SANS Qt (et test_alertes `class Notifier:` →
+  `class AlertsDialog`) : n'y mettre AUCUNE classe Qt (QrDialog / HistoryDialog y étaient → CI Linux en échec ; déplacés
+  avant `class ReplaceDialog`).
   Testé : test_v7 (PURE), gui_reel (QR relu par OpenCV, dupliquer, historique, ZIP sans secret, avant / après).
   **Pas essayé par Clément** (QR à scanner avec un vrai téléphone).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
