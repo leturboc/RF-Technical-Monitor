@@ -2229,6 +2229,12 @@ t0_ = time.time()
 while _rpd._job is not None and time.time() - t0_ < 60:
     wait(200)
 check("🆘 remplacer : la fenêtre propose des boutons", _rpd.box.count() >= 1, _rpd.msg.text())
+check("🆘 remplacer : règles allégées dites en tête (pas « compatibles avec tout ton plan »)",
+      not any(x.get("relaxed") for x in _rpd.found) or ("SEULEMENT" in _rpd.msg.text()
+                                                         and "tout ton plan" not in _rpd.msg.text()), _rpd.msg.text())
+_qa2 = win.add_watch_dialog("Rdv 75011 Paris")
+check("⌨ saisie : nombre lu en kHz signalé dans l'aperçu", "kHz" in (_qa2.table.item(0, 2).text() if _qa2.table.rowCount() else ""))
+_qa2.close()
 shot(_rpd, "remplacer_micro")
 _f_new = _rpd.found[0]["f"] if _rpd.found else None
 _rpd.found and _rpd.pick(_f_new)

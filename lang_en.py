@@ -5535,3 +5535,13 @@ EXACT.update({"⏳ Calcul en cours…": "⏳ Calculating…",
 TEMPLATES.update({"🆘 calcul des propositions pour {}…": "🆘 calculating suggestions for {}…",
                   "règles allégées : 2A − B seulement · {}": "relaxed rules: 2A − B only · {}"})
 EXACT['`+(sg.busy?`'] = '`+(sg.busy?`'
+EXACT.update({
+    "⚠ Rien ne passe avec toutes tes règles : propositions vérifiées en 2A − B SEULEMENT (A + B − C et 5ᵉ ordre NON vérifiés). Libres d'après la mesure":
+        "⚠ Nothing passes with all your rules: suggestions checked in 2A − B ONLY (A + B − C and 5th order NOT checked). Free according to the measurement",
+    "⚠ nombre lu en kHz : vérifie que c'est bien une fréquence": "⚠ number read as kHz: check that it really is a frequency",
+    "color:#e0a040": "color:#e0a040",
+    "🔍 Voir sur le spectre": "🔍 Show on the spectrum",
+    "🆘 Remplacer ce micro (3 propositions)…": "🆘 Replace this mic (3 suggestions)…",
+    "🔎 Chasser le brouilleur ici…": "🔎 Hunt the interferer here…",
+    "✔ Acquitter": "✔ Acknowledge",
+})

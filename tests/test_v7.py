@@ -1702,8 +1702,9 @@ check("saisie : virgule décimale et point-virgule", [x["freq"] for x in _qe("55
       [558.2, 574.0, 606.5])
 _m = _qe("Salut ! tes fréquences : HF1 = 558.200 / HF2 = 574.000 MHz. Rappel 06 12 34 56 78, rdv 20:30")
 check("saisie : message (téléphone, heure ignorés)", [(x["name"], x["freq"]) for x in _m[0]], [("HF1", 558.2), ("HF2", 574.0)])
-check("saisie : kHz", _qe("Chant lead 558200\nIEM 606500 kHz")[0], [dict(name="Chant lead", freq=558.2),
-                                                                     dict(name="IEM", freq=606.5)])
+check("saisie : kHz (sans unité = signalé à vérifier)", _qe("Chant lead 558200\nIEM 606500 kHz")[0],
+      [dict(name="Chant lead", freq=558.2, khz=True), dict(name="IEM", freq=606.5)])
+check("saisie : un code postal ressemble à des kHz -> signalé", _qe("Rdv 75011 Paris")[0], [dict(name="Rdv Paris", freq=75.011, khz=True)])
 check("saisie : tableau collé (tabulations, en-tête ignoré)", _qe("Nom\tMHz\nVoix 1\t558,200\nVoix 2\t574,000"),
       ([dict(name="Voix 1", freq=558.2), dict(name="Voix 2", freq=574.0)], ["Nom\tMHz"]))
 check("saisie : « HF 12 : 600.125 MHz » (le 12 n'est pas une fréquence)", _qe("HF 12 : 600.125 MHz")[0],
