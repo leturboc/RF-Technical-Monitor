@@ -2243,6 +2243,76 @@ check("🆘 remplacer : un clic = remplacé + journal", _f_new is not None and a
 _rpd.close()
 win.watch = [w_ for w_ in win.watch if w_["scene"] != "Scène express"]
 win.rebuild_tree(); win.rebuild_watch_table(); win._update_markers()
+# ---- 7.63 : QR code, dupliquer, historique, sauvegarde ZIP, avant / après
+_qd = win.open_qr()
+wait(200)
+check("📱 QR : image dessinée", _qd._img is not None and _qd.view_combo.count() >= 2, _qd.url.text())
+_qd.view_combo.setCurrentIndex(max(0, _qd.view_combo.findData("mur")))
+_qp = os.path.join(tmp, "qr.png")
+check("📱 QR : enregistré en PNG", _qd.save_png(_qp) and os.path.getsize(_qp) > 500)
+try:
+    import cv2 as _cv2
+    _txt, *_ = _cv2.QRCodeDetector().detectAndDecode(_cv2.imread(_qp))
+    check("📱 QR : relu par un vrai décodeur = l'adresse de la page", _txt == _qd.link() and _txt.endswith("#/mur"),
+          f"{_txt!r} != {_qd.link()!r}")
+except ImportError:
+    print("    (OpenCV absent : QR non relu)", flush=True)
+shot(_qd, "qr_code")
+_qd.close()
+win.ensure_group("Grande scène", "IEM")
+_nd = win.duplicate_layer(("Grande scène", "IEM"))
+check("⧉ dupliquer un groupe : « IEM (copie) », sans fréquences", _nd == "IEM (copie)"
+      and win.group_row("Grande scène", "IEM (copie)") is not None
+      and not any(w_["group"] == "IEM (copie)" for w_ in win.watch), str(_nd))
+_ns2 = win.duplicate_layer(("Grande scène", None))
+check("⧉ dupliquer une scène avec ses groupes", _ns2 == "Grande scène (copie)" and win.scene_by_name(_ns2) is not None
+      and len(win.scene_by_name(_ns2)["groups"]) == len(win.scene_by_name("Grande scène")["groups"]), str(_ns2))
+win.scenes = [s_ for s_ in win.scenes if s_["name"] != _ns2]
+win.scene_by_name("Grande scène")["groups"] = [g_ for g_ in win.scene_by_name("Grande scène")["groups"]
+                                               if g_["name"] != "IEM (copie)"]
+win.rebuild_tree()
+win.history_track()
+_wh = win.watch[0]
+_old_name = _wh["name"]
+_wh["name"] = "Historique test"
+check("🕘 historique : renommage noté (PC)", win.history_track() == 1 and win.mod_history[-1]["what"] == "name"
+      and win.mod_history[-1]["who"] == "PC" and win.mod_history[-1]["new"] == "Historique test", str(win.mod_history[-1:]))
+_wh["name"] = _old_name
+win.history_track()
+_hd = win.open_history()
+check("🕘 historique : fenêtre (le plus récent en haut)", _hd.table.rowCount() >= 2
+      and _hd.table.item(0, 4).text() == "Historique test", _hd.table.item(0, 4).text() if _hd.table.rowCount() else "")
+check("🕘 historique : export CSV", _hd.export(os.path.join(tmp, "hist.csv")) and "Historique test" in open(
+    os.path.join(tmp, "hist.csv"), encoding="utf-8-sig").read())
+shot(_hd, "historique")
+_hd.close()
+check("🕘 historique : gardé dans la config / le show", win._collect_config()["history"] == win.mod_history)
+win.notify_cfg = dict(win.notify_cfg, token="TOKEN-SECRET")
+_zp = win.export_bundle(os.path.join(tmp, "sauvegarde.zip"))
+import zipfile as _zf
+with _zf.ZipFile(_zp) as _z:
+    _zn = _z.namelist()
+    _zc = _z.read("config_sans_secrets.json").decode("utf-8")
+check("📦 sauvegarde : show, config, diagnostic, LISEZMOI", "show.tsashow" in _zn and "LISEZMOI.txt" in _zn
+      and any(n.startswith("diagnostic/") for n in _zn), str(_zn))
+check("📦 sauvegarde : aucun secret dans la config", "TOKEN-SECRET" not in _zc and '"notify"' not in _zc)
+_Fs = np.arange(470.0, 520.0, 0.025)
+_La, _Lb = np.full(len(_Fs), -105.0), np.full(len(_Fs), -105.0)
+_Lb[(_Fs > 490.0) & (_Fs < 490.1)] = -55.0
+win.site_scans += [m.site_scan_doc("Avant test", _Fs, _La, time.time() - 3600),
+                   m.site_scan_doc("Après test", _Fs, _Lb, time.time())]
+_sd = m.SitesDialog(win)
+_sd.tabs.setCurrentIndex(1)
+_sd.cmp_a.setCurrentIndex(_sd.cmp_a.findText("Après test"))
+_sd.cmp_b.setCurrentIndex(_sd.cmp_b.findText("Avant test"))
+_sd.cmp_mode.setCurrentIndex(_sd.cmp_mode.findData("time"))
+wait(200)
+check("📸 avant / après : A = le plus ancien, apparu à 490 MHz", _sd.cmp_a.currentText() == "Avant test"
+      and _sd.chg_table.rowCount() == 1 and "490" in _sd.chg_table.item(0, 1).text(),
+      f"{_sd.cmp_a.currentText()} {_sd.chg_table.rowCount()} {_sd.cmp_txt.text()}")
+shot(_sd, "avant_apres")
+_sd.reject()
+win.site_scans = [d_ for d_ in win.site_scans if d_["name"] not in ("Avant test", "Après test")]
 _ns = win.open_night_summary()
 check("7.61 résumé de la nuit : page écrite", _ns is not None and "coup d'œil" in _ns.read_text(encoding="utf-8"), str(_ns))
 _rd = m.RescueDialog(win)
