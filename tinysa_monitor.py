@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.62.0"
+APP_VER = "7.62.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3102,6 +3102,7 @@ def parse_quick_entry(text, max_items=300):
     une virgule décimale « 558,2 ») ou « / » entre espaces. Fréquence = nombre à virgule ≥ 30 MHz, ou entier ≥ 100
     (MHz) ; entier de 30 000 à 6 000 000 ou suivi de « kHz » = kHz. Les petits nombres (HF 12, 20:30, téléphone)
     sont ignorés. Plusieurs fréquences dans un morceau = « nom 1 », « nom 2 »… Doublons (au kHz) retirés.
+    Un entier SANS unité lu en kHz est marqué khz=True (l'aperçu demande de vérifier : code postal, référence…).
     -> (lignes, morceaux ignorés)."""
     chunks = re.split(r"[\n\r;]+|,(?!\d)|(?<!\d),|\s/\s", str(text or ""))
     out, ignored, seen = [], [], set()
@@ -3114,12 +3115,14 @@ def parse_quick_entry(text, max_items=300):
             raw, unit = m.group(1).replace(",", "."), (m.group(2) or "").lower()
             v = float(raw)
             dec = "." in raw
+            guess = False
             if unit in ("khz", "k") or (not dec and 30000 <= v <= 6e6 and unit not in ("mhz", "m")):
+                guess = unit not in ("khz", "k")    # entier sans unité lu en kHz : à vérifier (code postal…)
                 v /= 1000.0
             elif not (30.0 <= v <= 6000.0 and (dec or v >= 100 or unit in ("mhz", "m"))):
                 continue
             if 30.0 <= v <= 6000.0:
-                hits.append((m.start(), m.end(), round(v, 4)))
+                hits.append((m.start(), m.end(), round(v, 4), guess))
         if not hits:
             ignored.append(ch)
             continue
@@ -3130,12 +3133,14 @@ def parse_quick_entry(text, max_items=300):
         words = [x for x in re.split(r"[\s\-–—=:()\[\]]+", after) if x and not re.fullmatch(r"(?i)mhz|khz", x)]
         name = " ".join([x for x in re.split(r"[\s=:]+", before) if x][-4:] + (words if len(words) <= 2 else []))
         name = re.sub(r"\s+", " ", name).strip(" -–—:=.").strip()[:40]
-        for k, (_a, _b, f) in enumerate(hits, 1):
+        for k, (_a, _b, f, guess) in enumerate(hits, 1):
             key = int(round(f * 1000))
             if key in seen:
                 continue
             seen.add(key)
             out.append(dict(name=(f"{name} {k}" if name and len(hits) > 1 else name), freq=f))
+            if guess:
+                out[-1]["khz"] = True              # l'aperçu le signale : lu en kHz, à vérifier
             if len(out) >= max_items:
                 return out, ignored
     return out, ignored
@@ -17787,8 +17792,13 @@ class ReplaceDialog(QtWidgets.QDialog):
                                 if self._args["band"] else "") + ". Essaie « Plus d'options ».")
             return
         bd = self._args["band"]
-        self.msg.setText(TR("Libres d'après la mesure, compatibles avec tout ton plan") + (
-            TR(", dans la bande de l'appareil ({}–{} MHz)").format(*bd) if bd else "") + TR(". Un clic = remplacer :"))
+        relaxed = any(x.get("relaxed") for x in self.found)
+        head = (TR("⚠ Rien ne passe avec toutes tes règles : propositions vérifiées en 2A − B SEULEMENT (A + B − C et "
+                   "5ᵉ ordre NON vérifiés). Libres d'après la mesure")
+                if relaxed else TR("Libres d'après la mesure, compatibles avec tout ton plan"))
+        self.msg.setText(head + (TR(", dans la bande de l'appareil ({}–{} MHz)").format(*bd) if bd else "")
+                         + TR(". Un clic = remplacer :"))
+        self.msg.setStyleSheet("color:#e0a040" if relaxed else "")
         for x in self.found:
             lv = f" · {o.lvl(x['level'], suffix=True)}" if x["level"] is not None else ""
             b = QtWidgets.QPushButton(f"{x['f']:.3f} MHz   ({x['d'] * 1000:+.0f} kHz{lv})"
@@ -17901,6 +17911,8 @@ class QuickAddDialog(QtWidgets.QDialog):
             it["dup"] = dup
             rem = "déjà dans la liste : ignorée" if dup else ("" if o.in_scanned_band(it["freq"]) else
                                                                    "hors des bandes balayées (proposées après l'ajout)")
+            if it.get("khz") and not dup:
+                rem = TR("⚠ nombre lu en kHz : vérifie que c'est bien une fréquence") + (f" · {TR(rem)}" if rem else "")
             for c, v in enumerate((nm, f"{it['freq']:.3f}", rem)):
                 cell = QtWidgets.QTableWidgetItem(v)
                 if dup:
@@ -28863,6 +28875,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_alarms()
         self.set_status(f"{n} alarme(s) terminée(s) effacée(s).")
 
+    def alarm_menu(self, pos):
+        """7.62.1 : clic droit sur une alarme -> voir, remplacer le micro, chasser, d'où ça vient, acquitter."""
+        r = self.alarm_table.rowAt(pos.y())
+        if r < 0:
+            return
+        self.alarm_table.selectRow(r)
+        it = self.alarm_table.item(r, 3)
+        f = _num(it.text()) if it is not None else None
+        w = self._alarm_watch()
+        m = QtWidgets.QMenu(self)
+        a_view = m.addAction("🔍 Voir sur le spectre") if f else None
+        a_rep = m.addAction("🆘 Remplacer ce micro (3 propositions)…") if w is not None else None
+        a_hunt = m.addAction("🔎 Chasser le brouilleur ici…") if f else None
+        a_or = m.addAction("⚡ D'où ça peut venir ? (intermodulation)…") if f and self.coord_on else None
+        m.addSeparator()
+        a_ack = m.addAction("✔ Acquitter")
+        act = m.exec(self.alarm_table.viewport().mapToGlobal(pos))
+        if act is None:
+            return
+        if act is a_view:
+            self.view_range(f - 1.0, f + 1.0)
+        elif act is a_rep:
+            self.open_replace(w)
+        elif act is a_hunt:
+            self.open_hunt(f)
+        elif act is a_or:
+            self.open_intermod_for(f)
+        elif act is a_ack:
+            self.ack_selected()
+
     def alarm_jump(self, row, col):
         it = self.alarm_table.item(row, 3)
         f = _num(it.text()) if it is not None else None
@@ -28892,6 +28934,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alarm_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.alarm_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.alarm_table.cellDoubleClicked.connect(self.alarm_jump)
+        self.alarm_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.alarm_table.customContextMenuRequested.connect(self.alarm_menu)
         self.alarm_lbl = self._elastic(QtWidgets.QLabel(""))
         b_ack = QtWidgets.QPushButton("✔ Acquitter la sélection")
         b_ack.setToolTip("Coupe le son de l'alarme sans l'effacer : elle reste affichée tant que la cause est là.")
