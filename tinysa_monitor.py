@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.60.3"
+APP_VER = "7.61.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -2592,7 +2592,7 @@ IM_MAX_PAIRS = 40_000_000       # au-delà, le calcul est refusé (trop long)
 IM_CHUNK = 1_500_000
 IM_NAMES = {3: "IM3", 5: "IM5", 7: "IM7"}
 # Règles d'intermod : tolérance (MHz) par type de produit ; un produit plus loin que ça de la porteuse est accepté,
-# 0 = type ignoré. 100 / 50 kHz = défauts des guides EazyRF (2 TX / 3 TX) ; 5ᵉ ordre : notre choix.
+# 0 = type ignoré. 100 / 50 kHz = défauts des guides du logiciel de coord (2 TX / 3 TX) ; 5ᵉ ordre : notre choix.
 # Le 1er réglage (Standard : 2 TX 100 / 3 TX 50 kHz) est celui par défaut ; avec le FILTRE du récepteur
 # (32 MHz pour un Wisycom MRK980), un plan Wisycom réel de Clément donne 0 IM.
 IM_TOL_PRESETS = [
@@ -2661,7 +2661,7 @@ def im_scan(freqs, orders=(3,), max_tx=3, targets=None, guard=0.2, fmin=0.1, fma
         return guard if gd is None else gd.get(im_class(order, ntx), guard)
 
     def ignored(order, ntx):
-        """Tolérance 0 dans le dict = ce type de produit n'est pas compté (comme 0 dans EazyRF)."""
+        """Tolérance 0 dans le dict = ce type de produit n'est pas compté (comme 0 dans le logiciel de coord)."""
         return gd is not None and tol(order, ntx) <= 0
     F = np.asarray(list(freqs), dtype=float)
     n = len(F)
@@ -2852,15 +2852,15 @@ def pf_orders(tol):
     return tuple(o for o, k in ((3, "2tx3"), (5, "5")) if tol.get(k, 0) > 0 or (o == 3 and tol.get("3tx3", 0) > 0))
 
 
-# Profils d'appareil (comme les profils d'EazyRF) : écart mini, filtre d'entrée du récepteur, pas de réglage et
-# tolérances d'intermod. src = d'où vient le FILTRE : "eazyrf" = valeur des profils EazyRF de Clément (Wisycom
+# Profils d'appareil (comme dans les logiciels de coordination) : écart mini, filtre d'entrée du récepteur, pas de réglage et
+# tolérances d'intermod. src = d'où vient le FILTRE : "eazyrf" (clé de donnée) = valeur des profils du logiciel de coord de Clément (Wisycom
 # MRK980 : profil complet ; Sennheiser evolution, Shure SLX / PSM : 16 MHz ; Shure AD / QLX-D : 32 MHz, d'après lui),
 # "guess" = valeur de départ NON vérifiée. Écart, pas et tolérances des profils autres que Wisycom : de départ aussi.
 # Les clés restent stables (enregistrées dans les listes et les shows : w["rx"]).
-_TOL_EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.0}      # la plupart des appareils EazyRF
+_TOL_EZ = {"2tx3": 0.100, "3tx3": 0.050, "5": 0.050, "7": 0.0}      # la plupart des appareils du logiciel de coord
 _TOL_LARGE = {"2tx3": 0.150, "3tx3": 0.075, "5": 0.050, "7": 0.0}
-_TOL_IEM = {"2tx3": 0.150, "3tx3": 0.100, "5": 0.050, "7": 0.0}     # Shure PSM 1000 dans EazyRF
-_TOL_SLXD = {"2tx3": 0.200, "3tx3": 0.0, "5": 0.050, "7": 0.0}      # Shure SLX-D dans EazyRF (3 TX ignoré)
+_TOL_IEM = {"2tx3": 0.150, "3tx3": 0.100, "5": 0.050, "7": 0.0}     # Shure PSM 1000 dans le logiciel de coord
+_TOL_SLXD = {"2tx3": 0.200, "3tx3": 0.0, "5": 0.050, "7": 0.0}      # Shure SLX-D dans le logiciel de coord (3 TX ignoré)
 _TOL_NONE = {"2tx3": 0.0, "3tx3": 0.0, "5": 0.0, "7": 0.0}          # Sennheiser EW-D / EW-DX : écart seulement
 _EZ = "Réglages de coordination courants pour ce modèle."
 RX_PROFILES = [
@@ -2909,11 +2909,11 @@ RX_PROFILES = [
 RX_CUSTOM = []          # profils perso (config et shows : « rx_custom »), même forme que RX_PROFILES
 
 
-RX_LIBRARY = []         # bibliothèque d'appareils importée d'EazyRF (.lst4) : [{name, type, lo, hi, sep, filt, step, tol}]
+RX_LIBRARY = []         # bibliothèque d'appareils importée (.lst4) : [{name, type, lo, hi, sep, filt, step, tol}]
 
 
 def parse_lst4(data):
-    """Bibliothèque d'appareils EazyRF (« Appareils.lst4 », XML) -> [{name, type, lo, hi, sep, filt, step, tol, img}].
+    """Bibliothèque d'appareils (.lst4) (« Appareils.lst4 », XML) -> [{name, type, lo, hi, sep, filt, step, tol, img}].
     Séparation et tolérances en kHz dans le fichier -> MHz ici ; décimales à virgule ; tolérance 0 = type ignoré."""
     import xml.etree.ElementTree as ET
     raw = data.encode("utf-8") if isinstance(data, str) else bytes(data)
@@ -2969,7 +2969,7 @@ def _ez_num(x, dft=0.0):
 
 
 def _ez_dev_params(name, g, eval5=True):
-    """Réglages d'un appareil d'un document EazyRF (mêmes champs que la bibliothèque .lst4)."""
+    """Réglages d'un appareil d'un document .ezrf3 (mêmes champs que la bibliothèque .lst4)."""
     return dict(name=name, lo=_ez_num(g("Départ")), hi=_ez_num(g("Arrêt")),
                 sep=_ez_num(g("Séparation"), 300.0) / 1000.0, filt=_ez_num(g("Filtre")),
                 step=_ez_num(g("Incrément"), 0.025) or 0.025,
@@ -2987,10 +2987,10 @@ def ezrf_dev_key(p):
 
 
 def parse_ezrf3(data):
-    """Document EazyRF (.ezrf3, XML « EazyRFds ») -> dict(title, date, version, rows, devices, interf, scan, scan_title,
+    """Document .ezrf3 (XML) -> dict(title, date, version, rows, devices, interf, scan, scan_title,
     tv, warn). Les éléments sont À PLAT dans le fichier, dans l'ordre : GroupeDt (NbSect sections), SectionDt (NbApp
     appareils), AppareilDt (NbreFréqDésiré fréquences), FréquenceDt -> on reconstruit Zone > Groupe > Section >
-    Appareil > Fréquence avec ces nombres. Lu sur un vrai fichier EazyRF 4.81 (Roc d'Azur 2026) ; si les nombres ne
+    Appareil > Fréquence avec ces nombres. Lu sur un vrai fichier .ezrf3 (version 4.81) (Roc d'Azur 2026) ; si les nombres ne
     tombent pas juste, les fréquences sont gardées sans classement (warn)."""
     import xml.etree.ElementTree as ET
     raw = data.encode("utf-8") if isinstance(data, str) else bytes(data)
@@ -3094,14 +3094,14 @@ _EZ_DEV_RE = re.compile(r"^#\s*(\d+)\s*-\s*(.+)$")
 
 
 def is_ezrf_paste(text):
-    """Texte copié depuis le plan de fréquences d'EazyRF (Ctrl+C) : lignes « #7 - Appareil » + fréquences."""
+    """Texte copié depuis le plan de fréquences du logiciel de coord (Ctrl+C) : lignes « #7 - Appareil » + fréquences."""
     lines = [ln.rstrip("\t \r") for ln in str(text).splitlines()]
     return any(_EZ_DEV_RE.match(ln.strip()) and "\t" not in ln.strip() for ln in lines) and any(
         "\t" in ln and re.fullmatch(r"\d{2,4}[,.]\d+", (ln.split("\t") + [""])[1].strip()) for ln in lines)
 
 
 def parse_ezrf_paste(text):
-    """Plan copié depuis EazyRF -> dict comme parse_ezrf3 (sans réglages d'appareils ni scan). Après chaque ligne vide,
+    """Plan copié depuis le logiciel de coord -> dict comme parse_ezrf3 (sans réglages d'appareils ni scan). Après chaque ligne vide,
     les lignes de titre remplacent les niveaux les plus bas : 1 = appareil, 2 = section + appareil, 3 = groupe + …,
     4 = zone + groupe + section + appareil. Fréquence = « nom<TAB>MHz » (nom facultatif), décimale à virgule."""
     zone = scene = group = ""
@@ -3453,12 +3453,12 @@ def parse_plan_file(data, name=""):
 
 
 def ezrf_id(scene, group, name):
-    """Identifiant stable d'une fréquence venue d'un plan EazyRF (pour suivre le fichier : w["ez"])."""
+    """Identifiant stable d'une fréquence venue d'un plan .ezrf3 (pour suivre le fichier : w["ez"])."""
     return f"{scene}|{group}|{name}"
 
 
 def ezrf_diff(entries, cur):
-    """🔗 Plan EazyRF réenregistré : entries = ezrf_entries(nouveau document) ; cur = [(id, MHz)] des fréquences de la liste
+    """🔗 Plan .ezrf3 réenregistré : entries = ezrf_entries(nouveau document) ; cur = [(id, MHz)] des fréquences de la liste
     venues du plan -> dict(add=[entrée], change=[(id, ancienne MHz, nouvelle MHz, entrée)], remove=[id])."""
     new = {}
     for e in entries:
@@ -3486,7 +3486,7 @@ def ezrf_profile_names(devices):
 
 
 def ezrf_entries(doc, skip_off=True):
-    """Lignes à importer -> [(nom, MHz, scène, groupe, clé appareil, note)]. Scène = groupe EazyRF (préfixé de la zone
+    """Lignes à importer -> [(nom, MHz, scène, groupe, clé appareil, note)]. Scène = groupe du document (préfixé de la zone
     s'il y en a plusieurs), groupe = section ; nom vide -> « Appareil #n · k »."""
     multi = len({r["zone"] for r in doc["rows"]}) > 1
     out, seen = [], {}
@@ -3628,7 +3628,7 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
     - « sep » : une autre porteuse à moins de `sep` MHz (bord à bord pour un bloc large) ;
     - « im » : un produit d'intermod des ÉMETTEURS (is_tx) tombe dessus, dans la tolérance de son type (`tol`,
       2 TX / 3 TX / 5ᵉ ; 0 = type ignoré). Les réserves (is_tx False) sont protégées sans émettre.
-    filt : largeur (MHz) du filtre d'entrée du récepteur (« Filtre » d'EazyRF) ; un produit ne gêne une fréquence
+    filt : largeur (MHz) du filtre d'entrée du récepteur (« Filtre » du logiciel de coord) ; un produit ne gêne une fréquence
     que si tous ses émetteurs sont à ± filt / 2 d'elle (les autres sont filtrés). 0 = pas de filtre.
     sep, filt et tol peuvent être donnés PAR FRÉQUENCE (listes : profil d'appareil de chacune) : l'écart entre deux
     porteuses est le plus grand des deux, le filtre et les tolérances sont ceux de la fréquence touchée.
@@ -3695,6 +3695,8 @@ def pf_check(freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, fil
 
 def pf_issue_text(it, names, freqs):
     """Une ligne lisible pour un problème de pf_check."""
+    if it["kind"] == "band":
+        return f"hors de la bande de son appareil ({it['lo']:g}–{it['hi']:g} MHz)"
     if it["kind"] == "img":
         o = it["others"][0]
         if it["gap"] <= 0.001:
@@ -3708,6 +3710,37 @@ def pf_issue_text(it, names, freqs):
     lab = IM_NAMES.get(it["order"], "IM") + f" {it['ntx']} TX"
     return f"{lab} : " + im_formula(it["terms"], names) + (" (pile dessus)" if it["gap"] <= 0.001 else
                                                         f" (à {it['gap'] * 1000:.0f} kHz)")
+
+
+def rx_band(d):
+    """(lo, hi) MHz de la bande d'un profil d'appareil (bibliothèque, plan importé, profil perso), sinon None."""
+    try:
+        lo, hi = float(d.get("lo") or 0.0), float(d.get("hi") or 0.0)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return (lo, hi) if hi > lo > 0 else None
+
+
+def band_issue(f, bw, band):
+    """7.61 : fréquence (± bw / 2) hors de la bande de son appareil -> problème « band » de pf_check, sinon None."""
+    if not band:
+        return None
+    lo, hi = band
+    h = max(0.0, float(bw or 0.0)) / 2.0
+    gap = max(lo - (f - h), (f + h) - hi)
+    if gap <= 1e-6:
+        return None
+    return dict(kind="band", others=[], gap=float(gap), lo=float(lo), hi=float(hi))
+
+
+def band_clip(a, b, band, bw=0.0):
+    """Plage de recherche [a, b] réduite à la bande de l'appareil (bloc large : il doit y tenir en entier).
+    -> (a, b), ou None si rien ne reste."""
+    if not band:
+        return (a, b) if b > a else None
+    h = max(0.0, float(bw or 0.0)) / 2.0
+    a2, b2 = max(a, band[0] + h), min(b, band[1] - h)
+    return (a2, b2) if b2 > a2 + 1e-9 else None
 
 
 def pf_suggest(i, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, max_tx=None, lo=None, hi=None, step=0.025,
@@ -3856,13 +3889,15 @@ def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed
 
 
 def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, new_sep=PF_SEP, new_tol=None,
-            new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800, order="low", rng=None):
+            new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800, order="low", rng=None,
+            tick=None, cancel=None):
     """Coordination automatique : n_new fréquences compatibles avec le plan existant (freqs, réglages par fréquence
     comme pf_check) ET entre elles, pour un appareil (new_sep / new_tol / new_filt, pas `step`), dans [lo, hi],
     en évitant ce que busy(c) dit occupé. Ajout une par une, chaque ajout vérifié par pf_suggest (aucun problème pour
     elle, aucun nouveau pour les autres). order « low » : la plus basse compatible d'abord (tout se tasse en bas de
     la plage) ; « random » (7.60.2, Clément : « à la suite ça marche pas en général ») : à chaque ajout, la compatible
     la plus proche d'un point tiré AU HASARD dans la plage -> fréquences réparties. rng = np.random.Generator.
+    tick() (7.61) : appelé à chaque fréquence trouvée (progression) ; cancel() -> True : arrêt.
     -> liste des MHz trouvés (peut être plus courte que n_new : bande pleine)."""
     F = [float(x) for x in freqs]
     m = len(F)
@@ -3875,6 +3910,8 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
     rng = rng if rng is not None else np.random.default_rng()
     out = []
     for _k in range(int(n_new)):
+        if cancel is not None and cancel():
+            break
         if order == "low":
             c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, lo - step, busy, max_check)
         else:                                # _pf_pick finit par toute la plage : rien = vraiment plus de place
@@ -3883,6 +3920,8 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
         if c is None:
             break
         out.append(c)
+        if tick is not None:
+            tick()
         F.append(c)
         T.append(True)
         B.append(0.0)
@@ -3900,12 +3939,13 @@ def _fill_score(got):
 
 
 def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=300,
-                 order="low", tries=1, seed=None, progress=None, cancel=None):
+                 order="low", tries=1, seed=None, progress=None, cancel=None, found=None):
     """Coordination entre appareils : plusieurs lots {n, sep, tol, filt, lo, hi, step} (ex. 8 × QLX-D + 6 × PSM 1000),
     cherchés l'un après l'autre ; chaque fréquence trouvée rejoint le plan avec les règles de SON appareil, donc les
     lots suivants doivent lui être compatibles (et elle à eux : pf_suggest vérifie les deux sens). order / tries
     (7.60.2) : « random » refait le tirage `tries` fois et garde le meilleur (_fill_score). progress(essai, total)
-    et cancel() -> True (arrêt) sont facultatifs. -> une liste de MHz par lot (dans l'ordre des lots).
+    et cancel() -> True (arrêt) sont facultatifs ; found(trouvées, demandées) (7.61) à chaque fréquence trouvée
+    pendant l'essai en cours. -> une liste de MHz par lot (dans l'ordre des lots).
     Conseil : l'appareil le plus exigeant en premier."""
     rng = np.random.default_rng(seed)
     best = None
@@ -3924,10 +3964,20 @@ def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0
             return list(x) if isinstance(x, (list, tuple)) else [x] * m
         SP, TL, FL = per(sep), per(tol), per(filt)
         out = []
+        want = sum(int(l.get("n", 0)) for l in lots)
+        cnt = [0]
+
+        def tick():
+            cnt[0] += 1
+            if found is not None:
+                found(cnt[0], want)
+        if found is not None:
+            found(0, want)
         for lot in lots:
             got = pf_fill(int(lot.get("n", 0)), F, T, B, SP, TL, FL, lot.get("sep", PF_SEP), lot.get("tol"),
                           lot.get("filt", 0.0), lot.get("lo", 470.0), lot.get("hi", 694.0), lot.get("step", 0.025),
-                          busy, max_check, order="low" if order == "low" else "random", rng=rng)
+                          busy, max_check, order="low" if order == "low" else "random", rng=rng, tick=tick,
+                          cancel=cancel)
             out.append(got)
             for c in got:
                 F.append(c)
@@ -3941,6 +3991,67 @@ def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0
         if sum(len(g) for g in out) >= sum(int(l.get("n", 0)) for l in lots) and order == "low":
             break
     return best if best is not None else [[] for _l in lots]
+
+
+def coord_blockers(lo, hi, step, freqs, bws=None, sep_new=PF_SEP, seps=None, busy=None, allowed=None):
+    """7.61 « pourquoi pas plus ? » : sur la grille [lo, hi] au pas `step`, qui bloque chaque fréquence possible,
+    avec le plan FINAL (freqs = liste + trouvées) ? Une seule cause par point, dans cet ordre :
+    hors des bandes autorisées du pays (allowed(c) faux), occupé d'après la mesure (busy(c) vrai : TNT, autre
+    signal), trop près d'une fréquence du plan (écart, bord à bord), sinon « intermod » (ce qui reste n'a pas été
+    retenu par le calcul : produits d'intermod sur elle, ou elle en créerait pour les autres).
+    busy / allowed : prédicats, avec .vec (tableau -> tableau de bool) s'ils l'ont (rapide).
+    -> dict(grid, illegal, busy, near, im) en nombre de points de grille."""
+    out = dict(grid=0, illegal=0, busy=0, near=0, im=0)
+    if hi <= lo or step <= 0:
+        return out
+    G = np.round(np.arange(math.ceil(lo / step - 1e-9) * step, hi + 1e-9, step), 6)
+    out["grid"] = len(G)
+    if not len(G):
+        return out
+
+    def ask(pred):
+        if pred is None:
+            return np.zeros(len(G), dtype=bool)
+        v = getattr(pred, "vec", None)
+        return np.asarray(v(G), dtype=bool) if v is not None else np.array([bool(pred(float(c))) for c in G])
+    bad_reg = ~ask(allowed) if allowed is not None else np.zeros(len(G), dtype=bool)
+    bad_busy = ask(busy) & ~bad_reg
+    F = np.asarray(list(freqs), dtype=float)
+    near = np.zeros(len(G), dtype=bool)
+    if len(F):
+        B = np.zeros(len(F)) if bws is None else np.asarray([float(b or 0.0) for b in bws])
+        S = np.full(len(F), float(sep_new)) if seps is None else np.maximum(float(sep_new), np.asarray(seps, float))
+        for k0 in range(0, len(G), 4000):
+            g = G[k0:k0 + 4000]
+            near[k0:k0 + 4000] = np.any(np.abs(g[:, None] - F[None, :]) - B[None, :] / 2.0 < S[None, :] - 1e-9, axis=1)
+    near &= ~bad_reg & ~bad_busy
+    out.update(illegal=int(bad_reg.sum()), busy=int(bad_busy.sum()), near=int(near.sum()))
+    out["im"] = int(len(G) - out["illegal"] - out["busy"] - out["near"])
+    return out
+
+
+def coord_why_text(b, tr=None):
+    """Phrase « ce qui bloque » d'après coord_blockers, la cause principale d'abord."""
+    tr = tr or (lambda x: x)
+    n = max(1, b.get("grid", 0))
+    labs = (("illegal", tr("hors des bandes autorisées du pays")),
+            ("busy", tr("occupé d'après la mesure (TNT, autre signal)")),
+            ("near", tr("trop près d'une fréquence du plan (écart)")),
+            ("im", tr("intermod (sur elle, ou elle en créerait pour les autres)")))
+    parts = [(b.get(k, 0), lab) for k, lab in labs if b.get(k, 0)]
+    parts.sort(key=lambda x: -x[0])
+    return " · ".join(f"{lab} {100.0 * v / n:.0f} %" for v, lab in parts)
+
+
+def coord_why_advice(b):
+    """Conseil selon la cause principale de coord_blockers."""
+    k = max(("illegal", "busy", "near", "im"), key=lambda x: b.get(x, 0))
+    return {"illegal": "La plage sort souvent des bandes autorisées : choisis une plage dans les bandes du pays.",
+            "busy": "La mesure voit la plage très chargée : élargis-la, ou décoche « éviter ce qui est occupé » "
+                    "si le scan est ancien.",
+            "near": "La plage est pleine d'émetteurs : élargis-la ou mets ce lot sur une autre plage.",
+            "im": "C'est l'intermod qui bloque : un appareil plus robuste (tolérances plus serrées, filtre), moins "
+                  "d'émetteurs dans la même zone, ou des règles plus souples."}[k]
 
 
 def im3_clash(c, F, guard, guard3=None):
@@ -4486,7 +4597,7 @@ class UndoStack:
 
 
 def scan_crop(F, *cols, lo=None, hi=None):
-    """Garde seulement [lo, hi] MHz d'un scan (et de ses colonnes de niveaux) : pour n'exporter vers EazyRF / WWB /
+    """Garde seulement [lo, hi] MHz d'un scan (et de ses colonnes de niveaux) : pour n'exporter vers le logiciel de coord / WWB /
     WSM que la bande utile. lo / hi None = pas de limite ; bornes inversées remises dans l'ordre.
     -> (F, *cols) en tableaux numpy (vides si rien dans la plage)."""
     F = np.asarray(F, dtype=float)
@@ -4949,6 +5060,140 @@ def _svg_spectrum(F, L, marks, thr, width=1000, height=260):
     return "".join(s)
 
 
+MS_BAD = ("CONFLIT", "INTERMOD", "ABSENT", "APPAREIL PERDU", "TROP FORT")
+MS_WARN = ("INCONNU", "OCCUPÉ", "APPEL INCOMPLET")
+MS_FLAP = 10                 # passages libre ↔ occupé à partir desquels une fréquence est « instable »
+
+
+def morning_summary(events):
+    """7.61 « le bilan lisible en 10 secondes » : à partir des événements du journal (du plus ancien au plus récent,
+    tuples (heure HH:MM:SS, nom, MHz, dBm, événement, couche, note)) ->
+    dict(verdict ok|warn|bad, n_bad, n_warn, hours [(heure, bad, warn, other)] dans l'ordre (la nuit passe minuit),
+    hot [heures les plus chargées], groups [(événement, nom, MHz, nombre, première, dernière)] (alarmes réunies),
+    flap [(nom, MHz, passages)] (fréquences instables : seuil pile sur un signal faible), moved [(heure, nom, note)]
+    (fréquences changées), top [(nom, MHz, événements)])."""
+    hours, order = {}, []
+    groups, flap, top, moved = {}, {}, {}, []
+    n_bad = n_warn = 0
+    for x in events:
+        if len(x) < 5:
+            continue
+        hh = str(x[0])[:2]
+        k = str(x[4]).split(" (")[0]
+        if hh.isdigit():
+            if not order or order[-1].rstrip("'") != hh:
+                while hh in hours:                 # même heure revue plus de 24 h après : case à part
+                    hh += "'"
+                hours[hh] = [0, 0, 0]
+                order.append(hh)
+            hours[order[-1]][0 if k in MS_BAD else 1 if k in MS_WARN else 2] += 1
+        if k in MS_BAD:
+            n_bad += 1
+        elif k in MS_WARN:
+            n_warn += 1
+        nm, f = str(x[1]), str(x[2])
+        if k in MS_BAD or k == "INCONNU":
+            g = groups.setdefault((k, nm, f), [0, str(x[0]), str(x[0])])
+            g[0] += 1
+            g[2] = str(x[0])
+        if k == "OCCUPÉ":
+            flap[(nm, f)] = flap.get((nm, f), 0) + 1
+        if k == "NOUVELLE FRÉQUENCE":
+            moved.append((str(x[0]), nm, str(x[6]) if len(x) > 6 else ""))
+        if f not in ("", "—") and (k in MS_BAD or k in MS_WARN):
+            top[(nm, f)] = top.get((nm, f), 0) + 1
+    hl = [(h, *hours[h]) for h in order]
+    busy_h = sorted([r for r in hl if r[1] or r[2]], key=lambda r: -(3 * r[1] + r[2]))[:3]
+    return dict(verdict="bad" if n_bad else "warn" if n_warn else "ok", n_bad=n_bad, n_warn=n_warn, hours=hl,
+                hot=[r[0] for r in busy_h],
+                groups=sorted(((k, nm, f, *v) for (k, nm, f), v in groups.items()), key=lambda r: -r[3])[:40],
+                flap=sorted(((nm, f, n) for (nm, f), n in flap.items() if n >= MS_FLAP), key=lambda r: -r[2]),
+                moved=moved[-40:], top=sorted(((nm, f, n) for (nm, f), n in top.items()), key=lambda r: -r[2])[:8])
+
+
+def _svg_hours(hours, width=1000, height=150):
+    """Barres empilées par heure (rouge = alarmes, orange = à surveiller, gris = le reste)."""
+    if not hours:
+        return ""
+    mx = max(1, max(b + w + o for _h, b, w, o in hours))
+    n = len(hours)
+    px, py, h = 30, 8, height - 34
+    bw = (width - px - 8) / n
+    s = [f"<svg viewBox='0 0 {width} {height}' xmlns='http://www.w3.org/2000/svg' class='spec hours'>"]
+    for i, (hh, b, w, o) in enumerate(hours):
+        x, y = px + i * bw, py + h
+        for v, cls in ((o, "hb-o"), (w, "hb-w"), (b, "hb-b")):
+            if v:
+                hv = v / mx * h
+                y -= hv
+                s.append(f"<rect x='{x + 2:.1f}' y='{y:.1f}' width='{max(1.0, bw - 4):.1f}' height='{hv:.1f}' "
+                         f"class='{cls}' rx='2'><title>{html_esc(hh.rstrip(chr(39)))} h : {b} · {w} · {o}</title></rect>")
+        s.append(f"<text x='{x + bw / 2:.1f}' y='{height - 10}' class='ax' text-anchor='middle'>"
+                 f"{html_esc(hh.rstrip(chr(39)))}h</text>")
+    s.append(f"<text x='{px - 4}' y='{py + 10}' class='ax' text-anchor='end'>{mx}</text></svg>")
+    return "".join(s)
+
+
+MS_CSS = (".glance{border-radius:14px;padding:14px 18px;margin:12px 0;font-size:18px;font-weight:600}"
+          ".glance.ok{background:#e8f7ee;color:#14532d}.glance.warn{background:#fff6e0;color:#7a4b00}"
+          ".glance.bad{background:#fdecea;color:#8c1d18}.glance small{display:block;font-weight:400;font-size:14px}"
+          ".hb-b{fill:#e5484d}.hb-w{fill:#f5a524}.hb-o{fill:#c7ccd6}"
+          ".cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}"
+          ".box{border:1px solid #e3e7ef;border-radius:12px;padding:10px 14px;min-width:0}.box.wide{grid-column:1/-1}.box h3{margin:2px 0 8px;font-size:15px}"
+          ".bar{display:inline-block;height:8px;border-radius:4px;background:#e5484d;vertical-align:middle;margin-right:6px}")
+
+
+def morning_html(ms):
+    """Section « En un coup d'œil » du rapport (bilan du matin, rapport de show)."""
+    e = html_esc
+    if ms["verdict"] == "ok":
+        head = "✔ Rien d'important : aucune alarme."
+    elif ms["verdict"] == "warn":
+        head = f"⚠ Pas d'alarme, mais {ms['n_warn']} événement(s) à regarder."
+    else:
+        head = f"✗ {ms['n_bad']} alarme(s) pendant la période."
+    sub = (f"Heures les plus chargées : {', '.join(h.rstrip(chr(39)) + ' h' for h in ms['hot'])}." if ms["hot"]
+           else "Aucune heure chargée.")
+    p = ["<h2>En un coup d'œil</h2>", f"<div class='glance {ms['verdict']}'>{e(head)}<small>{e(sub)}</small></div>"]
+    if ms["hours"]:
+        p.append(_svg_hours(ms["hours"]))
+        p.append("<p class='muted'>Événements par heure : rouge = alarmes (conflit, absent, intermod, trop fort, tinySA "
+                 "perdu), orange = à regarder (occupé, inconnu), gris = le reste.</p>")
+    p.append("<div class='cols'>")
+    p.append("<div class='box wide'><h3>Alarmes regroupées</h3>")
+    if ms["groups"]:
+        p.append("<table><tr><th>Événement</th><th>Nom</th><th class='n'>MHz</th><th class='n'>Fois</th>"
+                 "<th>De</th><th>À</th></tr>")
+        for k, nm, f, n, a, z in ms["groups"]:
+            p.append(f"<tr><td><span class='tag {e(k)}'>{e(k)}</span></td><td>{e(nm)}</td><td class='n'>{e(f)}</td>"
+                     f"<td class='n'>{n}</td><td>{e(a)}</td><td>{e(z)}</td></tr>")
+        p.append("</table>")
+    else:
+        p.append("<p>Aucune. ✔</p>")
+    p.append("</div><div class='box'><h3>Les plus actives</h3>")
+    if ms["top"]:
+        mx = max(n for _a, _b, n in ms["top"])
+        for nm, f, n in ms["top"]:
+            p.append(f"<div><span class='bar' style='width:{max(4, int(120 * n / mx))}px'></span>{e(nm)} "
+                     f"<span class='muted'>{e(f)} MHz · {n}</span></div>")
+    else:
+        p.append("<p>Rien à signaler.</p>")
+    p.append("</div>")
+    if ms["flap"]:
+        p.append("<div class='box'><h3>Instables (libre ↔ occupé)</h3>")
+        for nm, f, n in ms["flap"]:
+            p.append(f"<div>{e(nm)} <span class='muted'>{e(f)} MHz · {n} passages</span></div>")
+        p.append("<p class='muted'>Souvent un signal faible pile au seuil : donne-lui un seuil propre (clic droit sur "
+                 "la fréquence) ou passe en seuil auto.</p></div>")
+    if ms["moved"]:
+        p.append("<div class='box'><h3>Fréquences changées</h3>")
+        for t, nm, note in ms["moved"]:
+            p.append(f"<div>{e(t)} · {e(nm)} <span class='muted'>{e(note)}</span></div>")
+        p.append("</div>")
+    p.append("</div>")
+    return "".join(p)
+
+
 # 7.56 : rapports (bilan du matin, rapport de show, étude de site) au look « pro » des thèmes de l'appli : clair pour
 # l'impression, typo système, cartes arrondies, tableaux aérés, couleurs système. Ajouté APRÈS les styles d'origine.
 REPORT_PRO_CSS = (
@@ -4999,7 +5244,7 @@ def build_report_html(d):
          "svg.spec{width:100%;height:auto;border:1px solid #d8dde8;border-radius:8px;background:#fbfcfe}",
          ".grid{stroke:#e3e7ef}.ax{font-size:11px;fill:#6b7488}.curve{fill:none;stroke:#e08a1e;stroke-width:1.2}",
          ".mk{stroke:#2e8b57;stroke-width:1;opacity:.55}.mk.hot{stroke:#d33;stroke-width:1.6;opacity:.9}",
-         ".thr{stroke:#d33;stroke-dasharray:5 4}", REPORT_PRO_CSS,
+         ".thr{stroke:#d33;stroke-dasharray:5 4}", REPORT_PRO_CSS, MS_CSS,
          "@media print{body{padding:0}h2{break-after:avoid}tr{break-inside:avoid}th{position:static}}",
          "</style></head><body>",
          f"<h1>{e(d.get('title') or 'Rapport de show')}</h1>",
@@ -5011,6 +5256,7 @@ def build_report_html(d):
     p.append("<div class='cards'>" + "".join(
         f"<div class='card{' bad' if (t in ('Conflits', 'TX absents') and v) else ''}'><b>{v}</b>{e(t)}</div>"
         for t, v in cards) + "</div>")
+    p.append(morning_html(morning_summary(ev)))          # 7.61 : lisible en 10 secondes
     p.append("<h2>Spectre (max hold)</h2>")
     p.append(_svg_spectrum(d.get("F"), d.get("L"), marks, d.get("thr")))
     p.append("<p class='muted'>Traits verts : fréquences surveillées · rouges : fréquences ayant eu un conflit, une absence "
@@ -5065,7 +5311,7 @@ def build_report_html(d):
     if len(ev) > 1500:
         p.append(f"<p class='muted'>… {len(ev) - 1500} événements de plus dans le journal CSV.</p>")
     p.append(f"<p class='muted'>Généré par {e(d.get('app', 'TinySA Monitor'))}. Mesures indicatives du tinySA : "
-             "elles ne remplacent pas ta coordination (EazyRF / WWB…).</p></body></html>")
+             "elles ne remplacent pas ta coordination (logiciel dédié).</p></body></html>")
     return "".join(p)
 
 
@@ -6471,6 +6717,7 @@ STEPS = (
       ("🌙 Mode festival (nuit complète, bilan chaque jour)…", "open_festival"))),
     ("after", "📊 Analyser", "Après le show : revoir ce qui s'est passé, rapport, occupation par heure, scans.",
      (("§Revoir le show", None),
+      ("🌅 Résumé de la nuit (en un coup d'œil)…", "open_night_summary"),
       ("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
       ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"),
       ("📄 Rapport de show…", "make_report"),
@@ -7480,7 +7727,7 @@ def diversity_share(srcs, ndev=2):
 
 
 def states_norm(lst):
-    """📸 États (façon Snapshots d'EazyRF) lus de la config / d'un show -> [{name, keys}] : noms uniques, clés = fréquences
+    """📸 États (façon Snapshots du logiciel de coord) lus de la config / d'un show -> [{name, keys}] : noms uniques, clés = fréquences
     actives en kHz (entiers), 30 états au plus."""
     out, seen = [], set()
     for x in (lst if isinstance(lst, list) else []):
@@ -10317,7 +10564,7 @@ def del_key(widget, fn):
 
 
 class RangeBox(QtWidgets.QWidget):
-    """Plage de fréquences à exporter (vers EazyRF, WWB, WSM…) : tout, la zone affichée, une de mes bandes, la plage
+    """Plage de fréquences à exporter (vers le logiciel de coord, WWB, WSM…) : tout, la zone affichée, une de mes bandes, la plage
     d'un appareil de la bibliothèque, ou « de … à … » à la main. values() -> (lo, hi) en MHz, ou (None, None) = tout."""
 
     def __init__(self, owner, extent=None):
@@ -11125,7 +11372,18 @@ class RescueDialog(QtWidgets.QDialog):
         self.go_btn.clicked.connect(lambda *_: self.search())
         self.spec_combo = QtWidgets.QComboBox()
         owner.fill_coord_combo(self.spec_combo)
+        self.rx_combo = QtWidgets.QComboBox()             # 7.61 : appareil -> réglages + sa bande
+        fill_rx_combo(self.rx_combo, "Appareil : réglages ci-dessous")
+        self.rx_combo.setToolTip("Pour quel appareil chercher : ses réglages (écart, tolérance, filtre, pas) sont\n"
+                                 "repris, et s'il a une bande (bibliothèque, plan importé), la recherche y reste.")
+        rows = owner._sel_rows() if hasattr(owner, "_sel_rows") else []
+        rx0 = owner.rx_of(owner.watch[rows[0]]) if rows and rows[0] < len(owner.watch) else ""
+        if rx0:
+            self.rx_combo.setCurrentIndex(max(0, self.rx_combo.findData(rx0)))
+        self.rx_combo.currentIndexChanged.connect(lambda *_: self._from_rx())
+        self.band_lbl = QtWidgets.QLabel("")
         lay.addLayout(R("De", self.a_spin, "à", self.b_spin, "Nombre :", self.n_spin, None))
+        lay.addLayout(R(self.rx_combo, self.band_lbl, None))
         lay.addLayout(R("Canal :", self.width_spin, "Écart mini :", self.sep_spin, "Tolérance :", self.guard_spin,
                         self.im_combo, "Filtre :", self.filt_spin, None))
         lay.addLayout(R("Niveau max toléré :", self.thr_spin, self.src_combo, None, self.go_btn))
@@ -11158,6 +11416,31 @@ class RescueDialog(QtWidgets.QDialog):
         b_close = QtWidgets.QPushButton("Fermer")
         b_close.clicked.connect(self.close)
         lay.addLayout(R(self.layer_combo, b_view, b_add, None, b_close))
+        if rx0:
+            self._from_rx()
+
+    def _rx(self):
+        return rx_profile(self.rx_combo.currentData()) if self.rx_combo.currentData() else None
+
+    def _from_rx(self):
+        """Appareil choisi : ses réglages remplissent la fenêtre, et la plage se cale sur sa bande s'il en a une."""
+        d = self._rx()
+        if d is None:
+            self.band_lbl.setText("")
+            return
+        self.sep_spin.setValue(d["sep"])
+        if d["tol"].get("2tx3"):
+            self.guard_spin.setValue(d["tol"]["2tx3"])
+        self.filt_spin.setValue(d["filt"])
+        bd = rx_band(d)
+        if bd:
+            cl = band_clip(self.a_spin.value(), self.b_spin.value(), bd) or bd
+            self.a_spin.setValue(round(cl[0], 3))
+            self.b_spin.setValue(round(cl[1], 3))
+            self.band_lbl.setText(f"Bande de l'appareil : {bd[0]:g}–{bd[1]:g} MHz (la recherche y reste)")
+        else:
+            self.band_lbl.setText("Pas de bande connue pour cet appareil (profil intégré) : vérifie que la plage "
+                                  "correspond à ton matériel.")
 
     def search(self):
         o = self.owner
@@ -11170,6 +11453,16 @@ class RescueDialog(QtWidgets.QDialog):
         if b <= a:
             self.msg.setText("La plage est à l'envers.")
             return
+        d_rx = self._rx()
+        bd = rx_band(d_rx) if d_rx else None
+        if bd:                                      # 7.61 : jamais hors de la bande de l'appareil choisi
+            cl = band_clip(a, b, bd, self.width_spin.value())
+            if cl is None:
+                self.msg.setText(f"La plage {a:g}–{b:g} MHz est hors de la bande de l'appareil ({bd[0]:g}–{bd[1]:g} MHz).")
+                return
+            a, b = cl
+        grid = max(0.025, d_rx["step"]) if d_rx else 0.025   # pas de l'appareil (au moins 25 kHz : assez fin)
+        a = math.ceil(a / grid - 1e-9) * grid                 # grille calée sur le pas (fréquences réglables)
         ws = o.scope_ws() if self.src_combo.currentData() == "scope" else o.watch
         ex = [w["freq"] for w in ws]
         em = [w["freq"] for w in ws if not o.is_keep_free(w["status"])]      # une réserve libre n'émet pas
@@ -11177,7 +11470,7 @@ class RescueDialog(QtWidgets.QDialog):
         res, d = find_free(F, L, a, b, ex, self.n_spin.value(), self.width_spin.value(), self.sep_spin.value(),
                            self.thr_spin.value(), None if im == "none" else self.guard_spin.value(),
                            guard3=self.guard_spin.value() / 2.0, emitters=em, filt=self.filt_spin.value(),
-                           im3=im == "full", allowed=o.reg_pred())
+                           im3=im == "full", allowed=o.reg_pred(), grid=grid)
         self.found = res
         exa = sorted(w["freq"] for w in o.watch)
         t = self.table
@@ -11216,6 +11509,8 @@ class RescueDialog(QtWidgets.QDialog):
             if d["alternatives"]:
                 txt += (f"\n⚠ {d['alternatives']} « moins mauvaise(s) » proposée(s) en orange : regarde la "
                         "remarque avant de t'en servir.")
+        if bd:
+            txt += f"\nRecherche limitée à la bande de l'appareil : {a:.3f}–{b:.3f} MHz."
         if o.reg_note():
             txt += "\n" + o.reg_note()
         self.msg.setText(txt)
@@ -11233,8 +11528,8 @@ class RescueDialog(QtWidgets.QDialog):
         s = self._sel() or self.found
         if not s:
             return
-        sc, gr = self.layer_combo.currentData()
-        n = self.owner.add_free_freqs([x["f"] for x in s], sc, gr)
+        sc, gr = self.layer_combo.currentData() or ("", "")
+        n = self.owner.add_free_freqs([x["f"] for x in s], sc, gr, self.rx_combo.currentData() or "")
         self.msg.setText(f"{n} fréquence(s) ajoutée(s) à ta liste.")
 
 
@@ -11845,8 +12140,8 @@ def filter_help_btn(parent):
 
 
 class EzrfImportDialog(QtWidgets.QDialog):
-    """📥 Plan EazyRF (document .ezrf3 ou copier-coller du plan de fréquences) -> Mes fréquences : scènes (groupes
-    EazyRF), groupes (sections), appareils (profils perso avec les réglages du document), interférences notées,
+    """📥 Plan (document .ezrf3 ou copier-coller du plan de fréquences) -> Mes fréquences : scènes (groupes
+    du document), groupes (sections), appareils (profils perso avec les réglages du document), interférences notées,
     scan de fond."""
 
     def __init__(self, owner, doc, source, path=None, kind="EazyRF"):
@@ -12123,13 +12418,13 @@ def coord_note():
 
 
 class RxLibraryDialog(QtWidgets.QDialog):
-    """📚 Bibliothèque d'appareils EazyRF : importer « Appareils.lst4 », chercher un modèle, l'ajouter à mes profils
+    """📚 Bibliothèque d'appareils (.lst4) : importer « Appareils.lst4 », chercher un modèle, l'ajouter à mes profils
     (il garde ses valeurs : écart, filtre, pas, tolérances, plage)."""
     COLS = ["Appareil", "Type", "Plage MHz", "Écart", "Filtre", "2 TX", "3 TX", "5ᵉ", "Pas"]
 
-    def __init__(self, owner):
+    def __init__(self, owner, pick=False):
         super().__init__(owner)
-        self.owner = owner
+        self.owner, self.pick = owner, pick
         self.setWindowTitle("Bibliothèque d'appareils (.lst4)")
         lay = QtWidgets.QVBoxLayout(self)
         self.head = QtWidgets.QLabel("")
@@ -12154,7 +12449,7 @@ class RxLibraryDialog(QtWidgets.QDialog):
         lay.addWidget(self.table, 1)
         self.msg = QtWidgets.QLabel("")
         self.msg.setWordWrap(True)
-        b_add = QtWidgets.QPushButton("＋ Ajouter à mes profils")
+        b_add = QtWidgets.QPushButton("＋ Ajouter à ce groupe" if pick else "＋ Ajouter à mes profils")
         b_add.setToolTip("Les appareils choisis deviennent des profils utilisables partout (vérifier le plan,\n"
                          "trouver N fréquences, fréquence de secours), gardés dans ta config et tes shows.")
         b_add.clicked.connect(lambda *_: self.add())
@@ -12210,6 +12505,8 @@ class RxLibraryDialog(QtWidgets.QDialog):
         self.msg.setText(f"✔ {len(new)} profil(s) ajouté(s)" + (f", {len(devs) - len(new)} déjà là" if len(devs) > len(new)
                                                                    else "") + ".")
         self.added = [d["name"] for d in devs]
+        if self.pick:
+            self.accept()
 
 
 class RxProfilesDialog(QtWidgets.QDialog):
@@ -12325,7 +12622,7 @@ class RxProfilesDialog(QtWidgets.QDialog):
 
 
 class PlanCheckDialog(QtWidgets.QDialog):
-    """Vérifie un plan de fréquences comme un logiciel de coordination (EazyRF…) : écart entre porteuses et
+    """Vérifie un plan de fréquences comme un logiciel de coordination : écart entre porteuses et
     intermod selon des tolérances, un verdict par fréquence, et une fréquence de remplacement compatible.
     Chaque fréquence peut avoir son profil d'appareil (w["rx"] : Wisycom très sélectif, Shure, Sennheiser…)."""
     COLS = ["État", "Nom", "MHz", "Appareil", "Problèmes"]
@@ -12572,6 +12869,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
         P = [rx_profile(o.rx_of(w)) or dflt for w in ws]            # appareil de chaque fréquence (ou de son groupe)
         self._steps = [q["step"] for q in P]
         self._imgs = [float(q.get("img") or 0.0) for q in P]       # FI : fréquence image (analogiques)
+        self._bands = [rx_band(q) for q in P]                        # 7.61 : bande de l'appareil (bibliothèque, plan)
         return (ws, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
                 [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P], None,
                 [q["filt"] for q in P])
@@ -12583,6 +12881,10 @@ class PlanCheckDialog(QtWidgets.QDialog):
             self.issues, info = pf_check(F, T, B, sep, tol, mx, filt, self._imgs)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
+        for r, bd in enumerate(self._bands):         # 7.61 : réglée hors de la bande de son appareil
+            it = band_issue(F[r], B[r], bd)
+            if it:
+                self.issues[r].insert(0, it)
         self.ws = ws
         names = [w["name"] or f"{w['freq']:.3f}" for w in ws]
         th, base = self.owner.theme, self.owner.theme["ui_base"]
@@ -12620,14 +12922,15 @@ class PlanCheckDialog(QtWidgets.QDialog):
         elif not bad:
             self.sum_lbl.setText(f"✔ Plan compatible : {n} / {n} fréquences sans problème (pour ces règles).")
         else:
-            kinds = {"sep": 0, "img": 0, "2tx3": 0, "3tx3": 0, "5": 0}
+            kinds = {"sep": 0, "img": 0, "band": 0, "2tx3": 0, "3tx3": 0, "5": 0}
             for iss in self.issues:
                 for it in iss:
-                    k_ = it["kind"] if it["kind"] in ("sep", "img") else im_class(it["order"], it["ntx"])
+                    k_ = it["kind"] if it["kind"] in ("sep", "img", "band") else im_class(it["order"], it["ntx"])
                     kinds[k_ if k_ in kinds else "5"] += 1
             det = " · ".join(f"{v} {lab}" for lab, v in (("écart trop faible", kinds["sep"]), ("2A − B", kinds["2tx3"]),
                                                           ("A + B − C", kinds["3tx3"]), ("5ᵉ ordre", kinds["5"]),
-                                                          ("fréquence image", kinds["img"])) if v)
+                                                          ("fréquence image", kinds["img"]),
+                                                          ("hors de la bande de l'appareil", kinds["band"])) if v)
             self.sum_lbl.setText(f"✗ {bad} fréquence(s) à revoir sur {n} · ✔ {n - bad} compatibles ({det}). "
                                  "Choisis une ligne ✗ puis « Proposer »."
                                  + ("\n⚠ 5ᵉ ordre NON vérifié (trop de combinaisons) : seul le 3ᵉ ordre l'est."
@@ -12661,9 +12964,12 @@ class PlanCheckDialog(QtWidgets.QDialog):
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             kw = dict(n=6, busy=self.owner.reg_busy(busy), step=self._steps[r], filt=filt, img=self._imgs)   # pas de l'appareil de cette fréquence
-            sg = pf_suggest(r, F, T, B, sep, tol, mx, **kw)
+            bd = self._bands[r]                          # 7.61 : jamais hors de la bande de son appareil
+            near = band_clip(F[r] - 10.0, F[r] + 10.0, bd, B[r])
+            sg = pf_suggest(r, F, T, B, sep, tol, mx, lo=near[0], hi=near[1], **kw) if near else []
             if not sg:                                  # rien tout près : on cherche dans toutes les bandes
                 ext = self.owner._band_extent()
+                ext = band_clip(ext[0], ext[1], bd, B[r]) if ext else (band_clip(bd[0], bd[1], bd, B[r]) if bd else None)
                 if ext:
                     sg = pf_suggest(r, F, T, B, sep, tol, mx, lo=ext[0], hi=ext[1], max_check=1500, **kw)
         finally:
@@ -12673,6 +12979,8 @@ class PlanCheckDialog(QtWidgets.QDialog):
         if not sg:
             self.sug_list.addItem(f"Rien de compatible pour {name} dans tes bandes : élargis les tolérances, baisse "
                                   "l'écart mini ou décoche « Éviter ce que le tinySA voit occupé ».")
+            if bd:
+                self.sug_list.addItem(f"Recherche limitée à la bande de son appareil : {bd[0]:g}–{bd[1]:g} MHz.")
             return
         for c, d in sg:
             rt = self.owner.reg_tag(c)
@@ -12799,7 +13107,7 @@ class ScanConvertDialog(QtWidgets.QDialog):
         xb.addLayout(R("Fréquences en :", self.out_funit, "Niveaux en :", self.out_lunit, None))
         ol.addWidget(self.out_fmt)
         ol.addWidget(self.csv_box)
-        self.range = RangeBox(owner)               # seulement la bande utile (ex. 470–608 pour EazyRF)
+        self.range = RangeBox(owner)               # seulement la bande utile (ex. 470–608 pour le logiciel de coord)
         self.range.preset.currentIndexChanged.connect(lambda *_: self.reload())
         for sp_ in (self.range.lo, self.range.hi):
             sp_.valueChanged.connect(lambda *_: self.reload())
@@ -13352,7 +13660,7 @@ class HuntDialog(QtWidgets.QDialog):
 
 
 class EzrfSyncDialog(QtWidgets.QDialog):
-    """🔗 Le plan EazyRF suivi a été réenregistré : liste des changements, tu coches ceux que tu reprends."""
+    """🔗 Le plan .ezrf3 suivi a été réenregistré : liste des changements, tu coches ceux que tu reprends."""
 
     def __init__(self, owner, d):
         super().__init__(owner)
@@ -13410,7 +13718,7 @@ class EzrfSyncDialog(QtWidgets.QDialog):
 
 
 class StatesDialog(QtWidgets.QDialog):
-    """📸 États (comme les Snapshots d'EazyRF) : plusieurs plans dans le même show (artistes, scènes, jours). Un état =
+    """📸 États (comme les Snapshots du logiciel de coord) : plusieurs plans dans le même show (artistes, scènes, jours). Un état =
     les fréquences actives ; les autres passent en pause (pas d'alarme, hors du calcul d'intermod). « 🔒 Toujours » =
     active dans tous les états (intercom, talkies…)."""
 
@@ -13944,7 +14252,7 @@ class EmitDialog(QtWidgets.QDialog):
 
 class SitesDialog(QtWidgets.QDialog):
     """📍 Scans par lieu : un tinySA promené de scène en scène, un scan (max hold) gardé par lieu, tous superposés,
-    et leur FUSION (le pire cas de tout le site) pour coordonner l'ensemble ou l'exporter vers WWB / WSM / EazyRF."""
+    et leur FUSION (le pire cas de tout le site) pour coordonner l'ensemble ou l'exporter vers WWB / WSM / le logiciel de coord."""
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -17598,6 +17906,11 @@ class CoordDialog(QtWidgets.QDialog):
         self.order_combo.currentIndexChanged.connect(
             lambda *_: o.plan_opts.__setitem__("coord_order", self.order_combo.currentData()))
         lay.addLayout(o._row(QtWidgets.QLabel("Méthode :"), self.order_combo, go))
+        self.bar = QtWidgets.QProgressBar()            # 7.61 : fréquences trouvées pendant le calcul
+        self.bar.setFormat("%v / %m")
+        self.bar.setToolTip("Fréquences trouvées pendant le calcul (essai en cours).")
+        self.bar.hide()
+        lay.addWidget(self.bar)
         self.res = QtWidgets.QListWidget()
         self.res.setToolTip("Fréquences trouvées, compatibles avec ta liste et entre elles.")
         lay.addWidget(self.res, 1)
@@ -17705,10 +18018,22 @@ class CoordDialog(QtWidgets.QDialog):
                 busy = busy_pred(Fm, Lm, lim, win)
         lots = list(self.lots) or [self._lot_now()]
         spec = []
+        clipped = []
         for L_ in lots:
             d = self._lot_profile(L_["rx"])
-            spec.append(dict(n=L_["n"], sep=d["sep"], tol=d["tol"], filt=d["filt"], lo=L_["lo"], hi=L_["hi"],
-                             step=d["step"]))
+            lo, hi = L_["lo"], L_["hi"]
+            bd = rx_band(d)
+            if bd:                                   # 7.61 : jamais hors de la bande de l'appareil
+                cl = band_clip(lo, hi, bd)
+                if cl is None:
+                    self.msg.setText(f"La plage {lo:g}–{hi:g} MHz est hors de la bande de {rx_short(L_['rx'])} "
+                                     f"({bd[0]:g}–{bd[1]:g} MHz).")
+                    return
+                if cl != (lo, hi):
+                    clipped.append(f"{rx_short(L_['rx'])} : {cl[0]:g}–{cl[1]:g} MHz")
+                lo, hi = cl
+            spec.append(dict(n=L_["n"], sep=d["sep"], tol=d["tol"], filt=d["filt"], lo=lo, hi=hi, step=d["step"]))
+        self._clipped = clipped
         args = (spec, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
                 [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P],
                 [q["filt"] for q in P], o.reg_busy(busy))
@@ -17716,13 +18041,34 @@ class CoordDialog(QtWidgets.QDialog):
         self.go_btn.setText(TR("■ Annuler le calcul"))
         order = self.order_combo.currentData() or "random"
         info = self._info = {}          # partagé avec le fil : « cancel » posé par Annuler / la fermeture
-        self._job = o.run_heavy(
-            lambda: pf_fill_lots(*args, order="low" if order == "low" else "random", tries=COORD_TRIES.get(order, 1),
-                                 progress=lambda k, n: info.update(step=(k, n)),
-                                 cancel=lambda: bool(info.get("cancel"))),
-            lambda got, err: self._computed(lots, got, err), self.msg, "Recherche des fréquences",
-            status=lambda: (TR("essai {} / {}").format(*info["step"]) if info.get("step") and info["step"][1] > 1
-                            else ""))
+        allowed = o.reg_pred()
+
+        def work():
+            got = pf_fill_lots(*args, order="low" if order == "low" else "random", tries=COORD_TRIES.get(order, 1),
+                               progress=lambda k, n: info.update(step=(k, n)),
+                               cancel=lambda: bool(info.get("cancel")),
+                               found=lambda k, n: info.update(found=(k, n)))
+            whys = []                   # 7.61 : pour chaque lot incomplet, ce qui bloque (plan final)
+            allF = args[1] + [c for g in got for c in g]
+            allS = args[4] + [sp["sep"] for sp, g in zip(spec, got) for _c in g]
+            allB = args[3] + [0.0 for g in got for _c in g]
+            for sp, g in zip(spec, got):
+                whys.append(coord_blockers(sp["lo"], sp["hi"], sp["step"], allF, allB, sp["sep"], allS, busy, allowed)
+                            if len(g) < sp["n"] else None)
+            return got, whys
+        self.bar.setRange(0, max(1, sum(int(sp["n"]) for sp in spec)))
+        self.bar.setValue(0)
+        self.bar.show()
+
+        def status():
+            if info.get("found"):
+                self.bar.setValue(info["found"][0])
+            st = TR("{} / {} trouvées").format(*info["found"]) if info.get("found") else ""
+            if info.get("step") and info["step"][1] > 1:
+                st = TR("essai {} / {}").format(*info["step"]) + (f" · {st}" if st else "")
+            return st
+        self._job = o.run_heavy(work, lambda res, err: self._computed(lots, res, err), self.msg,
+                                "Recherche des fréquences", status=status)
 
     def closeEvent(self, e):
         if self._job is not None:
@@ -17732,13 +18078,15 @@ class CoordDialog(QtWidgets.QDialog):
             self.go_btn.setText(TR("🪄 Chercher"))
         super().closeEvent(e)
 
-    def _computed(self, lots, got, err):
+    def _computed(self, lots, res, err):
         o = self.owner
         self._job = None
         self.go_btn.setText(TR("🪄 Chercher"))
+        self.bar.hide()
         if err is not None:
             self.msg.setText(f"Calcul impossible : {err}")
             return
+        got, whys = res
         self.found = [(L_, c) for L_, cs in zip(lots, got) for c in cs]
         self.res.clear()
         for L_, cs in zip(lots, got):
@@ -17754,6 +18102,13 @@ class CoordDialog(QtWidgets.QDialog):
                          if not short else
                          f"⚠ Seulement {', '.join(short)} : la plage est pleine pour ces règles. Élargis la plage, "
                          "choisis un appareil plus robuste (écart et tolérances plus serrés) ou des règles plus souples.")
+        for L_, wy in zip(lots, whys):               # 7.61 : pourquoi pas plus
+            if wy:
+                self.msg.setText(self.msg.text() + "\n" + TR("Ce qui bloque ({}) : {}").format(
+                    L_["prefix"], coord_why_text(wy, TR)) + "\n" + TR(coord_why_advice(wy)))
+        if getattr(self, "_clipped", None):
+            self.msg.setText(self.msg.text() + "\n" + TR("Plage ramenée à la bande de l'appareil : {}").format(
+                " · ".join(self._clipped)))
         if o.reg_note():
             self.msg.setText(self.msg.text() + "\n" + o.reg_note())
 
@@ -18805,7 +19160,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.net_profiles = []                     # 🌐 adresses enregistrées [{name, addr}] (une par Wi-Fi / lieu)
         self.dev2 = dict(on=False, addr="", offset=0.0, div=False)   # 2ᵉ tinySA : USB (« COM4 ») ou réseau (« 192.168.1.20:5025 »)
         self.states, self.state_cur = [], ""    # 📸 états (plans à basculer) ; "" = tout actif
-        self.ezrf_link, self._ezrf_next, self._ezrf_dlg = None, 0.0, None   # 🔗 plan EazyRF suivi
+        self.ezrf_link, self._ezrf_next, self._ezrf_dlg = None, 0.0, None   # 🔗 plan .ezrf3 suivi
         self.devx = []                  # tinySA 3 à 8 : [{on, addr, name, offset}] (le 2ᵉ reste dans dev2)
         self.dev_live = [True] * MAX_DEVS   # liaison de chaque appareil (False = perdue, ses bandes passent aux autres)
         self.dev_cycle = {}
@@ -19092,6 +19447,8 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "🌅 Résumé de la nuit": "Tout le journal en une page : verdict, événements par heure, alarmes regroupées,\n"
+                               "fréquences instables ou changées. S'ouvre dans le navigateur.",
         "🧭 Assistant": "Pas à pas pour un nouveau show : le show (pays, lieu), tes micros, le scan du lieu,\n"
                         "les canaux TNT, puis « Prêt pour le show ? ».",
         "📺 Canaux TNT": "Les canaux pris par la TNT, d'après ton scan (sans internet), grisés sur le spectre ;\n"
@@ -20727,12 +21084,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 if w.get("muted"):
                     self.watch[-1]["muted"] = True           # 💤 éteinte exprès (je sais)
                 if w.get("ez"):
-                    self.watch[-1]["ez"] = str(w["ez"])[:200]   # 🔗 venue d'un plan EazyRF suivi
+                    self.watch[-1]["ez"] = str(w["ez"])[:200]   # 🔗 venue d'un plan .ezrf3 suivi
                     if w.get("ezsrc"):
                         self.watch[-1]["ezsrc"] = str(w["ezsrc"])[:200]   # … de quel fichier (7.50)
             except Exception:
                 pass
-        if "ezrf_link" in data:                  # 🔗 plan EazyRF suivi
+        if "ezrf_link" in data:                  # 🔗 plan .ezrf3 suivi
             lk = data.get("ezrf_link")
             self.ezrf_link = dict(lk) if isinstance(lk, dict) and lk.get("path") else None
         if "states" in data:                     # 📸 états (après la liste : l'état met ses fréquences en pause)
@@ -23206,6 +23563,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 a_.setCheckable(True)
                 a_.setChecked(k_ in cur_rx)
                 a_.triggered.connect(lambda *_, k_=k_, key_=key, a_=a_: self.toggle_group_rx(key_, k_, a_.isChecked()))
+            if self.expert:                         # 7.61 : un modèle précis, avec sa bande (mode expert seulement)
+                rxm.addSeparator()
+                a_ = rxm.addAction("📚 Depuis la bibliothèque (avec sa bande)…")
+                a_.setToolTip("Choisis le modèle exact (ex. SLX-D G58) : il est ajouté à ce groupe avec sa bande ;\n"
+                              "Vérifier le plan, Coordonner et la fréquence de secours restent dans cette bande.")
+                a_.triggered.connect(lambda *_, key_=key: self.pick_library_rx(key_))
             if self.expert and not key[1]:          # 📡 quel(s) tinySA surveille(nt) cette scène
                 dm = m.addMenu("📡 Surveillée par")
                 for d_ in self.dev_list():
@@ -24067,7 +24430,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.open_import(txt, "Texte collé", preset=self._scope_preset())
 
     def import_ezrf_file(self, path, opts=None):
-        """Plan d'un logiciel de coordination (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm) -> aperçu
+        """Plan d'un logiciel de coordination (.ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm) -> aperçu
         puis import ; le fichier peut ensuite être suivi (🔗)."""
         try:
             doc, kind = parse_plan_file(Path(path).read_bytes(), os.path.basename(path))
@@ -24130,7 +24493,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return {dk: by_name[n] for dk, n in want.items() if n in by_name}
 
     def apply_ezrf(self, doc, opts, source="EazyRF", path=None):
-        """Importe le plan : fréquences (scène = groupe EazyRF, groupe = section), appareils posés sur les groupes,
+        """Importe le plan : fréquences (scène = groupe du document, groupe = section), appareils posés sur les groupes,
         interférences en émetteurs extérieurs, scan de fond dans Scans par lieu. -> nombre de fréquences ajoutées."""
         entries = ezrf_entries(doc, opts.get("skip_off", True))
         keymap = self._ezrf_profiles(doc) if opts.get("profiles", True) else {}
@@ -25964,7 +26327,7 @@ class MainWindow(QtWidgets.QMainWindow):
     LIB_PATH = CFG_PATH.parent / "appareils_eazyrf.json"
 
     def rx_library(self):
-        """Bibliothèque d'appareils EazyRF importée (fichier à part : ~1 200 appareils, pas dans la config)."""
+        """Bibliothèque d'appareils (.lst4) importée (fichier à part : ~1 200 appareils, pas dans la config)."""
         if not RX_LIBRARY and self.LIB_PATH.exists():
             try:
                 RX_LIBRARY[:] = json.loads(self.LIB_PATH.read_text(encoding="utf-8"))
@@ -26129,9 +26492,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_states(self):
         StatesDialog(self).exec()
 
-    # ------------------------------------------------------------- 🔗 plan EazyRF suivi
+    # ------------------------------------------------------------- 🔗 plan .ezrf3 suivi
     def _ezrf_tick(self, now, force=False):
-        """Toutes les 5 s : le fichier EazyRF suivi a-t-il été réenregistré ? -> fenêtre des changements."""
+        """Toutes les 5 s : le fichier .ezrf3 suivi a-t-il été réenregistré ? -> fenêtre des changements."""
         lk = self.ezrf_link
         if not lk or (now < self._ezrf_next and not force):
             return None
@@ -26142,7 +26505,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         if mt == lk.get("mtime") and not force:
             return None
-        if now - mt < 1.0 and not force:            # EazyRF est peut-être encore en train d'écrire
+        if now - mt < 1.0 and not force:            # le logiciel de coord est peut-être encore en train d'écrire
             return None
         lk["mtime"] = mt
         kind = lk.get("kind") or "EazyRF"
@@ -26174,7 +26537,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _ezrf_cur(self, lk):
         """Fréquences de la liste venues du plan suivi -> [(id, MHz)]. Seulement celles de CE fichier (7.50 : sinon,
-        en suivant un .wshow après avoir importé un .ezrf3, l'appli proposait de retirer toutes celles d'EazyRF)."""
+        en suivant un .wshow après avoir importé un .ezrf3, l'appli proposait de retirer toutes celles du logiciel de coord)."""
         src = lk.get("name", "")
         return [(w["ez"], w["freq"]) for w in self.watch if w.get("ez") and w.get("ezsrc", src) == src]
 
@@ -26444,6 +26807,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 iss, _ = pf_check([w["freq"] for w in ws], [not self.is_keep_free(w["status"]) for w in ws],
                                   [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P],
                                   [q["tol"] for q in P], None, [q["filt"] for q in P])
+                for k_, (w, q) in enumerate(zip(ws, P)):     # 7.61 : hors de la bande de son appareil
+                    if band_issue(w["freq"], w.get("bw"), rx_band(q)):
+                        iss[k_].append(dict(kind="band"))
                 plan = sum(1 for x in iss if x) if tx else 0
         except Exception:  # noqa: BLE001
             plan = None
@@ -27052,7 +27418,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_markers()
         return n
 
-    def add_free_freqs(self, freqs, scene, group):
+    def add_free_freqs(self, freqs, scene, group, rx=""):
         known = {int(round(w["freq"] * 1000)) for w in self.watch}
         n = 0
         for f in freqs:
@@ -27061,6 +27427,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             known.add(k)
             self._append_watch(f"Secours {f:.3f}", f, "", None, scene, group)
+            if rx and rx_profile(rx) is not None and self.rx_of(self.watch[-1]) != rx:
+                self.watch[-1]["rx"] = rx                 # 7.61 : l'appareil choisi pour la recherche
             n += 1
         self.sort_watch()
         self.rebuild_watch_table()
@@ -27446,6 +27814,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def toggle_group_rx(self, key, rx, on):
         """📻 Ajoute / retire un appareil d'un groupe (plusieurs possibles : coordination entre appareils)."""
         self._set_rxs(key, lambda old: (old + [rx] if rx not in old else old) if on else [k for k in old if k != rx])
+
+    def pick_library_rx(self, key):
+        """📚 Bibliothèque -> les appareils choisis deviennent des profils (avec leur bande) et rejoignent le groupe."""
+        dlg = RxLibraryDialog(self, pick=True)
+        dlg.exec()
+        names = getattr(dlg, "added", None) or []
+        keys = [k for k, n, _d, _w in RX_CUSTOM if n in names]
+        for k in keys:
+            self.toggle_group_rx(key, k, True)
+        return keys
 
     def _cur_rxs(self, key):
         sc = self.scene_by_name(key[0])
@@ -28282,6 +28660,22 @@ class MainWindow(QtWidgets.QMainWindow):
                     duration=fmt_dur(time.time() - self._t_start) if self._t_start else "",
                     events=events, rows=rows, groups=groups, F=F, L=L, thr=self.thr_spin.value(), im=im,
                     app=f"{APP_NAME} {APP_VER}")
+
+    def open_night_summary(self):
+        """🌅 7.61 : rapport de tout le journal (résumé « en un coup d'œil » en tête), ouvert dans le navigateur."""
+        now = datetime.now()
+        site = self.notify_cfg.get("site", "") or self.show_meta.get("name", "")
+        v = dict(title=f"Résumé du {now:%d/%m/%Y %H:%M}", venue=site, operator="", im=False, open=True, notes="")
+        path = self.log_dir / "rapports" / f"resume_{now:%Y-%m-%d_%H%M}.html"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(TR.html(build_report_html(self.collect_report(v))), encoding="utf-8")
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"⚠ Résumé impossible : {e}")
+            return None
+        self.set_status(f"🌅 Résumé enregistré : {path}")
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(path)))
+        return path
 
     def make_report(self):
         has_im = bool(self._im_dlg is not None and getattr(self._im_dlg, "rows", None))

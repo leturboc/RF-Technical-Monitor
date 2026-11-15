@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.60.3**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.61.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1162,6 +1162,32 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `pf_fill_lots(max_check=300)` (avant 800) : même résultat 40 / 40 sur 2 × 20, cas sans place 40 s → 15 s.
   Bibliothèque `.lst4` (Clément ne la trouvait pas) : toujours mode expert + outils de coord › 🎛 Profils d'appareil ›
   📚 ; gardée dans `%APPDATA%\TinySAMonitor\appareils_eazyrf.json` ; seuls ses appareils ont une PLAGE (`lo` / `hi`).
+  **v7.60.3 : compilation sur main refusée (« Actions budget », limite de dépense GitHub, 15/11/2026)** : pas de release ;
+  exe dans la pré-release `test-ui-validation`. Relancer le workflow sur main quand Clément a relevé la limite.
+- **7.61.0 (Clément : « ok pour 1/2/3/4 », « faut que ça calcule en fonction des bandes, même en fréq de secours »,
+  bibliothèque : « que en mode expert »)** :
+  - **Bande de l'appareil** : PURE `rx_band(profil)` ((lo, hi) des profils qui en ont : bibliothèque, plans importés,
+    perso ; None pour les intégrés), `band_issue(f, bw, bande)` (problème `kind="band"`, `pf_issue_text` « hors de la
+    bande de son appareil »), `band_clip(a, b, bande, bw)`. PlanCheckDialog : `_bands`, problème « band » en tête,
+    « Proposer » limité à la bande (près puis toute la bande) ; « Prêt ? » le compte. RescueDialog : `rx_combo`
+    (appareil de la fréquence choisie dans la liste d'office), `_from_rx` (écart, tolérance 2 TX, filtre, plage calée
+    sur la bande), `search` coupe à la bande, grille = max(25 kHz, pas de l'appareil) calée sur le pas ;
+    `add_free_freqs(..., rx)`. CoordDialog : chaque lot coupé à la bande de son appareil (`_clipped` → message).
+    Clic droit groupe › 📻 › « 📚 Depuis la bibliothèque (avec sa bande)… » (expert) → `pick_library_rx(key)` →
+    `RxLibraryDialog(pick=True)` (« ＋ Ajouter à ce groupe », se ferme).
+  - **Coordination** : `pf_fill(..., tick, cancel)`, `pf_fill_lots(..., found)` → `CoordDialog.bar` (QProgressBar
+    « trouvées / demandées ») ; PURE `coord_blockers` (grille du lot, plan FINAL : hors pays > occupé mesuré > trop
+    près > reste = intermod), `coord_why_text`, `coord_why_advice` → « Ce qui bloque (lot) : … » + conseil.
+  - **Résumé du matin** : PURE `morning_summary(events)` (verdict, heures dans l'ordre — la nuit passe minuit, même
+    heure 24 h après = « 10' » —, `hot`, alarmes regroupées par (type, nom, MHz) de … à …, instables ≥ `MS_FLAP`
+    OCCUPÉ, `moved` = NOUVELLE FRÉQUENCE, `top`), `_svg_hours`, `morning_html`, `MS_CSS` ; en tête de TOUS les rapports
+    (`build_report_html`), donc du bilan du mode festival. 📊 Analyser › 🌅 Résumé de la nuit (`open_night_summary` :
+    tout le journal, `rapports/resume_*.html`, ouvert dans le navigateur).
+  - **Ménage** : nom du logiciel de coord retiré des commentaires / docstrings (script tokenize) et du pied des rapports ;
+    restent les noms de FORMAT visibles (import .ezrf3, filtres de fichiers) et les clés de données (`"eazyrf"`,
+    `appareils_eazyrf.json`, `EazyRFds`).
+  Testé : test_plan / test_v7 (PURE), gui_reel (bibliothèque → groupe, plan hors bande, Proposer, secours, coord,
+  résumé). **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
