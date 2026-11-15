@@ -1214,6 +1214,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     bouton 🆘 par micro (`data-trp`), encadré `#tsg` (boutons `data-trf`, confirmation).
   Testé : test_v7 (saisie, modèle), test_alertes (page Tech dans Chromium), gui_reel (saisie, remplacer, modèle,
   Tech). **Pas essayé par Clément.**
+- **7.62.1 (6ᵉ audit externe, sur la 7.62.0 ; la moitié de ses idées existait déjà : assistant 7.59, « Prêt ? » 7.39,
+  Ctrl+K 7.47, import avec aperçu)** : `ReplaceDialog._computed` : propositions `relaxed` → message en tête orange
+  « ⚠ … 2A − B SEULEMENT (A + B − C et 5ᵉ ordre NON vérifiés) » (avant : « compatibles avec tout ton plan » même en
+  règles allégées) ; `parse_quick_entry` : entier sans unité lu en kHz → `khz=True` → colonne Remarque de l'aperçu
+  « ⚠ nombre lu en kHz : vérifie » (code postal 75011 = 75,011 MHz) ; **clic droit sur une alarme** (`alarm_menu` :
+  voir, 🆘 remplacer, 🔎 chasser, ⚡ d'où ça vient si coordination, ✔ acquitter). Manuel : la section « Un micro est
+  brouillé » est GÉNÉRÉE depuis `docs/src/nouveaux_*.html` (chapitre reagir) — les ajouts 7.61 / 7.62 faits dans
+  `docs/manuel.html` avaient été écrasés par make_manual : remis dans la source. Idées de l'audit NON faites (à
+  proposer à Clément) : QR code de la page web, comparaison avant / après installation, cloner un groupe, historique
+  des modifications, sauvegarde complète en ZIP, export PDF de préparation, détection de dérive.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
