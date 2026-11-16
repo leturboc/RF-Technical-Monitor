@@ -13,6 +13,7 @@ spec = importlib.util.spec_from_file_location("tsm", __import__("os").path.join(
 m = importlib.util.module_from_spec(spec)
 sys.modules["tsm"] = m
 spec.loader.exec_module(m)
+m.OCC_LOG_S = 0      # anciens tests : occupation notée tout de suite (7.66.1 : seulement si elle dure)
 
 fails = 0
 def check(label, cond, extra=""):
@@ -270,6 +271,36 @@ json.dump(old, open(m.CFG_PATH, "w", encoding="utf-8"))
 win3 = step("MainWindow() avec ancienne config", m.MainWindow)
 check("ancienne config: Libre devient 'doit rester libre'", win3 is not None and win3.is_keep_free("Libre"))
 check("ancienne config: thème complété", win3 is not None and "bp_tv" in win3.theme and win3.theme["curve"] == "#ffffff")
+
+# 7.66.1 (journal de Clément) : une occupation de moins de OCC_LOG_S n'est pas notée
+m.OCC_LOG_S = 3.0
+def evs():
+    return [(win.log_table.item(r, 1).text(), win.log_table.item(r, 4).text()) for r in range(win.log_table.rowCount())]
+T[0] += 10; win.on_sweep(b0["id"], *sweep())                     # tout redevient calme
+_n0 = len(evs())
+for _ in range(3):                                                # 3 passages d'une seconde
+    T[0] += 1; win.on_sweep(b0["id"], *sweep([(520.25, -50.0)]))
+    T[0] += 1; win.on_sweep(b0["id"], *sweep())
+_short = [e for e in evs()[:len(evs()) - _n0] if e[0] == "Basse"]      # le journal ajoute en tête
+check("journal : passages courts non notés", _short == [], str(_short))
+for _ in range(5):                                                # puis une vraie occupation de 4 s
+    T[0] += 1; win.on_sweep(b0["id"], *sweep([(520.25, -50.0)]))
+T[0] += 1; win.on_sweep(b0["id"], *sweep())
+_long = [e[1] for e in evs()[:len(evs()) - _n0] if e[0] == "Basse"]
+check("journal : occupation qui dure notée (OCCUPÉ puis Libre)", len(_long) == 2 and "OCCUPÉ" in _long
+      and any(x.startswith("Libre") for x in _long), str(_long))
+_note = [(win.log_table.item(r, 6).text() if win.log_table.item(r, 6) else "") for r in range(win.log_table.rowCount())
+         if win.log_table.item(r, 1).text() == "Basse" and win.log_table.item(r, 4).text() == "OCCUPÉ"]
+check("journal : les passages courts sont comptés dans la note", any("3 passage" in x for x in _note), str(_note))
+basse = next(w for w in win.watch if w["name"] == "Basse")
+basse["muted"] = True                                             # 💤 éteint (je sais) : plus rien au journal
+_n1 = len(evs())
+for _ in range(6):
+    T[0] += 1; win.on_sweep(b0["id"], *sweep([(520.25, -50.0)]))
+T[0] += 1; win.on_sweep(b0["id"], *sweep())
+_mut = [e for e in evs()[:len(evs()) - _n1] if e[0] == "Basse"]
+check("journal : micro éteint (je sais) = pas d'OCCUPÉ / Libre", _mut == [], str(_mut))
+basse["muted"] = False
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

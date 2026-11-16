@@ -100,6 +100,8 @@ MAX_LABELS = 30              # nb max de noms affichés sur le graphe
 SEL_COLOR = "#ffb300"        # fréquence(s) choisie(s) dans la liste, sur le spectre (ambre : lisible clair / sombre)
 SEL_MAX = 12                 # nb max de fréquences choisies surlignées
 HYST = 3.0                   # hystérésis (dB) pour repasser en "libre"
+OCC_LOG_S = 3.0              # journal : une occupation plus courte n'est pas notée (journal de Clément 16/11/2026 :
+                             # 310 lignes OCCUPÉ / Libre (1 s) pour un micro qui oscillait autour du seuil)
 TINYSA_VID, TINYSA_PID = 0x0483, 0x5740
 CFG_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "TinySAMonitor" / "config.json"
 PROFILE_DIR = CFG_PATH.parent / "profils"
@@ -3552,10 +3554,26 @@ def ezrf_profile_names(devices):
     return out
 
 
-def ezrf_entries(doc, skip_off=True):
+EZRF_NAMINGS = (("dev", "Nom de l'appareil (Shure AD4Q #1 · 2)"), ("group", "Nom du groupe (THE BROWNING · MICS 1)"),
+                ("both", "Groupe + appareil (THE BROWNING · MICS 1 · Shure AD4Q)"))
+
+
+def ezrf_group_label(name):
+    """Nom de groupe du plan sans préfixe de scène ni horaire : « T2 - THE BROWNING 23:20 - 00:10 » -> « THE BROWNING »."""
+    x = str(name or "")
+    m = EZRF_PREFIX.match(x)
+    if m:
+        x = m.group(2)
+    x = EZRF_TIMES.sub("", x)
+    return re.sub(r"\s+", " ", x).strip(" -–:·|") or str(name or "").strip()
+
+
+def ezrf_entries(doc, skip_off=True, naming="dev"):
     """Lignes à importer -> [(nom, MHz, scène, groupe, clé appareil, note)]. Scène = groupe du document (préfixé de la zone
-    s'il y en a plusieurs), groupe = section ; nom vide -> « Appareil #n · k »."""
+    s'il y en a plusieurs), groupe = section ; nom vide -> « Appareil #n · k » (naming « dev »), « Groupe · section k »
+    (« group », 7.66.1, idée de Clément) ou les deux (« both ») ; un nom écrit dans le plan est toujours gardé."""
     multi = len({r["zone"] for r in doc["rows"]}) > 1
+    naming = naming if naming in ("dev", "group", "both") else "dev"
     out, seen = [], {}
     for r in doc["rows"]:
         if skip_off and r["off"]:
@@ -3563,14 +3581,25 @@ def ezrf_entries(doc, skip_off=True):
         sc = r["scene"]
         if multi and r["zone"]:
             sc = f"{r['zone']} · {sc}" if sc else r["zone"]
-        name = r["name"]
+        name, note = r["name"], r["note"]
         if not name:
             dn = (doc["devices"].get(r["dev"]) or {}).get("name", "") if r["dev"] else ""
-            base = " ".join(x for x in (dn, r["devno"]) if x) or (r["group"] or sc or ".ezrf3")
-            k = (sc, r["group"], base)
-            seen[k] = seen.get(k, 0) + 1
-            name = f"{base} · {seen[k]}"
-        out.append((name[:60], r["freq"], sc[:60], r["group"][:60], r["dev"], r["note"]))
+            dev = " ".join(x for x in (dn, r["devno"]) if x)
+            if naming == "dev" or not (r["scene"] or r["group"]):
+                base = dev or (r["group"] or sc or ".ezrf3")
+                k = (sc, r["group"], base)
+                seen[k] = seen.get(k, 0) + 1
+                name = f"{base} · {seen[k]}"
+            else:
+                lab = ezrf_group_label(r["scene"])
+                k = (sc, r["group"], "\0")
+                seen[k] = seen.get(k, 0) + 1
+                name = " · ".join(x for x in (lab, f"{r['group']} {seen[k]}".strip()) if x)
+                if naming == "both" and dn:
+                    name += f" · {dn}"
+                elif dev:                               # le modèle reste lisible dans la note
+                    note = " · ".join(x for x in (note, dev) if x)
+        out.append((name[:60], r["freq"], sc[:60], r["group"][:60], r["dev"], note))
     return out
 
 
@@ -12950,6 +12979,19 @@ class EzrfImportDialog(QtWidgets.QDialog):
             self._build_pending(lay)
         self._ent0 = ent
         self._build_map(lay, [x for x in scenes if x])
+        self.naming = None
+        if kind == ".ezrf3" and any(not r["name"] and r["dev"] for r in doc["rows"]):
+            nrow = QtWidgets.QHBoxLayout()
+            nrow.addWidget(QtWidgets.QLabel("Noms des fréquences sans nom :"))
+            self.naming = QtWidgets.QComboBox()
+            for k_, lab_ in EZRF_NAMINGS:
+                self.naming.addItem(lab_, k_)
+            self.naming.setToolTip("Les fréquences qui n'ont pas de nom dans le plan prennent le nom de leur appareil\n"
+                                   "(par défaut) ou celui de leur groupe : « THE BROWNING · MICS 1 » se lit mieux en régie.\n"
+                                   "Le modèle de l'appareil reste dans la note. Un nom écrit dans le plan est toujours gardé.")
+            self.naming.currentIndexChanged.connect(lambda *_: self._naming_changed())
+            nrow.addWidget(self.naming, 1)
+            lay.addLayout(nrow)
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Scène › groupe › fréquence", "MHz", "Appareil"])
         self.tree.setToolTip("Ce qui va arriver dans Mes fréquences : groupe du plan = scène, section = groupe."
@@ -13119,6 +13161,13 @@ class EzrfImportDialog(QtWidgets.QDialog):
     def entries(self):
         return ezrf_remap(self._ent0, self.mapping())
 
+    def naming_key(self):
+        return (self.naming.currentData() or "dev") if self.naming is not None else "dev"
+
+    def _naming_changed(self):
+        self._ent0 = ezrf_entries(self.doc, False, self.naming_key())
+        self._map_changed()
+
     def _map_changed(self):
         self._fill_tree()
         self._upd_plan_chk()
@@ -13227,7 +13276,7 @@ class EzrfImportDialog(QtWidgets.QDialog):
                     skip_off=self.skip.isChecked(), interf=self.interf.isChecked() and self.interf.isVisibleTo(self),
                     scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked(),
                     follow=self.follow.isChecked() and bool(self.path), kind=self.kind, map=self.mapping(),
-                    planning=self.plan_chk.isChecked() and self.plan_chk.isVisibleTo(self))
+                    naming=self.naming_key(), planning=self.plan_chk.isChecked() and self.plan_chk.isVisibleTo(self))
 
 
 class RxProfileEdit(QtWidgets.QDialog):
@@ -27364,7 +27413,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def apply_ezrf(self, doc, opts, source=".ezrf3", path=None):
         """Importe le plan : fréquences (scène = groupe du document, groupe = section), appareils posés sur les groupes,
         interférences en émetteurs extérieurs, scan de fond dans Scans par lieu. -> nombre de fréquences ajoutées."""
-        entries = ezrf_remap(ezrf_entries(doc, opts.get("skip_off", True)), opts.get("map"))   # 🗂 7.66 : rangement
+        entries = ezrf_remap(ezrf_entries(doc, opts.get("skip_off", True), opts.get("naming", "dev")), opts.get("map"))   # 🗂 7.66 : rangement
         keymap = self._ezrf_profiles(doc) if opts.get("profiles", True) else {}
         if opts.get("replace"):
             self.watch.clear()
@@ -27429,7 +27478,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ezrf_link = dict(path=str(path), mtime=os.path.getmtime(path), name=os.path.basename(str(path)),
                                       status=opts.get("status", ""), skip_off=bool(opts.get("skip_off", True)),
                                       kind=opts.get("kind") or ".ezrf3", manual=dict(opts.get("manual") or {}),
-                                      map=ezrf_map_norm(opts.get("map")))
+                                      map=ezrf_map_norm(opts.get("map")), naming=opts.get("naming", "dev"))
             except OSError:
                 self.ezrf_link = None
         msg = f"📥 Plan {opts.get('kind') or '.ezrf3'} : {added} fréquence(s) importée(s)"
@@ -27821,11 +27870,26 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.log_event(dict(w, note=note) if note else w, lvl, "INTERMOD" if w["im"] else "CONFLIT")
                     conflict = w
                 else:
-                    self.log_event(dict(w, note=seen) if seen else w, lvl, "OCCUPÉ")
+                    w["occ_log"] = False                # noté seulement s'il dure (OCC_LOG_S), voir plus bas
+                    if OCC_LOG_S <= 0 and not self.w_paused(w):
+                        w["occ_log"] = True
+                        self.log_event(dict(w, note=seen) if seen else w, lvl, "OCCUPÉ")
                     alert = w
             elif new == "occ":
                 w["peak"] = max(w["peak"] or lvl, lvl)
+                if (not keep_free and w.get("occ_log") is False and now - (w.get("since") or now) >= OCC_LOG_S
+                        and not self.w_paused(w)):
+                    w["occ_log"] = True
+                    nb, seen = w.pop("blips", 0), self.seen_by(f)
+                    note = " · ".join(x for x in (seen, f"+ {nb} passage(s) de moins de {OCC_LOG_S:.0f} s avant"
+                                                  if nb else "") if x)
+                    self.log_event(dict(w, note=note) if note else w, w["peak"], "OCCUPÉ")
+            elif prev == "occ" and not keep_free and w.get("occ_log") is False:
+                w["occ_log"] = None                     # occupation trop courte (ou micro en pause) : pas de ligne
+                w["blips"] = w.get("blips", 0) + (0 if self.w_paused(w) else 1)
+                w["im"] = ""
             elif prev == "occ":
+                w["occ_log"] = None
                 w["im"] = ""
                 # bilan de Clément (7.53) : « Libre » affichait le PIC de l'occupation (−69,7) et paraissait plus fort que
                 # le « OCCUPÉ » (−91,7) : on note le niveau ACTUEL, le pic va dans la note
@@ -29521,7 +29585,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.tnt_set_plan(doc.get("tv") or [], fname):
                 self.set_status(f"📺 Canaux TV du plan « {fname} » mis à jour : "
                                 f"{', '.join(map(str, self.tnt_cfg['plan'])) or 'aucun'}.")
-        d = ezrf_diff(ezrf_remap(ezrf_entries(doc, lk.get("skip_off", True)), lk.get("map")), self._ezrf_cur(lk))
+        d = ezrf_diff(ezrf_remap(ezrf_entries(doc, lk.get("skip_off", True), lk.get("naming", "dev")), lk.get("map")), self._ezrf_cur(lk))
         d["add"] = [e for e in d["add"] if not any(abs(w["freq"] - e[1]) < 1e-6 for w in self.watch)]
         if not (d["add"] or d["change"] or d["remove"]):
             self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » réenregistré : rien n'a changé dans la liste.")

@@ -980,6 +980,16 @@ check("ezrf3 -> lignes (zone en préfixe car 2 zones, nom vide -> appareil #n ·
        ("Essai RX Beta #1 · 1", 512.0, "Zone Nord · Plateau A", "Micros"),
        ("Ear 1", 530.25, "Zone Nord · Plateau A", "Ears"), ("Loge 1", 540.0, "Zone Sud · Loge", "Micros")])
 check("ezrf3 : sans ignorer les hors fonction", len(ns["ezrf_entries"](_ez, False)), 7)
+# 7.66.1 (idée de Clément) : nommer les fréquences sans nom d'après leur groupe (option de l'import)
+_eg = ns["ezrf_entries"](_ez, True, "group")
+check("ezrf3 : noms d'après le groupe (nom du plan gardé, modèle dans la note)",
+      [(e[0], e[5]) for e in _eg if e[1] == 512.0], [("Plateau A · Micros 1", "Essai RX Beta #1")])
+check("ezrf3 : noms donnés dans le plan gardés", [e[0] for e in _eg][:2], ["Chant 1", "Chant 2"])
+check("ezrf3 : groupe + appareil", [e[0] for e in ns["ezrf_entries"](_ez, True, "both") if e[1] == 512.0],
+      ["Plateau A · Micros 1 · Essai RX Beta"])
+check("ezrf3 : libellé de groupe sans préfixe ni horaire",
+      [ns["ezrf_group_label"](x) for x in ("T2 - THE BROWNING 23:20 - 00:10", "TERMINAL 1", "T1 - 111 15:00-15:40")],
+      ["THE BROWNING", "TERMINAL 1", "111"])
 for _bad in (b"<x/>", b"pas du xml", b"<EazyRFds></EazyRFds>"):
     try:
         ns["parse_ezrf3"](_bad)
