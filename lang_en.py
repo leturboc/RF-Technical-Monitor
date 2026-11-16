@@ -5767,3 +5767,12 @@ EXACT.update({
     "Orange": "Orange",
     "Vert": "Green",
 })
+
+# 7.65 carte : état de la surveillance d'une scène
+EXACT.update({
+    "Surveillance perdue": "Monitoring lost",
+    "Pas de mesure": "No measurement",
+    "Mesure partielle": "Partial measurement",
+    "{} sans mesure": "{} not measured",
+    "Plans": "Plans",
+})

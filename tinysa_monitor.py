@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.64.0"
+APP_VER = "7.65.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -6738,21 +6738,52 @@ def occupied_width(F, L, f, drop_db=20.0, span=0.5):
     return float(F[a]), float(F[z]), pk[0], pk[1]
 
 
+def scan_segments(F):
+    """Plages réellement mesurées d'un scan TRIÉ (une par bande, coupées aux trous de scan_gaps) -> [(début, fin)]."""
+    F = np.asarray(F, dtype=float)
+    if not len(F):
+        return []
+    cuts = [0, *[int(i) for i in scan_gaps(F)], len(F)]
+    return [(float(F[a]), float(F[b - 1])) for a, b in zip(cuts[:-1], cuts[1:]) if b > a]
+
+
+def covered(x, segs, pad=0.0):
+    """Masque : x (MHz, tableau) tombe dans une des plages mesurées segs (± pad MHz)."""
+    x = np.asarray(x, dtype=float)
+    m = np.zeros(x.shape, dtype=bool)
+    for a, b in segs:
+        m |= (x >= a - pad) & (x <= b + pad)
+    return m
+
+
+def interp_measured(F, L, x):
+    """Niveau de (F, L) TRIÉ aux fréquences x, NaN là où F n'a rien mesuré (hors plage, trou entre deux bandes) :
+    jamais d'interpolation par-dessus un trou (audit 7.64 : « disparu » annoncé dans une zone jamais mesurée)."""
+    x = np.asarray(x, dtype=float)
+    v = np.interp(x, F, L) if len(F) else np.full(x.shape, np.nan)
+    return np.where(covered(x, scan_segments(F)), v, np.nan)
+
+
 def compare_spectra(F1, L1, F2, L2, thr, margin=10.0):
     """Comparer deux spectres (ex. max hold de la balance et du show) : signaux au-dessus de thr présents dans l'un
     et pas dans l'autre (au moins margin dB de plus). -> (nouveaux dans 1, disparus = présents dans 2), listes de
-    scan_peaks."""
+    scan_peaks. Seulement là où les DEUX ont mesuré (7.65 : les trous entre bandes ne sont plus interpolés)."""
     F1, L1 = _valid(F1, L1)
     F2, L2 = _valid(F2, L2)
     if not len(F1) or not len(F2):
         return [], []
     o1, o2 = np.argsort(F1), np.argsort(F2)
     F1, L1, F2, L2 = F1[o1], L1[o1], F2[o2], L2[o2]
-    lo, hi = max(F1[0], F2[0]), min(F1[-1], F2[-1])
-    m1, m2 = (F1 >= lo) & (F1 <= hi), (F2 >= lo) & (F2 <= hi)
-    a1 = np.where(L1[m1] - np.interp(F1[m1], F2, L2) >= margin, L1[m1], -999.0)
-    a2 = np.where(L2[m2] - np.interp(F2[m2], F1, L1) >= margin, L2[m2], -999.0)
-    return scan_peaks(F1[m1], a1, thr), scan_peaks(F2[m2], a2, thr)
+    o21, o12 = interp_measured(F2, L2, F1), interp_measured(F1, L1, F2)
+    with np.errstate(invalid="ignore"):
+        a1 = np.where(np.isfinite(o21) & (L1 - o21 >= margin), L1, -999.0)
+        a2 = np.where(np.isfinite(o12) & (L2 - o12 >= margin), L2, -999.0)
+    return scan_peaks(F1, a1, thr), scan_peaks(F2, a2, thr)
+
+
+def _zone(p, pad):
+    w = float(p.get("width") or 0.0) / 2000.0
+    return (p["f"] - w - pad, p["f"] + w + pad)
 
 
 def scan_changes(FA, LA, FB, LB, thr, margin=10.0, step_db=6.0):
@@ -6760,7 +6791,8 @@ def scan_changes(FA, LA, FB, LB, thr, margin=10.0, step_db=6.0):
     par fréquence de dict(kind new|gone|up|down, f MHz, before dBm ou None, after dBm ou None, delta dB) :
     new = apparu (≥ margin dB au-dessus d'avant), gone = disparu, up / down = présent les deux fois mais monté /
     baissé d'au moins step_db. « apparu » = sous le seuil avant ; « disparu » = sous le seuil après. Seulement là où les
-    deux ont mesuré."""
+    deux ont mesuré (trous entre bandes exclus). 7.65 (audit) : un signal n'est écarté comme « déjà compté » que si SA
+    zone recouvre celle d'un événement déjà trouvé (avant : tout ce qui était à moins de 300 kHz)."""
     new, gone = compare_spectra(FB, LB, FA, LA, thr, margin)
     FA, LA = _valid(FA, LA)
     FB, LB = _valid(FB, LB)
@@ -6768,27 +6800,32 @@ def scan_changes(FA, LA, FB, LB, thr, margin=10.0, step_db=6.0):
         return []
     oa, ob = np.argsort(FA), np.argsort(FB)
     FA, LA, FB, LB = FA[oa], LA[oa], FB[ob], LB[ob]
-    lo, hi = max(FA[0], FB[0]), min(FA[-1], FB[-1])
-    out = []
+    pad = 0.5 * min(float(np.median(np.diff(FA))) if len(FA) > 1 else 0.0,
+                    float(np.median(np.diff(FB))) if len(FB) > 1 else 0.0)
+    out, zones = [], []
     for p in new:                                 # présent avant (au-dessus du seuil) = « plus fort », pas « apparu »
-        bf = float(np.interp(p["f"], FA, LA))
+        bf = float(interp_measured(FA, LA, [p["f"]])[0])
         out.append(dict(kind="new" if bf < thr else "up", f=p["f"], before=bf, after=p["level"]))
+        zones.append(_zone(p, pad))
     for p in gone:
-        af = float(np.interp(p["f"], FB, LB))
+        af = float(interp_measured(FB, LB, [p["f"]])[0])
         out.append(dict(kind="gone" if af < thr else "down", f=p["f"], before=p["level"], after=af))
-    seen = [x["f"] for x in out]
+        zones.append(_zone(p, pad))
 
-    def near(f):
-        return any(abs(f - g) < 0.3 for g in seen)
+    def overlaps(z):
+        return any(z[0] <= b and a <= z[1] for a, b in zones)
     for F1, L1, F2, L2, kind in ((FB, LB, FA, LA, "up"), (FA, LA, FB, LB, "down")):
         for p in scan_peaks(F1, L1, thr):
-            if not (lo <= p["f"] <= hi) or near(p["f"]):
+            z = _zone(p, pad)
+            if overlaps(z):
                 continue
-            other = float(np.interp(p["f"], F2, L2))
+            other = float(interp_measured(F2, L2, [p["f"]])[0])
+            if not np.isfinite(other):            # pas mesuré dans l'autre scan : on ne dit rien
+                continue
             if p["level"] - other >= step_db:
                 b_, a_ = (other, p["level"]) if kind == "up" else (p["level"], other)
                 out.append(dict(kind=kind, f=p["f"], before=b_, after=a_))
-                seen.append(p["f"])
+                zones.append(z)
     for x in out:
         x["delta"] = None if x["before"] is None or x["after"] is None else round(x["after"] - x["before"], 1)
     return sorted(out, key=lambda x: x["f"])
@@ -7501,6 +7538,7 @@ def heat_dir_color(choice, accent, hot_rgb=None):
         return choice.lower()
     return accent
 HEAT_REACHES = (90.0, 170.0, 300.0)   # portée du dégradé : serrée / normale / large (unités de carte)
+MAP_BG_MAX_B64 = 12_000_000  # plan embarqué dans un show : ≈ 9 Mo d'image au plus (base64)
 MAP_STEP = 40.0                   # pas de la grille (et de l'aimantation) en unités de carte
 HEAT_MAX = 2000
 
@@ -7510,26 +7548,45 @@ def map_key(kind, name):
     return f"{kind}:{name}"
 
 
+MAP_COORD_MAX = 1.0e6       # coordonnées de carte au-delà = fichier abîmé (7.65, audit : NaN / 1e100 acceptés avant)
+
+
+def _fin(v, lim=MAP_COORD_MAX):
+    """Nombre fini et raisonnable, sinon ValueError (NaN, inf, 1e100 d'un show abîmé ne passent plus)."""
+    x = float(v)
+    if not math.isfinite(x) or abs(x) > lim:
+        raise ValueError(v)
+    return x
+
+
 def map_cfg_norm(d):
     """Carte lue (config / show) -> dict propre : positions {clé: [x, y]}, plan de fond (chemin, opacité, échelle,
-    position), points de chaleur [{x, y, level, f, t}] (les HEAT_MAX derniers)."""
+    position), points de chaleur [{x, y, level, f, t}] (les HEAT_MAX derniers). Tout nombre non fini ou démesuré est
+    écarté (point / position ignoré, réglage laissé à sa valeur par défaut)."""
     out = dict(MAP_DEFAULT, pos={}, heat=[], bg_pos=[0.0, 0.0])
     if not isinstance(d, dict):
         return out
     for k, v in (d.get("pos") or {}).items():
         try:
             if isinstance(k, str) and ":" in k and len(v) == 2:
-                out["pos"][k[:80]] = [round(float(v[0]), 1), round(float(v[1]), 1)]
+                out["pos"][k[:80]] = [round(_fin(v[0]), 1), round(_fin(v[1]), 1)]
         except (TypeError, ValueError):
             continue
     out["bg"] = str(d.get("bg") or "")[:500]
+    for key, lo, hi in (("bg_op", 0.0, 1.0), ("bg_scale", 0.02, 20.0)):
+        try:
+            out[key] = min(hi, max(lo, _fin(d.get(key, out[key]))))
+        except (TypeError, ValueError):
+            pass
     try:
-        out["bg_op"] = min(1.0, max(0.0, float(d.get("bg_op", out["bg_op"]))))
-        out["bg_scale"] = min(20.0, max(0.02, float(d.get("bg_scale", 1.0))))
         bp = d.get("bg_pos") or [0, 0]
-        out["bg_pos"] = [float(bp[0]), float(bp[1])]
-    except (TypeError, ValueError, IndexError):
+        out["bg_pos"] = [_fin(bp[0]), _fin(bp[1])]
+    except (TypeError, ValueError, IndexError, KeyError):
         pass
+    bd = d.get("bg_data")
+    if isinstance(bd, str) and 0 < len(bd) <= MAP_BG_MAX_B64 and re.fullmatch(r"[A-Za-z0-9+/=\s]+", bd[:4096]):
+        out["bg_data"] = bd                        # plan embarqué dans le show (base64), voir map_bg_embed
+        out["bg_name"] = str(d.get("bg_name") or "plan.png")[:120]
     out["grid"] = bool(d.get("grid", True))
     for k in ("heat_iso", "heat_arrow", "heat_path", "heat_labels"):
         out[k] = bool(d.get(k, MAP_DEFAULT[k]))
@@ -7538,23 +7595,65 @@ def map_cfg_norm(d):
         else MAP_DEFAULT["heat_dir"]
     pal = d.get("heat_pal")
     out["heat_pal"] = pal if pal in [k for k, _n, _s in HEAT_PALETTES] else MAP_DEFAULT["heat_pal"]
-    try:
-        out["heat_op"] = min(0.95, max(0.1, float(d.get("heat_op", MAP_DEFAULT["heat_op"]))))
-        out["heat_dot"] = min(2.5, max(0.4, float(d.get("heat_dot", MAP_DEFAULT["heat_dot"]))))
-        out["heat_trail"] = min(6.0, max(0.5, float(d.get("heat_trail", MAP_DEFAULT["heat_trail"]))))
-    except (TypeError, ValueError):
-        pass
-    try:
-        out["heat_reach"] = min(500.0, max(40.0, float(d.get("heat_reach", MAP_DEFAULT["heat_reach"]))))
-    except (TypeError, ValueError):
-        pass
+    for key, lo, hi in (("heat_op", 0.1, 0.95), ("heat_dot", 0.4, 2.5), ("heat_trail", 0.5, 6.0),
+                        ("heat_reach", 40.0, 500.0)):
+        try:
+            out[key] = min(hi, max(lo, _fin(d.get(key, MAP_DEFAULT[key]))))
+        except (TypeError, ValueError):
+            pass
     for h in (d.get("heat") or [])[-HEAT_MAX:]:
         try:
-            out["heat"].append(dict(x=round(float(h["x"]), 1), y=round(float(h["y"]), 1), level=round(float(h["level"]), 1),
-                                    f=round(float(h.get("f") or 0.0), 4), t=float(h.get("t") or 0.0)))
-        except (TypeError, ValueError, KeyError):
+            lv, f, t = _fin(h["level"], 400.0), _fin(h.get("f") or 0.0, 1.0e5), _fin(h.get("t") or 0.0, 1.0e11)
+            if f < 0 or t < 0:
+                continue
+            out["heat"].append(dict(x=round(_fin(h["x"]), 1), y=round(_fin(h["y"]), 1), level=round(lv, 1),
+                                    f=round(f, 4), t=t))
+        except (TypeError, ValueError, KeyError, AttributeError):
             continue
     return out
+
+
+def map_scene_monitor(running, devs, states):
+    """🗺 7.65 : état de la SURVEILLANCE d'une scène sur la carte (à côté de l'état RF de ses micros) -> "off"
+    (arrêtée), "lost" (aucun de ses tinySA en ligne), "nodata" (aucun de ses micros mesuré), "partial" (certains
+    sans mesure), "ok". devs = [(n°, en ligne ?)] ; states = état de chaque micro (None = pas de mesure fraîche)."""
+    if not running:
+        return "off"
+    if devs and not any(live for _d, live in devs):
+        return "lost"
+    st = list(states)
+    if st and all(x is None for x in st):
+        return "nodata"
+    if any(x is None for x in st):
+        return "partial"
+    return "ok"
+
+
+def map_bg_embed(m, data, name):
+    """🗺 7.65 (audit : « le plan n'est pas dans le show ») : copie de la carte avec l'image du plan embarquée
+    (bg_data = base64, bg_name = nom du fichier) ; trop grosse ou vide -> carte inchangée."""
+    import base64
+    out = dict(m or {})
+    if data and len(data) * 4 // 3 + 4 <= MAP_BG_MAX_B64:
+        out["bg_data"] = base64.b64encode(bytes(data)).decode("ascii")
+        out["bg_name"] = re.sub(r"[^\w.\- ]", "_", str(name or "plan.png"))[-80:] or "plan.png"
+    return out
+
+
+def map_bg_extract(m):
+    """Plan embarqué d'une carte -> (octets, nom de fichier sûr) ou None ; la carte n'est pas modifiée."""
+    import base64
+    bd = (m or {}).get("bg_data")
+    if not bd:
+        return None
+    try:
+        data = base64.b64decode(bd, validate=False)
+    except (ValueError, TypeError):
+        return None
+    name = re.sub(r"[^\w.\- ]", "_", str((m or {}).get("bg_name") or "plan.png"))[-80:] or "plan.png"
+    if not re.search(r"\.(png|jpe?g|bmp|gif)$", name, re.I):
+        name += ".png"
+    return (data, name) if data else None
 
 
 def map_auto_place(keys, pos, step=MAP_STEP):
@@ -8005,10 +8104,7 @@ def diff_spectra(F1, L1, F2, L2):
         return None, None
     o1, o2 = np.argsort(F1), np.argsort(F2)
     F1, L1, F2, L2 = F1[o1], L1[o1], F2[o2], L2[o2]
-    cuts = [0, *scan_gaps(F2), len(F2)]
-    cover = np.zeros(len(F1), dtype=bool)
-    for a, b in zip(cuts[:-1], cuts[1:]):
-        cover |= (F1 >= F2[a]) & (F1 <= F2[b - 1])
+    cover = covered(F1, scan_segments(F2))
     if not cover.any():
         return None, None
     D = np.where(cover, L1 - np.interp(F1, F2, L2), np.nan)
@@ -18626,7 +18722,29 @@ class MapScene(QtWidgets.QGraphicsScene):
         pill = (TR("Arrêté") if not o.is_running() else TR("{} alarme(s)").format(al) if al
                 else TR("À surveiller") if tone in ("bad", "warn") else TR("OK"))
         dots = [o.tone_color(t) if o.is_running() else o.theme["st_none"] for t in tones]
+        # 7.65 (audit) : état de la SURVEILLANCE de la scène, séparé de l'état RF de ses micros : un vieil état vert ne
+        # doit jamais passer pour une surveillance qui marche (tinySA perdus, mesures périmées)
+        mon = map_scene_monitor(o.is_running(), self.scene_devs(name), [w.get("state") for w in ws])
+        if mon == "lost":
+            tone, pill = "warn", TR("Surveillance perdue")
+            dots = [o.theme["st_none"]] * len(tones)
+        elif mon == "nodata":
+            tone, pill = "warn", TR("Pas de mesure")
+            dots = [o.theme["st_none"]] * len(tones)
+        elif mon == "partial":
+            n_ = sum(1 for w in ws if w.get("state") is None)
+            sub = TR("{} micro(s)").format(len(ws)) + " · " + TR("{} sans mesure").format(n_)
+            if tone == "ok":
+                tone, pill = "warn", TR("Mesure partielle")
+            dots = [o.theme["st_none"] if w.get("state") is None else c_ for w, c_ in zip(ws, dots)]
         return tone, sub, pill, dots
+
+    def scene_devs(self, name):
+        """[(n° du tinySA, en ligne ?)] qui surveillent cette scène : ceux qui lui sont rattachés, sinon tous."""
+        o = self.owner
+        devs = o.dev_list()
+        att = [d for d in devs if name in o.dev_scenes.get(d, [])]
+        return [(d, d < len(o.dev_live) and bool(o.dev_live[d])) for d in (att or devs)]
 
     def refresh(self):
         o = self.owner
@@ -23297,6 +23415,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.reg_chk.setChecked(self.reg_only)
         self.mod_history = history_norm(data.get("history"))       # 🕘 7.63
         self.map_cfg = map_cfg_norm(data.get("map"))              # 🗺 7.64
+        self._map_bg_restore()
         if self._map_scene is not None:
             self._map_scene.sync()
         self._hist_rows = None                               # nouvelle référence au prochain tick (pas d'entrée)
@@ -23579,7 +23698,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def save_show_to(self, path):
         try:
-            doc = show_doc(self._collect_config(False), self.show_meta, self.ref_curves, APP_VER)
+            cfg_ = self._collect_config(False)
+            cfg_["map"] = self.map_for_show(cfg_.get("map"))     # 🗺 7.65 : plan de fond dans le show
+            doc = show_doc(cfg_, self.show_meta, self.ref_curves, APP_VER)
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             tmp = Path(str(path) + ".tmp")                # écriture sûre : jamais de show à moitié écrit
             tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -24400,7 +24521,8 @@ class MainWindow(QtWidgets.QMainWindow):
         names = []
         try:
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-                doc = show_doc(cfg, self.show_meta, self.ref_curves, APP_VER)
+                doc = show_doc(dict(cfg, map=self.map_for_show(cfg.get("map"))), self.show_meta, self.ref_curves,
+                               APP_VER)
                 z.writestr("show" + SHOW_EXT, json.dumps(doc, ensure_ascii=False, indent=1))
                 z.writestr("config_sans_secrets.json", json.dumps(config_public(cfg), ensure_ascii=False, indent=1,
                                                                   default=str))
@@ -24464,10 +24586,47 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------- 🗺 7.64 : carte du site
     def _map_cfg_dump(self):
         d = dict(getattr(self, "map_cfg", None) or map_cfg_norm(None))
+        d.pop("bg_data", None)                     # l'image n'est embarquée que dans les shows (map_for_show)
+        d.pop("bg_name", None)
         bg = self._map_scene.bg_item if getattr(self, "_map_scene", None) is not None else None
         if bg is not None:                         # le plan a pu être déplacé à la souris
             d["bg_pos"] = [round(bg.pos().x(), 1), round(bg.pos().y(), 1)]
         return d
+
+    def map_for_show(self, m):
+        """Carte à écrire dans un show / un ZIP : avec l'image du plan EMBARQUÉE (le show reste complet sur un autre
+        PC ; le plan n'a plus besoin d'être au même chemin)."""
+        m = dict(m or {})
+        p_ = m.get("bg") or ""
+        try:
+            if p_ and Path(p_).is_file():
+                return map_bg_embed(m, Path(p_).read_bytes(), Path(p_).name)
+        except OSError:
+            pass
+        return m
+
+    def _map_bg_restore(self):
+        """Show ouvert sur ce PC : son plan embarqué est recopié dans Documents/TinySA Monitor/Plans (si le chemin
+        d'origine n'existe pas ici) ; config.json ne garde que le chemin."""
+        m = self.map_cfg
+        got = map_bg_extract(m)
+        m.pop("bg_data", None)
+        name = m.pop("bg_name", None)
+        if not got:
+            return
+        data, name = got
+        try:
+            if m.get("bg") and Path(m["bg"]).is_file() and Path(m["bg"]).read_bytes() == data:
+                return
+            import hashlib
+            d_ = SHOW_DIR.parent / "Plans"
+            d_.mkdir(parents=True, exist_ok=True)
+            dst = d_ / f"{hashlib.sha1(data).hexdigest()[:10]}_{name}"
+            if not dst.is_file():
+                dst.write_bytes(data)
+            m["bg"] = str(dst)
+        except OSError:
+            pass
 
     def map_scene(self):
         if self._map_scene is None:
@@ -24494,7 +24653,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def map_png(self, maxw=900):
         """Image de la carte (pour le téléphone et l'export) -> (octets PNG, rectangle de carte représenté)."""
         sc = self.map_scene()
-        sc.sync()
+        if sc.unplaced():                          # 7.65 (audit) : nouvelle scène / nouveau tinySA posé même si la
+            sc.auto_place()                        # carte du PC est fermée (sinon absent de l'image du téléphone)
+        else:
+            sc.sync()
+        sc.refresh()                               # états à jour (refresh ne tourne d'habitude que fenêtre ouverte)
         r = sc.itemsBoundingRect()
         if r.isEmpty():
             return b"", None

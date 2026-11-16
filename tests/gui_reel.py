@@ -5,7 +5,7 @@ dialogues, capture des PNG et relève les exceptions Qt. Complète les smoke_tes
 
 Sous Linux il faut PySide6 + libEGL/libGL (apt install libegl1 libgl1 libxkbcommon0 fonts-noto-color-emoji).
 Ne remplace pas un essai sur Windows : sons, vrai port série, double écran et rendu natif ne sont pas testés."""
-import os, re, sys, tempfile, traceback, importlib.util, time
+import os, json, re, sys, tempfile, traceback, importlib.util, time
 import numpy as np
 if sys.platform != "win32":       # Windows : vrai rendu (le mode offscreen n'y a aucune police)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -2320,6 +2320,32 @@ _mw.fit()
 wait(200)
 shot(_mw, "carte_site")
 _mw.close()
+# ---- 7.65 (audit) : carte fermée -> nouvelle scène quand même sur l'image du téléphone ; plan embarqué dans le show ;
+# scène dont les tinySA sont perdus = « Surveillance perdue » (pas un vieil état vert)
+win.scenes.append({"name": "Scène fermée", "color": "#888888", "groups": []})
+win.map_png()
+check("🗺 7.65 : scène ajoutée carte fermée -> posée sur l'image web", m.map_key("scene", "Scène fermée") in _ms.nodes
+      and m.map_key("scene", "Scène fermée") in win.map_cfg["pos"])
+win.scenes.pop()
+_ms.sync()
+if win.is_running():
+    _live0 = list(win.dev_live)
+    win.dev_live[:] = [False] * len(win.dev_live)
+    _st = _ms.scene_state(_sc0)
+    check("🗺 7.65 : tinySA perdus -> la scène dit « Surveillance perdue »", _st[2] == m.TR("Surveillance perdue")
+          and _st[0] == "warn", str(_st[:3]))
+    win.dev_live[:] = _live0
+_bg0 = m.Path(win.map_cfg["bg"]).read_bytes() if win.map_cfg.get("bg") else b""
+_shp = os.path.join(tmp, "carte_plan.tsashow")
+win.save_show_to(_shp)
+_doc = json.loads(m.Path(_shp).read_text(encoding="utf-8"))
+check("🗺 7.65 : plan de fond embarqué dans le .tsashow (pas seulement son chemin)",
+      bool(_bg0) and bool(_doc["show"]["map"].get("bg_data")) and "bg_data" not in win._collect_config()["map"])
+win.map_cfg["bg"] = os.path.join(tmp, "plan_disparu.png")        # le show ouvert sur un autre PC
+win.open_show(_shp, ask=False)
+_nb = win.map_cfg.get("bg") or ""
+check("🗺 7.65 : show rouvert ailleurs -> plan recopié et rechargé", _nb and m.Path(_nb).is_file()
+      and m.Path(_nb).read_bytes() == _bg0 and "bg_data" not in win.map_cfg and _ms.bg_item is not None, _nb)
 win.set_dev_scenes(_d0, _prev_ds)
 _ns = win.open_night_summary()
 check("7.61 résumé de la nuit : page écrite", _ns is not None and "coup d'œil" in _ns.read_text(encoding="utf-8"), str(_ns))
