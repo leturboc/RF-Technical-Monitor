@@ -5776,3 +5776,60 @@ EXACT.update({
     "{} sans mesure": "{} not measured",
     "Plans": "Plans",
 })
+
+# 7.66 scans par lieu : sélection multiple, masquer / afficher
+EXACT.update({
+    "Afficher les scans choisis": "Show the chosen scans",
+    "Afficher seulement ceux-ci": "Show only these",
+    "Afficher seulement les scans choisis": "Show only the chosen scans",
+    "Choisir tous les scans de « {} »": "Choose all scans of \"{}\"",
+    "Coche les scans à afficher et à fusionner ; clique un scan pour voir ses infos et ses signaux.\nCtrl + clic / Maj + clic / Ctrl+A : plusieurs scans à la fois (supprimer, masquer, ranger…).\nEspace : afficher / masquer les scans choisis · clic droit : toutes les actions.":
+        "Tick the scans to show and merge; click a scan to see its info and signals.\nCtrl + click / Shift + click / Ctrl+A: several scans at once (delete, hide, file…).\nSpace: show / hide the chosen scans · right-click: all actions.",
+    "Masquer les scans choisis": "Hide the chosen scans",
+    "Oublie les scans sélectionnés (Suppr) · Ctrl+Z pour annuler.": "Forgets the selected scans (Del) · Ctrl+Z to undo.",
+    "Ranger dans une scène… ({})": "File under a stage… ({})",
+    "Scène de {} :": "Stage of {}:",
+    "Seulement {} scan(s) affiché(s).": "Only {} scan(s) shown.",
+    "Tout afficher": "Show all",
+    "Tout choisir (Ctrl+A)": "Choose all (Ctrl+A)",
+    "Tout masquer": "Hide all",
+    "Choisis d'abord un ou plusieurs scans dans la liste.": "First choose one or more scans in the list.",
+    "{} scan(s) affiché(s).": "{} scan(s) shown.",
+    "{} scan(s) masqué(s) : plus tracés ni fusionnés (toujours gardés).": "{} scan(s) hidden: no longer drawn or merged (still kept).",
+    "{} scans": "{} scans",
+    "{} scans choisis": "{} scans chosen",
+    "{} scans rangés dans « {} ».": "{} scans filed under \"{}\".",
+    "{} scans supprimés · Ctrl+Z pour annuler.": "{} scans deleted · Ctrl+Z to undo.",
+    "👁 Afficher": "👁 Show",
+    "👁 Afficher ({})": "👁 Show ({})",
+    "🗑 Supprimer ({})": "🗑 Delete ({})",
+    "🙈 Masquer ({})": "🙈 Hide ({})",
+    "Afficher / masquer plusieurs scans d'un coup. Un scan masqué n'est plus tracé (ici et sur le\nspectre principal) ni fusionné ; il reste gardé et se réaffiche quand tu veux.":
+        "Show / hide several scans at once. A hidden scan is no longer drawn (here and on the main\nspectrum) nor merged; it is still kept and can be shown again any time.",
+})
+
+# 7.66 import de plan : ranger les scènes, planning d'après les noms
+EXACT.update({
+    "Arrive dans la scène": "Goes into stage",
+    "Chaque groupe dont le nom contient un horaire devient un créneau de 🎬 Planning : en dehors\nde son passage (avec les marges du planning), ses micros éteints ne déclenchent pas\nd'alarme ABSENT. Tu peux tout modifier ensuite dans 🎚 Surveiller › 🎬 Planning.":
+        "Each group whose name contains times becomes a 🎬 Planning slot: outside its set (with the\nplanning margins), its switched-off mics do not raise an ABSENT alarm.\nYou can change everything afterwards in 🎚 Monitor › 🎬 Planning.",
+    "Choisis pour chaque scène du plan la scène où elle arrive (ex. un passage dans sa vraie scène).":
+        "Choose for each stage of the plan the stage it goes into (e.g. a set into its real stage).",
+    "Garder les sections (MICS, IEMS…)": "Keep the sections (MICS, IEMS…)",
+    "Nom d'origine (le passage)": "Original name (the set)",
+    "Passage · section": "Set · section",
+    "Ranger automatiquement": "Sort automatically",
+    "Reprend le rangement proposé (préfixe « T2 » = initiales de « TERMINAL 2 »).":
+        "Restores the proposed sorting (prefix \"T2\" = initials of \"TERMINAL 2\").",
+    "Scène d'arrivée : tape un nom ou choisis-en une (scènes du plan et de ta liste).\nGroupe : garder les sections du plan (MICS / IEMS), prendre le nom d'origine (le passage),\nou les deux (« passage · MICS »).":
+        "Target stage: type a name or pick one (stages of the plan and of your list).\nGroup: keep the plan's sections (MICS / IEMS), take the original name (the set),\nor both (\"set · MICS\").",
+    "Scène du plan": "Stage in the plan",
+    "Tout laisser comme dans le plan": "Leave everything as in the plan",
+    "Une scène par scène du plan, sections en groupes (comme avant).": "One stage per stage of the plan, sections as groups (as before).",
+    "{} scène(s) rangée(s) toute(s) seule(s) (« T2 - … » va dans « TERMINAL 2 »). Change la scène d'arrivée ou le groupe ligne par ligne ; l'aperçu en dessous suit.":
+        "{} stage(s) sorted automatically (\"T2 - …\" goes into \"TERMINAL 2\"). Change the target stage or the group row by row; the preview below follows.",
+    "🎬 Créer le planning d'après les horaires des noms ({} créneau(x))": "🎬 Create the planning from the times in the names ({} slot(s))",
+    "🎬 Créer le planning d'après les horaires des noms (« 15:00 - 15:40 »)": "🎬 Create the planning from the times in the names (\"15:00 - 15:40\")",
+    "🗂 Ranger les scènes du plan": "🗂 Sort the plan's stages",
+    ", {} créneau(x) ajouté(s) au planning": ", {} slot(s) added to the planning",
+})
