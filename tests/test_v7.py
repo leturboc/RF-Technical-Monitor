@@ -1774,5 +1774,34 @@ check("sauvegarde : fichiers récents d'abord, 7 jours, plafond", ns["bundle_pic
     [("vieux", 10, 0.0), ("a", 30e6, 9e6), ("b", 40e6, 9e6 - 1), ("c", 10, 9e6 - 2)], 9e6 + 3600, max_mb=60),
       ["a", "c"])
 
+# ---- 7.64 : carte du site, carte de chaleur
+_mc = ns["map_cfg_norm"](dict(pos={"scene:A": [10, 20], "bad": [1, 2], "dev:0": ["x", 1]}, bg="plan.png", bg_op=3,
+                              heat=[dict(x=1, y=2, level=-60, f=600.125, t=5), dict(x="?")]))
+check("carte : positions propres, opacité bornée, points de chaleur relus",
+      (_mc["pos"], _mc["bg"], _mc["bg_op"], len(_mc["heat"])), ({"scene:A": [10.0, 20.0]}, "plan.png", 1.0, 1))
+check("carte : config vide", ns["map_cfg_norm"](None)["pos"], {})
+_ap = ns["map_auto_place"](["scene:A", "scene:B", "dev:0", "scene:C"], {"scene:C": [0.0, 0.0]})
+check("carte : mise en place auto (scènes en haut, tinySA dessous, à droite de l'existant, l'existant ne bouge pas)",
+      (sorted(_ap), _ap["scene:A"][1], _ap["dev:0"][1] > 0, _ap["scene:A"][0] > 0, _ap["scene:B"][0] > _ap["scene:A"][0]),
+      (["dev:0", "scene:A", "scene:B"], 0.0, True, True, True))
+check("carte : aimantation", ns["map_snap"](55, -21), [40.0, -40.0])
+_hp = [dict(x=0, y=0, level=-90, f=600.125, t=1), dict(x=1, y=1, level=-50, f=600.125, t=2),
+       dict(x=2, y=2, level=-70, f=650.0, t=3)]
+check("chaleur : points d'une fréquence", len(ns["heat_for"](_hp, 600.125, 0.05)), 2)
+check("chaleur : fréquences (la plus récente d'abord)", ns["heat_freqs"](_hp), [650.0, 600.125])
+check("chaleur : échelle (10 dB au moins)", (ns["heat_scale"]([-90, -50]), ns["heat_scale"]([-60, -58])),
+      ((-90.0, -50.0), (-64.0, -54.0)))
+check("chaleur : couleurs bleu → jaune → rouge", (ns["heat_rgb"](-90, -90, -50), ns["heat_rgb"](-70, -90, -50),
+                                                  ns["heat_rgb"](-50, -90, -50)),
+      ((59, 130, 246), (250, 204, 21), (239, 68, 68)))
+check("chaleur : le point le plus fort", ns["heat_hot"](_hp)["level"], -50)
+check("chasse : « je suis ici » validé", ns["hunt_request"](dict(action="mark", x=0.25, y=1)), dict(action="mark", x=0.25, y=1.0))
+for _bad in (dict(action="mark", x=2, y=0), dict(action="mark", x="a", y=0)):
+    try:
+        ns["hunt_request"](_bad)
+        check("chasse : position hors plan refusée", True, False)
+    except (ValueError, TypeError):
+        check("chasse : position hors plan refusée", True, True)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

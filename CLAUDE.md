@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.63.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.64.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1250,6 +1250,30 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   avant `class ReplaceDialog`).
   Testé : test_v7 (PURE), gui_reel (QR relu par OpenCV, dupliquer, historique, ZIP sans secret, avant / après).
   **Pas essayé par Clément** (QR à scanner avec un vrai téléphone).
+- **7.64.0 (Clément : « cartographie avec les différents tiny, un peu en Araneo » = logiciel réseau de Luminex : canevas,
+  glisser-déposer, plan facultatif ; « go 1 et 3 »)** :
+  - **🗺 Carte du site** : PURE `MAP_DEFAULT`, `MAP_STEP` (40), `map_key("scene"|"dev", nom)`, `map_cfg_norm` (pos
+    {clé: [x, y]}, bg / bg_op / bg_scale / bg_pos, grid, heat ≤ `HEAT_MAX`), `map_auto_place` (scènes en haut, tinySA
+    dessous, à droite de l'existant), `map_snap`. Qt (placées AVANT `ReplaceDialog`, hors des morceaux lus par
+    test_reseau / test_alertes) : `MapNode` (QGraphicsObject glissable, couleur = `tone_color` de la scène / tinySA en
+    ligne, bande = couleur de la scène), `MapScene` (`sync`, `refresh` (chaque seconde si la fenêtre est visible),
+    `update_links` (courbes tinySA → `dev_scenes`, pointillés si perdu), `sync_bg`, `sync_heat`, `node_dropped` (tinySA
+    déposé SUR une scène → `toggle_dev_scene`), `node_open` (scène → `set_scope`), `mark(x, y)`), `MapView` (grille dans
+    `drawBackground`, molette = zoom, Ctrl + molette = taille du plan, fond = déplacement, dépôt mime
+    `application/x-tsm-map`), `MapPalette` (« À placer », glisser), `MapWindow` (vraie fenêtre, `self._map`).
+    MainWindow : `self.map_cfg` (config sur la ligne `coord_tools=` via `_map_cfg_dump`, SHOW_KEYS « map » ; modèle de show
+    : points vidés ; nouveau show : carte vidée), `map_scene()` (créée à la demande), `open_map` (1re fois : tout posé),
+    `map_png(maxw)` → (PNG, rectangle). Menus 🎚 Surveiller › Pendant et 🔌 Matériel › Mes tinySA.
+  - **🔥 Carte de chaleur** : PURE `heat_for`, `heat_freqs`, `heat_scale` (10 dB mini), `heat_rgb` (bleu → jaune → rouge),
+    `heat_hot` ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : « 📍 Marquer
+    ici » + clic. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
+    (`WebServer(get_map=…)`, vues chasse ou terrain partagées) = `self._map_png` refait toutes les 5 s si quelqu'un regarde
+    « chasse » (`_map_web_tick`) ; `map_mark_rel` (image → carte via `_map_rect`), `map_marks_rel` → `hunt_state` (`map`,
+    `map_t`, `marks`) ; vue Chasse : « 🗺 Où suis-je ? » (`#hmi`, `#hdots`, `huntCmd`, `huntMark`). GPS du téléphone PAS
+    utilisé (page en HTTP : le navigateur refuse la position).
+  Testé : test_v7 (PURE), gui_reel (posé d'office, tinySA déposé sur une scène, plan, point refusé sans chasse, point avec
+  la chasse en démo, « je suis ici » par l'image, PNG), test_alertes (vue Chasse dans Chromium : plan affiché, points,
+  toucher le plan → `mark` x / y). **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

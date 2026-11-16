@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.63.0"
+APP_VER = "7.64.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4917,7 +4917,8 @@ SHOW_KEYS = ("bands", "watch", "scenes", "statuses", "scope", "focus", "strong_o
              "state_cur", "ezrf_link", "thr_auto", "auto_occ", "auto_weak",
              "user_presets", "persist", "hold", "alarm_timing",      # 7.57 : préréglages perso + leurs réglages
              "tnt",                                                  # 7.58 : lieu du show pour les émetteurs TNT
-             "history")                                              # 7.63 : 🕘 historique des modifications
+             "history",                                              # 7.63 : 🕘 historique des modifications
+             "map")                                                  # 7.64 : 🗺 carte du site
 SHOW_META = ("name", "venue", "date_from", "date_to", "notes")
 # 7.57 (Clément : « un mode préférences utilisateur, qu'on puisse se passer les préférences : affichage, seuils,
 # préréglages perso… comme des bases user ») : ce qu'un 👤 profil utilisateur emporte. PAS le show (fréquences, scènes,
@@ -5028,6 +5029,8 @@ def show_template(doc):
     sh = {k: v for k, v in doc["show"].items() if k not in TEMPLATE_DROP}
     if isinstance(sh.get("tnt"), dict):
         sh["tnt"] = dict(sh["tnt"], place="", manual={}, plan=[], plan_src="")
+    if isinstance(sh.get("map"), dict):                  # 🗺 la carte (positions, plan) reste ; les points de chaleur non
+        sh["map"] = dict(sh["map"], heat=[])
     m = doc.get("meta") or {}
     return dict(doc, show=sh, ref=[], meta=dict({k: "" for k in SHOW_META}, venue=str(m.get("venue") or "")),
                 template=str(m.get("name") or ""))
@@ -6127,6 +6130,13 @@ async function hunt(action){let pin=LS.get("pin","");if(!pin){pin=prompt("Code P
  if(r.ok){LS.set("pin",pin);tick();return}
  if(r.status===403)try{localStorage.removeItem("pin")}catch(x){}
  alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou commande à distance désactivée sur le PC).":"Erreur "+r.status)}
+// ---------- 🗺 « je suis ici » sur le plan (carte de chaleur) : même code PIN que la chasse
+async function huntCmd(b){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ let r;try{r=await post("chasse",Object.assign({pin:pin},b))}catch(e){alert("PC injoignable");return}
+ if(r.ok){LS.set("pin",pin);tick();return}
+ if(r.status===403)try{localStorage.removeItem("pin")}catch(x){}
+ alert(r.status===429?"Trop d'essais : réessaie dans une minute.":r.status===403?"Code faux (ou commande à distance désactivée sur le PC).":"Erreur "+r.status)}
+function huntMark(x,y){const h=D.state.hunt||{};if(!h.on){alert("Lance d'abord la chasse : le point note le niveau mesuré.");return}huntCmd({action:"mark",x:x,y:y})}
 // ---------- 🎒 terrain : le tinySA volant dit où il est, et garde des scans (code PIN)
 async function terrain(action,extra){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
  const b=Object.assign({pin:pin,action:action,dev:parseInt($("#td").value||"0")},extra||{});
@@ -6157,10 +6167,12 @@ function mount(v){const el=$("#view");
   $("#band").onchange=()=>{LS.set("band",$("#band").value);wf=null;pers=null;draw()};
   const rmc=$("#rm");if(rmc){rmc.checked=LS.get("rm","")==="1";rmc.onchange=()=>{LS.set("rm",rmc.checked?"1":"");pers=null;draw()}}["mh","mk"].forEach(i=>{const c=$("#"+i);if(c)c.onchange=()=>draw()});
   const cv=$("#cv");cv.onpointermove=cv.onpointerdown=e=>readout(e);cv.onpointerleave=()=>{$("#rd").textContent=""};return}
- if(v==="chasse"){const h=D.state.hunt||{};el.innerHTML=`<div class="tools"><input class="in" id="hf" type="number" step="0.001" inputmode="decimal" value="${h.f||""}" placeholder="MHz" style="max-width:140px"><select class="in" id="hs">${[1,2,5,10].map(x=>`<option value="${x}"${x==(h.span||2)?" selected":""}>± ${x/2} MHz</option>`).join("")}</select><select class="in" id="hd">${(h.devs||[]).map((n,i)=>`<option value="${i}"${i==(h.dev!=null?h.dev:(h.devs||[]).length-1)?" selected":""}>${esc(n)}</option>`).join("")}</select><label class="sw"><input type="checkbox" id="hfo"${h.follow?" checked":""}> Suivre le plus fort</label></div><div class="tools"><button class="btn pri" id="hgo" style="width:auto;margin:0"></button><button class="btn" id="hrs">↺ Max à zéro</button><label class="sw"><input type="checkbox" id="hmu"> Muet</label></div><div class="hb"><div class="lv" id="hl">—</div><div class="bar"><i id="hbar" style="width:0%"></i></div><div class="sub" id="hsub">Branche le tinySA portable, choisis la fréquence puis « Chasser ». Le téléphone bippe plus vite et plus aigu quand tu te rapproches.</div></div>`;
+ if(v==="chasse"){const h=D.state.hunt||{};el.innerHTML=`<div class="tools"><input class="in" id="hf" type="number" step="0.001" inputmode="decimal" value="${h.f||""}" placeholder="MHz" style="max-width:140px"><select class="in" id="hs">${[1,2,5,10].map(x=>`<option value="${x}"${x==(h.span||2)?" selected":""}>± ${x/2} MHz</option>`).join("")}</select><select class="in" id="hd">${(h.devs||[]).map((n,i)=>`<option value="${i}"${i==(h.dev!=null?h.dev:(h.devs||[]).length-1)?" selected":""}>${esc(n)}</option>`).join("")}</select><label class="sw"><input type="checkbox" id="hfo"${h.follow?" checked":""}> Suivre le plus fort</label></div><div class="tools"><button class="btn pri" id="hgo" style="width:auto;margin:0"></button><button class="btn" id="hrs">↺ Max à zéro</button><label class="sw"><input type="checkbox" id="hmu"> Muet</label></div><div class="hb"><div class="lv" id="hl">—</div><div class="bar"><i id="hbar" style="width:0%"></i></div><div class="sub" id="hsub">Branche le tinySA portable, choisis la fréquence puis « Chasser ». Le téléphone bippe plus vite et plus aigu quand tu te rapproches.</div></div><div class="tools hidden" id="hmt"><b>🗺 Où suis-je ?</b></div><div class="sub hidden" id="hmh">Touche le plan là où tu es : le niveau de la chasse y est noté (carte de chaleur sur le PC).</div><div id="hmap" class="hidden" style="position:relative;margin:8px 0"><img id="hmi" alt="" style="width:100%;border-radius:12px;display:block;cursor:crosshair"><div id="hdots"></div></div><div class="tools"><button class="btn hidden" id="hun">↶ Retirer mon dernier point</button></div>`;
   $("#hd").classList.toggle("hidden",(h.devs||[]).length<2);
   $("#hgo").onclick=()=>{huntAudio();const on=D.state.hunt&&D.state.hunt.on;hunt(on?"stop":"start")};
-  $("#hrs").onclick=()=>hunt("reset");return}
+  $("#hrs").onclick=()=>hunt("reset");
+  $("#hmi").onclick=e=>{const r=e.target.getBoundingClientRect();huntMark((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height)};
+  $("#hun").onclick=()=>huntCmd({action:"unmark"});return}
  if(v==="tech"){el.innerHTML=`<div id="tlog" class="hb hidden"><b>🛠 Accès Tech</b><div class="sub">Réservé à l’équipe HF : mot de passe Tech, puis accord sur le PC de surveillance.</div><div class="tools"><input class="in" id="tpw" type="password" placeholder="Mot de passe Tech" autocomplete="current-password"><button class="btn pri" id="tgo" style="width:auto;margin:0">Demander l’accès</button></div><div class="sub" id="terr"></div></div><div id="twait" class="hb hidden"><b>⏳ En attente</b><div class="sub">Accepte la demande sur le PC de surveillance (fenêtre « Accès Tech »).</div></div><div id="toff" class="hb hidden"><div class="sub">Page Tech désactivée : règle un mot de passe Tech sur le PC (🔔 Alertes et page web).</div></div><div id="tapp" class="hidden"><div class="tools"><b id="trun"></b><button class="btn pri" id="tstart" style="width:auto;margin:0">▶ Démarrer</button><button class="btn" id="tstop">■ Arrêter</button><button class="btn" id="tsnz">🔕 Silence 15 min</button><button class="btn" id="tack">✔ Tout acquitter</button><button class="btn" id="tsave">💾 Enregistrer</button><button class="btn" id="tout">Quitter Tech</button></div><div class="tools hidden" id="tstb"><b>📸 État</b><select class="in" id="tstate"></select></div><div class="mut" id="tmsg2" style="margin-bottom:12px"></div><div class="tools"><b>Seuils</b><label class="sw">Occupé au-dessus de <input class="in" id="tocc" type="number" step="1" style="width:90px;min-width:0;flex:none"> dBm</label><label class="sw"><input type="checkbox" id="twon"> Faible dès</label><input class="in" id="twk" type="number" step="1" style="width:90px;min-width:0;flex:none"><label class="sw">TX absent après <input class="in" id="tabs" type="number" step="1" style="width:80px;min-width:0;flex:none"> s</label><button class="btn" id="tthr">Appliquer</button></div><div class="tools"><b>📡 Mes tinySA</b></div><div class="alist" id="tdevs"></div><div id="tsg" class="hb hidden"></div><div class="tools"><b>⌨ Ajouter des micros</b></div><textarea class="in" id="tqa" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:8px" placeholder="HF1 558.2, HF2 574, IEM 606.5 PSM — ou colle un message"></textarea><div class="tools"><select class="in" id="tast"></select><input class="in" id="tasc" list="tscl" placeholder="Scène"><input class="in" id="tagr" list="tgrl" placeholder="Groupe"><datalist id="tscl"></datalist><datalist id="tgrl"></datalist><button class="btn pri" id="tadd" style="width:auto;margin:0">＋ Ajouter</button></div><div class="tools"><b>📋 Fréquences</b><input class="in" id="tq" placeholder="Chercher…"></div><div class="alist" id="tws"></div><div class="tools"><b>👥 Connectés</b></div><div class="alist" id="tcl"></div></div>`;
   techMount();return}
  if(v==="terrain"){el.innerHTML=`<div class="tools"><b>📍 Où est ce tinySA ?</b><select class="in" id="td"></select></div><div class="tools" id="tsc"></div><div class="tools"><button class="btn" id="tall">☑ Toutes</button><button class="btn pri" id="tap" style="width:auto;margin:0">📡 Ce tinySA est ici</button></div><div class="hb"><div class="sub" id="tlive"></div><div class="tools"><input class="in" id="tlab" placeholder="Étiquette (facultatif) : jardin, régie…" maxlength="40"><button class="btn pri" id="tsv" style="width:auto;margin:0">💾 Garder ce scan</button><button class="btn" id="trs">↺ Nouveau scan ici</button></div><div class="sub" id="tmsg"></div></div><div class="tools"><b>📈 Ce que voit le tinySA</b><label class="sw"><input type="checkbox" id="rm" checked> Rémanence</label><label class="sw"><input type="checkbox" id="mk"> Mes fréquences</label><select class="in" id="tmh"></select></div><div class="plot"><canvas id="cv"></canvas><div class="read" id="rd"></div></div><div class="legend" id="lg"></div><div class="tools"><b>📊 Scans gardés (pour la coordination)</b></div><div class="alist" id="tsaved"></div>`;
@@ -6208,6 +6220,10 @@ function update(v){const st=D.state;
   $("#hbar").style.width=(h.on&&h.level!=null?Math.max(0,Math.min(100,(h.level+110)/90*100)):0)+"%";
   if(!h.on&&h.msg)$("#hsub").textContent=h.msg;
   if(h.on)$("#hsub").textContent=(h.level==null?"Attends le premier balayage…":"Pic à "+h.fpk.toFixed(3)+" MHz"+(h.best!=null?" · max vu "+h.best_txt+" ("+(h.level-h.best).toFixed(1)+" dB)":""))+" · "+(h.devs&&h.devs[h.dev]||"");
+  ["#hmt","#hmh","#hmap","#hun"].forEach(id=>$(id).classList.toggle("hidden",!h.map));
+  const mi=$("#hmi");if(h.map&&mi.dataset.t!==String(h.map_t)){mi.dataset.t=String(h.map_t);mi.src="carte.png?t="+h.map_t}
+  const mk=JSON.stringify(h.marks||[]);if($("#hdots").dataset.k!==mk){$("#hdots").dataset.k=mk;const ms=h.marks||[],lv=ms.map(m=>m.level),lo=Math.min(...lv),hi=Math.max(...lv);
+   $("#hdots").innerHTML=ms.map(m=>{const t=hi>lo?(m.level-lo)/(hi-lo):1,c=t<.5?"#3b82f6":t<.8?"#facc15":"#ef4444";return`<i style="position:absolute;left:${m.x*100}%;top:${m.y*100}%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:${c};border:2px solid #fff"></i>`}).join("")}
   huntBeep(h.on&&!$("#hmu").checked?h.level:null);return}
  if(v==="tech"){techUpdate();return}
  if(v==="terrain"){const T=st.terrain||{},ds=T.devs||[],td=$("#td"),box=$("#tsc"),scs=T.scenes||[];
@@ -7691,6 +7707,7 @@ STEPS = (
       ("▶ Démarrer la surveillance", "step_monitor"),
       ("🖥 Mode Show (plein écran, l'essentiel)  F10", "open_show_mode"),
       ("🧱 Mur de fréquences (2ᵉ écran)", "open_wall"),
+      ("🗺 Carte du site (scènes, tinySA, carte de chaleur)…", "open_map"),
       ("§Un micro est brouillé ?", None),
       ("🆘 Remplacer ce micro (3 propositions, 1 clic)…", "open_replace"),
       ("🆘 Fréquence de secours (recherche détaillée)…", "open_rescue"),
@@ -7714,6 +7731,7 @@ STEPS = (
      "mesure, calibration, générateur, diagnostic.",
      (("§Mes tinySA", None),
       ("📡 Mes tinySA et les scènes qu'ils surveillent…", "open_devices"),
+      ("🗺 Carte : placer mes tinySA et mes scènes…", "open_map"),
       ("➕ Plusieurs tinySA et leurs noms…", "open_devs_settings"),
       ("⚖ Calibrer les autres tinySA sur le 1er…", "start_calib"),
       ("§En réseau (Raspberry Pi, autre PC)", None),
@@ -8189,14 +8207,128 @@ def gen_commands(freq_mhz, level_dbm, mod="off", dev_khz=25.0, tone_hz=1000):
 
 
 def hunt_request(req):
-    """Commande de chasse venue du téléphone -> dict propre (ValueError si bancale)."""
-    if not isinstance(req, dict) or req.get("action") not in ("start", "stop", "reset"):
+    """Commande de chasse venue du téléphone -> dict propre (ValueError si bancale). « mark » (7.64) : « je suis ici »
+    sur le plan de la carte (x, y entre 0 et 1 sur l'image /carte.png) -> point de la carte de chaleur."""
+    if not isinstance(req, dict) or req.get("action") not in ("start", "stop", "reset", "mark", "unmark"):
         raise ValueError("action")
+    if req["action"] in ("mark", "unmark"):
+        if req["action"] == "unmark":
+            return dict(action="unmark")
+        x, y = float(req.get("x")), float(req.get("y"))
+        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            raise ValueError("position")
+        return dict(action="mark", x=x, y=y)
     f, span = float(req.get("f") or 0), float(req.get("span") or 2)
     if req["action"] == "start" and not 0.1 <= f <= 6000:
         raise ValueError("fréquence")
     return dict(action=req["action"], f=f, span=min(50.0, max(0.2, span)), follow=bool(req.get("follow")),
                 dev=1 if int(req.get("dev") or 0) == 1 else 0)
+
+
+# ------------------------------------------------------------------ 🗺 7.64 : carte du site (façon canevas réseau)
+MAP_DEFAULT = dict(pos={}, bg="", bg_op=0.45, bg_scale=1.0, bg_pos=[0.0, 0.0], heat=[], grid=True)
+MAP_STEP = 40.0                   # pas de la grille (et de l'aimantation) en unités de carte
+HEAT_MAX = 2000
+
+
+def map_key(kind, name):
+    """Clé d'un élément de la carte : « scene:Grande scène », « dev:0 » (n° de tinySA)."""
+    return f"{kind}:{name}"
+
+
+def map_cfg_norm(d):
+    """Carte lue (config / show) -> dict propre : positions {clé: [x, y]}, plan de fond (chemin, opacité, échelle,
+    position), points de chaleur [{x, y, level, f, t}] (les HEAT_MAX derniers)."""
+    out = dict(MAP_DEFAULT, pos={}, heat=[], bg_pos=[0.0, 0.0])
+    if not isinstance(d, dict):
+        return out
+    for k, v in (d.get("pos") or {}).items():
+        try:
+            if isinstance(k, str) and ":" in k and len(v) == 2:
+                out["pos"][k[:80]] = [round(float(v[0]), 1), round(float(v[1]), 1)]
+        except (TypeError, ValueError):
+            continue
+    out["bg"] = str(d.get("bg") or "")[:500]
+    try:
+        out["bg_op"] = min(1.0, max(0.0, float(d.get("bg_op", out["bg_op"]))))
+        out["bg_scale"] = min(20.0, max(0.02, float(d.get("bg_scale", 1.0))))
+        bp = d.get("bg_pos") or [0, 0]
+        out["bg_pos"] = [float(bp[0]), float(bp[1])]
+    except (TypeError, ValueError, IndexError):
+        pass
+    out["grid"] = bool(d.get("grid", True))
+    for h in (d.get("heat") or [])[-HEAT_MAX:]:
+        try:
+            out["heat"].append(dict(x=round(float(h["x"]), 1), y=round(float(h["y"]), 1), level=round(float(h["level"]), 1),
+                                    f=round(float(h.get("f") or 0.0), 4), t=float(h.get("t") or 0.0)))
+        except (TypeError, ValueError, KeyError):
+            continue
+    return out
+
+
+def map_auto_place(keys, pos, step=MAP_STEP):
+    """Positions des éléments pas encore placés : les scènes sur une rangée, les tinySA sur la rangée du dessous, à
+    droite de ce qui existe déjà. -> {clé: [x, y]} (seulement les nouvelles)."""
+    new = {}
+    xs = [p[0] for p in pos.values()] or [0.0]
+    x0 = (max(xs) + 8 * step) if pos else 0.0
+    col = {"scene": 0, "dev": 0}
+    for k in keys:
+        if k in pos:
+            continue
+        kind = k.split(":", 1)[0]
+        row = 0.0 if kind == "scene" else 6 * step
+        new[k] = [x0 + col.get(kind, 0) * 8 * step, row]
+        col[kind] = col.get(kind, 0) + 1
+    return new
+
+
+def map_snap(x, y, step=MAP_STEP):
+    """Aimantation à la grille."""
+    return [round(x / step) * step, round(y / step) * step]
+
+
+def heat_for(points, f=None, tol=0.5):
+    """Points de chaleur d'une fréquence (± tol MHz) ; f None = tous."""
+    return [p for p in points or [] if f is None or abs(float(p.get("f") or 0.0) - f) <= tol]
+
+
+def heat_freqs(points):
+    """Fréquences chassées présentes dans les points (arrondies au kHz), les plus récentes d'abord."""
+    seen = {}
+    for p in points or []:
+        k = round(float(p.get("f") or 0.0), 3)
+        seen[k] = max(seen.get(k, 0.0), float(p.get("t") or 0.0))
+    return [k for k, _t in sorted(seen.items(), key=lambda x: -x[1])]
+
+
+def heat_scale(levels):
+    """Échelle de couleur des points : (bas, haut) en dBm, 10 dB au moins."""
+    lv = [float(x) for x in levels if x is not None]
+    if not lv:
+        return (-110.0, -40.0)
+    lo, hi = min(lv), max(lv)
+    if hi - lo < 10.0:
+        mid = (hi + lo) / 2.0
+        lo, hi = mid - 5.0, mid + 5.0
+    return (lo, hi)
+
+
+def heat_rgb(level, lo, hi):
+    """Couleur d'un point : bleu (faible) → jaune → rouge (là où ça crie le plus)."""
+    t = 0.0 if hi <= lo else min(1.0, max(0.0, (float(level) - lo) / (hi - lo)))
+    stops = [(0.0, (59, 130, 246)), (0.5, (250, 204, 21)), (1.0, (239, 68, 68))]
+    for (a, ca), (b, cb) in zip(stops, stops[1:]):
+        if t <= b:
+            u = (t - a) / (b - a)
+            return tuple(int(round(ca[i] + (cb[i] - ca[i]) * u)) for i in range(3))
+    return stops[-1][1]
+
+
+def heat_hot(points):
+    """Le point le plus fort (là où chercher) ou None."""
+    pts = [p for p in points or [] if p.get("level") is not None]
+    return max(pts, key=lambda p: p["level"]) if pts else None
 
 
 # ------------------------------------------------------------------ 📍 scans par lieu (un tinySA promené de scène en scène)
@@ -10282,8 +10414,9 @@ class WebServer(threading.Thread):
 
     def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
                  get_page=None, default_lang="fr", on_hunt=None, on_terrain=None, on_tech=None, on_tech_req=None,
-                 get_tech=None):
+                 get_tech=None, get_map=None):
         super().__init__(daemon=True)
+        self.get_map = get_map or (lambda: b"")      # 🗺 7.64 : image de la carte pour « je suis ici »
         self.port, self.host, self.get_json = int(port), host, get_json
         # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
         self.get_page = get_page or (lambda lang: WEB_PAGE.encode("utf-8"))
@@ -10412,7 +10545,7 @@ class WebServer(threading.Thread):
                         if chosen else []
                     self._send(200, owner.get_page(lang), "text/html; charset=utf-8", extra)
                     return
-                if path not in ("/etat.json", "/spectre.json", "/tech.json"):
+                if path not in ("/etat.json", "/spectre.json", "/tech.json", "/carte.png"):
                     self.send_error(404)
                     return
                 ok, me = self._who(view)
@@ -10428,6 +10561,13 @@ class WebServer(threading.Thread):
                         self._send(200, owner.get_tech(), "application/json; charset=utf-8")
                     else:
                         self._json(200 if st == "pending" else 403, dict(pending=st == "pending", login=st is None))
+                    return
+                if path == "/carte.png":
+                    data = owner.get_map() if (cfg["views"]["chasse"] or cfg["views"]["terrain"]) else b""
+                    if not data:
+                        self.send_error(404)
+                        return
+                    self._send(200, data, "image/png")
                     return
                 if path == "/spectre.json":
                     if not (cfg["views"]["spectre"] or cfg["views"]["waterfall"]):
@@ -20268,6 +20408,783 @@ class QrDialog(QtWidgets.QDialog):
         return bool(self._img.save(path, "PNG"))
 
 
+class MapNode(QtWidgets.QGraphicsObject):
+    """🗺 Une carte de la vue Carte : une scène (état de ses micros) ou un tinySA (en ligne / perdu). Glissable,
+    aimantée à la grille ; déposer un tinySA sur une scène = la lui rattacher."""
+
+    def __init__(self, owner, key):
+        super().__init__()
+        self.owner, self.key = owner, key
+        self.kind, self.name = key.split(":", 1)
+        self.w, self.h = (260.0, 100.0) if self.kind == "scene" else (230.0, 84.0)
+        self.title, self.sub, self.col, self.stripe = self.name, "", "#888888", "#888888"
+        self.pill, self.dots, self.extra = "", [], ""  # pastille d'état, un point par micro, ligne du bas
+        sh = QtWidgets.QGraphicsDropShadowEffect()
+        sh.setBlurRadius(18)
+        sh.setOffset(0, 3)
+        sh.setColor(QtGui.QColor(0, 0, 0, 110))
+        self.setGraphicsEffect(sh)
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setZValue(10)
+        self.setAcceptHoverEvents(True)
+
+    def boundingRect(self):
+        return QtCore.QRectF(-8, -8, self.w + 16, self.h + 16)
+
+    def center(self):
+        return self.pos() + QtCore.QPointF(self.w / 2, self.h / 2)
+
+    def port(self, top):
+        """Point d'accroche des liens : haut (scène) ou bas (tinySA) de la tuile."""
+        return self.pos() + QtCore.QPointF(self.w / 2, 0.0 if top else self.h)
+
+    def paint(self, p, opt, widget=None):
+        th = self.owner.theme
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing, True)
+        r = QtCore.QRectF(0, 0, self.w, self.h)
+        sel = self.isSelected()
+        card = blend(th["ui_text"], th["ui_base"], 0.05)
+        edge = th["ui_accent"] if sel else blend(self.col, card, 0.55)
+        p.setPen(QtGui.QPen(QtGui.QColor(edge), 2.5 if sel else 1.2))
+        p.setBrush(QtGui.QColor(card))
+        p.drawRoundedRect(r, 12, 12)
+        p.setPen(Qt.PenStyle.NoPen)                    # bande de couleur de la scène / du tinySA
+        p.setBrush(QtGui.QColor(self.stripe))
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(QtCore.QRectF(0, 0, 14, self.h), 12, 12)
+        clip = QtGui.QPainterPath()
+        clip.addRect(QtCore.QRectF(0, 0, 6, self.h))
+        p.drawPath(path.intersected(clip))
+        base = QtGui.QFont(p.font())
+        fp = QtGui.QFont(base)                         # pastille d'état (en haut à droite)
+        fp.setBold(True)
+        fp.setPointSizeF(8.0)
+        fmp = QtGui.QFontMetrics(fp)
+        pw = fmp.horizontalAdvance(self.pill) + 18
+        pr = QtCore.QRectF(self.w - pw - 10, 10, pw, 20)
+        p.setBrush(QtGui.QColor(blend(self.col, card, 0.22)))
+        p.setPen(QtGui.QPen(QtGui.QColor(self.col), 1.0))
+        p.drawRoundedRect(pr, 10, 10)
+        p.setBrush(QtGui.QColor(self.col))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(QtCore.QPointF(pr.left() + 9, pr.center().y()), 3.2, 3.2)
+        p.setFont(fp)
+        p.setPen(QtGui.QColor(self.col))
+        p.drawText(pr.adjusted(14, 0, -4, 0), Qt.AlignmentFlag.AlignCenter, self.pill)
+        ft = QtGui.QFont(base)                         # titre
+        ft.setBold(True)
+        ft.setPointSizeF(12.5)
+        p.setFont(ft)
+        p.setPen(QtGui.QColor(th["ui_text"]))
+        tw = int(self.w - pw - 34)
+        p.drawText(QtCore.QRectF(18, 8, tw, 24), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   QtGui.QFontMetrics(ft).elidedText(self.title, Qt.TextElideMode.ElideRight, tw))
+        fs = QtGui.QFont(base)                         # sous-titre (texte secondaire)
+        fs.setPointSizeF(9.5)
+        p.setFont(fs)
+        p.setPen(QtGui.QColor(blend(th["ui_text"], card, 0.62)))
+        p.drawText(QtCore.QRectF(18, 36, self.w - 30, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   QtGui.QFontMetrics(fs).elidedText(self.sub, Qt.TextElideMode.ElideRight, int(self.w - 30)))
+        if self.kind == "scene":                       # un point par micro, à sa couleur d'état
+            x, y = 22.0, self.h - 22.0
+            for c in self.dots[:20]:
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QtGui.QColor(c))
+                p.drawEllipse(QtCore.QPointF(x, y), 5.0, 5.0)
+                x += 13.0
+            if len(self.dots) > 20:
+                p.setPen(QtGui.QColor(blend(th["ui_text"], card, 0.62)))
+                p.drawText(QtCore.QRectF(x - 4, y - 9, 40, 18), Qt.AlignmentFlag.AlignVCenter, f"+{len(self.dots) - 20}")
+            if not self.dots:
+                p.setPen(QtGui.QColor(blend(th["ui_text"], card, 0.45)))
+                p.drawText(QtCore.QRectF(18, self.h - 32, self.w - 30, 20), Qt.AlignmentFlag.AlignVCenter,
+                           TR("aucun micro dans cette scène"))
+        else:
+            p.setPen(QtGui.QColor(blend(th["ui_text"], card, 0.62)))
+            p.drawText(QtCore.QRectF(18, self.h - 30, self.w - 30, 20), Qt.AlignmentFlag.AlignVCenter,
+                       QtGui.QFontMetrics(fs).elidedText(self.extra, Qt.TextElideMode.ElideRight, int(self.w - 30)))
+
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and self.scene() is not None:
+            self.scene().update_links()
+        return super().itemChange(change, value)
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        sc = self.scene()
+        if sc is not None:
+            sc.node_dropped(self)
+
+    def mouseDoubleClickEvent(self, e):
+        sc = self.scene()
+        if sc is not None:
+            sc.node_open(self)
+
+
+class MapScene(QtWidgets.QGraphicsScene):
+    """🗺 7.64 : la carte du site (façon canevas réseau) : grille, scènes et tinySA en cartes glissables, liens tinySA →
+    scènes surveillées, plan du site en fond (facultatif), points de la carte de chaleur. Modèle = owner.map_cfg."""
+
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = owner
+        self.nodes, self.links, self.heat_items, self.hot_item = {}, [], [], None
+        self.bg_item = None
+        self.heat_f = None                    # fréquence affichée en chaleur (None = toutes)
+        self.show_heat = True
+        self.setSceneRect(-2000, -2000, 6000, 4000)
+
+    # --- contenu
+    def keys_all(self):
+        o = self.owner
+        return [map_key("scene", sc["name"]) for sc in o.scenes] + [map_key("dev", d) for d in o.dev_list()]
+
+    def label(self, key):
+        kind, name = key.split(":", 1)
+        o = self.owner
+        return name if kind == "scene" else f"{dev_ord(int(name))} tinySA · {o.dev_name(int(name))}"
+
+    def sync(self):
+        """Ajoute / retire les cartes selon les scènes / tinySA et les positions enregistrées."""
+        o = self.owner
+        pos = o.map_cfg["pos"]
+        want = [k for k in self.keys_all() if k in pos]
+        for k in list(self.nodes):
+            if k not in want:
+                self.removeItem(self.nodes.pop(k))
+        for k in want:
+            n = self.nodes.get(k)
+            if n is None:
+                n = MapNode(o, k)
+                self.nodes[k] = n
+                self.addItem(n)
+            n.setPos(QtCore.QPointF(*pos[k]))
+        self.sync_bg()
+        self.refresh()
+        self.sync_heat()
+
+    def unplaced(self):
+        pos = self.owner.map_cfg["pos"]
+        return [k for k in self.keys_all() if k not in pos]
+
+    def place(self, key, x, y):
+        self.owner.map_cfg["pos"][key] = map_snap(x, y)
+        self.sync()
+
+    def auto_place(self):
+        cfg = self.owner.map_cfg
+        cfg["pos"].update(map_auto_place(self.keys_all(), cfg["pos"]))
+        self.sync()
+
+    def remove(self, key):
+        self.owner.map_cfg["pos"].pop(key, None)
+        self.sync()
+
+    # --- état en direct
+    def scene_state(self, name):
+        o = self.owner
+        ws = [w for w in o.watch if w.get("scene") == name and not w.get("off")]
+        tones = [o.sig_view(w)[1] for w in ws]
+        al = sum(1 for a in o.alarms.active.values() if any(abs((a.get("freq") or -1) - w["freq"]) < 0.0015 for w in ws))
+        if not o.is_running():
+            tone = "none"
+        elif al or "bad" in tones:
+            tone = "bad"
+        elif "warn" in tones:
+            tone = "warn"
+        else:
+            tone = "ok"
+        sub = TR("{} micro(s)").format(len(ws))
+        pill = (TR("Arrêté") if not o.is_running() else TR("{} alarme(s)").format(al) if al
+                else TR("À surveiller") if tone in ("bad", "warn") else TR("OK"))
+        dots = [o.tone_color(t) if o.is_running() else o.theme["st_none"] for t in tones]
+        return tone, sub, pill, dots
+
+    def refresh(self):
+        o = self.owner
+        th = o.theme
+        for k, n in self.nodes.items():
+            if n.kind == "scene":
+                tone, sub, n.pill, n.dots = self.scene_state(n.name)
+                sc = o.scene_by_name(n.name)
+                n.col, n.sub = o.tone_color(tone), sub
+                n.stripe = sc["color"] if sc else th["st_none"]
+                n.title = n.name
+            else:
+                d = int(n.name)
+                live = o.is_running() and d < len(o.dev_live) and bool(o.dev_live[d])
+                n.title = o.dev_name(d)
+                n.col = th["st_free"] if live else (th["st_occ"] if o.is_running() else th["st_none"])
+                scs = o.dev_scenes.get(d, [])
+                n.pill = TR("En ligne") if live else (TR("Perdu") if o.is_running() else TR("Arrêté"))
+                cyc = o.dev_cycle.get(d) if live else None
+                n.sub = f"{dev_ord(d)} tinySA" + (f" · {TR('tour de')} {cyc:.1f} s" if cyc and cyc >= 0.1 else "")
+                n.extra = TR("Surveille : {}").format(", ".join(scs) if scs else TR("tout le site"))
+                n.stripe = th["ui_accent"]
+            n.update()
+        self.update_links()
+
+    def update_links(self):
+        for it in self.links:
+            self.removeItem(it)
+        self.links = []
+        o = self.owner
+        for d in o.dev_list():
+            a = self.nodes.get(map_key("dev", d))
+            if a is None:
+                continue
+            live = o.is_running() and d < len(o.dev_live) and bool(o.dev_live[d])
+            for scn in o.dev_scenes.get(d, []):
+                b = self.nodes.get(map_key("scene", scn))
+                if b is None:
+                    continue
+                pa = a.port(False) if b.pos().y() >= a.pos().y() + a.h else a.port(True)
+                pb = b.port(True) if b.pos().y() >= a.pos().y() + a.h else b.port(False)
+                path = QtGui.QPainterPath(pa)
+                dy = max(40.0, abs(pb.y() - pa.y()) / 2) * (1 if pb.y() >= pa.y() else -1)
+                path.cubicTo(QtCore.QPointF(pa.x(), pa.y() + dy), QtCore.QPointF(pb.x(), pb.y() - dy), pb)
+                pen = QtGui.QPen(QtGui.QColor(o.theme["ui_accent"]), 2.6)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                if not live:
+                    pen.setStyle(Qt.PenStyle.DashLine)
+                it = self.addPath(path, pen)
+                it.setZValue(5)
+                self.links.append(it)
+                for q in (pa, pb):                     # points d'accroche
+                    dot = self.addEllipse(QtCore.QRectF(q.x() - 5, q.y() - 5, 10, 10),
+                                          QtGui.QPen(QtGui.QColor(o.theme["ui_bg"]), 2.0),
+                                          QtGui.QBrush(QtGui.QColor(o.theme["ui_accent"])))
+                    dot.setZValue(12)
+                    self.links.append(dot)
+
+    # --- plan de fond (facultatif)
+    def sync_bg(self):
+        cfg = self.owner.map_cfg
+        if self.bg_item is not None:
+            self.removeItem(self.bg_item)
+            self.bg_item = None
+        if not cfg["bg"]:
+            return
+        pm = QtGui.QPixmap(cfg["bg"])
+        if pm.isNull():
+            return
+        self.bg_item = self.addPixmap(pm)
+        self.bg_item.setZValue(-10)
+        self.bg_item.setOpacity(cfg["bg_op"])
+        self.bg_item.setScale(cfg["bg_scale"])
+        self.bg_item.setPos(QtCore.QPointF(*cfg["bg_pos"]))
+        self.bg_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+
+    # --- carte de chaleur
+    def sync_heat(self):
+        for it in self.heat_items:
+            self.removeItem(it)
+        self.heat_items = []
+        if self.hot_item is not None:
+            self.removeItem(self.hot_item)
+            self.hot_item = None
+        if not self.show_heat:
+            return
+        pts = heat_for(self.owner.map_cfg["heat"], self.heat_f, 0.05)
+        lo, hi = heat_scale([p["level"] for p in pts])
+        for p in pts:
+            r_, g_, b_ = heat_rgb(p["level"], lo, hi)
+            rad = 110.0
+            grad = QtGui.QRadialGradient(QtCore.QPointF(p["x"], p["y"]), rad)
+            grad.setColorAt(0.0, QtGui.QColor(r_, g_, b_, 200))
+            grad.setColorAt(0.45, QtGui.QColor(r_, g_, b_, 90))
+            grad.setColorAt(1.0, QtGui.QColor(r_, g_, b_, 0))
+            it = self.addEllipse(QtCore.QRectF(p["x"] - rad, p["y"] - rad, 2 * rad, 2 * rad), QtGui.QPen(Qt.PenStyle.NoPen),
+                                 QtGui.QBrush(grad))
+            it.setZValue(-5)
+            it.setToolTip(f"{p['level']:.1f} dBm · {p['f']:.3f} MHz · "
+                          f"{datetime.fromtimestamp(p['t']).strftime('%H:%M:%S') if p['t'] else ''}")
+            self.heat_items.append(it)
+            dot = self.addEllipse(QtCore.QRectF(p["x"] - 6, p["y"] - 6, 12, 12), QtGui.QPen(QtGui.QColor("#ffffff"), 2.0),
+                                  QtGui.QBrush(QtGui.QColor(r_, g_, b_)))
+            dot.setZValue(-4)
+            self.heat_items.append(dot)
+        hot = heat_hot(pts)
+        if hot is not None:
+            self.hot_item = self.addEllipse(QtCore.QRectF(hot["x"] - 16, hot["y"] - 16, 32, 32),
+                                            QtGui.QPen(QtGui.QColor("#ef4444"), 3.0))
+            self.hot_item.setZValue(-3)
+            self.hot_item.setToolTip(TR("Le plus fort : {} dBm").format(f"{hot['level']:.1f}"))
+
+    # --- glisser-déposer
+    def node_dropped(self, n):
+        o = self.owner
+        p = map_snap(n.pos().x(), n.pos().y())
+        n.setPos(QtCore.QPointF(*p))
+        o.map_cfg["pos"][n.key] = p
+        if n.kind == "dev":                    # tinySA posé SUR une scène = rattaché à elle
+            for k, m in self.nodes.items():
+                if m.kind == "scene" and m.sceneBoundingRect().intersects(n.sceneBoundingRect()):
+                    d = int(n.name)
+                    if m.name not in o.dev_scenes.get(d, []):
+                        o.toggle_dev_scene(d, m.name, True)
+                        o.set_status(TR("📡 {} surveille maintenant « {} » (glissé sur la carte).").format(
+                            self.label(n.key), m.name))
+                    n.setPos(QtCore.QPointF(p[0], m.pos().y() + m.h + MAP_STEP))
+                    o.map_cfg["pos"][n.key] = [n.pos().x(), n.pos().y()]
+                    break
+        self.refresh()
+
+    def node_open(self, n):
+        o = self.owner
+        if n.kind == "scene":
+            o.set_scope([(n.name, None)])
+            o.set_status(TR("🗺 Vue sur « {} » (liste et spectre).").format(n.name))
+        else:
+            o.open_devices()
+
+    def mark(self, x, y, who=""):
+        """📍 Point de chaleur à (x, y) avec le niveau actuel de la chasse. -> point, ou None (pas de chasse en cours)."""
+        o = self.owner
+        h = o._hunt
+        if h is None or not h.go_btn.isChecked() or h.level is None:
+            return None
+        pt = dict(x=round(float(x), 1), y=round(float(y), 1), level=round(float(h.level), 1),
+                  f=round(float(h.f_spin.value()), 4), t=time.time())
+        o.map_cfg["heat"].append(pt)
+        del o.map_cfg["heat"][:-HEAT_MAX]
+        self.heat_f = pt["f"]
+        self.sync_heat()
+        return pt
+
+
+class MapView(QtWidgets.QGraphicsView):
+    """Vue de la carte : grille, molette = zoom, glisser le fond = se déplacer, dépôt depuis la palette."""
+
+    def __init__(self, sc, win):
+        super().__init__(sc)
+        self.win = win
+        self.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        self.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setAcceptDrops(True)
+        self.setToolTip("Glisse les cartes pour les placer · dépose un tinySA sur une scène pour la lui rattacher ·\n"
+                        "molette = zoom · glisser le fond = se déplacer · double-clic sur une scène = la voir · clic droit = options")
+
+    def drawBackground(self, p, rect):
+        th = self.win.owner.theme
+        p.fillRect(rect, QtGui.QColor(th["ui_bg"]))
+        if not self.win.owner.map_cfg.get("grid", True):
+            return
+        step = MAP_STEP
+        pen = QtGui.QPen(QtGui.QColor(blend(th["ui_text"], th["ui_bg"], 0.10)), 0)
+        p.setPen(pen)
+        x = math.floor(rect.left() / step) * step
+        while x < rect.right():
+            p.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
+            x += step
+        y = math.floor(rect.top() / step) * step
+        while y < rect.bottom():
+            p.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
+            y += step
+
+    def wheelEvent(self, e):
+        k = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
+        if self.win.bg_move.isChecked() and e.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.win.wheel_bg(k)                   # Ctrl + molette : agrandir / réduire le plan
+            return
+        sc = self.transform().m11() * k
+        if 0.15 <= sc <= 4.0:
+            self.scale(k, k)
+
+    def mousePressEvent(self, e):
+        if (self.win.mark_btn.isChecked() and e.button() == Qt.MouseButton.LeftButton
+                and not isinstance(self.itemAt(e.position().toPoint()), MapNode)):
+            pt = self.mapToScene(e.position().toPoint())
+            self.win.mark_at(pt.x(), pt.y())
+            return
+        super().mousePressEvent(e)
+
+    def contextMenuEvent(self, e):
+        it = self.itemAt(e.pos())
+        self.win.context_menu(it if isinstance(it, MapNode) else None, self.mapToScene(e.pos()), e.globalPos())
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasFormat("application/x-tsm-map"):
+            e.acceptProposedAction()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasFormat("application/x-tsm-map"):
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        key = bytes(e.mimeData().data("application/x-tsm-map")).decode("utf-8")
+        pt = self.mapToScene(e.position().toPoint())
+        self.win.owner.map_scene().place(key, pt.x(), pt.y())
+        self.win.fill_palette()
+        e.acceptProposedAction()
+
+
+class MapPalette(QtWidgets.QListWidget):
+    """« À placer » : scènes et tinySA pas encore sur la carte, à glisser sur la carte."""
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        self.setDragEnabled(True)
+        self.setToolTip("Glisse une scène ou un tinySA sur la carte (ou double-clic pour le poser).")
+        self.itemDoubleClicked.connect(lambda it: self.win.place_center(it.data(Qt.ItemDataRole.UserRole)))
+
+    def mimeData(self, items):
+        md = QtCore.QMimeData()
+        if items:
+            md.setData("application/x-tsm-map", QtCore.QByteArray(str(items[0].data(Qt.ItemDataRole.UserRole)).encode("utf-8")))
+        return md
+
+    def mimeTypes(self):
+        return ["application/x-tsm-map"]
+
+
+class MapHeatLegend(QtWidgets.QWidget):
+    """Légende de la carte de chaleur (posée sur la carte, en bas à gauche) : dégradé bleu → rouge + niveaux."""
+
+    def __init__(self, parent, owner):
+        super().__init__(parent)
+        self.owner, self.lo, self.hi, self.n = owner, -100.0, -40.0, 0
+        self.setFixedSize(230, 54)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+    def set_range(self, lo, hi, n):
+        self.lo, self.hi, self.n = lo, hi, n
+        self.setVisible(n > 0)
+        self.update()
+
+    def paintEvent(self, e):
+        th = self.owner.theme
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        card = blend(th["ui_text"], th["ui_base"], 0.05)
+        p.setPen(QtGui.QPen(QtGui.QColor(blend(th["ui_text"], card, 0.18)), 1.0))
+        p.setBrush(QtGui.QColor(card))
+        p.drawRoundedRect(QtCore.QRectF(0.5, 0.5, self.width() - 1, self.height() - 1), 10, 10)
+        g = QtGui.QLinearGradient(12, 0, self.width() - 12, 0)
+        for t in (0.0, 0.5, 1.0):
+            g.setColorAt(t, QtGui.QColor(*heat_rgb(self.lo + t * (self.hi - self.lo), self.lo, self.hi)))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QtGui.QBrush(g))
+        p.drawRoundedRect(QtCore.QRectF(12, 26, self.width() - 24, 10), 5, 5)
+        f = QtGui.QFont(self.font())
+        f.setPointSizeF(8.5)
+        p.setFont(f)
+        p.setPen(QtGui.QColor(th["ui_text"]))
+        p.drawText(QtCore.QRectF(12, 4, self.width() - 24, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   TR("🔥 Chaleur · {} point(s)").format(self.n))
+        sub = QtGui.QColor(blend(th["ui_text"], card, 0.62))
+        p.setPen(sub)
+        p.drawText(QtCore.QRectF(12, 36, 90, 16), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   f"{self.lo:.0f} dBm")
+        p.drawText(QtCore.QRectF(self.width() - 102, 36, 90, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                   f"{self.hi:.0f} dBm")
+
+
+class MapWindow(QtWidgets.QWidget):
+    """🗺 7.64 Carte du site, vraie fenêtre (comme les autres panneaux détachés) : canevas façon schéma réseau, plan en
+    fond facultatif, carte de chaleur du tinySA volant."""
+
+    def __init__(self, owner):
+        super().__init__(owner, Qt.WindowType.Window)
+        self.owner = o = owner
+        self.setWindowTitle("Carte du site")
+        lay = QtWidgets.QVBoxLayout(self)
+        bg_btn = QtWidgets.QToolButton()
+        bg_btn.setText("🖼 Plan de fond")
+        bg_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        bg_btn.setToolTip("Facultatif : une image du plan du site sous les cartes (PNG, JPG). Sans plan, la grille suffit.")
+        bm = QtWidgets.QMenu(bg_btn)
+        bm.addAction("Choisir une image…").triggered.connect(lambda *_: self.pick_bg())
+        bm.addAction("Retirer le plan").triggered.connect(lambda *_: self.set_bg(""))
+        self.bg_move = bm.addAction("Déplacer / agrandir le plan à la souris")
+        self.bg_move.setCheckable(True)
+        self.bg_move.triggered.connect(lambda *_: self._bg_movable())
+        bg_btn.setMenu(bm)
+        self.op = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        self.op.setRange(5, 100)
+        self.op.setValue(int(o.map_cfg["bg_op"] * 100))
+        self.op.setMaximumWidth(110)
+        self.op.setToolTip("Transparence du plan de fond.")
+        self.op.valueChanged.connect(lambda v: self._bg_param(bg_op=v / 100.0))
+        self.grid_chk = QtWidgets.QCheckBox("Grille")
+        self.grid_chk.setChecked(o.map_cfg.get("grid", True))
+        self.grid_chk.setToolTip("Grille de fond (les cartes s'y aimantent).")
+        self.grid_chk.toggled.connect(lambda on: (o.map_cfg.__setitem__("grid", bool(on)), self.view.viewport().update()))
+        auto = QtWidgets.QPushButton("Tout placer")
+        auto.setToolTip("Pose sur la carte toutes les scènes et tous les tinySA qui n'y sont pas encore.")
+        auto.clicked.connect(lambda *_: (o.map_scene().auto_place(), self.fill_palette(), self.fit()))
+        fit = QtWidgets.QPushButton("Ajuster")
+        fit.setToolTip("Recadre la vue sur tout ce qui est posé.")
+        fit.clicked.connect(lambda *_: self.fit())
+        png = QtWidgets.QPushButton("Exporter en PNG…")
+        png.setToolTip("Image de la carte (avec la carte de chaleur) à imprimer ou envoyer.")
+        png.clicked.connect(lambda *_: self.export_png())
+        lay.addLayout(o._row(bg_btn, "Opacité :", self.op, self.grid_chk, auto, fit, png, None))
+        self.heat_chk = QtWidgets.QCheckBox("🔥 Carte de chaleur")
+        self.heat_chk.setChecked(True)
+        self.heat_chk.setToolTip("Les points notés pendant la chasse au brouilleur : bleu = faible, rouge = là où ça\n"
+                                 "crie le plus (cercle rouge = le point le plus fort).")
+        self.heat_chk.toggled.connect(lambda on: self._heat(on))
+        self.heat_combo = QtWidgets.QComboBox()
+        self.heat_combo.setToolTip("Fréquence chassée à afficher.")
+        self.heat_combo.currentIndexChanged.connect(lambda *_: self._heat(self.heat_chk.isChecked()))
+        self.mark_btn = QtWidgets.QPushButton("📍 Marquer ici")
+        self.mark_btn.setCheckable(True)
+        self.mark_btn.setToolTip("Coché : un clic sur la carte note le niveau ACTUEL de la chasse au brouilleur à cet\n"
+                                 "endroit (avec un PC portable). Avec le téléphone : vue 🔎 Chasse, « Où suis-je ? ».")
+        clr = QtWidgets.QPushButton("Effacer les points")
+        clr.setToolTip("Efface les points de chaleur de la fréquence affichée (ou tous).")
+        clr.clicked.connect(lambda *_: self.clear_heat())
+        self.hot_lbl = QtWidgets.QLabel("")
+        lay.addLayout(o._row(self.heat_chk, self.heat_combo, self.mark_btn, clr, self.hot_lbl, None))
+        split = QtWidgets.QSplitter()
+        left = QtWidgets.QWidget()
+        lv = QtWidgets.QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.addWidget(QtWidgets.QLabel("À placer :"))
+        self.palette = MapPalette(self)
+        lv.addWidget(self.palette, 1)
+        self.view = MapView(o.map_scene(), self)
+        self.left = left
+        self.zoom_box = QtWidgets.QWidget(self.view)    # zoom posé sur la carte (en haut à droite)
+        zb = QtWidgets.QVBoxLayout(self.zoom_box)
+        zb.setContentsMargins(0, 0, 0, 0)
+        zb.setSpacing(4)
+        for txt, tip, fn in (("+", "Zoomer", lambda: self.view.scale(1.2, 1.2)),
+                             ("−", "Dézoomer", lambda: self.view.scale(1 / 1.2, 1 / 1.2)),
+                             ("⤢", "Tout voir", lambda: self.fit())):
+            b = QtWidgets.QToolButton()
+            b.setText(txt)
+            b.setToolTip(tip)
+            b.setFixedSize(34, 34)
+            b.clicked.connect(lambda *_, fn=fn: fn())
+            zb.addWidget(b)
+        self.legend = MapHeatLegend(self.view, o)
+        self.view.installEventFilter(self)
+        split.addWidget(left)
+        split.addWidget(self.view)
+        split.setStretchFactor(1, 1)
+        split.setSizes([170, 900])
+        lay.addWidget(split, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.resize(1100, 700)
+        fit_dialog(self, 1100, 700)
+        self.timer = QtCore.QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.tick)
+        self.timer.start()
+        o.map_scene().sync()
+        self.fill_palette()
+        self.fill_heat()
+        QtCore.QTimer.singleShot(50, lambda: (self.fit(), self._place_overlays()))
+
+    # --- palette
+    def fill_palette(self):
+        sc = self.owner.map_scene()
+        keep = {self.palette.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.palette.count())}
+        now = sc.unplaced()
+        if set(now) == keep and (self.left.isVisible() == bool(now) or not self.isVisible()):
+            return
+        self.palette.clear()
+        self.left.setVisible(bool(now))             # rien à placer : toute la place pour la carte
+        for k in now:
+            it = QtWidgets.QListWidgetItem(("🎤 " if k.startswith("scene:") else "📡 ") + sc.label(k))
+            it.setData(Qt.ItemDataRole.UserRole, k)
+            self.palette.addItem(it)
+        self.msg.setText(TR("Glisse les éléments de « À placer » sur la carte, ou « Tout placer ».") if now else
+                         TR("Dépose un tinySA sur une scène pour la lui rattacher · double-clic sur une scène = la voir · "
+                            "clic droit = options."))
+
+    def place_center(self, key):
+        c = self.view.mapToScene(self.view.viewport().rect().center())
+        self.owner.map_scene().place(key, c.x(), c.y())
+        self.fill_palette()
+
+    def fit(self):
+        """Cadre sur les tuiles (pas sur le plan de fond, souvent bien plus grand), zoom 1:1 au plus."""
+        sc = self.owner.map_scene()
+        r = QtCore.QRectF()
+        for n in sc.nodes.values():
+            r = r.united(n.sceneBoundingRect())
+        for it in sc.heat_items:
+            r = r.united(it.sceneBoundingRect())
+        if r.isEmpty():
+            r = sc.itemsBoundingRect()
+        if r.isEmpty():
+            r = QtCore.QRectF(-200, -150, 800, 500)
+        self.view.resetTransform()
+        self.view.fitInView(r.adjusted(-80, -80, 80, 80), Qt.AspectRatioMode.KeepAspectRatio)
+        if self.view.transform().m11() > 1.0:
+            self.view.resetTransform()
+            self.view.centerOn(r.center())
+
+    def eventFilter(self, obj, e):
+        if obj is self.view and e.type() == QtCore.QEvent.Type.Resize:
+            self._place_overlays()
+        return super().eventFilter(obj, e)
+
+    def _place_overlays(self):
+        vw = self.view.viewport().geometry()
+        self.zoom_box.adjustSize()
+        self.zoom_box.move(vw.right() - self.zoom_box.width() - 10, vw.top() + 10)
+        self.legend.move(vw.left() + 10, vw.bottom() - self.legend.height() - 10)
+        self.zoom_box.raise_()
+        self.legend.raise_()
+
+    # --- plan de fond
+    def pick_bg(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Plan du site (image)", "",
+                                                            "Images (*.png *.jpg *.jpeg *.bmp *.gif)")
+            if not path:
+                return False
+        if QtGui.QPixmap(path).isNull():
+            self.msg.setText(TR("Image illisible."))
+            return False
+        self.set_bg(path)
+        return True
+
+    def set_bg(self, path):
+        o = self.owner
+        o.map_cfg["bg"] = path
+        if path:
+            pm = QtGui.QPixmap(path)
+            r = o.map_scene().itemsBoundingRect()
+            w0 = max(r.width(), 1200.0)
+            o.map_cfg["bg_scale"] = round(w0 / max(1, pm.width()), 3)
+            o.map_cfg["bg_pos"] = [r.left() - 100 if not r.isEmpty() else -200.0, r.top() - 100 if not r.isEmpty() else -150.0]
+        o.map_scene().sync_bg()
+        self._bg_movable()
+        self.fit()
+
+    def _bg_param(self, **kw):
+        self.owner.map_cfg.update(kw)
+        it = self.owner.map_scene().bg_item
+        if it is not None and "bg_op" in kw:
+            it.setOpacity(kw["bg_op"])
+
+    def _bg_movable(self):
+        it = self.owner.map_scene().bg_item
+        if it is None:
+            return
+        on = self.bg_move.isChecked()
+        it.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, on)
+        it.setZValue(20 if on else -10)
+        self.msg.setText(TR("Plan déplaçable : glisse-le, Ctrl + molette pour l'agrandir. Décoche pour le figer.")
+                         if on else "")
+
+    def wheel_bg(self, k):
+        o = self.owner
+        it = o.map_scene().bg_item
+        if it is not None:
+            o.map_cfg["bg_scale"] = min(20.0, max(0.02, o.map_cfg["bg_scale"] * k))
+            it.setScale(o.map_cfg["bg_scale"])
+
+    # --- chaleur
+    def fill_heat(self):
+        o = self.owner
+        cur = self.heat_combo.currentData()
+        self.heat_combo.blockSignals(True)
+        self.heat_combo.clear()
+        self.heat_combo.addItem(TR("Toutes les fréquences"), None)
+        for f in heat_freqs(o.map_cfg["heat"]):
+            self.heat_combo.addItem(f"{f:.3f} MHz", f)
+        ix = self.heat_combo.findData(cur if cur is not None else o.map_scene().heat_f)
+        self.heat_combo.setCurrentIndex(max(0, ix))
+        self.heat_combo.blockSignals(False)
+        self._heat(self.heat_chk.isChecked())
+
+    def _heat(self, on):
+        sc = self.owner.map_scene()
+        sc.show_heat = bool(on)
+        sc.heat_f = self.heat_combo.currentData()
+        sc.sync_heat()
+        pts = heat_for(self.owner.map_cfg["heat"], sc.heat_f, 0.05)
+        lo, hi = heat_scale([p_["level"] for p_ in pts])
+        self.legend.set_range(lo, hi, len(pts) if on else 0)
+        hot = heat_hot(pts)
+        self.hot_lbl.setText(TR("{} point(s) · le plus fort : {}").format(len(pts), self.owner.lvl(hot["level"], suffix=True))
+                             if hot else "")
+
+    def mark_at(self, x, y):
+        pt = self.owner.map_scene().mark(x, y)
+        if pt is None:
+            self.msg.setText(TR("📍 Lance d'abord la chasse au brouilleur (🎚 Surveiller › 🔎) : le point note son niveau."))
+            return None
+        self.fill_heat()
+        self.msg.setText(TR("📍 Point noté : {} à {} MHz.").format(self.owner.lvl(pt["level"], suffix=True), f"{pt['f']:.3f}"))
+        return pt
+
+    def clear_heat(self):
+        o = self.owner
+        f = self.heat_combo.currentData()
+        o.map_cfg["heat"] = [p for p in o.map_cfg["heat"] if f is not None and abs(p["f"] - f) > 0.05]
+        self.fill_heat()
+
+    # --- menu
+    def context_menu(self, node, pt, gpos):
+        o = self.owner
+        m = QtWidgets.QMenu(self)
+        acts = {}
+        if node is not None and node.kind == "dev":
+            d = int(node.name)
+            sub = m.addMenu("📡 Surveille…")
+            for sc in o.scenes:
+                a = sub.addAction(sc["name"])
+                a.setCheckable(True)
+                a.setChecked(sc["name"] in o.dev_scenes.get(d, []))
+                a.triggered.connect(lambda *_, n=sc["name"], a=a: (o.toggle_dev_scene(d, n, a.isChecked()),
+                                                                   o.map_scene().refresh()))
+            acts[m.addAction("🌐 Tout le site (aucune scène)")] = lambda: (o.set_dev_scenes(d, []), o.map_scene().refresh())
+            acts[m.addAction("👋 Identifier ce tinySA")] = lambda: o.identify_device(d)
+        if node is not None and node.kind == "scene":
+            acts[m.addAction("🔍 Voir cette scène (liste et spectre)")] = lambda: o.map_scene().node_open(node)
+        if node is not None:
+            acts[m.addAction("Retirer de la carte")] = lambda: (o.map_scene().remove(node.key), self.fill_palette())
+            m.addSeparator()
+        acts[m.addAction("📍 Marquer ici (niveau de la chasse)")] = lambda: self.mark_at(pt.x(), pt.y())
+        acts[m.addAction("Tout placer")] = lambda: (o.map_scene().auto_place(), self.fill_palette())
+        act = m.exec(gpos)
+        if act in acts:
+            acts[act]()
+
+    def tick(self):
+        if not self.isVisible():
+            return
+        sc = self.owner.map_scene()
+        if set(sc.keys_all()) & set(self.owner.map_cfg["pos"]) != set(sc.nodes):
+            sc.sync()
+        else:
+            sc.refresh()
+        self.fill_palette()
+
+    def export_png(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter la carte", "carte_site.png", "Image PNG (*.png)")
+            if not path:
+                return False
+        data, _r = self.owner.map_png(1800)
+        if not data:
+            return False
+        Path(path).write_bytes(data)
+        return True
+
+    def closeEvent(self, e):
+        bg = self.owner.map_scene().bg_item
+        if bg is not None:                    # position du plan déplacé gardée
+            self.owner.map_cfg["bg_pos"] = [bg.pos().x(), bg.pos().y()]
+        super().closeEvent(e)
+
+
 class ReplaceDialog(QtWidgets.QDialog):
     """🆘 7.62 Remplacer un micro brouillé : 3 propositions (son appareil, sa bande, compatibles avec tout le plan,
     libres d'après la mesure), un clic = remplacé + journal. Le calcul tourne en arrière-plan."""
@@ -22073,6 +22990,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._quickadd = None                  # ⌨ saisie express (7.62)
         self._replace = None                   # 🆘 remplacer un micro (7.62)
         self._qr = None                        # 📱 QR code de la page web (7.63)
+        self.map_cfg, self._map, self._map_scene = map_cfg_norm(None), None, None      # 🗺 carte (7.64)
+        self._map_png, self._map_rect, self._map_png_t = b"", None, 0.0
         self.mod_history, self._hist_rows, self._hist_dlg = [], None, None     # 🕘 historique (7.63)
         self._tech_sugg = None                 # 🆘 propositions demandées depuis la page Tech
         self.zoom_dev = 0                      # tinySA qui fait le zoom live (0 = le 1er ; 1 = le 2ᵉ, ex. sur un Pi)
@@ -22320,6 +23239,8 @@ class MainWindow(QtWidgets.QMainWindow):
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
         "📦 Tout envoyer pour un dépannage": "Un seul ZIP avec le show, la config (sans jetons ni mots de passe), un\n"
                                               "diagnostic tout frais, les journaux, rapports et diagnostics de la semaine.",
+        "🗺 Carte du site": "Tes scènes et tes tinySA sur un canevas : glisse-les, dépose un tinySA sur une scène pour la lui\n"
+                            "rattacher, plan du site en fond si tu veux, état en direct, carte de chaleur de la chasse.",
         "🕘 Historique des modifications": "Chaque changement de ta liste (ajout, retrait, fréquence, nom, statut, scène),\n"
                                            "avec l'heure et qui l'a fait (PC ou téléphone). Gardé dans le show.",
         "📸 Comparer avant / après": "Deux scans gardés (avant l'installation des micros / après, ou avant / après un\n"
@@ -24139,6 +25060,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.reg_only = bool(data.get("reg_only", True))
         self.reg_chk.setChecked(self.reg_only)
         self.mod_history = history_norm(data.get("history"))       # 🕘 7.63
+        self.map_cfg = map_cfg_norm(data.get("map"))              # 🗺 7.64
+        if self._map_scene is not None:
+            self._map_scene.sync()
         self._hist_rows = None                               # nouvelle référence au prochain tick (pas d'entrée)
         try:
             self.auto_occ_spin.setValue(int(data.get("auto_occ", AUTO_THR_DEFAULT[0])))
@@ -24268,7 +25192,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log_auto=self.autolog_chk.isChecked(), log_dir=str(self.log_dir), export=self.export_prefs,
             net_addr=self.net_addr, port_net=self.port_net, net_profiles=list(self.net_profiles),
             smooth=bool(getattr(self, "smooth", False)),
-            coord_tools=bool(getattr(self, "coord_on", False)), reg_only=bool(getattr(self, "reg_only", True)), theme_v=3, tnt=dict(self.tnt_cfg), history=list(getattr(self, "mod_history", [])),
+            coord_tools=bool(getattr(self, "coord_on", False)), reg_only=bool(getattr(self, "reg_only", True)), theme_v=3, tnt=dict(self.tnt_cfg), history=list(getattr(self, "mod_history", [])), map=self._map_cfg_dump(),
             user_presets=user_presets_norm(getattr(self, "user_presets", [])), user_name=getattr(self, "user_name", ""),
             alarm_timing=dict(confirm=int(self.sound.cfg.get("confirm", 3)), repeat=int(self.sound.cfg.get("repeat", 30))),
             thr_auto=bool(self.thr_auto), auto_occ=self.auto_occ_spin.value(), auto_weak=self.auto_weak_spin.value(),
@@ -24507,7 +25431,7 @@ class MainWindow(QtWidgets.QMainWindow):
         en mémoire, référence, max hold), les réglages restent. Avant 7.31.1 les scans par lieu et la référence restaient
         sur le spectre (retour de Clément) et le max hold d'une scène recréait son scan 30 s plus tard."""
         data = self._collect_config(True)
-        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None, history=[],
+        data.update(watch=[], scenes=[], scope=None, focus=False, site_scans=[], states=[], state_cur="", ezrf_link=None, history=[], map=None,
                     tnt=dict(self.tnt_cfg, place="", manual={}, plan=[], plan_src=""))
         self.tnt_mark(None)
         for k in list(self.site_mh):
@@ -25311,6 +26235,96 @@ class MainWindow(QtWidgets.QMainWindow):
         self._hist_dlg.show()
         return self._hist_dlg
 
+    # ------------------------------------------------------- 🗺 7.64 : carte du site
+    def _map_cfg_dump(self):
+        d = dict(getattr(self, "map_cfg", None) or map_cfg_norm(None))
+        bg = self._map_scene.bg_item if getattr(self, "_map_scene", None) is not None else None
+        if bg is not None:                         # le plan a pu être déplacé à la souris
+            d["bg_pos"] = [round(bg.pos().x(), 1), round(bg.pos().y(), 1)]
+        return d
+
+    def map_scene(self):
+        if self._map_scene is None:
+            self._map_scene = MapScene(self)
+            self._map_scene.sync()
+        return self._map_scene
+
+    def open_map(self):
+        """🗺 Carte du site : scènes et tinySA à glisser, liens, plan facultatif, carte de chaleur."""
+        if self._map is not None:
+            try:
+                self._map.show()
+                self._map.raise_()
+                self._map.activateWindow()
+                return self._map
+            except RuntimeError:
+                self._map = None
+        if not self.map_cfg["pos"]:            # 1re ouverture : tout est posé d'office, on déplace ensuite
+            self.map_cfg["pos"].update(map_auto_place(self.map_scene().keys_all(), {}))
+        self._map = MapWindow(self)
+        self._map.show()
+        return self._map
+
+    def map_png(self, maxw=900):
+        """Image de la carte (pour le téléphone et l'export) -> (octets PNG, rectangle de carte représenté)."""
+        sc = self.map_scene()
+        sc.sync()
+        r = sc.itemsBoundingRect()
+        if r.isEmpty():
+            return b"", None
+        r = r.adjusted(-40, -40, 40, 40)
+        k = min(1.0, maxw / max(1.0, r.width()))
+        img = QtGui.QImage(max(1, int(r.width() * k)), max(1, int(r.height() * k)), QtGui.QImage.Format.Format_RGB32)
+        img.fill(QtGui.QColor(self.theme["ui_bg"]))
+        p = QtGui.QPainter(img)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        sc.render(p, QtCore.QRectF(0, 0, img.width(), img.height()), r)
+        p.end()
+        ba = QtCore.QByteArray()
+        buf = QtCore.QBuffer(ba)
+        buf.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+        img.save(buf, "PNG")
+        buf.close()
+        return bytes(ba), r
+
+    def _map_web_tick(self, now):
+        """PNG de la carte pour le téléphone (vue 🔎 Chasse), refait toutes les 5 s si quelqu'un regarde."""
+        if self.web is None or now - self._map_png_t < 5.0 or not self.map_cfg["pos"]:
+            return
+        if not self.web.watching(("chasse",)):
+            return
+        self._map_png_t = now
+        try:
+            self._map_png, self._map_rect = self.map_png(900)
+        except Exception:  # noqa: BLE001 — une image ratée ne doit pas gêner la surveillance
+            self._map_png = b""
+
+    def map_mark_rel(self, x, y):
+        """📍 « Je suis ici » touché sur l'image du téléphone (x, y entre 0 et 1) -> point de chaleur, ou None."""
+        r = self._map_rect
+        if r is None:
+            return None
+        pt = self.map_scene().mark(r.left() + x * r.width(), r.top() + y * r.height())
+        if pt is not None and self._map is not None:
+            try:
+                self._map.fill_heat()
+            except RuntimeError:
+                pass
+        self._map_png_t = 0.0
+        return pt
+
+    def map_marks_rel(self):
+        """Points de la chasse en cours, en coordonnées de l'image du téléphone (0..1)."""
+        r, h = self._map_rect, self._hunt
+        if r is None or h is None:
+            return []
+        f = h.f_spin.value()
+        out = []
+        for p in heat_for(self.map_cfg["heat"], f, 0.05)[-200:]:
+            out.append(dict(x=round((p["x"] - r.left()) / max(1.0, r.width()), 4),
+                            y=round((p["y"] - r.top()) / max(1.0, r.height()), 4), level=p["level"]))
+        return out
+
     def open_qr(self):
         """📱 7.63 : QR code de la page web pour les téléphones de l'équipe."""
         if self._qr is not None:
@@ -25433,7 +26447,7 @@ class MainWindow(QtWidgets.QMainWindow):
                            get_pin=lambda: self.web_cfg.get("pin", ""), on_ack=self._web_acks.put,
                            on_hunt=self._web_hunts.put, on_terrain=self._web_terrain.put,
                            on_tech=self._web_tech.put, on_tech_req=self._web_techreq.put,
-                           get_tech=lambda: self._tech_json,
+                           get_tech=lambda: self._tech_json, get_map=lambda: self._map_png,
                            get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
                            default_lang=self.lang)
             ws.start()
@@ -31192,6 +32206,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._web_tech_pending()
         self.undo_track()                          # ↶ : met de côté l'état d'avant chaque changement
         self.history_track()                       # 🕘 7.63 : qui a changé quoi
+        self._map_web_tick(now)                    # 🗺 7.64 : image de la carte pour le téléphone
         if self.web is not None:
             self._web_json = self.web_json()
             if self.web_cfg["views"].get("tech") and self.web.watching(("tech",)):
@@ -31338,6 +32353,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 h.best = None
                 h.go_btn.setChecked(True)
                 self.set_status(f"📱 Chasse lancée depuis un téléphone sur {c['f']:.3f} MHz.")
+            elif c["action"] == "mark":                    # 🗺 « je suis ici » touché sur le plan
+                pt = self.map_mark_rel(c["x"], c["y"])
+                self.set_status(TR("📱 Point de chaleur noté : {} dBm.").format(f"{pt['level']:.1f}") if pt else
+                                TR("📱 Point refusé : la chasse ne tourne pas."))
+            elif c["action"] == "unmark":
+                f = self._hunt.f_spin.value() if self._hunt is not None else None
+                hs = self.map_cfg["heat"]
+                for i in range(len(hs) - 1, -1, -1):
+                    if f is None or abs(hs[i]["f"] - f) <= 0.05:
+                        hs.pop(i)
+                        break
+                self.map_scene().sync_heat()
+                self._map_png_t = 0.0
             elif self._hunt is not None and c["action"] == "stop":
                 self._hunt.go_btn.setChecked(False)
                 self.set_status("📱 Chasse arrêtée depuis un téléphone.")
@@ -31644,8 +32672,9 @@ class MainWindow(QtWidgets.QMainWindow):
         h = self._hunt
         ids = self.dev_list()
         devs = [f"{dev_ord(d)} tinySA · {self.dev_name(d)}" for d in ids]
+        mp = dict(map=bool(self._map_png), map_t=round(self._map_png_t, 1), marks=self.map_marks_rel())
         if h is None:
-            return dict(on=False, f=None, span=2.0, follow=False, dev=len(ids) - 1, devs=devs, level=None)
+            return dict(on=False, f=None, span=2.0, follow=False, dev=len(ids) - 1, devs=devs, level=None, **mp)
         on = h.go_btn.isChecked()
         return dict(on=on, f=round(h.f_spin.value(), 4), span=h.span_spin.value(), follow=h.follow_chk.isChecked(),
                     dev=ids.index(int(h.dev_combo.currentData() or 0))
@@ -31654,7 +32683,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     level_txt="" if h.level is None else self.lvl(h.level, suffix=True),
                     best=None if h.best is None else round(h.best, 1),
                     best_txt="" if h.best is None else self.lvl(h.best, suffix=True),
-                    fpk=None if h.fpk is None else round(h.fpk, 4), msg="" if on else h.sub.text())
+                    fpk=None if h.fpk is None else round(h.fpk, 4), msg="" if on else h.sub.text(), **mp)
 
     def ack_all_alarms(self):
         n = self.alarms.ack_all()

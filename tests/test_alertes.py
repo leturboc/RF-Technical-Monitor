@@ -568,7 +568,18 @@ else:
         st_h = ws(rows, al, dict(title="T", time="12:00:05", running=True, cycle="", thr=-80.0,
                                  hunt=dict(on=True, f=606.5, span=2.0, follow=False, dev=1, level=-61.4,
                                            level_txt="-61.4 dBm", best=-55.0, best_txt="-55.0 dBm", fpk=606.52,
-                                           devs=["1er tinySA · Régie", "2ᵉ tinySA · Sac à dos"], msg="")))
+                                           devs=["1er tinySA · Régie", "2ᵉ tinySA · Sac à dos"], msg="",
+                                           map=True, map_t=12.5, marks=[dict(x=0.25, y=0.5, level=-70.0),
+                                                                        dict(x=0.6, y=0.4, level=-50.0)])))
+        import base64 as _b64, struct as _st, zlib as _zl
+
+        def _png(w, h):                     # petite image PNG unie (plan de la carte du site)
+            raw = b"".join(b"\x00" + b"\x33\x55\x77" * w for _ in range(h))
+            def chunk(t, d):
+                return _st.pack(">I", len(d)) + t + d + _st.pack(">I", _zl.crc32(t + d) & 0xffffffff)
+            return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", _st.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                    + chunk(b"IDAT", _zl.compress(raw)) + chunk(b"IEND", b""))
+        wa.get_map = lambda: _png(200, 100)
         state["v"] = json.dumps(st_h, ensure_ascii=False).encode("utf-8")
         pa.goto(f"http://127.0.0.1:{wa.port}/#/chasse")
         pa.wait_for_function("document.querySelector('#hl') && document.querySelector('#hl').textContent.includes('-61.4')",
@@ -585,6 +596,19 @@ else:
         check("chasse (téléphone) : bouton → commande au PC, code retenu", len(hunts) == nh + 1
               and hunts[-1]["action"] == "stop" and prompts == ["prompt"], f"{hunts[-1:]} {prompts}")
         check("chasse (téléphone) : le bip tourne (son du navigateur)", pa.evaluate("hTimer !== null && hLvl === -61.4"))
+        pa.wait_for_function("document.querySelector('#hmi') && document.querySelector('#hmi').naturalWidth === 200",
+                             timeout=6000)
+        check("🗺 chasse (téléphone) : plan affiché + points déjà notés", pa.locator("#hdots i").count() == 2
+              and not pa.locator("#hmap").get_attribute("class"), str(pa.locator("#hdots i").count()))
+        nh = len(hunts)
+        _bb = pa.locator("#hmi").bounding_box()
+        pa.mouse.click(_bb["x"] + _bb["width"] * 0.75, _bb["y"] + _bb["height"] * 0.25)
+        t0 = time.time()
+        while len(hunts) == nh and time.time() - t0 < 5:
+            time.sleep(0.05)
+        check("🗺 chasse (téléphone) : toucher le plan → « je suis ici » envoyé au PC", len(hunts) == nh + 1
+              and hunts[-1]["action"] == "mark" and abs(hunts[-1]["x"] - 0.75) < 0.03 and abs(hunts[-1]["y"] - 0.25) < 0.03,
+              str(hunts[-1:]))
         if CAP:
             pa.screenshot(path=os.path.join(CAP, "web_chasse.png"))
         # --- 🎒 terrain : où est le tinySA volant, scans gardés (plusieurs par scène)
