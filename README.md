@@ -183,7 +183,7 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 ## Démarrage rapide
 
 1. Branche le tinySA Ultra en USB, choisis le port (ou coche **Démo** pour essayer sans matériel), **▶ Démarrer**.
-2. Importe tes fréquences (📥 Importer CSV : plan de fréquences EazyRF, WWB, Excel…) ou saisis-les, range-les en
+2. Importe tes fréquences (📥 Importer CSV : plan de ton logiciel de coordination (.ezrf3), WWB, Excel…) ou saisis-les, range-les en
    Scènes › Groupes.
 3. Donne un statut à chaque fréquence : *Libre* (doit rester libre) ou *En service* (doit émettre).
 4. 🔔 en haut à droite = alarmes. Clic droit sur un groupe → priorité des alarmes.
@@ -200,6 +200,6 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 Le format des exports de scan **Sennheiser WSM** et l'import de scans **Shure WWB** s'appuient sur le fonctionnement du
 projet [nikharju/WSM-WWB-csv-converter](https://github.com/nikharju/WSM-WWB-csv-converter) (MIT) ; le code de ce dépôt
 est une réécriture indépendante.
-WSM, WWB, EazyRF, Wisycom Manager, Soundbase, tinySA sont des marques de leurs propriétaires respectifs ; ce projet n'est ni affilié
+Les logiciels et matériels cités (formats de fichiers lus ou écrits, tinySA) sont des marques de leurs propriétaires respectifs ; ce projet n'est ni affilié
 à aucun d'eux ni approuvé par eux. **Coordination basique seulement** : pour construire un plan de fréquences, utilise un
-logiciel de coordination dédié (EazyRF, WWB, WSM, Soundbase…).
+logiciel de coordination dédié.
