@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1352,6 +1352,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   de l'accueil décochait la démo pendant la surveillance (le balayage continuait en démo). `switch_source(demo, index)` :
   arrêt propre, bascule, reprise (`toggle_run(auto=True)`). Cause exacte du plantage NON trouvée (pas de crash.log) ;
   la garde ne relance que si l'appli a été lancée avec `--garde` (démarrage Windows ou « 🛡 Relancer sous garde »).
+- **7.66.2 (crash.log de Clément, 16/11/2026, 7.66.0 : « access violation » dans `ScanWorker.run`, boucle de reconnexion ;
+  garde.log : pas lancée sous garde ce jour-là)** : reproduit hors écran avec l'ancienne version : des fils de balayage
+  pouvaient être recréés alors qu'un ancien tournait encore → deux sources mélangées (−64 / −99 dBm en alternance
+  dans son journal). `_retire_workers` (appelé avant de recréer `self.workers`) : ancien fil vivant → interruption +
+  `blockSignals(True)` (muet) + gardé dans `self._zombies` jusqu'à sa fin ; fil fini → `deleteLater`. `w.setParent(self)`
+  (jamais détruit par Python en cours de route). `closeEvent` : attend aussi les `_zombies`, `force_close` si bloqué.
+  Le plantage lui-même n'a PAS été reproduit sous Linux (cause la plus probable, pas prouvée).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

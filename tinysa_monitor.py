@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.66.1"
+APP_VER = "7.66.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -26529,6 +26529,24 @@ class MainWindow(QtWidgets.QMainWindow):
     def is_running(self):
         return any(w.isRunning() for w in self.workers)
 
+    def _retire_workers(self):
+        """Avant de recréer les fils de balayage (crash.log de Clément, 16/11/2026 : « access violation » dans
+        ScanWorker.run, boucle de reconnexion → objet du fil détruit alors qu'il tournait encore ; ses mesures se
+        mélangeaient aux nouvelles) : un ancien fil encore vivant est arrêté, rendu muet (plus aucune mesure prise en
+        compte) et gardé jusqu'à sa fin ; un fil terminé est libéré proprement."""
+        keep = []
+        for w in list(getattr(self, "_zombies", [])) + list(self.workers):
+            try:
+                if w.isRunning():
+                    w.requestInterruption()
+                    w.blockSignals(True)
+                    keep.append(w)
+                elif w.parent() is self:
+                    w.deleteLater()
+            except RuntimeError:                      # objet déjà détruit côté Qt
+                pass
+        self._zombies = keep
+
     def toggle_run(self, auto=False):
         if self.is_running():
             for w in self.workers:
@@ -26569,10 +26587,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_cycle = {}
         self.band_src = {}
         self.div_buf, self.div_src = {}, {}
+        self._retire_workers()
         self.workers = []
         for i, addr, label in targets:
             w = ScanWorker(addr, demo, (lambda d=i: self.get_cfg(d)), self.get_ver, label)
             w.slot = i                                    # n° fixe du tinySA (0 = 1er, 1 = 2ᵉ, 2… = 3ᵉ…)
+            w.setParent(self)                             # 7.66.2 : jamais détruit par Python tant qu'il tourne
             w.retry_first = (i > 0 or str(addr).startswith("socket://")      # en réseau, il peut arriver après
                              or os.environ.get("TSM_GUARD_RESTART") == "1")  # relance : l'ancienne libère le port
             w.baud = int(self.baud_combo.currentData() or 115200)
@@ -34220,11 +34240,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, e):
         self._closing = True                       # fermé exprès : pas de reprise automatique au prochain lancement
         self._keep_awake(False)
-        for w in self.workers:
+        alive = list(self.workers) + list(getattr(self, "_zombies", []))
+        for w in alive:
             if w.isRunning():
                 w.requestInterruption()
-        for w in self.workers:
-            w.wait(8000)
+        for w in alive:
+            if not w.wait(8000):                    # tinySA bloqué : on ferme son port, sinon le fil meurt avec l'appli
+                w.force_close()
+                w.wait(3000)
         if getattr(self, "_relay_win", None) is not None:
             self._relay_win.close()
         if self.web is not None:
