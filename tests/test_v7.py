@@ -1828,6 +1828,13 @@ check("chaleur : intensité et palette dans l'image", (tuple(_rt[_hf.shape[0] //
 _mc2 = ns["map_cfg_norm"](dict(heat_pal="nimp", heat_op=5, heat_labels=False))
 check("carte : couleurs / intensité / niveaux gardés et bornés", (_mc2["heat_pal"], _mc2["heat_op"], _mc2["heat_labels"],
       ns["map_cfg_norm"](dict(heat_pal="ice"))["heat_pal"]), ("classic", 0.95, False, "ice"))
+_mc3 = ns["map_cfg_norm"](dict(heat_dot=9, heat_trail=0.1, heat_dir="rose"))
+check("carte : taille des points / épaisseur / couleur de la direction bornées",
+      (_mc3["heat_dot"], _mc3["heat_trail"], _mc3["heat_dir"], ns["map_cfg_norm"](dict(heat_dir="#FF9F0A"))["heat_dir"]),
+      (2.5, 0.5, "accent", "#FF9F0A"))
+check("chaleur : couleur de la direction", (ns["heat_dir_color"]("accent", "#0a84ff"),
+      ns["heat_dir_color"]("hot", "#0a84ff", (239, 68, 68)), ns["heat_dir_color"]("#FFFFFF", "#0a84ff"),
+      ns["heat_dir_color"]("hot", "#0a84ff", None)), ("#0a84ff", "#ef4444", "#ffffff", "#0a84ff"))
 _rg = ns["heat_rgba"](_hf, _ha, -90.0, -50.0)
 check("chaleur continue : image RGBA (bleu côté faible, rouge côté fort, transparente au loin)",
       (_rg.shape[2], tuple(_rg[_hi, 25, :3]), tuple(_rg[_hi, 74, :3]) == (239, 68, 68), int(_rg[0, 0, 3])),

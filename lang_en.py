@@ -5749,3 +5749,21 @@ EXACT.update({
     "Doux (menthe → corail, couleurs du défaut)": "Soft (mint → coral, default colours)",
     "Une seule couleur (accent du thème)": "Single colour (theme accent)",
 })
+
+# 7.64 chaleur : taille, épaisseur, couleur de la direction
+EXACT.update({
+    "Taille des points": "Point size",
+    "Petits": "Small",
+    "Moyens": "Medium",
+    "Gros": "Large",
+    "Épaisseur du parcours": "Route thickness",
+    "Fine": "Thin",
+    "Normale": "Normal",
+    "Épaisse": "Thick",
+    "Couleur de la direction": "Direction colour",
+    "Accent du thème": "Theme accent",
+    "Couleur du point le plus fort": "Colour of the strongest point",
+    "Blanc": "White",
+    "Orange": "Orange",
+    "Vert": "Green",
+})

@@ -7485,7 +7485,21 @@ def hunt_request(req):
 # ------------------------------------------------------------------ 🗺 7.64 : carte du site (façon canevas réseau)
 MAP_DEFAULT = dict(pos={}, bg="", bg_op=0.45, bg_scale=1.0, bg_pos=[0.0, 0.0], heat=[], grid=True,
                    heat_reach=170.0, heat_iso=True, heat_arrow=True, heat_path=False,
-                   heat_pal="classic", heat_op=0.55, heat_labels=True)
+                   heat_pal="classic", heat_op=0.55, heat_labels=True, heat_dot=1.0, heat_trail=2.0,
+                   heat_dir="accent")
+HEAT_DOT_SIZES = ((0.7, "Petits"), (1.0, "Moyens"), (1.5, "Gros"))
+HEAT_TRAIL_WIDTHS = ((1.2, "Fine"), (2.0, "Normale"), (3.5, "Épaisse"))
+HEAT_DIR_COLORS = (("accent", "Accent du thème"), ("hot", "Couleur du point le plus fort"), ("#ffffff", "Blanc"),
+                   ("#ff9f0a", "Orange"), ("#30d158", "Vert"))
+
+
+def heat_dir_color(choice, accent, hot_rgb=None):
+    """Couleur de la direction « par là » -> « #rrggbb »."""
+    if choice == "hot" and hot_rgb:
+        return "#%02x%02x%02x" % tuple(hot_rgb)
+    if isinstance(choice, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", choice or ""):
+        return choice.lower()
+    return accent
 HEAT_REACHES = (90.0, 170.0, 300.0)   # portée du dégradé : serrée / normale / large (unités de carte)
 MAP_STEP = 40.0                   # pas de la grille (et de l'aimantation) en unités de carte
 HEAT_MAX = 2000
@@ -7519,10 +7533,15 @@ def map_cfg_norm(d):
     out["grid"] = bool(d.get("grid", True))
     for k in ("heat_iso", "heat_arrow", "heat_path", "heat_labels"):
         out[k] = bool(d.get(k, MAP_DEFAULT[k]))
+    hd = d.get("heat_dir")
+    out["heat_dir"] = hd if hd in ("accent", "hot") or (isinstance(hd, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", hd)) \
+        else MAP_DEFAULT["heat_dir"]
     pal = d.get("heat_pal")
     out["heat_pal"] = pal if pal in [k for k, _n, _s in HEAT_PALETTES] else MAP_DEFAULT["heat_pal"]
     try:
         out["heat_op"] = min(0.95, max(0.1, float(d.get("heat_op", MAP_DEFAULT["heat_op"]))))
+        out["heat_dot"] = min(2.5, max(0.4, float(d.get("heat_dot", MAP_DEFAULT["heat_dot"]))))
+        out["heat_trail"] = min(6.0, max(0.5, float(d.get("heat_trail", MAP_DEFAULT["heat_trail"]))))
     except (TypeError, ValueError):
         pass
     try:
@@ -18751,7 +18770,7 @@ class MapScene(QtWidgets.QGraphicsScene):
                              QtCore.QPointF(*p2))
                 c = QtGui.QColor(th["ui_text"])
                 c.setAlphaF(0.12 + 0.43 * (k + 1) / (n - 1))
-                pen = QtGui.QPen(c, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+                pen = QtGui.QPen(c, float(o.map_cfg.get("heat_trail", 2.0)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
                 pen.setCosmetic(True)
                 li = self.addPath(path, pen)
                 li.setZValue(-4.5)
@@ -18766,7 +18785,7 @@ class MapScene(QtWidgets.QGraphicsScene):
         for p in pts:
             r_, g_, b_ = heat_rgb(p["level"], lo, hi, st)
             is_hot = p is hot
-            rad = 6.5 if is_hot else 4.5
+            rad = (6.5 if is_hot else 4.5) * float(o.map_cfg.get("heat_dot", 1.0))
             dot = self.addEllipse(QtCore.QRectF(p["x"] - rad, p["y"] - rad, 2 * rad, 2 * rad),
                                   QtGui.QPen(QtGui.QColor(blend(th["ui_text"], th["ui_bg"], 0.65)), 1.4),
                                   QtGui.QBrush(QtGui.QColor(r_, g_, b_)))
@@ -18778,7 +18797,7 @@ class MapScene(QtWidgets.QGraphicsScene):
                 continue                       # niveaux écrits : le plus fort seulement
             txt = fmt_level(p["level"], o.unit, 0, False)
             tw = fm.horizontalAdvance(txt) + 10
-            box = QtCore.QRectF(p["x"] - tw / 2, p["y"] + (15 if is_hot else rad + 3), tw, fm.height() + 2)
+            box = QtCore.QRectF(p["x"] - tw / 2, p["y"] + (rad * 2.3 if is_hot else rad + 3), tw, fm.height() + 2)
             path = QtGui.QPainterPath()
             path.addRoundedRect(box, 6, 6)
             bg = self.addPath(path, QtGui.QPen(Qt.PenStyle.NoPen),
@@ -18791,7 +18810,8 @@ class MapScene(QtWidgets.QGraphicsScene):
             lab.setZValue(-3.8)
             self.heat_items += [bg, lab]
         if hot is not None:
-            self.hot_item = self.addEllipse(QtCore.QRectF(hot["x"] - 13, hot["y"] - 13, 26, 26),
+            hr = 13 * float(o.map_cfg.get("heat_dot", 1.0))
+            self.hot_item = self.addEllipse(QtCore.QRectF(hot["x"] - hr, hot["y"] - hr, 2 * hr, 2 * hr),
                                             QtGui.QPen(QtGui.QColor(*heat_rgb(hot["level"], lo, hi, st)), 2.0))
             self.hot_item.setZValue(-3)
             self.hot_item.setToolTip(TR("Le plus fort : {} dBm").format(f"{hot['level']:.1f}"))
@@ -18799,7 +18819,8 @@ class MapScene(QtWidgets.QGraphicsScene):
         self.arrow_info = heat_arrow(pts) if o.map_cfg.get("heat_arrow", True) else None
         ar = self.arrow_info
         if ar:
-            acc = QtGui.QColor(th["ui_accent"])
+            acc = QtGui.QColor(heat_dir_color(o.map_cfg.get("heat_dir", "accent"), th["ui_accent"],
+                                              heat_rgb(hot["level"], lo, hi, st) if hot else None))
             last = max(pts, key=lambda p_: float(p_.get("t") or 0.0))
             lx, ly = float(last["x"]), float(last["y"])
             halo = QtGui.QRadialGradient(QtCore.QPointF(lx, ly), 22)
@@ -18837,7 +18858,7 @@ class MapScene(QtWidgets.QGraphicsScene):
                 pp.addRoundedRect(box, tht / 2, tht / 2)
                 items.append(self.addPath(pp, QtGui.QPen(Qt.PenStyle.NoPen), QtGui.QBrush(acc)))
                 lab = self.addSimpleText(txt, fnt)
-                lab.setBrush(QtGui.QColor("#ffffff"))
+                lab.setBrush(QtGui.QColor("#111111" if acc.lightnessF() > 0.62 else "#ffffff"))
                 lab.setPos(box.left() + 6, box.top() + 1.5)
                 items.append(lab)
                 tip = TR("Par là : le point le plus fort est {} dB au-dessus de ta dernière mesure").format(f"{ar['gain']:.0f}")
@@ -19265,6 +19286,20 @@ class MapWindow(QtWidgets.QWidget):
         wa.setDefaultWidget(ow)
         m.addAction(wa)
         self.heat_slider = sl
+        for title, key, opts in (("Taille des points", "heat_dot", HEAT_DOT_SIZES),
+                                 ("Épaisseur du parcours", "heat_trail", HEAT_TRAIL_WIDTHS),
+                                 ("Couleur de la direction", "heat_dir", tuple((v, t) for v, t in HEAT_DIR_COLORS))):
+            sub = m.addMenu(TR(title))
+            cur = o.map_cfg.get(key, MAP_DEFAULT[key])
+            for v, txt in opts:
+                b = sub.addAction(TR(txt))
+                if isinstance(v, str) and v.startswith("#"):
+                    pm = QtGui.QPixmap(12, 12)
+                    pm.fill(QtGui.QColor(v))
+                    b.setIcon(QtGui.QIcon(pm))
+                b.setCheckable(True)
+                b.setChecked(cur == v if isinstance(v, str) else abs(float(cur) - v) < 1e-6)
+                b.triggered.connect(lambda *_, key=key, v=v: self.set_heat_opt(key, v))
         m.addSection(TR("Sur la carte"))
         for key, txt in (("heat_labels", "Niveaux écrits sur les points"),
                          ("heat_iso", "Courbes de niveau (tous les 5 dB)"),
