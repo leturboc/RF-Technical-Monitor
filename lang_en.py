@@ -5681,3 +5681,35 @@ EXACT.update({"aucun micro dans cette scène": "no mic in this stage", "Arrêté
               "OK": "OK", "En ligne": "Online", "Perdu": "Lost", "tour de": "cycle", "Surveille : {}": "Watches: {}",
               "🔥 Chaleur · {} point(s)": "🔥 Heat · {} point(s)", "Zoomer": "Zoom in", "Dézoomer": "Zoom out",
               "Tout voir": "Show all", "tout le site": "the whole site"})
+
+# 7.64 carte épurée
+EXACT.update({
+    "Afficher la carte de chaleur": "Show the heat map",
+    "Caler le plan (déplacer, Ctrl + molette = taille)": "Align the plan (move, Ctrl + wheel = size)",
+    "Carte de chaleur de la chasse au brouilleur : bleu = faible, rouge = là où ça crie le plus.":
+        "Heat map of the interference hunt: blue = weak, red = where it is loudest.",
+    "Comment noter des points ?": "How do I add points?",
+    "Effacer les points affichés": "Clear the points shown",
+    "Facultatif : une image du plan du site sous les tuiles. Sans plan, la grille suffit.":
+        "Optional: an image of the site plan under the tiles. Without a plan, the grid is enough.",
+    "Fréquence chassée": "Hunted frequency",
+    "Glisse le plan, Ctrl + molette pour l'agrandir. Décoche « Caler le plan » pour le figer.":
+        "Drag the plan, Ctrl + wheel to resize it. Untick \"Align the plan\" to lock it.",
+    "Glisse les tuiles pour les placer · dépose un tinySA sur une scène pour la lui rattacher ·\nmolette = zoom · glisser le fond = se déplacer · double-clic sur une scène = la voir · clic droit = options":
+        "Drag the tiles to place them · drop a tinySA on a stage to attach it ·\nwheel = zoom · drag the background = pan · double-click a stage = view it · right-click = options",
+    "Lance une 🔎 chasse au brouilleur, puis clique sur la carte là où tu es (PC portable), ou sur le téléphone : vue 🔎 Chasse › « Où suis-je ? ».":
+        "Start a 🔎 interference hunt, then click the map where you are (laptop), or on the phone: 🔎 Hunt view › \"Where am I?\".",
+    "Opacité": "Opacity",
+    "Plan posé. 🖼 Plan › « Caler le plan » pour l'ajuster sous tes tuiles.":
+        "Plan added. 🖼 Plan › \"Align the plan\" to fit it under your tiles.",
+    "Plus d'options : grille, réorganiser, exporter.": "More options: grid, rearrange, export.",
+    "Recadre la vue sur toutes les tuiles.": "Fits the view to all tiles.",
+    "Réorganiser automatiquement": "Rearrange automatically",
+    "⤢ Tout voir": "⤢ Fit all",
+    "📍 Noter le niveau de la chasse ici": "📍 Note the hunt level here",
+    "🔥 Chaleur": "🔥 Heat",
+    "🖼 Plan": "🖼 Plan",
+    "{} scène(s) · {} tinySA": "{} stage(s) · {} tinySA",
+    "🔎 Chasse en cours sur {} MHz · clique sur la carte là où tu es : le niveau y est noté":
+        "🔎 Hunting on {} MHz · click the map where you are: the level is noted there",
+})
