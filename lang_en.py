@@ -9,6 +9,8 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Changement de source : arrêt de la surveillance…': 'Changing source: stopping monitoring…',
+    "La surveillance ne s'arrête pas : change de source une fois arrêtée.": 'Monitoring does not stop: change the source once it has stopped.',
     'Noms des fréquences sans nom :': 'Names of unnamed frequencies:',
     "Nom de l'appareil (Shure AD4Q #1 · 2)": 'Device name (Shure AD4Q #1 · 2)',
     'Nom du groupe (THE BROWNING · MICS 1)': 'Group name (THE BROWNING · MICS 1)',
