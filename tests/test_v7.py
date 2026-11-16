@@ -1801,6 +1801,23 @@ check("chaleur continue : dégradé régulier entre deux points, opacité pleine
       (abs(_hf[_hi, 25] - -90) < 1.0, abs(_hf[_hi, 74] - -50) < 1.0, abs(_hf[_hi, 50] - -70) < 3.0,
        bool(all(np.diff(_hf[_hi, 25:75]) >= -1e-9)), _ha[_hi, 25] > 0.99, _ha[0, 0] == 0.0),
       (True, True, True, True, True, True))
+_hf3, _ha3 = ns["heat_field"]([dict(x=0, y=0, level=-90), dict(x=400, y=0, level=-50)], -200, -200, 800, 400, 8.0, 300.0)
+_iso = ns["heat_isolines"](_hf3, _ha3, -200, -200, 8.0, 5.0)
+_isx = {lev: sorted((xa + xb) / 2 for xa, ya, xb, yb in sg if abs((ya + yb) / 2) < 10) for lev, sg in _iso}
+check("chaleur : courbes de niveau tous les 5 dB, dans l'ordre entre les deux points",
+      (len(_iso) >= 5 and [lv for lv, _ in _iso] == sorted(lv for lv, _ in _iso),
+       -70.0 in _isx and 150 < _isx[-70.0][0] < 250, all(len(sg) > 0 for _, sg in _iso)), (True, True, True))
+_hp2 = [dict(x=0, y=0, level=-60, t=1), dict(x=300, y=0, level=-90, t=5), dict(x=100, y=0, level=-80, t=3)]
+_ar = ns["heat_arrow"](_hp2, 3.0, 150.0)
+check("chaleur : flèche du dernier point (le plus récent) vers le plus fort, longueur bornée",
+      (_ar["x0"], _ar["y0"], _ar["x1"] < 300 and _ar["x1"] >= 150, _ar["gain"]), (300.0, 0.0, True, 30.0))
+check("chaleur : pas de flèche si on est déjà sur le plus fort / moins de 2 points",
+      (ns["heat_arrow"]([dict(x=0, y=0, level=-90, t=1), dict(x=50, y=0, level=-60, t=2)]),
+       ns["heat_arrow"]([dict(x=0, y=0, level=-60, t=1)])), ({"here": True}, None))
+check("chaleur : parcours dans l'ordre des points", ns["heat_path"](_hp2), [(0.0, 0.0), (100.0, 0.0), (300.0, 0.0)])
+_mc = ns["map_cfg_norm"](dict(heat_iso=False, heat_path=True, heat_reach=9999))
+check("carte : affichages de la chaleur désactivables et gardés", (_mc["heat_iso"], _mc["heat_arrow"], _mc["heat_path"],
+      _mc["heat_reach"]), (False, True, True, 500.0))
 _rg = ns["heat_rgba"](_hf, _ha, -90.0, -50.0)
 check("chaleur continue : image RGBA (bleu côté faible, rouge côté fort, transparente au loin)",
       (_rg.shape[2], tuple(_rg[_hi, 25, :3]), tuple(_rg[_hi, 74, :3]) == (239, 68, 68), int(_rg[0, 0, 3])),

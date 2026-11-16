@@ -5714,3 +5714,22 @@ EXACT.update({
         "🔎 Hunting on {} MHz · click the map where you are: the level is noted there",
 })
 SAME_TEMPLATES += ["{} · {} MHz · {}"]
+
+# 7.64 chaleur : courbes, flèche, parcours, étalement
+EXACT.update({
+    "Sur la carte": "On the map",
+    "Courbes de niveau (tous les 5 dB)": "Contour lines (every 5 dB)",
+    "Direction « par là » (vers le plus fort)": "\"This way\" direction (towards the strongest)",
+    "Parcours de la chasse": "Hunt route",
+    "Étalement du dégradé": "Gradient spread",
+    "Serré (points rapprochés)": "Tight (points close together)",
+    "Normal": "Normal",
+    "Large (points espacés)": "Wide (points far apart)",
+    "Courbe de niveau : {}": "Contour line: {}",
+    "Parcours de la chasse (dans l'ordre des points)": "Hunt route (in the order of the points)",
+    "Par là : le point le plus fort est {} dB au-dessus de ta dernière mesure":
+        "This way: the strongest point is {} dB above your last measurement",
+    "📍 Ta dernière mesure est la plus forte : cherche autour d'ici": "📍 Your last measurement is the strongest: search around here",
+    "››› Va dans la direction des chevrons : environ {} dB de plus vers le point le plus fort":
+        "››› Head the way the chevrons point: about {} dB more towards the strongest point",
+})

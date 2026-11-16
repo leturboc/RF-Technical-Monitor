@@ -8226,7 +8226,9 @@ def hunt_request(req):
 
 
 # ------------------------------------------------------------------ 🗺 7.64 : carte du site (façon canevas réseau)
-MAP_DEFAULT = dict(pos={}, bg="", bg_op=0.45, bg_scale=1.0, bg_pos=[0.0, 0.0], heat=[], grid=True)
+MAP_DEFAULT = dict(pos={}, bg="", bg_op=0.45, bg_scale=1.0, bg_pos=[0.0, 0.0], heat=[], grid=True,
+                   heat_reach=170.0, heat_iso=True, heat_arrow=True, heat_path=False)
+HEAT_REACHES = (90.0, 170.0, 300.0)   # portée du dégradé : serrée / normale / large (unités de carte)
 MAP_STEP = 40.0                   # pas de la grille (et de l'aimantation) en unités de carte
 HEAT_MAX = 2000
 
@@ -8257,6 +8259,12 @@ def map_cfg_norm(d):
     except (TypeError, ValueError, IndexError):
         pass
     out["grid"] = bool(d.get("grid", True))
+    for k in ("heat_iso", "heat_arrow", "heat_path"):
+        out[k] = bool(d.get(k, MAP_DEFAULT[k]))
+    try:
+        out["heat_reach"] = min(500.0, max(40.0, float(d.get("heat_reach", MAP_DEFAULT["heat_reach"]))))
+    except (TypeError, ValueError):
+        pass
     for h in (d.get("heat") or [])[-HEAT_MAX:]:
         try:
             out["heat"].append(dict(x=round(float(h["x"]), 1), y=round(float(h["y"]), 1), level=round(float(h["level"]), 1),
@@ -8362,6 +8370,64 @@ def heat_rgba(field, alpha, lo, hi, opacity=0.55):
     a = np.clip(alpha, 0.0, 1.0) * opacity * 255.0
     a = np.where(np.isnan(field), 0.0, a)
     return np.dstack([rgb, a[..., None]]).round().astype(np.uint8)
+
+
+def heat_isolines(field, alpha, x0, y0, cell, step=5.0, amin=0.35):
+    """Courbes de niveau du dégradé (carrés qui marchent) tous les `step` dB, seulement là où il est bien visible
+    (opacité ≥ amin). -> [(niveau, [(xa, ya, xb, yb), …]), …], du plus faible au plus fort."""
+    f = np.where(np.asarray(alpha) >= amin, np.asarray(field, dtype=float), np.nan)
+    if f.shape[0] < 2 or f.shape[1] < 2 or not np.isfinite(f).any():
+        return []
+    lo, hi = np.nanmin(f), np.nanmax(f)
+    out = []
+    v00, v01, v10, v11 = f[:-1, :-1], f[:-1, 1:], f[1:, :-1], f[1:, 1:]
+    ok = np.isfinite(v00) & np.isfinite(v01) & np.isfinite(v10) & np.isfinite(v11)
+    for lev in np.arange(math.ceil(lo / step) * step, hi + 1e-9, step):
+        b = ((v00 >= lev) * 1 + (v01 >= lev) * 2 + (v11 >= lev) * 4 + (v10 >= lev) * 8)
+        segs = []
+        for i, j in zip(*np.nonzero(ok & (b > 0) & (b < 15))):
+            a, bb, c, d = v00[i, j], v01[i, j], v11[i, j], v10[i, j]
+            cx, cy = x0 + (j + 0.5) * cell, y0 + (i + 0.5) * cell
+
+            def t(p, q):
+                return 0.5 if q == p else (lev - p) / (q - p)
+            e = {"T": (cx + t(a, bb) * cell, cy), "R": (cx + cell, cy + t(bb, c) * cell),
+                 "B": (cx + t(d, c) * cell, cy + cell), "L": (cx, cy + t(a, d) * cell)}
+            k = int(b[i, j])
+            lt, tr, rb, bl, lr, tb = (("L", "T"),), (("T", "R"),), (("R", "B"),), (("B", "L"),), (("L", "R"),), (("T", "B"),)
+            pairs = {1: lt, 14: lt, 2: tr, 13: tr, 4: rb, 11: rb, 8: bl, 7: bl, 3: lr, 12: lr,
+                     6: tb, 9: tb, 5: lt + rb, 10: tr + bl}[k]
+            for pr in pairs:
+                (xa, ya), (xb, yb) = e[pr[0]], e[pr[1]]
+                segs.append((round(xa, 1), round(ya, 1), round(xb, 1), round(yb, 1)))
+        if segs:
+            out.append((float(lev), segs))
+    return out
+
+
+def heat_path(points):
+    """Parcours de la chasse : les points dans l'ordre où ils ont été notés -> [(x, y), …]."""
+    pts = [p for p in points or [] if p.get("level") is not None]
+    return [(float(p["x"]), float(p["y"])) for p in sorted(pts, key=lambda p: float(p.get("t") or 0.0))]
+
+
+def heat_arrow(points, min_gain=3.0, max_len=280.0):
+    """Flèche « par là » : depuis le DERNIER point noté vers le point le plus fort.
+    -> None (moins de 2 points), {"here": True} (tu es sur le plus fort, ou à moins de min_gain dB de lui), sinon
+    {"x0", "y0", "x1", "y1", "gain" (dB à gagner), "dist" (unités de carte)} ; flèche longue de max_len au plus."""
+    pts = [p for p in points or [] if p.get("level") is not None]
+    if len(pts) < 2:
+        return None
+    last = max(pts, key=lambda p: float(p.get("t") or 0.0))
+    hot = max(pts, key=lambda p: p["level"])
+    gain = float(hot["level"]) - float(last["level"])
+    dx, dy = float(hot["x"]) - float(last["x"]), float(hot["y"]) - float(last["y"])
+    dist = math.hypot(dx, dy)
+    if hot is last or gain < min_gain or dist < 1.0:
+        return {"here": True}
+    L = min(dist - 14.0, max_len) if dist > 30 else dist * 0.6
+    return dict(x0=float(last["x"]), y0=float(last["y"]), x1=float(last["x"]) + dx / dist * L,
+                y1=float(last["y"]) + dy / dist * L, gain=round(gain, 1), dist=round(dist, 1))
 
 
 def heat_hot(points):
@@ -20573,6 +20639,7 @@ class MapScene(QtWidgets.QGraphicsScene):
         super().__init__()
         self.owner = owner
         self.nodes, self.links, self.heat_items, self.hot_item = {}, [], [], None
+        self.arrow_info = None
         self.bg_item = None
         self.heat_f = None                    # fréquence affichée en chaleur (None = toutes)
         self.show_heat = True
@@ -20736,11 +20803,12 @@ class MapScene(QtWidgets.QGraphicsScene):
         lo, hi = heat_scale([p["level"] for p in pts])
         # 1) le dégradé continu, calculé entre les points (une seule image lissée, sous les tuiles)
         cell = 8.0
-        x0 = min(p["x"] for p in pts) - HEAT_REACH
-        y0 = min(p["y"] for p in pts) - HEAT_REACH
-        w = max(p["x"] for p in pts) + HEAT_REACH - x0
-        h = max(p["y"] for p in pts) + HEAT_REACH - y0
-        field, alpha = heat_field(pts, x0, y0, w, h, cell)
+        reach = float(o.map_cfg.get("heat_reach", HEAT_REACH))
+        x0 = min(p["x"] for p in pts) - reach
+        y0 = min(p["y"] for p in pts) - reach
+        w = max(p["x"] for p in pts) + reach - x0
+        h = max(p["y"] for p in pts) + reach - y0
+        field, alpha = heat_field(pts, x0, y0, w, h, cell, reach)
         rgba = np.ascontiguousarray(heat_rgba(field, alpha, lo, hi))
         img = QtGui.QImage(rgba.data, rgba.shape[1], rgba.shape[0], rgba.shape[1] * 4,
                            QtGui.QImage.Format.Format_RGBA8888).copy()
@@ -20753,9 +20821,45 @@ class MapScene(QtWidgets.QGraphicsScene):
         it.setPos(x0, y0)
         it.setZValue(-5)
         self.heat_items.append(it)
+        th = o.theme
+        # 1 bis) courbes de niveau tous les 5 dB (facultatif)
+        if o.map_cfg.get("heat_iso", True) and len(pts) >= 2:
+            ink = QtGui.QColor(th["ui_text"])
+            for lev, segs in heat_isolines(field, alpha, x0, y0, cell, 5.0):
+                path = QtGui.QPainterPath()
+                for xa, ya, xb, yb in segs:
+                    path.moveTo(xa, ya)
+                    path.lineTo(xb, yb)
+                c = QtGui.QColor(ink)
+                c.setAlphaF(0.30)
+                pen = QtGui.QPen(c, 1.1)
+                pen.setCosmetic(True)
+                li = self.addPath(path, pen)
+                li.setZValue(-4.6)
+                li.setToolTip(TR("Courbe de niveau : {}").format(o.lvl(lev, suffix=True)))
+                self.heat_items.append(li)
+        # 1 ter) parcours de la chasse (facultatif) : trace fine et lissée, plus nette vers les derniers points
+        if o.map_cfg.get("heat_path", False) and len(pts) >= 2:
+            route = heat_path(pts)
+            n = len(route)
+            for k in range(n - 1):
+                p0 = route[max(0, k - 1)]
+                p1, p2 = route[k], route[k + 1]
+                p3 = route[min(n - 1, k + 2)]
+                path = QtGui.QPainterPath(QtCore.QPointF(*p1))
+                path.cubicTo(QtCore.QPointF(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6),
+                             QtCore.QPointF(p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6),
+                             QtCore.QPointF(*p2))
+                c = QtGui.QColor(th["ui_text"])
+                c.setAlphaF(0.12 + 0.43 * (k + 1) / (n - 1))
+                pen = QtGui.QPen(c, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+                pen.setCosmetic(True)
+                li = self.addPath(path, pen)
+                li.setZValue(-4.5)
+                li.setToolTip(TR("Parcours de la chasse (dans l'ordre des points)"))
+                self.heat_items.append(li)
         # 2) les points de mesure : petits, nets, avec leur niveau
         hot = heat_hot(pts)
-        th = o.theme
         font = QtGui.QFont(self.font())
         font.setPointSizeF(8.5)
         font.setBold(True)
@@ -20789,6 +20893,56 @@ class MapScene(QtWidgets.QGraphicsScene):
                                             QtGui.QPen(QtGui.QColor(*heat_rgb(hot["level"], lo, hi)), 2.0))
             self.hot_item.setZValue(-3)
             self.hot_item.setToolTip(TR("Le plus fort : {} dBm").format(f"{hot['level']:.1f}"))
+        # 3) « par là » (facultatif) : « tu es ici » sur le dernier point + chevrons ››› vers le plus fort + « +N dB »
+        self.arrow_info = heat_arrow(pts) if o.map_cfg.get("heat_arrow", True) else None
+        ar = self.arrow_info
+        if ar:
+            acc = QtGui.QColor(th["ui_accent"])
+            last = max(pts, key=lambda p_: float(p_.get("t") or 0.0))
+            lx, ly = float(last["x"]), float(last["y"])
+            halo = QtGui.QRadialGradient(QtCore.QPointF(lx, ly), 22)
+            c0, c1 = QtGui.QColor(acc), QtGui.QColor(acc)
+            c0.setAlphaF(0.32)
+            c1.setAlphaF(0.0)
+            halo.setColorAt(0.0, c0)
+            halo.setColorAt(1.0, c1)
+            items = [self.addEllipse(QtCore.QRectF(lx - 22, ly - 22, 44, 44), QtGui.QPen(Qt.PenStyle.NoPen),
+                                     QtGui.QBrush(halo)),
+                     self.addEllipse(QtCore.QRectF(lx - 9, ly - 9, 18, 18), QtGui.QPen(acc, 2.0))]
+            if ar.get("here"):
+                tip = TR("📍 Ta dernière mesure est la plus forte : cherche autour d'ici")
+            else:
+                ang = math.atan2(ar["y1"] - ar["y0"], ar["x1"] - ar["x0"])
+                ux, uy = math.cos(ang), math.sin(ang)
+                for k, (d, a_) in enumerate(((27, 0.95), (42, 0.65), (57, 0.35))):
+                    cx, cy = lx + ux * d, ly + uy * d
+                    path = QtGui.QPainterPath(QtCore.QPointF(cx - ux * 6 - uy * 8, cy - uy * 6 + ux * 8))
+                    path.lineTo(cx + ux * 2, cy + uy * 2)
+                    path.lineTo(cx - ux * 6 + uy * 8, cy - uy * 6 - ux * 8)
+                    c = QtGui.QColor(acc)
+                    c.setAlphaF(a_)
+                    pen = QtGui.QPen(c, 3.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+                    items.append(self.addPath(path, pen))
+                txt = f"+{ar['gain']:.0f} dB"
+                fnt = QtGui.QFont(self.font())
+                fnt.setPointSizeF(8.5)
+                fnt.setBold(True)
+                fm2 = QtGui.QFontMetricsF(fnt)
+                tw, tht = fm2.horizontalAdvance(txt) + 12, fm2.height() + 3
+                cx, cy = lx + ux * 80, ly + uy * 80
+                box = QtCore.QRectF(cx - tw / 2, cy - tht / 2, tw, tht)
+                pp = QtGui.QPainterPath()
+                pp.addRoundedRect(box, tht / 2, tht / 2)
+                items.append(self.addPath(pp, QtGui.QPen(Qt.PenStyle.NoPen), QtGui.QBrush(acc)))
+                lab = self.addSimpleText(txt, fnt)
+                lab.setBrush(QtGui.QColor("#ffffff"))
+                lab.setPos(box.left() + 6, box.top() + 1.5)
+                items.append(lab)
+                tip = TR("Par là : le point le plus fort est {} dB au-dessus de ta dernière mesure").format(f"{ar['gain']:.0f}")
+            for it in items:
+                it.setZValue(-3.5)
+                it.setToolTip(tip)
+                self.heat_items.append(it)
 
     # --- glisser-déposer
     def node_dropped(self, n):
@@ -21057,6 +21211,11 @@ class MapWindow(QtWidgets.QWidget):
             h = o._hunt
             txt = TR("🔎 Chasse en cours sur {} MHz · clique sur la carte là où tu es : le niveau y est noté").format(
                 f"{h.f_spin.value():.3f}")
+            ar = o.map_scene().arrow_info
+            if ar and ar.get("here"):
+                txt += "\n" + TR("📍 Ta dernière mesure est la plus forte : cherche autour d'ici")
+            elif ar:
+                txt += "\n" + TR("››› Va dans la direction des chevrons : environ {} dB de plus vers le point le plus fort").format(f"{ar['gain']:.0f}")
             col = th["ui_accent"]
         elif self._hint and time.time() < self._hint_t:
             txt, col = self._hint, th["ui_text"]
@@ -21065,7 +21224,9 @@ class MapWindow(QtWidgets.QWidget):
             return
         self.banner.setText(txt)
         self.banner.setStyleSheet(soft_style(col, th["ui_base"], th["ui_text"]) + "; padding:8px 14px; border-radius:14px")
-        self.banner.setMaximumWidth(max(200, self.view.width() - 120))
+        fm = self.banner.fontMetrics()
+        tw = max(fm.horizontalAdvance(l_) for l_ in txt.split("\n")) + 40
+        self.banner.setFixedWidth(max(200, min(tw, self.view.width() - 120)))
         self.banner.adjustSize()
         self.banner.show()
         self._place_overlays()
@@ -21097,7 +21258,7 @@ class MapWindow(QtWidgets.QWidget):
         if r.isEmpty():
             r = QtCore.QRectF(-200, -150, 800, 500)
         self.view.resetTransform()
-        self.view.fitInView(r.adjusted(-80, -80, 80, 80), Qt.AspectRatioMode.KeepAspectRatio)
+        self.view.fitInView(r.adjusted(-80, -150, 80, 80), Qt.AspectRatioMode.KeepAspectRatio)   # place pour la bulle
         if self.view.transform().m11() > 1.0:
             self.view.resetTransform()
             self.view.centerOn(r.center())
@@ -21179,6 +21340,20 @@ class MapWindow(QtWidgets.QWidget):
         a.setCheckable(True)
         a.setChecked(self.heat_on)
         a.triggered.connect(lambda *_, a=a: self._heat(a.isChecked()))
+        m.addSection(TR("Sur la carte"))
+        for key, txt in (("heat_iso", "Courbes de niveau (tous les 5 dB)"),
+                         ("heat_arrow", "Direction « par là » (vers le plus fort)"),
+                         ("heat_path", "Parcours de la chasse")):
+            b = m.addAction(txt)
+            b.setCheckable(True)
+            b.setChecked(bool(o.map_cfg.get(key, MAP_DEFAULT[key])))
+            b.triggered.connect(lambda *_, key=key, b=b: self.set_heat_opt(key, b.isChecked()))
+        sub = m.addMenu(TR("Étalement du dégradé"))
+        for r, txt in zip(HEAT_REACHES, ("Serré (points rapprochés)", "Normal", "Large (points espacés)")):
+            b = sub.addAction(txt)
+            b.setCheckable(True)
+            b.setChecked(abs(float(o.map_cfg.get("heat_reach", HEAT_REACH)) - r) < 1)
+            b.triggered.connect(lambda *_, r=r: self.set_heat_opt("heat_reach", r))
         fs = heat_freqs(o.map_cfg["heat"])
         if fs:
             m.addSection(TR("Fréquence chassée"))
@@ -21194,6 +21369,11 @@ class MapWindow(QtWidgets.QWidget):
         m.addAction("Comment noter des points ?").triggered.connect(lambda *_: self.hint(TR(
             "Lance une 🔎 chasse au brouilleur, puis clique sur la carte là où tu es (PC portable), ou sur le téléphone : "
             "vue 🔎 Chasse › « Où suis-je ? »."), 12.0))
+
+    def set_heat_opt(self, key, val):
+        """Affichages de la chaleur (courbes, flèche, parcours, étalement) : chacun se coupe à part."""
+        self.owner.map_cfg[key] = val
+        self._heat(self.heat_on)
 
     def _set_heat_f(self, f):
         self.owner.map_scene().heat_f = f
