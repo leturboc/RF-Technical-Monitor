@@ -7582,6 +7582,45 @@ def heat_rgb(level, lo, hi):
     return stops[-1][1]
 
 
+HEAT_REACH = 170.0     # au-delà de cette distance (unités de la carte) du point le plus proche : pas de couleur
+
+
+def heat_field(points, x0, y0, w, h, cell=8.0, reach=HEAT_REACH):
+    """Carte de chaleur continue (façon relevé Wi-Fi) : niveau lissé entre les points (noyau gaussien : un dégradé
+    continu, pas une tache par point ; le niveau exact est écrit sur chaque point) et opacité pleine près des points
+    qui s'éteint en douceur au-delà.
+    -> (niveaux [ny, nx], opacité 0..1 [ny, nx]) sur une grille de pas `cell` partant de (x0, y0)."""
+    nx, ny = max(1, int(math.ceil(w / cell))), max(1, int(math.ceil(h / cell)))
+    pts = [p for p in points or [] if p.get("level") is not None]
+    if not pts:
+        return np.full((ny, nx), np.nan), np.zeros((ny, nx))
+    px = np.array([float(p["x"]) for p in pts])
+    py = np.array([float(p["y"]) for p in pts])
+    lv = np.array([float(p["level"]) for p in pts])
+    gx = x0 + (np.arange(nx) + 0.5) * cell
+    gy = y0 + (np.arange(ny) + 0.5) * cell
+    d2 = (gx[None, None, :] - px[:, None, None]) ** 2 + (gy[None, :, None] - py[:, None, None]) ** 2
+    sig = reach * 0.55
+    wgt = np.exp(-(d2 - d2.min(0)[None]) / (2.0 * sig * sig))   # noyau gaussien (stable loin des points)
+    field = (wgt * lv[:, None, None]).sum(0) / wgt.sum(0)
+    dmin = np.sqrt(d2.min(0))
+    u = np.clip((dmin - 0.4 * reach) / (0.6 * reach), 0.0, 1.0)
+    alpha = 1.0 - u * u * (3.0 - 2.0 * u)              # pleine près des points, puis fondu doux (smoothstep)
+    return field, alpha
+
+
+def heat_rgba(field, alpha, lo, hi, opacity=0.55):
+    """Image RGBA (uint8 [ny, nx, 4]) de heat_field, mêmes couleurs que heat_rgb."""
+    t = np.clip((np.nan_to_num(field, nan=lo) - lo) / max(1e-9, hi - lo), 0.0, 1.0)
+    stops = np.array([(59, 130, 246), (250, 204, 21), (239, 68, 68)], dtype=float)
+    k = np.minimum((t * 2).astype(int), 1)
+    u = (t * 2 - k)[..., None]
+    rgb = stops[k] + (stops[k + 1] - stops[k]) * u
+    a = np.clip(alpha, 0.0, 1.0) * opacity * 255.0
+    a = np.where(np.isnan(field), 0.0, a)
+    return np.dstack([rgb, a[..., None]]).round().astype(np.uint8)
+
+
 def heat_hot(points):
     """Le point le plus fort (là où chercher) ou None."""
     pts = [p for p in points or [] if p.get("level") is not None]
@@ -18550,29 +18589,64 @@ class MapScene(QtWidgets.QGraphicsScene):
             self.hot_item = None
         if not self.show_heat:
             return
-        pts = heat_for(self.owner.map_cfg["heat"], self.heat_f, 0.05)
+        o = self.owner
+        pts = heat_for(o.map_cfg["heat"], self.heat_f, 0.05)
+        if not pts:
+            return
         lo, hi = heat_scale([p["level"] for p in pts])
+        # 1) le dégradé continu, calculé entre les points (une seule image lissée, sous les tuiles)
+        cell = 8.0
+        x0 = min(p["x"] for p in pts) - HEAT_REACH
+        y0 = min(p["y"] for p in pts) - HEAT_REACH
+        w = max(p["x"] for p in pts) + HEAT_REACH - x0
+        h = max(p["y"] for p in pts) + HEAT_REACH - y0
+        field, alpha = heat_field(pts, x0, y0, w, h, cell)
+        rgba = np.ascontiguousarray(heat_rgba(field, alpha, lo, hi))
+        img = QtGui.QImage(rgba.data, rgba.shape[1], rgba.shape[0], rgba.shape[1] * 4,
+                           QtGui.QImage.Format.Format_RGBA8888).copy()
+        pm = QtGui.QPixmap.fromImage(img.scaled(img.width() * 4, img.height() * 4,
+                                                Qt.AspectRatioMode.IgnoreAspectRatio,
+                                                Qt.TransformationMode.SmoothTransformation))
+        it = self.addPixmap(pm)
+        it.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        it.setScale(cell / 4.0)
+        it.setPos(x0, y0)
+        it.setZValue(-5)
+        self.heat_items.append(it)
+        # 2) les points de mesure : petits, nets, avec leur niveau
+        hot = heat_hot(pts)
+        th = o.theme
+        font = QtGui.QFont(self.font())
+        font.setPointSizeF(8.5)
+        font.setBold(True)
+        fm = QtGui.QFontMetricsF(font)
         for p in pts:
             r_, g_, b_ = heat_rgb(p["level"], lo, hi)
-            rad = 110.0
-            grad = QtGui.QRadialGradient(QtCore.QPointF(p["x"], p["y"]), rad)
-            grad.setColorAt(0.0, QtGui.QColor(r_, g_, b_, 200))
-            grad.setColorAt(0.45, QtGui.QColor(r_, g_, b_, 90))
-            grad.setColorAt(1.0, QtGui.QColor(r_, g_, b_, 0))
-            it = self.addEllipse(QtCore.QRectF(p["x"] - rad, p["y"] - rad, 2 * rad, 2 * rad), QtGui.QPen(Qt.PenStyle.NoPen),
-                                 QtGui.QBrush(grad))
-            it.setZValue(-5)
-            it.setToolTip(f"{p['level']:.1f} dBm · {p['f']:.3f} MHz · "
-                          f"{datetime.fromtimestamp(p['t']).strftime('%H:%M:%S') if p['t'] else ''}")
-            self.heat_items.append(it)
-            dot = self.addEllipse(QtCore.QRectF(p["x"] - 6, p["y"] - 6, 12, 12), QtGui.QPen(QtGui.QColor("#ffffff"), 2.0),
-                                  QtGui.QBrush(QtGui.QColor(r_, g_, b_)))
+            is_hot = p is hot
+            rad = 6.5 if is_hot else 4.5
+            dot = self.addEllipse(QtCore.QRectF(p["x"] - rad, p["y"] - rad, 2 * rad, 2 * rad),
+                                  QtGui.QPen(QtGui.QColor(th["ui_bg"]), 1.6), QtGui.QBrush(QtGui.QColor(r_, g_, b_)))
             dot.setZValue(-4)
+            when = datetime.fromtimestamp(p["t"]).strftime("%H:%M:%S") if p.get("t") else ""
+            dot.setToolTip(f"{o.lvl(p['level'], suffix=True)} · {p['f']:.3f} MHz · {when}")
             self.heat_items.append(dot)
-        hot = heat_hot(pts)
+            txt = fmt_level(p["level"], o.unit, 0, False)
+            tw = fm.horizontalAdvance(txt) + 10
+            box = QtCore.QRectF(p["x"] - tw / 2, p["y"] + (15 if is_hot else rad + 3), tw, fm.height() + 2)
+            path = QtGui.QPainterPath()
+            path.addRoundedRect(box, 6, 6)
+            bg = self.addPath(path, QtGui.QPen(Qt.PenStyle.NoPen),
+                              QtGui.QBrush(QtGui.QColor(r_, g_, b_) if is_hot else QtGui.QColor(th["ui_base"])))
+            bg.setOpacity(0.92)
+            bg.setZValue(-3.9)
+            lab = self.addSimpleText(txt, font)
+            lab.setBrush(QtGui.QColor("#111111" if is_hot else th["ui_text"]))
+            lab.setPos(box.left() + 5, box.top() + 1)
+            lab.setZValue(-3.8)
+            self.heat_items += [bg, lab]
         if hot is not None:
-            self.hot_item = self.addEllipse(QtCore.QRectF(hot["x"] - 16, hot["y"] - 16, 32, 32),
-                                            QtGui.QPen(QtGui.QColor("#ef4444"), 3.0))
+            self.hot_item = self.addEllipse(QtCore.QRectF(hot["x"] - 13, hot["y"] - 13, 26, 26),
+                                            QtGui.QPen(QtGui.QColor(*heat_rgb(hot["level"], lo, hi)), 2.0))
             self.hot_item.setZValue(-3)
             self.hot_item.setToolTip(TR("Le plus fort : {} dBm").format(f"{hot['level']:.1f}"))
 
