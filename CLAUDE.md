@@ -1273,7 +1273,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `heat_hot`, `heat_field` (Clément : « led points chaud et froid, rendu bizarre » → dégradé CONTINU façon relevé Wi-Fi :
     noyau gaussien σ = 0,55 × `HEAT_REACH` (170), opacité pleine jusqu'à 0,4 × reach puis smoothstep) + `heat_rgba` →
     une seule image lissée sous les tuiles ; points = petits ronds nets + étiquette du niveau (unité choisie), le plus
-    fort cerclé ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
+    fort cerclé ;
+    aides désactivables (Clément : « on fait tout mais désactivable », 🔥 Chaleur › Sur la carte, `set_heat_opt`,
+    `map_cfg` `heat_iso` / `heat_arrow` (oui) / `heat_path` (non) / `heat_reach` (`HEAT_REACHES` 90 / 170 / 300)) :
+    PURE `heat_isolines` (carrés qui marchent, tous les 5 dB, là où opacité ≥ 0,35), `heat_arrow` (du DERNIER point vers
+    le plus fort, `here` si déjà dessus ou < 3 dB → texte dans la bulle), `heat_path`  ; rendu (Clément : « la flèche et la traînée ça fait
+    Paint ») : « tu es ici » (halo + anneau accent) sur le dernier point + 3 chevrons ››› dégradés + pastille « +N dB »,
+    parcours = trace Catmull-Rom fine, opacité croissante vers les derniers points ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
     carte pendant la chasse. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
     (`WebServer(get_map=…)`, vues chasse ou terrain partagées) = `self._map_png` refait toutes les 5 s si quelqu'un regarde
     « chasse » (`_map_web_tick`) ; `map_mark_rel` (image → carte via `_map_rect`), `map_marks_rel` → `hunt_state` (`map`,

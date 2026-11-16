@@ -2267,6 +2267,23 @@ if win.is_running():
     _pt = _mw.mark_at(120, 80)
     check("🗺 point de chaleur noté avec le niveau de la chasse", _pt is not None and _pt["level"] == round(_h.level, 1)
           and len(_ms.heat_items) >= 2, str(_pt))
+    _h.level = (_h.level or -80.0) + 9.0
+    _mw.mark_at(320, 160)
+    _n0 = len(_ms.heat_items)
+    _mw.set_heat_opt("heat_path", True)
+    _n1 = len(_ms.heat_items)
+    for _k in ("heat_iso", "heat_arrow", "heat_path"):
+        _mw.set_heat_opt(_k, False)
+    _n2 = len(_ms.heat_items)
+    check("🗺 chaleur : parcours ajouté, courbes / flèche / parcours désactivables", _n1 == _n0 + 1 and _n2 < _n1
+          and not win.map_cfg["heat_iso"], f"{_n0} {_n1} {_n2}")
+    _mw.set_heat_opt("heat_reach", 300.0)
+    _mw._build_heat_menu()
+    check("🗺 chaleur : menu avec les cases d'affichage", any(a_.text() == m.TR("Parcours de la chasse")
+          for a_ in _mw.heat_menu.actions()))
+    for _k in ("heat_iso", "heat_arrow"):
+        _mw.set_heat_opt(_k, True)
+    _mw.set_heat_opt("heat_reach", 170.0)
     _png, _rr = win.map_png()
     win._map_png, win._map_rect = _png, _rr
     _pt2 = win.map_mark_rel(0.5, 0.5)
