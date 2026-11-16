@@ -6219,7 +6219,7 @@ function update(v){const st=D.state;
   ["#hmt","#hmh","#hmap","#hun"].forEach(id=>$(id).classList.toggle("hidden",!h.map));
   const mi=$("#hmi");if(h.map&&mi.dataset.t!==String(h.map_t)){mi.dataset.t=String(h.map_t);mi.src="carte.png?t="+h.map_t}
   const mk=JSON.stringify(h.marks||[]);if($("#hdots").dataset.k!==mk){$("#hdots").dataset.k=mk;const ms=h.marks||[],lv=ms.map(m=>m.level),lo=Math.min(...lv),hi=Math.max(...lv);
-   $("#hdots").innerHTML=ms.map(m=>{const t=hi>lo?(m.level-lo)/(hi-lo):1,c=t<.5?"#3b82f6":t<.8?"#facc15":"#ef4444";return`<i style="position:absolute;left:${m.x*100}%;top:${m.y*100}%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:${c};border:2px solid #fff"></i>`}).join("")}
+   $("#hdots").innerHTML=ms.map(m=>{const t=hi>lo?(m.level-lo)/(hi-lo):1,c=m.c||(t<.5?"#3b82f6":t<.8?"#facc15":"#ef4444");return`<i style="position:absolute;left:${m.x*100}%;top:${m.y*100}%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:${c};border:2px solid #fff"></i>`}).join("")}
   huntBeep(h.on&&!$("#hmu").checked?h.level:null);return}
  if(v==="tech"){techUpdate();return}
  if(v==="terrain"){const T=st.terrain||{},ds=T.devs||[],td=$("#td"),box=$("#tsc"),scs=T.scenes||[];
@@ -7484,7 +7484,8 @@ def hunt_request(req):
 
 # ------------------------------------------------------------------ 🗺 7.64 : carte du site (façon canevas réseau)
 MAP_DEFAULT = dict(pos={}, bg="", bg_op=0.45, bg_scale=1.0, bg_pos=[0.0, 0.0], heat=[], grid=True,
-                   heat_reach=170.0, heat_iso=True, heat_arrow=True, heat_path=False)
+                   heat_reach=170.0, heat_iso=True, heat_arrow=True, heat_path=False,
+                   heat_pal="classic", heat_op=0.55, heat_labels=True)
 HEAT_REACHES = (90.0, 170.0, 300.0)   # portée du dégradé : serrée / normale / large (unités de carte)
 MAP_STEP = 40.0                   # pas de la grille (et de l'aimantation) en unités de carte
 HEAT_MAX = 2000
@@ -7516,8 +7517,14 @@ def map_cfg_norm(d):
     except (TypeError, ValueError, IndexError):
         pass
     out["grid"] = bool(d.get("grid", True))
-    for k in ("heat_iso", "heat_arrow", "heat_path"):
+    for k in ("heat_iso", "heat_arrow", "heat_path", "heat_labels"):
         out[k] = bool(d.get(k, MAP_DEFAULT[k]))
+    pal = d.get("heat_pal")
+    out["heat_pal"] = pal if pal in [k for k, _n, _s in HEAT_PALETTES] else MAP_DEFAULT["heat_pal"]
+    try:
+        out["heat_op"] = min(0.95, max(0.1, float(d.get("heat_op", MAP_DEFAULT["heat_op"]))))
+    except (TypeError, ValueError):
+        pass
     try:
         out["heat_reach"] = min(500.0, max(40.0, float(d.get("heat_reach", MAP_DEFAULT["heat_reach"]))))
     except (TypeError, ValueError):
@@ -7579,15 +7586,45 @@ def heat_scale(levels):
     return (lo, hi)
 
 
-def heat_rgb(level, lo, hi):
-    """Couleur d'un point : bleu (faible) → jaune → rouge (là où ça crie le plus)."""
+HEAT_PALETTES = [   # (clé, nom, couleurs du plus faible au plus fort ; None = accent du thème)
+    ("classic", "Classique (bleu → jaune → rouge)", [(59, 130, 246), (250, 204, 21), (239, 68, 68)]),
+    ("thermal", "Caméra thermique (violet → rouge → jaune)", [(49, 46, 129), (190, 24, 93), (239, 68, 68),
+                                                             (251, 191, 36), (254, 243, 199)]),
+    ("viridis", "Daltonien (violet → vert → jaune)", [(68, 1, 84), (59, 82, 139), (33, 145, 140), (94, 201, 98),
+                                                      (253, 231, 37)]),
+    ("ice", "Glacier (bleu nuit → cyan → blanc)", [(30, 58, 138), (14, 165, 233), (103, 232, 249), (240, 253, 255)]),
+    ("mint", "Doux (menthe → corail, couleurs du défaut)", [(79, 209, 197), (250, 204, 21), (255, 107, 107)]),
+    ("accent", "Une seule couleur (accent du thème)", None),
+]
+HEAT_PAL_DEFAULT = "classic"
+
+
+def heat_stops(pal=HEAT_PAL_DEFAULT, accent="#0a84ff"):
+    """Couleurs d'une palette de chaleur -> [(r, g, b), …] du plus faible au plus fort."""
+    for k, _n, st in HEAT_PALETTES:
+        if k == pal:
+            if st is not None:
+                return list(st)
+            a = accent.lstrip("#")
+            r, g, b = int(a[0:2], 16), int(a[2:4], 16), int(a[4:6], 16)
+            return [(round(r * 0.25), round(g * 0.25), round(b * 0.25)), (r, g, b),
+                    (round(r + (255 - r) * 0.75), round(g + (255 - g) * 0.75), round(b + (255 - b) * 0.75))]
+    return list(HEAT_PALETTES[0][2])
+
+
+def heat_rgb(level, lo, hi, stops=None):
+    """Couleur d'un niveau : du plus faible (1re couleur) au plus fort (dernière) ; défaut bleu → jaune → rouge."""
+    st = stops or HEAT_PALETTES[0][2]
     t = 0.0 if hi <= lo else min(1.0, max(0.0, (float(level) - lo) / (hi - lo)))
-    stops = [(0.0, (59, 130, 246)), (0.5, (250, 204, 21)), (1.0, (239, 68, 68))]
-    for (a, ca), (b, cb) in zip(stops, stops[1:]):
-        if t <= b:
-            u = (t - a) / (b - a)
-            return tuple(int(round(ca[i] + (cb[i] - ca[i]) * u)) for i in range(3))
-    return stops[-1][1]
+    x = t * (len(st) - 1)
+    k = min(int(x), len(st) - 2)
+    u = x - k
+    ca, cb = st[k], st[k + 1]
+    return tuple(int(round(ca[i] + (cb[i] - ca[i]) * u)) for i in range(3))
+
+
+def heat_hex(level, lo, hi, stops=None):
+    return "#%02x%02x%02x" % heat_rgb(level, lo, hi, stops)
 
 
 HEAT_REACH = 170.0     # au-delà de cette distance (unités de la carte) du point le plus proche : pas de couleur
@@ -7617,12 +7654,13 @@ def heat_field(points, x0, y0, w, h, cell=8.0, reach=HEAT_REACH):
     return field, alpha
 
 
-def heat_rgba(field, alpha, lo, hi, opacity=0.55):
-    """Image RGBA (uint8 [ny, nx, 4]) de heat_field, mêmes couleurs que heat_rgb."""
+def heat_rgba(field, alpha, lo, hi, opacity=0.55, stops=None):
+    """Image RGBA (uint8 [ny, nx, 4]) de heat_field, mêmes couleurs que heat_rgb (opacity = intensité 0..1)."""
     t = np.clip((np.nan_to_num(field, nan=lo) - lo) / max(1e-9, hi - lo), 0.0, 1.0)
-    stops = np.array([(59, 130, 246), (250, 204, 21), (239, 68, 68)], dtype=float)
-    k = np.minimum((t * 2).astype(int), 1)
-    u = (t * 2 - k)[..., None]
+    stops = np.array(stops or HEAT_PALETTES[0][2], dtype=float)
+    n = len(stops) - 1
+    k = np.minimum((t * n).astype(int), n - 1)
+    u = (t * n - k)[..., None]
     rgb = stops[k] + (stops[k + 1] - stops[k]) * u
     a = np.clip(alpha, 0.0, 1.0) * opacity * 255.0
     a = np.where(np.isnan(field), 0.0, a)
@@ -18669,7 +18707,8 @@ class MapScene(QtWidgets.QGraphicsScene):
         w = max(p["x"] for p in pts) + reach - x0
         h = max(p["y"] for p in pts) + reach - y0
         field, alpha = heat_field(pts, x0, y0, w, h, cell, reach)
-        rgba = np.ascontiguousarray(heat_rgba(field, alpha, lo, hi))
+        st = heat_stops(o.map_cfg.get("heat_pal", HEAT_PAL_DEFAULT), o.theme["ui_accent"])
+        rgba = np.ascontiguousarray(heat_rgba(field, alpha, lo, hi, float(o.map_cfg.get("heat_op", 0.55)), st))
         img = QtGui.QImage(rgba.data, rgba.shape[1], rgba.shape[0], rgba.shape[1] * 4,
                            QtGui.QImage.Format.Format_RGBA8888).copy()
         pm = QtGui.QPixmap.fromImage(img.scaled(img.width() * 4, img.height() * 4,
@@ -18725,15 +18764,18 @@ class MapScene(QtWidgets.QGraphicsScene):
         font.setBold(True)
         fm = QtGui.QFontMetricsF(font)
         for p in pts:
-            r_, g_, b_ = heat_rgb(p["level"], lo, hi)
+            r_, g_, b_ = heat_rgb(p["level"], lo, hi, st)
             is_hot = p is hot
             rad = 6.5 if is_hot else 4.5
             dot = self.addEllipse(QtCore.QRectF(p["x"] - rad, p["y"] - rad, 2 * rad, 2 * rad),
-                                  QtGui.QPen(QtGui.QColor(th["ui_bg"]), 1.6), QtGui.QBrush(QtGui.QColor(r_, g_, b_)))
+                                  QtGui.QPen(QtGui.QColor(blend(th["ui_text"], th["ui_bg"], 0.65)), 1.4),
+                                  QtGui.QBrush(QtGui.QColor(r_, g_, b_)))
             dot.setZValue(-4)
             when = datetime.fromtimestamp(p["t"]).strftime("%H:%M:%S") if p.get("t") else ""
             dot.setToolTip(f"{o.lvl(p['level'], suffix=True)} · {p['f']:.3f} MHz · {when}")
             self.heat_items.append(dot)
+            if not (is_hot or o.map_cfg.get("heat_labels", True)):
+                continue                       # niveaux écrits : le plus fort seulement
             txt = fmt_level(p["level"], o.unit, 0, False)
             tw = fm.horizontalAdvance(txt) + 10
             box = QtCore.QRectF(p["x"] - tw / 2, p["y"] + (15 if is_hot else rad + 3), tw, fm.height() + 2)
@@ -18750,7 +18792,7 @@ class MapScene(QtWidgets.QGraphicsScene):
             self.heat_items += [bg, lab]
         if hot is not None:
             self.hot_item = self.addEllipse(QtCore.QRectF(hot["x"] - 13, hot["y"] - 13, 26, 26),
-                                            QtGui.QPen(QtGui.QColor(*heat_rgb(hot["level"], lo, hi)), 2.0))
+                                            QtGui.QPen(QtGui.QColor(*heat_rgb(hot["level"], lo, hi, st)), 2.0))
             self.hot_item.setZValue(-3)
             self.hot_item.setToolTip(TR("Le plus fort : {} dBm").format(f"{hot['level']:.1f}"))
         # 3) « par là » (facultatif) : « tu es ici » sur le dernier point + chevrons ››› vers le plus fort + « +N dB »
@@ -18931,8 +18973,9 @@ class MapHeatLegend(QtWidgets.QWidget):
         p.setBrush(QtGui.QColor(card))
         p.drawRoundedRect(QtCore.QRectF(0.5, 0.5, self.width() - 1, self.height() - 1), 10, 10)
         g = QtGui.QLinearGradient(12, 0, self.width() - 12, 0)
-        for t in (0.0, 0.5, 1.0):
-            g.setColorAt(t, QtGui.QColor(*heat_rgb(self.lo + t * (self.hi - self.lo), self.lo, self.hi)))
+        st = heat_stops(self.owner.map_cfg.get("heat_pal", HEAT_PAL_DEFAULT), th["ui_accent"])
+        for t in (0.0, 0.25, 0.5, 0.75, 1.0):
+            g.setColorAt(t, QtGui.QColor(*heat_rgb(self.lo + t * (self.hi - self.lo), self.lo, self.hi, st)))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QtGui.QBrush(g))
         p.drawRoundedRect(QtCore.QRectF(12, 26, self.width() - 24, 10), 5, 5)
@@ -19200,8 +19243,31 @@ class MapWindow(QtWidgets.QWidget):
         a.setCheckable(True)
         a.setChecked(self.heat_on)
         a.triggered.connect(lambda *_, a=a: self._heat(a.isChecked()))
+        m.addSection(TR("Apparence"))
+        cm = m.addMenu(TR("🎨 Couleurs"))
+        for k, name, _st in HEAT_PALETTES:
+            b = cm.addAction(name)
+            b.setCheckable(True)
+            b.setChecked(o.map_cfg.get("heat_pal", HEAT_PAL_DEFAULT) == k)
+            b.triggered.connect(lambda *_, k=k: self.set_heat_opt("heat_pal", k))
+        ow = QtWidgets.QWidget()
+        ol = QtWidgets.QHBoxLayout(ow)
+        ol.setContentsMargins(12, 4, 12, 4)
+        ol.addWidget(QtWidgets.QLabel(TR("Intensité")))
+        sl = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        sl.setRange(10, 95)
+        sl.setValue(int(round(float(o.map_cfg.get("heat_op", 0.55)) * 100)))
+        sl.setMinimumWidth(150)
+        sl.setToolTip(TR("Plus ou moins opaque : à baisser pour bien voir le plan de fond sous la chaleur."))
+        sl.valueChanged.connect(lambda v: self.set_heat_opt("heat_op", v / 100.0))
+        ol.addWidget(sl)
+        wa = QtWidgets.QWidgetAction(m)
+        wa.setDefaultWidget(ow)
+        m.addAction(wa)
+        self.heat_slider = sl
         m.addSection(TR("Sur la carte"))
-        for key, txt in (("heat_iso", "Courbes de niveau (tous les 5 dB)"),
+        for key, txt in (("heat_labels", "Niveaux écrits sur les points"),
+                         ("heat_iso", "Courbes de niveau (tous les 5 dB)"),
                          ("heat_arrow", "Direction « par là » (vers le plus fort)"),
                          ("heat_path", "Parcours de la chasse")):
             b = m.addAction(txt)
@@ -19231,9 +19297,11 @@ class MapWindow(QtWidgets.QWidget):
             "vue 🔎 Chasse › « Où suis-je ? »."), 12.0))
 
     def set_heat_opt(self, key, val):
-        """Affichages de la chaleur (courbes, flèche, parcours, étalement) : chacun se coupe à part."""
+        """Affichages de la chaleur (couleurs, intensité, niveaux, courbes, direction, parcours, étalement) : chacun se
+        règle / se coupe à part ; gardé avec le show, et l'image du téléphone suit."""
         self.owner.map_cfg[key] = val
         self._heat(self.heat_on)
+        self.legend.update()
 
     def _set_heat_f(self, f):
         self.owner.map_scene().heat_f = f
@@ -24443,9 +24511,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return []
         f = h.f_spin.value()
         out = []
-        for p in heat_for(self.map_cfg["heat"], f, 0.05)[-200:]:
+        pts = heat_for(self.map_cfg["heat"], f, 0.05)[-200:]
+        lo, hi = heat_scale([p["level"] for p in pts])
+        st = heat_stops(self.map_cfg.get("heat_pal", HEAT_PAL_DEFAULT), self.theme["ui_accent"])
+        for p in pts:
             out.append(dict(x=round((p["x"] - r.left()) / max(1.0, r.width()), 4),
-                            y=round((p["y"] - r.top()) / max(1.0, r.height()), 4), level=p["level"]))
+                            y=round((p["y"] - r.top()) / max(1.0, r.height()), 4), level=p["level"],
+                            c=heat_hex(p["level"], lo, hi, st)))
         return out
 
     def open_qr(self):

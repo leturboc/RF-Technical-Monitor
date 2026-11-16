@@ -1279,7 +1279,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     PURE `heat_isolines` (carrés qui marchent, tous les 5 dB, là où opacité ≥ 0,35), `heat_arrow` (du DERNIER point vers
     le plus fort, `here` si déjà dessus ou < 3 dB → texte dans la bulle), `heat_path`  ; rendu (Clément : « la flèche et la traînée ça fait
     Paint ») : « tu es ici » (halo + anneau accent) sur le dernier point + 3 chevrons ››› dégradés + pastille « +N dB »,
-    parcours = trace Catmull-Rom fine, opacité croissante vers les derniers points ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
+    parcours = trace Catmull-Rom fine, opacité croissante vers les derniers points ;
+    réglages (Clément : « modifier les couleurs, intensité et tout ») : PURE `HEAT_PALETTES` (classic, thermal, viridis,
+    ice, mint, accent = accent du thème), `heat_stops(pal, accent)`, `heat_rgb(..., stops)` / `heat_rgba(..., opacity,
+    stops)` multi-couleurs, `heat_hex` ; `map_cfg` `heat_pal`, `heat_op` (0,1–0,95, curseur `heat_slider` dans le menu),
+    `heat_labels` ; `map_marks_rel` envoie la couleur `c` au téléphone (`#hdots`) ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
     carte pendant la chasse. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
     (`WebServer(get_map=…)`, vues chasse ou terrain partagées) = `self._map_png` refait toutes les 5 s si quelqu'un regarde
     « chasse » (`_map_web_tick`) ; `map_mark_rel` (image → carte via `_map_rect`), `map_marks_rel` → `hunt_state` (`map`,
