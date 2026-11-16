@@ -1348,6 +1348,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   fréquence SANS nom → « THE BROWNING · MICS 1 » (modèle dans la note) ; nom écrit dans le plan gardé. Combo
   `EzrfImportDialog.naming` (`.ezrf3` seulement, s'il y a des fréquences sans nom), `opts["naming"]` →
   `ezrf_link["naming"]` (suivi). Les noms suivent l'ordre du fichier : réordonner les lignes du plan les renumérote.
+  **Démo → tinySA en pleine surveillance** (Clément : « ça a fait planté le soft et il a pas redémarré ») : la carte ①
+  de l'accueil décochait la démo pendant la surveillance (le balayage continuait en démo). `switch_source(demo, index)` :
+  arrêt propre, bascule, reprise (`toggle_run(auto=True)`). Cause exacte du plantage NON trouvée (pas de crash.log) ;
+  la garde ne relance que si l'appli a été lancée avec `--garde` (démarrage Windows ou « 🛡 Relancer sous garde »).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
