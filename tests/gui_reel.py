@@ -2366,6 +2366,15 @@ if win.is_running():
     _mw._build_heat_menu()
     check("🗺 chaleur : menu avec les cases d'affichage", any(a_.text() == m.TR("Parcours de la chasse")
           for a_ in _mw.heat_menu.actions()))
+    _mw.set_heat_opt("heat_pal", "thermal")
+    _mw.set_heat_opt("heat_op", 0.3)
+    _mw.set_heat_opt("heat_labels", False)
+    _mw._build_heat_menu()
+    _mw.heat_slider.setValue(70)
+    check("🗺 chaleur : couleurs, intensité (curseur du menu), niveaux écrits réglables", win.map_cfg["heat_pal"] == "thermal"
+          and abs(win.map_cfg["heat_op"] - 0.7) < 1e-6 and win.map_scene().heat_items, str(win.map_cfg.get("heat_op")))
+    for _k, _v in (("heat_pal", "classic"), ("heat_op", 0.55), ("heat_labels", True)):
+        _mw.set_heat_opt(_k, _v)
     for _k in ("heat_iso", "heat_arrow"):
         _mw.set_heat_opt(_k, True)
     _mw.set_heat_opt("heat_reach", 170.0)

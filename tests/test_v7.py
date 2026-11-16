@@ -1818,6 +1818,16 @@ check("chaleur : parcours dans l'ordre des points", ns["heat_path"](_hp2), [(0.0
 _mc = ns["map_cfg_norm"](dict(heat_iso=False, heat_path=True, heat_reach=9999))
 check("carte : affichages de la chaleur désactivables et gardés", (_mc["heat_iso"], _mc["heat_arrow"], _mc["heat_path"],
       _mc["heat_reach"]), (False, True, True, 500.0))
+check("chaleur : palettes (toutes valides, accent du thème, palette inconnue = classique)",
+      (all(len(ns["heat_stops"](k_)) >= 3 for k_, _n, _s in ns["HEAT_PALETTES"]), ns["heat_stops"]("accent", "#0a84ff")[1],
+       ns["heat_stops"]("??")[0], ns["heat_rgb"](-50, -90, -50, ns["heat_stops"]("thermal")),
+       ns["heat_hex"](-90, -90, -50)), (True, (10, 132, 255), (59, 130, 246), (254, 243, 199), "#3b82f6"))
+_rt = ns["heat_rgba"](_hf, _ha, -90.0, -50.0, 0.3, ns["heat_stops"]("viridis"))
+check("chaleur : intensité et palette dans l'image", (tuple(_rt[_hf.shape[0] // 2, 25, :3]), int(_rt[_hf.shape[0] // 2, 25, 3])),
+      ((68, 1, 84), 76))
+_mc2 = ns["map_cfg_norm"](dict(heat_pal="nimp", heat_op=5, heat_labels=False))
+check("carte : couleurs / intensité / niveaux gardés et bornés", (_mc2["heat_pal"], _mc2["heat_op"], _mc2["heat_labels"],
+      ns["map_cfg_norm"](dict(heat_pal="ice"))["heat_pal"]), ("classic", 0.95, False, "ice"))
 _rg = ns["heat_rgba"](_hf, _ha, -90.0, -50.0)
 check("chaleur continue : image RGBA (bleu côté faible, rouge côté fort, transparente au loin)",
       (_rg.shape[2], tuple(_rg[_hi, 25, :3]), tuple(_rg[_hi, 74, :3]) == (239, 68, 68), int(_rg[0, 0, 3])),

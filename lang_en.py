@@ -5733,3 +5733,19 @@ EXACT.update({
     "››› Va dans la direction des chevrons : environ {} dB de plus vers le point le plus fort":
         "››› Head the way the chevrons point: about {} dB more towards the strongest point",
 })
+
+# 7.64 chaleur : couleurs, intensité
+EXACT.update({
+    "Apparence": "Appearance",
+    "🎨 Couleurs": "🎨 Colours",
+    "Intensité": "Intensity",
+    "Plus ou moins opaque : à baisser pour bien voir le plan de fond sous la chaleur.":
+        "More or less opaque: lower it to see the background plan under the heat.",
+    "Niveaux écrits sur les points": "Levels written on the points",
+    "Classique (bleu → jaune → rouge)": "Classic (blue → yellow → red)",
+    "Caméra thermique (violet → rouge → jaune)": "Thermal camera (purple → red → yellow)",
+    "Daltonien (violet → vert → jaune)": "Colour-blind (purple → green → yellow)",
+    "Glacier (bleu nuit → cyan → blanc)": "Glacier (navy → cyan → white)",
+    "Doux (menthe → corail, couleurs du défaut)": "Soft (mint → coral, default colours)",
+    "Une seule couleur (accent du thème)": "Single colour (theme accent)",
+})
