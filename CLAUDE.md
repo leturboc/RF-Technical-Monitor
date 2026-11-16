@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.64.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.65.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1294,6 +1294,23 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Testé : test_v7 (PURE), gui_reel (posé d'office, tinySA déposé sur une scène, plan, point refusé sans chasse, point avec
   la chasse en démo, « je suis ici » par l'image, PNG), test_alertes (vue Chasse dans Chromium : plan affiché, points,
   toucher le plan → `mark` x / y). **Pas essayé par Clément.**
+- **7.65.0 (7ᵉ audit externe, sur la 7.64.0, transmis par Clément ; 2 bugs reproduits PUIS confirmés sur la 7.64.0)** :
+  - **Avant / après** : PURE `scan_segments(F)` (plages mesurées, coupées par `scan_gaps`), `covered(x, segs, pad)`,
+    `interp_measured(F, L, x)` (NaN hors plage ET dans les trous) ; `compare_spectra` et `scan_changes` ne comparent que
+    là où les DEUX scans ont mesuré (avant : `np.interp` par-dessus un trou → « disparu » à 500 MHz dans une zone jamais
+    balayée) ; `scan_changes` : doublon = zones qui se RECOUVRENT (`_zone` = f ± largeur / 2 ± ½ pas), plus « à moins de
+    300 kHz » (une hausse de 8 dB à 500,2 était effacée par un « apparu » à 500,0). `diff_spectra` réutilise `covered`.
+    Tests test_v7 avec les deux cas exacts de l'audit.
+  - **Carte** : `_fin` / `MAP_COORD_MAX` (NaN, inf, 1e100 écartés partout dans `map_cfg_norm`) ; `map_png` pose ce qui
+    manque (`auto_place`) et rafraîchit (carte du PC fermée → la scène manquait sur l'image du téléphone) ; **plan de
+    fond embarqué dans le show / le ZIP** : PURE `map_bg_embed` / `map_bg_extract` (`bg_data` base64 ≤ `MAP_BG_MAX_B64`,
+    `bg_name`), `MainWindow.map_for_show` (dans `save_show_to` et `export_bundle`), `_map_bg_restore` (à l'ouverture :
+    recopié dans Documents/TinySA Monitor/Plans si le chemin n'existe pas ici ; `bg_data` jamais dans config.json) ;
+    **état de surveillance d'une scène** : PURE `map_scene_monitor(running, devs, états)` → off / lost / nodata / partial
+    / ok ; `MapScene.scene_devs` (rattachés, sinon tous) ; pastille « Surveillance perdue » / « Pas de mesure » / « Mesure
+    partielle », points gris pour les micros sans mesure fraîche.
+  - Pas fait (proposé par l'audit, plus tard) : diagnostic RF automatisé, analyse des perturbations répétitives, couche
+    commune TinySA / SDR (V8). Rappels de l'audit déjà documentés : relais sans authentification, page web en HTTP.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

@@ -1748,6 +1748,32 @@ check("avant / après : disparu, apparu, monté (l'inchangé n'est pas listé)",
       [("gone", 480), ("new", 490), ("up", 500)])
 check("avant / après : écart en dB", [x["delta"] for x in _ch if x["kind"] == "up"], [12.0])
 check("avant / après : rien en commun", ns["scan_changes"](_Fx, _LA, _Fx + 500, _LB, -90.0), [])
+# 7.65 (audit externe sur la 7.64) : deux événements proches ne s'effacent plus, et un trou de mesure n'est jamais
+# pris pour « disparu »
+_Fg = np.round(np.arange(400.0, 600.0001, 0.05), 3)
+_La, _Lb = np.full(_Fg.shape, -110.0), np.full(_Fg.shape, -110.0)
+_i0, _i2 = int(np.argmin(abs(_Fg - 500.0))), int(np.argmin(abs(_Fg - 500.2)))
+_La[_i0], _Lb[_i0] = -100.0, -60.0
+_La[_i2], _Lb[_i2] = -80.0, -72.0
+_ch2 = ns["scan_changes"](_Fg, _La, _Fg, _Lb, -95.0)
+check("avant / après : apparu à 500,0 ET hausse de 8 dB à 500,2 (plus d'effacement à 300 kHz)",
+      [(x["kind"], x["f"], x["delta"]) for x in _ch2], [("new", 500.0, 40.0), ("up", 500.2, 8.0)])
+_LA3 = np.full(_Fg.shape, -110.0)
+_LA3[_i0] = -60.0
+_mB = (_Fg <= 450.0) | (_Fg >= 550.0)
+_FB3, _LB3 = _Fg[_mB], np.full(int(_mB.sum()), -110.0)
+check("avant / après : zone jamais mesurée dans B (450-550) = pas de « disparu » à 500 MHz",
+      ns["scan_changes"](_Fg, _LA3, _FB3, _LB3, -95.0), [])
+check("comparer deux spectres : rien inventé dans le trou de B", ns["compare_spectra"](_Fg, _LA3, _FB3, _LB3, -95.0),
+      ([], []))
+_LB4 = _LB3.copy()
+_LB4[int(np.argmin(abs(_FB3 - 420.0)))] = -60.0
+check("avant / après : un vrai apparu hors du trou reste vu", [(x["kind"], x["f"]) for x in
+      ns["scan_changes"](_Fg, _LA3, _FB3, _LB4, -95.0)], [("new", 420.0)])
+check("plages mesurées / couverture", (ns["scan_segments"](_FB3), list(ns["covered"]([440, 500, 560],
+      ns["scan_segments"](_FB3)))), ([(400.0, 450.0), (550.0, 600.0)], [True, False, True]))
+_im = ns["interp_measured"](_FB3, _LB3, [425.0, 500.0])
+check("niveau interpolé : NaN dans le trou", (float(_im[0]), bool(np.isnan(_im[1]))), (-110.0, True))
 check("dupliquer : noms de copie", (ns["copy_name"]("HF", ["HF"]), ns["copy_name"]("HF", ["HF", "HF (copie)"]),
                                     ns["copy_name"]("HF (copie)", ["HF", "HF (copie)"])),
       ("HF (copie)", "HF (copie 2)", "HF (copie 2)"))
@@ -1835,6 +1861,23 @@ check("carte : taille des points / épaisseur / couleur de la direction bornées
 check("chaleur : couleur de la direction", (ns["heat_dir_color"]("accent", "#0a84ff"),
       ns["heat_dir_color"]("hot", "#0a84ff", (239, 68, 68)), ns["heat_dir_color"]("#FFFFFF", "#0a84ff"),
       ns["heat_dir_color"]("hot", "#0a84ff", None)), ("#0a84ff", "#ef4444", "#ffffff", "#0a84ff"))
+# 7.65 (audit) : coordonnées de carte non finies / démesurées refusées
+_nan, _inf = float("nan"), float("inf")
+_mc5 = ns["map_cfg_norm"](dict(pos={"scene:A": [_nan, 1], "scene:B": [1e100, 0], "scene:C": [10, 20]},
+                               bg_pos=[_nan, 0], bg_op=_nan, bg_scale=_inf, heat_op=_nan,
+                               heat=[dict(x=_inf, y=0, level=-60, f=600, t=1), dict(x=0, y=0, level=_nan, f=600, t=1),
+                                     dict(x=1, y=2, level=-60, f=-5, t=1), dict(x=1, y=2, level=-61, f=600.1, t=2)]))
+check("carte : NaN / inf / 1e100 écartés (positions, plan, réglages, points de chaleur)",
+      (_mc5["pos"], _mc5["bg_pos"], _mc5["bg_op"], _mc5["bg_scale"], _mc5["heat_op"], [h["level"] for h in _mc5["heat"]]),
+      ({"scene:C": [10.0, 20.0]}, [0.0, 0.0], 0.45, 1.0, 0.55, [-61.0]))
+_emb = ns["map_bg_embed"](dict(bg="/x/plan site.png"), b"\x89PNG fake", "plan site.png")
+_back = ns["map_bg_extract"](ns["map_cfg_norm"](_emb))
+check("carte : plan embarqué dans le show, relu tel quel", (_back, "bg_data" in ns["map_bg_embed"]({}, b"", "x.png"),
+      ns["map_bg_extract"]({"bg_data": "", "bg_name": "x"})), ((b"\x89PNG fake", "plan site.png"), False, None))
+check("carte : état de la surveillance d'une scène", [ns["map_scene_monitor"](*a_) for a_ in (
+      (False, [(0, True)], ["free"]), (True, [(0, False), (1, False)], ["free"]), (True, [(0, True)], [None, None]),
+      (True, [(0, True)], ["free", None]), (True, [(0, False), (1, True)], ["free"]), (True, [], []))],
+      ["off", "lost", "nodata", "partial", "ok", "ok"])
 _rg = ns["heat_rgba"](_hf, _ha, -90.0, -50.0)
 check("chaleur continue : image RGBA (bleu côté faible, rouge côté fort, transparente au loin)",
       (_rg.shape[2], tuple(_rg[_hi, 25, :3]), tuple(_rg[_hi, 74, :3]) == (239, 68, 68), int(_rg[0, 0, 3])),
