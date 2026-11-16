@@ -1395,6 +1395,34 @@ check("EazyRF suivi : fréquence déplacée dans la liste", any(abs(w_["freq"] -
       and not any(abs(w_["freq"] - 503.45) < 1e-6 for w_ in win.watch))
 check("EazyRF suivi : gardé dans la config", (win._collect_config(False).get("ezrf_link") or {}).get("path") == _ezf
       and any(x.get("ez") for x in win._collect_config(False)["watch"]))
+# 🗂 7.66 (plan réel de Clément : « T2 - 111 15:00 - 15:40 » = un passage de TERMINAL 2) : ranger les scènes à l'import
+_rd = m.parse_ezrf3(open(_ezp, "rb").read())
+for _i, _r in enumerate(_rd["rows"]):
+    _r["scene"] = ("TERMINAL 2", "T2 - 111 15:00 - 15:40", "T1 - WINDROSE 21:55 - 23:10", "TERMINAL 1")[_i % 4]
+    _r["zone"] = "Samedi"
+_dlg = m.EzrfImportDialog(win, _rd, "Plan essai")
+_mp = _dlg.mapping()
+check("🗂 import : « T2 - … » rangé tout seul dans « TERMINAL 2 »", _mp.get("T2 - 111 15:00 - 15:40", {}).get("scene")
+      == "TERMINAL 2" and _mp.get("T1 - WINDROSE 21:55 - 23:10", {}).get("scene") == "TERMINAL 1", str(_mp))
+check("🗂 import : aperçu = 2 scènes au lieu de 4", _dlg.tree.topLevelItemCount() == 2, str(_dlg.tree.topLevelItemCount()))
+shot(_dlg, "import_ranger_scenes")
+_dlg.map_tbl.cellWidget(1, 1).setCurrentText("T2 - 111 15:00 - 15:40")       # remis comme dans le plan à la main
+_dlg.map_tbl.cellWidget(1, 2).setCurrentIndex(0)
+check("🗂 import : une ligne remise à la main -> sa propre scène", _dlg.tree.topLevelItemCount() == 3)
+_dlg._map_set(m.ezrf_auto_map(["TERMINAL 2", "T2 - 111 15:00 - 15:40", "T1 - WINDROSE 21:55 - 23:10", "TERMINAL 1"]))
+_dlg.plan_chk.setChecked(True)
+_op = _dlg.options()
+_dlg.reject()
+win.watch, win.ezrf_link = [], None
+_pl0 = len(win.planning["slots"])
+win.apply_ezrf(_rd, dict(_op, profiles=False, follow=False), "Plan essai")
+_scs = {w_["scene"] for w_ in win.watch}
+check("🗂 import : fréquences dans TERMINAL 1 / 2, groupe = passage · section", _scs == {"TERMINAL 1", "TERMINAL 2"}
+      and any(w_["group"].startswith("111 15:00 - 15:40") for w_ in win.watch), str(_scs))
+check("🎬 import : créneaux de planning créés d'après les horaires", len(win.planning["slots"]) > _pl0
+      and any(x["start"] == "15:00" and x["end"] == "15:40" and x["scene"] == "TERMINAL 2" for x in win.planning["slots"]),
+      str(win.planning["slots"][-3:]))
+win.planning = m.planning_norm(dict(win.planning, slots=win.planning["slots"][:_pl0]))
 # 🔗 même chose avec un show Shure WWB (.shw, 7.48) : import par la fenêtre, suivi, fréquence changée dans WWB
 _shw = os.path.join(tmp, "Maalouf.shw")
 _sh.copy(os.path.join(HERE, "data", "wwb_essai.shw"), _shw)
@@ -1960,6 +1988,54 @@ def _sites_act(d):
     d.lst.item(0).setCheckState(Qt.CheckState.Unchecked)
     check("lieux : courbe masquée = pas dans la fusion", len(d.checked()) == 1)
     d.lst.item(0).setCheckState(Qt.CheckState.Checked)
+    # 7.66 (Clément : « sélectionner plusieurs scans et supprimer en même temps, ou ne plus les afficher ») :
+    _F0, _L0 = win.site_scans[0]["f"], win.site_scans[0]["l"]
+    for _nm in ("Tmp A", "Tmp B", "Tmp C"):
+        win.site_scans.append(m.site_scan_doc(_nm, _F0, _L0, time.time(), scene="Grande scène"))
+    d.fill()
+    d.lst.clearSelection()
+    for _i in range(d.lst.count()):
+        if d.lst.item(_i).data(Qt.ItemDataRole.UserRole) in ("Tmp A", "Tmp B"):
+            d.lst.item(_i).setSelected(True)
+    check("lieux : plusieurs scans choisis", d.sel_names() == ["Tmp A", "Tmp B"] and "2" in d.sel_lbl.text(),
+          str(d.sel_names()))
+    d.set_hidden(d.sel_names(), True)
+    _hid = [x["name"] for x in win.site_scans if x.get("hidden")]
+    check("lieux : masquer la sélection (gardé dans le show, plus sur le spectre principal)",
+          _hid == ["Tmp A", "Tmp B"] and "Tmp A" not in [x["name"] for x in m.sites_for_scope(win.site_scans, None)]
+          and "Tmp A" in [x["name"] for x in m.site_scans_norm(win._collect_config()["site_scans"])], str(_hid))
+    d.toggle_selected()
+    check("lieux : Espace = réafficher la sélection", not any(x.get("hidden") for x in win.site_scans))
+    d.only_selected()
+    check("lieux : afficher seulement la sélection", sorted(x["name"] for x in win.site_scans if not x.get("hidden"))
+          == ["Tmp A", "Tmp B"])
+    d.set_hidden(d.all_names(), False)
+    d.select_scene("Grande scène")
+    check("lieux : choisir tous les scans d'une scène", {"Tmp A", "Tmp B", "Tmp C"} <= set(d.sel_names()))
+    d.lst.clearSelection()
+    for _i in range(d.lst.count()):
+        if d.lst.item(_i).data(Qt.ItemDataRole.UserRole).startswith("Tmp"):
+            d.lst.item(_i).setSelected(True)
+    d.lst.setFocus()
+    QtTest.QTest.keyClick(d.lst, Qt.Key.Key_Delete)
+    wait(100)
+    check("lieux : Suppr = supprime TOUS les scans choisis", not any(x["name"].startswith("Tmp") for x in win.site_scans),
+          str([x["name"] for x in win.site_scans]))
+    win.undo()
+    d.fill()
+    check("lieux : Ctrl+Z les ramène tous", sum(x["name"].startswith("Tmp") for x in win.site_scans) == 3)
+    _t0 = time.time()                              # Ctrl+Z recharge la config : on attend le spectre de retour
+    while win.fresh_FL(use_max=True, any_age=True)[0] is None and time.time() - _t0 < 30:
+        wait(300)
+    d.delete(["Tmp A", "Tmp B", "Tmp C"])
+    _sc_old = list(win.site_scans)
+    win.site_scans = m.site_set_hidden(win.site_scans, [win.site_scans[0]["name"]], True)
+    _n0 = win.site_scans[0]["name"]
+    win.site_scans = m.site_replace(win.site_scans, m.site_scan_doc(_n0, _F0, _L0, time.time()))
+    check("lieux : le scan continu réécrit garde sa place et reste masqué", win.site_scans[0]["name"] == _n0
+          and win.site_scans[0].get("hidden"))
+    win.site_scans = m.site_set_hidden(win.site_scans, [_n0], False)
+    d.fill()
     # comparer deux lieux
     _Fx, _Lx = win.fresh_FL(use_max=True, any_age=True)
     _Ly = _Lx.copy(); _Ly[len(_Ly) // 2] = -30.0

@@ -1770,6 +1770,47 @@ _LB4 = _LB3.copy()
 _LB4[int(np.argmin(abs(_FB3 - 420.0)))] = -60.0
 check("avant / après : un vrai apparu hors du trou reste vu", [(x["kind"], x["f"]) for x in
       ns["scan_changes"](_Fg, _LA3, _FB3, _LB4, -95.0)], [("new", 420.0)])
+_sl = [dict(name="A", t=1, f=[1, 2], l=[-90, -90]), dict(name="B", t=2, f=[1, 2], l=[-80, -80], hidden=True),
+       dict(name="C", t=3, f=[1, 2], l=[-70, -70])]
+check("scans par lieu : masqués gardés à la relecture, pas sur le spectre principal",
+      ([d["name"] for d in ns["site_scans_norm"](_sl) if d.get("hidden")], [d["name"] for d in ns["sites_for_scope"](_sl, None)]),
+      (["B"], ["A", "C"]))
+_sl2 = ns["site_set_hidden"](_sl, ["A", "C"], True)
+check("scans par lieu : masquer / afficher plusieurs", ([d.get("hidden", False) for d in _sl2],
+      [d.get("hidden", False) for d in ns["site_set_hidden"](_sl2, ["A", "B", "C"], False)], _sl[0].get("hidden", False)),
+      ([True, True, True], [False, False, False], False))
+_sl3 = ns["site_replace"](_sl, dict(name="B", t=9, f=[1, 2], l=[-60, -60]))
+check("scans par lieu : scan réécrit à sa place, toujours masqué ; nouveau = à la fin",
+      ([d["name"] for d in _sl3], _sl3[1]["t"], _sl3[1].get("hidden"),
+       [d["name"] for d in ns["site_replace"](_sl, dict(name="D", t=4, f=[1, 2], l=[-60, -60]))]),
+      (["A", "B", "C"], 9, True, ["A", "B", "C", "D"]))
+_E = [("A", 500.0, "TERMINAL 2", "MICS", None, ""), ("B", 501.0, "T2 - 111 15:00 - 15:40", "IEMS", None, ""),
+      ("C", 502.0, "T1 - WINDROSE 21:55 - 23:10", "MICS", None, ""), ("D", 503.0, "TERMINAL 1", "MICS", None, ""),
+      ("E", 504.0, "Village", "MICS", None, "")]
+_am = ns["ezrf_auto_map"]([e[2] for e in _E])
+check("🗂 import : rangement proposé (initiales « T2 » = TERMINAL 2 ; le reste ne bouge pas)",
+      ({k: (v["scene"], v["label"]) for k, v in _am.items()}, ns["_abbrev"]("Grande scène 2")),
+      ({"T2 - 111 15:00 - 15:40": ("TERMINAL 2", "111 15:00 - 15:40"),
+        "T1 - WINDROSE 21:55 - 23:10": ("TERMINAL 1", "WINDROSE 21:55 - 23:10")}, "GS2"))
+_rm = ns["ezrf_remap"](_E, _am)
+check("🗂 import : scènes rangées, groupe « passage · section »", [(e[2], e[3]) for e in _rm][1:3],
+      [("TERMINAL 2", "111 15:00 - 15:40 · IEMS"), ("TERMINAL 1", "WINDROSE 21:55 - 23:10 · MICS")])
+check("🗂 import : modes de groupe (garder / nom d'origine)",
+      ([e[3] for e in ns["ezrf_remap"](_E[1:2], {"T2 - 111 15:00 - 15:40": dict(scene="X", group=g_, label="111")})]
+       for g_ in ("keep", "source")).__class__.__name__ and
+      [ns["ezrf_remap"](_E[1:2], {"T2 - 111 15:00 - 15:40": dict(scene="X", group=g_, label="111")})[0][3]
+       for g_ in ("keep", "source", "both")], ["IEMS", "111", "111 · IEMS"])
+check("🗂 import : rangement vide / bancal = comme le plan", (ns["ezrf_remap"](_E, {}) == _E, ns["ezrf_map_norm"](
+      {"x": "pas un dict", "y": {"scene": ""}, "z": {"scene": "z", "group": "keep"}})), (True, {}))
+check("🗂 import : plan à plusieurs zones -> rangé dans la même zone seulement",
+      {k: v["scene"] for k, v in ns["ezrf_auto_map"](["Nord · TERMINAL 2", "Nord · T2 - A 10:00 - 11:00",
+                                                       "Sud · T2 - B 12:00 - 13:00"]).items()},
+      {"Nord · T2 - A 10:00 - 11:00": "Nord · TERMINAL 2"})
+check("🎬 import : planning lu dans les noms (passe minuit compris)",
+      [(x["scene"], x["start"], x["end"]) for x in ns["ezrf_planning"](ns["ezrf_remap"](
+          _E + [("F", 505.0, "T2 - BROWNING 23:20 - 00:10", "IEMS", None, "")], ns["ezrf_auto_map"](
+          [e[2] for e in _E] + ["T2 - BROWNING 23:20 - 00:10"])))],
+      [("TERMINAL 2", "15:00", "15:40"), ("TERMINAL 1", "21:55", "23:10"), ("TERMINAL 2", "23:20", "00:10")])
 check("plages mesurées / couverture", (ns["scan_segments"](_FB3), list(ns["covered"]([440, 500, 560],
       ns["scan_segments"](_FB3)))), ([(400.0, 450.0), (550.0, 600.0)], [True, False, True]))
 _im = ns["interp_measured"](_FB3, _LB3, [425.0, 500.0])

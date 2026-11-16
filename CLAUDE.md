@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.65.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1311,6 +1311,28 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     partielle », points gris pour les micros sans mesure fraîche.
   - Pas fait (proposé par l'audit, plus tard) : diagnostic RF automatisé, analyse des perturbations répétitives, couche
     commune TinySA / SDR (V8). Rappels de l'audit déjà documentés : relais sans authentification, page web en HTTP.
+- **7.66.0 (Clément : « dans scans par lieu je peux pas sélectionner plusieurs scans et supprimer en même temps ou ne
+  plus les afficher » ; plan réel « PlaneR Fest 2026 Samedi » : « T2 = 2ᵉ scène, T1 = 1re, l'import crée plein de
+  scènes, il faudrait l'option de rebouger les choses à l'import »)** :
+  - **Scans par lieu, plusieurs à la fois** : `SitesDialog.lst` en `ExtendedSelection` ; `sel_names` (sélection, sinon
+    le courant), `delete(names)` (tous, `undo_track` AVANT et après → Ctrl+Z ramène tout), `move` / `do_move(names)`,
+    `set_hidden` / `only_selected` / `toggle_selected` (Espace) / `select_scene`, bouton `vis_btn` « 👁 Afficher » (menu),
+    clic droit `list_menu`, `sel_lbl` « N scans choisis » ; `fill` garde la sélection (`setCurrentItem(..., NoUpdate)`,
+    sinon le courant effaçait la sélection). **Masqué = mémorisé** : clé `hidden` du scan (gardée par
+    `site_scans_norm`, donc config + show), PURE `site_set_hidden`, `site_visible` ; `sites_for_scope` ne prend que les
+    visibles (spectre principal) ; la coordination (`coord_docs`) les prend TOUS, comme avant. PURE `site_replace` : le
+    scan continu réécrit toutes les 30 s garde sa place et son masquage (avant : renvoyé en fin de liste).
+  - **🗂 Ranger les scènes à l'import d'un plan** : PURE `EZRF_PREFIX`, `_abbrev` (« TERMINAL 2 » → « T2 »),
+    `ezrf_scene_guess(src, candidates)` (préfixe « T2 - » = initiales ou nom d'une autre scène de la MÊME zone, multi-zones
+    « Zone · … » géré), `ezrf_auto_map`, `ezrf_map_norm`, `ezrf_remap(entries, map)` (groupe : `keep` sections / `source`
+    nom du passage / `both` « passage · section », défaut proposé), `EZRF_GROUP_MODES` ; `EzrfImportDialog` : tableau
+    `map_tbl` (scène du plan / arrive dans la scène = combo modifiable / groupe), « Ranger automatiquement », « Tout
+    laisser comme dans le plan », aperçu `_fill_tree` qui suit, `mapping()`, `entries()`, `fit_dialog` 820 × 760 ;
+    `opts["map"]` → `apply_ezrf` + `ezrf_link["map"]` → `_ezrf_tick` (suivi du fichier rangé pareil).
+    **🎬 Planning d'après les noms** : PURE `EZRF_TIMES`, `ezrf_planning(entries)` (un créneau par groupe dont le nom
+    contient « HH:MM - HH:MM », tous les jours, passe minuit) ; case `plan_chk` (décochée d'office) → `opts["planning"]`.
+    Sur le vrai plan de Clément : 8 scènes → 2 (TERMINAL 1 / 2), 8 créneaux trouvés (capture `apercu/import_planer.png`).
+    **Pas essayé par Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

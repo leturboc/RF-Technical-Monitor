@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.65.0"
+APP_VER = "7.66.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -3573,6 +3573,92 @@ def ezrf_entries(doc, skip_off=True):
             seen[k] = seen.get(k, 0) + 1
             name = f"{base} · {seen[k]}"
         out.append((name[:60], r["freq"], sc[:60], r["group"][:60], r["dev"], r["note"]))
+    return out
+
+
+# 7.66 (Clément, plan réel : « T2 - 111 15:00 - 15:40 » = un passage de la scène « TERMINAL 2 » ; l'import faisait
+# une scène par passage) : ranger les scènes du plan à l'import (et au suivi du fichier)
+EZRF_PREFIX = re.compile(r"^\s*([A-Za-z0-9]{1,8})\s*[-–:·|]\s*(\S.*)$")
+EZRF_GROUP_MODES = (("keep", "Garder les sections (MICS, IEMS…)"), ("source", "Nom d'origine (le passage)"),
+                    ("both", "Passage · section"))
+EZRF_TIMES = re.compile(r"(\d{1,2})[:hH](\d{2})\s*[-–à]\s*(\d{1,2})[:hH](\d{2})")
+
+
+def _abbrev(name):
+    """« TERMINAL 2 » -> « T2 », « Grande scène » -> « GS » (initiales des mots + nombres)."""
+    words = re.findall(r"[^\W\d_]+|\d+", str(name or ""))
+    return "".join(w if w.isdigit() else w[0] for w in words).upper()
+
+
+def ezrf_scene_guess(src, candidates):
+    """Scène d'un plan nommée « T2 - 111 15:00 » -> (« TERMINAL 2 », « 111 15:00 ») si une scène candidate a pour
+    initiales (ou pour nom) le préfixe « T2 » ; sinon None."""
+    def split(x):                                 # plan à plusieurs zones : « Zone Nord · T2 - … »
+        x = str(x or "")
+        return x.rsplit(" · ", 1) if " · " in x else ("", x)
+    zone, base = split(src)
+    m = EZRF_PREFIX.match(base)
+    if not m:
+        return None
+    pre, rest = m.group(1).upper(), m.group(2).strip()
+    for c in candidates:
+        cz, cb = split(c)
+        if c != src and cz == zone and not EZRF_PREFIX.match(cb) and (_abbrev(cb) == pre or cb.strip().upper() == pre):
+            return c, rest
+    return None
+
+
+def ezrf_auto_map(scenes, existing=()):
+    """Rangement proposé à l'import : {scène du plan: {scene, group, label}} pour celles qui se rattachent à une autre
+    (« T2 - … » -> « TERMINAL 2 », groupe « passage · section »). Les autres ne bougent pas."""
+    cands = list(dict.fromkeys(list(scenes) + [e for e in existing or () if e not in scenes]))
+    out = {}
+    for s_ in scenes:
+        g = ezrf_scene_guess(s_, cands)
+        if g:
+            out[s_] = dict(scene=g[0], group="both", label=g[1])
+    return out
+
+
+def ezrf_map_norm(m):
+    """Rangement lu (suivi du fichier, config) -> {source: {scene, group keep|source|both, label}} propre."""
+    out = {}
+    for k, v in (m or {}).items() if isinstance(m, dict) else ():
+        if isinstance(k, str) and isinstance(v, dict):
+            sc = str(v.get("scene") or "").strip()[:60]
+            mode = v.get("group") if v.get("group") in ("keep", "source", "both") else "keep"
+            if sc and (sc != k or mode != "keep"):
+                out[k[:60]] = dict(scene=sc, group=mode, label=str(v.get("label") or k).strip()[:60])
+    return out
+
+
+def ezrf_remap(entries, mapping):
+    """Entrées d'ezrf_entries rangées selon mapping (voir ezrf_auto_map) : scène remplacée, groupe = section, nom
+    d'origine (label) ou « label · section »."""
+    mapping = ezrf_map_norm(mapping)
+    out = []
+    for name, f, sc, gr, dk, note in entries:
+        mp = mapping.get(sc)
+        if mp:
+            lab = mp["label"] or sc
+            gr = lab if mp["group"] == "source" else (f"{lab} · {gr}" if gr else lab) if mp["group"] == "both" else gr
+            sc = mp["scene"]
+        out.append((name, f, sc[:60], (gr or "")[:60], dk, note))
+    return out
+
+
+def ezrf_planning(entries):
+    """Créneaux de 🎬 Planning lus dans les noms de groupe (« 111 15:00 - 15:40 ») -> [{scene, group, day, start,
+    end}] (un par groupe, tous les jours)."""
+    seen, out = set(), []
+    for _n, _f, sc, gr, _d, _x in entries:
+        m = EZRF_TIMES.search(gr or "")
+        if not m or (sc, gr) in seen:
+            continue
+        seen.add((sc, gr))
+        a, b = f"{int(m.group(1)):02d}:{m.group(2)}", f"{int(m.group(3)):02d}:{m.group(4)}"
+        if _hm(a) is not None and _hm(b) is not None:
+            out.append(dict(scene=sc, group=gr, day="", start=a, end=b))
     return out
 
 
@@ -8772,9 +8858,47 @@ def site_scans_norm(lst):
                     out[name]["scene"] = str(d["scene"]).strip()[:60]
                 if isinstance(d.get("dur"), (int, float)) and d["dur"] > 0:
                     out[name]["dur"] = round(float(d["dur"]), 1)     # durée du scan (s), si connue
+                if d.get("hidden"):
+                    out[name]["hidden"] = True       # 7.66 : masqué (pas tracé sur le spectre ni fusionné)
         except (KeyError, TypeError, ValueError):
             continue
     return list(out.values())
+
+def site_replace(lst, doc):
+    """Remplace (ou ajoute à la fin) le scan de même nom, À SA PLACE, en gardant son état masqué (7.66 : le scan continu
+    d'une scène, regardé toutes les 30 s, passait en fin de liste et redevenait visible)."""
+    out, done = [], False
+    for d in lst or []:
+        if d["name"] == doc["name"]:
+            nd = dict(doc)
+            if d.get("hidden"):
+                nd["hidden"] = True
+            out.append(nd)
+            done = True
+        else:
+            out.append(d)
+    return out if done else out + [dict(doc)]
+
+
+def site_set_hidden(lst, names, hidden):
+    """Masque / affiche les scans nommés -> nouvelle liste (les autres inchangés)."""
+    names = set(names)
+    out = []
+    for d in lst or []:
+        if d["name"] in names:
+            d = dict(d)
+            if hidden:
+                d["hidden"] = True
+            else:
+                d.pop("hidden", None)
+        out.append(d)
+    return out
+
+
+def site_visible(lst):
+    """Scans affichés (pas masqués)."""
+    return [d for d in lst or [] if not d.get("hidden")]
+
 
 # ------------------------------------------------- 📍 scans par lieu : gestion, comparaison, dans le temps, rapport
 def site_scan_info(d):
@@ -9053,9 +9177,9 @@ def sites_for_scope(site_scans, scope):
     """Scans gardés à montrer sur le spectre : Global (scope None) -> tous ; une scène (ou un de ses groupes)
     choisie dans « Mes fréquences » -> les scans de cette scène (le continu + ceux gardés à la main)."""
     if not scope:
-        return list(site_scans or [])
+        return site_visible(site_scans)
     names = {k[0] for k in scope if k}
-    return [d for d in site_scans or [] if site_doc_scene(d) in names]
+    return [d for d in site_visible(site_scans) if site_doc_scene(d) in names]
 
 
 def multi_site(dev_scenes, ndev, live=None):
@@ -13728,7 +13852,7 @@ class EzrfImportDialog(QtWidgets.QDialog):
         super().__init__(owner)
         self.owner, self.doc, self.path, self.kind = owner, doc, path, kind
         self.setWindowTitle(f"Importer un plan {kind}")
-        self.resize(640, 600)
+        fit_dialog(self, 820, 760)
         lay = QtWidgets.QVBoxLayout(self)
         ent = ezrf_entries(doc, False)
         n_off = sum(1 for r in doc["rows"] if r["off"])
@@ -13752,26 +13876,16 @@ class EzrfImportDialog(QtWidgets.QDialog):
         self.pend = None
         if doc.get("pending"):
             self._build_pending(lay)
+        self._ent0 = ent
+        self._build_map(lay, [x for x in scenes if x])
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Scène › groupe › fréquence", "MHz", "Appareil"])
         self.tree.setToolTip("Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe."
                              if kind == "EazyRF" else "Ce qui va arriver dans Mes fréquences : scène › groupe › fréquence.")
-        names = ezrf_profile_names(doc["devices"])
-        nodes = {}
-        for name, f, sc, gr, dk, _note in ent:
-            top = nodes.get((sc,))
-            if top is None:
-                top = nodes[(sc,)] = QtWidgets.QTreeWidgetItem(self.tree, [sc or "Sans scène", "", ""])
-                top.setExpanded(True)
-            par = top
-            if gr:
-                par = nodes.get((sc, gr))
-                if par is None:
-                    par = nodes[(sc, gr)] = QtWidgets.QTreeWidgetItem(top, [gr, "", ""])
-                    par.setExpanded(True)
-            QtWidgets.QTreeWidgetItem(par, [name, f"{f:.3f}", names.get(dk, "")])
-        self.tree.resizeColumnToContents(0)
+        self._names = ezrf_profile_names(doc["devices"])
+        self.tree.setMinimumHeight(150)
         lay.addWidget(self.tree, 1)
+        self._fill_tree()
 
         form = QtWidgets.QFormLayout()
         self.status = QtWidgets.QComboBox()
@@ -13811,6 +13925,12 @@ class EzrfImportDialog(QtWidgets.QDialog):
                              "spectre, utilisable par Coordonner.")
         self.scan.setVisible(bool(sc_n))
         lay.addWidget(self.scan)
+        self.plan_chk = QtWidgets.QCheckBox("🎬 Créer le planning d'après les horaires des noms (« 15:00 - 15:40 »)")
+        self.plan_chk.setToolTip("Chaque groupe dont le nom contient un horaire devient un créneau de 🎬 Planning : en dehors\n"
+                                 "de son passage (avec les marges du planning), ses micros éteints ne déclenchent pas\n"
+                                 "d'alarme ABSENT. Tu peux tout modifier ensuite dans 🎚 Surveiller › 🎬 Planning.")
+        lay.addWidget(self.plan_chk)
+        self._upd_plan_chk()
         self.follow = QtWidgets.QCheckBox(f"🔗 Suivre ce fichier : quand tu le réenregistres dans {kind}, proposer les "
                                           f"changements")
         self.follow.setToolTip(f"L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences "
@@ -13832,6 +13952,127 @@ class EzrfImportDialog(QtWidgets.QDialog):
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
+
+    def _build_map(self, lay, scenes):
+        """🗂 Ranger les scènes du plan : chaque scène du document peut aller dans une autre scène (la vraie scène),
+        son nom devenant un groupe. Proposé tout seul pour « T2 - … » -> « TERMINAL 2 »."""
+        self.map_tbl = None
+        if len(scenes) < 2:
+            return
+        auto = ezrf_auto_map(scenes, [s_["name"] for s_ in self.owner.scenes])
+        box = QtWidgets.QGroupBox("🗂 Ranger les scènes du plan")
+        v = QtWidgets.QVBoxLayout(box)
+        hint = QtWidgets.QLabel(
+            TR("{} scène(s) rangée(s) toute(s) seule(s) (« T2 - … » va dans « TERMINAL 2 »). Change la scène d'arrivée ou "
+               "le groupe ligne par ligne ; l'aperçu en dessous suit.").format(len(auto)) if auto else
+            "Choisis pour chaque scène du plan la scène où elle arrive (ex. un passage dans sa vraie scène).")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+        self.map_tbl = QtWidgets.QTableWidget(len(scenes), 3)
+        self.map_tbl.setHorizontalHeaderLabels(["Scène du plan", "Arrive dans la scène", "Groupe"])
+        self.map_tbl.verticalHeader().setVisible(False)
+        self.map_tbl.setToolTip("Scène d'arrivée : tape un nom ou choisis-en une (scènes du plan et de ta liste).\n"
+                                "Groupe : garder les sections du plan (MICS / IEMS), prendre le nom d'origine (le passage),\n"
+                                "ou les deux (« passage · MICS »).")
+        choices = list(dict.fromkeys(scenes + [s_["name"] for s_ in self.owner.scenes]))
+        for r, sc in enumerate(scenes):
+            it = QtWidgets.QTableWidgetItem(sc)
+            it.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.map_tbl.setItem(r, 0, it)
+            dst = QtWidgets.QComboBox()
+            dst.setEditable(True)
+            dst.addItems(choices)
+            mp = auto.get(sc)
+            dst.setCurrentText(mp["scene"] if mp else sc)
+            dst.currentTextChanged.connect(lambda *_: self._map_changed())
+            self.map_tbl.setCellWidget(r, 1, dst)
+            gm = QtWidgets.QComboBox()
+            for k, t_ in EZRF_GROUP_MODES:
+                gm.addItem(TR(t_), k)
+            gm.setCurrentIndex(max(0, gm.findData(mp["group"] if mp else "keep")))
+            gm.currentIndexChanged.connect(lambda *_: self._map_changed())
+            self.map_tbl.setCellWidget(r, 2, gm)
+        hh = self.map_tbl.horizontalHeader()
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for c_, w_ in ((1, 190), (2, 210)):
+            hh.setSectionResizeMode(c_, QtWidgets.QHeaderView.ResizeMode.Interactive)
+            self.map_tbl.setColumnWidth(c_, w_)
+        self.map_tbl.verticalHeader().setDefaultSectionSize(30)
+        self.map_tbl.setMinimumHeight(min(4, len(scenes)) * 30 + 32)
+        self.map_tbl.setMaximumHeight(min(300, 34 + 30 * len(scenes)))
+        v.addWidget(self.map_tbl)
+        h = QtWidgets.QHBoxLayout()
+        b_auto = QtWidgets.QPushButton("Ranger automatiquement")
+        b_auto.setToolTip("Reprend le rangement proposé (préfixe « T2 » = initiales de « TERMINAL 2 »).")
+        b_auto.clicked.connect(lambda *_: self._map_set(auto))
+        b_none = QtWidgets.QPushButton("Tout laisser comme dans le plan")
+        b_none.setToolTip("Une scène par scène du plan, sections en groupes (comme avant).")
+        b_none.clicked.connect(lambda *_: self._map_set({}))
+        h.addWidget(b_auto)
+        h.addWidget(b_none)
+        h.addStretch(1)
+        v.addLayout(h)
+        lay.addWidget(box)
+
+    def _map_set(self, mapping):
+        if self.map_tbl is None:
+            return
+        for r in range(self.map_tbl.rowCount()):
+            sc = self.map_tbl.item(r, 0).text()
+            mp = mapping.get(sc)
+            dst, gm = self.map_tbl.cellWidget(r, 1), self.map_tbl.cellWidget(r, 2)
+            for w_ in (dst, gm):
+                w_.blockSignals(True)
+            dst.setCurrentText(mp["scene"] if mp else sc)
+            gm.setCurrentIndex(max(0, gm.findData(mp["group"] if mp else "keep")))
+            for w_ in (dst, gm):
+                w_.blockSignals(False)
+        self._map_changed()
+
+    def mapping(self):
+        """Rangement choisi -> {scène du plan: {scene, group, label}} (seulement ce qui change)."""
+        out = {}
+        if getattr(self, "map_tbl", None) is None:
+            return out
+        for r in range(self.map_tbl.rowCount()):
+            sc = self.map_tbl.item(r, 0).text()
+            dst = self.map_tbl.cellWidget(r, 1).currentText().strip() or sc
+            mode = self.map_tbl.cellWidget(r, 2).currentData() or "keep"
+            g = ezrf_scene_guess(sc, [dst])
+            lab = g[1] if g else sc
+            if dst != sc or mode != "keep":
+                out[sc] = dict(scene=dst, group=mode, label=lab)
+        return ezrf_map_norm(out)
+
+    def entries(self):
+        return ezrf_remap(self._ent0, self.mapping())
+
+    def _map_changed(self):
+        self._fill_tree()
+        self._upd_plan_chk()
+
+    def _upd_plan_chk(self):
+        if hasattr(self, "plan_chk"):
+            n_ = len(ezrf_planning(self.entries()))
+            self.plan_chk.setVisible(n_ > 0)
+            self.plan_chk.setText(TR("🎬 Créer le planning d'après les horaires des noms ({} créneau(x))").format(n_))
+
+    def _fill_tree(self):
+        self.tree.clear()
+        nodes = {}
+        for name, f, sc, gr, dk, _note in self.entries():
+            top = nodes.get((sc,))
+            if top is None:
+                top = nodes[(sc,)] = QtWidgets.QTreeWidgetItem(self.tree, [sc or "Sans scène", "", ""])
+                top.setExpanded(True)
+            par = top
+            if gr:
+                par = nodes.get((sc, gr))
+                if par is None:
+                    par = nodes[(sc, gr)] = QtWidgets.QTreeWidgetItem(top, [gr, "", ""])
+                    par.setExpanded(True)
+            QtWidgets.QTreeWidgetItem(par, [name, f"{f:.3f}", self._names.get(dk, "")])
+        self.tree.resizeColumnToContents(0)
 
     def _build_pending(self, lay):
         """« À compléter » : canaux de récepteurs sans fréquence dans le fichier (Wisycom). Fréquence retrouvée par le
@@ -13913,7 +14154,8 @@ class EzrfImportDialog(QtWidgets.QDialog):
         return dict(status=self.status.currentData() or "", profiles=self.prof.isChecked(), manual=self.manual(),
                     skip_off=self.skip.isChecked(), interf=self.interf.isChecked() and self.interf.isVisibleTo(self),
                     scan=self.scan.isChecked() and self.scan.isVisibleTo(self), replace=self.replace.isChecked(),
-                    follow=self.follow.isChecked() and bool(self.path), kind=self.kind)
+                    follow=self.follow.isChecked() and bool(self.path), kind=self.kind, map=self.mapping(),
+                    planning=self.plan_chk.isChecked() and self.plan_chk.isVisibleTo(self))
 
 
 class RxProfileEdit(QtWidgets.QDialog):
@@ -17086,10 +17328,19 @@ class SitesDialog(QtWidgets.QDialog):
         left = QtWidgets.QVBoxLayout()
         self.lst = QtWidgets.QListWidget()
         self.lst.setMaximumWidth(300)
-        self.lst.setToolTip("Coche les scans à afficher et à fusionner ; clique un scan pour voir ses infos et ses signaux.")
-        self.lst.itemChanged.connect(lambda *_: self.redraw())
+        self.lst.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.lst.setToolTip("Coche les scans à afficher et à fusionner ; clique un scan pour voir ses infos et ses signaux.\n"
+                            "Ctrl + clic / Maj + clic / Ctrl+A : plusieurs scans à la fois (supprimer, masquer, ranger…).\n"
+                            "Espace : afficher / masquer les scans choisis · clic droit : toutes les actions.")
+        self.lst.itemChanged.connect(lambda it: self._check_changed(it))
         self.lst.currentItemChanged.connect(lambda *_: self._sel_changed())
-        del_key(self.lst, self.delete)             # Suppr = supprimer le scan sélectionné
+        self.lst.itemSelectionChanged.connect(lambda *_: self._sel_count())
+        self.lst.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lst.customContextMenuRequested.connect(lambda pos: self.list_menu(self.lst.viewport().mapToGlobal(pos)))
+        del_key(self.lst, self.delete)             # Suppr = supprimer les scans sélectionnés
+        sp = QtGui.QShortcut(QtGui.QKeySequence(Qt.Key.Key_Space), self.lst)
+        sp.setContext(Qt.ShortcutContext.WidgetShortcut)
+        sp.activated.connect(lambda *_: self.toggle_selected())
         for seq, fn in (("Ctrl+Z", o.undo), ("Ctrl+Y", o.redo), ("Ctrl+Shift+Z", o.redo)):
             QtGui.QShortcut(QtGui.QKeySequence(seq), self).activated.connect(
                 lambda *_, fn=fn: (fn(), self.fill(), self.msg.setText(o.stat_lbl.text())))
@@ -17106,10 +17357,30 @@ class SitesDialog(QtWidgets.QDialog):
         b_mv.setToolTip("Range le scan sélectionné dans une autre scène (coordination par scène, évolution dans le temps).")
         b_mv.clicked.connect(lambda *_: self.move())
         b_del = QtWidgets.QPushButton("Supprimer")
-        b_del.setToolTip("Oublie le scan sélectionné.")
+        b_del.setToolTip("Oublie les scans sélectionnés (Suppr) · Ctrl+Z pour annuler.")
         b_del.clicked.connect(lambda *_: self.delete())
+        self.vis_btn = QtWidgets.QToolButton()
+        self.vis_btn.setText("👁 Afficher")
+        self.vis_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.vis_btn.setToolTip("Afficher / masquer plusieurs scans d'un coup. Un scan masqué n'est plus tracé (ici et sur le\n"
+                                "spectre principal) ni fusionné ; il reste gardé et se réaffiche quand tu veux.")
+        vm = QtWidgets.QMenu(self.vis_btn)
+        for txt, fn in (("Afficher les scans choisis", lambda: self.set_hidden(self.sel_names(), False)),
+                        ("Masquer les scans choisis", lambda: self.set_hidden(self.sel_names(), True)),
+                        ("Afficher seulement les scans choisis", lambda: self.only_selected()),
+                        (None, None),
+                        ("Tout afficher", lambda: self.set_hidden(self.all_names(), False)),
+                        ("Tout masquer", lambda: self.set_hidden(self.all_names(), True))):
+            if txt is None:
+                vm.addSeparator()
+            else:
+                vm.addAction(txt).triggered.connect(lambda *_, fn=fn: fn())
+        self.vis_btn.setMenu(vm)
+        self.sel_lbl = QtWidgets.QLabel("")
+        self.sel_lbl.setStyleSheet("color:gray")
         left.addLayout(owner._row(b_ren, b_mv))
-        left.addWidget(b_del)
+        left.addLayout(owner._row(self.vis_btn, b_del))
+        left.addWidget(self.sel_lbl)
         mid.addLayout(left)
         self.tabs = QtWidgets.QTabWidget()
         self.plot = pg.PlotWidget()
@@ -17249,7 +17520,7 @@ class SitesDialog(QtWidgets.QDialog):
     def fill(self, select=None):
         o = self.owner
         cur = select or self._cur_name()
-        hidden = getattr(self, "_hidden", set())
+        sel = set(self.sel_names()) if self.lst.count() else set()
         self.lst.blockSignals(True)
         self.lst.clear()
         for i, d in enumerate(o.site_scans):
@@ -17257,13 +17528,16 @@ class SitesDialog(QtWidgets.QDialog):
             sc = site_doc_scene(d)
             it = QtWidgets.QListWidgetItem(f"{d['name']}  ·  {when}" + (f"  ·  ({sc})" if sc != d["name"] else ""))
             it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            it.setCheckState(Qt.CheckState.Unchecked if d["name"] in hidden else Qt.CheckState.Checked)
+            it.setCheckState(Qt.CheckState.Unchecked if d.get("hidden") else Qt.CheckState.Checked)
             it.setData(Qt.ItemDataRole.UserRole, d["name"])
             it.setForeground(QtGui.QColor(GROUP_COLORS[i % len(GROUP_COLORS)]))
             self.lst.addItem(it)
-            if d["name"] == cur:
-                self.lst.setCurrentItem(it)
+            if d["name"] == cur:                  # sans toucher à la sélection (plusieurs scans choisis gardés)
+                self.lst.setCurrentItem(it, QtCore.QItemSelectionModel.SelectionFlag.NoUpdate)
+            if d["name"] in sel or (not sel and d["name"] == cur):
+                it.setSelected(True)
         self.lst.blockSignals(False)
+        self._sel_count()
         names = [d["name"] for d in o.site_scans]
         for c_, k in ((self.cmp_a, 0), (self.cmp_b, 1)):
             old = c_.currentText()
@@ -17283,6 +17557,90 @@ class SitesDialog(QtWidgets.QDialog):
         self.tl_scene.blockSignals(False)
         self.redraw()
         self._sel_changed()
+
+    def sel_names(self):
+        """Scans choisis dans la liste (plusieurs possibles), sinon celui qui a le focus."""
+        names = [it.data(Qt.ItemDataRole.UserRole) for it in self.lst.selectedItems()]
+        if not names and self.lst.currentItem() is not None:
+            names = [self.lst.currentItem().data(Qt.ItemDataRole.UserRole)]
+        order = [d["name"] for d in self.owner.site_scans]
+        return [n_ for n_ in order if n_ in set(names)]
+
+    def all_names(self):
+        return [d["name"] for d in self.owner.site_scans]
+
+    def _sel_count(self):
+        n_ = len(self.lst.selectedItems())
+        self.sel_lbl.setText(TR("{} scans choisis").format(n_) if n_ > 1 else "")
+
+    def _check_changed(self, it):
+        name = it.data(Qt.ItemDataRole.UserRole)
+        hide = it.checkState() != Qt.CheckState.Checked
+        names = self.sel_names()
+        self.set_hidden(names if name in names and len(names) > 1 else [name], hide)   # case cochée dans une sélection
+
+    def set_hidden(self, names, hidden):
+        o = self.owner
+        names = list(names)
+        if not names:
+            self.msg.setText("Choisis d'abord un ou plusieurs scans dans la liste.")
+            return
+        o.site_scans = site_set_hidden(o.site_scans, names, hidden)
+        self.fill()
+        o.update_site_curve()
+        self.msg.setText((TR("{} scan(s) masqué(s) : plus tracés ni fusionnés (toujours gardés).") if hidden
+                          else TR("{} scan(s) affiché(s).")).format(len(names)))
+
+    def only_selected(self):
+        names = set(self.sel_names())
+        if not names:
+            self.msg.setText("Choisis d'abord un ou plusieurs scans dans la liste.")
+            return
+        o = self.owner
+        o.site_scans = site_set_hidden(site_set_hidden(o.site_scans, self.all_names(), True), names, False)
+        self.fill()
+        o.update_site_curve()
+        self.msg.setText(TR("Seulement {} scan(s) affiché(s).").format(len(names)))
+
+    def toggle_selected(self):
+        names = self.sel_names()
+        if names:
+            first = next(d for d in self.owner.site_scans if d["name"] == names[0])
+            self.set_hidden(names, not first.get("hidden"))
+
+    def select_scene(self, scene):
+        self.lst.clearSelection()
+        for i in range(self.lst.count()):
+            it = self.lst.item(i)
+            d = self._doc(it.data(Qt.ItemDataRole.UserRole))
+            if d is not None and site_doc_scene(d) == scene:
+                it.setSelected(True)
+
+    def list_menu(self, gpos):
+        names = self.sel_names()
+        m = QtWidgets.QMenu(self)
+        n_ = len(names)
+        acts = {}
+        if n_:
+            acts[m.addAction(TR("👁 Afficher ({})").format(n_))] = lambda: self.set_hidden(names, False)
+            acts[m.addAction(TR("🙈 Masquer ({})").format(n_))] = lambda: self.set_hidden(names, True)
+            acts[m.addAction("Afficher seulement ceux-ci")] = lambda: self.only_selected()
+            m.addSeparator()
+            if n_ == 1:
+                acts[m.addAction("Renommer…")] = lambda: self.rename()
+            acts[m.addAction(TR("Ranger dans une scène… ({})").format(n_))] = lambda: self.move()
+            d0 = self._doc(names[0])
+            if d0 is not None:
+                sc = site_doc_scene(d0)
+                acts[m.addAction(TR("Choisir tous les scans de « {} »").format(sc))] = lambda: self.select_scene(sc)
+            m.addSeparator()
+            acts[m.addAction(TR("🗑 Supprimer ({})").format(n_))] = lambda: self.delete()
+            m.addSeparator()
+        acts[m.addAction("Tout choisir (Ctrl+A)")] = lambda: self.lst.selectAll()
+        acts[m.addAction("Tout afficher")] = lambda: self.set_hidden(self.all_names(), False)
+        a = m.exec(gpos)
+        if a in acts:
+            acts[a]()
 
     def _cur_name(self):
         it = self.lst.currentItem() if hasattr(self, "lst") else None
@@ -17336,25 +17694,30 @@ class SitesDialog(QtWidgets.QDialog):
         return True
 
     def move(self):
-        d = self._cur()
-        if d is None:
+        names = self.sel_names()
+        if not names:
             self.msg.setText("Choisis d'abord un scan dans la liste.")
             return
         o = self.owner
+        d = self._doc(names[0])
         none_ = TR("(aucune : le scan est son propre lieu)")
         items = [none_] + [s_["name"] for s_ in o.scenes]
-        sc, ok = QtWidgets.QInputDialog.getItem(self, "Ranger dans une scène", f"Scène de « {d['name']} » :", items,
+        what = f"« {names[0]} »" if len(names) == 1 else TR("{} scans").format(len(names))
+        sc, ok = QtWidgets.QInputDialog.getItem(self, "Ranger dans une scène", TR("Scène de {} :").format(what), items,
                                                 max(0, items.index(site_doc_scene(d))) if site_doc_scene(d) in items
                                                 else 0, True)
         if ok:
-            self.do_move(d["name"], "" if sc == none_ else sc.strip())
+            self.do_move(names, "" if sc == none_ else sc.strip())
 
-    def do_move(self, name, scene):
+    def do_move(self, names, scene):
         o = self.owner
-        o.site_scans = site_move(o.site_scans, name, scene)
-        self.fill(select=name)
+        names = [names] if isinstance(names, str) else list(names)
+        for name in names:
+            o.site_scans = site_move(o.site_scans, name, scene)
+        self.fill(select=names[0])
         o.update_site_curve()
-        self.msg.setText(f"« {name} » rangé dans « {scene or name} ».")
+        self.msg.setText(f"« {names[0]} » rangé dans « {scene or names[0]} »." if len(names) == 1 else
+                         TR("{} scans rangés dans « {} ».").format(len(names), scene or "—"))
 
     def _doc(self, name):
         return next((d for d in self.owner.site_scans if d["name"] == name), None)
@@ -17557,10 +17920,10 @@ class SitesDialog(QtWidgets.QDialog):
             F, L = merge_scans([(old["f"], old["l"]), (F, L)])
             if dur and old.get("dur"):
                 dur += old["dur"]                   # le scan gardé cumule les deux passages
-        o.site_scans = [d for d in o.site_scans if d["name"] != name] + [
-            site_scan_doc(name, F, L, time.time(), scene=old.get("scene") if old else None, dur=dur)]
+        o.site_scans = site_replace(o.site_scans, site_scan_doc(name, F, L, time.time(),
+                                                                scene=old.get("scene") if old else None, dur=dur))
         if name in o._site_base:                   # la fusion continue (tinySA posé ici) repart de ce scan
-            o._site_base[name] = o.site_scans[-1]
+            o._site_base[name] = next(d for d in o.site_scans if d["name"] == name)
         self.fill()
         return True
 
@@ -17588,18 +17951,22 @@ class SitesDialog(QtWidgets.QDialog):
         if self._store(name, F, L):
             self.msg.setText(f"📥 Scan importé dans « {name} » ({len(F)} points).")
 
-    def delete(self):
-        it = self.lst.currentItem()
-        if it is None:
+    def delete(self, names=None):
+        names = list(names) if names is not None else self.sel_names()
+        if not names:
             self.msg.setText("Choisis d'abord un scan dans la liste.")
             return
-        name = it.data(Qt.ItemDataRole.UserRole)
-        self.owner.site_scans = [d for d in self.owner.site_scans if d["name"] != name]
-        self.owner.forget_site(name)               # sinon le max hold en mémoire de cette scène le recrée 30 s après
+        gone = set(names)
+        self.owner.undo_track()                    # l'état d'avant est bien noté (Ctrl+Z ramène TOUT ce qui est supprimé)
+        self.owner.site_scans = [d for d in self.owner.site_scans if d["name"] not in gone]
+        for name in names:
+            self.owner.forget_site(name)           # sinon le max hold en mémoire de cette scène le recrée 30 s après
+        self.lst.clearSelection()
         self.fill()
         self.owner.update_site_curve()
         self.owner.undo_track()
-        self.msg.setText(f"« {name} » supprimé · Ctrl+Z pour annuler.")
+        self.msg.setText(f"« {names[0]} » supprimé · Ctrl+Z pour annuler." if len(names) == 1 else
+                         TR("{} scans supprimés · Ctrl+Z pour annuler.").format(len(names)))
 
     def _pick(self):
         if self.what.currentData() == "merge":
@@ -27735,7 +28102,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 F, L = merge_scans([(base["f"], base["l"]), (F, L)])
             if F is None:
                 continue
-            self.site_scans = [d for d in self.site_scans if d["name"] != site] + [site_scan_doc(site, F, L, now)]
+            self.site_scans = site_replace(self.site_scans, site_scan_doc(site, F, L, now))
         self.update_site_curve()
 
     def view_sites(self):
@@ -29165,7 +29532,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def apply_ezrf(self, doc, opts, source="EazyRF", path=None):
         """Importe le plan : fréquences (scène = groupe du document, groupe = section), appareils posés sur les groupes,
         interférences en émetteurs extérieurs, scan de fond dans Scans par lieu. -> nombre de fréquences ajoutées."""
-        entries = ezrf_entries(doc, opts.get("skip_off", True))
+        entries = ezrf_remap(ezrf_entries(doc, opts.get("skip_off", True)), opts.get("map"))   # 🗂 7.66 : rangement
         keymap = self._ezrf_profiles(doc) if opts.get("profiles", True) else {}
         if opts.get("replace"):
             self.watch.clear()
@@ -29229,7 +29596,8 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self.ezrf_link = dict(path=str(path), mtime=os.path.getmtime(path), name=os.path.basename(str(path)),
                                       status=opts.get("status", ""), skip_off=bool(opts.get("skip_off", True)),
-                                      kind=opts.get("kind") or "EazyRF", manual=dict(opts.get("manual") or {}))
+                                      kind=opts.get("kind") or "EazyRF", manual=dict(opts.get("manual") or {}),
+                                      map=ezrf_map_norm(opts.get("map")))
             except OSError:
                 self.ezrf_link = None
         msg = f"📥 Plan {opts.get('kind') or 'EazyRF'} : {added} fréquence(s) importée(s)"
@@ -29241,6 +29609,13 @@ class MainWindow(QtWidgets.QMainWindow):
             msg += f", {n_ext} émetteur(s) extérieur(s)"
         if scan_name:
             msg += f", scan « {scan_name} » gardé dans Scans par lieu"
+        if opts.get("planning"):                   # 🎬 7.66 : créneaux lus dans les noms des passages
+            slots = ezrf_planning(entries)
+            have = {(x["scene"], x["group"], x["day"], x["start"], x["end"]) for x in self.planning["slots"]}
+            new = [x for x in slots if (x["scene"], x["group"], x["day"], x["start"], x["end"]) not in have]
+            if new:
+                self.planning = planning_norm(dict(self.planning, slots=self.planning["slots"] + new))
+                msg += TR(", {} créneau(x) ajouté(s) au planning").format(len(new))
         self.set_status(msg + ".")
         if added:
             self.offer_missing_bands()
@@ -31351,7 +31726,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.tnt_set_plan(doc.get("tv") or [], fname):
                 self.set_status(f"📺 Canaux TV du plan « {fname} » mis à jour : "
                                 f"{', '.join(map(str, self.tnt_cfg['plan'])) or 'aucun'}.")
-        d = ezrf_diff(ezrf_entries(doc, lk.get("skip_off", True)), self._ezrf_cur(lk))
+        d = ezrf_diff(ezrf_remap(ezrf_entries(doc, lk.get("skip_off", True)), lk.get("map")), self._ezrf_cur(lk))
         d["add"] = [e for e in d["add"] if not any(abs(w["freq"] - e[1]) < 1e-6 for w in self.watch)]
         if not (d["add"] or d["change"] or d["remove"]):
             self.set_status(f"🔗 Plan {kind} « {lk.get('name', '')} » réenregistré : rien n'a changé dans la liste.")
