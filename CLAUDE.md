@@ -1270,7 +1270,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     : points vidés ; nouveau show : carte vidée), `map_scene()` (créée à la demande), `open_map` (1re fois : tout posé),
     `map_png(maxw)` → (PNG, rectangle). Menus 🎚 Surveiller › Pendant et 🔌 Matériel › Mes tinySA.
   - **🔥 Carte de chaleur** : PURE `heat_for`, `heat_freqs`, `heat_scale` (10 dB mini), `heat_rgb` (bleu → jaune → rouge),
-    `heat_hot` ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
+    `heat_hot`, `heat_field` (Clément : « led points chaud et froid, rendu bizarre » → dégradé CONTINU façon relevé Wi-Fi :
+    noyau gaussien σ = 0,55 × `HEAT_REACH` (170), opacité pleine jusqu'à 0,4 × reach puis smoothstep) + `heat_rgba` →
+    une seule image lissée sous les tuiles ; points = petits ronds nets + étiquette du niveau (unité choisie), le plus
+    fort cerclé ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
     carte pendant la chasse. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
     (`WebServer(get_map=…)`, vues chasse ou terrain partagées) = `self._map_png` refait toutes les 5 s si quelqu'un regarde
     « chasse » (`_map_web_tick`) ; `map_mark_rel` (image → carte via `_map_rect`), `map_marks_rel` → `hunt_state` (`map`,

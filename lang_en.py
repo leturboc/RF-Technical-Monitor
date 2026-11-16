@@ -5713,3 +5713,4 @@ EXACT.update({
     "🔎 Chasse en cours sur {} MHz · clique sur la carte là où tu es : le niveau y est noté":
         "🔎 Hunting on {} MHz · click the map where you are: the level is noted there",
 })
+SAME_TEMPLATES += ["{} · {} MHz · {}"]

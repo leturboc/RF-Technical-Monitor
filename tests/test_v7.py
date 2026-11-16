@@ -1795,6 +1795,16 @@ check("chaleur : couleurs bleu → jaune → rouge", (ns["heat_rgb"](-90, -90, -
                                                   ns["heat_rgb"](-50, -90, -50)),
       ((59, 130, 246), (250, 204, 21), (239, 68, 68)))
 check("chaleur : le point le plus fort", ns["heat_hot"](_hp)["level"], -50)
+_hf, _ha = ns["heat_field"]([dict(x=0, y=0, level=-90), dict(x=400, y=0, level=-50)], -200, -200, 800, 400, 8.0, 170.0)
+_hi = _hf.shape[0] // 2
+check("chaleur continue : dégradé régulier entre deux points, opacité pleine près d'eux, nulle au loin",
+      (abs(_hf[_hi, 25] - -90) < 1.0, abs(_hf[_hi, 74] - -50) < 1.0, abs(_hf[_hi, 50] - -70) < 3.0,
+       bool(all(np.diff(_hf[_hi, 25:75]) >= -1e-9)), _ha[_hi, 25] > 0.99, _ha[0, 0] == 0.0),
+      (True, True, True, True, True, True))
+_rg = ns["heat_rgba"](_hf, _ha, -90.0, -50.0)
+check("chaleur continue : image RGBA (bleu côté faible, rouge côté fort, transparente au loin)",
+      (_rg.shape[2], tuple(_rg[_hi, 25, :3]), tuple(_rg[_hi, 74, :3]) == (239, 68, 68), int(_rg[0, 0, 3])),
+      (4, (59, 130, 246), True, 0))
 check("chasse : « je suis ici » validé", ns["hunt_request"](dict(action="mark", x=0.25, y=1)), dict(action="mark", x=0.25, y=1.0))
 for _bad in (dict(action="mark", x=2, y=0), dict(action="mark", x="a", y=0)):
     try:
