@@ -1351,7 +1351,7 @@ check("EazyRF : appareil de chaque fréquence (le 2ᵉ du groupe gardé sur sa l
       and "rx" not in _w500)
 check("EazyRF : interférences en émetteurs extérieurs + scan dans Scans par lieu",
       sum(1 for w_ in win.watch if w_["name"].startswith("Ext.")) == 2
-      and any(d_["name"].startswith("EazyRF ·") and len(d_["f"]) == 201 for d_ in win.site_scans))
+      and any(d_["name"].startswith(".ezrf3 ·") and len(d_["f"]) == 201 for d_ in win.site_scans))
 _nprof = len(m.RX_CUSTOM)
 DLG_ACTION[0] = "accept"
 win.import_ezrf_file(_ezp)
