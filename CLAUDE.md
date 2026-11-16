@@ -1283,7 +1283,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     réglages (Clément : « modifier les couleurs, intensité et tout ») : PURE `HEAT_PALETTES` (classic, thermal, viridis,
     ice, mint, accent = accent du thème), `heat_stops(pal, accent)`, `heat_rgb(..., stops)` / `heat_rgba(..., opacity,
     stops)` multi-couleurs, `heat_hex` ; `map_cfg` `heat_pal`, `heat_op` (0,1–0,95, curseur `heat_slider` dans le menu),
-    `heat_labels` ; `map_marks_rel` envoie la couleur `c` au téléphone (`#hdots`) ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
+    `heat_labels`, `heat_dot` (`HEAT_DOT_SIZES` 0,7 / 1 / 1,5), `heat_trail` (`HEAT_TRAIL_WIDTHS` 1,2 / 2 / 3,5), `heat_dir`
+    (`HEAT_DIR_COLORS` : accent | hot | #rrggbb, PURE `heat_dir_color`) ; `map_marks_rel` envoie la couleur `c` au
+    téléphone (`#hdots`) ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
     carte pendant la chasse. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
     (`WebServer(get_map=…)`, vues chasse ou terrain partagées) = `self._map_png` refait toutes les 5 s si quelqu'un regarde
     « chasse » (`_map_web_tick`) ; `map_mark_rel` (image → carte via `_map_rect`), `map_marks_rel` → `hunt_state` (`map`,

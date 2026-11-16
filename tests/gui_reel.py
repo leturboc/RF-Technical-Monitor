@@ -2373,7 +2373,15 @@ if win.is_running():
     _mw.heat_slider.setValue(70)
     check("🗺 chaleur : couleurs, intensité (curseur du menu), niveaux écrits réglables", win.map_cfg["heat_pal"] == "thermal"
           and abs(win.map_cfg["heat_op"] - 0.7) < 1e-6 and win.map_scene().heat_items, str(win.map_cfg.get("heat_op")))
-    for _k, _v in (("heat_pal", "classic"), ("heat_op", 0.55), ("heat_labels", True)):
+    for _k, _v in (("heat_dot", 1.5), ("heat_trail", 3.5), ("heat_dir", "hot")):
+        _mw.set_heat_opt(_k, _v)
+    _mw._build_heat_menu()
+    _subs = [a_.menu().title() for a_ in _mw.heat_menu.actions() if a_.menu()]
+    check("🗺 chaleur : sous-menus taille / épaisseur / couleur de la direction",
+          all(m.TR(t_) in _subs for t_ in ("Taille des points", "Épaisseur du parcours", "Couleur de la direction")),
+          str(_subs))
+    for _k, _v in (("heat_pal", "classic"), ("heat_op", 0.55), ("heat_labels", True), ("heat_dot", 1.0),
+                   ("heat_trail", 2.0), ("heat_dir", "accent")):
         _mw.set_heat_opt(_k, _v)
     for _k in ("heat_iso", "heat_arrow"):
         _mw.set_heat_opt(_k, True)
