@@ -5619,3 +5619,65 @@ EXACT.update({
 TEMPLATES.update({"{} (copie {})": "{} (copy {})", "Show : {} · {} fréquence(s)": "Show: {} · {} frequency(ies)",
                   "📱 {}": "📱 {}"})
 SAME_TEMPLATES += ["{} {} — sauvegarde complète du {}", "{}_sauvegarde_{}.zip"]
+
+# ---- 7.64 : carte du site, carte de chaleur
+EXACT.update({
+    "Ajuster": "Fit", "Carte du site": "Site map", "Choisir une image…": "Choose an image…",
+    "Coché : un clic sur la carte note le niveau ACTUEL de la chasse au brouilleur à cet\nendroit (avec un PC portable). Avec le téléphone : vue 🔎 Chasse, « Où suis-je ? ».":
+        "Ticked: a click on the map records the CURRENT level of the interference hunt at that\nspot (with a laptop). With the phone: 🔎 Hunt view, « Where am I? ».",
+    "Déplacer / agrandir le plan à la souris": "Move / resize the plan with the mouse",
+    "Dépose un tinySA sur une scène pour la lui rattacher · double-clic sur une scène = la voir · clic droit = options.":
+        "Drop a tinySA on a stage to attach it · double-click a stage = show it · right-click = options.",
+    "Efface les points de chaleur de la fréquence affichée (ou tous).": "Clears the heat points of the shown frequency (or all).",
+    "Effacer les points": "Clear the points", "Exporter en PNG…": "Export as PNG…", "Exporter la carte": "Export the map",
+    "Facultatif : une image du plan du site sous les cartes (PNG, JPG). Sans plan, la grille suffit.":
+        "Optional: an image of the site plan under the cards (PNG, JPG). Without a plan, the grid is enough.",
+    "Fréquence chassée à afficher.": "Hunted frequency to show.",
+    "Glisse les cartes pour les placer · dépose un tinySA sur une scène pour la lui rattacher ·\nmolette = zoom · glisser le fond = se déplacer · double-clic sur une scène = la voir · clic droit = options":
+        "Drag the cards to place them · drop a tinySA on a stage to attach it ·\nwheel = zoom · drag the background = pan · double-click a stage = show it · right-click = options",
+    "Glisse les éléments de « À placer » sur la carte, ou « Tout placer ».": "Drag the items from « To place » onto the map, or « Place all ».",
+    "Glisse une scène ou un tinySA sur la carte (ou double-clic pour le poser).": "Drag a stage or a tinySA onto the map (or double-click to drop it).",
+    "Grille": "Grid", "Grille de fond (les cartes s'y aimantent).": "Background grid (cards snap to it).",
+    "Image de la carte (avec la carte de chaleur) à imprimer ou envoyer.": "Image of the map (with the heat map) to print or send.",
+    "Image illisible.": "Unreadable image.", "Images (*.png *.jpg *.jpeg *.bmp *.gif)": "Images (*.png *.jpg *.jpeg *.bmp *.gif)",
+    "Le plus fort : {} dBm": "Strongest: {} dBm",
+    "Les points notés pendant la chasse au brouilleur : bleu = faible, rouge = là où ça\ncrie le plus (cercle rouge = le point le plus fort).":
+        "The points recorded during the interference hunt: blue = weak, red = where it's\nloudest (red circle = the strongest point).",
+    "Opacité :": "Opacity:", "Plan du site (image)": "Site plan (image)",
+    "Plan déplaçable : glisse-le, Ctrl + molette pour l'agrandir. Décoche pour le figer.":
+        "Plan movable: drag it, Ctrl + wheel to resize it. Untick to lock it.",
+    "Pose sur la carte toutes les scènes et tous les tinySA qui n'y sont pas encore.": "Puts on the map every stage and tinySA not there yet.",
+    "Recadre la vue sur tout ce qui est posé.": "Fits the view to everything placed.",
+    "Retirer de la carte": "Remove from the map", "Retirer le plan": "Remove the plan",
+    "Tes scènes et tes tinySA sur un canevas : glisse-les, dépose un tinySA sur une scène pour la lui\nrattacher, plan du site en fond si tu veux, état en direct, carte de chaleur de la chasse.":
+        "Your stages and tinySAs on a canvas: drag them, drop a tinySA on a stage to\nattach it, site plan in the background if you want, live state, hunt heat map.",
+    "Touche le plan là où tu es : le niveau de la chasse y est noté (carte de chaleur sur le PC).":
+        "Tap the plan where you are: the hunt level is recorded there (heat map on the PC).",
+    "Tout placer": "Place all", "Toutes les fréquences": "All frequencies", "Transparence du plan de fond.": "Background plan transparency.",
+    "en ligne": "online", "pas connecté": "not connected", "surveillance arrêtée": "monitoring stopped",
+    "{} alarme(s)": "{} alarm(s)", "{} micro(s)": "{} mic(s)", "{} point(s) · le plus fort : {}": "{} point(s) · strongest: {}",
+    "À placer :": "To place:", "↶ Retirer mon dernier point": "↶ Remove my last point",
+    "🌐 Tout le site (aucune scène)": "🌐 Whole site (no stage)", "👋 Identifier ce tinySA": "👋 Identify this tinySA",
+    "📍 Lance d'abord la chasse au brouilleur (🎚 Surveiller › 🔎) : le point note son niveau.":
+        "📍 Start the interference hunt first (🎚 Monitor › 🔎): the point records its level.",
+    "📍 Marquer ici": "📍 Mark here", "📍 Marquer ici (niveau de la chasse)": "📍 Mark here (hunt level)",
+    "📍 Point noté : {} à {} MHz.": "📍 Point recorded: {} at {} MHz.", "📡 Surveille…": "📡 Watches…",
+    "📡 {} surveille maintenant « {} » (glissé sur la carte).": "📡 {} now watches « {} » (dragged on the map).",
+    "📱 Point de chaleur noté : {} dBm.": "📱 Heat point recorded: {} dBm.",
+    "📱 Point refusé : la chasse ne tourne pas.": "📱 Point refused: the hunt is not running.",
+    "🔍 Voir cette scène (liste et spectre)": "🔍 Show this stage (list and spectrum)", "🔥 Carte de chaleur": "🔥 Heat map",
+    "🖼 Plan de fond": "🖼 Background plan", "🗺 Carte : placer mes tinySA et mes scènes…": "🗺 Map: place my tinySAs and stages…",
+    "🗺 Carte du site": "🗺 Site map", "🗺 Carte du site (scènes, tinySA, carte de chaleur)…": "🗺 Site map (stages, tinySAs, heat map)…",
+    "🗺 Où suis-je ?": "🗺 Where am I?", "🗺 Vue sur « {} » (liste et spectre).": "🗺 Showing « {} » (list and spectrum).",
+    "Lance d'abord la chasse : le point note le niveau mesuré.": "Start the hunt first: the point records the measured level.",
+})
+SAME_TEMPLATES += ["{} dBm · {} MHz · {}"]
+WEB += [("<b>🗺 Où suis-je ?</b>", "<b>🗺 Where am I?</b>"),
+        ('id="hmh">Touche le plan là où tu es : le niveau de la chasse y est noté (carte de chaleur sur le PC).<',
+         'id="hmh">Tap the plan where you are: the hunt level is recorded there (heat map on the PC).<'),
+        ('>↶ Retirer mon dernier point<', '>↶ Remove my last point<'),
+        ('alert("Lance d\'abord la chasse : le point note le niveau mesuré.")', 'alert("Start the hunt first: the point records the measured level.")')]
+EXACT.update({"aucun micro dans cette scène": "no mic in this stage", "Arrêté": "Stopped", "À surveiller": "Watch",
+              "OK": "OK", "En ligne": "Online", "Perdu": "Lost", "tour de": "cycle", "Surveille : {}": "Watches: {}",
+              "🔥 Chaleur · {} point(s)": "🔥 Heat · {} point(s)", "Zoomer": "Zoom in", "Dézoomer": "Zoom out",
+              "Tout voir": "Show all", "tout le site": "the whole site"})

@@ -2228,6 +2228,57 @@ check("📸 avant / après : A = le plus ancien, apparu à 490 MHz", _sd.cmp_a.c
 shot(_sd, "avant_apres")
 _sd.reject()
 win.site_scans = [d_ for d_ in win.site_scans if d_["name"] not in ("Avant test", "Après test")]
+# ---- 7.64 : carte du site (canevas, glisser-déposer, plan facultatif, carte de chaleur)
+_mw = win.open_map()
+wait(400)
+_ms = win.map_scene()
+check("🗺 carte : scènes et tinySA posés d'office", len(_ms.nodes) == len(win.scenes) + len(win.dev_list()),
+      f"{len(_ms.nodes)} != {len(win.scenes)} + {len(win.dev_list())}")
+_d0 = win.dev_list()[0]
+_sc0 = win.scenes[0]["name"]
+_prev_ds = list(win.dev_scenes.get(_d0, []))
+win.set_dev_scenes(_d0, [])
+_nd, _nsn = _ms.nodes[m.map_key("dev", _d0)], _ms.nodes[m.map_key("scene", _sc0)]
+_nd.setPos(_nsn.pos())
+_ms.node_dropped(_nd)
+check("🗺 déposer un tinySA sur une scène = il la surveille, lien dessiné", _sc0 in win.dev_scenes.get(_d0, [])
+      and len(_ms.links) >= 1, f"{win.dev_scenes} {len(_ms.links)}")
+_bgp = os.path.join(tmp, "plan.png")
+_bgi = m.QtGui.QImage(400, 300, m.QtGui.QImage.Format.Format_RGB32)
+_bgi.fill(m.QtGui.QColor("#335577"))
+_bgi.save(_bgp)
+check("🗺 plan de fond facultatif", _mw.pick_bg(_bgp) and _ms.bg_item is not None)
+check("🗺 « marquer ici » refusé sans chasse", _mw.mark_at(0, 0) is None)
+if win.is_running():
+    win.open_hunt(_ms.nodes and win.watch[0]["freq"] or 600.0)
+    _h = win._hunt
+    _h.go_btn.setChecked(True)
+    _t0 = time.time()
+    while _h.level is None and time.time() - _t0 < 20:
+        wait(300)
+    _pt = _mw.mark_at(120, 80)
+    check("🗺 point de chaleur noté avec le niveau de la chasse", _pt is not None and _pt["level"] == round(_h.level, 1)
+          and len(_ms.heat_items) >= 2, str(_pt))
+    _png, _rr = win.map_png()
+    win._map_png, win._map_rect = _png, _rr
+    _pt2 = win.map_mark_rel(0.5, 0.5)
+    check("🗺 « je suis ici » du téléphone (coordonnées de l'image) -> point", _pt2 is not None
+          and abs(_pt2["x"] - (_rr.left() + _rr.width() / 2)) < 1.0, str(_pt2))
+    check("🗺 points du téléphone renvoyés dans l'état de la chasse", len(win.hunt_state()["marks"]) >= 2
+          and win.hunt_state()["map"], str(win.hunt_state().get("marks")))
+    _h.go_btn.setChecked(False)
+    _h.close()
+else:
+    print("    (surveillance arrêtée : carte de chaleur non essayée ici)", flush=True)
+_png, _rr = win.map_png()
+check("🗺 image de la carte (PNG pour le téléphone et l'export)", len(_png) > 1000 and _png[:4] == b"\x89PNG")
+check("🗺 gardée dans la config / le show", win._collect_config()["map"]["pos"] == win.map_cfg["pos"]
+      and "map" in m.SHOW_KEYS)
+_mw.fit()
+wait(200)
+shot(_mw, "carte_site")
+_mw.close()
+win.set_dev_scenes(_d0, _prev_ds)
 _ns = win.open_night_summary()
 check("7.61 résumé de la nuit : page écrite", _ns is not None and "coup d'œil" in _ns.read_text(encoding="utf-8"), str(_ns))
 _rd = m.RescueDialog(win)
