@@ -1411,6 +1411,13 @@ _dlg.map_tbl.cellWidget(1, 2).setCurrentIndex(0)
 check("🗂 import : une ligne remise à la main -> sa propre scène", _dlg.tree.topLevelItemCount() == 3)
 _dlg._map_set(m.ezrf_auto_map(["TERMINAL 2", "T2 - 111 15:00 - 15:40", "T1 - WINDROSE 21:55 - 23:10", "TERMINAL 1"]))
 _dlg.plan_chk.setChecked(True)
+check("🏷 import : choix des noms proposé (fréquences sans nom)", _dlg.naming is not None)
+if _dlg.naming is not None:
+    _dlg.naming.setCurrentIndex(_dlg.naming.findData("group"))
+    _nm = [e[0] for e in _dlg.entries()]
+    check("🏷 import : noms d'après le groupe dans l'aperçu", any(" · " in n and n.split(" · ")[0] in ("111", "WINDROSE",
+          "TERMINAL 1", "TERMINAL 2") for n in _nm), str(_nm[:6]))
+    shot(_dlg, "import_noms_groupe")
 _op = _dlg.options()
 _dlg.reject()
 win.watch, win.ezrf_link = [], None
@@ -1419,6 +1426,8 @@ win.apply_ezrf(_rd, dict(_op, profiles=False, follow=False), "Plan essai")
 _scs = {w_["scene"] for w_ in win.watch}
 check("🗂 import : fréquences dans TERMINAL 1 / 2, groupe = passage · section", _scs == {"TERMINAL 1", "TERMINAL 2"}
       and any(w_["group"].startswith("111 15:00 - 15:40") for w_ in win.watch), str(_scs))
+check("🏷 import : noms d'après le groupe appliqués", _op.get("naming") != "group" or any(w_["name"].split(" · ")[0] in
+      ("111", "WINDROSE", "TERMINAL 1", "TERMINAL 2") for w_ in win.watch), str([w_["name"] for w_ in win.watch][:6]))
 check("🎬 import : créneaux de planning créés d'après les horaires", len(win.planning["slots"]) > _pl0
       and any(x["start"] == "15:00" and x["end"] == "15:40" and x["scene"] == "TERMINAL 2" for x in win.planning["slots"]),
       str(win.planning["slots"][-3:]))

@@ -1338,6 +1338,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (nom de format) ou « ton logiciel de coordination ». Le « kind » du plan importé vaut maintenant ".ezrf3" ; un
   `ezrf_link` enregistré avec l'ancien nom est migré dans `_apply_config`. Restent (internes, voulus) : balise XML du
   format, clés de données / nom de fichier de la bibliothèque. **Ne plus réintroduire le nom dans un texte visible.**
+  Journal (journal de Clément du 16/11/2026 : 1 097 lignes en 1 h 45, dont 310 OCCUPÉ / « Libre (1 s) » pour UN micro
+  AD4Q à 487,050 dans le canal TNT 23, ~−80 dBm pile au seuil, ET déjà 💤 éteint) : `OCC_LOG_S` (3 s) — une occupation
+  sans statut « doit rester libre » n'est notée que si elle dure (`w["occ_log"]` False → True), les plus courtes sont
+  comptées (`w["blips"]`) dans la note de la prochaine OCCUPÉ ; micro en pause (💤, état, planning) = rien au journal.
+  CONFLIT / INTERMOD toujours immédiats. smoke_test / smoke_test2 mettent `OCC_LOG_S = 0` (anciens tests).
+  **🏷 Noms d'après le groupe à l'import** (idée de Clément, « que ça reste une option ») : `ezrf_entries(doc, skip_off,
+  naming)` (PURE `EZRF_NAMINGS` dev | group | both, `ezrf_group_label` = nom du groupe du plan sans « T2 - » ni horaire) :
+  fréquence SANS nom → « THE BROWNING · MICS 1 » (modèle dans la note) ; nom écrit dans le plan gardé. Combo
+  `EzrfImportDialog.naming` (`.ezrf3` seulement, s'il y a des fréquences sans nom), `opts["naming"]` →
+  `ezrf_link["naming"]` (suivi). Les noms suivent l'ordre du fichier : réordonner les lignes du plan les renumérote.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

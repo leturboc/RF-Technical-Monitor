@@ -13,6 +13,7 @@ spec = importlib.util.spec_from_file_location("tsm", __import__("os").path.join(
 m = importlib.util.module_from_spec(spec)
 sys.modules["tsm"] = m
 spec.loader.exec_module(m)
+m.OCC_LOG_S = 0      # anciens tests : occupation notée tout de suite (7.66.1 : seulement si elle dure)
 
 fails = 0
 

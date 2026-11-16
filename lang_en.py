@@ -9,6 +9,12 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    'Noms des fréquences sans nom :': 'Names of unnamed frequencies:',
+    "Nom de l'appareil (Shure AD4Q #1 · 2)": 'Device name (Shure AD4Q #1 · 2)',
+    'Nom du groupe (THE BROWNING · MICS 1)': 'Group name (THE BROWNING · MICS 1)',
+    'Groupe + appareil (THE BROWNING · MICS 1 · Shure AD4Q)': 'Group + device (THE BROWNING · MICS 1 · Shure AD4Q)',
+    "Les fréquences qui n'ont pas de nom dans le plan prennent le nom de leur appareil\n(par défaut) ou celui de leur groupe : « THE BROWNING · MICS 1 » se lit mieux en régie.\nLe modèle de l'appareil reste dans la note. Un nom écrit dans le plan est toujours gardé.":
+        "Frequencies with no name in the plan take the name of their device\n(default) or of their group: “THE BROWNING · MICS 1” is easier to read at the desk.\nThe device model stays in the note. A name written in the plan is always kept.",
     '(distance minimale entre deux porteuses) et les': '(minimum distance between two carriers) and the',
     "(marge autour d'un produit, par type ; 0 = type ignoré) complètent le profil.": '(margin around a product, per type; 0 = type ignored) complete the profile.',
     "Appareil par défaut : remplit écart, filtre, pas et tolérances (valeurs de la bibliothèque (.lst4)).\nLes fréquences avec leur propre appareil (colonne « Appareil ») gardent le leur.\nTous tes modèles : 🎛 Profils d'appareil › 📚 Bibliothèque (.lst4).": 'Default device: fills in spacing, filter, step and tolerances (values from the Library (.lst4)).\nFrequencies with their own device (« Device » column) keep theirs.\nAll your models: 🎛 Device profiles › 📚 Library (.lst4).',
@@ -3083,6 +3089,7 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '+ {} passage(s) de moins de {} s avant': '+ {} pass(es) shorter than {} s before',
     ' · {} ms': ' · {} ms',
     '🌐 {} Ko/s': '🌐 {} KB/s',
     "🔕 jusqu'à {}": '🔕 until {}',
