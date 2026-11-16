@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1333,6 +1333,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     contient « HH:MM - HH:MM », tous les jours, passe minuit) ; case `plan_chk` (décochée d'office) → `opts["planning"]`.
     Sur le vrai plan de Clément : 8 scènes → 2 (TERMINAL 1 / 2), 8 créneaux trouvés (capture `apercu/import_planer.png`).
     **Pas essayé par Clément.**
+- **7.66.1 (Clément : « dans le README c'est clairement cité », « vas-y tu peux »)** : nom du logiciel de coord retiré du
+  README, de TOUS les textes de l'appli / lang_en et des manuels FR + EN (sources `docs/src` comprises) : on écrit « .ezrf3 »
+  (nom de format) ou « ton logiciel de coordination ». Le « kind » du plan importé vaut maintenant ".ezrf3" ; un
+  `ezrf_link` enregistré avec l'ancien nom est migré dans `_apply_config`. Restent (internes, voulus) : balise XML du
+  format, clés de données / nom de fichier de la bibliothèque. **Ne plus réintroduire le nom dans un texte visible.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

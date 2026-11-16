@@ -11,7 +11,7 @@ les unités, les guillemets « ».
 EXACT = {
     '(distance minimale entre deux porteuses) et les': '(minimum distance between two carriers) and the',
     "(marge autour d'un produit, par type ; 0 = type ignoré) complètent le profil.": '(margin around a product, per type; 0 = type ignored) complete the profile.',
-    "Appareil par défaut : remplit écart, filtre, pas et tolérances (valeurs de la bibliothèque EazyRF).\nLes fréquences avec leur propre appareil (colonne « Appareil ») gardent le leur.\nTous tes modèles : 🎛 Profils d'appareil › 📚 Bibliothèque EazyRF.": 'Default device: fills in spacing, filter, step and tolerances (values from the EazyRF library).\nFrequencies with their own device (« Device » column) keep theirs.\nAll your models: 🎛 Device profiles › 📚 EazyRF library.',
+    "Appareil par défaut : remplit écart, filtre, pas et tolérances (valeurs de la bibliothèque (.lst4)).\nLes fréquences avec leur propre appareil (colonne « Appareil ») gardent le leur.\nTous tes modèles : 🎛 Profils d'appareil › 📚 Bibliothèque (.lst4).": 'Default device: fills in spacing, filter, step and tolerances (values from the Library (.lst4)).\nFrequencies with their own device (« Device » column) keep theirs.\nAll your models: 🎛 Device profiles › 📚 Library (.lst4).',
     "Fréquence émise. tinySA Ultra : jusqu'à ~800 MHz en sortie directe (au-delà : niveau non garanti).": 'Transmitted frequency. tinySA Ultra: up to ~800 MHz on the direct output (above that: level not guaranteed).',
     'Le chiffre du filtre dit seulement': 'The filter figure only says',
     'Sennheiser WSM (comme ses exports)': 'Sennheiser WSM (like its exports)',
@@ -50,16 +50,15 @@ EXACT = {
     '2 TX': '2 TX',
     '3 TX': '3 TX',
     'Arrêt': 'Arrêt',
-    "Bibliothèque d'appareils EazyRF": 'EazyRF device library',
+    "Bibliothèque d'appareils (.lst4)": 'Device library (.lst4)',
     "Choisis d'abord un appareil dans la liste.": 'Pick a device in the list first.',
     'Choisis un ou plusieurs appareils (Ctrl+clic), puis « Ajouter à mes profils ».': 'Pick one or more devices (Ctrl+click), then « Add to my profiles ».',
     'Description': 'Description',
     'Départ': 'Départ',
-    'EazyRF': 'EazyRF',
     'FréqImage': 'FréqImage',
     'FréqImageDéfinie': 'FréqImageDéfinie',
     'Incrément': 'Incrément',
-    "Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.\nUn appareil de la bibliothèque EazyRF règle aussi la plage « De … à ».": 'The device profile (filter, spacing, step, tolerances) of the new frequencies.\nA device from the EazyRF library also sets the « From … to » range.',
+    "Le profil d'appareil (filtre, écart, pas, tolérances) des nouvelles fréquences.\nUn appareil de la bibliothèque (.lst4) règle aussi la plage « De … à ».": 'The device profile (filter, spacing, step, tolerances) of the new frequencies.\nA device from the Library (.lst4) also sets the « From … to » range.',
     'Les appareils choisis deviennent des profils utilisables partout (vérifier le plan,\ntrouver N fréquences, fréquence de secours), gardés dans ta config et tes shows.': 'The chosen devices become profiles usable everywhere (check the plan,\nfind N frequencies, backup frequency), kept in your config and your shows.',
     'Plage MHz': 'Range MHz',
     'Sennheiser EW-D / EW-DX · filtre 32 MHz': 'Sennheiser EW-D / EW-DX · 32 MHz filter',
@@ -77,14 +76,14 @@ EXACT = {
     'Tolérance3TX': 'Tolérance3TX',
     'Tolérance5e': 'Tolérance5e',
     'Tous les mots tapés doivent apparaître dans le nom ou le type.': 'Every word typed must appear in the name or the type.',
-    'Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton modèle : 📚 Bibliothèque EazyRF.': 'Cautious generic values: without a filter, every transmitter counts. For the exact values of your model: 📚 EazyRF library.',
+    'Valeurs génériques prudentes : sans filtre, tous les émetteurs comptent. Pour les valeurs exactes de ton modèle : 📚 Bibliothèque (.lst4).': 'Cautious generic values: without a filter, every transmitter counts. For the exact values of your model: 📚 Library (.lst4).',
     'générique': 'generic',
     '＋ Ajouter à mes profils': '＋ Add to my profiles',
     '📥 Importer Appareils.lst4…': '📥 Import Appareils.lst4…',
     '🔎 Chercher : marque, modèle, gamme (ex. « slx-d g58 », « mrk980 », « psm 1000 »)…': '🔎 Search: brand, model, range (e.g. « slx-d g58 », « mrk980 », « psm 1000 »)…',
     ": il dit seulement quelle tranche du spectre entre dans le récepteur, donc combien d'émetteurs comptent dans le calcul. À règles égales, 16 MHz fait compter moins d'émetteurs que 32 MHz.": ': it only says which slice of the spectrum gets into the receiver, hence how many transmitters count in the calculation. With the same rules, 16 MHz makes fewer transmitters count than 32 MHz.',
     'La robustesse': 'The robustness',
-    "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. 16 MHz : les émetteurs à ±16 MHz comptent, comme dans EazyRF). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et les tolérances du profil.": "The slice of spectrum that gets into the receiver around its frequency (preselection, e.g. 16 MHz: transmitters within ±16 MHz count, as in EazyRF). For the calculation, only transmitters inside that slice can create intermod in that receiver. This figure alone does not say whether a receiver is good: its robustness is set with the profile's spacing and tolerances.",
+    "La tranche de spectre qui entre dans le récepteur autour de sa fréquence (présélection, ex. 16 MHz : les émetteurs à ±16 MHz comptent). Pour le calcul, seuls les émetteurs dans cette tranche peuvent fabriquer de l'intermod dans ce récepteur. Ce chiffre ne dit pas à lui seul si un récepteur est bon : sa robustesse se règle avec l'écart et les tolérances du profil.": "The slice of spectrum that gets into the receiver around its frequency (preselection, e.g. 16 MHz: transmitters within ±16 MHz count). For the calculation, only transmitters inside that slice can create intermod in that receiver. This figure alone does not say whether a receiver is good: its robustness is set with the profile's spacing and tolerances.",
     'Le chiffre du filtre ne dit pas si un récepteur est « bon »': 'The filter figure does not say whether a receiver is « good »',
     "d'un récepteur (fabriquer peu d'intermod, bien séparer les canaux voisins) se règle avec l'": 'of a receiver (creating little intermod, separating neighbouring channels well) is set with the ',
     "du profil : un Wisycom encaisse des fréquences serrées (petites tolérances), un modèle d'entrée de gamme (SLX…) demande plus de marge, même si son filtre est plus étroit.": 'of the profile: a Wisycom copes with tight frequencies (small tolerances), an entry-level model (SLX…) needs more margin, even if its filter is narrower.',
@@ -199,7 +198,7 @@ EXACT = {
     '5. Entrer tes fréquences': '5. Enter your frequencies',
     'Ta liste = toutes les fréquences de tes appareils (micros, ears, talkies…), une par ligne.': 'Your list = all the frequencies of your devices (mics, in-ears, walkies…), one per line.',
     "C'est cette liste que l'appli surveille pendant le show.": 'This list is what the app monitors during the show.',
-    'Importe ton plan (fichier EazyRF, WWB, WSM, Excel), colle une liste, ajoute à la main, ou « 📡 Ajouter depuis le scan » pour reprendre les signaux vus.': 'Import your plan (EazyRF, WWB, WSM, Excel file), paste a list, add by hand, or « 📡 Add from the scan » to take the signals seen.',
+    'Importe ton plan (fichier .ezrf3, WWB, WSM, Excel), colle une liste, ajoute à la main, ou « 📡 Ajouter depuis le scan » pour reprendre les signaux vus.': 'Import your plan (.ezrf3, WWB, WSM, Excel file), paste a list, add by hand, or « 📡 Add from the scan » to take the signals seen.',
     '📥 Importer ma liste…': '📥 Import my list…',
     '6. Le statut de chaque fréquence : LE réglage important': "6. Each frequency's status: THE key setting",
     '« En service » (doit émettre) : ton émetteur doit être là. « Libre » (doit rester libre) : une fréquence que tu gardes en réserve, personne ne doit y être.': '« In use » (must transmit): your transmitter must be there. « Free » (must stay free): a frequency you keep in reserve, nobody must be on it.',
@@ -519,7 +518,7 @@ EXACT = {
     '2ᵉ': '2nd',
     '📍 Lieux': '📍 Locations',
     'Montre sur le spectre le scan gardé du lieu : clique une scène dans « Mes fréquences »\npour voir le sien ; en Global, la fusion de tous les lieux (📍 Scans par lieu).': "Shows the location's kept scan on the spectrum: click a stage in « My frequencies »\nto see its own; in Global, the merge of all locations (📍 Scans by location).",
-    "(le plus fort de tous, en blanc) sert à coordonner tout le site et s'exporte vers WWB / WSM / EazyRF.": '(the strongest of all, in white) is used to coordinate the whole site and exports to WWB / WSM / EazyRF.',
+    "(le plus fort de tous, en blanc) sert à coordonner tout le site et s'exporte vers WWB / WSM / ton logiciel de coord.": '(the strongest of all, in white) is used to coordinate the whole site and exports to WWB / WSM / ton logiciel de coord.',
     'Ajouter au scan déjà gardé (max)': 'Add to the scan already kept (max)',
     'Aucun lieu encore : lance un scan, puis « 📍 Garder ».': 'No location yet: run a scan, then « 📍 Keep ».',
     'CSV MHz ; dBm': 'CSV MHz ; dBm',
@@ -1092,12 +1091,12 @@ EXACT = {
     'ton profil': 'your profile',
     'un produit ne gêne une fréquence que si TOUS ses émetteurs sont dans le filtre de son récepteur': "a product only bothers a frequency if ALL its transmitters are inside its receiver's filter",
     'valeur de départ': 'starting value',
-    '« Valeur de départ » = pas vérifiée : si tu connais la valeur (profil EazyRF, doc du fabricant), crée un': "“Starting value” = not verified: if you know the value (EazyRF profile, manufacturer's documentation), create a",
+    '« Valeur de départ » = pas vérifiée : si tu connais la valeur (profil du logiciel de coord, doc du fabricant), crée un': "“Starting value” = not verified: if you know the value (coordination software profile, manufacturer's documentation), create a",
     'À chaque démarrage : enregistrer tout le scan (spectre + journal) dans le dossier\nde ton choix, pour le revoir après le show (⏪ Relecture › 📂 Ouvrir une session).': 'At every start: record the whole scan (spectrum + log) in the folder\nof your choice, to look at it again after the show (⏪ Playback › 📂 Open a session).',
     'Écart': 'Spacing',
     'Écart mini': 'Min. spacing',
     'Émetteurs : les signaux VUS sur le spectre (pics mesurés)': 'Transmitters: the signals SEEN on the spectrum (measured peaks)',
-    "à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à 40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. Donc, comme dans EazyRF :": 'from the transmitters it receives strongly. If transmitter A is 40 MHz away, the filter has already cut it: it can no longer create a product in this receiver. So, as in EazyRF:',
+    "à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à 40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. Donc :": 'from the transmitters it receives strongly. If transmitter A is 40 MHz away, the filter has already cut it: it can no longer create a product in this receiver. So:',
     'émetteur(s)': 'transmitter(s)',
     'émetteurs': 'transmitters',
     "étage d'entrée du récepteur": 'receiver front end',
@@ -1407,7 +1406,7 @@ EXACT = {
     'CONFLIT': 'CONFLICT',
     'CSV (*.csv)': 'CSV (*.csv)',
     'CSV personnalisé': 'Custom CSV',
-    'CSV personnalisé (EazyRF, tableur…)': 'Custom CSV (EazyRF, spreadsheet…)',
+    'CSV personnalisé (tableur…)': 'Custom CSV (.ezrf3, spreadsheet…)',
     'Cache-Control': 'Cache-Control',
     'Calcul théorique : il ne dit pas quel appareil fabrique le produit.': 'Theoretical calculation: it does not say which device creates the product.',
     'Calcule la compatibilité de tout le plan.': 'Computes the compatibility of the whole plan.',
@@ -1452,7 +1451,7 @@ EXACT = {
     'Chat id': 'Chat id',
     'Chat id :': 'Chat id:',
     'Chaud': 'Warm',
-    "Cherche des fréquences libres d'après ce que le tinySA a mesuré (max hold), à bonne distance de tes émetteurs et sans intermodulation de 3ᵉ ordre avec eux. Aide de dépannage : ça ne remplace pas ta coordination (EazyRF / WWB…). Vérifie que la fréquence est autorisée et compatible avec ton matériel avant de l'utiliser. Scanne bien la zone un moment avant de chercher.": 'Looks for free frequencies based on what the tinySA measured (max hold), well away from your transmitters and with no 3rd-order intermodulation with them. A troubleshooting aid: it does not replace your coordination (EazyRF / WWB…). Check that the frequency is allowed and compatible with your gear before using it. Scan the area for a while before searching.',
+    "Cherche des fréquences libres d'après ce que le tinySA a mesuré (max hold), à bonne distance de tes émetteurs et sans intermodulation de 3ᵉ ordre avec eux. Aide de dépannage : ça ne remplace pas ta coordination (ton logiciel de coord…). Vérifie que la fréquence est autorisée et compatible avec ton matériel avant de l'utiliser. Scanne bien la zone un moment avant de chercher.": 'Looks for free frequencies based on what the tinySA measured (max hold), well away from your transmitters and with no 3rd-order intermodulation with them. A troubleshooting aid: it does not replace your coordination (your coordination software…). Check that the frequency is allowed and compatible with your gear before using it. Scan the area for a while before searching.',
     "Chercher l'origine d'un signal à…": 'Find the origin of a signal at…',
     'Choisir le dossier…': 'Choose the folder…',
     'Choisir une couleur': 'Choose a colour',
@@ -1639,7 +1638,7 @@ EXACT = {
     'Etats du signal': 'Signal states',
     'Europe (générique CEPT)': 'Europe (generic CEPT)',
     "Excel français : MHz, « ; » et virgule. Autres logiciels : essaie kHz ou Hz avec point décimal. Le format exact attendu par WWB / WSM dépend de ta version : envoie-moi un exemple et je l'ajoute en un clic.": "French Excel: MHz, “;” and comma. Other software: try kHz or Hz with a decimal point. The exact format expected by WWB / WSM depends on your version: send me an example and I'll add it in one click.",
-    'Exporte la liste par scène / groupe, pour EazyRF, WWB, WSM ou un tableur.': 'Exports the list by scene / group, for EazyRF, WWB, WSM or a spreadsheet.',
+    'Exporte la liste par scène / groupe, pour WWB, WSM, ton logiciel de coord ou un tableur.': 'Exports the list by scene / group, for WWB, WSM, your coordination software or a spreadsheet.',
     'Exporte le dernier balayage (CSV) pour WWB, WSM ou un tableur.': 'Exports the last sweep (CSV) for WWB, WSM or a spreadsheet.',
     'Exporte ta liste de fréquences (CSV).': 'Exports your frequency list (CSV).',
     'Exporter': 'Export',
@@ -1740,8 +1739,8 @@ EXACT = {
     'ITS (véhicules connectés)': 'ITS (connected vehicles)',
     'Il faut au moins 2 émetteurs (change la source ou décoche « seulement ceux qui émettent »).': 'At least 2 transmitters are needed (change the source or untick “only those transmitting”).',
     "Il n'y a pas encore de scène. Nom de la scène :": 'There is no scene yet. Scene name:',
-    'Importe une liste de fréquences (EazyRF, WWB, WSM, Excel…). Tu peux aussi glisser\nle fichier sur la fenêtre.': 'Imports a frequency list (EazyRF, WWB, WSM, Excel…). You can also drop\nthe file onto the window.',
-    'Importe une liste de fréquences (EazyRF, WWB, WSM, Excel…). Tu peux aussi glisser le\nfichier sur la fenêtre.': 'Imports a frequency list (EazyRF, WWB, WSM, Excel…). You can also drop the\nfile onto the window.',
+    'Importe une liste de fréquences (.ezrf3, WWB, WSM, Excel…). Tu peux aussi glisser\nle fichier sur la fenêtre.': 'Imports a frequency list (.ezrf3, WWB, WSM, Excel…). You can also drop\nthe file onto the window.',
+    'Importe une liste de fréquences (.ezrf3, WWB, WSM, Excel…). Tu peux aussi glisser le\nfichier sur la fenêtre.': 'Imports a frequency list (.ezrf3, WWB, WSM, Excel…). You can also drop the\nfile onto the window.',
     'Importer des fréquences': 'Import frequencies',
     'Importer un scan (export WSM, WWB, CSV…)': 'Import a scan (WSM, WWB export, CSV…)',
     'Importer un scan WSM / WWB…': 'Import a WSM / WWB scan…',
@@ -1802,7 +1801,7 @@ EXACT = {
     'Les deux (2 colonnes)': 'Both (2 columns)',
     "Les deux tinySA doivent recevoir le MÊME signal (même antenne via un splitter, ou\nantennes côte à côte). Pendant ~20 s ils balayent la même bande, puis l'offset du\n2ᵉ est réglé pour qu'il lise comme le 1er. La surveillance reprend ensuite.": 'Both tinySAs must receive the SAME signal (same antenna via a splitter, or\nantennas side by side). For ~20 s they sweep the same band, then the offset of the\n2nd is set so it reads like the 1st. Monitoring then resumes.',
     'Les deux tinySA ont le même port.': 'Both tinySAs have the same port.',
-    "Les fichiers sont créés dans un nouveau dossier daté. Le format « Complet » se réimporte tel quel (📥 Importer CSV). Pour un format précis d'EazyRF / WWB / WSM, envoie-moi un exemple d'import de ton logiciel et j'ajoute l'option.": "The files are created in a new dated folder. The “Full” format re-imports as is (📥 Import CSV). For a precise EazyRF / WWB / WSM format, send me an import example from your software and I'll add the option.",
+    "Les fichiers sont créés dans un nouveau dossier daté. Le format « Complet » se réimporte tel quel (📥 Importer CSV). Pour un format précis de WWB / WSM / ton logiciel de coord, envoie-moi un exemple d'import de ton logiciel et j'ajoute l'option.": "The files are created in a new dated folder. The “Full” format re-imports as is (📥 Import CSV). For a precise WWB / WSM / your coordination software format, send me an import example from your software and I'll add the option.",
     'Les fréquences vérifiées ensemble (celles qui émettent en même temps au même endroit).': 'The frequencies checked together (those transmitting at the same time at the same place).',
     'Les lignes choisies redeviennent « en attente ».': 'The selected rows go back to “waiting”.',
     'Les personnes qui ont la page ouverte (nom choisi, adresse, vue regardée).\nClic sur une ligne, puis « Renommer » ou « Identifier ».': 'People who have the page open (chosen name, address, view watched).\nClick a row, then “Rename” or “Identify”.',
@@ -2162,7 +2161,7 @@ EXACT = {
     'Sax': 'Sax',
     'Scan pour WWB': 'Scan for WWB',
     'Scans exportés de WSM à convertir pour WWB': 'Scans exported from WSM to convert for WWB',
-    "Scans exportés de WSM, WWB, EazyRF, d'un tableur…": 'Scans exported from WSM, WWB, EazyRF, a spreadsheet…',
+    "Scans exportés de WSM, WWB, d'un tableur…": 'Scans exported from WSM, WWB, a spreadsheet…',
     'Scans à convertir': 'Scans to convert',
     'Scène': 'Scene',
     'Scène 1': 'Scene 1',
@@ -2291,7 +2290,7 @@ EXACT = {
     'TinySAMonitor': 'TinySAMonitor',
     'Title': 'Title',
     'Titre :': 'Title:',
-    "Tolérance d'intermodulation 3ᵉ ordre 2 TX (2A − B) avec tes fréquences ;\nla moitié pour les 3 TX (A + B − C). 100 kHz = défaut 2 TX d'EazyRF.": "3rd-order 2 TX intermodulation tolerance (2A − B) with your frequencies;\nhalf of it for 3 TX (A + B − C). 100 kHz = EazyRF's 2 TX default.",
+    "Tolérance d'intermodulation 3ᵉ ordre 2 TX (2A − B) avec tes fréquences ;\nla moitié pour les 3 TX (A + B − C). 100 kHz = défaut 2 TX du logiciel de coord.": "3rd-order 2 TX intermodulation tolerance (2A − B) with your frequencies;\nhalf of it for 3 TX (A + B − C). 100 kHz = the coordination software's 2 TX default.",
     'Tombe sur': 'Lands on',
     'Ton nom (pour que la régie sache qui regarde)': 'Your name (so the control room knows who is watching)',
     'Ton nom / ta société': 'Your name / your company',
@@ -2503,7 +2502,7 @@ EXACT = {
     'Écart entre le produit calculé et ta fréquence (0 = pile dessus).': 'Gap between the calculated product and your frequency (0 = right on it).',
     'Écart kHz': 'Gap kHz',
     'Écart mini :': 'Min spacing:',
-    "Écart minimal entre deux porteuses (bord à bord pour un bloc large).\n« Séparation » dans un profil d'appareil EazyRF (500 kHz pour un Wisycom MRK980).": 'Minimum spacing between two carriers (edge to edge for a wideband block).\n“Separation” in an EazyRF device profile (500 kHz for a Wisycom MRK980).',
+    "Écart minimal entre deux porteuses (bord à bord pour un bloc large).\n« Séparation » dans un profil d'appareil du logiciel de coord (500 kHz pour un Wisycom MRK980).": 'Minimum spacing between two carriers (edge to edge for a wideband block).\n“Separation” in an coordination software device profile (500 kHz for a Wisycom MRK980).',
     'Écarte les fréquences où le spectre mesuré dépasse ton seuil « faible »\n(ou « occupé » si le niveau faible est désactivé).': 'Skips frequencies where the measured spectrum exceeds your “weak” threshold\n(or “busy” if the weak level is disabled).',
     "Écrit le fichier (un par fichier d'entrée s'il y en a plusieurs, à côté d'eux).": 'Writes the file (one per input file if there are several, next to them).',
     'Écrit un fichier avec les réglages, les bandes et les derniers échanges avec le tinySA,\nà envoyer quand quelque chose bugue (aussi écrit tout seul quand le tinySA décroche).': 'Writes a file with the settings, the bands and the last exchanges with the tinySA,\nto send when something goes wrong (also written automatically when the tinySA drops out).',
@@ -2869,7 +2868,7 @@ EXACT = {
     'Début et fin de la plage exportée.': 'Start and end of the exported range.',
     'Plage :': 'Range:',
     'Plage exportée :': 'Exported range:',
-    "Quelle partie du scan exporter. Une bande, la zone affichée sur le spectre, la plage d'un\nappareil (bibliothèque EazyRF), ou des valeurs à la main.": "Which part of the scan to export. A band, the area shown on the spectrum, a device's\nrange (EazyRF library), or values by hand.",
+    "Quelle partie du scan exporter. Une bande, la zone affichée sur le spectre, la plage d'un\nappareil (bibliothèque (.lst4)), ou des valeurs à la main.": "Which part of the scan to export. A band, the area shown on the spectrum, a device's\nrange (Library (.lst4)), or values by hand.",
     'Rien de mesuré dans cette plage.': 'Nothing measured in this range.',
     'Tout le scan': 'The whole scan',
     'À la main…': 'By hand…',
@@ -2909,23 +2908,23 @@ EXACT = {
     'fichier Wisycom reconnu, mais je ne trouve pas de points de mesure': 'Wisycom file recognised, but I find no measurement points',
     'scan Wisycom : le plus fort des voies A / B (et de leurs max), dBµV convertis en dBm (dBm = dBµV − 107)': 'Wisycom scan: the strongest of channels A / B (and their max), dBµV converted to dBm (dBm = dBµV − 107)',
     'Comme les vrais exports de chaque logiciel :\nWWB : « 470.000,-104.531 » (MHz, dBm), sans en-tête.\nWSM : en-tête du scan, kHz, niveau en dB µV.\nWisycom : « Freq2D;RFA;RFB;MaxRFA;MaxRFB », MHz, dBµV.\nTTI : « 470.0000,-88.0 » (MHz, dBm).\nCSV : à toi de choisir séparateur, décimale, unités.': "Like each software's real exports:\nWWB: “470.000,-104.531” (MHz, dBm), no header.\nWSM: scan header, kHz, level in dBµV.\nWisycom: “Freq2D;RFA;RFB;MaxRFA;MaxRFB”, MHz, dBµV.\nTTI: “470.0000,-88.0” (MHz, dBm).\nCSV: you choose separator, decimal mark, units.",
-    'Comme les exports de chaque logiciel : WWB, WSM, Wisycom Manager, TTI · CSV : EazyRF, Excel…': "Like each software's exports: WWB, WSM, Wisycom Manager, TTI · CSV: EazyRF, Excel…",
+    'Comme les exports de chaque logiciel : WWB, WSM, Wisycom Manager, TTI · CSV : Excel…': "Like each software's exports: WWB, WSM, Wisycom Manager, TTI · CSV: Excel…",
     ' (grisés sur le spectre et dans 📺 Canaux TNT ; suivis si tu suis le fichier).': ' (greyed on the spectrum and in 📺 DTT channels; followed if you follow the file).',
     'Canaux TV actifs dans le document : ': 'Active TV channels in the document: ',
-    'Ce qui va arriver dans Mes fréquences : groupe EazyRF = scène, section = groupe.': 'What will arrive in My frequencies: EazyRF group = scene, section = group.',
+    'Ce qui va arriver dans Mes fréquences : groupe du plan = scène, section = groupe.': 'What will arrive in My frequencies: plan group = scene, section = group.',
     "Coché : la liste actuelle est vidée avant l'import (Ctrl+Z pour revenir).": 'Checked: the current list is emptied before the import (Ctrl+Z to go back).',
     "Créer les profils d'appareil avec les réglages du plan (écart, filtre, tolérances, pas)": "Create device profiles with the plan's settings (spacing, filter, tolerances, step)",
-    "Fréquences barrées, libérées ou dont l'appareil / la section est hors fonction dans EazyRF.": 'Frequencies struck out, released, or whose device / section is out of service in EazyRF.',
+    "Fréquences barrées, libérées ou dont l'appareil / la section est hors fonction dans ton logiciel de coord.": 'Frequencies struck out, released, or whose device / section is out of service in your coordination software.',
     'Importer': 'Import',
-    'Le scan de fond enregistré dans le document EazyRF : affiché en pointillés sur le spectre, utilisable par Coordonner.': 'The background scan saved in the EazyRF document: shown dotted on the spectrum, usable by Coordinate.',
+    'Le scan de fond enregistré dans le document .ezrf3 : affiché en pointillés sur le spectre, utilisable par Coordonner.': 'The background scan saved in the .ezrf3 document: shown dotted on the spectrum, usable by Coordinate.',
     'Remplacer ma liste (sinon : ajouter)': 'Replace my list (otherwise: add)',
     'Sans statut ni alarme, nommées « Ext. … » : Vérifier le plan et Coordonner en tiennent compte.': 'No status, no alarm, named “Ext. …”: Check the plan and Coordinate take them into account.',
     "Statut donné à chaque fréquence du plan. « Doit émettre » : alarme ABSENT si elle disparaît, et c'est un émetteur pour Vérifier le plan.": 'Status given to each frequency of the plan. “Must transmit”: ABSENT alarm if it disappears, and it is a transmitter for Check the plan.',
     'Scène › groupe › fréquence': 'Scene › group › frequency',
-    'Plan EazyRF (*.ezrf3)': 'EazyRF plan (*.ezrf3)',
+    'Plan .ezrf3 (*.ezrf3)': '.ezrf3 plan (*.ezrf3)',
     'structure inattendue : fréquences importées sans scène / groupe / appareil': 'unexpected structure: frequencies imported without scene / group / device',
-    'aucune fréquence dans ce document EazyRF': 'no frequency in this EazyRF document',
-    "ce n'est pas un document EazyRF (.ezrf3)": 'this is not an EazyRF document (.ezrf3)',
+    'aucune fréquence dans ce document .ezrf3': 'no frequency in this .ezrf3 document',
+    "ce n'est pas un document .ezrf3": 'this is not a .ezrf3 document',
     'aucune fréquence dans le texte collé': 'no frequency in the pasted text',
     'AppDescription': 'AppDescription',
     'AppareilDt': 'AppareilDt',
@@ -2933,6 +2932,7 @@ EXACT = {
     'ChTVActifList': 'ChTVActifList',
     'Commentaire': 'Commentaire',
     'EazyRFds': 'EazyRFds',
+    'EazyRF': 'EazyRF',
     'Eval5eOrdre': 'Eval5eOrdre',
     'FréquenceDt': 'FréquenceDt',
     'GroupeDt': 'GroupeDt',
@@ -3069,17 +3069,17 @@ EXACT = {
     '📸 État': '📸 State',
     'Ajoute, déplace ou retire les fréquences cochées (Ctrl+Z pour revenir).': 'Adds, moves or removes the ticked frequencies (Ctrl+Z to go back).',
     'Appliquer les changements cochés': 'Apply the ticked changes',
-    'Arrête de surveiller ce fichier EazyRF.': 'Stops watching this EazyRF file.',
+    'Arrête de surveiller ce fichier .ezrf3.': 'Stops watching this .ezrf3 file.',
     'Arrêter de suivre': 'Stop following',
     'Décoche ce que tu ne veux pas reprendre.': 'Untick what you do not want to take.',
-    "L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences ajoutées,\nmodifiées ou retirées dans EazyRF et tu choisis ce que tu reprends.": 'The app looks at the file every 5 s; if it changes, it lists the frequencies added,\nmoved or removed in EazyRF and you choose what you take.',
-    'Ne change rien maintenant (☰ Plus › 📋 Liste › 🔗 Plan EazyRF suivi › Vérifier maintenant).': 'Changes nothing now (☰ More › 📋 List › 🔗 Followed EazyRF plan › Check now).',
+    "L'appli regarde le fichier toutes les 5 s ; s'il change, elle liste les fréquences ajoutées,\nmodifiées ou retirées dans ton logiciel de coord et tu choisis ce que tu reprends.": 'The app looks at the file every 5 s; if it changes, it lists the frequencies added,\nmoved or removed in your coordination software and you choose what you take.',
+    'Ne change rien maintenant (☰ Plus › 📋 Liste › 🔗 Plan suivi › Vérifier maintenant).': 'Changes nothing now (☰ More › 📋 List › 🔗 Followed plan › Check now).',
     'Ne plus suivre ce fichier': 'Stop following this file',
-    'Plan EazyRF suivi': 'Followed EazyRF plan',
+    'Plan suivi': 'Followed plan',
     'Plus tard': 'Later',
     'Vérifier maintenant': 'Check now',
     '🔗 Fichier introuvable ou illisible.': '🔗 File not found or unreadable.',
-    '🔗 Plan EazyRF suivi': '🔗 Followed EazyRF plan',
+    '🔗 Plan suivi': '🔗 Followed plan',
 }
 
 TEMPLATES = {
@@ -3088,7 +3088,7 @@ TEMPLATES = {
     "🔕 jusqu'à {}": '🔕 until {}',
     '🔕 Alarmes muettes pendant {} min (toujours affichées et envoyées au téléphone).': '🔕 Alarms muted for {} min (still displayed and sent to the phone).',
     '🔕 {} min': '🔕 {} min',
-    'Bibliothèque EazyRF · {} · {}–{} MHz': 'EazyRF library · {} · {}–{} MHz',
+    'Bibliothèque (.lst4) · {} · {}–{} MHz': 'Library (.lst4) · {} · {}–{} MHz',
     'Import impossible : {}': 'Import failed: {}',
     '{} appareils dans la bibliothèque.': '{} devices in the library.',
     '📚 {} appareils importés.': '📚 {} devices imported.',
@@ -3491,12 +3491,12 @@ TEMPLATES = {
     '{} · encore {} retour(s) possible(s), {} à rétablir (Ctrl+Y).': '{} · {} more undo(s) possible, {} to redo (Ctrl+Y).',
     'Bande « {} » supprimée · Ctrl+Z pour annuler.': 'Band “{}” deleted · Ctrl+Z to undo.',
     '{} (sép. {} kHz · filtre {} MHz)': '{} (sep. {} kHz · filter {} MHz)',
-    '📥 Plan EazyRF : {} fréquence(s) importée(s)': '📥 EazyRF plan: {} frequency(ies) imported',
+    '📥 Plan .ezrf3 : {} fréquence(s) importée(s)': '📥 .ezrf3 plan: {} frequency(ies) imported',
     'Garder le scan du document dans Scans par lieu ({} points)': 'Keep the document scan in Scans by place ({} points)',
-    'Plan EazyRF « {} » · {}–{} MHz': 'EazyRF plan “{}” · {}–{} MHz',
-    ' · EazyRF {}': ' · EazyRF {}',
+    'Plan .ezrf3 « {} » · {}–{} MHz': '.ezrf3 plan “{}” · {}–{} MHz',
+    ' · v{}': ' · v{}',
     'Ignorer les fréquences rayées / hors fonction ({})': 'Ignore struck-out / out-of-service frequencies ({})',
-    'Ajouter les interférences notées dans EazyRF ({}) comme émetteurs extérieurs': 'Add the interferences noted in EazyRF ({}) as external transmitters',
+    'Ajouter les interférences notées dans ton logiciel de coord ({}) comme émetteurs extérieurs': 'Add the interferences noted in your coordination software ({}) as external transmitters',
     ' · fréquence image {} MHz (pas prise en compte)': ' · image frequency {} MHz (not taken into account)',
     '<br>« {} »': '<br>“{}”',
     '<br>{} fréquence(s) · {} scène(s) · {} appareil(s)': '<br>{} frequency(ies) · {} scene(s) · {} device(s)',
@@ -3543,13 +3543,13 @@ TEMPLATES = {
     '📸 État « {} » créé avec {} fréquence(s) : décoche celles qui ne jouent pas dans « Gérer les états ».': '📸 State “{}” created with {} frequency(ies): untick those that do not play in “Manage states”.',
     '📸 {}  ({})': '📸 {}  ({})',
     '{}  ({})': '{}  ({})',
-    '🔗 « {} » a été réenregistré dans EazyRF. Coche ce que tu reprends dans ta liste :': '🔗 “{}” was saved again in EazyRF. Tick what you take into your list:',
-    '🔗 Plan EazyRF : {} ajoutée(s), {} modifiée(s), {} retirée(s).': '🔗 EazyRF plan: {} added, {} moved, {} removed.',
+    '🔗 « {} » a été réenregistré dans ton logiciel de coord. Coche ce que tu reprends dans ta liste :': '🔗 “{}” was saved again in your coordination software. Tick what you take into your list:',
+    '🔗 Plan .ezrf3 : {} ajoutée(s), {} modifiée(s), {} retirée(s).': '🔗 .ezrf3 plan: {} added, {} moved, {} removed.',
     '＋ {}  {} MHz': '＋ {}  {} MHz',
-    "🔗 Plan EazyRF « {} » réenregistré : rien n'a changé dans la liste.": '🔗 EazyRF plan “{}” saved again: nothing changed in the list.',
-    '🔗 Plan EazyRF « {} » illisible : {}': '🔗 EazyRF plan “{}” unreadable: {}',
+    "🔗 Plan .ezrf3 « {} » réenregistré : rien n'a changé dans la liste.": '🔗 .ezrf3 plan “{}” saved again: nothing changed in the list.',
+    '🔗 Plan .ezrf3 « {} » illisible : {}': '🔗 .ezrf3 plan “{}” unreadable: {}',
     '✏ {} : {} → {} MHz': '✏ {}: {} → {} MHz',
-    "🔗 Suivi : « {} »\n{}\n\nÀ chaque réenregistrement dans EazyRF, l'appli te propose les fréquences ajoutées, modifiées ou retirées.": '🔗 Following: “{}”\n{}\n\nEach time it is saved again in EazyRF, the app offers the frequencies added, moved or removed.',
+    "🔗 Suivi : « {} »\n{}\n\nÀ chaque réenregistrement dans ton logiciel de coord, l'appli te propose les fréquences ajoutées, modifiées ou retirées.": '🔗 Following: “{}”\n{}\n\nEach time it is saved again in your coordination software, the app offers the frequencies added, moved or removed.',
     '🗑 {}  {} MHz': '🗑 {}  {} MHz',
     '  ({}{})': '  ({}{})',
     '🗑 {}{}': '🗑 {}{}',
@@ -4058,8 +4058,8 @@ EXACT.update({
     'Écart minimal entre deux porteuses (« Séparation »).': 'Minimum spacing between two carriers (“Separation”).',
     "à partir des émetteurs qu'il reçoit fort. Si l'émetteur A est à 40 MHz de là, le filtre l'a déjà coupé : il ne peut plus fabriquer de produit dans ce récepteur. Donc :":
         "from the transmitters it receives strongly. If transmitter A is 40 MHz away, the filter has already cut it: it can no longer create a product in this receiver. So:",
-    '⚠ Coordination BASIQUE, pour vérifier et dépanner sur place à partir du spectre mesuré : elle ne remplace pas un logiciel de coordination. Pour construire ton plan, utilise un outil dédié, bien plus complet (EazyRF, Shure WWB, Sennheiser WSM, Soundbase…), puis importe-le ici pour le surveiller.':
-        '⚠ BASIC coordination, to check and troubleshoot on site from the measured spectrum: it does not replace coordination software. To build your plan, use a dedicated tool, far more complete (EazyRF, Shure WWB, Sennheiser WSM, Soundbase…), then import it here to monitor it.',
+    '⚠ Coordination BASIQUE, pour vérifier et dépanner sur place à partir du spectre mesuré : elle ne remplace pas un logiciel de coordination. Pour construire ton plan, utilise un outil dédié, bien plus complet (Shure WWB, Sennheiser WSM, Soundbase…), puis importe-le ici pour le surveiller.':
+        '⚠ BASIC coordination, to check and troubleshoot on site from the measured spectrum: it does not replace coordination software. To build your plan, use a dedicated tool, far more complete (Shure WWB, Sennheiser WSM, Soundbase…), then import it here to monitor it.',
     '📚 Bibliothèque (.lst4)…': '📚 Library (.lst4)…',
     "📸 État actif : un clic pour basculer de plan.\nLes fréquences hors de l'état passent en pause (pas d'alarme, pas d'intermod).":
         '📸 Active state: one click to switch plan.\nFrequencies outside the state are paused (no alarm, no intermod).',
@@ -4125,7 +4125,7 @@ EXACT.update({
     'Choisir le tinySA : branché en USB, en réseau (Raspberry Pi), ou le mode démo pour\nessayer sans tinySA.':
         'Choose the tinySA: plugged in USB, on the network (Raspberry Pi), or demo mode to\ntry without a tinySA.',
     'Démarrer / arrêter la surveillance de tes micros.': 'Start / stop monitoring your mics.',
-    'Importer ton plan de fréquences (EazyRF, WWB, WSM, Excel / CSV…).': 'Import your frequency plan (EazyRF, WWB, WSM, Excel / CSV…).',
+    'Importer ton plan de fréquences (.ezrf3, WWB, WSM, Excel / CSV…).': 'Import your frequency plan (.ezrf3, WWB, WSM, Excel / CSV…).',
     "Masquer l'accueil (☰ Plus › 👁 Affichage › 🏠 Accueil pour le remettre).": 'Hide the home bar (☰ More › 👁 Display › 🏠 Home to bring it back).',
     "Plein écran, seulement l'essentiel en très gros (F10).": 'Full screen, only the essentials in very large text (F10).',
     'QFrame#carte{border:%s; border-radius:8px; background:%s}': 'QFrame#carte{border:%s; border-radius:8px; background:%s}',
@@ -4269,8 +4269,8 @@ EXACT.update({
     "Ajoute à ta liste les signaux que le tinySA voit au-dessus d'un seuil.":
         'Adds to your list the signals the tinySA sees above a threshold.',
     '📥 Importer une liste': '📥 Import a list',
-    'Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Excel / CSV…).':
-        'Your frequency plan from a file (EazyRF, WWB, WSM, Excel / CSV…).',
+    'Ton plan de fréquences depuis un fichier (.ezrf3, WWB, WSM, Excel / CSV…).':
+        'Your frequency plan from a file (.ezrf3, WWB, WSM, Excel / CSV…).',
     '＋ Ajouter une fréquence': '＋ Add a frequency',
     'Une fréquence à la main : nom, MHz, statut, scène / groupe.': 'One frequency by hand: name, MHz, status, stage / group.',
     '📋 Coller une liste': '📋 Paste a list',
@@ -4517,18 +4517,18 @@ EXACT.update({
     "ce n'est pas un projet Wireless Systems Manager (.wsm)": 'this is not a Wireless Systems Manager project (.wsm)',
     "ce n'est pas un show Wireless Workbench (.shw)": 'this is not a Wireless Workbench show (.shw)',
     "ce n'est pas un show Wisycom Manager (.wshow)": 'this is not a Wisycom Manager show (.wshow)',
-    'format de plan inconnu (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp)':
-        'unknown plan format (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp)',
+    'format de plan inconnu (.ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp)':
+        'unknown plan format (.ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp)',
     'Ce qui va arriver dans Mes fréquences : scène › groupe › fréquence.':
         'What will arrive in My frequencies: stage › group › frequency.',
-    "Le plan importé avec « Suivre ce fichier » (EazyRF, WWB, WSM, Wisycom, DPA) : à chaque\nréenregistrement dans le logiciel,\nl'appli propose les fréquences ajoutées, modifiées ou retirées.":
-        'The plan imported with “Follow this file” (EazyRF, WWB, WSM, Wisycom, DPA): each time it is\nsaved again in that software,\nthe app offers the added, changed or removed frequencies.',
-    'Ton plan de fréquences depuis un fichier (EazyRF, WWB, WSM, Wisycom, DPA, Excel / CSV…).':
-        'Your frequency plan from a file (EazyRF, WWB, WSM, Wisycom, DPA, Excel / CSV…).',
-    '📥 Importer une liste ou un plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…':
-        '📥 Import a list or a plan (EazyRF, WWB, WSM, Wisycom, DPA, CSV…)…',
+    "Le plan importé avec « Suivre ce fichier » (.ezrf3, WWB, WSM, Wisycom, DPA) : à chaque\nréenregistrement dans le logiciel,\nl'appli propose les fréquences ajoutées, modifiées ou retirées.":
+        'The plan imported with “Follow this file” (.ezrf3, WWB, WSM, Wisycom, DPA): each time it is\nsaved again in that software,\nthe app offers the added, changed or removed frequencies.',
+    'Ton plan de fréquences depuis un fichier (.ezrf3, WWB, WSM, Wisycom, DPA, Excel / CSV…).':
+        'Your frequency plan from a file (.ezrf3, WWB, WSM, Wisycom, DPA, Excel / CSV…).',
+    '📥 Importer une liste ou un plan (.ezrf3, WWB, WSM, Wisycom, DPA, CSV…)…':
+        '📥 Import a list or a plan (.ezrf3, WWB, WSM, Wisycom, DPA, CSV…)…',
     "🔗 Le plan n'est plus suivi.": '🔗 The plan is no longer followed.',
-    '🔗 Plan suivi (EazyRF, WWB, WSM, Wisycom, DPA)…': '🔗 Followed plan (EazyRF, WWB, WSM, Wisycom, DPA)…',
+    '🔗 Plan suivi (.ezrf3, WWB, WSM, Wisycom, DPA)…': '🔗 Followed plan (.ezrf3, WWB, WSM, Wisycom, DPA)…',
     '💥 Tester : plantage': '💥 Test: crash',
     '🧊 Tester : appli figée': '🧊 Test: frozen app',
     "Fait planter l'appli exprès : la garde doit la rouvrir en quelques secondes et la\nsurveillance doit reprendre toute seule si elle tournait.":
@@ -4583,8 +4583,8 @@ EXACT.update({
         'Check the plan, coordinate, intermod and device profiles are hidden:\n⚙ Settings › General › “Coordination tools (advanced)” to show them.',
 })
 TEMPLATES.update({
-    "ce show ne contient que des récepteurs ({}) : Wisycom Manager n'enregistre pas leurs fréquences dans le fichier (seulement celles des émetteurs MTK). Ajoute-les à la main, ou importe le plan depuis EazyRF / un tableau.":
-        'this show only contains receivers ({}): Wisycom Manager does not store their frequencies in the file (only those of the MTK transmitters). Add them by hand, or import the plan from EazyRF / a spreadsheet.',
+    "ce show ne contient que des récepteurs ({}) : Wisycom Manager n'enregistre pas leurs fréquences dans le fichier (seulement celles des émetteurs MTK). Ajoute-les à la main, ou importe le plan depuis ton logiciel de coord / un tableau.":
+        'this show only contains receivers ({}): Wisycom Manager does not store their frequencies in the file (only those of the MTK transmitters). Add them by hand, or import the plan from your coordination software / a spreadsheet.',
 })
 
 # 7.50 : récepteurs Wisycom « à compléter », corrélation par le nom
@@ -4595,8 +4595,8 @@ EXACT.update({
     "Tape la fréquence en MHz (ex. 578,050). Vide = pas importé. Retenu avec le suivi du fichier : un nouvel enregistrement dans Wisycom Manager ne l'efface pas.":
         'Type the frequency in MHz (e.g. 578.050). Empty = not imported. Kept with the file follow-up: a new save in Wisycom Manager does not erase it.',
     'Trouvé (par le nom)': 'Found (by name)',
-    'Un plan EazyRF, WWB, WSM… où ces canaux ont leur fréquence (par ex. « HF 1 DEPART » pour « DEP 1 ») :\nles fréquences trouvées par le nom remplissent les cases vides.':
-        'An EazyRF, WWB, WSM… plan where these channels have their frequency (e.g. “HF 1 DEPART” for “DEP 1”):\nthe frequencies found by name fill the empty cells.',
+    'Un plan .ezrf3, WWB, WSM… où ces canaux ont leur fréquence (par ex. « HF 1 DEPART » pour « DEP 1 ») :\nles fréquences trouvées par le nom remplissent les cases vides.':
+        'A .ezrf3, WWB, WSM… plan where these channels have their frequency (e.g. “HF 1 DEPART” for “DEP 1”):\nthe frequencies found by name fill the empty cells.',
     'À compléter : récepteurs sans fréquence dans le fichier': 'To complete: receivers without frequency in the file',
     '📂 Chercher les noms dans un autre plan…': '📂 Look the names up in another plan…',
 })
@@ -4627,8 +4627,8 @@ EXACT.update({
 })
 
 EXACT.update({
-    'Aucun plan suivi. Pour en suivre un : 📥 Importer une liste, choisis le plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) et coche « 🔗 Suivre ce fichier ».':
-        'No followed plan. To follow one: 📥 Import a list, choose the plan (EazyRF .ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) and tick “🔗 Follow this file”.',
+    'Aucun plan suivi. Pour en suivre un : 📥 Importer une liste, choisis le plan (.ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) et coche « 🔗 Suivre ce fichier ».':
+        'No followed plan. To follow one: 📥 Import a list, choose the plan (.ezrf3, Shure WWB .shw / .cug, Sennheiser WSM .wsm, Wisycom .wshow, DPA .acp) and tick “🔗 Follow this file”.',
 })
 
 EXACT.update({"taskkill /F /T /PID": "taskkill /F /T /PID"})   # commande Windows (garde), jamais affichée
@@ -5102,14 +5102,14 @@ EXACT.update({
     "Depuis le scan": "From the scan",
     "Donne un nom au show, choisis le pays, tape le code postal du lieu.": "Name the show, pick the country, type the venue postcode.",
     "Démarre le balayage et repart de pics gardés vides.": "Starts sweeping with an empty peak hold.",
-    "EazyRF, WWB, WSM, Wisycom, DPA, CSV…": "EazyRF, WWB, WSM, Wisycom, DPA, CSV…",
+    ".ezrf3, WWB, WSM, Wisycom, DPA, CSV…": ".ezrf3, WWB, WSM, Wisycom, DPA, CSV…",
     "Ferme l'assistant (🧭 Assistant sur l'accueil ou 📋 Préparer pour le rouvrir).":
         "Closes the assistant (🧭 Assistant on the home bar or 📋 Prepare to reopen it).",
     "Griser": "Grey out",
     "HintBar { ": "HintBar { ",
     "Il reste des problèmes": "Problems remain",
-    "Importe ton plan (EazyRF, WWB, WSM, Wisycom, DPA, tableau), colle une liste ou ajoute tes fréquences. Tu peux aussi le faire après le scan (« Depuis le scan »).":
-        "Import your plan (EazyRF, WWB, WSM, Wisycom, DPA, spreadsheet), paste a list or add your frequencies. You can also do it after the scan (« From the scan »).",
+    "Importe ton plan (.ezrf3, WWB, WSM, Wisycom, DPA, tableau), colle une liste ou ajoute tes fréquences. Tu peux aussi le faire après le scan (« Depuis le scan »).":
+        "Import your plan (.ezrf3, WWB, WSM, Wisycom, DPA, spreadsheet), paste a list or add your frequencies. You can also do it after the scan (« From the scan »).",
     "L'assistant pas à pas : show, micros, scan, canaux TNT, prêt pour le show.":
         "The step-by-step assistant: show, mics, scan, DTT channels, ready for the show.",
     "La TNT occupe des canaux entiers : il vaut mieux ne pas y poser de micros, ou alors bien au-dessus.":
