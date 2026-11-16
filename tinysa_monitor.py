@@ -16595,13 +16595,13 @@ class HomeBar(QtWidgets.QWidget):
             a = m.addAction(o.port_combo.itemText(i))
             a.setCheckable(True)
             a.setChecked(i == cur and not o.demo_chk.isChecked())
-            a.triggered.connect(lambda *_, i=i: (o.demo_chk.setChecked(False), o.port_combo.setCurrentIndex(i)))
+            a.triggered.connect(lambda *_, i=i: o.switch_source(False, i))
         m.addSeparator()
         m.addAction("↻ Chercher à nouveau les tinySA branchés").triggered.connect(lambda *_: o.refresh_ports())
         a = m.addAction("🎭 Mode démo (essayer sans tinySA)")
         a.setCheckable(True)
         a.setChecked(o.demo_chk.isChecked())
-        a.triggered.connect(lambda *_, a=a: o.demo_chk.setChecked(a.isChecked()))
+        a.triggered.connect(lambda *_, a=a: o.switch_source(a.isChecked()))
 
     def refresh(self, info):
         o = self.owner
@@ -30276,6 +30276,32 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ready = ReadyDialog(self)
         self._ready.show()
         return self._ready
+
+    def switch_source(self, demo, index=None):
+        """Démo ↔ tinySA (carte ① de l'accueil). Pendant la surveillance : arrêt propre, bascule, puis reprise (journal de
+        Clément 16/11/2026 : la démo se décochait en pleine surveillance, le balayage continuait en démo puis l'appli
+        plantait)."""
+        def apply():
+            self.demo_chk.setChecked(bool(demo))
+            if index is not None and 0 <= index < self.port_combo.count():
+                self.port_combo.setCurrentIndex(index)
+        if not self.is_running():
+            apply()
+            return
+        self.set_status("Changement de source : arrêt de la surveillance…")
+        self.toggle_run()
+        t_end = time.time() + STOP_FORCE_MS / 1000.0 + 5.0
+
+        def wait():
+            if self.is_running():
+                if time.time() < t_end:
+                    QtCore.QTimer.singleShot(200, wait)
+                else:
+                    self.set_status("La surveillance ne s'arrête pas : change de source une fois arrêtée.")
+                return
+            apply()
+            QtCore.QTimer.singleShot(300, lambda: self.toggle_run(auto=True))
+        QtCore.QTimer.singleShot(200, wait)
 
     def toggle_demo_off(self):
         if self.is_running():
