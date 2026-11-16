@@ -1259,14 +1259,19 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     ligne, bande = couleur de la scène), `MapScene` (`sync`, `refresh` (chaque seconde si la fenêtre est visible),
     `update_links` (courbes tinySA → `dev_scenes`, pointillés si perdu), `sync_bg`, `sync_heat`, `node_dropped` (tinySA
     déposé SUR une scène → `toggle_dev_scene`), `node_open` (scène → `set_scope`), `mark(x, y)`), `MapView` (grille dans
-    `drawBackground`, molette = zoom, Ctrl + molette = taille du plan, fond = déplacement, dépôt mime
-    `application/x-tsm-map`), `MapPalette` (« À placer », glisser), `MapWindow` (vraie fenêtre, `self._map`).
+    `drawBackground` = points discrets, molette = zoom, Ctrl + molette = taille du plan, fond = déplacement, pas de
+    barres de défilement ; clic SIMPLE (pas un glisser) hors tuile pendant une chasse = point noté), `MapWindow` (vraie
+    fenêtre, `self._map`). **Version épurée (Clément : « plus user friendly et plus épuré »)** : plus de palette « À
+    placer » (`tick` pose tout seul ce qui manque), une barre fine 🖼 Plan (menu : image, opacité en `QWidgetAction`,
+    `bg_move` « Caler le plan », retirer) / 🔥 Chaleur (menu `_build_heat_menu` : afficher, fréquence chassée, effacer,
+    aide) / `count_lbl` / ⤢ Tout voir / ⋯ (grille `grid_act`, `relayout`, export) ; bulle `banner` en haut (`hint(txt,
+    s)`, rappel de chasse tant que `marking()`), zoom + / − et `MapHeatLegend` posés sur la vue.
     MainWindow : `self.map_cfg` (config sur la ligne `coord_tools=` via `_map_cfg_dump`, SHOW_KEYS « map » ; modèle de show
     : points vidés ; nouveau show : carte vidée), `map_scene()` (créée à la demande), `open_map` (1re fois : tout posé),
     `map_png(maxw)` → (PNG, rectangle). Menus 🎚 Surveiller › Pendant et 🔌 Matériel › Mes tinySA.
   - **🔥 Carte de chaleur** : PURE `heat_for`, `heat_freqs`, `heat_scale` (10 dB mini), `heat_rgb` (bleu → jaune → rouge),
-    `heat_hot` ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : « 📍 Marquer
-    ici » + clic. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
+    `heat_hot` ; point = {x, y, level (niveau ACTUEL de `HuntDialog`), f, t}, refusé sans chasse en cours. PC : clic sur la
+    carte pendant la chasse. Téléphone : `hunt_request` actions `mark` {x, y ∈ [0, 1] de l'image} / `unmark` ; GET `/carte.png`
     (`WebServer(get_map=…)`, vues chasse ou terrain partagées) = `self._map_png` refait toutes les 5 s si quelqu'un regarde
     « chasse » (`_map_web_tick`) ; `map_mark_rel` (image → carte via `_map_rect`), `map_marks_rel` → `hunt_state` (`map`,
     `map_t`, `marks`) ; vue Chasse : « 🗺 Où suis-je ? » (`#hmi`, `#hdots`, `huntCmd`, `huntMark`). GPS du téléphone PAS

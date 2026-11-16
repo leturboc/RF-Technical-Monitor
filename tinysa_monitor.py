@@ -20464,7 +20464,7 @@ class MapNode(QtWidgets.QGraphicsObject):
         fp.setBold(True)
         fp.setPointSizeF(8.0)
         fmp = QtGui.QFontMetrics(fp)
-        pw = fmp.horizontalAdvance(self.pill) + 18
+        pw = fmp.horizontalAdvance(self.pill) + 24
         pr = QtCore.QRectF(self.w - pw - 10, 10, pw, 20)
         p.setBrush(QtGui.QColor(blend(self.col, card, 0.22)))
         p.setPen(QtGui.QPen(QtGui.QColor(self.col), 1.0))
@@ -20474,7 +20474,7 @@ class MapNode(QtWidgets.QGraphicsObject):
         p.drawEllipse(QtCore.QPointF(pr.left() + 9, pr.center().y()), 3.2, 3.2)
         p.setFont(fp)
         p.setPen(QtGui.QColor(self.col))
-        p.drawText(pr.adjusted(14, 0, -4, 0), Qt.AlignmentFlag.AlignCenter, self.pill)
+        p.drawText(pr.adjusted(18, 0, -4, 0), Qt.AlignmentFlag.AlignCenter, self.pill)
         ft = QtGui.QFont(base)                         # titre
         ft.setBold(True)
         ft.setPointSizeF(12.5)
@@ -20759,7 +20759,7 @@ class MapScene(QtWidgets.QGraphicsScene):
 
 
 class MapView(QtWidgets.QGraphicsView):
-    """Vue de la carte : grille, molette = zoom, glisser le fond = se déplacer, dépôt depuis la palette."""
+    """Vue de la carte : grille en points, molette = zoom, glisser le fond = se déplacer, clic pendant une chasse = point noté."""
 
     def __init__(self, sc, win):
         super().__init__(sc)
@@ -20767,8 +20767,10 @@ class MapView(QtWidgets.QGraphicsView):
         self.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         self.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setAcceptDrops(True)
-        self.setToolTip("Glisse les cartes pour les placer · dépose un tinySA sur une scène pour la lui rattacher ·\n"
+        for pol in (self.setHorizontalScrollBarPolicy, self.setVerticalScrollBarPolicy):
+            pol(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)      # on se déplace en glissant le fond
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.setToolTip("Glisse les tuiles pour les placer · dépose un tinySA sur une scène pour la lui rattacher ·\n"
                         "molette = zoom · glisser le fond = se déplacer · double-clic sur une scène = la voir · clic droit = options")
 
     def drawBackground(self, p, rect):
@@ -20776,17 +20778,19 @@ class MapView(QtWidgets.QGraphicsView):
         p.fillRect(rect, QtGui.QColor(th["ui_bg"]))
         if not self.win.owner.map_cfg.get("grid", True):
             return
-        step = MAP_STEP
-        pen = QtGui.QPen(QtGui.QColor(blend(th["ui_text"], th["ui_bg"], 0.10)), 0)
-        p.setPen(pen)
-        x = math.floor(rect.left() / step) * step
-        while x < rect.right():
-            p.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
-            x += step
+        step = MAP_STEP if self.transform().m11() >= 0.45 else MAP_STEP * 3
+        p.setPen(QtGui.QPen(QtGui.QColor(blend(th["ui_text"], th["ui_bg"], 0.22)), 2.2))
+        pts = []
+        x0 = math.floor(rect.left() / step) * step
         y = math.floor(rect.top() / step) * step
         while y < rect.bottom():
-            p.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
+            x = x0
+            while x < rect.right():
+                pts.append(QtCore.QPointF(x, y))
+                x += step
             y += step
+        if len(pts) < 40000:                   # grille en points discrets (façon canevas)
+            p.drawPoints(pts)
 
     def wheelEvent(self, e):
         k = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
@@ -20798,51 +20802,22 @@ class MapView(QtWidgets.QGraphicsView):
             self.scale(k, k)
 
     def mousePressEvent(self, e):
-        if (self.win.mark_btn.isChecked() and e.button() == Qt.MouseButton.LeftButton
-                and not isinstance(self.itemAt(e.position().toPoint()), MapNode)):
-            pt = self.mapToScene(e.position().toPoint())
-            self.win.mark_at(pt.x(), pt.y())
-            return
+        self._press = e.position().toPoint()
         super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        p0 = getattr(self, "_press", None)
+        pos = e.position().toPoint()
+        if (p0 is not None and e.button() == Qt.MouseButton.LeftButton and self.win.marking()
+                and (pos - p0).manhattanLength() < 6 and not isinstance(self.itemAt(pos), MapNode)):
+            pt = self.mapToScene(pos)          # un simple clic (pas un glisser) pendant la chasse = point noté
+            self.win.mark_at(pt.x(), pt.y())
+        self._press = None
 
     def contextMenuEvent(self, e):
         it = self.itemAt(e.pos())
         self.win.context_menu(it if isinstance(it, MapNode) else None, self.mapToScene(e.pos()), e.globalPos())
-
-    def dragEnterEvent(self, e):
-        if e.mimeData().hasFormat("application/x-tsm-map"):
-            e.acceptProposedAction()
-
-    def dragMoveEvent(self, e):
-        if e.mimeData().hasFormat("application/x-tsm-map"):
-            e.acceptProposedAction()
-
-    def dropEvent(self, e):
-        key = bytes(e.mimeData().data("application/x-tsm-map")).decode("utf-8")
-        pt = self.mapToScene(e.position().toPoint())
-        self.win.owner.map_scene().place(key, pt.x(), pt.y())
-        self.win.fill_palette()
-        e.acceptProposedAction()
-
-
-class MapPalette(QtWidgets.QListWidget):
-    """« À placer » : scènes et tinySA pas encore sur la carte, à glisser sur la carte."""
-
-    def __init__(self, win):
-        super().__init__()
-        self.win = win
-        self.setDragEnabled(True)
-        self.setToolTip("Glisse une scène ou un tinySA sur la carte (ou double-clic pour le poser).")
-        self.itemDoubleClicked.connect(lambda it: self.win.place_center(it.data(Qt.ItemDataRole.UserRole)))
-
-    def mimeData(self, items):
-        md = QtCore.QMimeData()
-        if items:
-            md.setData("application/x-tsm-map", QtCore.QByteArray(str(items[0].data(Qt.ItemDataRole.UserRole)).encode("utf-8")))
-        return md
-
-    def mimeTypes(self):
-        return ["application/x-tsm-map"]
 
 
 class MapHeatLegend(QtWidgets.QWidget):
@@ -20888,126 +20863,152 @@ class MapHeatLegend(QtWidgets.QWidget):
 
 
 class MapWindow(QtWidgets.QWidget):
-    """🗺 7.64 Carte du site, vraie fenêtre (comme les autres panneaux détachés) : canevas façon schéma réseau, plan en
-    fond facultatif, carte de chaleur du tinySA volant."""
+    """🗺 7.64 Carte du site, vraie fenêtre épurée : la carte prend toute la place ; scènes et tinySA posés tout seuls
+    (on les déplace ensuite), barre fine (🖼 Plan, 🔥 Chaleur, ⋯), bulle d'aide flottante, zoom et légende sur la carte.
+    Pendant une 🔎 chasse, un simple clic sur la carte note le niveau à cet endroit (carte de chaleur)."""
 
     def __init__(self, owner):
         super().__init__(owner, Qt.WindowType.Window)
         self.owner = o = owner
         self.setWindowTitle("Carte du site")
+        self.heat_on, self._hint, self._hint_t = True, "", 0.0
         lay = QtWidgets.QVBoxLayout(self)
-        bg_btn = QtWidgets.QToolButton()
-        bg_btn.setText("🖼 Plan de fond")
-        bg_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
-        bg_btn.setToolTip("Facultatif : une image du plan du site sous les cartes (PNG, JPG). Sans plan, la grille suffit.")
-        bm = QtWidgets.QMenu(bg_btn)
-        bm.addAction("Choisir une image…").triggered.connect(lambda *_: self.pick_bg())
-        bm.addAction("Retirer le plan").triggered.connect(lambda *_: self.set_bg(""))
-        self.bg_move = bm.addAction("Déplacer / agrandir le plan à la souris")
-        self.bg_move.setCheckable(True)
-        self.bg_move.triggered.connect(lambda *_: self._bg_movable())
-        bg_btn.setMenu(bm)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        # --- 🖼 Plan (facultatif)
+        self.plan_btn = QtWidgets.QToolButton()
+        self.plan_btn.setText("🖼 Plan")
+        self.plan_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.plan_btn.setToolTip("Facultatif : une image du plan du site sous les tuiles. Sans plan, la grille suffit.")
+        pm = QtWidgets.QMenu(self.plan_btn)
+        pm.addAction("Choisir une image…").triggered.connect(lambda *_: self.pick_bg())
+        ow = QtWidgets.QWidget()
+        ol = QtWidgets.QHBoxLayout(ow)
+        ol.setContentsMargins(12, 4, 12, 4)
+        ol.addWidget(QtWidgets.QLabel("Opacité"))
         self.op = QtWidgets.QSlider(Qt.Orientation.Horizontal)
         self.op.setRange(5, 100)
         self.op.setValue(int(o.map_cfg["bg_op"] * 100))
-        self.op.setMaximumWidth(110)
+        self.op.setMinimumWidth(140)
         self.op.setToolTip("Transparence du plan de fond.")
         self.op.valueChanged.connect(lambda v: self._bg_param(bg_op=v / 100.0))
-        self.grid_chk = QtWidgets.QCheckBox("Grille")
-        self.grid_chk.setChecked(o.map_cfg.get("grid", True))
-        self.grid_chk.setToolTip("Grille de fond (les cartes s'y aimantent).")
-        self.grid_chk.toggled.connect(lambda on: (o.map_cfg.__setitem__("grid", bool(on)), self.view.viewport().update()))
-        auto = QtWidgets.QPushButton("Tout placer")
-        auto.setToolTip("Pose sur la carte toutes les scènes et tous les tinySA qui n'y sont pas encore.")
-        auto.clicked.connect(lambda *_: (o.map_scene().auto_place(), self.fill_palette(), self.fit()))
-        fit = QtWidgets.QPushButton("Ajuster")
-        fit.setToolTip("Recadre la vue sur tout ce qui est posé.")
+        ol.addWidget(self.op)
+        wa = QtWidgets.QWidgetAction(pm)
+        wa.setDefaultWidget(ow)
+        pm.addAction(wa)
+        self.bg_move = pm.addAction("Caler le plan (déplacer, Ctrl + molette = taille)")
+        self.bg_move.setCheckable(True)
+        self.bg_move.triggered.connect(lambda *_: self._bg_movable())
+        pm.addSeparator()
+        pm.addAction("Retirer le plan").triggered.connect(lambda *_: self.set_bg(""))
+        self.plan_btn.setMenu(pm)
+        # --- 🔥 Chaleur
+        self.heat_btn = QtWidgets.QToolButton()
+        self.heat_btn.setText("🔥 Chaleur")
+        self.heat_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.heat_btn.setToolTip("Carte de chaleur de la chasse au brouilleur : bleu = faible, rouge = là où ça crie le plus.")
+        self.heat_menu = QtWidgets.QMenu(self.heat_btn)
+        self.heat_menu.aboutToShow.connect(self._build_heat_menu)
+        self.heat_btn.setMenu(self.heat_menu)
+        # --- infos, tout voir, ⋯
+        self.count_lbl = QtWidgets.QLabel("")
+        self.count_lbl.setStyleSheet(f"color:{blend(o.theme['ui_text'], o.theme['ui_bg'], 0.6)}")
+        fit = QtWidgets.QPushButton("⤢ Tout voir")
+        fit.setToolTip("Recadre la vue sur toutes les tuiles.")
         fit.clicked.connect(lambda *_: self.fit())
-        png = QtWidgets.QPushButton("Exporter en PNG…")
-        png.setToolTip("Image de la carte (avec la carte de chaleur) à imprimer ou envoyer.")
-        png.clicked.connect(lambda *_: self.export_png())
-        lay.addLayout(o._row(bg_btn, "Opacité :", self.op, self.grid_chk, auto, fit, png, None))
-        self.heat_chk = QtWidgets.QCheckBox("🔥 Carte de chaleur")
-        self.heat_chk.setChecked(True)
-        self.heat_chk.setToolTip("Les points notés pendant la chasse au brouilleur : bleu = faible, rouge = là où ça\n"
-                                 "crie le plus (cercle rouge = le point le plus fort).")
-        self.heat_chk.toggled.connect(lambda on: self._heat(on))
-        self.heat_combo = QtWidgets.QComboBox()
-        self.heat_combo.setToolTip("Fréquence chassée à afficher.")
-        self.heat_combo.currentIndexChanged.connect(lambda *_: self._heat(self.heat_chk.isChecked()))
-        self.mark_btn = QtWidgets.QPushButton("📍 Marquer ici")
-        self.mark_btn.setCheckable(True)
-        self.mark_btn.setToolTip("Coché : un clic sur la carte note le niveau ACTUEL de la chasse au brouilleur à cet\n"
-                                 "endroit (avec un PC portable). Avec le téléphone : vue 🔎 Chasse, « Où suis-je ? ».")
-        clr = QtWidgets.QPushButton("Effacer les points")
-        clr.setToolTip("Efface les points de chaleur de la fréquence affichée (ou tous).")
-        clr.clicked.connect(lambda *_: self.clear_heat())
-        self.hot_lbl = QtWidgets.QLabel("")
-        lay.addLayout(o._row(self.heat_chk, self.heat_combo, self.mark_btn, clr, self.hot_lbl, None))
-        split = QtWidgets.QSplitter()
-        left = QtWidgets.QWidget()
-        lv = QtWidgets.QVBoxLayout(left)
-        lv.setContentsMargins(0, 0, 0, 0)
-        lv.addWidget(QtWidgets.QLabel("À placer :"))
-        self.palette = MapPalette(self)
-        lv.addWidget(self.palette, 1)
+        more = QtWidgets.QToolButton()
+        more.setText("⋯")
+        more.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        more.setToolTip("Plus d'options : grille, réorganiser, exporter.")
+        mm = QtWidgets.QMenu(more)
+        self.grid_act = mm.addAction("Grille")
+        self.grid_act.setCheckable(True)
+        self.grid_act.setChecked(o.map_cfg.get("grid", True))
+        self.grid_act.triggered.connect(lambda *_: (o.map_cfg.__setitem__("grid", self.grid_act.isChecked()),
+                                                    self.view.viewport().update()))
+        mm.addAction("Réorganiser automatiquement").triggered.connect(lambda *_: self.relayout())
+        mm.addSeparator()
+        mm.addAction("Exporter en PNG…").triggered.connect(lambda *_: self.export_png())
+        more.setMenu(mm)
+        bar = QtWidgets.QHBoxLayout()
+        bar.setSpacing(6)
+        for w_ in (self.plan_btn, self.heat_btn):
+            bar.addWidget(w_)
+        bar.addStretch(1)
+        bar.addWidget(self.count_lbl)
+        bar.addWidget(fit)
+        bar.addWidget(more)
+        lay.addLayout(bar)
+        # --- la carte
         self.view = MapView(o.map_scene(), self)
-        self.left = left
-        self.zoom_box = QtWidgets.QWidget(self.view)    # zoom posé sur la carte (en haut à droite)
+        lay.addWidget(self.view, 1)
+        self.zoom_box = QtWidgets.QWidget(self.view)     # zoom (en haut à droite)
         zb = QtWidgets.QVBoxLayout(self.zoom_box)
         zb.setContentsMargins(0, 0, 0, 0)
         zb.setSpacing(4)
-        for txt, tip, fn in (("+", "Zoomer", lambda: self.view.scale(1.2, 1.2)),
-                             ("−", "Dézoomer", lambda: self.view.scale(1 / 1.2, 1 / 1.2)),
-                             ("⤢", "Tout voir", lambda: self.fit())):
+        for txt, tip, k in (("+", "Zoomer", 1.2), ("−", "Dézoomer", 1 / 1.2)):
             b = QtWidgets.QToolButton()
             b.setText(txt)
             b.setToolTip(tip)
-            b.setFixedSize(34, 34)
-            b.clicked.connect(lambda *_, fn=fn: fn())
+            b.setFixedSize(32, 32)
+            b.clicked.connect(lambda *_, k=k: self.view.scale(k, k))
             zb.addWidget(b)
-        self.legend = MapHeatLegend(self.view, o)
+        self.legend = MapHeatLegend(self.view, o)       # légende de chaleur (en bas à gauche)
+        self.banner = QtWidgets.QLabel("", self.view)   # bulle d'aide (en haut, au centre)
+        self.banner.setWordWrap(True)
+        self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.banner.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.banner.hide()
         self.view.installEventFilter(self)
-        split.addWidget(left)
-        split.addWidget(self.view)
-        split.setStretchFactor(1, 1)
-        split.setSizes([170, 900])
-        lay.addWidget(split, 1)
-        self.msg = QtWidgets.QLabel("")
-        self.msg.setWordWrap(True)
-        lay.addWidget(self.msg)
-        self.resize(1100, 700)
-        fit_dialog(self, 1100, 700)
+        self.resize(1100, 720)
+        fit_dialog(self, 1100, 720)
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.tick)
         self.timer.start()
         o.map_scene().sync()
-        self.fill_palette()
         self.fill_heat()
+        self.tick()
         QtCore.QTimer.singleShot(50, lambda: (self.fit(), self._place_overlays()))
 
-    # --- palette
-    def fill_palette(self):
-        sc = self.owner.map_scene()
-        keep = {self.palette.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.palette.count())}
-        now = sc.unplaced()
-        if set(now) == keep and (self.left.isVisible() == bool(now) or not self.isVisible()):
-            return
-        self.palette.clear()
-        self.left.setVisible(bool(now))             # rien à placer : toute la place pour la carte
-        for k in now:
-            it = QtWidgets.QListWidgetItem(("🎤 " if k.startswith("scene:") else "📡 ") + sc.label(k))
-            it.setData(Qt.ItemDataRole.UserRole, k)
-            self.palette.addItem(it)
-        self.msg.setText(TR("Glisse les éléments de « À placer » sur la carte, ou « Tout placer ».") if now else
-                         TR("Dépose un tinySA sur une scène pour la lui rattacher · double-clic sur une scène = la voir · "
-                            "clic droit = options."))
+    # --- aide flottante
+    def hint(self, txt, secs=6.0):
+        self._hint, self._hint_t = txt, time.time() + secs
+        self._show_banner()
 
-    def place_center(self, key):
-        c = self.view.mapToScene(self.view.viewport().rect().center())
-        self.owner.map_scene().place(key, c.x(), c.y())
-        self.fill_palette()
+    def _show_banner(self):
+        o = self.owner
+        th = o.theme
+        if self.marking():
+            h = o._hunt
+            txt = TR("🔎 Chasse en cours sur {} MHz · clique sur la carte là où tu es : le niveau y est noté").format(
+                f"{h.f_spin.value():.3f}")
+            col = th["ui_accent"]
+        elif self._hint and time.time() < self._hint_t:
+            txt, col = self._hint, th["ui_text"]
+        else:
+            self.banner.hide()
+            return
+        self.banner.setText(txt)
+        self.banner.setStyleSheet(soft_style(col, th["ui_base"], th["ui_text"]) + "; padding:8px 14px; border-radius:14px")
+        self.banner.setMaximumWidth(max(200, self.view.width() - 120))
+        self.banner.adjustSize()
+        self.banner.show()
+        self._place_overlays()
+
+    def marking(self):
+        h = self.owner._hunt
+        try:
+            return h is not None and h.go_btn.isChecked()
+        except RuntimeError:
+            return False
+
+    # --- placement
+    def relayout(self):
+        o = self.owner
+        o.map_cfg["pos"] = {}
+        o.map_scene().auto_place()
+        self.fit()
 
     def fit(self):
         """Cadre sur les tuiles (pas sur le plan de fond, souvent bien plus grand), zoom 1:1 au plus."""
@@ -21037,8 +21038,10 @@ class MapWindow(QtWidgets.QWidget):
         self.zoom_box.adjustSize()
         self.zoom_box.move(vw.right() - self.zoom_box.width() - 10, vw.top() + 10)
         self.legend.move(vw.left() + 10, vw.bottom() - self.legend.height() - 10)
-        self.zoom_box.raise_()
-        self.legend.raise_()
+        if self.banner.isVisible():
+            self.banner.move(vw.left() + (vw.width() - self.banner.width()) // 2, vw.top() + 10)
+        for w_ in (self.zoom_box, self.legend, self.banner):
+            w_.raise_()
 
     # --- plan de fond
     def pick_bg(self, path=None):
@@ -21048,7 +21051,7 @@ class MapWindow(QtWidgets.QWidget):
             if not path:
                 return False
         if QtGui.QPixmap(path).isNull():
-            self.msg.setText(TR("Image illisible."))
+            self.hint(TR("Image illisible."))
             return False
         self.set_bg(path)
         return True
@@ -21058,12 +21061,16 @@ class MapWindow(QtWidgets.QWidget):
         o.map_cfg["bg"] = path
         if path:
             pm = QtGui.QPixmap(path)
-            r = o.map_scene().itemsBoundingRect()
-            w0 = max(r.width(), 1200.0)
+            r = QtCore.QRectF()
+            for n in o.map_scene().nodes.values():
+                r = r.united(n.sceneBoundingRect())
+            w0 = max(r.width() + 200, 1200.0)
             o.map_cfg["bg_scale"] = round(w0 / max(1, pm.width()), 3)
             o.map_cfg["bg_pos"] = [r.left() - 100 if not r.isEmpty() else -200.0, r.top() - 100 if not r.isEmpty() else -150.0]
         o.map_scene().sync_bg()
         self._bg_movable()
+        if path:
+            self.hint(TR("Plan posé. 🖼 Plan › « Caler le plan » pour l'ajuster sous tes tuiles."))
         self.fit()
 
     def _bg_param(self, **kw):
@@ -21079,8 +21086,8 @@ class MapWindow(QtWidgets.QWidget):
         on = self.bg_move.isChecked()
         it.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, on)
         it.setZValue(20 if on else -10)
-        self.msg.setText(TR("Plan déplaçable : glisse-le, Ctrl + molette pour l'agrandir. Décoche pour le figer.")
-                         if on else "")
+        if on:
+            self.hint(TR("Glisse le plan, Ctrl + molette pour l'agrandir. Décoche « Caler le plan » pour le figer."), 10.0)
 
     def wheel_bg(self, k):
         o = self.owner
@@ -21090,47 +21097,69 @@ class MapWindow(QtWidgets.QWidget):
             it.setScale(o.map_cfg["bg_scale"])
 
     # --- chaleur
-    def fill_heat(self):
+    def _build_heat_menu(self):
         o = self.owner
-        cur = self.heat_combo.currentData()
-        self.heat_combo.blockSignals(True)
-        self.heat_combo.clear()
-        self.heat_combo.addItem(TR("Toutes les fréquences"), None)
-        for f in heat_freqs(o.map_cfg["heat"]):
-            self.heat_combo.addItem(f"{f:.3f} MHz", f)
-        ix = self.heat_combo.findData(cur if cur is not None else o.map_scene().heat_f)
-        self.heat_combo.setCurrentIndex(max(0, ix))
-        self.heat_combo.blockSignals(False)
-        self._heat(self.heat_chk.isChecked())
+        m = self.heat_menu
+        m.clear()
+        a = m.addAction("Afficher la carte de chaleur")
+        a.setCheckable(True)
+        a.setChecked(self.heat_on)
+        a.triggered.connect(lambda *_, a=a: self._heat(a.isChecked()))
+        fs = heat_freqs(o.map_cfg["heat"])
+        if fs:
+            m.addSection(TR("Fréquence chassée"))
+            cur = o.map_scene().heat_f
+            for f in [None] + fs:
+                b = m.addAction(TR("Toutes les fréquences") if f is None else f"{f:.3f} MHz")
+                b.setCheckable(True)
+                b.setChecked(cur == f)
+                b.triggered.connect(lambda *_, f=f: self._set_heat_f(f))
+            m.addSeparator()
+            m.addAction("Effacer les points affichés").triggered.connect(lambda *_: self.clear_heat())
+        m.addSeparator()
+        m.addAction("Comment noter des points ?").triggered.connect(lambda *_: self.hint(TR(
+            "Lance une 🔎 chasse au brouilleur, puis clique sur la carte là où tu es (PC portable), ou sur le téléphone : "
+            "vue 🔎 Chasse › « Où suis-je ? »."), 12.0))
+
+    def _set_heat_f(self, f):
+        self.owner.map_scene().heat_f = f
+        self._heat(True)
+
+    def fill_heat(self):
+        """Après un nouveau point : on montre la fréquence chassée."""
+        sc = self.owner.map_scene()
+        fs = heat_freqs(self.owner.map_cfg["heat"])
+        if sc.heat_f is not None and round(sc.heat_f, 3) not in fs:
+            sc.heat_f = fs[0] if fs else None
+        self._heat(self.heat_on)
 
     def _heat(self, on):
+        self.heat_on = bool(on)
         sc = self.owner.map_scene()
-        sc.show_heat = bool(on)
-        sc.heat_f = self.heat_combo.currentData()
+        sc.show_heat = self.heat_on
         sc.sync_heat()
         pts = heat_for(self.owner.map_cfg["heat"], sc.heat_f, 0.05)
         lo, hi = heat_scale([p_["level"] for p_ in pts])
-        self.legend.set_range(lo, hi, len(pts) if on else 0)
-        hot = heat_hot(pts)
-        self.hot_lbl.setText(TR("{} point(s) · le plus fort : {}").format(len(pts), self.owner.lvl(hot["level"], suffix=True))
-                             if hot else "")
+        self.legend.set_range(lo, hi, len(pts) if self.heat_on else 0)
+        self._place_overlays()
 
     def mark_at(self, x, y):
         pt = self.owner.map_scene().mark(x, y)
         if pt is None:
-            self.msg.setText(TR("📍 Lance d'abord la chasse au brouilleur (🎚 Surveiller › 🔎) : le point note son niveau."))
+            self.hint(TR("📍 Lance d'abord la chasse au brouilleur (🎚 Surveiller › 🔎) : le point note son niveau."))
             return None
         self.fill_heat()
-        self.msg.setText(TR("📍 Point noté : {} à {} MHz.").format(self.owner.lvl(pt["level"], suffix=True), f"{pt['f']:.3f}"))
+        self.hint(TR("📍 Point noté : {} à {} MHz.").format(self.owner.lvl(pt["level"], suffix=True), f"{pt['f']:.3f}"), 3.0)
         return pt
 
     def clear_heat(self):
         o = self.owner
-        f = self.heat_combo.currentData()
+        f = o.map_scene().heat_f
         o.map_cfg["heat"] = [p for p in o.map_cfg["heat"] if f is not None and abs(p["f"] - f) > 0.05]
+        o.map_scene().heat_f = None
         self.fill_heat()
 
-    # --- menu
+    # --- menu des tuiles
     def context_menu(self, node, pt, gpos):
         o = self.owner
         m = QtWidgets.QMenu(self)
@@ -21148,11 +21177,9 @@ class MapWindow(QtWidgets.QWidget):
             acts[m.addAction("👋 Identifier ce tinySA")] = lambda: o.identify_device(d)
         if node is not None and node.kind == "scene":
             acts[m.addAction("🔍 Voir cette scène (liste et spectre)")] = lambda: o.map_scene().node_open(node)
-        if node is not None:
-            acts[m.addAction("Retirer de la carte")] = lambda: (o.map_scene().remove(node.key), self.fill_palette())
-            m.addSeparator()
-        acts[m.addAction("📍 Marquer ici (niveau de la chasse)")] = lambda: self.mark_at(pt.x(), pt.y())
-        acts[m.addAction("Tout placer")] = lambda: (o.map_scene().auto_place(), self.fill_palette())
+        if node is None:
+            acts[m.addAction("📍 Noter le niveau de la chasse ici")] = lambda: self.mark_at(pt.x(), pt.y())
+            acts[m.addAction("⤢ Tout voir")] = lambda: self.fit()
         act = m.exec(gpos)
         if act in acts:
             acts[act]()
@@ -21160,12 +21187,18 @@ class MapWindow(QtWidgets.QWidget):
     def tick(self):
         if not self.isVisible():
             return
-        sc = self.owner.map_scene()
-        if set(sc.keys_all()) & set(self.owner.map_cfg["pos"]) != set(sc.nodes):
+        o = self.owner
+        sc = o.map_scene()
+        if sc.unplaced():                      # nouvelle scène / nouveau tinySA : posé tout seul
+            sc.auto_place()
+        elif set(sc.keys_all()) != set(sc.nodes):
             sc.sync()
         else:
             sc.refresh()
-        self.fill_palette()
+        ns = sum(1 for n in sc.nodes.values() if n.kind == "scene")
+        self.count_lbl.setText(TR("{} scène(s) · {} tinySA").format(ns, len(sc.nodes) - ns))
+        self.view.setCursor(Qt.CursorShape.CrossCursor if self.marking() else Qt.CursorShape.ArrowCursor)
+        self._show_banner()
 
     def export_png(self, path=None):
         if path is None:
