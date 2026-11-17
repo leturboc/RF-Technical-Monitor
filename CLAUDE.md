@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.3**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.4**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1368,6 +1368,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `busy_mode`, `busy_val`, `busy_lbl` = seuil obtenu + % du spectre au-dessus, `_busy_ui` / `_busy_store` /
   `_busy_lim` / `_busy_preview`), `replace_args`, PlanCheck « Proposer », RescueDialog (valeur de départ du seuil en
   seuil auto). **Pas vérifié avec le vrai max hold de Clément** (son scan .ezrf3 : médiane −104, p10 −110 dBm).
+  **RBW des scans** (Clément : « pour un scan pour la coord c'est important de le marquer », « qu'il faut un RBW fin ») :
+  `site_scan_doc(..., rbw, rbw_est)` (kHz ; `rbw_est` = RBW auto estimée d'après le pas par `auto_rbw` ; « mixed » =
+  scans de RBW différentes fusionnés), gardé par `site_scans_norm`, `site_scan_info` → rbw / rbw_est ; PURE `rbw_merge`,
+  `rbw_combine`, `rbw_text`, `rbw_tag` (« RBW30k » dans les noms de fichiers exportés), `COORD_RBW_MAX` 30 kHz (conseil,
+  pas une norme), `COORD_RBW_TIP`, `rbw_coord_line`. MainWindow : `scan_rbw(F)`, `live_rbw`, `coord_rbw(src)`,
+  `set_rbw_fine` ; RBW notée par SitesDialog (Garder), `_sites_tick`, `terrain_save` (scans importés : inconnue).
+  CoordDialog : rangée « Scan : » (`rbw_lbl` orange si > 30 kHz / inconnue / mélangée, bouton `rbw_btn`) ; Scans par
+  lieu : infos, note, message d'export ; ExportScanDialog : ligne RBW ; rapport du site : colonne RBW.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

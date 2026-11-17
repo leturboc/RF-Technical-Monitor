@@ -989,6 +989,20 @@ check("busy_lim auto : bruit du max hold libre, signal occupé",
       (float(np.mean(_Lmh[:1000] >= _bl(_Lmh, "auto", 15.0))) < 0.01, bool(_Lmh[1050] >= _bl(_Lmh, "auto", 15.0))), (True, True))
 check("busy_lim global / fixe", (_bl(_Lmh, "global", glob=-90.0), _bl(_Lmh, "fixed", fixed=-70.0)), (-90.0, -70.0))
 check("busy_lim sans mesure -> seuil donné", _bl([], "auto", glob=-88.0), -88.0)
+# 7.66.4 : RBW des scans gardés (coordination : RBW fine)
+_sd = ns["site_scan_doc"]("Lieu", [470, 471], [-100, -90], 1.0, rbw=100, rbw_est=True)
+check("scan gardé : RBW notée", (_sd.get("rbw"), _sd.get("rbw_est")), (100.0, True))
+check("scan gardé : RBW gardée par la normalisation", [(d.get("rbw"), d.get("rbw_est")) for d in ns["site_scans_norm"]([_sd])],
+      [(100.0, True)])
+check("scan gardé : RBW absente = inconnue", ns["site_scan_info"](ns["site_scan_doc"]("X", [470, 471], [-1, -1], 1.0))["rbw"], None)
+check("RBW de scans fusionnés", (ns["rbw_merge"](30.0, 30.0), ns["rbw_merge"](30.0, 100.0), ns["rbw_merge"](None, 30.0)),
+      (30.0, "mixed", None))
+check("RBW d'un ensemble", (ns["rbw_combine"]([(30.0, False), (30.0, True)]), ns["rbw_combine"]([(30.0, False), (None, False)]),
+                            ns["rbw_combine"]([])), ((30.0, True), ("mixed", False), (None, False)))
+check("RBW conseillée pour la coord", [ns["rbw_coord_line"](r)[1] for r in (10.0, 30.0, 100.0, None, "mixed")],
+      [True, True, False, False, False])
+check("RBW dans le nom de fichier", (ns["rbw_tag"](30.0), ns["rbw_tag"](0.3), ns["rbw_tag"](None), ns["rbw_tag"]("mixed")),
+      ("RBW30k", "RBW0,3k", "", ""))
 check("ezrf3 : sans ignorer les hors fonction", len(ns["ezrf_entries"](_ez, False)), 7)
 # 7.66.1 (idée de Clément) : nommer les fréquences sans nom d'après leur groupe (option de l'import)
 _eg = ns["ezrf_entries"](_ez, True, "group")
