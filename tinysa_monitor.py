@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.66.2"
+APP_VER = "7.66.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4210,6 +4210,27 @@ def coord_blockers(lo, hi, step, freqs, bws=None, sep_new=PF_SEP, seps=None, bus
     out.update(illegal=int(bad_reg.sum()), busy=int(bad_busy.sum()), near=int(near.sum()))
     out["im"] = int(len(G) - out["illegal"] - out["busy"] - out["near"])
     return out
+
+
+# 7.66.3 (Clément : « j'arrive pas à calculer des fréquences en plus, c'est le seuil auto ? ») : en seuil auto, le seuil
+# global « typique » = bruit INSTANTANÉ + 13 dB ; comparé au MAX HOLD (des heures de pics de bruit) → 99 % « occupé ».
+# Les outils qui lisent un spectre gardé / max hold ont leur propre seuil, calé sur le bruit de CE spectre.
+BUSY_MODES = (("auto", "Auto : bruit du spectre + marge"), ("global", "Mon seuil « occupé »"), ("fixed", "Seuil fixe"))
+BUSY_MARGIN = 15.0
+
+
+def busy_lim(L, mode="auto", margin=BUSY_MARGIN, fixed=-80.0, glob=None):
+    """Seuil « occupé » (dBm) pour éviter ce qu'un spectre (max hold, scan gardé) montre : « auto » = 10ᵉ centile du
+    spectre (son bruit de fond) + marge ; « global » = le seuil de la fenêtre ; « fixed » = valeur donnée."""
+    if mode == "fixed":
+        return float(fixed)
+    if mode == "global" and glob is not None:
+        return float(glob)
+    v = np.asarray(L if L is not None else [], dtype=float)
+    v = v[np.isfinite(v)]
+    if not len(v):
+        return float(fixed if glob is None else glob)
+    return float(np.percentile(v, 10)) + float(margin)
 
 
 def coord_why_text(b, tr=None):
@@ -12153,7 +12174,11 @@ class RescueDialog(QtWidgets.QDialog):
                                    "la moitié pour les 3 TX (A + B − C). 100 kHz = valeur courante pour les 2 TX.")
         self.thr_spin = QtWidgets.QDoubleSpinBox()
         self.thr_spin.setRange(-130, 0)
-        self.thr_spin.setValue(owner.weak_spin.value() if owner.weak_chk.isChecked() else owner.thr_spin.value() - 10)
+        _Fm, _Lm = owner.fresh_FL(use_max=True, any_age=True)
+        if owner.thr_auto and _Fm is not None:      # 7.66.3 : max hold comparé à son propre bruit, pas au bruit du moment
+            self.thr_spin.setValue(round(owner.busy_limit(_Lm)))
+        else:
+            self.thr_spin.setValue(owner.weak_spin.value() if owner.weak_chk.isChecked() else owner.thr_spin.value() - 10)
         self.thr_spin.setSuffix(" dBm")
         self.thr_spin.setToolTip("Niveau maximum mesuré toléré sur le canal (max hold).")
         self.im_combo = QtWidgets.QComboBox()
@@ -13901,7 +13926,7 @@ class PlanCheckDialog(QtWidgets.QDialog):
             o = self.owner
             Fm, Lm = o.fresh_FL(use_max=True)
             if Fm is not None:
-                lim = o.weak_spin.value() if o.weak_chk.isChecked() else o.thr_spin.value()
+                lim = o.busy_limit(Lm, weak=True)
                 win = max(0.05, o.win_spin.value() / 1000.0)
                 busy = busy_pred(Fm, Lm, lim, win)
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -20419,6 +20444,28 @@ class CoordDialog(QtWidgets.QDialog):
         f.addRow("Combien :", self.n_spin)
         f.addRow("De :", o._row(self.lo, "à", self.hi, None))
         f.addRow(self.avoid, self.spec_combo)
+        # 7.66.3 : seuil « occupé » propre à la coordination (le seuil auto de la fenêtre suit le bruit INSTANTANÉ)
+        po = o.plan_opts
+        self.busy_mode = QtWidgets.QComboBox()
+        for k_, lab_ in BUSY_MODES:
+            self.busy_mode.addItem(lab_, k_)
+        self.busy_mode.setCurrentIndex(max(0, self.busy_mode.findData(
+            po.get("busy_mode") or ("auto" if o.thr_auto else "global"))))
+        self.busy_mode.setToolTip("Quand une fréquence du spectre choisi est-elle « occupée » ?\n"
+                                  "Auto : bruit de fond de CE spectre + la marge (conseillé, surtout en seuil auto :\n"
+                                  "le max hold garde des heures de pics de bruit, plus hauts que le bruit du moment).\n"
+                                  "Mon seuil « occupé » : celui de la barre des seuils. Seuil fixe : la valeur donnée.")
+        self.busy_val = QtWidgets.QDoubleSpinBox()
+        self.busy_val.setDecimals(0)
+        self.busy_lbl = QtWidgets.QLabel("")
+        self.busy_lbl.setToolTip("Seuil réellement utilisé avec le spectre choisi.")
+        self.busy_mode.currentIndexChanged.connect(lambda *_: self._busy_ui())
+        self.busy_val.valueChanged.connect(lambda *_: self._busy_store())
+        self.spec_combo.currentIndexChanged.connect(lambda *_: self._busy_preview())
+        f.addRow("Occupé si :", o._row(self.busy_mode, self.busy_val, self.busy_lbl, None))
+        for w_ in (self.busy_mode, self.busy_val, self.busy_lbl):
+            self.avoid.toggled.connect(w_.setEnabled)
+        self._busy_ui()
         f.addRow("Nom :", self.prefix)
         self.spec_combo.currentIndexChanged.connect(lambda *_: self._scene_from_spec())
         self._scene_from_spec()
@@ -20558,6 +20605,50 @@ class CoordDialog(QtWidgets.QDialog):
             d = dict(sep=po["sep"] / 1000.0, filt=po["filt"], step=po["step"] / 1000.0, tol=IM_TOL_PRESETS[0][1])
         return d
 
+    def _busy_ui(self):
+        mode = self.busy_mode.currentData()
+        po = self.owner.plan_opts
+        self.busy_val.blockSignals(True)
+        if mode == "fixed":
+            self.busy_val.setRange(-130, 0)
+            self.busy_val.setPrefix("")
+            self.busy_val.setSuffix(" dBm")
+            self.busy_val.setValue(po.get("busy_fixed", -80.0))
+        else:
+            self.busy_val.setRange(3, 40)
+            self.busy_val.setPrefix("bruit + ")
+            self.busy_val.setSuffix(" dB")
+            self.busy_val.setValue(po.get("busy_margin", BUSY_MARGIN))
+        self.busy_val.blockSignals(False)
+        self.busy_val.setVisible(mode != "global")
+        self._busy_store()
+
+    def _busy_store(self):
+        po = self.owner.plan_opts
+        mode = self.busy_mode.currentData()
+        po["busy_mode"] = mode
+        if mode == "fixed":
+            po["busy_fixed"] = float(self.busy_val.value())
+        elif mode == "auto":
+            po["busy_margin"] = float(self.busy_val.value())
+        self._busy_preview()
+
+    def _busy_lim(self, L):
+        return self.owner.busy_limit(L, self.busy_mode.currentData())
+
+    def _busy_preview(self):
+        o = self.owner
+        try:
+            Fm, Lm = o.coord_FL(self.spec_combo.currentData())
+        except Exception:  # noqa: BLE001 — aperçu seulement
+            Fm, Lm = None, None
+        if Fm is None:
+            self.busy_lbl.setText("")
+            return
+        lim = self._busy_lim(Lm)
+        pct = 100.0 * float(np.mean(np.asarray(Lm, float) >= lim)) if len(Lm) else 0.0
+        self.busy_lbl.setText(TR("= {} · {} % du spectre au-dessus").format(o.lvl(lim, suffix=True), f"{pct:.0f}"))
+
     def compute(self):
         """7.60.2 (Clément : 40 fréquences, plusieurs appareils -> plus de 90 s de calcul, interface figée, la garde
         relançait l'appli) : le calcul tourne dans un fil à part (MainWindow.run_heavy) ; le bouton devient
@@ -20576,7 +20667,8 @@ class CoordDialog(QtWidgets.QDialog):
         if self.avoid.isChecked():
             Fm, Lm = o.coord_FL(self.spec_combo.currentData())
             if Fm is not None:                     # seuil « occupé » : le max hold du bruit dépasse souvent « faible »
-                lim = o.thr_spin.value()
+                lim = self._busy_lim(Lm)
+                self._lim_used = lim
                 win = max(0.05, o.win_spin.value() / 1000.0)
                 busy = busy_pred(Fm, Lm, lim, win)
         lots = list(self.lots) or [self._lot_now()]
@@ -23775,6 +23867,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.plan_opts["prof"] = po["prof"]
             if po.get("coord_order") in dict(COORD_ORDERS):
                 self.plan_opts["coord_order"] = po["coord_order"]
+            if po.get("busy_mode") in dict(BUSY_MODES):
+                self.plan_opts["busy_mode"] = po["busy_mode"]
+            for k_, lo_, hi_ in (("busy_margin", 3.0, 40.0), ("busy_fixed", -130.0, 0.0)):
+                try:
+                    self.plan_opts[k_] = min(hi_, max(lo_, float(po[k_])))
+                except (KeyError, TypeError, ValueError):
+                    pass
             for k_ in ("sep", "filt", "step"):
                 try:
                     self.plan_opts[k_] = float(po[k_]) if k_ == "filt" else int(po[k_])
@@ -29290,7 +29389,7 @@ class MainWindow(QtWidgets.QMainWindow):
         busy = None
         Fm, Lm = self.fresh_FL(use_max=True)
         if Fm is not None:
-            lim = self.weak_spin.value() if self.weak_chk.isChecked() else self.thr_spin.value()
+            lim = self.busy_limit(Lm, weak=True)
             busy = busy_pred(Fm, Lm, lim, max(0.05, self.win_spin.value() / 1000.0))
         F, B = [x["freq"] for x in ws], [float(x.get("bw") or 0.0) for x in ws]
         bd = rx_band(P[i])
@@ -29719,6 +29818,15 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.site_scans:
                 return self.open_sites()
         return self.open_sites(before_after=True)
+
+    def busy_limit(self, L, mode=None, weak=False):
+        """Seuil « occupé » des outils qui évitent un spectre gardé / max hold (coordination, secours, remplacer,
+        proposer) : réglage `plan_opts["busy_mode"]` ; par défaut « auto » en seuil auto, sinon le seuil de la fenêtre
+        (« faible » s'il est coché et `weak`)."""
+        po = self.plan_opts
+        mode = mode or po.get("busy_mode") or ("auto" if self.thr_auto else "global")
+        glob = self.weak_spin.value() if (weak and self.weak_chk.isChecked()) else self.thr_spin.value()
+        return busy_lim(L, mode, po.get("busy_margin", BUSY_MARGIN), po.get("busy_fixed", -80.0), glob)
 
     def coord_FL(self, src=None):
         """Spectre à éviter pour la coordination. src : « live » = max hold actuel ; « all » = tout le site (fusion de

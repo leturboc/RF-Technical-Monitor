@@ -9,6 +9,14 @@ les unités, les guillemets « ».
 """
 
 EXACT = {
+    '= {} · {} % du spectre au-dessus': '= {} · {} % of the spectrum above',
+    'Occupé si :': 'Busy if:',
+    'Auto : bruit du spectre + marge': 'Auto: spectrum noise + margin',
+    'Mon seuil « occupé »': 'My “busy” threshold',
+    'Seuil fixe': 'Fixed threshold',
+    'Seuil réellement utilisé avec le spectre choisi.': 'Threshold actually used with the chosen spectrum.',
+    'Quand une fréquence du spectre choisi est-elle « occupée » ?\nAuto : bruit de fond de CE spectre + la marge (conseillé, surtout en seuil auto :\nle max hold garde des heures de pics de bruit, plus hauts que le bruit du moment).\nMon seuil « occupé » : celui de la barre des seuils. Seuil fixe : la valeur donnée.':
+        'When is a frequency of the chosen spectrum “busy”?\nAuto: noise floor of THIS spectrum + the margin (recommended, especially with auto threshold:\nthe max hold keeps hours of noise peaks, higher than the current noise).\nMy “busy” threshold: the one in the threshold bar. Fixed threshold: the value given.',
     'Changement de source : arrêt de la surveillance…': 'Changing source: stopping monitoring…',
     "La surveillance ne s'arrête pas : change de source une fois arrêtée.": 'Monitoring does not stop: change the source once it has stopped.',
     'Noms des fréquences sans nom :': 'Names of unnamed frequencies:',
@@ -3091,6 +3099,7 @@ EXACT = {
 }
 
 TEMPLATES = {
+    '= {} · {} % du spectre au-dessus': '= {} · {} % of the spectrum above',
     '+ {} passage(s) de moins de {} s avant': '+ {} pass(es) shorter than {} s before',
     ' · {} ms': ' · {} ms',
     '🌐 {} Ko/s': '🌐 {} KB/s',
