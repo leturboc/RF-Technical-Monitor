@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.4**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.5**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1376,6 +1376,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `set_rbw_fine` ; RBW notée par SitesDialog (Garder), `_sites_tick`, `terrain_save` (scans importés : inconnue).
   CoordDialog : rangée « Scan : » (`rbw_lbl` orange si > 30 kHz / inconnue / mélangée, bouton `rbw_btn`) ; Scans par
   lieu : infos, note, message d'export ; ExportScanDialog : ligne RBW ; rapport du site : colonne RBW.
+- **7.66.5 (2ᵉ crash.log de Clément, 17/11/2026, exe 7.66.2, RBW 10 kHz + 3 000 points, pas lancée sous garde)** :
+  « access violation » au MÊME endroit que le 16/11 (fil `ScanWorker`, boucle d'attente après « liaison perdue ») ; le fil
+  de l'interface jouait le son d'alarme APPAREIL (`SoundOut.play` → `QAudioSink.start`). Les deux crashs suivent une
+  liaison perdue. `ScanWorker.requestInterruption` / `isInterruptionRequested` surchargés : drapeau Python `_stop_ev`
+  (threading.Event), le fil n'appelle plus l'objet Qt pendant l'attente. **Cause exacte toujours pas prouvée** (pas
+  reproduite sous Linux) ; cause de la liaison perdue inconnue → demander le 🩺 diagnostic automatique de ce moment.
+  Sa config : RBW 10 kHz forcée, 3 000 points sur 470-694 = un point tous les 75 kHz → PURE `scan_step_khz`,
+  `rbw_coord_line(..., step)` prévient si le pas > 1,5 × RBW (signaux qui passent entre les points).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

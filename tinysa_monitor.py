@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.66.4"
+APP_VER = "7.66.5"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -8843,9 +8843,15 @@ def rbw_combine(items):
     return (first if all(v == first for v in vals) else "mixed"), est
 
 
-def rbw_coord_line(rbw, est=False, tr=None):
-    """Phrase « ce scan est-il bon pour une coordination ? » -> (texte, ok)."""
+def rbw_coord_line(rbw, est=False, tr=None, step=None):
+    """Phrase « ce scan est-il bon pour une coordination ? » -> (texte, ok). step (kHz) : écart entre deux points ;
+    plus large que la RBW, des signaux étroits passent ENTRE les points (7.66.5 : RBW 10 kHz avec 3 000 points sur
+    224 MHz = un point tous les 75 kHz)."""
     tr = tr or (lambda x: x)
+    if rbw not in (None, "mixed") and step and float(step) > 1.5 * float(rbw):
+        return (f"⚠ {rbw_text(rbw, est, tr)} · " + tr("pas de {} kHz entre deux points : des signaux étroits passent "
+                "entre les points. Mets plus de points (pas ≤ RBW) ou une RBW au moins égale au pas.")
+                .format(f"{float(step):g}")), False
     if rbw == "mixed":
         return tr("⚠ Scans de RBW différentes mélangés : niveaux pas comparables (refais-les avec la même RBW fine, "
                   "≤ 30 kHz)."), False
@@ -8855,6 +8861,16 @@ def rbw_coord_line(rbw, est=False, tr=None):
     if float(rbw) <= COORD_RBW_MAX:
         return f"✔ {t} · " + tr("fine : bonne pour une coordination."), True
     return f"⚠ {t} · " + tr("trop large pour une coordination : mets 30 kHz ou moins (⚙ › Mesure)."), False
+
+
+def scan_step_khz(F):
+    """Écart typique entre deux points d'un scan (kHz), None si inconnu."""
+    F = np.asarray(F if F is not None else [], dtype=float)
+    if len(F) < 2:
+        return None
+    d = np.diff(F)
+    d = d[d > 0]
+    return round(float(np.median(d)) * 1000.0, 1) if len(d) else None
 
 
 def rbw_tag(rbw):
@@ -10447,6 +10463,20 @@ class ScanWorker(QtCore.QThread):
         self.stats = dict(segments=0, seg_s=0.0, seg_max=0.0, cycles=0, cycle_s=0.0, short=0, invalid=0,
                           reconnects=0, refused=0, settings_s=0.0, pts=0)
         self._warned = {}                          # message -> dernière fois affiché (pas de répétition chaque cycle)                  # commandes à glisser entre deux bandes (identifier, numéroter)
+        self._stop_ev = threading.Event()          # 7.66.5 : arrêt demandé, lu sans appeler Qt (voir plus bas)
+
+    # 7.66.5 (2ᵉ crash.log de Clément, 17/11/2026 : « access violation » dans ce fil, boucle d'attente de reconnexion,
+    # pendant que l'interface jouait le son d'alarme APPAREIL ; même endroit que le 16/11) : le fil ne rappelle plus
+    # l'objet Qt (isInterruptionRequested) des centaines de fois pendant l'attente : un simple drapeau Python.
+    def requestInterruption(self):
+        self._stop_ev.set()
+        try:
+            super().requestInterruption()
+        except RuntimeError:                         # objet Qt déjà détruit
+            pass
+
+    def isInterruptionRequested(self):
+        return self._stop_ev.is_set()
 
     def force_close(self):
         """Arrêt qui traîne (tinySA qui ne répond plus) : on ferme le port depuis l'extérieur."""
@@ -12502,7 +12532,8 @@ class ExportScanDialog(QtWidgets.QDialog):
         form.addRow(note)
         if hasattr(parent, "live_rbw"):              # 📏 scan pour la coordination : RBW fine
             rb, est = parent.live_rbw()
-            txt, ok = rbw_coord_line(rb, est, TR)
+            txt, ok = rbw_coord_line(rb, est, TR, step=max((scan_step_khz(v[0]) or 0.0
+                                                             for v in parent.latest.values()), default=None))
             rbl = QtWidgets.QLabel(txt)
             rbl.setWordWrap(True)
             rbl.setToolTip(COORD_RBW_TIP)
@@ -18170,7 +18201,7 @@ class SitesDialog(QtWidgets.QDialog):
         except Exception as e:  # noqa: BLE001
             self.msg.setText(f"Export impossible : {e}")
             return None
-        self.msg.setText(f"💾 « {label} » exporté : {path}\n" + rbw_coord_line(rb, est, TR)[0])
+        self.msg.setText(f"💾 « {label} » exporté : {path}\n" + rbw_coord_line(rb, est, TR, step=scan_step_khz(F))[0])
         return path
 
     def as_ref(self):
@@ -22889,7 +22920,7 @@ class CoordDialog(QtWidgets.QDialog):
         except Exception:  # noqa: BLE001 — aperçu seulement
             Fm, Lm = None, None
         rb, est = o.coord_rbw(self.spec_combo.currentData())
-        txt, ok = rbw_coord_line(rb, est, TR)
+        txt, ok = rbw_coord_line(rb, est, TR, step=scan_step_khz(Fm))
         self.rbw_lbl.setText(txt)
         self.rbw_lbl.setStyleSheet("" if ok else f"color: {o.theme.get('st_weak', '#f59e0b')};")
         self.rbw_btn.setVisible(not ok and o.rbw_combo.currentData() != COORD_RBW_MAX)
