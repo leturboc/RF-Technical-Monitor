@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.3**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1359,6 +1359,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `blockSignals(True)` (muet) + gardé dans `self._zombies` jusqu'à sa fin ; fil fini → `deleteLater`. `w.setParent(self)`
   (jamais détruit par Python en cours de route). `closeEvent` : attend aussi les `_zombies`, `force_close` si bloqué.
   Le plantage lui-même n'a PAS été reproduit sous Linux (cause la plus probable, pas prouvée).
+- **7.66.3 (Clément : « j'arrive pas à calculer des fréquences en plus, c'est le seuil auto ? » ; « ça marche mieux avec le
+  scan .ezrf3 importé depuis tinySA, bizarre que le bruit soit si haut chez nous »)** : en seuil auto, `thr_spin` = bruit
+  INSTANTANÉ + 13 dB, comparé au MAX HOLD (des heures de pics de bruit, plus hauts) → « occupé 99 % ». PURE `BUSY_MODES`
+  (auto | global | fixed), `BUSY_MARGIN` 15 dB, `busy_lim(L, mode, margin, fixed, glob)` (auto = 10ᵉ centile du spectre
+  évité + marge). `MainWindow.busy_limit(L, mode, weak)` (défaut : auto si `thr_auto`, sinon le seuil de la fenêtre) ;
+  `plan_opts` busy_mode / busy_margin / busy_fixed (config). Utilisé par CoordDialog (rangée « Occupé si » :
+  `busy_mode`, `busy_val`, `busy_lbl` = seuil obtenu + % du spectre au-dessus, `_busy_ui` / `_busy_store` /
+  `_busy_lim` / `_busy_preview`), `replace_args`, PlanCheck « Proposer », RescueDialog (valeur de départ du seuil en
+  seuil auto). **Pas vérifié avec le vrai max hold de Clément** (son scan .ezrf3 : médiane −104, p10 −110 dBm).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

@@ -979,6 +979,16 @@ check("ezrf3 -> lignes (zone en préfixe car 2 zones, nom vide -> appareil #n ·
       [("Chant 1", 500.1, "Zone Nord · Plateau A", "Micros"), ("Chant 2", 503.45, "Zone Nord · Plateau A", "Micros"),
        ("Essai RX Beta #1 · 1", 512.0, "Zone Nord · Plateau A", "Micros"),
        ("Ear 1", 530.25, "Zone Nord · Plateau A", "Ears"), ("Loge 1", 540.0, "Zone Sud · Loge", "Micros")])
+# 7.66.3 : seuil « occupé » de la coordination calé sur le bruit du spectre évité
+_bl = ns["busy_lim"]
+_rng = np.random.default_rng(3)
+_Lmh = -95 + _rng.normal(0, 1.5, 3000)          # max hold : bruit remonté à −95 (des heures de pics)
+_Lmh[1000:1100] = -75                             # un vrai signal
+check("busy_lim auto = bruit du spectre + marge", round(_bl(_Lmh, "auto", 15.0)), round(float(np.percentile(_Lmh, 10)) + 15))
+check("busy_lim auto : bruit du max hold libre, signal occupé",
+      (float(np.mean(_Lmh[:1000] >= _bl(_Lmh, "auto", 15.0))) < 0.01, bool(_Lmh[1050] >= _bl(_Lmh, "auto", 15.0))), (True, True))
+check("busy_lim global / fixe", (_bl(_Lmh, "global", glob=-90.0), _bl(_Lmh, "fixed", fixed=-70.0)), (-90.0, -70.0))
+check("busy_lim sans mesure -> seuil donné", _bl([], "auto", glob=-88.0), -88.0)
 check("ezrf3 : sans ignorer les hors fonction", len(ns["ezrf_entries"](_ez, False)), 7)
 # 7.66.1 (idée de Clément) : nommer les fréquences sans nom d'après leur groupe (option de l'import)
 _eg = ns["ezrf_entries"](_ez, True, "group")
