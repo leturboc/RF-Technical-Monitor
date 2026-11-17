@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.66.3"
+APP_VER = "7.66.4"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -8786,16 +8786,82 @@ def merge_scans(scans, max_points=60000):
     return G[keep], out[keep]
 
 
-def site_scan_doc(name, F, L, t, scene=None, dur=None):
+def site_scan_doc(name, F, L, t, scene=None, dur=None, rbw=None, rbw_est=False):
     """Scan d'un lieu en version compacte (config / show) : MHz à 4 décimales, dBm à 1 décimale. scene : la scène
-    d'un scan gardé à la main (plusieurs par scène possibles, ex. « Grande scène · jardin ») ; sinon le nom."""
+    d'un scan gardé à la main (plusieurs par scène possibles, ex. « Grande scène · jardin ») ; sinon le nom.
+    rbw (kHz) : finesse de mesure du scan (7.66.4, Clément : « pour un scan pour la coord c'est important de le
+    marquer ») ; rbw_est = RBW auto du tinySA, estimée d'après le pas ; « mixed » = scans de RBW différents fusionnés."""
     d = dict(name=str(name).strip()[:60], t=float(t), f=[round(float(x), 4) for x in F],
              l=[round(float(x), 1) for x in L])
     if scene and str(scene).strip() != d["name"]:
         d["scene"] = str(scene).strip()[:60]
     if dur:
         d["dur"] = round(float(dur), 1)
+    if rbw == "mixed":
+        d["rbw"] = "mixed"
+    elif rbw:
+        d["rbw"] = round(float(rbw), 1)
+        if rbw_est:
+            d["rbw_est"] = True
     return d
+
+
+def rbw_merge(a, b):
+    """RBW d'un scan fusionné de deux scans : la même si elles sont égales, « mixed » sinon, None si l'une est inconnue."""
+    if a is None or b is None:
+        return None
+    return a if a == b else "mixed"
+
+
+def rbw_text(rbw, est=False, tr=None):
+    """« RBW 100 kHz », « RBW ≈ 100 kHz (auto) », « RBW mélangées », « RBW inconnue »."""
+    tr = tr or (lambda x: x)
+    if rbw == "mixed":
+        return tr("RBW mélangées (niveaux pas comparables)")
+    if not rbw:
+        return tr("RBW inconnue")
+    v = f"{float(rbw):g} kHz"
+    return f"RBW ≈ {v} " + tr("(auto)") if est else f"RBW {v}"
+
+
+COORD_RBW_MAX = 30.0          # conseil : scan pour une coordination = RBW fine (≤ 30 kHz)
+COORD_RBW_TIP = ("Scan pour une coordination : RBW fine, 30 kHz ou moins. Une RBW large étale les signaux étroits "
+                 "(micros, talkies) et remonte le bruit : les niveaux et le seuil « occupé » ne veulent plus dire la "
+                 "même chose. De 100 à 30 kHz, le bruit et la TNT descendent d'environ 5 dB, un micro presque pas.")
+
+
+def rbw_combine(items):
+    """RBW d'un ensemble de scans [(rbw, estimée)] -> (rbw | "mixed" | None, estimée)."""
+    items = list(items)
+    if not items:
+        return None, False
+    vals = [r for r, _e in items]
+    est = any(e for _r, e in items)
+    if any(v is None for v in vals):
+        return (None if all(v is None for v in vals) else "mixed"), est
+    first = vals[0]
+    return (first if all(v == first for v in vals) else "mixed"), est
+
+
+def rbw_coord_line(rbw, est=False, tr=None):
+    """Phrase « ce scan est-il bon pour une coordination ? » -> (texte, ok)."""
+    tr = tr or (lambda x: x)
+    if rbw == "mixed":
+        return tr("⚠ Scans de RBW différentes mélangés : niveaux pas comparables (refais-les avec la même RBW fine, "
+                  "≤ 30 kHz)."), False
+    if not rbw:
+        return tr("⚠ RBW inconnue : vérifie que ce scan a été fait avec une RBW fine (≤ 30 kHz)."), False
+    t = rbw_text(rbw, est, tr)
+    if float(rbw) <= COORD_RBW_MAX:
+        return f"✔ {t} · " + tr("fine : bonne pour une coordination."), True
+    return f"⚠ {t} · " + tr("trop large pour une coordination : mets 30 kHz ou moins (⚙ › Mesure)."), False
+
+
+def rbw_tag(rbw):
+    """Morceau de nom de fichier : « RBW100k » (rien si inconnue ou mélangée)."""
+    if not rbw or rbw == "mixed":
+        return ""
+    return f"RBW{float(rbw):g}k".replace(".", ",")
 
 
 def site_doc_scene(d):
@@ -8910,6 +8976,13 @@ def site_scans_norm(lst):
                     out[name]["dur"] = round(float(d["dur"]), 1)     # durée du scan (s), si connue
                 if d.get("hidden"):
                     out[name]["hidden"] = True       # 7.66 : masqué (pas tracé sur le spectre ni fusionné)
+                rb = d.get("rbw")
+                if rb == "mixed":
+                    out[name]["rbw"] = "mixed"
+                elif isinstance(rb, (int, float)) and 0.1 <= rb <= 10000:
+                    out[name]["rbw"] = round(float(rb), 1)       # 7.66.4 : RBW du scan (kHz)
+                    if d.get("rbw_est"):
+                        out[name]["rbw_est"] = True
         except (KeyError, TypeError, ValueError):
             continue
     return list(out.values())
@@ -8959,7 +9032,8 @@ def site_scan_info(d):
                 hi=float(F[-1]) if len(F) else 0.0, n=int(len(F)),
                 step=round(float(np.median(steps)) * 1000.0, 1) if len(F) > 1 else 0.0,
                 bands=int(len(scan_gaps(F)) + 1) if len(F) else 0,
-                dur=float(d["dur"]) if isinstance(d.get("dur"), (int, float)) and d["dur"] > 0 else None)
+                dur=float(d["dur"]) if isinstance(d.get("dur"), (int, float)) and d["dur"] > 0 else None,
+                rbw=d.get("rbw"), rbw_est=bool(d.get("rbw_est")))
 
 
 def _fmt_ts(t, fmt):
@@ -9157,7 +9231,7 @@ def site_report_html(scans, thr, title="Étude de site", venue="", generated="",
     col = {d["name"]: SITE_COLORS[i % len(SITE_COLORS)] for i, d in enumerate(scans)}
     # --- sommaire
     p.append("<h2>Les scans</h2><table><tr><th>Scan</th><th>Scène</th><th>Date</th><th class='n'>Plage (MHz)</th>"
-             "<th class='n'>Pas (kHz)</th><th class='n'>Bandes</th><th class='n'>Durée</th>"
+             "<th class='n'>Pas (kHz)</th><th class='n'>RBW</th><th class='n'>Bandes</th><th class='n'>Durée</th>"
              "<th class='n'>Signaux</th></tr>")
     for d in scans:
         i_ = site_scan_info(d)
@@ -9165,6 +9239,7 @@ def site_report_html(scans, thr, title="Étude de site", venue="", generated="",
         when = _fmt_ts(i_["t"], "%d/%m/%Y %H:%M")
         p.append(f"<tr><td><b style='color:{col[d['name']]}'>{e(d['name'])}</b></td><td>{e(i_['scene'])}</td>"
                  f"<td>{when}</td><td class='n'>{i_['lo']:.3f}–{i_['hi']:.3f}</td><td class='n'>{i_['step']:g}</td>"
+                 f"<td class='n'>{e(rbw_text(i_['rbw'], i_['rbw_est']))}</td>"
                  f"<td class='n'>{i_['bands']}</td><td class='n'>{fmt_duration(i_['dur']) if i_['dur'] else '—'}</td>"
                  f"<td class='n'>{n_sig}</td></tr>")
     p.append("</table>")
@@ -9181,7 +9256,7 @@ def site_report_html(scans, thr, title="Étude de site", venue="", generated="",
     for d in scans:
         i_ = site_scan_info(d)
         p.append(f"<h2>{e(d['name'])}</h2><div class='muted'>Scène : {e(i_['scene'])} · {i_['lo']:.3f}–{i_['hi']:.3f} MHz · "
-                 f"{i_['n']} points</div>")
+                 f"{i_['n']} points · {e(rbw_text(i_['rbw'], i_['rbw_est']))}</div>")
         p.append(_svg_multi([(d["f"], d["l"], col[d["name"]], False, d["name"])], thr))
         pk = scan_peaks(d["f"], d["l"], thr)
         if pk:
@@ -12425,6 +12500,15 @@ class ExportScanDialog(QtWidgets.QDialog):
                                 "envoie-moi un exemple et je l'ajoute en un clic.")
         note.setWordWrap(True)
         form.addRow(note)
+        if hasattr(parent, "live_rbw"):              # 📏 scan pour la coordination : RBW fine
+            rb, est = parent.live_rbw()
+            txt, ok = rbw_coord_line(rb, est, TR)
+            rbl = QtWidgets.QLabel(txt)
+            rbl.setWordWrap(True)
+            rbl.setToolTip(COORD_RBW_TIP)
+            if not ok:
+                rbl.setStyleSheet(f"color: {parent.theme.get('st_weak', '#f59e0b')};")
+            form.addRow(rbl)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -17579,6 +17663,11 @@ class SitesDialog(QtWidgets.QDialog):
         lay.addLayout(owner._row(b_rep, None, "Exporter", self.what, self.fmt, b_exp, b_ref))
         self.range = RangeBox(owner)
         lay.addLayout(owner._row(None, "Plage exportée :", self.range))
+        rb_note = QtWidgets.QLabel("📏 Scan pour une coordination : RBW fine (30 kHz ou moins). La RBW de chaque scan "
+                                   "est notée dans ses infos et dans le nom du fichier exporté.")
+        rb_note.setWordWrap(True)
+        rb_note.setToolTip(COORD_RBW_TIP)
+        lay.addWidget(rb_note)
         self.coord_chk = QtWidgets.QCheckBox("🪄 Coordination et fréquence de secours : éviter ce qui est occupé sur "
                                              "TOUS les lieux (fusion)")
         self.coord_chk.setChecked(o.sites_coord)
@@ -17734,7 +17823,8 @@ class SitesDialog(QtWidgets.QDialog):
             self.info.setText(f"<b>{html_esc(d['name'])}</b><br>Scène : {html_esc(i_['scene'])}<br>Le {when}"
                               + (f" · durée {fmt_duration(i_['dur'])}" if i_["dur"] else "")
                               + f"<br>{i_['lo']:.3f}–{i_['hi']:.3f} MHz · {i_['bands']} bande(s)<br>"
-                              f"{i_['n']} points · pas {i_['step']:g} kHz")
+                              f"{i_['n']} points · pas {i_['step']:g} kHz · "
+                              + TR(rbw_text(i_["rbw"], i_["rbw_est"])))
         self.refresh_tab()
 
     def refresh_tab(self):
@@ -17990,12 +18080,16 @@ class SitesDialog(QtWidgets.QDialog):
             self.msg.setText("Donne un nom au lieu.")
             return False
         old = next((d for d in o.site_scans if d["name"] == name), None)
+        rbw, est = o.scan_rbw(F)
         if old is not None and self.merge_chk.isChecked():
             F, L = merge_scans([(old["f"], old["l"]), (F, L)])
+            rbw = rbw_merge(old.get("rbw"), rbw)
+            est = est or bool(old.get("rbw_est"))
             if dur and old.get("dur"):
                 dur += old["dur"]                   # le scan gardé cumule les deux passages
         o.site_scans = site_replace(o.site_scans, site_scan_doc(name, F, L, time.time(),
-                                                                scene=old.get("scene") if old else None, dur=dur))
+                                                                scene=old.get("scene") if old else None, dur=dur,
+                                                                rbw=rbw, rbw_est=est))
         if name in o._site_base:                   # la fusion continue (tinySA posé ici) repart de ce scan
             o._site_base[name] = next(d for d in o.site_scans if d["name"] == name)
         self.fill()
@@ -18062,8 +18156,12 @@ class SitesDialog(QtWidgets.QDialog):
             self.msg.setText("Rien de mesuré dans cette plage.")
             return None
         fmt = self.fmt.currentData()
+        docs = self.checked() if self.what.currentData() == "merge" else [
+            d for d in self.owner.site_scans if d["name"] == label]
+        rb, est = rbw_combine([(d.get("rbw"), bool(d.get("rbw_est"))) for d in docs])
         if path is None:
-            dflt = str(self.owner.log_dir / f"scan_{session_name(label)}_{fmt}.csv")
+            tag = rbw_tag(rb)
+            dflt = str(self.owner.log_dir / f"scan_{session_name(label)}_{fmt}{'_' + tag if tag else ''}.csv")
             path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter le scan", dflt, "CSV (*.csv)")
             if not path:
                 return None
@@ -18072,7 +18170,7 @@ class SitesDialog(QtWidgets.QDialog):
         except Exception as e:  # noqa: BLE001
             self.msg.setText(f"Export impossible : {e}")
             return None
-        self.msg.setText(f"💾 « {label} » exporté : {path}")
+        self.msg.setText(f"💾 « {label} » exporté : {path}\n" + rbw_coord_line(rb, est, TR)[0])
         return path
 
     def as_ref(self):
@@ -22603,6 +22701,14 @@ class CoordDialog(QtWidgets.QDialog):
         self.busy_val.valueChanged.connect(lambda *_: self._busy_store())
         self.spec_combo.currentIndexChanged.connect(lambda *_: self._busy_preview())
         f.addRow("Occupé si :", o._row(self.busy_mode, self.busy_val, self.busy_lbl, None))
+        self.rbw_lbl = QtWidgets.QLabel("")
+        self.rbw_lbl.setWordWrap(True)
+        self.rbw_lbl.setToolTip(COORD_RBW_TIP)
+        self.rbw_btn = QtWidgets.QPushButton("RBW 30 kHz")
+        self.rbw_btn.setToolTip("Passe la finesse de mesure à 30 kHz (balayage plus lent) : refais ensuite le scan "
+                                "(efface les pics gardés et laisse balayer quelques minutes).")
+        self.rbw_btn.clicked.connect(lambda *_: (o.set_rbw_fine(), self._busy_preview()))
+        f.addRow("Scan :", o._row(self.rbw_lbl, self.rbw_btn))
         for w_ in (self.busy_mode, self.busy_val, self.busy_lbl):
             self.avoid.toggled.connect(w_.setEnabled)
         self._busy_ui()
@@ -22782,6 +22888,11 @@ class CoordDialog(QtWidgets.QDialog):
             Fm, Lm = o.coord_FL(self.spec_combo.currentData())
         except Exception:  # noqa: BLE001 — aperçu seulement
             Fm, Lm = None, None
+        rb, est = o.coord_rbw(self.spec_combo.currentData())
+        txt, ok = rbw_coord_line(rb, est, TR)
+        self.rbw_lbl.setText(txt)
+        self.rbw_lbl.setStyleSheet("" if ok else f"color: {o.theme.get('st_weak', '#f59e0b')};")
+        self.rbw_btn.setVisible(not ok and o.rbw_combo.currentData() != COORD_RBW_MAX)
         if Fm is None:
             self.busy_lbl.setText("")
             return
@@ -28268,11 +28379,13 @@ class MainWindow(QtWidgets.QMainWindow):
             segs = sorted(bands.values(), key=lambda x: float(x[0][0]))
             F, L = np.concatenate([x[0] for x in segs]), np.concatenate([x[1] for x in segs])
             base = self._site_base.get(site)
+            rbw, est = self.scan_rbw(F)
             if base is not None:
                 F, L = merge_scans([(base["f"], base["l"]), (F, L)])
+                rbw = rbw_merge(base.get("rbw"), rbw) if "rbw" in base else rbw
             if F is None:
                 continue
-            self.site_scans = site_replace(self.site_scans, site_scan_doc(site, F, L, now))
+            self.site_scans = site_replace(self.site_scans, site_scan_doc(site, F, L, now, rbw=rbw, rbw_est=est))
         self.update_site_curve()
 
     def view_sites(self):
@@ -31352,7 +31465,8 @@ class MainWindow(QtWidgets.QMainWindow):
             names.append("Max hold (dBm)")
         text = scan_csv(F, cols, v["unit"], v["delim"], v["dec"], v["header"], names)
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Exporter le scan", f"scan_{datetime.now():%Y%m%d_%H%M%S}.csv", "CSV (*.csv)")
+            self, "Exporter le scan", f"scan_{datetime.now():%Y%m%d_%H%M%S}"
+            + (f"_{rbw_tag(self.live_rbw()[0])}" if rbw_tag(self.live_rbw()[0]) else "") + ".csv", "CSV (*.csv)")
         if not path:
             return
         try:
@@ -32025,6 +32139,45 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.site_scans:
                 return self.open_sites()
         return self.open_sites(before_after=True)
+
+    def scan_rbw(self, F):
+        """RBW (kHz) d'un scan fait maintenant -> (rbw, estimée ?) : la RBW forcée, sinon celle que le tinySA choisit en
+        auto d'après le pas (estimation)."""
+        r = self.rbw_combo.currentData()
+        if r is not None:
+            return float(r), False
+        F = np.asarray(F if F is not None else [], dtype=float)
+        if len(F) < 2:
+            return None, False
+        step = float(np.median(np.diff(F))) * 1000.0
+        return (float(auto_rbw(step)), True) if step > 0 else (None, False)
+
+    def live_rbw(self):
+        """RBW du balayage en cours (d'après les bandes balayées) -> (rbw, estimée)."""
+        if not self.latest:
+            r = self.rbw_combo.currentData()
+            return (float(r), False) if r is not None else (None, False)
+        return rbw_combine([self.scan_rbw(v[0]) for v in self.latest.values()])
+
+    def coord_rbw(self, src=None):
+        """RBW du spectre que la coordination évite (scans gardés + direct) -> (rbw | "mixed" | None, estimée)."""
+        if src is None:
+            src = "all" if self.sites_coord else "live"
+        items = [(d.get("rbw"), bool(d.get("rbw_est"))) for d in coord_docs(self.site_scans, src)]
+        if src in ("live", "all") or self.site_mh.get(src):
+            if self.latest or src == "live":
+                items.append(self.live_rbw())
+        return rbw_combine(items)
+
+    def set_rbw_fine(self):
+        """Finesse de mesure (RBW) à 30 kHz : scan pour une coordination."""
+        for i in range(self.rbw_combo.count()):
+            v = self.rbw_combo.itemData(i)
+            if v is not None and abs(float(v) - COORD_RBW_MAX) < 1e-6:
+                self.rbw_combo.setCurrentIndex(i)
+                break
+        self.set_status("Finesse de mesure (RBW) à 30 kHz : scan pour la coordination (plus lent). "
+                        "Efface les pics gardés et laisse balayer quelques minutes.")
 
     def busy_limit(self, L, mode=None, weak=False):
         """Seuil « occupé » des outils qui évitent un spectre gardé / max hold (coordination, secours, remplacer,
@@ -33546,8 +33699,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             name = snapshot_name(sc, label, {d["name"] for d in self.site_scans}, hhmm)
             t0 = self._site_mh_t0.get(sc)
+            rbw, est = self.scan_rbw(F)
             self.site_scans.append(site_scan_doc(name, F, L, time.time(), scene=sc,
-                                                 dur=time.time() - t0 if t0 else None))
+                                                 dur=time.time() - t0 if t0 else None, rbw=rbw, rbw_est=est))
             done.append(name)
         if done:
             self._bump()

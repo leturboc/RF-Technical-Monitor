@@ -262,6 +262,12 @@ dépendent (chapitre « Filtre récepteur et profils »).</p>
     au-dessus. Pourquoi pas ton seuil de surveillance ? Le max hold garde des heures de pics de bruit, nettement
     plus hauts que le bruit du moment : comparé au seuil auto (bruit du moment + 13 dB), presque tout paraissait
     occupé. Autres choix : <b>Mon seuil « occupé »</b> (celui de la barre des seuils) ou un <b>seuil fixe</b>.</li>
+  <li><b>Scan</b> : la <b>RBW</b> (finesse de mesure) du spectre évité. Pour une coordination, prends une <b>RBW fine,
+    30 kHz ou moins</b> : une RBW large étale les signaux étroits et remonte le bruit (de 100 à 30 kHz, le bruit et la
+    TNT descendent d'environ 5 dB, un micro presque pas), et le seuil « occupé » ne veut plus dire la même chose.
+    L'appli prévient si la RBW est trop large, inconnue (scan importé) ou différente d'un scan à l'autre ; le bouton
+    <b>RBW 30 kHz</b> la règle d'un clic (refais ensuite le scan). Chaque scan gardé note sa RBW (infos du scan,
+    rapport du site, nom du fichier exporté : « …_RBW30k.csv »).</li>
   <li><b>🔎 Chercher</b>, puis <b>＋ Ajouter à ma liste</b>. Elles arrivent avec le statut « En service ».</li>
 </ol>
 <p>Si l'appli n'en trouve pas assez (« la plage est pleine »), c'est souvent physique : trop d'émetteurs sur trop peu

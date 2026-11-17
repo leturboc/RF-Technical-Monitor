@@ -5851,3 +5851,33 @@ EXACT.update({
     "🗂 Ranger les scènes du plan": "🗂 Sort the plan's stages",
     ", {} créneau(x) ajouté(s) au planning": ", {} slot(s) added to the planning",
 })
+
+# 7.66.3 / 7.66.4 : seuil « occupé » de la coordination, RBW des scans
+EXACT.update({
+    'Finesse de mesure (RBW) à 30 kHz : scan pour la coordination (plus lent). Efface les pics gardés et laisse balayer quelques minutes.':
+        'Measurement resolution (RBW) at 30 kHz: scan for coordination (slower). Clear the kept peaks and let it sweep for a few minutes.',
+    'Passe la finesse de mesure à 30 kHz (balayage plus lent) : refais ensuite le scan (efface les pics gardés et laisse balayer quelques minutes).':
+        'Sets the measurement resolution to 30 kHz (slower sweep): then redo the scan (clear the kept peaks and let it sweep for a few minutes).',
+    'RBW 30 kHz': 'RBW 30 kHz',
+    'RBW inconnue': 'RBW unknown',
+    'RBW mélangées (niveaux pas comparables)': 'mixed RBWs (levels not comparable)',
+    'Scan :': 'Scan:',
+    "Scan pour une coordination : RBW fine, 30 kHz ou moins. Une RBW large étale les signaux étroits (micros, talkies) et remonte le bruit : les niveaux et le seuil « occupé » ne veulent plus dire la même chose. De 100 à 30 kHz, le bruit et la TNT descendent d'environ 5 dB, un micro presque pas.":
+        "Scan for coordination: fine RBW, 30 kHz or less. A wide RBW spreads narrow signals (mics, walkie-talkies) and raises the noise: levels and the “busy” threshold no longer mean the same thing. From 100 to 30 kHz, noise and DTV drop by about 5 dB, a mic hardly at all.",
+    'fine : bonne pour une coordination.': 'fine: good for coordination.',
+    'trop large pour une coordination : mets 30 kHz ou moins (⚙ › Mesure).': 'too wide for coordination: set 30 kHz or less (⚙ › Measurement).',
+    '⚠ RBW inconnue : vérifie que ce scan a été fait avec une RBW fine (≤ 30 kHz).': '⚠ RBW unknown: check that this scan was made with a fine RBW (≤ 30 kHz).',
+    '⚠ Scans de RBW différentes mélangés : niveaux pas comparables (refais-les avec la même RBW fine, ≤ 30 kHz).':
+        '⚠ Scans with different RBWs mixed: levels not comparable (redo them with the same fine RBW, ≤ 30 kHz).',
+    '📏 Scan pour une coordination : RBW fine (30 kHz ou moins). La RBW de chaque scan est notée dans ses infos et dans le nom du fichier exporté.':
+        '📏 Scan for coordination: fine RBW (30 kHz or less). Each scan’s RBW is noted in its info and in the exported file name.',
+    '(auto)': '(auto)',
+})
+TEMPLATES.update({
+    "<h2>{}</h2><div class='muted'>Scène : {} · {}–{} MHz · {} points · {}</div>":
+        "<h2>{}</h2><div class='muted'>Stage: {} · {}–{} MHz · {} points · {}</div>",
+    '💾 « {} » exporté : {}\n': '💾 « {} » exported: {}\n',
+    '<br>{}–{} MHz · {} bande(s)<br>{} points · pas {} kHz · ': '<br>{}–{} MHz · {} band(s)<br>{} points · step {} kHz · ',
+})
+SAME_TEMPLATES += ['RBW ≈ {} ', 'color: {};', 'scan_{}_{}{}.csv', 'RBW {}', 'RBW{}k',
+                   "<tr><td><b style='color:{}'>{}</b></td><td>{}</td><td>{}</td><td class='n'>{}–{}</td><td class='n'>{}</td><td class='n'>{}</td><td class='n'>{}</td><td class='n'>{}</td><td class='n'>{}</td></tr>"]

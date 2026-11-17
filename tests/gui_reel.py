@@ -2281,6 +2281,17 @@ check("7.61 coord : rien hors de la bande de l'appareil", _cd.found and all(470.
 check("7.61 coord : « plage ramenée » et « ce qui bloque »", "ramenée" in _cd.msg.text() and "Ce qui bloque" in _cd.msg.text(),
       _cd.msg.text())
 shot(_cd, "coord_pourquoi")
+# 7.66.3 / 7.66.4 : seuil « occupé » propre à la coordination + RBW du scan
+_cd.avoid.setChecked(True)
+_cd.busy_mode.setCurrentIndex(_cd.busy_mode.findData("auto"))
+_cd._busy_preview()
+check("7.66.3 coord : seuil « occupé » auto affiché", "dBm" in _cd.busy_lbl.text() or _cd.busy_lbl.text() == "",
+      _cd.busy_lbl.text())
+check("7.66.4 coord : RBW du scan affichée", "RBW" in _cd.rbw_lbl.text(), _cd.rbw_lbl.text())
+_rb0 = win.rbw_combo.currentIndex()
+win.set_rbw_fine()
+check("7.66.4 : RBW 30 kHz en un clic", win.rbw_combo.currentData() == 30, str(win.rbw_combo.currentData()))
+win.rbw_combo.setCurrentIndex(_rb0)
 _cd.close()
 win.watch = _saved_watch
 win.set_group_rx(("Grande scène", "IEM"), "")

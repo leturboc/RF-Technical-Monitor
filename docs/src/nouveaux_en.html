@@ -251,6 +251,12 @@ available.</div>
     the spectrum above it. Why not your monitoring threshold? The max hold keeps hours of noise peaks, well above the
     current noise: compared with the auto threshold (current noise + 13 dB), almost everything looked busy. Other
     choices: <b>My “busy” threshold</b> (the one in the threshold bar) or a <b>fixed threshold</b>.</li>
+  <li><b>Scan</b>: the <b>RBW</b> (measurement resolution) of the avoided spectrum. For coordination, use a <b>fine
+    RBW, 30 kHz or less</b>: a wide RBW spreads narrow signals and raises the noise (from 100 to 30 kHz, noise and DTV
+    drop by about 5 dB, a mic hardly at all), and the “busy” threshold no longer means the same thing. The app warns
+    when the RBW is too wide, unknown (imported scan) or different between scans; the <b>RBW 30 kHz</b> button sets it
+    in one click (then redo the scan). Each kept scan records its RBW (scan info, site report, exported file name:
+    “…_RBW30k.csv”).</li>
   <li><b>🔎 Search</b>, then <b>＋ Add to my list</b>. They arrive with the « In use » status.</li>
 </ol>
 <p>If the app does not find enough (« the range is full »), it is often physics: too many transmitters on too few MHz.
