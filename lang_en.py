@@ -5881,3 +5881,7 @@ TEMPLATES.update({
 })
 SAME_TEMPLATES += ['RBW ≈ {} ', 'color: {};', 'scan_{}_{}{}.csv', 'RBW {}', 'RBW{}k',
                    "<tr><td><b style='color:{}'>{}</b></td><td>{}</td><td>{}</td><td class='n'>{}–{}</td><td class='n'>{}</td><td class='n'>{}</td><td class='n'>{}</td><td class='n'>{}</td><td class='n'>{}</td></tr>"]
+EXACT.update({
+    'pas de {} kHz entre deux points : des signaux étroits passent entre les points. Mets plus de points (pas ≤ RBW) ou une RBW au moins égale au pas.':
+        '{} kHz step between two points: narrow signals fall between the points. Use more points (step ≤ RBW) or an RBW at least equal to the step.',
+})

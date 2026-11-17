@@ -1001,6 +1001,9 @@ check("RBW d'un ensemble", (ns["rbw_combine"]([(30.0, False), (30.0, True)]), ns
                             ns["rbw_combine"]([])), ((30.0, True), ("mixed", False), (None, False)))
 check("RBW conseillée pour la coord", [ns["rbw_coord_line"](r)[1] for r in (10.0, 30.0, 100.0, None, "mixed")],
       [True, True, False, False, False])
+check("RBW plus fine que le pas = des trous entre les points",
+      (ns["rbw_coord_line"](10.0, step=75.0)[1], ns["rbw_coord_line"](30.0, step=25.0)[1], ns["scan_step_khz"]([470, 470.075, 470.15])),
+      (False, True, 75.0))
 check("RBW dans le nom de fichier", (ns["rbw_tag"](30.0), ns["rbw_tag"](0.3), ns["rbw_tag"](None), ns["rbw_tag"]("mixed")),
       ("RBW30k", "RBW0,3k", "", ""))
 check("ezrf3 : sans ignorer les hors fonction", len(ns["ezrf_entries"](_ez, False)), 7)
