@@ -5885,3 +5885,128 @@ EXACT.update({
     'pas de {} kHz entre deux points : des signaux étroits passent entre les points. Mets plus de points (pas ≤ RBW) ou une RBW au moins égale au pas.':
         '{} kHz step between two points: narrow signals fall between the points. Use more points (step ≤ RBW) or an RBW at least equal to the step.',
 })
+
+# 7.67 : scan pour la coordination, dossier de préparation, perturbations qui reviennent
+EXACT.update({
+    ' jours mini': ' days min',
+    '10 kHz (très fin, très lent)': '10 kHz (very fine, very slow)',
+    '100 kHz (rapide, moins précis)': '100 kHz (fast, less precise)',
+    '30 kHz (conseillé)': '30 kHz (recommended)',
+    "Aucun journal automatique trouvé dans {} : coche « Journal auto (CSV / jour) » (onglet Journal) pour que l'appli note chaque jour dans un fichier.":
+        "No automatic log found in {}: tick “Auto log (CSV / day)” (Log tab) so the app writes each day to a file.",
+    'Aucun tour complet mesuré : scan abandonné.': 'No complete sweep measured: scan abandoned.',
+    "Bandes balayées : {} MHz au total · pas de {} kHz ≈ {} points par tour (plus lent qu'en surveillance : c'est normal).":
+        "Swept bands: {} MHz in total · {} kHz step ≈ {} points per sweep (slower than monitoring: that's normal).",
+    'Canaux TNT': 'DTV channels',
+    'Canaux TV occupés ici : {}': 'TV channels busy here: {}',
+    'Combien de journaux (jours) lire.': 'How many logs (days) to read.',
+    'Copie la liste en texte (message, rapport).': 'Copies the list as text (message, report).',
+    "D'après les journaux automatiques (un fichier par jour) : ce qui se répète à la même heure sur plusieurs jours. Ex. un talkie qui s'allume tous les soirs vers 19 h, un micro qui décroche toujours au même moment.":
+        "From the automatic logs (one file per day): what repeats at the same time over several days. E.g. a walkie-talkie switched on every evening around 7 pm, a mic that always drops out at the same moment.",
+    "D'après les journaux de plusieurs jours : ce qui revient à la même heure\n(talkie tous les soirs vers 19 h, micro qui décroche toujours au même moment).":
+        "From several days of logs: what comes back at the same time\n(walkie-talkie every evening around 7 pm, mic that always drops out at the same moment).",
+    'Dossier de préparation': 'Preparation file',
+    'Double-clic : chasser ce signal (zoom sur sa fréquence).': 'Double-click: hunt this signal (zoom on its frequency).',
+    'Durée :': 'Duration:',
+    'En résumé': 'Summary',
+    'Finesse (RBW) :': 'Resolution (RBW):',
+    'Généré le': 'Generated on',
+    'Inclure les signaux présents (OCCUPÉ)': 'Include present signals (BUSY)',
+    'Jours': 'Days',
+    'Jours : {}': 'Days: {}',
+    "La surveillance s'est arrêtée : scan abandonné.": 'Monitoring stopped: scan abandoned.',
+    'Le tinySA balaye tes bandes avec une RBW fine et des points calés sur cette RBW (aucun signal ne passe entre deux points), en gardant les pics, pendant le temps choisi. À la fin, le scan est gardé dans Scans par lieu avec sa RBW, et tes réglages de surveillance reviennent comme avant.':
+        'The tinySA sweeps your bands with a fine RBW and points matched to that RBW (no signal falls between two points), keeping the peaks, for the chosen time. At the end, the scan is kept in Scans per location with its RBW, and your monitoring settings come back as before.',
+    'Lieu (scène) où le scan sera rangé dans Scans par lieu.': 'Location (stage) where the scan will be filed in Scans per location.',
+    'MHz · dBm': 'MHz · dBm',
+    'Nombre de jours différents où ça doit revenir.': 'Number of different days it must come back on.',
+    'Notes': 'Notes',
+    'Où': 'Where',
+    'Perturbations qui reviennent': 'Recurring disturbances',
+})
+TEMPLATES.update({
+    '⚠ Dossier impossible : {}': '⚠ File impossible: {}',
+    '🖨 Dossier de préparation enregistré : {}': '🖨 Preparation file saved: {}',
+})
+SAME_TEMPLATES += ["<html><head><meta charset='utf-8'><style>{}</style></head><body>", "<p class='mut'>{}</p>",
+                   "<tr><td>{}</td><td>{}</td><td class='n'>{}</td><td>{}</td><td>{}</td><td class='warn'>{}</td><td>{}</td></tr>",
+                   '<h2>{}</h2><table><tr><th>{}</th><th>MHz</th><th>{}</th></tr>', "<div class='mut'>{} {} · TinySA Monitor</div>",
+                   '<tr><td>{}</td><td>{}–{}</td><td>{}</td></tr>', 'preparation_{}_{}.pdf',
+                   '<h3>{}</h3><table><tr><th>{}</th><th>{}</th><th>MHz</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr>',
+                   '<h2>{}</h2><table><tr><th>{}</th><th>{}</th><th>{}</th><th>MHz</th><th>RBW</th></tr>', '<div>{}</div>',
+                   '<h2>{}</h2><ul>', "<h2>{}</h2><img src='{}' width='680'>", '<li>{}</li>',
+                   '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}–{}</td><td>{}</td></tr>']
+EXACT.update({
+    "Plus long = plus de chances d'attraper ce qui émet par moments (talkies, liaisons).":
+        "Longer = more chance to catch what transmits now and then (walkie-talkies, links).",
+    'Règle la RBW et les points, efface les pics gardés et balaye le temps choisi.':
+        'Sets the RBW and points, clears the kept peaks and sweeps for the chosen time.',
+    'Réglementation': 'Regulation',
+    'Réglementation du pays (indicatif)': 'Country regulation (indicative)',
+    'Scan arrêté sans rien garder. Réglages de surveillance remis comme avant.':
+        'Scan stopped without keeping anything. Monitoring settings put back as before.',
+    'Scan en cours… encore {} min {} s.': 'Scan in progress… {} min {} s left.',
+    'Scan en cours… laisse le tinySA balayer.': 'Scan in progress… let the tinySA sweep.',
+    'Scan fait tout seul pour une coordination : RBW fine (30 kHz conseillé), points calés\ndessus, pics gardés N minutes, puis rangé dans Scans par lieu avec sa RBW.':
+        'Automatic scan for coordination: fine RBW (30 kHz recommended), points matched\nto it, peaks kept for N minutes, then filed in Scans per location with its RBW.',
+    'Scan pour la coordination': 'Scan for coordination',
+    'Scans du lieu': 'Site scans',
+    'Spectre du lieu': 'Site spectrum',
+    'TV': 'TV',
+    "Un signal qui s'allume sur une fréquence sans statut (pas tes micros « doit émettre »).":
+        'A signal switching on on a frequency without status (not your “must transmit” mics).',
+    'Une fiche à imprimer ou envoyer : plan de fréquences par scène, appareils,\nréglementation, canaux TNT, scans du lieu (avec leur RBW), spectre.':
+        'A sheet to print or send: frequency plan per stage, devices,\nregulation, DTV channels, site scans (with their RBW), spectrum.',
+    'Vers': 'Around',
+    'Voir les scans gardés (comparer, exporter avec la RBW dans le nom).': 'See the kept scans (compare, export with the RBW in the name).',
+    'Vérification du plan': 'Plan check',
+    'Vérification du plan : aucun problème trouvé': 'Plan check: no problem found',
+    'Vérification du plan : {} problème(s)': 'Plan check: {} problem(s)',
+    'data:image/png;base64,': 'data:image/png;base64,',
+    'en pause': 'paused',
+    "ex. jardin, régie… (sinon l'heure)": 'e.g. garden, FOH… (otherwise the time)',
+    'intermod sur une réserve': 'intermod on a reserve',
+    'micro qui décroche': 'mic dropping out',
+    'signal inconnu': 'unknown signal',
+    'signal présent': 'signal present',
+    'signal sur une réserve': 'signal on a reserve',
+    'signal trop fort': 'signal too strong',
+    'tinySA perdu': 'tinySA lost',
+    '{} derniers jours': 'last {} days',
+})
+EXACT.update({
+    '{} en pause ou éteinte(s) exprès': '{} paused or switched off on purpose',
+    '{} fréquence(s) dans le plan, {} scène(s)': '{} frequency(ies) in the plan, {} stage(s)',
+    '{} fréquence(s) à vérifier côté réglementation (voir la colonne « Réglementation »)':
+        '{} frequency(ies) to check for regulation (see the “Regulation” column)',
+    '{} journal(aux) lu(s) : rien ne revient à la même heure sur plusieurs jours.':
+        '{} log(s) read: nothing comes back at the same time over several days.',
+    '{} journal(aux) lu(s) · {} perturbation(s) qui reviennent.': '{} log(s) read · {} recurring disturbance(s).',
+    '{} jours sur {} vers {} (± {} min)': '{} days out of {} around {} (± {} min)',
+    '« Même heure » à plus ou moins tant de minutes.': '“Same time” give or take this many minutes.',
+    'Étiquette :': 'Label:',
+    'Étiquette du scan (facultatif).': 'Scan label (optional).',
+    '… et {} autre(s)': '… and {} other(s)',
+    '■ Arrêter (sans garder)': '■ Stop (keep nothing)',
+    '▶ Lancer le scan': '▶ Start the scan',
+    "✔ Scan gardé : « {} » ({} min). Il est dans Scans par lieu, prêt pour la coordination et l'export. Réglages de surveillance remis comme avant.":
+        '✔ Scan kept: “{}” ({} min). It is in Scans per location, ready for coordination and export. Monitoring settings put back as before.',
+    '📏 Scan pour la coordination': '📏 Scan for coordination',
+    '📏 Scan pour la coordination (RBW fine, gardé avec sa RBW)…': '📏 Scan for coordination (fine RBW, kept with its RBW)…',
+    '📏 Scan pour la coordination gardé : {}': '📏 Scan for coordination kept: {}',
+    '🔁 Perturbations qui reviennent': '🔁 Recurring disturbances',
+    '🔁 Perturbations qui reviennent (même heure, plusieurs jours)…': '🔁 Recurring disturbances (same time, several days)…',
+    '🖨 Dossier de préparation': '🖨 Preparation file',
+    '🖨 Dossier de préparation (PDF à imprimer / envoyer)…': '🖨 Preparation file (PDF to print / send)…',
+    'fois': 'times',
+    'Quoi': 'What',
+})
+EXACT.update({
+    "✔ Scan gardé : « {} » ({}). Il est dans Scans par lieu, prêt pour la coordination et l'export. Réglages de surveillance remis comme avant.":
+        '✔ Scan kept: “{}” ({}). It is in Scans per location, ready for coordination and export. Monitoring settings put back as before.',
+})
+SAME_TEMPLATES += [
+    "<h2>{}</h2><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{}</th><th>MHz</th><th>{}</th></tr>",
+    "<h2>{}</h2><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{}</th><th>{}</th><th>{}</th><th>MHz</th><th>RBW</th></tr>",
+    "<h2>{}</h2><p><img src='{}' width='680'></p>",
+    "<h3>{}</h3><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{}</th><th>{}</th><th>MHz</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr>"]

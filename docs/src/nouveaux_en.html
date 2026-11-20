@@ -149,6 +149,12 @@ the selection). The alarm priority is set per group (right-click › 🔔 Priori
 <h3>1.6 Save the show</h3>
 <p><b>Ctrl+S</b> (or 🎪 Shows › Save): a <code>.tsashow</code> file keeps everything (frequencies, stages, bands, kept
 scans, schedule). Fill in the festival name, venue and dates (🎪 › Show info): they will appear in the reports.</p>
+<h3>1.7 The preparation file</h3>
+<p><b>📋 Prepare › 🖨 Preparation file</b>: a PDF sheet to print or send to the production and the other RF teams. It
+contains the venue spectrum (kept scans + max hold), the frequency plan per stage › group (status, device, what is
+paused), the country regulation with what is left to check frequency by frequency, the DTV channels, the list of scans
+with their RBW and, if the coordination tools are shown, the plan check. Choose “Web page (*.html)” in the save window for
+a version to open in a browser.</p>
 
 <!--CH arrivee|Step 2 — Arriving on site: scan the venue-->
 <p><b>Why?</b> Before choosing any frequency, you need to know what already occupies the air: TV channels, other RF
@@ -166,6 +172,12 @@ on paper may be taken on site.</p>
     be used for coordination and the report.</li>
   <li>Optional: <b>📏 Reference › Capture</b> = the venue's « quiet », for a relative threshold (expert).</li>
 </ol>
+<h3>The scan for coordination, done automatically</h3>
+<p><b>📋 Prepare › 📏 Scan for coordination</b> makes the “clean” scan a coordination software expects: fine RBW
+(<b>30 kHz recommended</b>), points matched to that RBW (no signal falls between two points), peaks cleared then kept for
+the chosen time (5 minutes by default); at the end the scan is filed in <b>Scans by location</b> with its RBW, in the
+chosen stage. Your monitoring settings (RBW, points, max hold) come back as before by themselves. The sweep is slower
+during this scan (many more points): that's normal. <b>■ Stop (keep nothing)</b> cancels and puts everything back.</p>
 <h3>The venue's DTT channels</h3>
 <p><b>📋 Prepare › 📺 Local DTT channels and nearby transmitters</b> answers « which channels does TV use here? » from
 your scan, without internet:</p>
@@ -346,6 +358,10 @@ per hour, shown in the settings).</p>
   <li><b>📊 Occupancy per hour</b>: the time slots when each frequency was disturbed.</li>
   <li><b>📄 Show report</b>: a clean HTML document (frequencies, alarms, incidents, scans) to send to the
     production.</li>
+  <li><b>🔁 Recurring disturbances</b> (📊 Analyse): reads several days of automatic logs and lists what comes back <b>at
+    the same time</b> (± 20 minutes by default) on at least 2 days: “UNKNOWN · Walkie (446.006 MHz): 3 days out of 3
+    around 19:03”. A “must transmit” mic being present is not a disturbance (that's normal); its drop-outs (MISSING) are
+    counted. Double-click = hunt this signal. The <b>Auto log (CSV / day)</b> box must be ticked (Log tab).</li>
   <li><b>Ctrl+S</b>: the show keeps the per-stage scans and the plan. Next year: 🎪 › Open, and you start again from
     there.</li>
 </ol>

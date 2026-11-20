@@ -2951,6 +2951,48 @@ step("open_relay", win.open_relay)
 wait(600)
 shot(win._relay_win, "relais")
 win._relay_win.close()
+# 7.67 : 📏 scan pour la coordination (durée raccourcie), 🖨 dossier de préparation, 🔁 perturbations qui reviennent
+_rb0, _pt0, _hd0 = win.rbw_combo.currentIndex(), win.points_combo.currentIndex(), win.hold_chk.isChecked()
+_ns0 = len(win.site_scans)
+_cs = step("open_coord_scan", win.open_coord_scan)
+if _cs is not None:
+    shot(_cs, "scan_coord")
+    _cs.start()
+    check("📏 scan coord : RBW 30 kHz et points Auto pendant le scan",
+          win.rbw_combo.currentData() == 30 and win.points_auto() is not None and win.is_running())
+    _cs._state["dur"] = 4.0
+    _t0 = time.time()
+    while _cs._state is not None and time.time() - _t0 < 120:
+        wait(500)
+    _new = win.site_scans[_ns0:] if len(win.site_scans) > _ns0 else []
+    check("📏 scan coord : scan gardé avec sa RBW (30 kHz)", len(_new) == 1 and _new[0].get("rbw") == 30.0,
+          str([(d["name"], d.get("rbw")) for d in _new]))
+    check("📏 scan coord : réglages remis comme avant", win.rbw_combo.currentIndex() == _rb0
+          and win.points_combo.currentIndex() == _pt0 and win.hold_chk.isChecked() == _hd0)
+    check("📏 scan coord : pas plus large que la RBW", _new and (m.scan_step_khz(_new[0]["f"]) or 999) <= 30.0,
+          str(m.scan_step_khz(_new[0]["f"]) if _new else None))
+    shot(_cs, "scan_coord_fini")
+    _cs.close()
+_pp = os.path.join(tmp, "dossier.pdf")
+_r = step("export_prep (PDF)", lambda: win.export_prep(_pp))
+check("🖨 dossier : PDF écrit", _r and os.path.exists(_pp) and open(_pp, "rb").read(5) == b"%PDF-"
+      and os.path.getsize(_pp) > 5000, str(os.path.getsize(_pp) if os.path.exists(_pp) else None))
+_ph = os.path.join(tmp, "dossier.html")
+step("export_prep (HTML)", lambda: win.export_prep(_ph))
+_htxt = open(_ph, encoding="utf-8").read() if os.path.exists(_ph) else ""
+check("🖨 dossier : page web avec le plan et le spectre", "data:image/png;base64," in _htxt
+      and all(w_["name"] in _htxt for w_ in win.watch[:3]), _htxt[:200])
+_ld = win.log_dir
+_ld.mkdir(parents=True, exist_ok=True)
+for _d in ("20261114", "20261115", "20261116"):
+    with open(_ld / f"journal_{_d}.csv", "w", encoding="utf-8-sig") as _fh:
+        _fh.write("Date;Heure;Nom;MHz;dBm;Événement;Statut;Scène;Groupe;Spectre;Note\n")
+        _fh.write(f"{_d[:4]}-{_d[4:6]}-{_d[6:]};19:0{int(_d[-1]) % 7}:00;Talkie;446,006;-70,0;INCONNU;;;;;\n")
+_rd = m.RecurringDialog(win)
+check("🔁 perturbations : talkie tous les soirs vers 19 h trouvé", any(p_["name"] == "Talkie" and p_["days"] == 3
+                                                                    for p_ in _rd.pats), str(_rd.lines))
+shot(_rd, "perturbations")
+_rd.close()
 _mp = win.manual_path()
 check("manuel : fichier trouvé", _mp is not None and "Raccourcis clavier" in _mp.read_text(encoding="utf-8"), str(_mp))
 step("waterfall en fenêtre libre (gardée pour la relance)", lambda: win.panel_window(win.dock_wf, True, None, "normal"))

@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.66.5**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.67.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1384,6 +1384,26 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   reproduite sous Linux) ; cause de la liaison perdue inconnue → demander le 🩺 diagnostic automatique de ce moment.
   Sa config : RBW 10 kHz forcée, 3 000 points sur 470-694 = un point tous les 75 kHz → PURE `scan_step_khz`,
   `rbw_coord_line(..., step)` prévient si le pas > 1,5 × RBW (signaux qui passent entre les points).
+- **7.67.0 (Clément : « go 2/3/4 » sur : scan de coord automatique, dossier PDF, perturbations qui reviennent)** :
+  - **📏 Scan pour la coordination** : `CoordScanDialog` (non modale, `self._cscan`, `open_coord_scan`, 📋 Préparer › 1.) :
+    RBW 10 / 30 (conseillé) / 100 kHz, durée (5 min), lieu + étiquette ; `start` mémorise RBW / points / max hold /
+    surveillance, règle la RBW, points ⚡ Auto équilibré (`auto_scan_step` met le pas ≤ RBW), max hold + `reset_max`,
+    lance la surveillance si besoin ; `_tick` (1 s) ; à la fin `fresh_FL(use_max)` → `site_scan_doc(..., rbw)` dans
+    `site_scans` (`snapshot_name`), réglages remis, surveillance arrêtée si elle ne tournait pas. Annuler = rien gardé.
+  - **🖨 Dossier de préparation** : PURE `PREP_CSS`, `prep_html(info, tr, img)` (QTextDocument : HTML simple) ;
+    `spectrum_qimage(F, L, thr, marks)` (QPainter, sans pyqtgraph) ; `MainWindow.prep_info()` (show_meta date_from /
+    date_to, plan trié par scène, `reg_tag` des émetteurs, `reg_detail`, `tnt_measure_now`, scans + RBW, `pf_check` si
+    `coord_on`, `COORD_NOTE` en bas), `export_prep(path)` : .pdf (`QPdfWriter` A4 + `QTextDocument.addResource`) ou
+    .html (image en base64). 📋 Préparer › 4.
+  - **🔁 Perturbations qui reviennent** : PURE `journal_csv_rows` (journal_AAAAMMJJ.csv), `recurring_events(rows,
+    kinds, tol, min_days, on_statuses)` (même (événement, nom, MHz), minutes circulaires (23:50 ≈ 00:05), regroupement
+    glouton : le centre qui couvre le plus de jours), `recurring_text`, `RECUR_KINDS` / `RECUR_LABELS` ; OCCUPÉ des
+    statuts « doit émettre » ignoré. `MainWindow.journal_rows(days)`, `RecurringDialog` (jours, ± min, jours mini,
+    case OCCUPÉ, double-clic = chasse), `open_recurring` (📊 Analyser). ⚠ 1er jet : boucle infinie (éléments recréés au
+    lieu d'être repris de `left`) → test_v7 tué faute de mémoire ; corrigé.
+  Testé : test_v7 (journal, répétitions dont minuit, dossier HTML), gui_reel (scan de coord raccourci à 4 s en démo :
+  RBW 30 / Auto, gardé avec sa RBW, pas ≤ RBW, réglages remis ; PDF « %PDF- » ; HTML avec image ; perturbations sur 3
+  faux journaux). **Pas essayé par Clément ; PDF jamais ouvert sous Windows.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
