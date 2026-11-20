@@ -159,6 +159,12 @@ sur une scène › affecter la sélection). La priorité d'alarme se règle par 
 <p><b>Ctrl+S</b> (ou 🎪 Shows › Enregistrer) : un fichier <code>.tsashow</code> garde tout (fréquences, scènes,
 bandes, scans gardés, planning). Remplis le nom du festival, le lieu et les dates (🎪 › Infos du show) : ils
 apparaîtront dans les rapports.</p>
+<h3>1.7 Le dossier de préparation</h3>
+<p><b>📋 Préparer › 🖨 Dossier de préparation</b> : une fiche PDF à imprimer ou à envoyer à la production et aux autres
+équipes HF. Elle contient le spectre du lieu (scans gardés + max hold), le plan de fréquences par scène › groupe (statut,
+appareil, ce qui est en pause), la réglementation du pays avec ce qui reste à vérifier fréquence par fréquence, les canaux
+TNT, la liste des scans avec leur RBW et, si les outils de coordination sont affichés, la vérification du plan. Choisis
+« Page web (*.html) » dans la fenêtre d'enregistrement pour une version à ouvrir dans un navigateur.</p>
 
 <!--CH arrivee|Étape 2 — Arrivée sur le site : scanner le lieu-->
 <p><b>Pourquoi ?</b> Avant de choisir la moindre fréquence, il faut savoir ce qui occupe déjà les ondes : chaînes de
@@ -177,6 +183,13 @@ paraît libre sur le papier peut être prise sur le site.</p>
     Il servira à la coordination et au rapport.</li>
   <li>Facultatif : <b>📏 Référence › Capturer</b> = le « calme » du lieu, pour un seuil relatif (expert).</li>
 </ol>
+<h3>Le scan pour la coordination, fait tout seul</h3>
+<p><b>📋 Préparer › 📏 Scan pour la coordination</b> fait le scan « propre » qu'attend un logiciel de coordination :
+RBW fine (<b>30 kHz conseillé</b>), points calés sur cette RBW (aucun signal ne passe entre deux points), pics remis à zéro
+puis gardés pendant la durée choisie (5 minutes d'office), et à la fin le scan est rangé dans <b>Scans par lieu</b> avec sa
+RBW, dans la scène choisie. Tes réglages de surveillance (RBW, points, max hold) reviennent tout seuls comme avant. Le
+balayage est plus lent pendant ce scan (beaucoup plus de points) : c'est normal. <b>■ Arrêter (sans garder)</b> annule et
+remet tout comme avant.</p>
 <h3>Les canaux TNT du lieu</h3>
 <p><b>📋 Préparer › 📺 Canaux TNT du lieu et émetteurs proches</b> répond à la question « quels canaux la télé occupe ici ? »
 à partir de ton scan, sans internet :</p>
@@ -359,6 +372,11 @@ session est actif (environ quelques dizaines de Mo par heure, indiqué dans les 
   <li><b>📊 Occupation par heure</b> : les créneaux où chaque fréquence a été gênée.</li>
   <li><b>📄 Rapport de show</b> : un document HTML propre (fréquences, alarmes, incidents, scans) à envoyer à la
     production.</li>
+  <li><b>🔁 Perturbations qui reviennent</b> (📊 Analyser) : lit les journaux automatiques de plusieurs jours et liste ce
+    qui revient <b>à la même heure</b> (± 20 minutes d'office) au moins 2 jours : « INCONNU · Talkie (446,006 MHz) : 3 jours
+    sur 3 vers 19:03 ». Un micro « doit émettre » présent n'est pas une perturbation (c'est normal) ; ses décrochages
+    (ABSENT), eux, sont comptés. Double-clic = chasser ce signal. Il faut la case <b>Journal auto (CSV / jour)</b> cochée
+    (onglet Journal).</li>
   <li><b>Ctrl+S</b> : le show garde les scans par scène et le plan. L'an prochain : 🎪 › Ouvrir, et tu repars de
     là.</li>
 </ol>

@@ -1004,6 +1004,38 @@ check("RBW conseillée pour la coord", [ns["rbw_coord_line"](r)[1] for r in (10.
 check("RBW plus fine que le pas = des trous entre les points",
       (ns["rbw_coord_line"](10.0, step=75.0)[1], ns["rbw_coord_line"](30.0, step=25.0)[1], ns["scan_step_khz"]([470, 470.075, 470.15])),
       (False, True, 75.0))
+# 7.67 : perturbations qui reviennent (journaux de plusieurs jours)
+_jt = "\ufeffDate;Heure;Nom;MHz;dBm;Événement;Statut;Scène;Groupe;Spectre;Note\n"
+for _d, _h in (("2026-11-14", "19:02:10"), ("2026-11-15", "19:11:00"), ("2026-11-16", "18:55:30")):
+    _jt += f"{_d};{_h};HF 3;556,000;-70,0;CONFLIT;Libre;Grande scène;MICS;;\n"
+_jt += "2026-11-15;03:10:00;HF 3;556,000;-70,0;CONFLIT;Libre;Grande scène;MICS;;\n"     # une seule fois : pas répétitif
+_jt += "2026-11-14;20:00:00;Chant;520,000;-60,0;OCCUPÉ;En service;;;;\n2026-11-15;20:01:00;Chant;520,000;-60,0;OCCUPÉ;En service;;;;\n"
+_jt += "2026-11-14;23:50:00;Talkie;446,000;-75,0;OCCUPÉ;;;;;\n2026-11-15;00:05:00;Talkie;446,000;-75,0;OCCUPÉ;;;;;\n"
+_jr = ns["journal_csv_rows"](_jt)
+check("journal : lignes lues (en-tête et BOM ignorés)", (len(_jr), _jr[0]["minute"], _jr[0]["mhz"], _jr[0]["kind"]),
+      (8, 19 * 60 + 2, 556.0, "CONFLIT"))
+_rp = ns["recurring_events"](_jr, tol=20, min_days=2, on_statuses=["En service"])
+check("perturbation qui revient : 3 jours sur 3 vers 19 h", [(p["name"], p["days"], p["total_days"], p["count"]) for p in _rp
+                                                             if p["kind"] == "CONFLIT"], [("HF 3", 3, 3, 3)])
+check("perturbation qui revient : heure moyenne ≈ 19:03", [abs(p["center"] - (19 * 60 + 3)) <= 3 for p in _rp
+                                                            if p["kind"] == "CONFLIT"], [True])
+check("micro « doit émettre » présent = normal, pas une perturbation", any(p["name"] == "Chant" for p in _rp), False)
+check("autour de minuit : 23:50 et 00:05 = même heure", [(p["name"], p["days"], p["spread"] <= 10) for p in _rp
+                                                         if p["name"] == "Talkie"], [("Talkie", 2, True)])
+check("texte d'une perturbation", "3 jours sur 3 vers 19:0" in ns["recurring_text"](_rp[0]), True)
+# 7.67 : dossier de préparation
+_ph = ns["prep_html"](dict(title="Fest", place="Bourges", dates="2026-11-20", country="France", generated="20/11/2026",
+                           rows=[dict(scene="A", group="MICS", name="HF 1", mhz=520.0, status="En service", rx="QLX-D",
+                                      note="", reg="", off=False),
+                                 dict(scene="A", group="MICS", name="HF 2", mhz=700.0, status="En service", rx="",
+                                      note="", reg="hors des bandes autorisées", off=True)],
+                           reg_lines=["470-694 MHz · autorisé"], tnt=[dict(ch=21, lo=470, hi=478, state="tv")],
+                           scans=[dict(name="A · jardin", scene="A", date="20/11", lo=470.0, hi=694.0, rbw=30.0)],
+                           plan=dict(n=1, lines=["HF 2 : trop près"]), notes="", disclaimer="Coordination basique"),
+                      img="spectre.png")
+check("dossier : plan, réglementation, TNT, scans avec RBW, image", all(x in _ph for x in (
+    "HF 1", "520.000", "QLX-D", "hors des bandes", "en pause", "Canaux TV occupés ici : 21", "RBW 30 kHz",
+    "spectre.png", "Vérification du plan : 1 problème(s)", "Coordination basique")), True)
 check("RBW dans le nom de fichier", (ns["rbw_tag"](30.0), ns["rbw_tag"](0.3), ns["rbw_tag"](None), ns["rbw_tag"]("mixed")),
       ("RBW30k", "RBW0,3k", "", ""))
 check("ezrf3 : sans ignorer les hors fonction", len(ns["ezrf_entries"](_ez, False)), 7)

@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.66.5"
+APP_VER = "7.67.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -7849,6 +7849,7 @@ STEPS = (
      (("🧭 Assistant « nouveau show » (pas à pas)…", "open_wizard"),
       ("§1. Scanner le lieu", None),
       ("▶ Scanner ici (pics remis à zéro)", "step_scan"),
+      ("📏 Scan pour la coordination (RBW fine, gardé avec sa RBW)…", "open_coord_scan"),
       ("📍 Scans par lieu (plusieurs scènes, comparer, rapport)…", "open_sites"),
       ("📺 Canaux TNT du lieu et émetteurs proches…", "open_tnt"),
       ("§2. Ma liste de fréquences", None),
@@ -7869,7 +7870,8 @@ STEPS = (
       ("🎛 Profils d'appareil (filtre récepteur)…", "open_rx_profiles"),
       ("§4. Organiser le show", None),
       ("🎬 Planning des plateaux (qui joue quand)…", "open_planning"),
-      ("📸 États (basculer de plan d'un clic)…", "open_states"))),
+      ("📸 États (basculer de plan d'un clic)…", "open_states"),
+      ("🖨 Dossier de préparation (PDF à imprimer / envoyer)…", "export_prep"))),
     ("show", "🎚 Surveiller", "Pendant le show : démarrer, vérifier que tout est prêt, mode Show plein écran, appel des\n"
      "micros, mur pour un 2ᵉ écran, fréquence de secours, alertes sur téléphone.",
      (("§Avant d'ouvrir les portes", None),
@@ -7892,6 +7894,7 @@ STEPS = (
     ("after", "📊 Analyser", "Après le show : revoir ce qui s'est passé, rapport, occupation par heure, scans.",
      (("§Revoir le show", None),
       ("🌅 Résumé de la nuit (en un coup d'œil)…", "open_night_summary"),
+      ("🔁 Perturbations qui reviennent (même heure, plusieurs jours)…", "open_recurring"),
       ("🕘 Historique des modifications (qui a changé quoi)…", "open_history"),
       ("⏪ Relecture : revoir le spectre / une session…", "open_replay"),
       ("📊 Occupation par heure (créneaux à risque)…", "open_occupancy"),
@@ -10132,6 +10135,187 @@ def problem_card(msg="", key=None):
     title, what, steps = PROBLEM_CARDS.get(k, PROBLEM_CARDS["other"])
     return dict(key=k, title=title, what=what, steps=list(steps), impact=PROBLEM_IMPACT.get(k, PROBLEM_IMPACT_DEFAULT),
                 detail=str(msg or ""))
+
+
+# ---------------------------------------------------------------- 7.67 : perturbations qui reviennent (journal)
+RECUR_KINDS = ("CONFLIT", "INTERMOD", "ABSENT", "OCCUPÉ", "INCONNU", "TROP FORT", "APPAREIL PERDU")
+RECUR_LABELS = {"CONFLIT": "signal sur une réserve", "INTERMOD": "intermod sur une réserve",
+                "ABSENT": "micro qui décroche", "OCCUPÉ": "signal présent", "INCONNU": "signal inconnu",
+                "TROP FORT": "signal trop fort", "APPAREIL PERDU": "tinySA perdu"}
+
+
+def journal_csv_rows(text):
+    """Journal automatique (journal_AAAAMMJJ.csv, « ; ») -> [dict(day "AAAA-MM-JJ", minute (0-1439), sec, name, mhz,
+    kind, status, scene, group)]. kind = l'événement sans sa durée (« Libre (3 s) » -> « Libre »)."""
+    out = []
+    rd = csv.reader(io.StringIO(str(text or "").lstrip("﻿")), delimiter=";")
+    for row in rd:
+        if len(row) < 6 or row[0].strip().lower() in ("date", ""):
+            continue
+        day, hm = row[0].strip(), row[1].strip()
+        m = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$", hm)
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", day) or not m:
+            continue
+        try:
+            mhz = float(row[3].replace(",", ".")) if row[3].strip() not in ("", "—", "-") else None
+        except ValueError:
+            mhz = None
+        h, mi, se = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+        out.append(dict(day=day, minute=h * 60 + mi, sec=h * 3600 + mi * 60 + se, name=row[2].strip(), mhz=mhz,
+                        kind=row[5].split(" (")[0].strip(), status=row[6].strip() if len(row) > 6 else "",
+                        scene=row[7].strip() if len(row) > 7 else "", group=row[8].strip() if len(row) > 8 else ""))
+    return out
+
+
+def _circ_dist(a, b):
+    d = abs(int(a) - int(b)) % 1440
+    return min(d, 1440 - d)
+
+
+def recurring_events(rows, kinds=RECUR_KINDS, tol=20, min_days=2, on_statuses=(), min_share=0.0):
+    """Perturbations qui reviennent à la même heure sur plusieurs jours (journal de plusieurs jours).
+    rows = journal_csv_rows(...) ; on_statuses : statuts « doit émettre » (leur OCCUPÉ = le micro est là, ignoré).
+    -> [dict(kind, name, mhz, days, total_days, center (minute), spread (min), count, dates)] du plus fréquent au
+    moins fréquent. Un même événement au même endroit, ±tol minutes, au moins min_days jours différents."""
+    kinds = set(kinds or RECUR_KINDS)
+    on = set(on_statuses or ())
+    all_days = sorted({r["day"] for r in rows})
+    groups = {}
+    for r in rows:
+        k = r["kind"]
+        if k not in kinds or (k == "OCCUPÉ" and r["status"] in on):
+            continue
+        key = (k, r["name"], round(r["mhz"], 3) if r["mhz"] is not None else None)
+        groups.setdefault(key, []).append((r["day"], r["minute"]))
+    out = []
+    for (k, name, mhz), ev in groups.items():
+        left = list(ev)
+        while left:
+            best = None
+            for _d, m0 in left:
+                near = [x for x in left if _circ_dist(x[1], m0) <= tol]
+                nd = len({d for d, _m in near})
+                if best is None or nd > best[0] or (nd == best[0] and len(near) > len(best[2])):
+                    best = (nd, m0, near)
+            nd, m0, near = best
+            if nd < max(2, int(min_days)):
+                break
+            ang = [2 * math.pi * m / 1440.0 for _d, m in near]
+            c = math.atan2(sum(math.sin(x) for x in ang), sum(math.cos(x) for x in ang))
+            center = int(round((c % (2 * math.pi)) * 1440.0 / (2 * math.pi))) % 1440
+            spread = max(_circ_dist(m, center) for _d, m in near)
+            days = sorted({d for d, _m in near})
+            share = len(days) / max(1, len(all_days))
+            if share >= min_share:
+                out.append(dict(kind=k, name=name, mhz=mhz, days=len(days), total_days=len(all_days), center=center,
+                                spread=int(spread), count=len(near), dates=days))
+            used = set(map(id, near))
+            left = [x for x in left if id(x) not in used]      # mêmes objets que dans left : on en retire au moins 1
+    out.sort(key=lambda d: (-d["days"], -d["count"], d["center"]))
+    return out
+
+
+def recurring_text(p, tr=None):
+    """« CONFLIT · HF 3 (556,000 MHz) : 3 jours sur 4 vers 19:05 (± 12 min) »."""
+    tr = tr or (lambda x: x)
+    where = p["name"] + (f" ({p['mhz']:.3f} MHz)" if p["mhz"] is not None and p["name"] != f"{p['mhz']:.3f}" else "")
+    hm = f"{p['center'] // 60:02d}:{p['center'] % 60:02d}"
+    return (f"{tr(p['kind'])} · {where} : " + tr("{} jours sur {} vers {} (± {} min)").format(
+        p["days"], p["total_days"], hm, p["spread"]) + f" · {p['count']} " + tr("fois"))
+
+
+# ---------------------------------------------------------------- 7.67 : dossier de préparation (PDF / HTML)
+PREP_CSS = ("body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1d1d1f}"
+            "h1{font-size:18pt;margin:0 0 4px 0}h2{font-size:13pt;margin:14px 0 4px 0;color:#0a5bd3}"
+            "h3{font-size:11pt;margin:10px 0 2px 0}.mut{color:#6e6e73}.warn{color:#b25000}"
+            "table{border-collapse:collapse;width:100%}th{background:#eef2f8;text-align:left}"
+            "th,td{border:1px solid #c7ccd6;padding:3px 6px}td.n{text-align:right}")
+
+
+def prep_html(info, tr=None, img=None):
+    """Dossier de préparation d'un show (à imprimer / envoyer) : infos du show, plan de fréquences par scène ›
+    groupe, réglementation du pays, canaux TNT, scans du lieu (avec leur RBW), vérification du plan.
+    info : dict(title, place, dates, country, generated, rows=[dict(scene, group, name, mhz, status, rx, note, reg,
+    off)], reg_lines, tnt=[dict(ch, lo, hi, state)], scans=[dict(name, scene, date, lo, hi, rbw)], plan=dict(n, lines,
+    reduced) | None, notes) ; img : source de l'image du spectre (None = pas d'image)."""
+    tr = tr or (lambda x: x)
+    e = html_esc
+    p = [f"<html><head><meta charset='utf-8'><style>{PREP_CSS}</style></head><body>"]
+    p.append(f"<h1>{e(info.get('title') or tr('Dossier de préparation'))}</h1>")
+    sub = " · ".join(x for x in (info.get("place"), info.get("dates"), info.get("country")) if x)
+    if sub:
+        p.append(f"<div>{e(sub)}</div>")
+    p.append(f"<div class='mut'>{e(tr('Généré le'))} {e(info.get('generated', ''))} · TinySA Monitor</div>")
+    rows = info.get("rows") or []
+    on_air = [r for r in rows if not r.get("off")]
+    scenes = []
+    for r in rows:
+        if r["scene"] not in scenes:
+            scenes.append(r["scene"])
+    p.append(f"<h2>{e(tr('En résumé'))}</h2><ul>")
+    p.append("<li>" + e(tr("{} fréquence(s) dans le plan, {} scène(s)").format(len(rows), len([s for s in scenes if s])))
+             + "</li>")
+    if len(on_air) != len(rows):
+        p.append("<li>" + e(tr("{} en pause ou éteinte(s) exprès").format(len(rows) - len(on_air))) + "</li>")
+    regs = [r for r in rows if r.get("reg")]
+    if regs:
+        p.append("<li class='warn'>" + e(tr("{} fréquence(s) à vérifier côté réglementation (voir la colonne « Réglementation »)")
+                                        .format(len(regs))) + "</li>")
+    pl = info.get("plan")
+    if pl is not None:
+        p.append("<li" + (" class='warn'" if pl.get("n") else "") + ">" + e(
+            tr("Vérification du plan : {} problème(s)").format(pl.get("n", 0)) if pl.get("n") else
+            tr("Vérification du plan : aucun problème trouvé")) + "</li>")
+    tv = [t for t in info.get("tnt") or [] if t.get("state") == "tv"]
+    if tv:
+        p.append("<li>" + e(tr("Canaux TV occupés ici : {}").format(", ".join(str(t["ch"]) for t in tv))) + "</li>")
+    p.append("</ul>")
+    if img:
+        p.append(f"<h2>{e(tr('Spectre du lieu'))}</h2><p><img src='{e(img)}' width='680'></p>")
+    p.append(f"<h2>{e(tr('Plan de fréquences'))}</h2>")
+    for sc in scenes:
+        p.append(f"<h3>{e(sc or tr('Sans scène'))}</h3><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{e(tr('Groupe'))}</th><th>{e(tr('Nom'))}</th>"
+                 f"<th>MHz</th><th>{e(tr('Statut'))}</th><th>{e(tr('Appareil'))}</th>"
+                 f"<th>{e(tr('Réglementation'))}</th><th>{e(tr('Note'))}</th></tr>")
+        for r in [x for x in rows if x["scene"] == sc]:
+            st = r.get("status") or ""
+            if r.get("off"):
+                st = (st + " · " if st else "") + tr("en pause")
+            p.append(f"<tr><td>{e(r.get('group') or '')}</td><td>{e(r['name'])}</td><td class='n'>{r['mhz']:.3f}</td>"
+                     f"<td>{e(st)}</td><td>{e(r.get('rx') or '')}</td>"
+                     f"<td class='warn'>{e(tr(r['reg']) if r.get('reg') else '')}</td><td>{e(r.get('note') or '')}</td></tr>")
+        p.append("</table>")
+    if info.get("reg_lines"):
+        p.append(f"<h2>{e(tr('Réglementation du pays (indicatif)'))}</h2><ul>")
+        p.extend(f"<li>{e(x)}</li>" for x in info["reg_lines"])
+        p.append("</ul>")
+    if info.get("tnt"):
+        lab = {"tv": tr("TV"), "free": tr("libre"), "other": tr("autre signal"), "none": tr("pas mesuré")}
+        p.append(f"<h2>{e(tr('Canaux TNT'))}</h2><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{e(tr('Canal'))}</th><th>MHz</th>"
+                 f"<th>{e(tr('État'))}</th></tr>")
+        for t in info["tnt"]:
+            p.append(f"<tr><td>{t['ch']}</td><td>{t['lo']:g}–{t['hi']:g}</td><td>{e(lab.get(t['state'], t['state']))}"
+                     "</td></tr>")
+        p.append("</table>")
+    if info.get("scans"):
+        p.append(f"<h2>{e(tr('Scans du lieu'))}</h2><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{e(tr('Scan'))}</th><th>{e(tr('Scène'))}</th>"
+                 f"<th>{e(tr('Date'))}</th><th>MHz</th><th>RBW</th></tr>")
+        for d in info["scans"]:
+            p.append(f"<tr><td>{e(d['name'])}</td><td>{e(d.get('scene') or '')}</td><td>{e(d.get('date') or '')}</td>"
+                     f"<td>{d['lo']:.3f}–{d['hi']:.3f}</td><td>{e(rbw_text(d.get('rbw'), d.get('rbw_est'), tr))}</td></tr>")
+        p.append("</table>")
+    if pl is not None and pl.get("lines"):
+        p.append(f"<h2>{e(tr('Vérification du plan'))}</h2><ul>")
+        p.extend(f"<li>{e(x)}</li>" for x in pl["lines"][:40])
+        if len(pl["lines"]) > 40:
+            p.append("<li>" + e(tr("… et {} autre(s)").format(len(pl["lines"]) - 40)) + "</li>")
+        p.append("</ul>")
+    if info.get("notes"):
+        p.append(f"<h2>{e(tr('Notes'))}</h2><p>{e(info['notes'])}</p>")
+    if info.get("disclaimer"):
+        p.append(f"<p class='mut'>{e(tr(info['disclaimer']))}</p>")
+    p.append("</body></html>")
+    return "".join(p)
 
 
 # ===== PURE-END
@@ -22263,6 +22447,335 @@ class MapWindow(QtWidgets.QWidget):
         super().closeEvent(e)
 
 
+def spectrum_qimage(F, L, w=1360, h=420, thr=None, marks=()):
+    """7.67 : image du spectre pour le dossier de préparation (sans pyqtgraph : QPainter seul). marks = [(MHz, nom)]."""
+    img = QtGui.QImage(w, h, QtGui.QImage.Format.Format_RGB32)
+    img.fill(QtGui.QColor("#ffffff"))
+    F = np.asarray(F, dtype=float)
+    L = np.asarray(L, dtype=float)
+    ok = np.isfinite(F) & np.isfinite(L)
+    if ok.sum() < 2:
+        return img
+    F, L = F[ok], L[ok]
+    x0, x1 = float(F.min()), float(F.max())
+    y0 = math.floor((min(float(np.percentile(L, 1)), thr if thr is not None else 0) - 5) / 10.0) * 10
+    y1 = math.ceil((float(L.max()) + 5) / 10.0) * 10
+    ml, mr, mt, mb = 52, 12, 10, 28
+    pw, ph = w - ml - mr, h - mt - mb
+    X = lambda f: ml + (f - x0) / max(1e-9, x1 - x0) * pw
+    Y = lambda v: mt + (y1 - v) / max(1e-9, y1 - y0) * ph
+    p = QtGui.QPainter(img)
+    p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    p.setPen(QtGui.QPen(QtGui.QColor("#d8dde6"), 1))
+    fnt = p.font()
+    fnt.setPointSize(8)
+    p.setFont(fnt)
+    for v in range(int(y0), int(y1) + 1, 10):
+        p.drawLine(QtCore.QPointF(ml, Y(v)), QtCore.QPointF(ml + pw, Y(v)))
+        p.setPen(QtGui.QColor("#6e6e73"))
+        p.drawText(QtCore.QRectF(0, Y(v) - 7, ml - 6, 14), Qt.AlignmentFlag.AlignRight, f"{v}")
+        p.setPen(QtGui.QPen(QtGui.QColor("#d8dde6"), 1))
+    span = x1 - x0
+    stepx = next((s_ for s_ in (1, 2, 5, 10, 20, 25, 50, 100, 200, 500) if span / s_ <= 12), 1000)
+    f_ = math.ceil(x0 / stepx) * stepx
+    while f_ <= x1:
+        p.drawLine(QtCore.QPointF(X(f_), mt), QtCore.QPointF(X(f_), mt + ph))
+        p.setPen(QtGui.QColor("#6e6e73"))
+        p.drawText(QtCore.QRectF(X(f_) - 30, mt + ph + 4, 60, 16), Qt.AlignmentFlag.AlignHCenter, f"{f_:g}")
+        p.setPen(QtGui.QPen(QtGui.QColor("#d8dde6"), 1))
+        f_ += stepx
+    if thr is not None:
+        p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 1.2, Qt.PenStyle.DashLine))
+        p.drawLine(QtCore.QPointF(ml, Y(thr)), QtCore.QPointF(ml + pw, Y(thr)))
+    for f, _n in marks:
+        if x0 <= f <= x1:
+            p.setPen(QtGui.QPen(QtGui.QColor(10, 132, 255, 90), 1))
+            p.drawLine(QtCore.QPointF(X(f), mt), QtCore.QPointF(X(f), mt + ph))
+    path = QtGui.QPainterPath()
+    gaps = set(int(i) for i in scan_gaps(F)) if len(F) > 2 else set()
+    for i in range(len(F)):
+        pt = QtCore.QPointF(X(F[i]), Y(L[i]))
+        if i == 0 or i in gaps:                      # trou entre deux bandes : pas de trait par-dessus
+            path.moveTo(pt)
+        else:
+            path.lineTo(pt)
+    p.setPen(QtGui.QPen(QtGui.QColor("#0a5bd3"), 1.1))
+    p.drawPath(path)
+    p.setPen(QtGui.QColor("#6e6e73"))
+    p.drawText(QtCore.QRectF(ml, h - 14, pw, 14), Qt.AlignmentFlag.AlignRight, "MHz · dBm")
+    p.end()
+    return img
+
+
+class CoordScanDialog(QtWidgets.QDialog):
+    """📏 7.67 (Clément : « qu'il faut un RBW fin ») : scan pour la coordination fait tout seul. RBW fine + points
+    calés sur la RBW, pics remis à zéro, balayage N minutes, puis scan gardé dans Scans par lieu (avec sa RBW) et
+    réglages de surveillance remis comme avant."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Scan pour la coordination")
+        self.setModal(False)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Le tinySA balaye tes bandes avec une RBW fine et des points calés sur cette RBW (aucun "
+                                "signal ne passe entre deux points), en gardant les pics, pendant le temps choisi. À la "
+                                "fin, le scan est gardé dans Scans par lieu avec sa RBW, et tes réglages de surveillance "
+                                "reviennent comme avant.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        f = QtWidgets.QFormLayout()
+        self.rbw = QtWidgets.QComboBox()
+        for v, lab in ((10, "10 kHz (très fin, très lent)"), (30, "30 kHz (conseillé)"), (100, "100 kHz (rapide, moins précis)")):
+            self.rbw.addItem(lab, v)
+        self.rbw.setCurrentIndex(1)
+        self.rbw.setToolTip(COORD_RBW_TIP)
+        self.minutes = QtWidgets.QSpinBox()
+        self.minutes.setRange(1, 120)
+        self.minutes.setValue(5)
+        self.minutes.setSuffix(" min")
+        self.minutes.setToolTip("Plus long = plus de chances d'attraper ce qui émet par moments (talkies, liaisons).")
+        self.scene = QtWidgets.QComboBox()
+        self.scene.setEditable(True)
+        for sc in o.scenes:
+            self.scene.addItem(sc["name"])
+        one = {k[0] for k in o.scope or [] if k}
+        self.scene.setEditText(next(iter(one)) if len(one) == 1 else (o.scenes[0]["name"] if o.scenes else "Site"))
+        self.scene.setToolTip("Lieu (scène) où le scan sera rangé dans Scans par lieu.")
+        self.label = QtWidgets.QLineEdit("")
+        self.label.setPlaceholderText("ex. jardin, régie… (sinon l'heure)")
+        self.label.setToolTip("Étiquette du scan (facultatif).")
+        f.addRow("Finesse (RBW) :", self.rbw)
+        f.addRow("Durée :", self.minutes)
+        f.addRow("Lieu :", self.scene)
+        f.addRow("Étiquette :", self.label)
+        lay.addLayout(f)
+        self.est = QtWidgets.QLabel("")
+        self.est.setWordWrap(True)
+        lay.addWidget(self.est)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setRange(0, 1000)
+        self.bar.hide()
+        lay.addWidget(self.bar)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        row = QtWidgets.QHBoxLayout()
+        self.go = QtWidgets.QPushButton("▶ Lancer le scan")
+        self.go.setToolTip("Règle la RBW et les points, efface les pics gardés et balaye le temps choisi.")
+        self.go.clicked.connect(lambda *_: self.start() if self._state is None else self.stop(cancel=True))
+        self.sites_btn = QtWidgets.QPushButton("📍 Scans par lieu…")
+        self.sites_btn.setToolTip("Voir les scans gardés (comparer, exporter avec la RBW dans le nom).")
+        self.sites_btn.clicked.connect(lambda *_: o.open_sites())
+        b_close = QtWidgets.QPushButton("Fermer")
+        b_close.clicked.connect(self.close)
+        row.addWidget(self.go)
+        row.addWidget(self.sites_btn)
+        row.addStretch(1)
+        row.addWidget(b_close)
+        lay.addLayout(row)
+        self._state = None
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.rbw.currentIndexChanged.connect(lambda *_: self._estimate())
+        self._estimate()
+        fit_dialog(self, 560, 420)
+
+    def _estimate(self):
+        o = self.owner
+        act = [b for b in o.bands if b["enabled"]] or o.bands
+        total = sum(max(0.0, b["stop"] - b["start"]) for b in act)
+        rbw = float(self.rbw.currentData())
+        step = auto_scan_step(total, rbw, AUTO_BUDGET.get(0, 4500))
+        n = int(total * 1000.0 / max(step, 0.001))
+        self.est.setText(TR("Bandes balayées : {} MHz au total · pas de {} kHz ≈ {} points par tour (plus lent qu'en "
+                            "surveillance : c'est normal).").format(f"{total:g}", f"{step:g}", n))
+
+    def start(self):
+        o = self.owner
+        st = dict(rbw=o.rbw_combo.currentIndex(), pts=o.points_combo.currentIndex(), hold=o.hold_chk.isChecked(),
+                  running=o.is_running(), t0=time.time(), dur=self.minutes.value() * 60.0, extra=0.0,
+                  scene=self.scene.currentText().strip() or "Site", label=self.label.text().strip(),
+                  rbw_v=float(self.rbw.currentData()))
+        for i in range(o.rbw_combo.count()):
+            v = o.rbw_combo.itemData(i)
+            if v is not None and abs(float(v) - st["rbw_v"]) < 1e-6:
+                o.rbw_combo.setCurrentIndex(i)
+                break
+        i_auto = o.points_combo.findData(0)
+        if i_auto >= 0:
+            o.set_points_choice(i_auto)
+        o.hold_chk.setChecked(True)
+        o.reset_max()
+        self._state = st
+        if not st["running"]:
+            o.toggle_run(auto=True)
+        self.go.setText(TR("■ Arrêter (sans garder)"))
+        for w_ in (self.rbw, self.minutes, self.scene, self.label):
+            w_.setEnabled(False)
+        self.bar.setValue(0)
+        self.bar.show()
+        self.msg.setText(TR("Scan en cours… laisse le tinySA balayer."))
+        self.timer.start(1000)
+
+    def _tick(self):
+        st, o = self._state, self.owner
+        if st is None:
+            return
+        el = time.time() - st["t0"]
+        tot = st["dur"] + st["extra"]
+        self.bar.setValue(int(1000 * min(1.0, el / max(1.0, tot))))
+        left = max(0, int(tot - el))
+        self.msg.setText(TR("Scan en cours… encore {} min {} s.").format(left // 60, f"{left % 60:02d}"))
+        if el > 8 and not o.is_running():
+            self.stop(cancel=True, why=TR("La surveillance s'est arrêtée : scan abandonné."))
+            return
+        if el >= tot:
+            F, L = o.fresh_FL(use_max=True, any_age=True)
+            if F is None and st["extra"] < 180:
+                st["extra"] += 30                 # pas encore un tour complet : on attend un peu
+                return
+            self.stop(cancel=F is None, F=F, L=L,
+                      why=None if F is not None else TR("Aucun tour complet mesuré : scan abandonné."))
+
+    def stop(self, cancel=False, F=None, L=None, why=None):
+        st, o = self._state, self.owner
+        if st is None:
+            return
+        self.timer.stop()
+        self._state = None
+        saved = None
+        if not cancel and F is not None:
+            names = {d["name"] for d in o.site_scans}
+            name = snapshot_name(st["scene"], st["label"], names, time.strftime("%H:%M"))
+            o.site_scans.append(site_scan_doc(name, F, L, time.time(), scene=st["scene"],
+                                              dur=time.time() - st["t0"], rbw=st["rbw_v"]))
+            saved = name
+            o.undo_track()
+            o.update_site_curve()
+            o._bump()
+        o.rbw_combo.setCurrentIndex(st["rbw"])        # réglages de surveillance comme avant
+        o.set_points_choice(st["pts"])
+        o.hold_chk.setChecked(st["hold"])
+        if not st["running"] and o.is_running():
+            o.toggle_run()
+        for w_ in (self.rbw, self.minutes, self.scene, self.label):
+            w_.setEnabled(True)
+        self.go.setText(TR("▶ Lancer le scan"))
+        self.bar.hide()
+        if saved:
+            line, _ok = rbw_coord_line(st["rbw_v"], False, TR, step=scan_step_khz(F))
+            self.msg.setText(TR("✔ Scan gardé : « {} » ({}). Il est dans Scans par lieu, prêt pour la coordination "
+                                "et l'export. Réglages de surveillance remis comme avant.").format(
+                                    saved, fmt_duration(time.time() - st["t0"])) + "\n" + line)
+            o.set_status(TR("📏 Scan pour la coordination gardé : {}").format(saved))
+        else:
+            self.msg.setText(why or TR("Scan arrêté sans rien garder. Réglages de surveillance remis comme avant."))
+
+    def closeEvent(self, e):
+        if self._state is not None:
+            self.stop(cancel=True)
+        super().closeEvent(e)
+
+
+class RecurringDialog(QtWidgets.QDialog):
+    """🔁 7.67 : perturbations qui reviennent à la même heure sur plusieurs jours, d'après les journaux automatiques."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Perturbations qui reviennent")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("D'après les journaux automatiques (un fichier par jour) : ce qui se répète à la même "
+                                "heure sur plusieurs jours. Ex. un talkie qui s'allume tous les soirs vers 19 h, un "
+                                "micro qui décroche toujours au même moment.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        row = QtWidgets.QHBoxLayout()
+        self.days = QtWidgets.QComboBox()
+        for n in (3, 7, 14, 30, 90):
+            self.days.addItem(TR("{} derniers jours").format(n), n)
+        self.days.setCurrentIndex(1)
+        self.days.setToolTip("Combien de journaux (jours) lire.")
+        self.tol = QtWidgets.QSpinBox()
+        self.tol.setRange(5, 120)
+        self.tol.setValue(20)
+        self.tol.setPrefix("± ")
+        self.tol.setSuffix(" min")
+        self.tol.setToolTip("« Même heure » à plus ou moins tant de minutes.")
+        self.mind = QtWidgets.QSpinBox()
+        self.mind.setRange(2, 30)
+        self.mind.setValue(2)
+        self.mind.setSuffix(TR(" jours mini"))
+        self.mind.setToolTip("Nombre de jours différents où ça doit revenir.")
+        self.occ = QtWidgets.QCheckBox("Inclure les signaux présents (OCCUPÉ)")
+        self.occ.setChecked(True)
+        self.occ.setToolTip("Un signal qui s'allume sur une fréquence sans statut (pas tes micros « doit émettre »).")
+        for w_ in (self.days, self.tol, self.mind, self.occ):
+            row.addWidget(w_)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.table = QtWidgets.QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["Quoi", "Où", "MHz", "Vers", "Jours", "Fois"])
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setToolTip("Double-clic : chasser ce signal (zoom sur sa fréquence).")
+        self.table.cellDoubleClicked.connect(self._hunt)
+        lay.addWidget(self.table, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        b = QtWidgets.QHBoxLayout()
+        cp = QtWidgets.QPushButton("Copier")
+        cp.setToolTip("Copie la liste en texte (message, rapport).")
+        cp.clicked.connect(lambda *_: QtWidgets.QApplication.clipboard().setText("\n".join(self.lines)))
+        cl = QtWidgets.QPushButton("Fermer")
+        cl.clicked.connect(self.close)
+        b.addWidget(cp)
+        b.addStretch(1)
+        b.addWidget(cl)
+        lay.addLayout(b)
+        self.pats, self.lines = [], []
+        for w_ in (self.days, self.tol, self.mind):
+            (w_.currentIndexChanged if isinstance(w_, QtWidgets.QComboBox) else w_.valueChanged).connect(
+                lambda *_: self.refresh())
+        self.occ.toggled.connect(lambda *_: self.refresh())
+        fit_dialog(self, 820, 520)
+        self.refresh()
+
+    def refresh(self):
+        o = self.owner
+        rows, nfiles = o.journal_rows(self.days.currentData())
+        kinds = [k for k in RECUR_KINDS if self.occ.isChecked() or k != "OCCUPÉ"]
+        on = [s["name"] for s in o.statuses if s.get("on")]
+        self.pats = recurring_events(rows, kinds, self.tol.value(), self.mind.value(), on)
+        self.lines = [recurring_text(p_, TR) for p_ in self.pats]
+        t = self.table
+        t.setRowCount(len(self.pats))
+        for r, p_ in enumerate(self.pats):
+            vals = [TR(p_["kind"]) + " — " + TR(RECUR_LABELS.get(p_["kind"], "")), p_["name"],
+                    f"{p_['mhz']:.3f}" if p_["mhz"] is not None else "—",
+                    f"{p_['center'] // 60:02d}:{p_['center'] % 60:02d} ± {p_['spread']}'",
+                    f"{p_['days']} / {p_['total_days']}", str(p_["count"])]
+            for c, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                it.setToolTip(TR("Jours : {}").format(", ".join(p_["dates"])))
+                t.setItem(r, c, it)
+        t.resizeColumnsToContents()
+        if not nfiles:
+            self.msg.setText(TR("Aucun journal automatique trouvé dans {} : coche « Journal auto (CSV / jour) » (onglet "
+                                "Journal) pour que l'appli note chaque jour dans un fichier.").format(o.log_dir))
+        elif not self.pats:
+            self.msg.setText(TR("{} journal(aux) lu(s) : rien ne revient à la même heure sur plusieurs jours.").format(nfiles))
+        else:
+            self.msg.setText(TR("{} journal(aux) lu(s) · {} perturbation(s) qui reviennent.").format(nfiles, len(self.pats)))
+
+    def _hunt(self, r, _c):
+        if 0 <= r < len(self.pats) and self.pats[r]["mhz"] is not None:
+            self.owner.open_hunt(self.pats[r]["mhz"])
+
+
 class ReplaceDialog(QtWidgets.QDialog):
     """🆘 7.62 Remplacer un micro brouillé : 3 propositions (son appareil, sa bande, compatibles avec tout le plan,
     libres d'après la mesure), un clic = remplacé + journal. Le calcul tourne en arrière-plan."""
@@ -24395,6 +24908,12 @@ class MainWindow(QtWidgets.QMainWindow):
         "🪟 Fenêtres": "Panneaux, vraies fenêtres, double écran, dispositions prêtes.",
     }
     TIPS_MENU.update({                              # 7.46 : entrées des 4 menus Préparer / Surveiller / Analyser / Matériel
+        "📏 Scan pour la coordination": "Scan fait tout seul pour une coordination : RBW fine (30 kHz conseillé), points calés\n"
+                                       "dessus, pics gardés N minutes, puis rangé dans Scans par lieu avec sa RBW.",
+        "🖨 Dossier de préparation": "Une fiche à imprimer ou envoyer : plan de fréquences par scène, appareils,\n"
+                                     "réglementation, canaux TNT, scans du lieu (avec leur RBW), spectre.",
+        "🔁 Perturbations qui reviennent": "D'après les journaux de plusieurs jours : ce qui revient à la même heure\n"
+                                           "(talkie tous les soirs vers 19 h, micro qui décroche toujours au même moment).",
         "📦 Tout envoyer pour un dépannage": "Un seul ZIP avec le show, la config (sans jetons ni mots de passe), un\n"
                                               "diagnostic tout frais, les journaux, rapports et diagnostics de la semaine.",
         "🗺 Carte du site": "Tes scènes et tes tinySA sur un canevas : glisse-les, dépose un tinySA sur une scène pour la lui\n"
@@ -34406,6 +34925,132 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_status(f"⚠ Résumé impossible : {e}")
             return None
         self.set_status(f"🌅 Résumé enregistré : {path}")
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(path)))
+        return path
+
+    # ------------------------------------------------------------ 7.67 : scan de coord, dossier, perturbations
+    def open_coord_scan(self):
+        """📏 Scan pour la coordination : RBW fine, points calés dessus, gardé avec sa RBW."""
+        d = getattr(self, "_cscan", None)
+        if d is None:
+            d = self._cscan = CoordScanDialog(self)
+        d.show()
+        d.raise_()
+        d.activateWindow()
+        return d
+
+    def journal_rows(self, days=7):
+        """Lignes des journaux automatiques des `days` derniers jours -> (lignes, nombre de fichiers lus)."""
+        rows, n = [], 0
+        try:
+            files = sorted(self.log_dir.glob("journal_*.csv"))[-int(days):]
+        except Exception:  # noqa: BLE001
+            files = []
+        for p_ in files:
+            try:
+                rows.extend(journal_csv_rows(p_.read_text(encoding="utf-8-sig", errors="replace")))
+                n += 1
+            except Exception:  # noqa: BLE001
+                continue
+        return rows, n
+
+    def open_recurring(self):
+        """🔁 Perturbations qui reviennent à la même heure, d'après les journaux de plusieurs jours."""
+        RecurringDialog(self).exec()
+
+    def prep_info(self):
+        """Tout ce que met le dossier de préparation (show, plan, réglementation, TNT, scans, vérification)."""
+        meta = self.show_meta or {}
+        code = self.country_code()
+        cname = dict(COUNTRIES).get(code, code or "")
+        dates = " – ".join(str(x) for x in (meta.get("date_from"), meta.get("date_to")) if x)
+        rows = []
+        for w in self.watch:
+            rows.append(dict(scene=w.get("scene") or "", group=w.get("group") or "", name=w["name"], mhz=w["freq"],
+                             status=w.get("status") or "", rx=rx_short(self.rx_of(w)) if self.rx_of(w) else "",
+                             note=w.get("note") or "", off=bool(w.get("off") or w.get("muted")),
+                             reg=(self.reg_tag(w["freq"], float(w.get("bw") or 0.0))
+                                  if not self.is_keep_free(w.get("status")) else "")))
+        order = [sc["name"] for sc in self.scenes]
+        rows.sort(key=lambda r: (order.index(r["scene"]) if r["scene"] in order else len(order), r["group"], r["mhz"]))
+        reg_lines = [x for x in reg_detail(code, TR).split("\n") if x.strip()] if reg_known(code) else []
+        try:
+            tn = self.tnt_measure_now()
+            tnt = [dict(ch=r["ch"], lo=r["lo"], hi=r["hi"], state=r["state"]) for r in tn["rows"]
+                   if r["state"] != "none"]
+        except Exception:  # noqa: BLE001
+            tnt = []
+        scans = []
+        for d in self.site_scans:
+            i_ = site_scan_info(d)
+            scans.append(dict(name=d["name"], scene=i_["scene"], lo=i_["lo"], hi=i_["hi"], rbw=i_["rbw"],
+                              rbw_est=i_["rbw_est"], date=_fmt_ts(i_["t"], "%d/%m/%Y %H:%M")))
+        plan = None
+        if self.coord_on:
+            try:
+                ws = [w for w in self.watch if not w.get("off")]
+                if 0 < len(ws) <= 120:
+                    dflt = dict(sep=self.plan_opts.get("sep", 300) / 1000.0, filt=float(self.plan_opts.get("filt", 32.0)),
+                                tol=IM_TOL_PRESETS[0][1])
+                    P = [rx_profile(self.rx_of(w)) or dflt for w in ws]
+                    F = [w["freq"] for w in ws]
+                    iss, inf = pf_check(F, [not self.is_keep_free(w["status"]) for w in ws],
+                                        [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P],
+                                        [q["tol"] for q in P], None, [q["filt"] for q in P])
+                    names = [w["name"] for w in ws]
+                    lines = []
+                    for k_, its in enumerate(iss):
+                        for it in its:
+                            lines.append(f"{names[k_]} ({F[k_]:.3f}) : " + TR(pf_issue_text(it, names, F)))
+                    plan = dict(n=sum(1 for x in iss if x), lines=lines, reduced=bool((inf or {}).get("reduced")))
+            except Exception:  # noqa: BLE001
+                plan = None
+        return dict(title=meta.get("name") or TR("Dossier de préparation"), place=meta.get("venue") or "",
+                    dates=dates, country=cname, generated=datetime.now().strftime("%d/%m/%Y %H:%M"), rows=rows,
+                    reg_lines=reg_lines, tnt=tnt, scans=scans, plan=plan, notes=meta.get("notes") or "",
+                    disclaimer=COORD_NOTE)
+
+    def export_prep(self, path=None):
+        """🖨 Dossier de préparation du show : PDF (à imprimer / envoyer) ou page web."""
+        if path is None:
+            meta = self.show_meta or {}
+            dflt = self.log_dir / "rapports" / f"preparation_{session_name(meta.get('name') or 'show')}_{datetime.now():%Y%m%d}.pdf"
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Dossier de préparation", str(dflt),
+                                                            "PDF (*.pdf);;Page web (*.html)")
+            if not path:
+                return None
+        info = self.prep_info()
+        F, L = self.coord_FL("all")
+        img = None
+        if F is not None and len(F) > 2:
+            img = spectrum_qimage(F, L, thr=self.busy_limit(L), marks=[(r["mhz"], r["name"]) for r in info["rows"]])
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            if str(path).lower().endswith(".html"):
+                src = None
+                if img is not None:
+                    ba = QtCore.QByteArray()
+                    buf = QtCore.QBuffer(ba)
+                    buf.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+                    img.save(buf, "PNG")
+                    src = "data:image/png;base64," + bytes(ba.toBase64()).decode("ascii")
+                Path(path).write_text(prep_html(info, TR, src), encoding="utf-8")
+            else:
+                doc = QtGui.QTextDocument()
+                if img is not None:
+                    doc.addResource(QtGui.QTextDocument.ResourceType.ImageResource, QtCore.QUrl("spectre.png"), img)
+                doc.setHtml(prep_html(info, TR, "spectre.png" if img is not None else None))
+                wr = QtGui.QPdfWriter(str(path))
+                wr.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
+                wr.setPageMargins(QtCore.QMarginsF(12, 12, 12, 12), QtGui.QPageLayout.Unit.Millimeter)
+                wr.setResolution(150)
+                wr.setTitle(info["title"])
+                doc.setPageSize(QtCore.QSizeF(wr.width(), wr.height()))
+                doc.print_(wr)
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"⚠ Dossier impossible : {e}")
+            return None
+        self.set_status(f"🖨 Dossier de préparation enregistré : {path}")
         QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(path)))
         return path
 
