@@ -273,5 +273,62 @@ check("relecture : déplacement (commence à 2 s)", pf and 1.9 <= pf[0]["pos"] <
 check("relecture : ×4 plus rapide", dt4 < 1.5, f"{dt4:.2f} s")
 os.environ["FAKE_IQ_BURSTS"] = ""
 
+# ---- étape 7 : WiNRADiO G39DDC avec une FAUSSE DLL (même façon de l'appeler ; pas le vrai récepteur)
+sys.path.insert(0, HERE)
+import fake_winradio  # noqa: E402
+fk = fake_winradio.FakeG39()
+m.WINRADIO_LIB = fk
+os.environ.update(FAKE_IQ_CARRIERS="473.000:1000,606.000:1000")
+ev = dict(sweeps=[], links=[], errors=[], info=[])
+w = m.ScanWorker("winradio", False, lambda: cfg, lambda: 1)
+w.sweep.connect(lambda bid, f, l: ev["sweeps"].append((bid, np.asarray(f), np.asarray(l))))
+w.error.connect(lambda msg: ev["errors"].append(msg))
+w.info.connect(lambda t: ev["info"].append(t))
+w.start()
+wait_until(lambda: len(ev["sweeps"]) >= 4, 30)
+w.requestInterruption()
+w.wait(8000)
+app.processEvents()
+sw = [x for x in ev["sweeps"] if x[0] == 7]
+check("WiNRADiO : balayage reçu (faux G39DDC)", sw and not ev["errors"], str(ev["errors"]) + str(len(ev["sweeps"])))
+if sw:
+    _b, F7, L7 = sw[-1]
+    check("WiNRADiO : porteuse vue à 473 MHz", abs(F7[int(np.argmax(L7))] - 473.0) < 0.1,
+          str(F7[int(np.argmax(L7))]))
+    check("WiNRADiO : niveau au-dessus du bruit (dBm via la compensation)", float(np.max(L7)) - float(np.median(L7)) > 30,
+          f"{np.max(L7):.1f} / {np.median(L7):.1f}")
+check("WiNRADiO : version = n° de série", ev["info"] and "FAKE0001" in ev["info"][0], str(ev["info"]))
+check("WiNRADiO : balayage matériel demandé (StartSweeping)", any(c[0] == "StartSweeping" for c in fk.calls))
+check("WiNRADiO : récepteur refermé à l'arrêt", fk.opened == 0, str(fk.opened))
+# écoute par le DDC1 : type de DDC choisi d'après la largeur, son à 48 kHz (débit 250 kS/s : rééchantillonné)
+fk.calls.clear()
+lw = m.ListenWorker("winradio", 606.05e6, [606.0], "wfm", 50.0, None, "none", dict(att=0, amp=0))
+lw.span = 150e3
+lw.want_spec = True
+spec8 = []
+lw.spectrum.connect(lambda F, L: spec8.append((np.asarray(F), np.asarray(L))))
+stop8 = []
+lw.stopped.connect(lambda why: stop8.append(why))
+lw.start()
+wait_until(lambda: len(lw.audio) >= 40 and len(spec8) >= 2, 25)
+pcm8 = b"".join(list(lw.audio))
+lw.requestInterruption()
+lw.wait(8000)
+app.processEvents()
+a8 = np.frombuffer(pcm8, dtype="<i2").astype(np.float32)[0::2] / 32000
+check("WiNRADiO : plus petit DDC qui couvre la fenêtre (250 kS/s)", ("SetDDC1", 0) in fk.calls, str(fk.calls[:6]))
+check("WiNRADiO : son reçu", len(a8) > 20000 and not [x for x in stop8 if x], str(len(a8)) + str(stop8))
+check("WiNRADiO : micro 606,000 entendu (1 kHz) malgré un débit pas multiple de 240 kHz",
+      len(a8) > 20000 and abs(tone_of(a8[4800:]) - 1000) < 40, str(tone_of(a8[4800:]) if len(a8) > 5000 else None))
+check("WiNRADiO : spectre de la fenêtre envoyé (surveillance pendant l'écoute)",
+      spec8 and abs(spec8[-1][0][int(np.argmax(spec8[-1][1]))] - 606.0) < 0.05, str(len(spec8)))
+check("WiNRADiO : refermé après l'écoute", fk.opened == 0)
+# open_iq_source : 32 bits quand on demande 4 MHz de large
+src = m.open_iq_source("winradio", 606e6, 5000000, {}, wr_lib=fk, span=4e6)
+check("WiNRADiO : 4 MHz -> DDC 5 MS/s en 16 bits (préféré au 32 bits)", src.rate == 5000000 and src.dtype == "ci16_le",
+      f"{src.rate} {src.dtype}")
+src.close()
+m.WINRADIO_LIB = None
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

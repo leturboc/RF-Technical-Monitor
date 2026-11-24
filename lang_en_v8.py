@@ -301,3 +301,144 @@ WEB = [
     ('"Refusé ("', '"Refused ("'),
 ]
 WEB.append(('"Code PIN incorrect."', '"Wrong PIN code."'))
+# ---- étape 7 : fiches des SDR, WiNRADiO, surveillance pendant l'écoute
+for _k in ("AudioPlaybackStreamCallback", "AudioStreamCallback", "Bandwidth", "BitsPerSample", "ChannelCount",
+           "CloseDevice", "DDC1PlaybackStreamCallback", "DDC1StreamCallback", "DDC2PreprocessedStreamCallback",
+           "DDC2StreamCallback", "DevicePath", "EEPROMVersion", "FWVersion", "FrontEndFrequencyStep",
+           "FrontEndMaxFrequency", "FrontEndMaxHFFrequency", "FrontEndMinFrequency", "FrontEndWindowWidth",
+           "GetDDC1Count", "GetDDCInfo", "GetDeviceInfo", "GetIFSpectrumCompensation", "HWVersion", "HardwareOptions",
+           "IFCallback", "InterfaceType", "OpenDevice", "PATH", "SampleRate", "SerialNumber", "SetAttenuator",
+           "SetCallbacks", "SetDDC1", "SetDDC1Frequency", "SetDDC1Mode", "SetFrontEndFrequency", "SetPower",
+           "SetPreamplifier", "StartDDC1", "StartSweeping", "StopDDC1", "StopSweeping", "SweepingCallback",
+           "WINFUNCTYPE", "WinDLL", "G39DDCAPI.dll", "SoapySDR", "ADALM-Pluto", "Airspy HF+", "Airspy HF+ Discovery",
+           "Airspy Mini", "Airspy R2", "Airspy R2 / Mini", "Ettus USRP", "Ettus USRP B200 / B210", "HackRF One / Pro",
+           "HackRF Pro", "LimeSDR", "LimeSDR Mini", "RTL-SDR Blog V3", "RTL-SDR Blog V4", "SDRplay RSP (1A, 1B, dx, duo)",
+           "SDRplay RSP1A", "SDRplay RSPduo", "SDRplay RSPdx / RSPdx-R2", "WiNRADiO G39DDC", "WiNRADiO G39DDC Excelsior",
+           "WiNRADiO G65DDC", "bladeRF 2.0 micro", "winradio.com (doc + G39DDCAPI.h)", "winradio.com (doc + G65DDCAPI.h)",
+           "C:\\Program Files (x86)\\WiNRADiO", "C:\\Program Files (x86)\\WiNRADiO\\G39DDC",
+           "C:\\Program Files\\WiNRADiO", "C:\\Program Files\\WiNRADiO\\G39DDC", "Gain"):
+    EXACT[_k] = _k
+EXACT.update({
+    "  (pas pris en charge)": "  (not supported)",
+    "(Windows) : HackRF / RTL-SDR :": "(Windows): HackRF / RTL-SDR:",
+    "(outils + pilotes, pilote USB avec": "(tools + drivers, USB driver with",
+    "+ le module du fabricant + les": "+ the manufacturer's module + the",
+    "0 – 88 MHz seulement : pas de micros UHF. Pas pris en charge (API différente : canaux DDC multiples).":
+        "0 – 88 MHz only: no UHF mics. Not supported (different API: multiple DDC channels).",
+    "100 kHz – 6 GHz, 8 bits ; mode 16 bits (ENOB 9 à 11) à bas débit, pas encore utilisé par les outils hackrf_* (supposé). Entrée max supposée comme le One.":
+        "100 kHz – 6 GHz, 8 bits; 16-bit mode (ENOB 9 to 11) at low rates, not yet used by the hackrf_* tools (assumed). Max input assumed the same as the One.",
+    "12 bits (10,4 ENOB), 10 MS/s, ~9 MHz sans repliement. Débits pas multiples de 240 kHz : son rééchantillonné.":
+        "12 bits (10.4 ENOB), 10 MS/s, ~9 MHz alias-free. Rates not multiples of 240 kHz: audio resampled.",
+    "12 bits ; en USB 2 le débit utile tient autour de 4 MS/s.": "12 bits; over USB 2 the usable rate is about 4 MS/s.",
+    "12 bits, jusqu'à 56 MHz ; entrée max −15 dBm (fiche).": "12 bits, up to 56 MHz; max input −15 dBm (datasheet).",
+    "12 bits, jusqu'à 6 MHz de vue (10 MS/s possibles).": "12 bits, up to 6 MHz view (10 MS/s possible).",
+    "12 bits, jusqu'à 61,44 MS/s.": "12 bits, up to 61.44 MS/s.",
+    "12 bits, jusqu'à ~30 MS/s.": "12 bits, up to ~30 MS/s.",
+    "14 bits jusqu'à ~6 MS/s (moins de bits au-delà, jusqu'à 10 MHz de large). Bien plus de dynamique qu'un 8 bits : un micro faible à côté d'un émetteur fort reste visible.":
+        "14 bits up to ~6 MS/s (fewer bits above, up to 10 MHz wide). Much more dynamic range than 8 bits: a weak mic next to a strong transmitter stays visible.",
+    "14 bits, 10 MHz, 3 entrées d'antenne (choisies dans le logiciel SDRplay).":
+        "14 bits, 10 MHz, 3 antenna inputs (chosen in the SDRplay software).",
+    "16 bits à 100 MS/s. Balayage matériel calibré en dBm. Flux IQ (DDC1) jusqu'à 4 MHz (2 canaux) ou 6 MHz (mode large) : débits demandés au récepteur. Piloté par sa DLL Windows G39DDCAPI.dll.":
+        "16 bits at 100 MS/s. Hardware sweep calibrated in dBm. IQ stream (DDC1) up to 4 MHz (2 channels) or 6 MHz (wide mode): rates asked from the receiver. Driven through its Windows DLL G39DDCAPI.dll.",
+    "8 bits : environ 48 dB de dynamique dans la fenêtre ; un émetteur fort tout près sature vite. Ne pas dépasser −5 dBm à l'entrée.":
+        "8 bits: about 48 dB of dynamic range in the window; a strong transmitter close by saturates it quickly. Do not exceed −5 dBm at the input.",
+    "8 bits, 2,4 MS/s stables (≈ 1,9 MHz utiles) : une seule petite fenêtre.":
+        "8 bits, 2.4 MS/s stable (≈ 1.9 MHz usable): a single small window.",
+    ": choisis-le dans la liste des ports (ou comme 2ᵉ appareil). Il balaye tes bandes, et il sait aussi":
+        ": choose it in the port list (or as the 2nd device). It sweeps your bands, and it can also",
+    "Ajouté aux niveaux de ce SDR pendant l'écoute (dBFS -> dBm à peu près), pour que la\nsurveillance pendant l'écoute ait la même échelle que le tinySA. 0 pour un WiNRADiO\n(déjà en dBm). Le plus juste : la calibration automatique avec un tinySA.":
+        "Added to this SDR's levels while listening (dBFS -> roughly dBm), so that\nmonitoring while listening uses the same scale as the tinySA. 0 for a WiNRADiO\n(already in dBm). Most accurate: automatic calibration with a tinySA.",
+    "Ampli d'entrée": "Input amp",
+    "Ampli d'entrée +14 dB": "Input amp +14 dB",
+    "Atténuateur (0 = automatique)": "Attenuator (0 = automatic)",
+    "Atténuateur (< 60 MHz)": "Attenuator (< 60 MHz)",
+    "Comme le V3 avec la HF intégrée (convertisseur) ; 8 bits, 2,4 MS/s.":
+        "Like the V3 with built-in HF (converter); 8 bits, 2.4 MS/s.",
+    "Correction de niveau (écoute) :": "Level correction (listening):",
+    "Deux tuners : 10 MHz avec un seul, 2 MHz chacun en double tuner (non géré ici : un seul tuner).":
+        "Two tuners: 10 MHz with one, 2 MHz each in dual-tuner mode (not handled here: one tuner).",
+    "Dossier qui contient les outils (hackrf_sweep, rtl_power, rx_power…) ou la DLL WiNRADiO.\nVide = recherche automatique.":
+        "Folder containing the tools (hackrf_sweep, rtl_power, rx_power…) or the WiNRADiO DLL.\nEmpty = automatic search.",
+    "Débits : {} MS/s · fenêtre utile jusqu'à {} MHz": "Rates: {} MS/s · usable window up to {} MHz",
+    "Entrée max conseillée : {} dBm": "Recommended max input: {} dBm",
+    "G39DDC : aucun type de DDC1 disponible": "G39DDC: no DDC1 type available",
+    "G39DDC : balayage pas lancé": "G39DDC: sweep not started",
+    "G39DDCAPI.dll introuvable : installe le logiciel WiNRADiO G39DDC (il installe la DLL) ou indique son dossier dans 📡 Réglages SDR.":
+        "G39DDCAPI.dll not found: install the WiNRADiO G39DDC software (it installs the DLL) or give its folder in 📡 SDR settings.",
+    "Gain (linéarité 0 – 21)": "Gain (linearity 0 – 21)",
+    "Gain (réduction LNA + IF)": "Gain (LNA + IF reduction)",
+    "Gain du tuner": "Tuner gain",
+    "Gains de ce modèle": "Gains of this model",
+    "HF 0,5 kHz – 31 MHz et VHF 64 – 260 MHz : PAS d'UHF (micros 470-694 hors de portée). Très grande dynamique (110 dB BDR en HF).":
+        "HF 0.5 kHz – 31 MHz and VHF 64 – 260 MHz: NO UHF (470-694 mics out of range). Very high dynamic range (110 dB BDR on HF).",
+    "Installer": "Install",
+    "LNA (gain RF)": "LNA (RF gain)",
+    "Mon SDR :": "My SDR:",
+    "Même électronique de réception que le RSP1B (14 bits, 10 MHz).": "Same receive electronics as the RSP1B (14 bits, 10 MHz).",
+    "Niveaux en dBFS : à caler sur un tinySA (offset)": "Levels in dBFS: to be matched to a tinySA (offset)",
+    "Niveaux en vrais dBm (calibrés par l'appareil)": "Levels in real dBm (calibrated by the device)",
+    "Pendant l'écoute, le spectre de la fenêtre du SDR sert aussi à surveiller tes fréquences\nqui y tombent (si le SDR est ton appareil de surveillance). Un tinySA branché garde\nla surveillance de tout.":
+        "While listening, the SDR window's spectrum is also used to monitor your frequencies\nthat fall in it (if the SDR is your monitoring device). A connected tinySA keeps\nmonitoring everything.",
+    "Préampli": "Preamp",
+    "Réglages SDR": "SDR settings",
+    "Source : {}": "Source: {}",
+    "Ton SDR : l'appli adapte les débits, la largeur de la fenêtre, les gains et l'échelle\ndes niveaux à ses caractéristiques (bits, plage, entrée max).":
+        "Your SDR: the app adapts the rates, the window width, the gains and the level\nscale to its characteristics (bits, range, max input).",
+    "Trop de gain = le SDR sature et invente des signaux (intermod interne) ; trop peu = les\nmicros faibles disparaissent dans le bruit. Commence au milieu.":
+        "Too much gain = the SDR saturates and invents signals (internal intermod); too little = weak\nmics disappear into the noise. Start in the middle.",
+    "VGA (gain bande de base)": "VGA (baseband gain)",
+    "WiNRADiO : pilote Windows seulement.": "WiNRADiO: Windows driver only.",
+    "WiNRADiO G39DDC introuvable ou déjà utilisé (OpenDevice a échoué).": "WiNRADiO G39DDC not found or already in use (OpenDevice failed).",
+    "automatique (PATH, PothosSDR, dossier « outils », dossier WiNRADiO)": "automatic (PATH, PothosSDR, “outils” folder, WiNRADiO folder)",
+    "dynamique théorique ≈ {} dB": "theoretical dynamic range ≈ {} dB",
+    "démoduler": "demodulate",
+    "fiche (non relue)": "datasheet (not re-read)",
+    "linéarité": "linearity",
+    "pour écouter un micro analogique.": "to listen to an analogue mic.",
+    "{} bits": "{} bits",
+    "⚠ {} : hors de la plage du {} ({} – {} MHz).": "⚠ {}: outside the range of the {} ({} – {} MHz).",
+    "📡 Le tinySA continue de surveiller toute ta liste pendant l'écoute.": "📡 The tinySA keeps monitoring your whole list while you listen.",
+    "📡 Surveillance pendant l'écoute : {} – {} MHz ({} de tes fréquences).": "📡 Monitoring while listening: {} – {} MHz ({} of your frequencies).",
+})
+TEMPLATES.update({
+    "WiNRADiO G39DDC · n° {}": "WiNRADiO G39DDC · no. {}",
+    "G39DDC ouvert : n° {}, {}–{} MHz, pas {} Hz, fenêtre {} MHz": "G39DDC open: no. {}, {}–{} MHz, step {} Hz, window {} MHz",
+    "WiNRADiO G39DDC muet depuis {} s": "WiNRADiO G39DDC silent for {} s",
+    "{} : {} à {}, par pas de {}.": "{}: {} to {}, in steps of {}.",
+    "G39DDC : {} a échoué": "G39DDC: {} failed",
+    "{} introuvable (outils {} : PothosSDR / SoapySDR, ou 📡 Réglages SDR).": "{} not found ({} tools: PothosSDR / SoapySDR, or 📡 SDR settings).",
+    "balayage {}–{} MHz (front-end), FFT {}": "sweep {}–{} MHz (front end), FFT {}",
+})
+SAME_TEMPLATES += [" (ENOB {})", "{} : {} – {} MHz"]
+# ---- étape 7 : réglages SDR simplifiés
+EXACT.update({
+    "1. Installe PothosSDR (SoapySDR + modules Airspy, Lime, Pluto, UHD, bladeRF). 2. Ajoute les rx_tools (rx_power, rx_sdr). 3. Branche le SDR : il doit apparaître dans « SoapySDRUtil --find ».":
+        "1. Install PothosSDR (SoapySDR + Airspy, Lime, Pluto, UHD, bladeRF modules). 2. Add the rx_tools (rx_power, rx_sdr). 3. Plug in the SDR: it must show up in “SoapySDRUtil --find”.",
+    "1. Installe l'API SDRplay (site sdrplay.com). 2. Installe PothosSDR (SoapySDR). 3. Ajoute le module SoapySDRPlay3 et les rx_tools (rx_power, rx_sdr).":
+        "1. Install the SDRplay API (sdrplay.com). 2. Install PothosSDR (SoapySDR). 3. Add the SoapySDRPlay3 module and the rx_tools (rx_power, rx_sdr).",
+    "Basse (près des scènes, émetteurs forts)": "Low (near the stages, strong transmitters)",
+    "Comment l'installer ?": "How to install it?",
+    "Fiche technique, gains étage par étage, dossier des outils, correction de niveau.":
+        "Datasheet, gains stage by stage, tools folder, level correction.",
+    "Haute (loin, micros faibles)": "High (far away, weak mics)",
+    "Installe PothosSDR (il contient hackrf_sweep, hackrf_transfer et les pilotes). Si Windows ne voit pas le HackRF : pilote WinUSB avec Zadig.":
+        "Install PothosSDR (it contains hackrf_sweep, hackrf_transfer and the drivers). If Windows does not see the HackRF: WinUSB driver with Zadig.",
+    "Installe PothosSDR (rtl_power, rtl_sdr). Pilote WinUSB avec Zadig (choisir « Bulk-In, Interface 0 »).":
+        "Install PothosSDR (rtl_power, rtl_sdr). WinUSB driver with Zadig (choose “Bulk-In, Interface 0”).",
+    "Installe le logiciel WiNRADiO G39DDC (il installe G39DDCAPI.dll et le pilote). Le récepteur doit être reconnu par son propre logiciel ; ferme ce logiciel avant de lancer la surveillance.":
+        "Install the WiNRADiO G39DDC software (it installs G39DDCAPI.dll and the driver). The receiver must be recognised by its own software; close that software before starting monitoring.",
+    "Installer {}": "Install {}",
+    "Les étapes d'installation pour ce SDR (logiciels à installer sous Windows).": "The install steps for this SDR (software to install on Windows).",
+    "Règle tous les gains du SDR d'un coup. Basse : près des scènes, quand des émetteurs forts\nsont tout près (évite la saturation). Haute : antenne loin, micros faibles.":
+        "Sets all the SDR's gains at once. Low: near the stages, when strong transmitters\nare close by (avoids saturation). High: antenna far away, weak mics.",
+    "Réglages avancés": "Advanced settings",
+    "SDR": "SDR",
+    "Sensibilité :": "Sensitivity:",
+    "fenêtre jusqu'à {} MHz": "window up to {} MHz",
+    "niveaux en dBm": "levels in dBm",
+    "niveaux à caler": "levels to calibrate",
+    "État :": "Status:",
+    "✔ Prêt": "✔ Ready",
+    "✗ Il manque : {}": "✗ Missing: {}",
+})
+SAME_TEMPLATES += ["{} – {} MHz"]

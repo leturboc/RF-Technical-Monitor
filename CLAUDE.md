@@ -1679,6 +1679,49 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `open_spectrum_device` (ScanWorker V8). Testé : test_sdr (PURE), gui_reel (faux hackrf_transfer : hors liste, WAV,
   balayage d'écoute entre 2 fenêtres, téléphone : PIN, son reçu, état, arrêt). **Jamais avec un vrai SDR ni un vrai
   téléphone** (Web Audio sur iPhone / Android à vérifier, retard réel, Wi-Fi).
+- **V8 étape 7 (Clément, avant la 7.68 : « check winradio et les fonctionnalités SDR, raccord monitoring + démodulation
+  / écoute d'une ou plusieurs fréquences, mettre en place les SDR les plus fréquents, que ça s'adapte au nombre de bits
+  et tout » ; il a choisi TOUS les SDR + « surveiller et écouter en même temps »)** :
+  - **Fiches** PURE `SDR_MODELS` (clé, genre, nom, plage MHz, bits / ENOB, débits IQ, part utile, entrée max, étages de
+    gain (clé, nom, min, max, pas, défaut), `cal` = dBm calibrés, `src`, note) : HackRF One / Pro, RTL-SDR V3 / V4,
+    SDRplay RSP1A / 1B / dx / duo, Airspy R2 / Mini / HF+, LimeSDR Mini, Pluto, USRP B200/B210, bladeRF 2.0, WiNRADiO
+    G39DDC (G65DDC listé, PAS pris en charge : 0-88 MHz, autre API). Vérifiées le 24/11/2026 sur greatscottgadgets.com,
+    airspy.com, rtl-sdr.com, winradio.com ; **SDRplay / Lime / Pluto / USRP / bladeRF = fiches publiques NON relues**
+    (site injoignable : `src` « fiche (non relue) »). `SDR_MODEL_DEFAULT`, `sdr_model`, `sdr_models_for`, `sdr_model_of`
+    (choix {genre: clé}), `bits_dynamic`, `sdr_floor_dbfs` (échelle des barres de niveau de l'écoute), `sdr_rate`,
+    `sdr_span_mhz`, `sdr_in_range`, `sdr_model_text` (fiche lisible), `sdr_cfg_extra` (config : model, models, gains
+    {clé: {étage: n}}, offsets {clé: dB}), `sdr_gains_for` (gains -> outils, anciens lna / vga / amp repris).
+    MainWindow : `sdr_model_for`, `sdr_gains` (remplace `dict(sdr_cfg)` pour les workers / écoute / temps réel),
+    `sdr_offset`. `SdrDialog` réécrite : « Mon SDR », fiche, gains du modèle (créés d'après la fiche), dossier outils /
+    DLL, correction de niveau par modèle.
+  - **Genres** `SDR_KINDS` + airspy / airspyhf / lime / pluto / uhd / bladerf (clé `soapy` = pilote SoapySDR : rx_power /
+    rx_sdr `-d driver=…`, IQ CS16) et winradio (`dll`) ; `SDR_ALIASES` (adresses « airspy », « usrp », « g39ddc:SN »…) ;
+    `SDR_DTYPE`, `ci32_le`, `RT_RATES` complétés d'après les fiches. **`Resampler`** (linéaire en flux) au bout de
+    `ChannelDemod` : un débit qui ne tombe pas juste (Airspy 10 MS/s, WiNRADiO 250 kS/s…) sort à 48 kHz exacts.
+  - **WiNRADiO G39DDC** (doc + `G39DDCAPI.h` officiels : __stdcall, pack(1), `OpenDevice((char*)-1)`, `SetCallbacks`,
+    rappels appelés par un fil de la DLL où on ne rappelle PAS la DLL, un récepteur = un seul fil) : ctypes
+    `WR_DEVICE_INFO` / `WR_DDC_INFO` / `WR_CALLBACKS` + types de rappel, `WR_SIGS`, `WinradioG39` (ouvre, alimente,
+    `set_gains` atténuateur 0/6/12/18 + préampli, `fe_round` au pas du front-end), **`WinradioSweep`** (balayage matériel
+    `StartSweeping`, instantanés 16 bits à 100 MS/s copiés par le rappel, FFT + `GetIFSpectrumCompensation` = **dBm
+    calibrés** dans le fil du worker, PURE `wr_snapshot_spectrum` (bande utile `FrontEndWindowWidth` autour de
+    `CenterFrequency`, RF = front-end + écart, `inverted` en option : sens NON vérifié), `SweepAccum`), **`WinradioIQ`**
+    (DDC1 : PURE `wr_pick_ddc` = plus petit type qui couvre la fenêtre, 16 bits de préférence ; front-end + décalage
+    DDC1 ; rappel -> file). `find_winradio_dll`, `WINRADIO_DIRS`, `WINRADIO_LIB` (fausse DLL des tests). Son
+    démodulateur intégré (2 canaux) et son niveau en dBm ne sont PAS utilisés (on garde notre démodulation : companders,
+    stéréo, mêmes réglages pour tous). `WR_DDC1_MODE_WIDEBAND` = 1 supposé (absent de l'en-tête lu).
+  - **Source d'IQ commune** `open_iq_source` -> `ProcIQ` (outil) ou `WinradioIQ` ; `.rate` / `.dtype` réels ;
+    `ListenWorker` et `RealtimeWorker` passent par elle (débit réel du récepteur, plus de `subprocess` dans ces fils).
+  - **Surveiller ET écouter** : `ListenWorker.want_spec` -> signal `spectrum` (F MHz, dBFS, FFT 2048, 2 fois / s) ;
+    `ListenDialog._spec` -> `MainWindow.sdr_listen_feed(genre, F, L)` (dBFS + `sdr_offset`, dBm pour WiNRADiO) dans
+    `latest[SDR_LISTEN_ID]` = −40 -> `update_watch_levels` surveille les fréquences de la fenêtre écoutée ; SEULEMENT si
+    aucun autre appareil ne balaye (un tinySA garde la surveillance de tout : pas de mélange dBFS / dBm) ; `mon_lbl` le
+    dit ; `sdr_listen_clear` à l'arrêt. Le temps réel ⏱ fait pareil (`RealtimeDialog._frame`, direct seulement).
+    `ListenDialog` : plage du modèle vérifiée, barres de niveau d'après les bits, `span` (WiNRADiO : DDC le plus petit).
+  - Tests : `tests/fake_winradio.py` (fausse G39DDCAPI : mêmes fonctions / structures, rappels depuis un fil,
+    instantanés et IQ avec porteuses) ; test_sdr (fiches, gains, config, adresses, commandes Soapy, ci32, `wr_pick_ddc`,
+    `wr_snapshot_spectrum`, `Resampler`) ; test_sdr_qt (vrai ScanWorker + ListenWorker sur la fausse DLL : porteuse à
+    473 MHz, son à 1 kHz, spectre envoyé, récepteur refermé) ; gui_reel (fiche, gains par modèle, surveillance pendant
+    l'écoute avec / sans tinySA). **Jamais avec un vrai WiNRADiO, SDRplay, Airspy, Lime, Pluto, USRP ni bladeRF.**
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

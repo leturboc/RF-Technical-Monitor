@@ -985,10 +985,11 @@ check("SDR : HackRF proposé comme 2e appareil", win.dev2_addr.findData("hackrf"
 _sd = m.SdrDialog(win)
 _sd.show()
 wait(300)
-check("SDR : outils cherchés", "hackrf_sweep" in _sd.found_lbl.text(), _sd.found_lbl.text())
+check("SDR : outils cherchés (prêt ou ce qui manque)", "Prêt" in _sd.state.text() or "hackrf_sweep" in _sd.state.text(), _sd.state.text())
 shot(_sd, "reglages_sdr")
-_sd.lna_spin.setValue(32)
-_sd.amp_chk.setChecked(True)
+_sd.model_combo.setCurrentIndex(_sd.model_combo.findData("hackrf_one"))
+_sd.gain_w["lna"].setValue(32)
+_sd.gain_w["amp"].setChecked(True)
 win.sdr_cfg.update(_sd.values())
 _sd.close()
 check("SDR : réglages gardés dans la config", win._collect_config()["sdr"]["lna"] == 32
@@ -1035,6 +1036,45 @@ import wave as _wave
 check("⏺ son enregistré en WAV", _lf.wav_path is not None and os.path.exists(_lf.wav_path)
       and _wave.open(str(_lf.wav_path)).getnframes() > 24000, str(_lf.wav_path))
 _lf.close()
+# V8 étape 7 : fiches des SDR (modèle, gains), surveillance pendant l'écoute
+_sdd = m.SdrDialog(win)
+_sdd.show()
+_sdd.model_combo.setCurrentIndex(_sdd.model_combo.findData("rsp1b"))
+wait(200)
+check("📡 fiche du modèle affichée (14 bits)", "14 bits" in _sdd.sheet.text(), _sdd.sheet.text()[:80])
+_sdd.gain_w["lna"].setValue(33)
+_sdd.model_combo.setCurrentIndex(_sdd.model_combo.findData("g39ddc"))
+wait(200)
+check("📡 WiNRADiO : atténuateur + préampli, pas de correction (calibré)", set(_sdd.gain_w) == {"att", "amp"}
+      and not _sdd.off_spin.isEnabled())
+shot(_sdd, "reglages_sdr_modele")
+_sdd.sens.setCurrentIndex(_sdd.sens.findData("low"))
+_sdd._apply_sens()
+check("📡 sensibilité basse : atténuateur au max, préampli coupé", _sdd.gain_w["att"].value() == 18
+      and not _sdd.gain_w["amp"].isChecked())
+_sdd.more.setChecked(True)
+wait(200)
+shot(_sdd, "reglages_sdr_avances")
+_sdd.model_combo.setCurrentIndex(_sdd.model_combo.findData("rsp1b"))
+win.sdr_cfg.update(_sdd.values())
+_sdd.close()
+check("📡 gains gardés par modèle", win.sdr_gains("sdrplay")["lna"] == 33 and win.sdr_model_for("sdrplay")["key"] == "rsp1b",
+      str(win.sdr_gains("sdrplay")))
+_was_run = win.is_running()
+check("📡 tinySA en marche : la surveillance reste au tinySA", (not _was_run) or not win.sdr_listen_feed(
+    "hackrf", np.linspace(605, 607, 200), np.full(200, -50.0)))
+if _was_run:
+    win.toggle_run()
+    _t0 = time.time()
+    while win.is_running() and time.time() - _t0 < 15:
+        wait(200)
+_wl = win.watch[0]
+_F = np.linspace(_wl["freq"] - 1, _wl["freq"] + 1, 400)
+_Lf = np.full(400, -100.0)
+_Lf[np.abs(_F - _wl["freq"]) < 0.02] = -40.0
+check("📡 SDR seul : le flux d'écoute surveille sa fenêtre", win.sdr_listen_feed("hackrf", _F, _Lf)
+      and _wl["level"] is not None and _wl["level"] > -60, str(_wl.get("level")))
+win.sdr_listen_clear()
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
 _hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
 _hd.show()

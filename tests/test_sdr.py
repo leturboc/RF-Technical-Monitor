@@ -383,5 +383,53 @@ for bad in (dict(action="x"), dict(action="start", f=-3), dict(action="start", f
     except (ValueError, TypeError):
         ok(f"commande téléphone refusée : {bad}", True)
 
+# ---- étape 7 : fiches des SDR, gains par modèle, SoapySDR, WiNRADiO (calculs)
+ok("modèles : tous les genres pris en charge ont un modèle par défaut",
+   all(ns["sdr_model"](ns["SDR_MODEL_DEFAULT"][k]) for k in ns["SDR_KINDS"]))
+ok("modèles : chaque gain a un défaut dans sa plage", all(lo <= d <= hi for m in ns["SDR_MODELS"]
+                                                          for _k, _n, lo, hi, _s, d in m["gains"]))
+ok("modèles : HackRF 8 bits, RSP1B 14 bits, Airspy 12 bits, G39DDC 16 bits",
+   [ns["sdr_model"](k)["bits"] for k in ("hackrf_one", "rsp1b", "airspy_r2", "g39ddc")] == [8, 14, 12, 16])
+ok("dynamique : 8 bits ≈ 50 dB, 14 bits ≈ 86 dB", (ns["bits_dynamic"](8), ns["bits_dynamic"](14)) == (49.9, 86.0))
+ok("plancher : plus de bits = plus bas", ns["sdr_floor_dbfs"](ns["sdr_model"]("rsp1b"), 4800000)
+   < ns["sdr_floor_dbfs"](ns["sdr_model"]("hackrf_one"), 4800000))
+ok("modèle choisi par genre (et mauvais choix ignoré)",
+   ns["sdr_model_of"]("hackrf", {"hackrf": "hackrf_pro"})["key"] == "hackrf_pro"
+   and ns["sdr_model_of"]("hackrf", {"hackrf": "rsp1b"})["key"] == "hackrf_one")
+ok("débit : Airspy 10 MS/s (pas multiple de 240 kHz)", ns["sdr_rate"](ns["sdr_model"]("airspy_r2")) == 10000000)
+ok("plage : HF+ ne fait pas l'UHF", not ns["sdr_in_range"](ns["sdr_model"]("airspy_hf"), 606.0))
+g = ns["sdr_gains_for"](ns["sdr_model"]("hackrf_one"), {"hackrf_one": {"lna": 32}}, {"vga": 30})
+ok("gains : valeur du modèle, sinon ancien réglage, sinon défaut", (g["lna"], g["vga"], g["amp"]) == (32, 30, False), str(g))
+ok("gains : bornés à la plage du modèle", ns["sdr_gains_for"](ns["sdr_model"]("hackrf_one"), {"hackrf_one": {"lna": 99}})["lna"] == 40)
+ce = ns["sdr_cfg_extra"](dict(model="rsp1b", models={"sdrplay": "rspdx", "hackrf": "rsp1b"},
+                              gains={"rsp1b": {"lna": "70", "x": 3}, "zz": {}}, offsets={"rsp1b": "12.5", "bad": 1}))
+ok("config : relue prudemment", ce == dict(model="rsp1b", models={"sdrplay": "rspdx"}, gains={"rsp1b": {"lna": 60}},
+                                           offsets={"rsp1b": 12.5}), str(ce))
+ok("fiche lisible", "14 bits" in ns["sdr_model_text"](ns["sdr_model"]("rsp1b")) and "dBm" in
+   ns["sdr_model_text"](ns["sdr_model"]("g39ddc")))
+for a_, k_ in (("airspy", "airspy"), ("AirspyHF", "airspyhf"), ("lime", "lime"), ("pluto", "pluto"), ("usrp", "uhd"),
+               ("bladerf:12", "bladerf"), ("winradio", "winradio"), ("g39ddc:AB12", "winradio"), ("rsp1b", "sdrplay"),
+               ("rtl:1", "rtlsdr")):
+    ok(f"adresse « {a_} » -> {k_}", psa(a_)[0] == k_, str(psa(a_)))
+ok("adresse inconnue -> None", psa("monsdr") is None)
+cm = ns["listen_cmd"]("airspy", "rx_sdr", 606e6, 10000000, 14)
+ok("Airspy : rx_sdr, driver=airspy, IQ 16 bits", "driver=airspy" in cm and "CS16" in cm, str(cm))
+ok("Soapy : balayage par rx_power avec le bon pilote", "driver=uhd" in ns["sdr_cmd"]("uhd", "rx_power", [(470, 480)], 1e5))
+ok("IQ 32 bits (WiNRADiO)", abs(ns["iq_decode"]("ci32_le", np.array([2**30, -2**30], dtype="<i4").tobytes())[0]
+                                - (0.5 - 0.5j)) < 1e-6)
+ok("WiNRADiO : plus petit DDC qui suffit, 16 bits de préférence",
+   ns["wr_pick_ddc"]([(0, 250000, 200000, 16), (1, 5000000, 4000000, 32), (2, 5000000, 4000000, 16)], 3e6) == 2)
+ok("WiNRADiO : trop large -> le plus large", ns["wr_pick_ddc"]([(0, 250000, 200000, 16), (1, 2500000, 2000000, 16)], 9e6) == 1)
+tt = np.arange(65536) / 100e6
+x = (8000 * np.cos(2 * np.pi * (25e6 + 300e3) * tt) + np.random.default_rng(3).normal(size=65536)).astype("<i2")
+Fw, Lw = ns["wr_snapshot_spectrum"](x, 25e6, 600e6, 2e6, None)
+ok("WiNRADiO : instantané -> fréquence RF (front-end + écart à la FI)", abs(Fw[int(np.argmax(Lw))] - 600.3) < 0.02
+   and Fw[0] >= 598.99 and Fw[-1] <= 601.01, str(Fw[int(np.argmax(Lw))]))
+Fi, Li = ns["wr_snapshot_spectrum"](x, 25e6, 600e6, 2e6, None, inverted=True)
+ok("WiNRADiO : spectre inversé (option)", abs(Fi[int(np.argmax(Li))] - 599.7) < 0.02)
+R = ns["Resampler"](250000 / 5, 48000)
+y = np.concatenate([R(np.sin(np.arange(i, i + 777) * 0.01).astype(np.float32)) for i in range(0, 50000, 777)])
+ok("rééchantillonnage : 50 kS/s -> 48 kS/s en flux (longueur)", abs(len(y) - 65 * 777 * 0.96) <= 2, str(len(y)))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

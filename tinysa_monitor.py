@@ -6524,26 +6524,48 @@ def split_band(start, stop, step):
 # hackrf_sweep (HackRF One) et rtl_power (RTL-SDR) écrivent le même CSV : date, heure, Hz bas, Hz haut, largeur de
 # case (Hz), nb d'échantillons, puis les niveaux en dB des cases. Niveaux NON étalonnés en dBm (offset / calibration).
 SDR_KINDS = {
-    "hackrf": dict(name="HackRF One", tool="hackrf_sweep", iq_tool="hackrf_transfer", fmin=1.0, fmax=6000.0, bin_min=2445.0, bin_max=5e6,
+    "hackrf": dict(name="HackRF One / Pro", tool="hackrf_sweep", iq_tool="hackrf_transfer", fmin=1.0, fmax=6000.0, bin_min=2445.0, bin_max=5e6,
                    lna=(0, 40, 8), vga=(0, 62, 2), amp=True),
     "rtlsdr": dict(name="RTL-SDR", tool="rtl_power", iq_tool="rtl_sdr", fmin=24.0, fmax=1766.0, bin_min=1.0, bin_max=2.8e6,
                    lna=(0, 50, 1), vga=None, amp=False),
     # SDRplay RSP1B (choix de Clément) : 14 bits, 1 kHz – 2 GHz, jusqu'à 10 MHz de large. Pas d'outil officiel en
     # ligne de commande : rx_tools (rx_power = clone de rtl_power, rx_sdr = clone de rtl_sdr) au-dessus de SoapySDR
     # + module SoapySDRPlay3 + API SDRplay (à installer depuis sdrplay.com). NON TESTÉ avec un vrai RSP1B.
-    "sdrplay": dict(name="SDRplay RSP1B", tool="rx_power", iq_tool="rx_sdr", fmin=1.0, fmax=2000.0, bin_min=1.0,
-                    bin_max=8e6, lna=(0, 60, 1), vga=None, amp=False),
+    "sdrplay": dict(name="SDRplay RSP (1A, 1B, dx, duo)", tool="rx_power", iq_tool="rx_sdr", fmin=1.0, fmax=2000.0, bin_min=1.0,
+                    bin_max=8e6, lna=(0, 60, 1), vga=None, amp=False, soapy="sdrplay"),
+    # étape 7 : autres SDR par SoapySDR + rx_tools (même chemin que le RSP1B ; modules Soapy du fabricant à installer)
+    "airspy": dict(name="Airspy R2 / Mini", tool="rx_power", iq_tool="rx_sdr", fmin=24.0, fmax=1700.0, bin_min=1.0,
+                   bin_max=8e6, lna=(0, 21, 1), vga=None, amp=False, soapy="airspy"),
+    "airspyhf": dict(name="Airspy HF+", tool="rx_power", iq_tool="rx_sdr", fmin=1.0, fmax=260.0, bin_min=1.0,
+                     bin_max=6e5, lna=(0, 48, 6), vga=None, amp=False, soapy="airspyhf"),
+    "lime": dict(name="LimeSDR", tool="rx_power", iq_tool="rx_sdr", fmin=10.0, fmax=3500.0, bin_min=1.0, bin_max=8e6,
+                 lna=(0, 70, 1), vga=None, amp=False, soapy="lime"),
+    "pluto": dict(name="ADALM-Pluto", tool="rx_power", iq_tool="rx_sdr", fmin=325.0, fmax=3800.0, bin_min=1.0,
+                  bin_max=4e6, lna=(0, 70, 1), vga=None, amp=False, soapy="plutosdr"),
+    "uhd": dict(name="Ettus USRP", tool="rx_power", iq_tool="rx_sdr", fmin=70.0, fmax=6000.0, bin_min=1.0, bin_max=8e6,
+                lna=(0, 76, 1), vga=None, amp=False, soapy="uhd"),
+    "bladerf": dict(name="bladeRF", tool="rx_power", iq_tool="rx_sdr", fmin=47.0, fmax=6000.0, bin_min=1.0,
+                    bin_max=8e6, lna=(0, 60, 1), vga=None, amp=False, soapy="bladerf"),
+    # WiNRADiO G39DDC : pas d'outil en ligne de commande, sa DLL Windows (G39DDCAPI.dll) est appelée directement
+    "winradio": dict(name="WiNRADiO G39DDC", tool=None, iq_tool=None, dll="G39DDCAPI.dll", fmin=0.009, fmax=3500.0,
+                     bin_min=1.0, bin_max=8e6, lna=(0, 18, 6), vga=None, amp=True),
 }
+SDR_ALIASES = [("winradio", r"winradio|g39ddc|g39"), ("airspyhf", r"airspyhf|airspy-hf|hfplus"),
+               ("airspy", r"airspy"), ("lime", r"lime|limesdr"), ("pluto", r"pluto|plutosdr|adalm"),
+               ("uhd", r"uhd|usrp|b200|b210"), ("bladerf", r"bladerf"), ("hackrf", r"hackrf"),
+               ("sdrplay", r"sdrplay|rsp\w*"), ("rtlsdr", r"rtlsdr|rtl-sdr|rtl")]
 
 
 def parse_sdr_addr(s):
     """« hackrf », « hackrf:<n° de série> », « rtlsdr », « rtlsdr:1 », « sdrplay », « rsp1b:<série> » -> (genre, n° de
     série / index ou ""), sinon None."""
-    m = re.fullmatch(r"\s*(hackrf|rtlsdr|rtl-sdr|rtl|sdrplay|rsp1b|rsp)\s*(?::\s*([A-Za-z0-9]+))?\s*", str(s or ""), re.I)
+    m = re.fullmatch(r"\s*([A-Za-z][A-Za-z0-9+\-]*)\s*(?::\s*([A-Za-z0-9]+))?\s*", str(s or ""))
     if not m:
         return None
     g = m.group(1).lower()
-    kind = "hackrf" if g == "hackrf" else ("sdrplay" if g.startswith(("sdrplay", "rsp")) else "rtlsdr")
+    kind = next((k for k, pat in SDR_ALIASES if re.fullmatch(pat, g)), None)
+    if kind is None:
+        return None
     return kind, (m.group(2) or "")
 
 
@@ -6658,8 +6680,9 @@ def sdr_cmd(kind, exe, ranges, bin_hz, lna=24, vga=20, amp=False, serial=""):
         return a
     lo, hi = min(r[0] for r in ranges), max(r[1] for r in ranges)
     a = exe + ["-f", f"{lo}M:{hi}M:{int(round(bin_hz))}", "-i", "1", "-g", str(int(lna))]
-    if kind == "sdrplay":                               # rx_power : appareil SoapySDR par chaîne « driver=… »
-        a += ["-d", "driver=sdrplay" + (f",serial={serial}" if serial else "")]
+    soapy = SDR_KINDS.get(kind, {}).get("soapy")
+    if soapy:                                           # rx_power : appareil SoapySDR par chaîne « driver=… »
+        a += ["-d", f"driver={soapy}" + (f",serial={serial}" if serial else "")]
     elif serial:
         a += ["-d", serial]
     return a + ["-"]
@@ -6779,11 +6802,17 @@ def demod_preset(key):
 
 def sdr_iq_rate(kind):
     """Fréquence d'échantillonnage IQ (multiple de 240 kHz) : HackRF 4,8 MS/s (≈ 4 MHz utiles), RTL 2,4 MS/s."""
-    return 4800000 if kind in ("hackrf", "sdrplay") else 2400000
+    if kind in ("hackrf", "sdrplay"):
+        return 4800000
+    if kind == "rtlsdr":
+        return 2400000
+    m = sdr_model(SDR_MODEL_DEFAULT.get(kind))       # étape 7 : d'après la fiche du modèle (Airspy 10 MS/s…)
+    return sdr_rate(m, kind) if m is not None and m.get("rates") else 2400000
 
 
-SDR_DTYPE = {"hackrf": "ci8", "rtlsdr": "cu8", "sdrplay": "ci16_le"}   # format IQ brut de chaque SDR (noms SigMF)
-IQ_BYTES = {"ci8": 2, "cu8": 2, "ci16_le": 4, "cf32_le": 8}   # octets par échantillon complexe
+SDR_DTYPE = {"hackrf": "ci8", "rtlsdr": "cu8", "sdrplay": "ci16_le", "airspy": "ci16_le", "airspyhf": "ci16_le",
+             "lime": "ci16_le", "pluto": "ci16_le", "uhd": "ci16_le", "bladerf": "ci16_le", "winradio": "ci16_le"}   # format IQ brut de chaque SDR (noms SigMF)
+IQ_BYTES = {"ci8": 2, "cu8": 2, "ci16_le": 4, "ci32_le": 8, "cf32_le": 8}   # octets par échantillon complexe
 
 
 def iq_decode(dtype, buf):
@@ -6792,10 +6821,11 @@ def iq_decode(dtype, buf):
     buf = bytes(buf[:len(buf) // nb * nb])
     if dtype == "cf32_le":
         return np.frombuffer(buf, dtype="<f4").copy().view(np.complex64)
-    a = np.frombuffer(buf, dtype={"ci8": np.int8, "cu8": np.uint8, "ci16_le": "<i2"}[dtype]).astype(np.float32)
+    a = np.frombuffer(buf, dtype={"ci8": np.int8, "cu8": np.uint8, "ci16_le": "<i2", "ci32_le": "<i4"}[dtype]
+                      ).astype(np.float32)
     if dtype == "cu8":
         a -= 127.5
-    a *= np.float32(1.0 / (32768.0 if dtype == "ci16_le" else 128.0))
+    a *= np.float32(1.0 / {"ci16_le": 32768.0, "ci32_le": 2147483648.0}.get(dtype, 128.0))
     return a.view(np.complex64)                        # I, Q entrelacés en float32 = complex64, sans recopie
 
 
@@ -6844,6 +6874,8 @@ class ChannelDemod:
         self.D1 = max(1, int(round(fs / LISTEN_IF)))
         self.fs1 = fs / self.D1
         self.D2 = max(1, int(round(self.fs1 / LISTEN_RATE)))
+        fa = self.fs1 / self.D2              # étape 7 : Airspy 10 MS/s, WiNRADiO… -> son pas tout à fait à 48 kHz
+        self.rs = Resampler(fa, LISTEN_RATE) if abs(fa - LISTEN_RATE) > 1.0 else None
         md = LISTEN_MODES[mode]
         cut = float(cut or md["cut"])
         fm = mode in ("wfm", "wfm_st", "nfm")
@@ -7021,6 +7053,8 @@ class ChannelDemod:
                         knee=cp["knee"], low=cp["low"], side=side)
         if self.squelch is not None and self.level < self.squelch:
             a = np.zeros_like(a)
+        if self.rs is not None:              # étape 7 : débit qui ne tombe pas juste -> 48 kHz exacts
+            a = self.rs(a)
         return a, self.level
 
 
@@ -7147,8 +7181,9 @@ def listen_cmd(kind, exe, center_hz, rate, lna=24, vga=20, amp=False, serial="")
     if kind == "hackrf":
         a = exe + ["-r", "-", "-f", str(int(round(center_hz))), "-s", str(int(rate)), "-l", str(int(lna) // 8 * 8),
                    "-g", str(int(vga) // 2 * 2), "-a", "1" if amp else "0"]
-    elif kind == "sdrplay":                             # rx_sdr : IQ 16 bits (CS16) sur la sortie standard
-        return exe + ["-d", "driver=sdrplay" + (f",serial={serial}" if serial else ""), "-f", str(int(round(center_hz))),
+    elif SDR_KINDS.get(kind, {}).get("soapy"):         # rx_sdr : IQ 16 bits (CS16) sur la sortie standard
+        soapy = SDR_KINDS[kind]["soapy"]
+        return exe + ["-d", f"driver={soapy}" + (f",serial={serial}" if serial else ""), "-f", str(int(round(center_hz))),
                       "-s", str(int(rate)), "-g", str(int(lna)), "-F", "CS16", "-"]
     else:
         a = exe + ["-f", str(int(round(center_hz))), "-s", str(int(rate)), "-g", str(int(lna))]
@@ -7376,6 +7411,300 @@ def listen_request(req):
         mode = str(req.get("mode") or "")
         out["mode"] = mode if mode in LISTEN_MODES else ""
     return out
+
+
+# ------------------------------------------------------------------ V8 étape 7 : fiches des SDR (ce qui change d'un appareil à l'autre)
+# Sources : fiches des fabricants lues le 24/11/2026 (Great Scott Gadgets HackRF One / Pro, Airspy R2 / Mini / HF+,
+# rtl-sdr.com V4, kit WiNRADiO G39DDC / G65DDC : doc + G39DDCAPI.h). SDRplay, Lime, Pluto, USRP, bladeRF : valeurs des
+# fiches publiques connues, PAS relues ici (site injoignable) -> « src » = "fiche (non relue)".
+# kind = façon de le piloter (SDR_KINDS) ; rates = débits IQ proposés (S/s) ; usable = part utile de la bande IQ ;
+# bits / enob = résolution du convertisseur ; max_in = puissance d'entrée max conseillée (dBm, None = inconnue) ;
+# gains = étages [(clé, nom, min, max, pas, défaut)] ; cal = niveaux déjà en dBm (WiNRADiO), sinon dBFS à caler.
+SDR_MODELS = [
+    dict(key="hackrf_one", kind="hackrf", name="HackRF One", fmin=1.0, fmax=6000.0, bits=8, enob=7.0,
+         rates=[19200000, 9600000, 4800000, 2400000], usable=0.8, max_in=-5.0,
+         gains=[("lna", "LNA (gain RF)", 0, 40, 8, 24), ("vga", "VGA (gain bande de base)", 0, 62, 2, 20),
+                ("amp", "Ampli d'entrée +14 dB", 0, 1, 1, 0)], cal=False, src="greatscottgadgets.com",
+         note="8 bits : environ 48 dB de dynamique dans la fenêtre ; un émetteur fort tout près sature vite. "
+              "Ne pas dépasser −5 dBm à l'entrée."),
+    dict(key="hackrf_pro", kind="hackrf", name="HackRF Pro", fmin=0.1, fmax=6000.0, bits=8, enob=7.0,
+         rates=[19200000, 9600000, 4800000, 2400000], usable=0.8, max_in=-5.0,
+         gains=[("lna", "LNA (gain RF)", 0, 40, 8, 24), ("vga", "VGA (gain bande de base)", 0, 62, 2, 20),
+                ("amp", "Ampli d'entrée", 0, 1, 1, 0)], cal=False, src="greatscottgadgets.com",
+         note="100 kHz – 6 GHz, 8 bits ; mode 16 bits (ENOB 9 à 11) à bas débit, pas encore utilisé par les outils "
+              "hackrf_* (supposé). Entrée max supposée comme le One."),
+    dict(key="rtl_v3", kind="rtlsdr", name="RTL-SDR Blog V3", fmin=24.0, fmax=1766.0, bits=8, enob=7.0,
+         rates=[2400000], usable=0.8, max_in=10.0,
+         gains=[("lna", "Gain du tuner", 0, 50, 1, 30)], cal=False, src="fiche (non relue)",
+         note="8 bits, 2,4 MS/s stables (≈ 1,9 MHz utiles) : une seule petite fenêtre."),
+    dict(key="rtl_v4", kind="rtlsdr", name="RTL-SDR Blog V4", fmin=0.5, fmax=1766.0, bits=8, enob=7.0,
+         rates=[2400000], usable=0.8, max_in=10.0,
+         gains=[("lna", "Gain du tuner", 0, 50, 1, 30)], cal=False, src="rtl-sdr.com",
+         note="Comme le V3 avec la HF intégrée (convertisseur) ; 8 bits, 2,4 MS/s."),
+    dict(key="rsp1b", kind="sdrplay", name="SDRplay RSP1B", fmin=0.001, fmax=2000.0, bits=14, enob=None,
+         rates=[9600000, 4800000, 2400000], usable=0.8, max_in=0.0,
+         gains=[("lna", "Gain (réduction LNA + IF)", 0, 60, 1, 40)], cal=False, src="fiche (non relue)",
+         note="14 bits jusqu'à ~6 MS/s (moins de bits au-delà, jusqu'à 10 MHz de large). Bien plus de dynamique "
+              "qu'un 8 bits : un micro faible à côté d'un émetteur fort reste visible."),
+    dict(key="rsp1a", kind="sdrplay", name="SDRplay RSP1A", fmin=0.001, fmax=2000.0, bits=14, enob=None,
+         rates=[9600000, 4800000, 2400000], usable=0.8, max_in=0.0,
+         gains=[("lna", "Gain (réduction LNA + IF)", 0, 60, 1, 40)], cal=False, src="fiche (non relue)",
+         note="Même électronique de réception que le RSP1B (14 bits, 10 MHz)."),
+    dict(key="rspdx", kind="sdrplay", name="SDRplay RSPdx / RSPdx-R2", fmin=0.001, fmax=2000.0, bits=14, enob=None,
+         rates=[9600000, 4800000, 2400000], usable=0.8, max_in=0.0,
+         gains=[("lna", "Gain (réduction LNA + IF)", 0, 60, 1, 40)], cal=False, src="fiche (non relue)",
+         note="14 bits, 10 MHz, 3 entrées d'antenne (choisies dans le logiciel SDRplay)."),
+    dict(key="rspduo", kind="sdrplay", name="SDRplay RSPduo", fmin=0.001, fmax=2000.0, bits=14, enob=None,
+         rates=[9600000, 4800000, 2400000], usable=0.8, max_in=0.0,
+         gains=[("lna", "Gain (réduction LNA + IF)", 0, 60, 1, 40)], cal=False, src="fiche (non relue)",
+         note="Deux tuners : 10 MHz avec un seul, 2 MHz chacun en double tuner (non géré ici : un seul tuner)."),
+    dict(key="airspy_r2", kind="airspy", name="Airspy R2", fmin=24.0, fmax=1700.0, bits=12, enob=10.4,
+         rates=[10000000, 2500000], usable=0.9, max_in=10.0,
+         gains=[("lna", "Gain (linéarité 0 – 21)", 0, 21, 1, 14)], cal=False, src="airspy.com",
+         note="12 bits (10,4 ENOB), 10 MS/s, ~9 MHz sans repliement. Débits pas multiples de 240 kHz : son "
+              "rééchantillonné."),
+    dict(key="airspy_mini", kind="airspy", name="Airspy Mini", fmin=24.0, fmax=1700.0, bits=12, enob=10.4,
+         rates=[10000000, 6000000, 3000000], usable=0.8, max_in=10.0,
+         gains=[("lna", "Gain (linéarité 0 – 21)", 0, 21, 1, 14)], cal=False, src="airspy.com",
+         note="12 bits, jusqu'à 6 MHz de vue (10 MS/s possibles)."),
+    dict(key="airspy_hf", kind="airspyhf", name="Airspy HF+ Discovery", fmin=0.0005, fmax=260.0, bits=None,
+         enob=None, rates=[768000, 384000, 192000], usable=0.8, max_in=None,
+         gains=[("lna", "Atténuateur (0 = automatique)", 0, 48, 6, 0)], cal=False, src="airspy.com",
+         note="HF 0,5 kHz – 31 MHz et VHF 64 – 260 MHz : PAS d'UHF (micros 470-694 hors de portée). "
+              "Très grande dynamique (110 dB BDR en HF)."),
+    dict(key="limemini", kind="lime", name="LimeSDR Mini", fmin=10.0, fmax=3500.0, bits=12, enob=None,
+         rates=[19200000, 9600000, 4800000], usable=0.8, max_in=None,
+         gains=[("lna", "Gain", 0, 70, 1, 40)], cal=False, src="fiche (non relue)", note="12 bits, jusqu'à ~30 MS/s."),
+    dict(key="pluto", kind="pluto", name="ADALM-Pluto", fmin=325.0, fmax=3800.0, bits=12, enob=None,
+         rates=[4800000, 2400000], usable=0.8, max_in=None,
+         gains=[("lna", "Gain", 0, 70, 1, 50)], cal=False, src="fiche (non relue)",
+         note="12 bits ; en USB 2 le débit utile tient autour de 4 MS/s."),
+    dict(key="b200", kind="uhd", name="Ettus USRP B200 / B210", fmin=70.0, fmax=6000.0, bits=12, enob=None,
+         rates=[19200000, 9600000, 4800000], usable=0.8, max_in=-15.0,
+         gains=[("lna", "Gain", 0, 76, 1, 40)], cal=False, src="fiche (non relue)",
+         note="12 bits, jusqu'à 56 MHz ; entrée max −15 dBm (fiche)."),
+    dict(key="bladerf2", kind="bladerf", name="bladeRF 2.0 micro", fmin=47.0, fmax=6000.0, bits=12, enob=None,
+         rates=[19200000, 9600000, 4800000], usable=0.8, max_in=None,
+         gains=[("lna", "Gain", 0, 60, 1, 30)], cal=False, src="fiche (non relue)", note="12 bits, jusqu'à 61,44 MS/s."),
+    dict(key="g39ddc", kind="winradio", name="WiNRADiO G39DDC Excelsior", fmin=0.009, fmax=3500.0, bits=16,
+         enob=None, rates=[5000000], usable=0.8, max_in=None,
+         gains=[("att", "Atténuateur (< 60 MHz)", 0, 18, 6, 0), ("amp", "Préampli", 0, 1, 1, 0)], cal=True,
+         src="winradio.com (doc + G39DDCAPI.h)",
+         note="16 bits à 100 MS/s. Balayage matériel calibré en dBm. Flux IQ (DDC1) jusqu'à 4 MHz (2 canaux) ou "
+              "6 MHz (mode large) : débits demandés au récepteur. Piloté par sa DLL Windows G39DDCAPI.dll."),
+    dict(key="g65ddc", kind="", name="WiNRADiO G65DDC", fmin=0.009, fmax=88.0, bits=16, enob=None, rates=[],
+         usable=1.0, max_in=None, gains=[], cal=True, src="winradio.com (doc + G65DDCAPI.h)",
+         note="0 – 88 MHz seulement : pas de micros UHF. Pas pris en charge (API différente : canaux DDC multiples)."),
+]
+SDR_MODEL_DEFAULT = {"hackrf": "hackrf_one", "rtlsdr": "rtl_v3", "sdrplay": "rsp1b", "airspy": "airspy_r2",
+                     "airspyhf": "airspy_hf", "lime": "limemini", "pluto": "pluto", "uhd": "b200", "bladerf": "bladerf2",
+                     "winradio": "g39ddc"}
+
+
+def sdr_model(key):
+    """Fiche d'un modèle par sa clé (None si inconnue)."""
+    return next((m for m in SDR_MODELS if m["key"] == key), None)
+
+
+for _k, _mk in SDR_MODEL_DEFAULT.items():         # temps réel : débits proposés d'après la fiche du modèle
+    if _mk and sdr_model(_mk) and sdr_model(_mk)["rates"]:
+        RT_RATES.setdefault(_k, sorted(sdr_model(_mk)["rates"], reverse=True))
+
+
+def sdr_models_for(kind):
+    """Modèles pilotés de la même façon (pour choisir le sien)."""
+    return [m for m in SDR_MODELS if m["kind"] == kind]
+
+
+def sdr_model_of(kind, chosen=None):
+    """Modèle retenu pour un genre : celui choisi par l'utilisateur ({genre: clé}) s'il va avec, sinon le défaut."""
+    m = sdr_model((chosen or {}).get(kind)) if chosen else None
+    return m if m is not None and m["kind"] == kind else sdr_model(SDR_MODEL_DEFAULT.get(kind))
+
+
+def bits_dynamic(bits):
+    """Dynamique théorique d'un convertisseur de `bits` bits (dB) : 6,02 × bits + 1,76."""
+    return None if not bits else round(6.02 * bits + 1.76, 1)
+
+
+def sdr_floor_dbfs(model, rate=None, chan_hz=200000.0):
+    """Plancher de quantification dans un canal (dBFS) : bruit du convertisseur réparti sur toute la bande IQ, dont le
+    canal ne voit qu'une part. Borne basse de l'échelle des niveaux (le vrai bruit, analogique, est souvent au-dessus)."""
+    b = (model or {}).get("enob") or (model or {}).get("bits") or 8
+    fs = float(rate or ((model or {}).get("rates") or [2400000])[0])
+    return round(-(6.02 * b + 1.76) - 10.0 * math.log10(max(1.0, fs / chan_hz)), 1)
+
+
+def sdr_rate(model, kind=None, want=None):
+    """Débit IQ à utiliser : `want` s'il est proposé, sinon le plus petit ≥ 4,8 MS/s, sinon le plus grand."""
+    rates = sorted((model or {}).get("rates") or [])
+    if not rates:
+        return sdr_iq_rate(kind or (model or {}).get("kind") or "")
+    if want in rates:
+        return want
+    big = [r for r in rates if r >= 4800000]
+    return big[0] if big else rates[-1]
+
+
+def sdr_span_mhz(model, rate):
+    """Largeur utile (MHz) d'une fenêtre IQ à ce débit."""
+    return float(rate) * float((model or {}).get("usable") or 0.8) / 1e6
+
+
+def sdr_in_range(model, f_mhz):
+    return model is not None and model["fmin"] <= float(f_mhz) <= model["fmax"]
+
+
+def sdr_model_text(m, tr=None):
+    """Fiche lisible d'un modèle (fenêtre Réglages SDR)."""
+    tr = tr or (lambda x: x)
+    if not m:
+        return ""
+    lines = [f"{m['name']} : {m['fmin']:g} – {m['fmax']:g} MHz"]
+    if m.get("bits"):
+        d = bits_dynamic(m.get("enob") or m["bits"])
+        lines.append(tr("{} bits").format(m["bits"]) + (f" (ENOB {m['enob']:g})" if m.get("enob") else "")
+                     + " · " + tr("dynamique théorique ≈ {} dB").format(f"{d:.0f}"))
+    if m.get("rates"):
+        r = max(m["rates"])
+        lines.append(tr("Débits : {} MS/s · fenêtre utile jusqu'à {} MHz").format(
+            " / ".join(f"{x / 1e6:g}" for x in sorted(m["rates"], reverse=True)), f"{sdr_span_mhz(m, r):.1f}"))
+    if m.get("max_in") is not None:
+        lines.append(tr("Entrée max conseillée : {} dBm").format(f"{m['max_in']:g}"))
+    lines.append(tr("Niveaux en vrais dBm (calibrés par l'appareil)") if m.get("cal") else
+                 tr("Niveaux en dBFS : à caler sur un tinySA (offset)"))
+    if m.get("note"):
+        lines.append(tr(m["note"]))
+    lines.append(tr("Source : {}").format(m.get("src", "")))
+    return "\n".join(lines)
+
+
+def sdr_cfg_extra(sd):
+    """Réglages SDR de l'étape 7 lus de la config (relus prudemment) : model, models {genre: clé}, gains {clé: {étage:
+    entier}}, offsets {clé: dB}."""
+    out = {}
+    sd = sd if isinstance(sd, dict) else {}
+    if sdr_model(sd.get("model")):
+        out["model"] = sd["model"]
+    mods = sd.get("models")
+    if isinstance(mods, dict):
+        out["models"] = {k: v for k, v in mods.items() if k in SDR_KINDS and sdr_model(v) and sdr_model(v)["kind"] == k}
+    gs = sd.get("gains")
+    if isinstance(gs, dict):
+        g2 = {}
+        for k, d in gs.items():
+            m = sdr_model(k)
+            if m is None or not isinstance(d, dict):
+                continue
+            g2[k] = {}
+            for gk, _n, lo, hi, _st, _df in m["gains"]:
+                try:
+                    if gk in d:
+                        g2[k][gk] = int(min(hi, max(lo, int(d[gk]))))
+                except (TypeError, ValueError):
+                    pass
+        out["gains"] = g2
+    offs = sd.get("offsets")
+    if isinstance(offs, dict):
+        o2 = {}
+        for k, v in offs.items():
+            try:
+                if sdr_model(k):
+                    o2[k] = float(min(60.0, max(-60.0, float(v))))
+            except (TypeError, ValueError):
+                pass
+        out["offsets"] = o2
+    return out
+
+
+def sdr_gains_for(model, gains_cfg=None, legacy=None):
+    """Gains à passer aux outils pour un modèle : {lna, vga, amp, att} (valeurs de l'utilisateur, sinon les défauts du
+    modèle ; `legacy` = anciens réglages globaux lna / vga / amp, utilisés s'il n'a rien réglé pour ce modèle)."""
+    out = dict(lna=24, vga=20, amp=False, att=0)
+    legacy = legacy or {}
+    g = (gains_cfg or {}).get((model or {}).get("key"), {})
+    for gk, _n, lo, hi, _st, dflt in (model or {}).get("gains", []):
+        v = g.get(gk, legacy.get(gk, dflt))
+        try:
+            v = int(min(hi, max(lo, int(v))))
+        except (TypeError, ValueError):
+            v = dflt
+        out[gk] = bool(v) if gk == "amp" else v
+    return out
+
+
+class Resampler:
+    """Rééchantillonnage linéaire en flux (fs_in -> fs_out) : le son d'un débit qui ne tombe pas juste (Airspy
+    10 MS/s, WiNRADiO) sort quand même à 48 kHz, sans changer la hauteur. Mono (n,) ou stéréo (n, 2)."""
+
+    def __init__(self, fs_in, fs_out):
+        self.r = float(fs_in) / float(fs_out)
+        self.prev = None                   # dernier échantillon du bloc précédent (index 0 du bloc suivant)
+        self.t = 0.0                       # position du prochain échantillon de sortie (en échantillons d'entrée)
+
+    def __call__(self, x):
+        x = np.asarray(x, dtype=np.float32)
+        if abs(self.r - 1.0) < 1e-6 or not len(x):
+            return x
+        y = x if self.prev is None else np.concatenate([self.prev[None], x])
+        n = len(y)
+        if self.t > n - 1:                 # rien à sortir dans ce bloc
+            self.t -= n - 1
+            self.prev = y[-1].copy()
+            return y[:0]
+        k = np.arange(self.t, n - 1 + 1e-9, self.r)
+        i0 = np.floor(k).astype(int)
+        fr = (k - i0).astype(np.float32)
+        i1 = np.minimum(i0 + 1, n - 1)
+        if y.ndim == 1:
+            out = y[i0] * (1 - fr) + y[i1] * fr
+        else:
+            out = y[i0] * (1 - fr)[:, None] + y[i1] * fr[:, None]
+        self.t = k[-1] + self.r - (n - 1)
+        self.prev = y[-1].copy()
+        return out.astype(np.float32)
+
+
+# --- WiNRADiO G39DDC : calculs (sans la DLL) -------------------------------------------------------------------
+WR_ADC_RATE = 100000000           # convertisseur du G39DDC : 100 MS/s, 16 bits signés (instantanés « IF »)
+
+
+def wr_pick_ddc(infos, want_bw):
+    """Types de DDC1 [(index, débit, largeur utile, bits)] -> index du plus petit type dont la largeur utile couvre
+    want_bw (Hz), en 16 bits de préférence (moitié moins de données) ; sinon le plus large. None si liste vide."""
+    if not infos:
+        return None
+    ok = [x for x in infos if x[2] >= want_bw]
+    if ok:
+        ok.sort(key=lambda x: (x[2], x[3] != 16, x[1]))
+        return ok[0][0]
+    return max(infos, key=lambda x: (x[2], x[3] == 16))[0]
+
+
+def wr_snapshot_spectrum(samples, center_if, fe_hz, window_w, comp_db=None, adc_rate=WR_ADC_RATE, nfft=8192,
+                         inverted=False):
+    """Instantané IF du G39DDC (16 bits réels à 100 MS/s) -> (F MHz, dBm) de la bande utile. FFT moyennée sur des blocs
+    de nfft (fenêtre de Blackman), moitié basse ; compensation de la DLL (dB par case, GetIFSpectrumCompensation)
+    ajoutée -> dBm. Bande utile = center_if ± window_w / 2 (FrontEndWindowWidth) ; fréquence RF = fe_hz +
+    (f_IF − center_if), ou l'inverse si le spectre est inversé (`inverted` : sens NON vérifié sur un vrai G39DDC)."""
+    x = np.asarray(samples, dtype=np.float32) / 32768.0
+    m = len(x) // nfft
+    if m == 0:
+        return None, None
+    w = np.blackman(nfft).astype(np.float32)
+    seg = x[:m * nfft].reshape(m, nfft) * w
+    P = np.mean(np.abs(np.fft.rfft(seg, axis=1)[:, :nfft // 2]) ** 2, axis=0)
+    db = 10.0 * np.log10(np.maximum(P, 1e-20))
+    if comp_db is not None and len(comp_db) == len(db):
+        db = db + np.asarray(comp_db, dtype=float)
+    fif = np.arange(nfft // 2) * (adc_rate / nfft)
+    lo, hi = center_if - window_w / 2.0, center_if + window_w / 2.0
+    sel = (fif >= lo) & (fif <= hi)
+    off = fif[sel] - center_if
+    F = (fe_hz + (-off if inverted else off)) / 1e6
+    L = db[sel]
+    o = np.argsort(F)
+    return F[o], L[o]
 
 
 # ------------------------------------------------------------------ langues (français par défaut, anglais)
@@ -10969,6 +11298,32 @@ def open_spectrum_device(addr, worker):
     return TinySA(addr, worker.baud, worker._tr)
 
 
+WINRADIO_DIRS = [r"C:\Program Files\WiNRADiO", r"C:\Program Files (x86)\WiNRADiO",
+                 r"C:\Program Files\WiNRADiO\G39DDC", r"C:\Program Files (x86)\WiNRADiO\G39DDC"]
+
+
+def find_winradio_dll(extra_dir="", name="G39DDCAPI.dll"):
+    """Chemin de la DLL WiNRADiO : dossier choisi, à côté de l'appli (et ./outils), dossiers d'installation
+    WiNRADiO (et leurs sous-dossiers), PATH. -> chemin ou None (Windows seulement en pratique)."""
+    here = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    for d in [extra_dir, str(here), str(here / "outils"), str(here / "tools")]:
+        if d and (Path(d) / name).is_file():
+            return str(Path(d) / name)
+    for d in WINRADIO_DIRS:
+        p = Path(d)
+        if (p / name).is_file():
+            return str(p / name)
+        try:
+            for q in p.glob("*/" + name):
+                return str(q)
+        except OSError:
+            pass
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if d and (Path(d) / name).is_file():
+            return str(Path(d) / name)
+    return None
+
+
 class SDRSweep(SpectrumDevice):
     """Un SDR qui se comporte comme un TinySA pour le ScanWorker : l'outil de balayage tourne en continu sur
     toutes les bandes (une seule commande), un fil lit ses lignes (SweepAccum) ; scan(a, z, pts) rend le dernier
@@ -11207,7 +11562,7 @@ class ScanWorker(QtCore.QThread):
                     dev.abort = lambda: self.isInterruptionRequested() or self.paused
                     self.dev = dev
                     self.info.emit(dev.version())
-                    self.status.emit(self._say(f"{dev.spec['name']} prêt ({dev.spec['tool']})"))
+                    self.status.emit(self._say(f"{dev.spec['name']} prêt ({dev.spec.get('tool') or dev.spec.get('dll')})"))
                 elif not self.demo:
                     self._tr(f"connexion à {self.port} ({self.baud} bauds)")
                     dev = TinySA(self.port, self.baud, self._tr)
@@ -15714,104 +16069,624 @@ register_spectrum_driver("sdr", lambda a: parse_sdr_addr(a) is not None,
                          lambda a, w: SDRSweep(a, w.sdr_dir, w._tr, w.sdr_tool))
 
 
+# --------------------------------------------------------------------------
+# V8 étape 7 : WiNRADiO G39DDC par sa DLL (G39DDCAPI.dll, appels __stdcall, structures #pragma pack(1)) — d'après la
+# doc et l'en-tête officiels (winradio.com, lus le 24/11/2026). JAMAIS essayé avec un vrai G39DDC : testé avec une
+# fausse DLL (tests/fake_winradio.py). Règle de la DLL : un récepteur se pilote depuis UN SEUL fil (celui qui l'a
+# ouvert), et on n'appelle pas la DLL depuis ses fonctions de rappel -> les rappels ne font que copier les données.
+# --------------------------------------------------------------------------
+import ctypes  # noqa: E402
+
+_WR_FN = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)        # __stdcall sous Windows
+_WR_U32, _WR_U64, _WR_PTR = ctypes.c_uint32, ctypes.c_uint64, ctypes.c_size_t      # DWORD_PTR = taille d'un pointeur
+WR_OPEN_FIRST = ctypes.c_void_p(-1)      # G39DDC_OPEN_FIRST = ((CHAR*)-1)
+WR_OPEN_DEMO = ctypes.c_void_p(0)        # G39DDC_OPEN_DEMO  = ((CHAR*)0)
+WR_ATT = {0: 0, 6: 1, 12: 2, 18: 3}      # G39DDC_ATTENUATOR_0dB … _18dB
+WR_DDC1_MODE_DEFAULT, WR_DDC1_MODE_WIDEBAND = 0, 1      # valeurs supposées dans l'ordre de la doc (pas dans l'en-tête lu)
+
+
+class WR_DEVICE_INFO(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("DevicePath", ctypes.c_char * 260), ("InterfaceType", ctypes.c_ubyte), ("SerialNumber", ctypes.c_char * 9),
+                ("HWVersion", ctypes.c_uint16), ("FWVersion", ctypes.c_uint16), ("EEPROMVersion", ctypes.c_ubyte),
+                ("ChannelCount", _WR_U32), ("FrontEndMinFrequency", _WR_U64), ("FrontEndMaxFrequency", _WR_U64),
+                ("FrontEndMaxHFFrequency", _WR_U64), ("FrontEndFrequencyStep", _WR_U32),
+                ("FrontEndWindowWidth", _WR_U32), ("HardwareOptions", _WR_U32)]
+
+
+class WR_DDC_INFO(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("SampleRate", _WR_U32), ("Bandwidth", _WR_U32), ("BitsPerSample", _WR_U32)]
+
+
+WR_IF_CB = _WR_FN(None, ctypes.POINTER(ctypes.c_short), _WR_U32, _WR_U32, ctypes.c_uint16, _WR_U32, _WR_PTR)
+WR_DDC1_CB = _WR_FN(None, _WR_U32, ctypes.c_void_p, _WR_U32, _WR_U32, _WR_PTR)
+WR_DDC1_PLAY_CB = _WR_FN(ctypes.c_int, _WR_U32, ctypes.c_void_p, _WR_U32, _WR_U32, _WR_PTR)
+WR_DDC2_CB = _WR_FN(None, _WR_U32, ctypes.POINTER(ctypes.c_float), _WR_U32, _WR_PTR)
+WR_DDC2_PRE_CB = _WR_FN(None, _WR_U32, ctypes.POINTER(ctypes.c_float), _WR_U32, ctypes.c_float, ctypes.c_float, _WR_PTR)
+WR_AUDIO_CB = _WR_FN(None, _WR_U32, _WR_U32, ctypes.POINTER(ctypes.c_float), _WR_U32, _WR_PTR)
+WR_AUDIO_PLAY_CB = _WR_FN(ctypes.c_int, _WR_U32, ctypes.POINTER(ctypes.c_float), _WR_U32, _WR_PTR)
+WR_SWEEP_CB = _WR_FN(ctypes.c_int, ctypes.POINTER(ctypes.c_short), _WR_U32, _WR_U32, _WR_U64, _WR_PTR)
+
+
+class WR_CALLBACKS(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("IFCallback", WR_IF_CB), ("DDC1StreamCallback", WR_DDC1_CB),
+                ("DDC1PlaybackStreamCallback", WR_DDC1_PLAY_CB), ("DDC2StreamCallback", WR_DDC2_CB),
+                ("DDC2PreprocessedStreamCallback", WR_DDC2_PRE_CB), ("AudioStreamCallback", WR_AUDIO_CB),
+                ("AudioPlaybackStreamCallback", WR_AUDIO_PLAY_CB), ("SweepingCallback", WR_SWEEP_CB)]
+
+
+WR_SIGS = {   # nom -> (type de retour, arguments)  (fonctions utilisées seulement)
+    "OpenDevice": (ctypes.c_int32, [ctypes.c_void_p]), "CloseDevice": (ctypes.c_int, [ctypes.c_int32]),
+    "GetDeviceInfo": (ctypes.c_int, [ctypes.c_int32, ctypes.POINTER(WR_DEVICE_INFO), _WR_U32]),
+    "SetPower": (ctypes.c_int, [ctypes.c_int32, ctypes.c_int]),
+    "SetAttenuator": (ctypes.c_int, [ctypes.c_int32, _WR_U32]),
+    "SetPreamplifier": (ctypes.c_int, [ctypes.c_int32, ctypes.c_int]),
+    "SetFrontEndFrequency": (ctypes.c_int, [ctypes.c_int32, _WR_U64]),
+    "SetDDC1Mode": (ctypes.c_int, [ctypes.c_int32, _WR_U32]),
+    "GetDDC1Count": (ctypes.c_int, [ctypes.c_int32, _WR_U32, ctypes.POINTER(_WR_U32)]),
+    "GetDDCInfo": (ctypes.c_int, [_WR_U32, ctypes.POINTER(WR_DDC_INFO)]),
+    "SetDDC1": (ctypes.c_int, [ctypes.c_int32, _WR_U32, _WR_U32]),
+    "SetDDC1Frequency": (ctypes.c_int, [ctypes.c_int32, _WR_U32, ctypes.c_int32]),
+    "StartDDC1": (ctypes.c_int, [ctypes.c_int32, _WR_U32, _WR_U32]),
+    "StopDDC1": (ctypes.c_int, [ctypes.c_int32, _WR_U32]),
+    "StartSweeping": (ctypes.c_int, [ctypes.c_int32, _WR_U64, _WR_U64, _WR_U64, ctypes.c_uint16, ctypes.c_int]),
+    "StopSweeping": (ctypes.c_int, [ctypes.c_int32]),
+    "GetIFSpectrumCompensation": (ctypes.c_int, [ctypes.c_int32, _WR_U64, ctypes.POINTER(ctypes.c_float), _WR_U32]),
+    "SetCallbacks": (ctypes.c_int, [ctypes.c_int32, ctypes.POINTER(WR_CALLBACKS), _WR_PTR]),
+}
+
+
+class WinradioG39:
+    """Un G39DDC ouvert (dans le fil qui l'utilise). lib = DLL chargée (ctypes.WinDLL) ou fausse DLL (tests)."""
+
+    def __init__(self, serial="", lib=None, dll_dir="", trace=None):
+        self.trace = trace
+        if lib is None:
+            path = find_winradio_dll(dll_dir)
+            if path is None or not hasattr(ctypes, "WinDLL"):
+                raise RuntimeError("G39DDCAPI.dll introuvable : installe le logiciel WiNRADiO G39DDC (il installe la "
+                                   "DLL) ou indique son dossier dans 📡 Réglages SDR." if path is None else
+                                   "WiNRADiO : pilote Windows seulement.")
+            lib = ctypes.WinDLL(path)
+        self.lib = lib
+        self.f = {}
+        for name, (res, args) in WR_SIGS.items():
+            fn = getattr(lib, name)
+            if hasattr(fn, "argtypes"):
+                fn.restype, fn.argtypes = res, args
+            self.f[name] = fn
+        self._sn = ctypes.c_char_p(serial.encode("ascii", "ignore")) if serial else None
+        arg = ctypes.cast(self._sn, ctypes.c_void_p) if serial else WR_OPEN_FIRST
+        self.h = self.f["OpenDevice"](arg)
+        if self.h is None or int(self.h) < 0:
+            raise RuntimeError("WiNRADiO G39DDC introuvable ou déjà utilisé (OpenDevice a échoué).")
+        self.info = WR_DEVICE_INFO()
+        self.call("GetDeviceInfo", ctypes.byref(self.info), ctypes.sizeof(self.info))
+        self.call("SetPower", 1)
+        self.cbs = WR_CALLBACKS()           # gardés tant que le récepteur est ouvert (sinon ramassés : plantage)
+        self._t(f"G39DDC ouvert : n° {self.serial()}, {self.info.FrontEndMinFrequency / 1e6:g}–"
+                f"{self.info.FrontEndMaxFrequency / 1e6:g} MHz, pas {self.info.FrontEndFrequencyStep} Hz, "
+                f"fenêtre {self.info.FrontEndWindowWidth / 1e6:g} MHz")
+
+    def _t(self, txt):
+        if self.trace is not None:
+            self.trace(txt)
+
+    def serial(self):
+        return bytes(self.info.SerialNumber).split(b"\0")[0].decode("ascii", "ignore")
+
+    def call(self, name, *a):
+        ok = self.f[name](self.h, *a)
+        if not ok:
+            raise RuntimeError(f"G39DDC : {name} a échoué")
+        return ok
+
+    def set_gains(self, g):
+        att = min(WR_ATT, key=lambda k: abs(k - int(g.get("att", 0) or 0)))
+        self.call("SetAttenuator", WR_ATT[att])
+        self.call("SetPreamplifier", 1 if g.get("amp") else 0)
+
+    def fe_round(self, hz):
+        """Fréquence front-end valide (multiple du pas, bornée) la plus proche."""
+        st = max(1, int(self.info.FrontEndFrequencyStep))
+        lo, hi = int(self.info.FrontEndMinFrequency), int(self.info.FrontEndMaxFrequency)
+        v = int(round(hz / st)) * st
+        return min(hi - (hi % st), max(lo if lo % st == 0 else lo + st - lo % st, v))
+
+    def set_callbacks(self, **kw):
+        self.cbs = WR_CALLBACKS()
+        for k, v in kw.items():
+            setattr(self.cbs, k, v)
+        self.call("SetCallbacks", ctypes.byref(self.cbs), 0)
+
+    def close(self):
+        h, self.h = self.h, None
+        if h is not None:
+            try:
+                self.f["CloseDevice"](h)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+class WinradioSweep(SpectrumDevice):
+    """G39DDC en balayage (pour le ScanWorker) : StartSweeping de la DLL entre la plus basse et la plus haute bande ;
+    chaque instantané IF (rappel) est copié, puis dans le fil du worker : FFT + compensation de la DLL -> dBm, posé
+    dans un SweepAccum ; scan() rend le dernier passage complet comme SDRSweep. Niveaux calibrés en dBm (doc)."""
+    PROMPT = None
+    family = "sdr"
+    caps = dict(listen=True, realtime=True, sweep_all=True, calibrated=True)
+
+    def __init__(self, addr, dll_dir="", trace=None, lib=None):
+        self.kind, serial = parse_sdr_addr(addr) or ("winradio", "")
+        self.spec = SDR_KINDS["winradio"]
+        self.trace, self.abort, self.idle = trace, None, 30.0
+        self.dev = WinradioG39(serial, lib=lib, dll_dir=dll_dir, trace=trace)
+        self.q = deque(maxlen=400)
+        self.acc, self.lock = SweepAccum(), threading.Lock()
+        self.served, self.key, self.nfft, self.comp, self.running = {}, None, 8192, {}, False
+        self.inverted = False
+
+    def version(self):
+        return f"WiNRADiO G39DDC · n° {self.dev.serial()}"
+
+    def set_rbw(self, khz):
+        self.rbw = khz
+        return True, ""
+
+    def expect_scan(self, points, rbw_khz, step_khz=None):
+        self.idle = 30.0
+
+    def _on_snap(self, buf, n, center_if, fe, _ud):
+        try:
+            self.q.append((np.ctypeslib.as_array(buf, shape=(int(n),)).copy(), int(center_if), int(fe)))
+        except Exception:  # noqa: BLE001 — jamais d'exception vers la DLL
+            pass
+        return 1
+
+    def configure(self, bands, rbw_khz, gains):
+        lo = min(b["start_hz"] for b in bands)
+        hi = max(b["stop_hz"] for b in bands)
+        d = self.dev
+        w = float(d.info.FrontEndWindowWidth or 2e6)
+        a, z = d.fe_round(lo + w / 2.0), d.fe_round(max(lo + w / 2.0, hi - w / 2.0))
+        if z <= a:
+            z = d.fe_round(a + max(1, d.info.FrontEndFrequencyStep))
+        nfft = 8192
+        if rbw_khz:                                    # finesse demandée -> taille de FFT (≤ instantané de 65 536)
+            nfft = int(min(65536, max(1024, 2 ** math.ceil(math.log2(WR_ADC_RATE / (float(rbw_khz) * 1000.0))))))
+        key = (a, z, nfft, int(gains.get("att", 0) or 0), bool(gains.get("amp")))
+        if key == self.key and self.running:
+            return
+        self.stop_sweep()
+        self.key, self.nfft = key, nfft
+        d.set_gains(gains or {})
+        self.cb = WR_SWEEP_CB(self._on_snap)
+        d.set_callbacks(SweepingCallback=self.cb)
+        with self.lock:
+            self.acc = SweepAccum()
+        self.served, self.comp = {}, {}
+        d.call("StartSweeping", a, z, a, 20, 1)
+        self.running = True
+        d._t(f"balayage {a / 1e6:g}–{z / 1e6:g} MHz (front-end), FFT {nfft}")
+
+    def _drain(self):
+        d = self.dev
+        while self.q:
+            samples, cif, fe = self.q.popleft()
+            comp = self.comp.get(fe)
+            if comp is None and len(self.comp) < 4000:
+                buf = (ctypes.c_float * (self.nfft // 2))()
+                try:
+                    d.call("GetIFSpectrumCompensation", fe, buf, self.nfft // 2)
+                    comp = np.ctypeslib.as_array(buf).astype(float).copy()
+                except RuntimeError:
+                    comp = None
+                self.comp[fe] = comp
+            F, L = wr_snapshot_spectrum(samples, cif, fe, float(d.info.FrontEndWindowWidth), comp, nfft=self.nfft,
+                                        inverted=self.inverted)
+            if F is None or len(F) < 2:
+                continue
+            bw = (F[1] - F[0]) * 1e6
+            with self.lock:
+                self.acc.feed((F[0] * 1e6 - bw / 2.0, F[-1] * 1e6 + bw / 2.0, bw, L))
+
+    def scan(self, start_hz, stop_hz, points):
+        if not self.running:
+            raise RuntimeError("G39DDC : balayage pas lancé")
+        key = (round(start_hz), round(stop_hz), int(points))
+        need = self.served.get(key, 0)
+        t0 = time.time()
+        while True:
+            self._drain()
+            with self.lock:
+                passes, snap = self.acc.passes, self.acc.snapshot()
+            if snap is not None and passes > need:
+                break
+            if self.abort is not None and self.abort():
+                raise Aborted()
+            if time.time() - t0 > self.idle:
+                raise TimeoutError(f"WiNRADiO G39DDC muet depuis {self.idle:.0f} s")
+            time.sleep(0.02)
+        self.served[key] = passes
+        F, L = snap
+        x = np.linspace(start_hz, stop_hz, int(points))
+        return x, resample_max(F, L, start_hz, stop_hz, int(points))
+
+    def stop_sweep(self):
+        if self.running:
+            try:
+                self.dev.f["StopSweeping"](self.dev.h)
+            except Exception:  # noqa: BLE001
+                pass
+            self.running = False
+
+    def close(self):
+        self.stop_sweep()
+        self.dev.close()
+
+
+class ProcIQ:
+    """Source d'IQ = un outil (hackrf_transfer, rtl_sdr, rx_sdr…) qui écrit l'IQ brut sur sa sortie standard."""
+
+    def __init__(self, kind, exe, center, rate, gains, serial=""):
+        self.kind, self.rate, self.center = kind, int(rate), float(center)
+        self.dtype = SDR_DTYPE.get(kind, "ci8")
+        self.err = deque(maxlen=20)
+        argv = listen_cmd(kind, exe, center, rate, gains.get("lna", 24), gains.get("vga", 20), gains.get("amp", False),
+                          serial)
+        self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     stdin=subprocess.DEVNULL, bufsize=0,
+                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        threading.Thread(target=self._read_err, daemon=True).start()
+
+    def _read_err(self):
+        try:
+            for line in self.proc.stderr:
+                t = line.decode(errors="ignore").strip()
+                if t:
+                    self.err.append(t)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def read(self, n):
+        return self.proc.stdout.read(n) if self.proc is not None else b""
+
+    def close(self):
+        p, self.proc = self.proc, None
+        if p is not None and p.poll() is None:
+            try:
+                p.kill()
+                p.wait(timeout=3)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+class WinradioIQ:
+    """Source d'IQ = le DDC1 du G39DDC : type de DDC choisi d'après la largeur voulue (wr_pick_ddc), front-end +
+    décalage DDC1 sur le centre demandé, rappel qui copie les échantillons (16 ou 32 bits). rate / dtype = ceux du
+    type retenu (pas forcément le débit demandé : le démodulateur s'adapte). À ouvrir dans le fil qui lit."""
+
+    def __init__(self, center, rate, gains, serial="", dll_dir="", lib=None, span=None):
+        self.center = float(center)
+        self.err = deque(maxlen=20)
+        self.dev = d = WinradioG39(serial, lib=lib, dll_dir=dll_dir)
+        want = float(span or rate * 0.8)
+        if want > 4e6:
+            try:
+                d.call("SetDDC1Mode", WR_DDC1_MODE_WIDEBAND)
+            except RuntimeError:
+                pass
+        cnt = _WR_U32(0)
+        d.call("GetDDC1Count", 0, ctypes.byref(cnt))
+        infos = []
+        for i in range(int(cnt.value)):
+            di = WR_DDC_INFO()
+            if d.f["GetDDCInfo"](i, ctypes.byref(di)):
+                infos.append((i, int(di.SampleRate), int(di.Bandwidth), int(di.BitsPerSample)))
+        idx = wr_pick_ddc(infos, want)
+        if idx is None:
+            d.close()
+            raise RuntimeError("G39DDC : aucun type de DDC1 disponible")
+        _i, self.rate, self.bw, bits = next(x for x in infos if x[0] == idx)
+        self.dtype = "ci16_le" if bits == 16 else "ci32_le"
+        d.set_gains(gains or {})
+        d.call("SetDDC1", 0, idx)
+        fe = d.fe_round(self.center)
+        d.call("SetFrontEndFrequency", fe)
+        d.call("SetDDC1Frequency", 0, int(round(self.center - fe)))
+        self.q, self.nb = deque(), IQ_BYTES[self.dtype]
+        self.cb = WR_DDC1_CB(self._on_iq)
+        d.set_callbacks(DDC1StreamCallback=self.cb)
+        spb = max(64, int(self.rate * 0.02) // 64 * 64)
+        d.call("StartDDC1", 0, spb)
+        self.buf = b""
+
+    def _on_iq(self, _ch, buf, n, bits, _ud):
+        try:
+            self.q.append(ctypes.string_at(buf, int(n) * 2 * int(bits) // 8))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def read(self, n):
+        t0 = time.time()
+        while len(self.buf) < n and time.time() - t0 < 2.0:
+            if self.q:
+                self.buf += self.q.popleft()
+            else:
+                time.sleep(0.005)
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def close(self):
+        d, self.dev = self.dev, None
+        if d is not None:
+            try:
+                d.f["StopDDC1"](d.h, 0)
+            except Exception:  # noqa: BLE001
+                pass
+            d.close()
+
+
+def open_iq_source(kind, center, rate, gains, serial="", tool=None, tool_dir="", wr_lib=None, span=None):
+    """Source d'IQ pour l'écoute / le temps réel : .read(n), .close(), .rate, .dtype, .err. Lève RuntimeError."""
+    if kind == "winradio":
+        return WinradioIQ(center, rate, gains, serial, tool_dir, lib=wr_lib, span=span)
+    sp = SDR_KINDS[kind]
+    exe = tool if tool is not None else find_sdr_tool(sp["iq_tool"], tool_dir)
+    if exe is None:
+        raise RuntimeError(f"{sp['iq_tool']} introuvable (outils {sp['name']} : PothosSDR / SoapySDR, ou 📡 Réglages SDR).")
+    try:
+        return ProcIQ(kind, exe, center, rate, gains, serial)
+    except OSError as e:
+        raise RuntimeError(f"Impossible de lancer {sp['iq_tool']} : {e}")
+
+
+WINRADIO_LIB = None          # tests : fausse DLL (tests/fake_winradio.py) à la place de G39DDCAPI.dll
+register_spectrum_driver("winradio", lambda a: (parse_sdr_addr(a) or ("",))[0] == "winradio",
+                         lambda a, w: WinradioSweep(a, w.sdr_dir, w._tr, lib=WINRADIO_LIB))
+
+
+SDR_INSTALL = {   # étape 7 : comment installer, par genre (fenêtre « Comment l'installer ? »)
+    "hackrf": "Installe PothosSDR (il contient hackrf_sweep, hackrf_transfer et les pilotes). Si Windows ne voit pas le "
+              "HackRF : pilote WinUSB avec Zadig.",
+    "rtlsdr": "Installe PothosSDR (rtl_power, rtl_sdr). Pilote WinUSB avec Zadig (choisir « Bulk-In, Interface 0 »).",
+    "sdrplay": "1. Installe l'API SDRplay (site sdrplay.com). 2. Installe PothosSDR (SoapySDR). 3. Ajoute le module "
+               "SoapySDRPlay3 et les rx_tools (rx_power, rx_sdr).",
+    "soapy": "1. Installe PothosSDR (SoapySDR + modules Airspy, Lime, Pluto, UHD, bladeRF). 2. Ajoute les rx_tools "
+             "(rx_power, rx_sdr). 3. Branche le SDR : il doit apparaître dans « SoapySDRUtil --find ».",
+    "winradio": "Installe le logiciel WiNRADiO G39DDC (il installe G39DDCAPI.dll et le pilote). Le récepteur doit être "
+                "reconnu par son propre logiciel ; ferme ce logiciel avant de lancer la surveillance.",
+}
+SDR_SENS = [("low", "Basse (près des scènes, émetteurs forts)"), ("mid", "Normale"),
+            ("high", "Haute (loin, micros faibles)")]
+
+
+def sdr_sens_gains(model, sens):
+    """Sensibilité simple (basse / normale / haute) -> valeur de chaque étage de gain du modèle (au pas près)."""
+    out = {}
+    for gk, _n, lo, hi, st, dflt in (model or {}).get("gains", []):
+        if lo == 0 and hi == 1:                       # interrupteur (ampli, préampli) : seulement en « haute »
+            v = 1 if sens == "high" else 0
+        elif gk == "att":                             # atténuateur : à l'envers
+            v = {"low": hi, "mid": lo, "high": lo}.get(sens, dflt)
+        else:
+            v = {"low": lo + 0.25 * (hi - lo), "mid": dflt, "high": lo + 0.85 * (hi - lo)}.get(sens, dflt)
+        out[gk] = int(round((v - lo) / st) * st + lo)
+    return out
+
+
 class SdrDialog(QtWidgets.QDialog):
-    """V8 : réglages des SDR (HackRF One, RTL-SDR) : dossier des outils, gains, et comment les installer."""
+    """V8 : réglages SDR, version simple (étape 7, Clément : « usine à gaz ») : choisir SON SDR, voir s'il est prêt,
+    une sensibilité en 3 crans ; la fiche technique et les réglages fins sont repliés."""
 
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
-        self.setWindowTitle("Réglages SDR (HackRF, RTL-SDR)")
-        self.resize(640, 470)
+        self.setWindowTitle("Réglages SDR")
         c = owner.sdr_cfg
+        self.models = dict(c.get("models") or {})
+        self.gains = {k: dict(v) for k, v in (c.get("gains") or {}).items()}
+        self._offs = dict(c.get("offsets") or {})
         lay = QtWidgets.QVBoxLayout(self)
-        info = QtWidgets.QLabel(
-            "<b>Un SDR remplace (ou complète) un tinySA</b> : choisis « 📡 HackRF One » ou « 📡 RTL-SDR » dans la "
-            "liste des ports (ou comme 2ᵉ appareil). L'appli lance l'outil officiel de balayage "
-            "(<code>hackrf_sweep</code> / <code>rtl_power</code>) et lit ses mesures.<br><br>"
-            "<b>Installer les outils (Windows)</b> : le plus simple est <b>PothosSDR</b> (contient hackrf_sweep, "
-            "rtl_power et les pilotes), ou les outils HackRF de Great Scott Gadgets. Le pilote USB se met avec "
-            "<b>Zadig</b> (WinUSB). Tu peux aussi copier <code>hackrf_sweep.exe</code> (et ses .dll) dans un dossier "
-            "<code>outils</code> à côté de l'appli.<br><br>"
-            "<b>SDRplay RSP1B</b> : installe l'API SDRplay (sdrplay.com), puis SoapySDR avec le module SoapySDRPlay3 "
-            "et les rx_tools (<code>rx_power</code>, <code>rx_sdr</code>). Port « 📡 SDRplay RSP1B », ou adresse "
-            "<code>sdrplay</code> pour le 2ᵉ appareil. Pas encore testé avec un vrai RSP1B.<br><br>"
-            "⚠ Les niveaux d'un SDR <b>ne sont pas des dBm étalonnés</b> : règle l'offset, ou fais la calibration "
-            "automatique avec un tinySA (2ᵉ appareil).")
-        info.setWordWrap(True)
-        info.setTextFormat(Qt.TextFormat.RichText)
-        info.setMinimumHeight(info.fontMetrics().height() * 9)
-        lay.addWidget(info)
         f = QtWidgets.QFormLayout()
+        self.model_combo = QtWidgets.QComboBox()
+        for m in SDR_MODELS:
+            if m["kind"]:
+                self.model_combo.addItem(m["name"], m["key"])
+        self.model_combo.setToolTip("Ton SDR : l'appli adapte les débits, la largeur de la fenêtre, les gains et l'échelle\n"
+                                    "des niveaux à ses caractéristiques (bits, plage, entrée max).")
+        cur = c.get("model") or next(iter(self.models.values()), "hackrf_one")
+        self.model_combo.setCurrentIndex(max(0, self.model_combo.findData(cur)))
+        f.addRow("Mon SDR :", self.model_combo)
+        self.summary = QtWidgets.QLabel("")
+        self.summary.setWordWrap(True)
+        f.addRow("", self.summary)
+        self.state = QtWidgets.QLabel("")
+        self.state.setWordWrap(True)
+        self.help_btn = QtWidgets.QPushButton("Comment l'installer ?")
+        self.help_btn.setToolTip("Les étapes d'installation pour ce SDR (logiciels à installer sous Windows).")
+        self.help_btn.clicked.connect(lambda *_: self._install_help())
+        st_row = QtWidgets.QHBoxLayout()
+        st_row.addWidget(self.state, 1)
+        st_row.addWidget(self.help_btn)
+        f.addRow("État :", st_row)
+        self.sens = QtWidgets.QComboBox()
+        for k, t in SDR_SENS:
+            self.sens.addItem(t, k)
+        self.sens.setToolTip("Règle tous les gains du SDR d'un coup. Basse : près des scènes, quand des émetteurs forts\n"
+                             "sont tout près (évite la saturation). Haute : antenne loin, micros faibles.")
+        self.sens.activated.connect(lambda *_: self._apply_sens())
+        f.addRow("Sensibilité :", self.sens)
+        lay.addLayout(f)
+        self.more = QtWidgets.QToolButton()
+        self.more.setText("Réglages avancés")
+        self.more.setCheckable(True)
+        self.more.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.more.setArrowType(Qt.ArrowType.RightArrow)
+        self.more.setToolTip("Fiche technique, gains étage par étage, dossier des outils, correction de niveau.")
+        self.more.toggled.connect(lambda on: self._more(on))
+        lay.addWidget(self.more)
+        self.adv = QtWidgets.QWidget()
+        av = QtWidgets.QVBoxLayout(self.adv)
+        av.setContentsMargins(12, 0, 0, 0)
+        self.sheet = QtWidgets.QLabel("")
+        self.sheet.setWordWrap(True)
+        self.sheet.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.sheet.setStyleSheet("padding:6px; border:1px solid rgba(128,128,128,.35); border-radius:8px")
+        av.addWidget(self.sheet)
+        self.gain_box = QtWidgets.QGroupBox("Gains de ce modèle")
+        self.gain_box.setToolTip("Trop de gain = le SDR sature et invente des signaux (intermod interne) ; trop peu = les\n"
+                                 "micros faibles disparaissent dans le bruit. Commence au milieu.")
+        self.gain_form = QtWidgets.QFormLayout(self.gain_box)
+        self.gain_w = {}
+        av.addWidget(self.gain_box)
+        af = QtWidgets.QFormLayout()
         self.dir_edit = QtWidgets.QLineEdit(c.get("dir", ""))
-        self.dir_edit.setPlaceholderText("automatique (PATH, PothosSDR, dossier « outils »)")
-        self.dir_edit.setToolTip("Dossier qui contient hackrf_sweep(.exe) / rtl_power(.exe). Vide = recherche "
-                                 "automatique.")
+        self.dir_edit.setPlaceholderText("automatique (PATH, PothosSDR, dossier « outils », dossier WiNRADiO)")
+        self.dir_edit.setToolTip("Dossier qui contient les outils (hackrf_sweep, rtl_power, rx_power…) ou la DLL WiNRADiO.\n"
+                                 "Vide = recherche automatique.")
         browse = QtWidgets.QPushButton("Parcourir…")
         browse.setToolTip("Choisir le dossier des outils SDR.")
         browse.clicked.connect(lambda *_: self._browse())
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.dir_edit, 1)
         row.addWidget(browse)
-        f.addRow("Dossier des outils :", row)
-        self.found_lbl = QtWidgets.QLabel("")
-        self.found_lbl.setWordWrap(True)
-        f.addRow("Trouvés :", self.found_lbl)
-        self.lna_spin = QtWidgets.QSpinBox()
-        self.lna_spin.setRange(0, 50)
-        self.lna_spin.setValue(int(c.get("lna", 24)))
-        self.lna_spin.setSuffix(" dB")
-        self.lna_spin.setToolTip("HackRF : gain LNA (0 à 40 dB par pas de 8). RTL-SDR : gain du tuner (0 à 50 dB).\n"
-                                 "Trop de gain = le SDR sature et invente des signaux (intermod interne).")
-        self.vga_spin = QtWidgets.QSpinBox()
-        self.vga_spin.setRange(0, 62)
-        self.vga_spin.setSingleStep(2)
-        self.vga_spin.setValue(int(c.get("vga", 20)))
-        self.vga_spin.setSuffix(" dB")
-        self.vga_spin.setToolTip("HackRF seulement : gain VGA (bande de base, 0 à 62 dB par pas de 2).")
+        af.addRow("Dossier des outils :", row)
+        self.off_spin = QtWidgets.QDoubleSpinBox()
+        self.off_spin.setRange(-60.0, 60.0)
+        self.off_spin.setDecimals(1)
+        self.off_spin.setSuffix(" dB")
+        self.off_spin.setToolTip("Ajouté aux niveaux de ce SDR pendant l'écoute (dBFS -> dBm à peu près), pour que la\n"
+                                 "surveillance pendant l'écoute ait la même échelle que le tinySA. 0 pour un WiNRADiO\n"
+                                 "(déjà en dBm). Le plus juste : la calibration automatique avec un tinySA.")
+        af.addRow("Correction de niveau (écoute) :", self.off_spin)
         self.rec_spin = QtWidgets.QSpinBox()
         self.rec_spin.setRange(1, 2000)
         self.rec_spin.setValue(int(c.get("rec_max_gb", 20)))
         self.rec_spin.setSuffix(" Go")
         self.rec_spin.setToolTip("Taille maximale d'un enregistrement IQ (⏱ Temps réel) : il s'arrête tout seul au-delà\n"
                                  "(et quand il reste moins de 2 Go sur le disque).")
-        self.amp_chk = QtWidgets.QCheckBox("Ampli d'entrée du HackRF (+14 dB)")
-        self.amp_chk.setChecked(bool(c.get("amp", False)))
-        self.amp_chk.setToolTip("HackRF seulement. Utile avec une petite antenne loin des émetteurs ; à éviter près "
-                                "d'une scène (saturation).")
-        f.addRow("Gain LNA / tuner :", self.lna_spin)
-        f.addRow("Gain VGA :", self.vga_spin)
-        f.addRow(self.amp_chk)
-        f.addRow("Enregistrement IQ max :", self.rec_spin)
-        lay.addLayout(f)
-        note = QtWidgets.QLabel("Les gains s'appliquent au cycle suivant (l'outil est relancé). Pas encore testé "
-                                "avec un vrai HackRF / RTL-SDR : dis-moi ce que ça donne !")
-        note.setWordWrap(True)
-        note.setMinimumHeight(note.fontMetrics().height() * 2)
-        lay.addWidget(note)
+        af.addRow("Enregistrement IQ max :", self.rec_spin)
+        av.addLayout(af)
+        lay.addWidget(self.adv)
+        self.adv.hide()
         lay.addStretch(1)
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
+        self._key = None
         self.dir_edit.textChanged.connect(lambda *_: self._found())
+        self.model_combo.currentIndexChanged.connect(lambda *_: self._model())
+        self._model()
+        fit_dialog(self, 560, 300)
+
+    def _more(self, on):
+        self.adv.setVisible(on)
+        self.more.setArrowType(Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
+        self.adjustSize()
+
+    def _keep(self):
+        """Mémorise les gains du modèle affiché avant d'en changer."""
+        if self._key:
+            self.gains[self._key] = {k: (int(w.isChecked()) if isinstance(w, QtWidgets.QCheckBox) else int(w.value()))
+                                     for k, w in self.gain_w.items()}
+            self._offs[self._key] = float(self.off_spin.value())
+
+    def _model(self):
+        self._keep()
+        key = self.model_combo.currentData()
+        m = sdr_model(key)
+        self._key = key
+        self.sheet.setText(sdr_model_text(m, TR))
+        bits = (m or {}).get("bits")
+        span = sdr_span_mhz(m, max(m["rates"])) if m and m.get("rates") else None
+        self.summary.setText(" · ".join(x for x in (
+            f"{m['fmin']:g} – {m['fmax']:g} MHz" if m else "",
+            TR("{} bits").format(bits) if bits else "",
+            TR("fenêtre jusqu'à {} MHz").format(f"{span:.1f}") if span else "",
+            TR("niveaux en dBm") if (m or {}).get("cal") else TR("niveaux à caler")) if x))
+        while self.gain_form.rowCount():
+            self.gain_form.removeRow(0)
+        self.gain_w = {}
+        g0 = self.gains.get(key, {})
+        for gk, name, lo, hi, st, dflt in (m or {}).get("gains", []):
+            if lo == 0 and hi == 1:
+                w = QtWidgets.QCheckBox(name)
+                w.setChecked(bool(g0.get(gk, dflt)))
+                w.setToolTip(name)
+                self.gain_form.addRow(w)
+            else:
+                w = QtWidgets.QSpinBox()
+                w.setRange(int(lo), int(hi))
+                w.setSingleStep(int(st))
+                w.setValue(int(g0.get(gk, dflt)))
+                w.setSuffix(" dB" if "linéarité" not in name else "")
+                w.setToolTip(f"{name} : {lo} à {hi}, par pas de {st}.")
+                self.gain_form.addRow(name + " :", w)
+            self.gain_w[gk] = w
+        self.gain_box.setVisible(bool(self.gain_w))
+        self.off_spin.setValue(float(self._offs.get(key, 0.0)))
+        self.off_spin.setEnabled(not (m or {}).get("cal"))
+        cur = {k: (int(w.isChecked()) if isinstance(w, QtWidgets.QCheckBox) else int(w.value()))
+               for k, w in self.gain_w.items()}
+        k_ = next((s for s, _t in SDR_SENS if sdr_sens_gains(m, s) == cur), "")
+        self.sens.setCurrentIndex(self.sens.findData(k_) if k_ else 1)
         self._found()
+
+    def _apply_sens(self):
+        m = sdr_model(self.model_combo.currentData())
+        for gk, v in sdr_sens_gains(m, self.sens.currentData()).items():
+            w = self.gain_w.get(gk)
+            if isinstance(w, QtWidgets.QCheckBox):
+                w.setChecked(bool(v))
+            elif w is not None:
+                w.setValue(int(v))
+
+    def _missing(self):
+        """Outils / DLL qui manquent pour le modèle choisi."""
+        m = sdr_model(self.model_combo.currentData())
+        sp = SDR_KINDS.get((m or {}).get("kind"), {})
+        d = self.dir_edit.text().strip()
+        miss = [t for t in (sp.get("tool"), sp.get("iq_tool")) if t and not find_sdr_tool(t, d)]
+        if sp.get("dll") and not find_winradio_dll(d, sp["dll"]):
+            miss.append(sp["dll"])
+        return miss
+
+    def _found(self):
+        miss = self._missing()
+        ok = not miss
+        self.state.setText(TR("✔ Prêt") if ok else TR("✗ Il manque : {}").format(", ".join(miss)))
+        self.state.setStyleSheet("" if ok else f"color: {self.owner.theme.get('st_weak', '#d29922')};")
+
+    def _install_help(self):
+        m = sdr_model(self.model_combo.currentData())
+        k = (m or {}).get("kind", "")
+        txt = SDR_INSTALL.get(k) or SDR_INSTALL["soapy"]
+        QtWidgets.QMessageBox.information(self, TR("Installer {}").format(m["name"] if m else "SDR"), TR(txt))
 
     def _browse(self):
         d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier des outils SDR", self.dir_edit.text())
         if d:
             self.dir_edit.setText(d)
 
-    def _found(self):
-        out = []
-        for k, sp in SDR_KINDS.items():
-            p_ = find_sdr_tool(sp["tool"], self.dir_edit.text().strip())
-            out.append(f"✔ {sp['tool']} ({p_})" if p_ else f"✗ {sp['tool']} introuvable")
-        self.found_lbl.setText("\n".join(out))
-
     def values(self):
-        return dict(dir=self.dir_edit.text().strip(), lna=self.lna_spin.value(), vga=self.vga_spin.value(),
-                    amp=self.amp_chk.isChecked(), rec_max_gb=self.rec_spin.value())
+        self._keep()
+        key = self.model_combo.currentData()
+        m = sdr_model(key)
+        models = dict(self.models)
+        if m and m["kind"]:
+            models[m["kind"]] = key
+        out = dict(dir=self.dir_edit.text().strip(), rec_max_gb=self.rec_spin.value(), model=key, models=models,
+                   gains=self.gains, offsets=dict(self._offs))
+        g = self.gains.get(key, {})              # compatibilité : anciens réglages globaux = ceux du modèle choisi
+        for k_ in ("lna", "vga", "amp"):
+            if k_ in g:
+                out[k_] = bool(g[k_]) if k_ == "amp" else int(g[k_])
+        return out
 
 
 class DemodPick:
@@ -15882,7 +16757,9 @@ class ListenWorker(QtCore.QThread):
     levels = Signal(object)          # [(niveau RF dBFS, crête audio 0..1)] par canal
     status = Signal(str)
     stopped = Signal(str)            # raison de l'arrêt ("" = demandé)
+    spectrum = Signal(object, object)   # étape 7 : (F MHz, niveaux dBFS) de la fenêtre, 2 fois par seconde
     MAX_CH = 4
+    SPEC_FFT = 2048
 
     def __init__(self, kind, center_hz, channels, mode="wfm", deemph_us=50.0, squelch=None, compander="none",
                  gains=None, serial="", tool=None, tool_dir="", dev=None, cut=None, audio=None):
@@ -15899,32 +16776,27 @@ class ListenWorker(QtCore.QThread):
         self.volume = 1.0
         self.audio = deque(maxlen=200)
         self.tap = deque(maxlen=400)  # étape 6 : copie du son (enregistrement WAV, téléphone), lue par ListenDialog
-        self.proc = None
+        self.proc = self.src = None
         self.err = deque(maxlen=20)
+        self.span = None              # étape 7 : largeur voulue (WiNRADiO : choix du type de DDC)
+        self.want_spec = False        # étape 7 : envoyer le spectre de la fenêtre (surveillance pendant l'écoute)
 
     def run(self):
         sp = SDR_KINDS[self.kind]
-        exe = self.tool if self.tool is not None else find_sdr_tool(sp["iq_tool"], self.tool_dir)
-        if exe is None:
-            self.stopped.emit(f"{sp['iq_tool']} introuvable (outils {sp['name']} : PothosSDR, ou Outils › 📡 Réglages SDR).")
+        try:                                    # étape 7 : outil (HackRF, RTL, SoapySDR) ou DLL WiNRADiO
+            src = self.src = open_iq_source(self.kind, self.center, self.rate, self.gains, self.serial, self.tool,
+                                            self.tool_dir, wr_lib=WINRADIO_LIB, span=self.span)
+        except RuntimeError as e:
+            self.stopped.emit(str(e))
             return
+        self.rate, self.err = src.rate, src.err
         demods = [ChannelDemod(self.rate, f * 1e6 - self.center, **self.opts) for f in self.channels]
-        argv = listen_cmd(self.kind, exe, self.center, self.rate, self.gains["lna"], self.gains["vga"],
-                          self.gains["amp"], self.serial)
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        try:
-            self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                         stdin=subprocess.DEVNULL, bufsize=0, creationflags=flags)
-        except OSError as e:
-            self.stopped.emit(f"Impossible de lancer {sp['iq_tool']} : {e}")
-            return
-        threading.Thread(target=self._read_err, daemon=True).start()
         self.status.emit(f"🎧 {sp['name']} : écoute autour de {self.center / 1e6:.3f} MHz")
-        chunk = int(self.rate * 0.02) * IQ_BYTES[SDR_DTYPE.get(self.kind, "ci8")]   # 20 ms d'IQ
-        buf, why, t_lv = b"", "", 0.0
+        chunk = int(self.rate * 0.02) * IQ_BYTES[src.dtype]   # 20 ms d'IQ
+        buf, why, t_lv, spec, t_sp = b"", "", 0.0, [], time.time()
         try:
             while not self.isInterruptionRequested():
-                data = self.proc.stdout.read(chunk - len(buf))
+                data = src.read(chunk - len(buf))
                 if not data:
                     time.sleep(0.1)
                     why = (self.err[-1] if self.err else "flux coupé") + f" — {sp['name']} débranché ou occupé ?"
@@ -15932,7 +16804,7 @@ class ListenWorker(QtCore.QThread):
                 buf += data
                 if len(buf) < chunk:
                     continue
-                iq, buf = iq_from_bytes(self.kind, buf), b""
+                iq, buf = iq_decode(src.dtype, buf), b""
                 outs = [d.process(iq) for d in demods]
                 sel = self.sel
                 if sel < 0 or sel >= len(outs):
@@ -15950,6 +16822,15 @@ class ListenWorker(QtCore.QThread):
                     t_lv = now
                     self.levels.emit([(lv, float(np.max(np.abs(o))) if len(o) else 0.0, d_.pilot)
                                       for (o, lv), d_ in zip(outs, demods)])
+                if self.want_spec:                   # étape 7 : spectre de la fenêtre -> surveillance pendant l'écoute
+                    avg, _mx = rt_frames(iq, self.SPEC_FFT)
+                    if avg is not None:
+                        spec.append(avg)
+                    if now - t_sp >= 0.5 and spec:
+                        t_sp = now
+                        L = np.max(np.array(spec), axis=0)
+                        spec = []
+                        self.spectrum.emit(rt_freqs(self.center, self.rate, self.SPEC_FFT), L)
         finally:
             self._kill()
         self.stopped.emit(why)
@@ -15964,13 +16845,9 @@ class ListenWorker(QtCore.QThread):
             pass
 
     def _kill(self):
-        p, self.proc = self.proc, None
-        if p is not None and p.poll() is None:
-            try:
-                p.kill()
-                p.wait(timeout=3)
-            except Exception:  # noqa: BLE001
-                pass
+        s, self.src = getattr(self, "src", None), None
+        if s is not None:
+            s.close()
 
 
 class AudioOut:
@@ -16040,7 +16917,7 @@ class ListenDialog(QtWidgets.QDialog):
         R = owner._row
         self.dev_combo = QtWidgets.QComboBox()
         for k, sp in SDR_KINDS.items():
-            self.dev_combo.addItem(f"📡 {sp['name']} ({sp['iq_tool']})", k)
+            self.dev_combo.addItem(f"📡 {sp['name']} ({sp.get('iq_tool') or sp.get('dll')})", k)
         pk = parse_sdr_addr(owner.port_combo.currentData() or "") or parse_sdr_addr(owner.dev2.get("addr", ""))
         if pk:
             self.dev_combo.setCurrentIndex(max(0, self.dev_combo.findData(pk[0])))
@@ -16111,6 +16988,12 @@ class ListenDialog(QtWidgets.QDialog):
         self.dwell.setCurrentIndex(1)
         self.dwell.setToolTip("Temps passé sur une fenêtre où rien ne parle.")
         lay.addLayout(R(self.rec_btn, self.pc_mute, None, self.hop_chk, self.dwell))
+        self.mon_lbl = QtWidgets.QLabel("")            # étape 7 : surveillance pendant l'écoute
+        self.mon_lbl.setWordWrap(True)
+        self.mon_lbl.setToolTip("Pendant l'écoute, le spectre de la fenêtre du SDR sert aussi à surveiller tes fréquences\n"
+                                "qui y tombent (si le SDR est ton appareil de surveillance). Un tinySA branché garde\n"
+                                "la surveillance de tout.")
+        lay.addWidget(self.mon_lbl)
         self.st_lbl = QtWidgets.QLabel("Pas encore testé avec un vrai SDR : dis-moi ce que ça donne !")
         self.st_lbl.setWordWrap(True)
         lay.addWidget(self.st_lbl)
@@ -16152,6 +17035,9 @@ class ListenDialog(QtWidgets.QDialog):
         self._wins = [(c_, [r for r in rows if self.ws[r]["freq"] in u_]) for c_, u_ in wins]
         if self.worker is None:
             self.hop_chk.setEnabled(len(self._wins) > 1)
+        m_ = self.owner.sdr_model_for(kind)
+        if m_ is not None:                             # étape 7 : la fenêtre dépend du modèle (débit, bits)
+            self.win_lbl.setToolTip(sdr_model_text(m_, TR))
         if not rows:
             self.win_lbl.setText("Coche au moins une fréquence.")
         elif self.hop_chk.isChecked() and len(self._wins) > 1:
@@ -16194,6 +17080,12 @@ class ListenDialog(QtWidgets.QDialog):
         """Lance (ou relance, balayage d'écoute) le ListenWorker sur une fenêtre du SDR."""
         kind = self.dev_combo.currentData()
         o = self.owner
+        m_ = o.sdr_model_for(kind)
+        out_ = [self.ws[r]["freq"] for r in rows if m_ is not None and not sdr_in_range(m_, self.ws[r]["freq"])]
+        if out_:                                       # étape 7 : hors de la plage du modèle
+            self.st_lbl.setText(TR("⚠ {} : hors de la plage du {} ({} – {} MHz).").format(
+                ", ".join(f"{f:.3f}" for f in out_), m_["name"], f"{m_['fmin']:g}", f"{m_['fmax']:g}"))
+            return
         rt = getattr(o, "_rt", None)
         if rt is not None and rt.worker is not None:
             self.st_lbl.setText("⚠ Le temps réel ⏱ utilise déjà le SDR : clique sur son spectre pour écouter.")
@@ -16204,9 +17096,13 @@ class ListenDialog(QtWidgets.QDialog):
         sq = None if self.sq_spin.value() <= -121 else float(self.sq_spin.value())
         pp = self.dp.params()
         self.worker = ListenWorker(kind, c, [self.ws[r]["freq"] for r in rows], pp["mode"], pp["deemph"], sq,
-                                   pp["compander"], dict(o.sdr_cfg), tool=getattr(o, "_listen_tool", None),
+                                   pp["compander"], o.sdr_gains(kind), tool=getattr(o, "_listen_tool", None),
                                    tool_dir=o.sdr_cfg.get("dir", ""), dev=pp["dev"], cut=pp["cut"], audio=pp["audio"])
         self.worker.volume = self.vol.value() / 100.0
+        fr_ = [self.ws[r]["freq"] for r in rows]
+        self.worker.span = max(200e3, (max(fr_) - min(fr_)) * 1e6 + 400e3)     # WiNRADiO : plus petit DDC qui suffit
+        self.worker.want_spec = True
+        self.worker.spectrum.connect(lambda F, L, w_=self.worker: self._spec(F, L) if w_ is self.worker else None)
         self.worker.levels.connect(lambda lv, w_=self.worker: self._levels(lv) if w_ is self.worker else None)
         self.worker.status.connect(lambda t, w_=self.worker: self.st_lbl.setText(t) if w_ is self.worker else None)
         self.worker.stopped.connect(lambda why, w_=self.worker: self._stopped(why) if w_ is self.worker else None)
@@ -16326,10 +17222,23 @@ class ListenDialog(QtWidgets.QDialog):
             rec=self.wav is not None, hop=bool(self.hop_chk.isChecked() and len(self._wins) > 1),
             mode=self.mode_combo.currentText(), pc_mute=self.pc_mute.isChecked())
 
+    def _spec(self, F, L):
+        """Étape 7 : spectre de la fenêtre écoutée -> surveillance (si le SDR est l'appareil qui surveille)."""
+        o = self.owner
+        kind = self.dev_combo.currentData()
+        used = o.sdr_listen_feed(kind, F, L)
+        a, b = float(np.min(F)), float(np.max(F))
+        n = sum(1 for w in o.watch if a <= w["freq"] <= b)
+        self.mon_lbl.setText(TR("📡 Surveillance pendant l'écoute : {} – {} MHz ({} de tes fréquences).").format(
+            f"{a:.3f}", f"{b:.3f}", n) if used else
+            TR("📡 Le tinySA continue de surveiller toute ta liste pendant l'écoute."))
+
     def _levels(self, lv):
+        m_ = self.owner.sdr_model_for(self.dev_combo.currentData())
+        fl_ = sdr_floor_dbfs(m_, getattr(self.worker, "rate", None)) if m_ is not None else -90.0
         for (rf, au, pil), r in zip(lv, self._plan[1]):
             self.table.item(r, 5).setText("—" if pil is None else f"{pil[0] / 1000:.1f} kHz")
-            n = int(max(0, min(10, (rf + 90) / 6)))
+            n = int(max(0, min(10, (rf - fl_) / max(1.0, -fl_) * 10.0)))   # étape 7 : échelle d'après les bits
             self.table.item(r, 3).setText(f"{'█' * n}{'·' * (10 - n)}  {rf:.0f} dBFS")
             m = int(max(0, min(10, au * 10)))
             self.table.item(r, 4).setText("▮" * m)
@@ -16363,6 +17272,8 @@ class ListenDialog(QtWidgets.QDialog):
                    self.table):
             wd.setEnabled(True)
         self.owner.listen_web_clear()
+        self.owner.sdr_listen_clear()
+        self.mon_lbl.setText("")
         self._publish()
 
     def closeEvent(self, ev):
@@ -16460,22 +17371,16 @@ class RealtimeWorker(QtCore.QThread):
                              f"{self.rate / 1e6:g} MS/s · {total / self.rate:.0f} s")
             read = fh.read
         else:
-            exe = self.tool if self.tool is not None else find_sdr_tool(sp["iq_tool"], self.tool_dir)
-            if exe is None:
-                self.stopped.emit(f"{sp['iq_tool']} introuvable (outils {sp['name']} : PothosSDR, ou Outils › 📡 Réglages SDR).")
+            try:                                # étape 7 : outil (HackRF, RTL, SoapySDR) ou DLL WiNRADiO
+                self.isrc = open_iq_source(self.kind, self.center, self.rate, self.gains, self.serial, self.tool,
+                                           self.tool_dir, wr_lib=WINRADIO_LIB)
+            except RuntimeError as e:
+                self.stopped.emit(str(e))
                 return
-            argv = listen_cmd(self.kind, exe, self.center, self.rate, self.gains["lna"], self.gains["vga"],
-                              self.gains["amp"], self.serial)
-            try:
-                self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                             stdin=subprocess.DEVNULL, bufsize=0,
-                                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            except OSError as e:
-                self.stopped.emit(f"Impossible de lancer {sp['iq_tool']} : {e}")
-                return
-            threading.Thread(target=self._read_err, daemon=True).start()
+            self.rate, self.dtype, self.err = self.isrc.rate, self.isrc.dtype, self.isrc.err
+            nb = IQ_BYTES[self.dtype]
             self.status.emit(f"⏱ {sp['name']} : temps réel {self.center / 1e6:.3f} MHz ± {0.4 * self.rate / 1e6:.1f} MHz")
-            read = self.proc.stdout.read
+            read = self.isrc.read
             total = 0
         Fb = rt_freqs(self.center, self.rate, self.nfft)
         n_s = int(self.rate * 0.05)
@@ -16574,13 +17479,9 @@ class RealtimeWorker(QtCore.QThread):
             self._rec_close()
             if fh is not None:
                 fh.close()
-            p_, self.proc = self.proc, None
-            if p_ is not None and p_.poll() is None:
-                try:
-                    p_.kill()
-                    p_.wait(timeout=3)
-                except Exception:  # noqa: BLE001
-                    pass
+            s_, self.isrc = getattr(self, "isrc", None), None
+            if s_ is not None:
+                s_.close()
         self.stopped.emit(why)
 
     def _read_err(self):
@@ -16789,8 +17690,10 @@ class RealtimeDialog(QtWidgets.QDialog):
 
     def _fill_rates(self):
         self.rate_combo.clear()
-        for r in RT_RATES[self.dev_combo.currentData()]:
-            self.rate_combo.addItem(f"≈ {0.8 * r / 1e6:.1f} MHz ({r / 1e6:g} MS/s)", r)
+        k_ = self.dev_combo.currentData()
+        m_ = self.owner.sdr_model_for(k_)           # étape 7 : débits et part utile du modèle choisi
+        for r in sorted((m_ or {}).get("rates") or RT_RATES.get(k_, [2400000]), reverse=True):
+            self.rate_combo.addItem(f"≈ {sdr_span_mhz(m_, r):.1f} MHz ({r / 1e6:g} MS/s)", r)
         if self.rate_combo.count() > 1:
             self.rate_combo.setCurrentIndex(1)                # 9,6 MS/s par défaut sur un HackRF
 
@@ -16842,7 +17745,7 @@ class RealtimeDialog(QtWidgets.QDialog):
             self.paused = [w for w in o.workers if w.isRunning() and w.sdr and parse_sdr_addr(w.port)[0] == kind]
         for w in self.paused:
             w.paused = True
-        self.worker = RealtimeWorker(kind, c, rate, nfft, dict(o.sdr_cfg), tool=getattr(o, "_listen_tool", None),
+        self.worker = RealtimeWorker(kind, c, rate, nfft, o.sdr_gains(kind), tool=getattr(o, "_listen_tool", None),
                                      tool_dir=o.sdr_cfg.get("dir", ""), src=src)
         self.worker.rec_max = float(o.sdr_cfg.get("rec_max_gb", 20)) * 1e9
         self.worker.speed = self.speed_combo.currentData()
@@ -16869,6 +17772,10 @@ class RealtimeDialog(QtWidgets.QDialog):
     def _frame(self, fr):
         F, avg, mx = fr["F"], fr["avg"], fr["mx"]
         self.last = fr
+        now_ = time.time()
+        if not fr.get("dur") and now_ - getattr(self, "_t_feed", 0.0) >= 0.5 and len(F) == len(avg):
+            self._t_feed = now_                     # étape 7 : la fenêtre du temps réel surveille aussi
+            self.owner.sdr_listen_feed(self.dev_combo.currentData(), F, avg)
         if len(F) != len(avg):
             F = np.linspace(F[0], F[-1], len(avg))
         self.curve.setData(F, avg)
@@ -17071,6 +17978,7 @@ class RealtimeDialog(QtWidgets.QDialog):
         for w in self.paused:
             w.paused = False
         self.paused = []
+        self.owner.sdr_listen_clear()
         self.go_btn.setText("▶ Démarrer" if self._src is None else "▶ Relire")
         for wd in (self.dev_combo, self.center_spin, self.rate_combo, self.nfft_combo, self.open_btn):
             wd.setEnabled(self._src is None or wd is self.open_btn)
@@ -27625,6 +28533,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.sdr_cfg[k_] = cast(sd[k_])
                 except (TypeError, ValueError):
                     pass
+            self.sdr_cfg.update(sdr_cfg_extra(sd))        # étape 7 : modèle, gains et corrections par modèle
         if data.get("port"):
             self._want_port = str(data["port"])
             ix = self.port_combo.findData(self._want_port)
@@ -28186,7 +29095,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not ports and not nets:
             self.port_combo.addItem("Aucun port détecté", None)
         for k, sp in SDR_KINDS.items():                 # V8 : SDR par leur outil de balayage
-            self.port_combo.addItem(f"📡 {sp['name']} ({sp['tool']})", k)
+            self.port_combo.addItem(f"📡 {sp['name']} ({sp.get('tool') or sp.get('dll')})", k)
         ix = self.port_combo.findData(getattr(self, "_want_port", None))
         if ix >= 0:
             self.port_combo.setCurrentIndex(ix)
@@ -28311,7 +29220,7 @@ class MainWindow(QtWidgets.QMainWindow):
                              or os.environ.get("TSM_GUARD_RESTART") == "1")  # relance : l'ancienne libère le port
             w.baud = int(self.baud_combo.currentData() or 115200)
             w.sdr_dir = self.sdr_cfg.get("dir", "")
-            w.get_sdr = lambda: dict(self.sdr_cfg)
+            w.get_sdr = lambda w=w: self.sdr_gains((parse_sdr_addr(w.port) or ("",))[0])
             w.sweep.connect(lambda bid, f, l, d=i: self.band_src.__setitem__(bid, d))
             w.sweep.connect(self.on_sweep)
             w.partial.connect(self.on_partial)
@@ -33220,6 +34129,22 @@ class MainWindow(QtWidgets.QMainWindow):
                                                           else "."))
 
     # ---------------------------------------------------------------- V8 étape 6 : écouter de partout
+    def sdr_model_for(self, kind):
+        """Étape 7 : fiche du modèle choisi pour ce genre de SDR (⚙ Réglages SDR), sinon le modèle par défaut."""
+        return sdr_model_of(kind, self.sdr_cfg.get("models"))
+
+    def sdr_gains(self, kind):
+        """Gains à passer aux outils pour ce genre de SDR, d'après son modèle."""
+        return sdr_gains_for(self.sdr_model_for(kind), self.sdr_cfg.get("gains"),
+                             {k: self.sdr_cfg[k] for k in ("lna", "vga", "amp") if k in self.sdr_cfg})
+
+    def sdr_offset(self, kind):
+        """Correction dBFS -> dBm du modèle (0 pour un appareil calibré)."""
+        m = self.sdr_model_for(kind)
+        if m is None or m.get("cal"):
+            return 0.0
+        return float((self.sdr_cfg.get("offsets") or {}).get(m["key"], 0.0))
+
     def listen_freq(self, f, w=None):
         """🎧 Écouter une fréquence (FREQ_ACTIONS : alarme, tuile, chasse ; téléphone). Fréquence de la liste ou non."""
         d = getattr(self, "_listen", None)
@@ -33236,6 +34161,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self._listen.raise_()
         self._listen.toggle()
         return self._listen
+
+    SDR_LISTEN_ID = -40                     # étape 7 : « bande » des mesures venues du flux d'écoute / temps réel
+
+    def sdr_listen_feed(self, kind, F, L):
+        """Étape 7 (Clément : surveiller ET écouter en même temps) : le spectre de la fenêtre écoutée (dBFS + correction
+        du modèle, ou dBm d'un WiNRADiO) sert à surveiller les fréquences qui y tombent, SI aucun autre appareil ne
+        balaye (un tinySA garde la main : pas de mélange dBFS / dBm). -> True si utilisé."""
+        if any(w.isRunning() and not getattr(w, "paused", False) for w in self.workers):
+            return False
+        F = np.asarray(F, dtype=float)
+        L = np.asarray(L, dtype=float) + self.sdr_offset(kind)
+        if len(F) < 2:
+            return False
+        self.latest[self.SDR_LISTEN_ID] = (F, L)
+        self.latest_t[self.SDR_LISTEN_ID] = time.time()
+        try:
+            self.update_watch_levels()
+            self.update_watch_table()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    def sdr_listen_clear(self):
+        self.latest.pop(self.SDR_LISTEN_ID, None)
+        self.latest_t.pop(self.SDR_LISTEN_ID, None)
 
     def rt_freq(self, f, w=None):
         """⏱ Temps réel autour d'une fréquence (FREQ_ACTIONS)."""
