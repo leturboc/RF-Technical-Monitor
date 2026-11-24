@@ -6010,3 +6010,130 @@ SAME_TEMPLATES += [
     "<h2>{}</h2><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{}</th><th>{}</th><th>{}</th><th>MHz</th><th>RBW</th></tr>",
     "<h2>{}</h2><p><img src='{}' width='680'></p>",
     "<h3>{}</h3><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{}</th><th>{}</th><th>MHz</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr>"]
+# ---- 7.68 : 🩺 diagnostic RF, 📍 une fréquence partout, dossier de préparation revu
+EXACT.update({
+    "Si c'est un émetteur que tu connais, mets-lui le statut « doit émettre ».":
+        "If it is a transmitter you know, give it the “must transmit” status.",
+    "Pas de saturation, pas de zone bruyante hors TV, pas de micro pile au seuil.":
+        "No overload, no noisy zone outside TV, no mic right at the threshold.",
+    "Antenne de mesure plus près de la scène, pile de l'émetteur, ou préampli (LNA) en marche.":
+        "Measuring antenna closer to the stage, transmitter battery, or preamp (LNA) on.",
+    "Applique la correction proposée ou ouvre le bon réglage.": "Applies the suggested fix or opens the right setting.",
+    "Avec un signal très fort à côté, c'est sans doute le tinySA qui sature : règle d'abord ça.":
+        "With a very strong signal nearby, the tinySA is probably overloading: fix that first.",
+    "Bruit de fond plus haut que prévu": "Noise floor higher than expected",
+    "Causes fréquentes : écrans LED / murs vidéo, alimentations à découpage, ordinateur ou hub USB près de l'antenne, câble d'antenne abîmé. Essaie d'éloigner l'antenne, de changer de câble, puis relance le diagnostic.":
+        "Common causes: LED screens / video walls, switching power supplies, a computer or USB hub near the antenna, a damaged antenna cable. Try moving the antenna away, changing the cable, then run the diagnosis again.",
+    "Ce que le tinySA voit en ce moment, relu pour toi : ce qui fausse la mesure et quoi faire. Les seuils de ce diagnostic sont des valeurs de départ : fie-toi aussi à ton oreille et au spectre.":
+        "What the tinySA sees right now, read for you: what skews the measurement and what to do. This diagnosis uses starting values: trust your ears and the spectrum too.",
+    "Ce qui se passe · quoi faire": "What is happening · what to do",
+    "Chaque ligne = un point relevé dans la mesure. « Régler » applique ou ouvre la correction.":
+        "Each row = one point found in the measurement. “Fix” applies or opens the correction.",
+    "Coupe le préampli (LNA) si il est en marche, ajoute de l'atténuation, ou éloigne l'antenne de l'émetteur le plus fort (souvent un émetteur ears / un rack de récepteurs).":
+        "Turn the preamp (LNA) off if it is on, add attenuation, or move the antenna away from the strongest transmitter (often an IEM transmitter / a receiver rack).",
+    "Des signaux peuvent passer entre deux points": "Signals can slip between two points",
+    "Diagnostic RF": "RF diagnosis",
+    "Diagnostic impossible : {}": "Diagnosis impossible: {}",
+    "Donne-lui un seuil à elle (clic droit sur la ligne › seuil).": "Give it its own threshold (right-click the row › threshold).",
+    "Déplace-le hors du canal TV (🆘 Remplacer ce micro), ou rapproche les antennes de la scène.":
+        "Move it out of the TV channel (🆘 Replace this mic), or bring the antennas closer to the stage.",
+    "Impossible : {}": "Impossible: {}",
+    "La fréquence à regarder dans chaque scan gardé.": "The frequency to look at in each kept scan.",
+    "Le chapitre du manuel sur les seuils et la lecture du spectre.": "The manual chapter on thresholds and reading the spectrum.",
+    "Le diagnostic lit le spectre en direct : lance la surveillance (▶ Démarrer) et attends un ou deux balayages.":
+        "The diagnosis reads the live spectrum: start monitoring (▶ Start) and wait for one or two sweeps.",
+    "Mets plus de points (⚡ Points › Détaillé) ou la RBW en Auto.": "Use more points (⚡ Points › Detailed) or RBW on Auto.",
+    "Niveau de cette fréquence dans chaque scan gardé, du plus fort au plus calme.\nAttention : des scans à RBW différentes n'ont pas les mêmes niveaux.":
+        "Level of this frequency in each kept scan, from loudest to quietest.\nCareful: scans with different RBWs do not have the same levels.",
+    "Pas de mesure en cours": "No measurement running",
+
+    "Prend une fréquence de « Mes fréquences » (un bloc large garde sa largeur).":
+        "Takes a frequency from “My frequencies” (a wide block keeps its width).",
+    "Relit le spectre et la liste maintenant (c'est aussi refait toutes les 5 s).":
+        "Reads the spectrum and the list again now (also done every 5 s).",
+    "Rien d'anormal dans la mesure": "Nothing abnormal in the measurement",
+    "RÉGLAGE": "SETTING",
+    "Seuil « occupé » trop bas": "“Busy” threshold too low",
+    "Seuil « occupé » très haut": "“Busy” threshold very high",
+    "Si ce sont tes émetteurs, ajoute-les (📡 Depuis le scan) ; sinon note-les et évite-les.":
+        "If they are your transmitters, add them (📡 From the scan); otherwise note them and avoid them.",
+    "Signal très fort : risque de saturation": "Very strong signal: overload risk",
+
+    "Ça peut être un mur LED / écran, une liaison vidéo HF, un système large (Spectera, WMAS), ou une intermod. Évite d'y mettre des micros ; pour trouver la source : 🔎 Chasser.":
+        "It can be an LED wall / screen, a wireless video link, a wideband system (Spectera, WMAS), or intermod. Avoid putting mics there; to find the source: 🔎 Hunt.",
+
+    ", préampli en marche": ", preamp on",
+    "ℹ️ Pas de mesure en cours": "ℹ️ No measurement running",
+    "✅ Mesure saine": "✅ Healthy measurement",
+    "↻ Relancer le diagnostic": "↻ Run the diagnosis again",
+    "❓ Manuel": "❓ Manual",
+    "🩺 Diagnostic RF : ce qui cloche dans la mesure…": "🩺 RF diagnosis: what is wrong with the measurement…",
+    "🩺 Diagnostic RF automatique (bruit, saturation, seuils)…": "🩺 Automatic RF diagnosis (noise, overload, thresholds)…",
+    "Une fréquence partout": "One frequency everywhere",
+    "— ou choisis dans ta liste —": "— or pick from your list —",
+    "Au-dessus du bruit": "Above noise",
+    "pas mesurée": "not measured",
+    "Triangle = bruit de fond du scan ; barre = niveau de la fréquence.": "Triangle = noise floor of the scan; bar = level of the frequency.",
+    "📍 Niveau de cette fréquence dans chaque lieu…": "📍 Level of this frequency at each location…",
+    "éteint (je sais)": "off (I know)",
+    "hors état": "not in state",
+    "▼ fréquences du plan · gris = canaux TV · tirets = seuil « occupé »":
+        "▼ plan frequencies · grey = TV channels · dashes = “busy” threshold",
+})
+TEMPLATES.update({
+    "{} ({} MHz) a changé {} fois d'état en {} min : son niveau ({}) est pile au seuil ({}). Ça remplit le journal et peut faire des alarmes à répétition.":
+        "{} ({} MHz) changed state {} times in {} min: its level ({}) is right at the threshold ({}). It fills the log and can cause repeated alarms.",
+    "{} MHz : la plus forte dans « {} » ({}), la plus calme dans « {} » ({}), écart {} dB.":
+        "{} MHz: loudest at “{}” ({}), quietest at “{}” ({}), {} dB apart.",
+    "Seuil à {}, {} dB au-dessus du bruit de fond : un micro faible ou loin ne sera pas vu, et un brouilleur faible passera inaperçu.":
+        "Threshold at {}, {} dB above the noise floor: a weak or distant mic will not be seen, and a weak interferer will go unnoticed.",
+    "Seuil à {} pour un bruit de fond à {} : {} % du spectre (hors TV) passe pour « occupé ». Le bruit déclenche des fausses alarmes et des conflits.":
+        "Threshold at {} for a noise floor at {}: {} % of the spectrum (outside TV) counts as “busy”. Noise triggers false alarms and conflicts.",
+    "Donne-lui un seuil à elle : {} (clic sur « Régler »).": "Give it its own threshold: {} (click “Fix”).",
+    "{} : pile au seuil": "{}: right at the threshold",
+    "Bruit de fond à {}, environ {} dB au-dessus de ce qu'on attend pour cette finesse de mesure (RBW {} kHz{}). Les signaux faibles se noient.":
+        "Noise floor at {}, about {} dB above what is expected for this resolution (RBW {} kHz{}). Weak signals drown.",
+    "seuil propre {} (diagnostic RF)": "own threshold {} (RF diagnosis)",
+    "Un point tous les {} kHz avec une finesse (RBW) de {} kHz : un micro étroit qui tombe entre deux points est vu plus faible qu'il n'est, voire pas du tout.":
+        "One point every {} kHz with a resolution (RBW) of {} kHz: a narrow mic falling between two points looks weaker than it is, or is not seen at all.",
+    "{} MHz : {} dans « {} » (seul scan qui la mesure).": "{} MHz: {} at “{}” (only scan that measures it).",
+    "Le tinySA reçoit jusqu'à {}. Au-delà de ce niveau il peut se saturer : faux signaux (intermod créée par le tinySA lui-même), bruit de fond qui monte, niveaux faux.":
+        "The tinySA receives up to {}. Above this level it can overload: false signals (intermod created by the tinySA itself), rising noise floor, wrong levels.",
+    "⚠️ {} point(s) à voir": "⚠️ {} point(s) to check",
+    "{} ne dépasse le bruit que de {} dB : on ne peut pas dire de façon sûre s'il émet.":
+        "{} is only {} dB above the noise: we cannot reliably tell whether it is transmitting.",
+    "{} : à peine au-dessus du bruit": "{}: barely above the noise",
+    "{} : dans le canal TV {}": "{}: in TV channel {}",
+    "{} signal(aux) hors de ta liste": "{} signal(s) not in your list",
+    "❌ {} problème(s) qui faussent la surveillance": "❌ {} problem(s) skewing the monitoring",
+    "Le bruit de fond y est {} dB plus haut qu'ailleurs, et ce n'est pas un canal TV mesuré.":
+        "The noise floor there is {} dB higher than elsewhere, and it is not a measured TV channel.",
+    "Bruit de fond à {} (attendu ≈ {}).": "Noise floor at {} (expected ≈ {}).",
+    "Bruit de fond à {}.": "Noise floor at {}.",
+    "Passe en seuils Auto, ou baisse le seuil vers {}.": "Switch to Auto thresholds, or lower the threshold to about {}.",
+    "Au-dessus du seuil mais pas dans « Mes fréquences » : {} MHz.": "Above the threshold but not in “My frequencies”: {} MHz.",
+    "{} MHz n'a été mesurée dans aucun scan gardé.": "{} MHz was not measured in any kept scan.",
+    "{} ({} MHz) est dans le canal TV {}, seulement {} dB au-dessus de la télé. Le récepteur risque de décrocher dès que le micro s'éloigne.":
+        "{} ({} MHz) is in TV channel {}, only {} dB above the TV. The receiver may drop out as soon as the mic moves away.",
+    "Zone bruyante {}–{} MHz": "Noisy zone {}–{} MHz",
+    ", {} point(s) à voir": ", {} point(s) to check",
+    "🩺 {} : seuil propre à {}": "🩺 {}: own threshold at {}",
+    "{} hors de l'état actif « {} » (pas surveillées en ce moment)": "{} outside the active state “{}” (not monitored right now)",
+    "{} en pause (état)": "{} paused (state)",
+    "{} éteinte(s) exprès (je sais)": "{} switched off on purpose (I know)",
+})
+SAME_TEMPLATES += [
+    "<tr><td>{}</td><td>{}</td><td class='n'>{}</td><td{}>{}</td>", "<td>{}</td>", "<h2>{}</h2><p><img src='{}' ",
+    "<td class='warn'>{}</td>", "width='{}'", "<br><b>→</b> {}", "{} – {}", "{}/{}/{}",
+    "<h3>{}</h3><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{}</th><th>{}</th><th>MHz</th><th>{}</th>",
+    "<th>{}</th>", "{}  {}", "{} dB", "zone{}", "flap{}", "tv{}", "snr{}"]
+for _k in ("🩺 {} : seuil propre à {}", "{} hors de l'état actif « {} » (pas surveillées en ce moment)", "{} en pause (état)",
+           "{} éteinte(s) exprès (je sais)"):
+    EXACT[_k] = TEMPLATES.pop(_k)
+TEMPLATES["Passe en seuils Auto (bruit de fond + marge, fréquence par fréquence), ou remonte le seuil à {} environ."] = \
+    "Switch to Auto thresholds (noise floor + margin, frequency by frequency), or raise the threshold to about {}."
+for _k in ("\nPas de saturation, pas de zone bruyante hors TV, pas de micro pile au seuil.",
+           "\nSi c'est un émetteur que tu connais, mets-lui le statut « doit émettre ».",
+           "Avec un signal très fort à côté, c'est sans doute le tinySA qui sature : règle d'abord ça.\n"):
+    EXACT[_k] = _k.replace(_k.strip(), EXACT[_k.strip()])
+EXACT.update({"/*__EXTRA_JS__*/": "/*__EXTRA_JS__*/", "/*__VIEWS_X__*/{}": "/*__VIEWS_X__*/{}"})   # 7.68 : prises V8 (code)

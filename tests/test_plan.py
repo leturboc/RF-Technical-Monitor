@@ -325,5 +325,18 @@ check("progression : appelée à 0 puis à chaque trouvée", _fd, [(0, 3), (1, 3
 _g2 = ns["pf_fill_lots"]([dict(n=3, sep=0.4, lo=470.0, hi=480.0, step=0.025)], [], cancel=lambda: True)
 check("annuler : rien calculé", _g2, [[]])
 
+# ---- 7.68 : la coordination automatique tient compte de la fréquence image (avant : seul « Vérifier le plan »)
+_T2 = {"2tx3": 0.1, "3tx3": 0.0, "5": 0.0}
+_li = [dict(n=1, sep=0.3, tol=_T2, filt=0.0, lo=589.25, hi=589.35, step=0.025)]
+_gi = ns["pf_fill_lots"](_li, [600.0], [False], tol=[_T2], img=[10.7])
+check("image : rien sur l'image d'un récepteur analogique déjà dans le plan (600 ± 10,7)", _gi, [[]])
+_gn = ns["pf_fill_lots"](_li, [600.0], [False], tol=[_T2], img=[0.0])
+ok("image : sans FI, la même plage donne une fréquence", len(_gn[0]) == 1, _gn)
+_lr = [dict(n=1, sep=0.3, tol=_T2, filt=0.0, lo=599.95, hi=600.05, step=0.025, img=10.7)]
+check("image : nouveau récepteur analogique dont l'image tombe sur un émetteur (610,7) -> refusé",
+      ns["pf_fill_lots"](_lr, [610.7], [True], tol=[_T2]), [[]])
+_lr2 = [dict(n=1, sep=0.3, tol=_T2, filt=0.0, lo=599.95, hi=600.05, step=0.025, img=0.0)]
+ok("image : le même sans FI -> accepté", len(ns["pf_fill_lots"](_lr2, [610.7], [True], tol=[_T2])[0]) == 1)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
