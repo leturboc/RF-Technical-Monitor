@@ -139,6 +139,9 @@ check("écoute : canal 1 = micro 606,000 (1 kHz)", abs(tone_of(a1[4800:]) - 1000
 check("écoute : on bascule sur le canal 2 = 607,500 (3 kHz)", abs(tone_of(a2[4800:]) - 3000) < 30,
       str(tone_of(a2[4800:])))
 check("écoute : niveaux des 2 canaux", lev and len(lev[-1]) == 2 and all(x[0] > -30 for x in lev[-1]), str(lev[-1:]))
+_hl = [x[3] for x in lev[-1]] if lev and len(lev[-1][0]) > 3 else []
+check("santé (étape 8) : déviation mesurée ≈ ±30 kHz, dérive ≈ 0", _hl and all(h and 22 < h["dev"] < 40
+                                                                           and abs(h["drift"]) < 3 for h in _hl), str(_hl))
 check("écoute : arrêt demandé = pas d'erreur", stop == [""], str(stop))
 check("écoute : outil arrêté", lw.proc is None)
 os.environ["FAKE_IQ_SECONDS"] = "1"

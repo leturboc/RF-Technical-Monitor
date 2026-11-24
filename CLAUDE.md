@@ -1722,6 +1722,27 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
     `wr_snapshot_spectrum`, `Resampler`) ; test_sdr_qt (vrai ScanWorker + ListenWorker sur la fausse DLL : porteuse à
     473 MHz, son à 1 kHz, spectre envoyé, récepteur refermé) ; gui_reel (fiche, gains par modèle, surveillance pendant
     l'écoute avec / sans tinySA). **Jamais avec un vrai WiNRADiO, SDRplay, Airspy, Lime, Pluto, USRP ni bladeRF.**
+- **V8 étape 8 (Clément : « go 1/2/3/4/5 » sur ce que le SDR permet en plus)** — seuils = choix de Claude, testés sur des
+  signaux SYNTHÉTIQUES seulement :
+  1. **Type de signal** PURE `SIG_TYPES`, `classify_signal(F, L, f0, pilot, span)` (largeur à −20 dB du pic, platitude du
+     haut, pilote 19 kHz -> fm_st ; tnt ≥ 4,5 MHz plat / wide / num 120 kHz – 1 MHz plat / fm_ana ≥ 50 kHz / nfm / cw ≤
+     4,5 cases) ; colonne « Type » du journal du temps réel, colonne « Type · santé du micro » de l'écoute (`_types` via
+     `_spec`), `ana_lbl` du temps réel (signal écouté ou `_ana_f`), FREQ_ACTIONS « 🔎 C'est quoi ce signal ? (SDR) » ->
+     `MainWindow.analyze_freq` (temps réel centré + lancé).
+  2. **Santé d'un micro FM** : `ChannelDemod._watch_health` (toutes les 0,5 s : déviation crête = 99,5ᵉ centile, dérive
+     = écart moyen, en kHz -> `self.health`), 4ᵉ élément des `levels` de ListenWorker ; PURE `mic_health(dev, nominal du
+     préréglage, dérive, pilote, audio)` -> (texte, ton : trop chaud > 1,25 × nominale, dérive > 5 / 15 kHz). Test :
+     faux micro ±30 kHz mesuré 22-40.
+  3. **Signaux brefs -> alarme** : `RealtimeDialog.burst_chk` (coché) -> `MainWindow.sdr_burst_conflict(genre, w, ev)` sur
+     une « doit rester libre » : alarme kind CONFLIT de clé **(« BREF », kHz)** (pas effacée par `update_watch_levels`,
+     qui n'efface que (« CONFLIT », kHz) ; pas par le tick non plus tant que la fréquence existe), journal, son, fin
+     automatique après 60 s (QTimer).
+  4. **Enregistrement sur alarme** : PURE `PreRing` (10 s de son), `alarms_in_window(alarmes, lo, hi, vues)` ;
+     `ListenDialog.auto_chk` (coché) : `_alarm_check` toutes les 0,5 s -> WAV `alarme_HHMMSS_<MHz>.wav` = 10 s d'avant +
+     10 s d'après (`_auto`, `_auto_end`, journal « ENREGISTRÉ (alarme) ») ; seules les alarmes NOUVELLES depuis ▶ ;
+     `RealtimeDialog.autorec_chk` (décoché : gros fichiers) -> 15 s d'IQ SigMF.
+  5. **Mesures** PURE `obw_khz` (99 % de la puissance au-dessus du bruit), `signal_report` (type · largeur occupée · dB
+     au-dessus du bruit · ✔ tient / ⚠ déborde d'un canal de `CHANNEL_KHZ` 200 kHz pour les FM / porteuses).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

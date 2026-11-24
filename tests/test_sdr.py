@@ -431,5 +431,86 @@ R = ns["Resampler"](250000 / 5, 48000)
 y = np.concatenate([R(np.sin(np.arange(i, i + 777) * 0.01).astype(np.float32)) for i in range(0, 50000, 777)])
 ok("rééchantillonnage : 50 kS/s -> 48 kS/s en flux (longueur)", abs(len(y) - 65 * 777 * 0.96) <= 2, str(len(y)))
 
+# ---- étape 8 : type de signal, mesures, santé d'un micro, enregistrement sur alarme
+rg8 = np.random.default_rng(0)
+fs8 = 4.8e6
+n8 = int(fs8 * 0.5)
+t8 = np.arange(n8) / fs8
+nz8 = 0.003 * (rg8.normal(size=n8) + 1j * rg8.normal(size=n8))
+
+
+def sp8(x, nfft=2048):
+    avg, _mx = ns["rt_frames"]((x + nz8).astype(np.complex64), nfft)
+    return ns["rt_freqs"](600e6, fs8, nfft), avg
+
+
+def band8(off, bw):
+    X = np.fft.fft(rg8.normal(size=n8) + 1j * rg8.normal(size=n8))
+    X[np.abs(np.fft.fftfreq(n8, 1 / fs8) - off) > bw / 2] = 0
+    y = np.fft.ifft(X)
+    return 0.3 * y / np.std(y)
+
+
+cs = ns["classify_signal"]
+F8, L8 = sp8(0.3 * np.exp(1j * (2 * np.pi * 400e3 * t8 + 30e3 / 1000 * np.sin(2 * np.pi * 1000 * t8))))
+c8 = cs(F8, L8, 600.4)
+ok("type : micro FM analogique (±30 kHz)", c8["kind"] == "fm_ana" and 40 < c8["obw_khz"] < 120, str(c8))
+ok("mesure : tient dans un canal de 200 kHz", "✔" in ns["signal_report"](c8))
+ok("type : FM étroite (talkie)", cs(*sp8(0.3 * np.exp(1j * (2 * np.pi * -500e3 * t8 + 2.5 * np.sin(2 * np.pi * 1000 * t8))))
+                                   , 599.5)["kind"] == "nfm")
+ok("type : porteuse pure", cs(*sp8(0.3 * np.exp(2j * np.pi * -1e6 * t8)), 599.0)["kind"] == "cw")
+ok("type : plateau numérique 300 kHz", cs(*sp8(band8(800e3, 300e3)), 600.8)["kind"] == "num")
+ok("type : pilote 19 kHz = FM stéréo", c8 and cs(F8, L8, 600.4, pilot=(19000.0, 30.0))["kind"] == "fm_st")
+ok("type : rien de net (bruit)", cs(*sp8(np.zeros(n8)), 600.0)["kind"] == "none")
+wide = cs(*sp8(band8(0, 1.6e6)), 600.0)
+ok("mesure : signal large déborde du canal (pas de verdict « tient »)", wide["kind"] in ("wide", "num")
+   and "✔" not in ns["signal_report"](wide), str(wide))
+mh = ns["mic_health"]
+ok("santé : bonne déviation", mh(38.0, 48.0, 0.5)[1] == "ok")
+ok("santé : trop chaud", mh(70.0, 48.0, 0.0)[1] in ("warn", "bad") and "chaud" in mh(70.0, 48.0, 0.0)[0])
+ok("santé : dérive de 20 kHz = hors fréquence", mh(30.0, 48.0, 20.0)[1] == "bad")
+ok("santé : pilote affiché", "pilote 32.0 kHz" in mh(30.0, 48.0, 0.0, (32000.0, 30.0))[0])
+ok("santé : pas de mesure", mh(None, 48.0) == ("—", "none"))
+pr = ns["PreRing"](1.0, 1000)
+for _ in range(30):
+    pr.push(b"x" * 100)
+ok("tampon d'avant l'alarme : garde ~1 s", 900 <= len(pr.dump()) <= 1100, str(len(pr.dump())))
+al = [dict(key=("CONFLIT", 606000), kind="CONFLIT", freq=606.0), dict(key=("ABSENT", 700000), kind="ABSENT", freq=700.0),
+      dict(key=("APPAREIL", -1), kind="APPAREIL", freq=0.0), dict(key=("BREF", 605500), kind="CONFLIT", freq=605.5)]
+ok("alarmes dans la fenêtre (nouvelles seulement)", [a["key"] for a in ns["alarms_in_window"](al, 605, 607,
+                                                                                          {("BREF", 605500)})]
+   == [("CONFLIT", 606000)])
+
+# ---- étape 9 : moniteur multicanal (audio, voisins, diagnostic, récepteurs virtuels, historique, performances)
+am = ns["AudioMeter"]()
+st_ = am.feed(0.5 * np.sin(np.arange(2400) * 0.2), 0.05, True, 0.0)
+ok("audio : RMS et crête (sinus 0,5 ≈ −9 / −6 dB)", abs(st_["rms"] + 9.0) < 0.6 and abs(st_["peak"] + 6.0) < 0.3, str(st_))
+for k_ in range(30):
+    st_ = am.feed(np.zeros(2400), 0.05, True, 1.0 + k_ * 0.05)
+ok("audio : silence compté et coupure notée (RF présente)", st_["silent"] >= 1.4 and st_["cuts"] == 1, str(st_))
+ok("audio : saturation", ns["AudioMeter"]().feed(np.ones(100), 0.05)["clip"] == 1.0)
+Fa = np.linspace(605.0, 607.0, 801)
+La = np.full(801, -90.0)
+La[np.abs(Fa - 606.0) < 0.03] = -20.0
+La[np.abs(Fa - 606.2) < 0.03] = -30.0
+inb, lo_, hi_ = ns["adjacent_db"](Fa, La, 606.0)
+ok("voisins : canal −20, voisin haut −30 (10 dB de marge)", (inb, lo_, hi_) == (-20.0, -90.0, -30.0), str((inb, lo_, hi_)))
+dg = ns["rf_audio_diag"]
+ok("diagnostic : RF faible en premier", dg(dict(snr=4, silent=10, rms=-80))[0][0] == "rf_low")
+ok("diagnostic : porteuse sans son = mute", dg(dict(snr=30, silent=8, rms=-70))[0][0] == "mute")
+ok("diagnostic : saturation", dg(dict(snr=30, clip=0.02, rms=-3))[0][0] == "hot")
+ok("diagnostic : voisin fort", dg(dict(snr=30, rms=-20, adj_margin=8))[0][0] == "adj")
+ok("diagnostic : RAS", dg(dict(snr=30, rms=-20, silent=0, adj_margin=40, drift=0.5))[0][0] == "ok")
+items = [dict(key=k, prio=1) for k in range(10)] + [dict(key=99, prio=2), dict(key=50, alarm=True), dict(key=7, selected=True)]
+pl = ns["plan_vrx"](items, 4, 0)
+ok("récepteurs virtuels : écouté, alarme, critique d'abord", pl[:3] == [7, 50, 99] and len(pl) == 4, str(pl))
+ok("récepteurs virtuels : les autres tournent", ns["plan_vrx"](items, 4, 1)[3] != ns["plan_vrx"](items, 4, 2)[3])
+hh = ns["MicHistory"]()
+for k_ in range(20):
+    hh.add(1000.0 + k_, rf=-40.0, drift=1.0 + 0.1 * (k_ % 3))
+ok("historique : un point par seconde", not hh.add(1019.5, rf=0) and len(hh.pts) == 20)
+ok("historique : dérive moyenne / écart-type", ns["MicHistory"].drift_stats(hh)["mean"] == 1.1, str(hh.drift_stats()))
+ok("performances : pertes et ton", ns["perf_view"](1000, 900, 0.3)[1] == "bad" and ns["perf_view"](1000, 1000, 0.2)[1] == "ok")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -442,3 +442,104 @@ EXACT.update({
     "✗ Il manque : {}": "✗ Missing: {}",
 })
 SAME_TEMPLATES += ["{} – {} MHz"]
+# ---- étape 8 : type de signal, santé d'un micro, signaux brefs, enregistrement sur alarme
+EXACT.update({
+    "Analyse du signal écouté (ou cliqué) : type probable, largeur occupée (99 % de la\npuissance), écart au bruit, tient-il dans un canal de 200 kHz. Repères calculés sur le\nspectre : à confirmer à l'oreille.":
+        "Analysis of the signal you listen to (or click): likely type, occupied bandwidth (99 % of the\npower), margin above noise, does it fit in a 200 kHz channel. Estimates computed from the\nspectrum: confirm by ear.",
+    "BREF": "BREF",
+    "ENREGISTRÉ (alarme)": "RECORDED (alarm)",
+    "FM large (≈ 50 – 250 kHz) : micro HF ou ears analogique. Il s'écoute (🎧).": "Wide FM (≈ 50 – 250 kHz): analogue wireless mic or IEM. It can be listened to (🎧).",
+    "FM large avec pilote stéréo 19 kHz : ears analogique en stéréo ou radio FM.": "Wide FM with a 19 kHz stereo pilot: analogue stereo IEM or FM radio.",
+    "FM stéréo (ears / radio)": "Stereo FM (IEM / radio)",
+    "FM étroite (10 – 50 kHz) : talkie, PMR446, intercom, télémétrie.": "Narrow FM (10 – 50 kHz): walkie-talkie, PMR446, intercom, telemetry.",
+    "FM étroite (talkie)": "Narrow FM (walkie-talkie)",
+    "IQ enregistré 15 s (temps réel)": "IQ recorded 15 s (real time)",
+    "Le temps réel voit des signaux de quelques millisecondes, que le balayage rate. Sur une\nfréquence « doit rester libre » de la fenêtre, il lève une alarme CONFLIT (signal bref),\nnotée au journal, qui se termine seule après 1 minute.":
+        "Real time sees signals lasting a few milliseconds, which the sweep misses. On a\n“must stay free” frequency in the window, it raises a CONFLICT alarm (short signal),\nlogged, which ends by itself after 1 minute.",
+    "Micro / ears FM analogique": "Analogue FM mic / IEM",
+    "Micro / ears numérique": "Digital mic / IEM",
+    "Pas de signal assez fort à cette fréquence.": "No strong enough signal at this frequency.",
+    "Plateau large (5 – 8 MHz) et plat : un multiplex TNT. Les micros doivent l'éviter.": "Wide (5 – 8 MHz) flat plateau: a DTT multiplex. Mics must avoid it.",
+    "Plateau plat de 150 kHz à 1 MHz : micro ou ears numérique (codec), DECT, données. Ne s'écoute pas.": "Flat plateau from 150 kHz to 1 MHz: digital mic or IEM (codec), DECT, data. Cannot be listened to.",
+    "Plus de 1 MHz de large sans être plat : bloc numérique (WMAS, Spectera ?), vidéo HF, LTE / 5G, ou plusieurs signaux collés.":
+        "More than 1 MHz wide without being flat: digital block (WMAS, Spectera?), wireless video, LTE / 5G, or several signals side by side.",
+    "Porteuse pure": "Pure carrier",
+    "Quand une alarme (conflit, absent) part sur une fréquence de la fenêtre écoutée, le son des\n10 secondes d'avant et des 10 suivantes est enregistré en WAV (preuve du brouillage),\ndans « enregistrements_audio », et noté au journal.":
+        "When an alarm (conflict, absent) goes off on a frequency in the listened window, the sound of the\n10 seconds before and the 10 after is recorded as WAV (proof of the interference),\nin “enregistrements_audio”, and logged.",
+    "Quand une alarme part sur une fréquence de la fenêtre, enregistre 15 s d'IQ (toute la\nfenêtre, pour réécouter et analyser après). Gros fichiers : décoché d'office.":
+        "When an alarm goes off on a frequency in the window, records 15 s of IQ (the whole\nwindow, to listen and analyse later). Big files: unticked by default.",
+    "Rien de net": "Nothing clear",
+    "Signal large": "Wide signal",
+    "TV numérique (TNT)": "Digital TV (DTT)",
+    "Très étroit et stable : porteuse sans modulation (émetteur allumé micro coupé, oscillateur, horloge d'un appareil, intermod d'une porteuse).":
+        "Very narrow and stable: unmodulated carrier (transmitter on with mic muted, oscillator, a device's clock, intermod of a carrier).",
+    "Type · santé du micro": "Type · mic health",
+    "hors fréquence ?": "off frequency?",
+    "largeur occupée {} kHz": "occupied bandwidth {} kHz",
+    "signal bref de {} s vu par le SDR (temps réel)": "short signal of {} s seen by the SDR (real time)",
+    "son de l'alarme : {}": "alarm sound: {}",
+    "trop chaud (sature ?)": "too hot (clipping?)",
+    "très froid": "very cold",
+    "{} dB au-dessus du bruit": "{} dB above noise",
+    "⏺ Alarme {} sur {} : son enregistré (10 s avant, 10 s après)…": "⏺ Alarm {} on {}: sound recorded (10 s before, 10 s after)…",
+    "⏺ Son de l'alarme enregistré : {}": "⏺ Alarm sound recorded: {}",
+    "⏺ Sur alarme : enregistrer l'IQ 15 s": "⏺ On alarm: record 15 s of IQ",
+    "⏺ Sur alarme : garder le son (10 s avant, 10 s après)": "⏺ On alarm: keep the sound (10 s before, 10 s after)",
+    "⚠ déborde d'un canal de {} kHz": "⚠ spills over a {} kHz channel",
+    "⚡ Signal bref sur une fréquence « doit rester libre » = alarme": "⚡ Short signal on a “must stay free” frequency = alarm",
+    "✔ tient dans un canal de {} kHz": "✔ fits in a {} kHz channel",
+    "🔎 C'est quoi ce signal ? (SDR)": "🔎 What is this signal? (SDR)",
+})
+TEMPLATES.update({"dérive {} kHz": "drift {} kHz", "dév. ±{} kHz": "dev. ±{} kHz", "pilote {} kHz": "pilot {} kHz"})
+SAME_TEMPLATES += ["🔎 {} MHz : ", "alarme_{}_{}MHz.wav"]
+# ---- étape 9 : moniteur multicanal SDR
+EXACT.update({
+    " · dérive sur 10 min : moyenne {} kHz, ± {} kHz": " · drift over 10 min: mean {} kHz, ± {} kHz",
+    " · {} hors de la fenêtre (le tinySA ou le balayage s'en occupe)": " · {} outside the window (the tinySA or the sweep handles them)",
+    " ⚠ sature": " ⚠ clipping",
+    "Aucune de tes fréquences n'est dans la plage de ce SDR.": "None of your frequencies is in this SDR's range.",
+    "Combien de micros sont démodulés en même temps (son, déviation, dérive). Plus = plus de calcul.\nLes autres sont mesurés par la FFT et passent à tour de rôle toutes les 5 s.":
+        "How many mics are demodulated at the same time (sound, deviation, drift). More = more computing.\nThe others are measured by the FFT and take turns every 5 s.",
+    "Coupures de son alors que la RF est bonne : câble, capsule, bouton mute ?": "Sound dropouts while RF is good: cable, capsule, mute button?",
+    "Diagnostic": "Diagnosis",
+    "Décrochages RF répétés : antenne masquée, trop loin, ou brouillage.": "Repeated RF dropouts: antenna blocked, too far, or interference.",
+    "Fenêtre : {} – {} MHz · {} fréquence(s) surveillée(s)": "Window: {} – {} MHz · {} frequency(ies) monitored",
+    "Fréquence qui dérive ({} kHz) : pack froid, quartz, mauvais réglage.": "Frequency drifting ({} kHz): cold pack, crystal, wrong setting.",
+    "Historique du micro choisi (10 dernières minutes) : RF, bruit, son.": "History of the chosen mic (last 10 minutes): RF, noise, sound.",
+    "Lance / arrête le moniteur multicanal.": "Starts / stops the multichannel monitor.",
+    "Le SDR qui écoute (il faut ses outils, ou la DLL WiNRADiO).": "The SDR that listens (its tools are needed, or the WiNRADiO DLL).",
+    "Moniteur multicanal SDR": "SDR multichannel monitor",
+    "Performances : échantillons perdus (le PC ou l'USB ne suit pas), charge du calcul, retard.": "Performance: lost samples (the PC or USB can't keep up), computing load, delay.",
+    "Porteuse là mais pas de son : micro coupé (mute) ou pack sans audio.": "Carrier present but no sound: mic muted or pack without audio.",
+    "RAS": "All good",
+    "RF": "RF",
+    "RF = niveau (dBFS) et écart au bruit · Son = RMS / crête (🎧 = récepteur virtuel) ·\nSanté = déviation et dérive · Largeur = 99 % de la puissance · Voisins = marge sur les canaux\nadjacents · Diagnostic = croisement RF + son.":
+        "RF = level (dBFS) and margin above noise · Sound = RMS / peak (🎧 = virtual receiver) ·\nHealth = deviation and drift · Width = 99 % of the power · Neighbours = margin over the adjacent\nchannels · Diagnosis = RF + sound combined.",
+    "RF trop faible : risque de décrochage (antenne, distance, pile ?).": "RF too weak: dropout risk (antenna, distance, battery?).",
+    "Rien à surveiller avec ce SDR.": "Nothing to monitor with this SDR.",
+    "Récepteurs virtuels :": "Virtual receivers:",
+    "Santé": "Health",
+    "Signal fort dans le canal voisin ({} dB sous le canal) : désensibilisation, intermod.": "Strong signal in the adjacent channel ({} dB below the channel): desensitisation, intermod.",
+    "Son saturé : gain du pack trop fort (ou chanteur très près).": "Sound clipping: pack gain too high (or singer very close).",
+    "Toutes tes fréquences qui tiennent dans la fenêtre du SDR sont mesurées en même temps (niveau, voisins, largeur). Les plus importantes ont en plus un":
+        "All your frequencies that fit in the SDR window are measured at the same time (level, neighbours, width). The most important ones also get a",
+    "Voisins": "Neighbours",
+    "Waterfall du micro choisi (± 150 kHz) : le temps descend.": "Waterfall of the chosen mic (± 150 kHz): time flows down.",
+    "kHz autour du micro": "kHz around the mic",
+    "qui les démodule : son, déviation, dérive, coupures. Clique une ligne pour l'écouter et voir son waterfall et son historique.":
+        "that demodulates them: sound, deviation, drift, dropouts. Click a row to listen and see its waterfall and history.",
+    "récepteur virtuel": "virtual receiver",
+    "▶ Surveiller": "▶ Monitor",
+    "⚙ SDR : {} · {} récepteur(s) virtuel(s)": "⚙ SDR: {} · {} virtual receiver(s)",
+    "⚠ Le SDR est déjà pris (écoute ou temps réel) : ferme-les d'abord.": "⚠ The SDR is already in use (listening or real time): close them first.",
+    "⚠ Moniteur arrêté : {}": "⚠ Monitor stopped: {}",
+    "📡 Moniteur multicanal SDR (tous tes micros, son, santé)…": "📡 SDR multichannel monitor (all your mics, sound, health)…",
+})
+TEMPLATES.update({
+    " · silence {} s": " · silence {} s",
+    "📡 {} : {} canaux autour de {} MHz": "📡 {}: {} channels around {} MHz",
+    "pertes {} % · charge {} % · retard {} s": "loss {} % · load {} % · delay {} s",
+})
+SAME_TEMPLATES += ["🎧 {} ({} MHz) : ", "{} / {} dB", "{} dBFS · "]
+EXACT["V8 : tous tes micros de la fenêtre du SDR mesurés en même temps (niveau, voisins,\nlargeur) ; les plus importants démodulés (son, déviation, dérive, coupures)."] = \
+    "V8: all your mics in the SDR window measured at the same time (level, neighbours,\nwidth); the most important ones demodulated (sound, deviation, drift, dropouts)."

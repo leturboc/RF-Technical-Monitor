@@ -1020,7 +1020,7 @@ _ld.close()
 check("étape 6 : actions « sur une fréquence » branchées", ("🎧 Écouter avec le SDR", "listen_freq") in win.FREQ_ACTIONS)
 _mn = W.QMenu(win)
 check("étape 6 : proposées dans les menus (alarme, tuiles)", sorted(win.add_freq_actions(_mn, 606.0).values())
-      == ["listen_freq", "rt_freq"])
+      == ["analyze_freq", "listen_freq", "rt_freq"])
 check("couche appareil : SDR -> SDRSweep, port série -> tinySA", m.spectrum_driver("hackrf") == "sdr"
       and m.spectrum_driver("COM4") == "tinysa" and issubclass(m.TinySA, m.SpectrumDevice)
       and issubclass(m.SDRSweep, m.SpectrumDevice) and m.SDRSweep.caps["listen"] and not m.TinySA.caps["listen"])
@@ -1075,6 +1075,80 @@ _Lf[np.abs(_F - _wl["freq"]) < 0.02] = -40.0
 check("📡 SDR seul : le flux d'écoute surveille sa fenêtre", win.sdr_listen_feed("hackrf", _F, _Lf)
       and _wl["level"] is not None and _wl["level"] > -60, str(_wl.get("level")))
 win.sdr_listen_clear()
+if _was_run:                                       # la suite des tests a besoin de la surveillance
+    win.toggle_run()
+    _t0 = time.time()
+    while not win.is_running() and time.time() - _t0 < 15:
+        wait(200)
+    wait(2500)
+# V8 étape 8 : signal bref -> alarme, son gardé sur alarme, « c'est quoi ce signal ? »
+_free_st = next((st_["name"] for st_ in win.statuses if st_.get("free")), None)
+if _free_st:
+    win._append_watch("Réserve test", 612.25, status=_free_st)
+    _kf = win.watch_by_key(612250)
+    _t = time.time()
+    check("⚡ signal bref sur une réserve -> alarme CONFLIT (clé BREF)",
+          win.sdr_burst_conflict("hackrf", _kf, dict(t0=_t, t1=_t + 0.04, f=612.25, peak=-30.0))
+          and ("BREF", 612250) in win.alarms.active)
+    win.alarms.clear(("BREF", 612250), time.time())
+os.environ["FAKE_IQ_CARRIERS"] = f"{_pair[0]['freq']}:1000"
+_la = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"]])
+_la.show()
+_la.dev_combo.setCurrentIndex(_la.dev_combo.findData("hackrf"))
+step("écoute (alarme)", _la.toggle)
+wait(2500)
+_fk = int(round(_pair[0]["freq"] * 1000))
+win.alarms.raise_(("BREF", _fk), "CONFLIT", "Test alarme", _pair[0]["freq"], 2, time.time())   # tient (pas effacée par le balayage)
+wait(1500)
+check("⏺ alarme dans la fenêtre -> enregistrement automatique lancé", _la._auto is not None, _la.st_lbl.text())
+_pa = _la._auto["path"] if _la._auto else None
+_la._auto_end()
+check("⏺ WAV de l'alarme : le son d'AVANT l'alarme y est", _pa is not None and os.path.exists(_pa)
+      and _wave.open(str(_pa)).getnframes() > 48000, str(_pa))
+check("santé / type affichés pendant l'écoute", _la.table.item(0, 5) is not None and _la.table.item(0, 5).text() not in ("", "—"),
+      _la.table.item(0, 5).text() if _la.table.item(0, 5) else "")
+shot(_la, "ecoute_sante")
+_la.close()
+win.alarms.clear(("BREF", _fk), time.time())
+_rt8 = step("🔎 c'est quoi ce signal", lambda: win.analyze_freq(_pair[0]["freq"]))
+_t0 = time.time()
+while _rt8 is not None and "🔎" not in _rt8.ana_lbl.text() and time.time() - _t0 < 15:
+    wait(300)
+check("🔎 analyse : micro FM reconnu + largeur occupée", _rt8 is not None and "FM" in _rt8.ana_lbl.text()
+      and "kHz" in _rt8.ana_lbl.text(), _rt8.ana_lbl.text() if _rt8 else "")
+if _rt8 is not None:
+    shot(_rt8, "analyse_signal")
+    _rt8.close()
+# V8 étape 9 : moniteur multicanal (faux SDR : 2 micros FM)
+os.environ["FAKE_IQ_CARRIERS"] = ",".join(f"{w['freq']}:{t}" for w, t in zip(_pair, (1000, 3000)))
+_mm = step("moniteur multicanal", win.open_multimon)
+if _mm is not None:
+    _mm.dev_combo.setCurrentIndex(_mm.dev_combo.findData("hackrf"))
+    _mm._plan()
+    check("📡 multicanal : la fenêtre contient mes micros", len(_mm.chans) >= len(_pair), _mm.win_lbl.text())
+    step("multicanal ▶", _mm.toggle)
+    _t0 = time.time()
+    while (not _mm.rows or any(r_.get("rms") is None for r_ in _mm.rows if r_["freq"] in [w_["freq"] for w_ in _pair]))\
+            and time.time() - _t0 < 15:
+        wait(300)
+    wait(1500)
+    _r0 = next((r_ for r_ in _mm.rows if abs(r_["freq"] - _pair[0]["freq"]) < 1e-6), {})
+    check("📡 multicanal : niveau et écart au bruit de chaque micro", _r0.get("snr") is not None and _r0["snr"] > 20,
+          str({k_: _r0.get(k_) for k_ in ("rf", "noise", "snr")}))
+    check("📡 multicanal : récepteur virtuel (son mesuré, déviation ≈ ±30 kHz)", _r0.get("rms") is not None
+          and _r0.get("dev") is not None and 20 < _r0["dev"] < 45, str({k_: _r0.get(k_) for k_ in ("rms", "dev", "vrx")}))
+    check("📡 multicanal : largeur occupée et canaux voisins", _r0.get("obw") and _r0.get("adj_margin") is not None,
+          str({k_: _r0.get(k_) for k_ in ("obw", "adj_margin")}))
+    _mm.table.selectRow(0)
+    wait(1500)
+    check("📡 multicanal : waterfall et historique du micro choisi", _mm.sel is not None and _mm.wf.get(_mm.sel) is not None
+          and len(_mm.hist[_mm.sel].pts) >= 2, str(_mm.sel))
+    check("📡 multicanal : performances affichées", "pertes" in _mm.perf_lbl.text() or "loss" in _mm.perf_lbl.text(),
+          _mm.perf_lbl.text())
+    shot(_mm, "moniteur_multicanal")
+    step("multicanal ■", _mm.toggle)
+    check("📡 multicanal : arrêté proprement", _mm.worker is None)
+    _mm.close()
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
 _hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
 _hd.show()
