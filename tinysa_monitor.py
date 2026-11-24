@@ -84,7 +84,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.67.0"
+APP_VER = "7.68.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -4046,7 +4046,8 @@ COORD_ORDERS = (("random", "🎲 Réparties au hasard (meilleur de 3 essais)"),
 COORD_TRIES = {"random": 3, "random1": 1, "low": 1}
 
 
-def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed, busy, max_check):
+def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed, busy, max_check, IM=None,
+             new_img=0.0):
     """La fréquence compatible la plus proche de `seed` dans [lo, hi] (None si aucune). 7.60.2 : recherche par
     FENÊTRES qui s'élargissent autour de la graine (2, 6, 20, 60 MHz, puis tout) : pf_suggest ne contrôle plus
     toute la bande au pas de l'appareil à chaque ajout (40 fréquences = 7 min 30 avant) ; même résultat, car on
@@ -4060,7 +4061,7 @@ def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed
         st = {}
         sg = pf_suggest(len(F), F + [seed], T + [True], B + [0.0], SP + [new_sep], TL + [new_tol], None,
                         lo=a, hi=z, step=step, n=1, busy=busy, max_check=budget, filt=FL + [new_filt],
-                        skip=prev, stats=st)
+                        skip=prev, stats=st, img=(list(IM) + [new_img]) if IM is not None else 0.0)
         if sg:
             return sg[0][0]
         budget -= int(st.get("checked", 0))
@@ -4072,7 +4073,7 @@ def _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, seed
 
 def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, new_sep=PF_SEP, new_tol=None,
             new_filt=0.0, lo=470.0, hi=694.0, step=0.025, busy=None, max_check=800, order="low", rng=None,
-            tick=None, cancel=None):
+            tick=None, cancel=None, img=0.0, new_img=0.0):
     """Coordination automatique : n_new fréquences compatibles avec le plan existant (freqs, réglages par fréquence
     comme pf_check) ET entre elles, pour un appareil (new_sep / new_tol / new_filt, pas `step`), dans [lo, hi],
     en évitant ce que busy(c) dit occupé. Ajout une par une, chaque ajout vérifié par pf_suggest (aucun problème pour
@@ -4089,16 +4090,18 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
     def per(x, d):
         return list(x) if isinstance(x, (list, tuple)) else [x] * m
     SP, TL, FL = per(sep, PF_SEP), per(tol, None), per(filt, 0.0)
+    IM = per(img, 0.0)                       # 7.68 : FI des récepteurs (fréquence image), comme pf_check
     rng = rng if rng is not None else np.random.default_rng()
     out = []
     for _k in range(int(n_new)):
         if cancel is not None and cancel():
             break
         if order == "low":
-            c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, lo - step, busy, max_check)
+            c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step, lo - step, busy, max_check,
+                         IM, new_img)
         else:                                # _pf_pick finit par toute la plage : rien = vraiment plus de place
             c = _pf_pick(F, T, B, SP, TL, FL, new_sep, new_tol, new_filt, lo, hi, step,
-                         float(rng.uniform(lo, hi)) + 1e-7, busy, max_check)
+                         float(rng.uniform(lo, hi)) + 1e-7, busy, max_check, IM, new_img)
         if c is None:
             break
         out.append(c)
@@ -4110,6 +4113,7 @@ def pf_fill(n_new, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, 
         SP.append(new_sep)
         TL.append(new_tol)
         FL.append(new_filt)
+        IM.append(new_img)
     return out
 
 
@@ -4121,7 +4125,7 @@ def _fill_score(got):
 
 
 def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0.0, busy=None, max_check=300,
-                 order="low", tries=1, seed=None, progress=None, cancel=None, found=None):
+                 order="low", tries=1, seed=None, progress=None, cancel=None, found=None, img=0.0):
     """Coordination entre appareils : plusieurs lots {n, sep, tol, filt, lo, hi, step} (ex. 8 × QLX-D + 6 × PSM 1000),
     cherchés l'un après l'autre ; chaque fréquence trouvée rejoint le plan avec les règles de SON appareil, donc les
     lots suivants doivent lui être compatibles (et elle à eux : pf_suggest vérifie les deux sens). order / tries
@@ -4144,7 +4148,7 @@ def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0
 
         def per(x):
             return list(x) if isinstance(x, (list, tuple)) else [x] * m
-        SP, TL, FL = per(sep), per(tol), per(filt)
+        SP, TL, FL, IM = per(sep), per(tol), per(filt), per(img)
         out = []
         want = sum(int(l.get("n", 0)) for l in lots)
         cnt = [0]
@@ -4159,7 +4163,7 @@ def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0
             got = pf_fill(int(lot.get("n", 0)), F, T, B, SP, TL, FL, lot.get("sep", PF_SEP), lot.get("tol"),
                           lot.get("filt", 0.0), lot.get("lo", 470.0), lot.get("hi", 694.0), lot.get("step", 0.025),
                           busy, max_check, order="low" if order == "low" else "random", rng=rng, tick=tick,
-                          cancel=cancel)
+                          cancel=cancel, img=IM, new_img=float(lot.get("img") or 0.0))
             out.append(got)
             for c in got:
                 F.append(c)
@@ -4168,6 +4172,7 @@ def pf_fill_lots(lots, freqs, is_tx=None, bws=None, sep=PF_SEP, tol=None, filt=0
                 SP.append(lot.get("sep", PF_SEP))
                 TL.append(lot.get("tol"))
                 FL.append(lot.get("filt", 0.0))
+                IM.append(float(lot.get("img") or 0.0))
         if best is None or _fill_score(out) > _fill_score(best):
             best = out
         if sum(len(g) for g in out) >= sum(int(l.get("n", 0)) for l in lots) and order == "low":
@@ -5932,6 +5937,7 @@ WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par 
              ("tech", "🛠", "Tech", "Gérer le serveur : surveillance, seuils, fréquences, tinySA (accès protégé)")]
 WEB_VIEW_KEYS = [k for k, *_ in WEB_VIEWS]
 WEB_VIEWS_HIDDEN = ("terrain", "tech")             # cachées tant qu'on ne les coche pas (outils de l'équipe HF)
+_WEB_BASE_VIEWS = tuple(WEB_VIEW_KEYS)   # 7.68 : vues écrites dans WEB_PAGE ; celles ajoutées ensuite (V8) = VIEWS_X
 
 
 def web_link(ip, port, view=""):
@@ -6193,7 +6199,8 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
  <section id="al"></section><main id="view"></main>
 </div>
 <script>
-const VIEWS=__VIEWS__;
+const VIEWS=__VIEWS__;Object.assign(VIEWS,/*__VIEWS_X__*/{});
+const EXT={};   // 7.68 : vues ajoutées par une autre version (V8) : EXT[clé]={mount(el), update(st)}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
@@ -6290,6 +6297,7 @@ function layerSel(id){const k=LS.get("flt","");return `<select class="in" id="${
 function keepLayer(id){const s=$("#"+id);if(s)s.onchange=()=>{LS.set("flt",s.value);update(mounted)}}
 function inLayer(r){const f=LS.get("flt","");return !f||lay(r)===f||r.scene===f}
 function mount(v){const el=$("#view");
+ if(EXT[v]){EXT[v].mount(el);return}
  if(v===""){el.innerHTML=`<div class="sum" id="kpi"></div><div class="home">${D.views.map(k=>`<a class="vcard" href="#/${k}"><div class="i">${VIEWS[k][0]}</div><b>${VIEWS[k][1]}</b><span>${VIEWS[k][2]}</span></a>`).join("")}</div><div class="who">Connecté en tant que <b>${esc(D.me||"Invité")}</b>${D.state.ver?" · TinySA Monitor v"+esc(D.state.ver):""}</div>`;return}
  if(v==="liste"){el.innerHTML=`<div class="tools">${layerSel("flt")}<input class="in" id="q" placeholder="🔎 Nom, fréquence…"><label class="sw"><input type="checkbox" id="oo"> Occupées seulement</label></div><div class="grid" id="g"></div>`;
   keepLayer("flt");$("#q").oninput=()=>update(v);$("#oo").onchange=()=>update(v);return}
@@ -6321,6 +6329,7 @@ function mount(v){const el=$("#view");
   keepLayer("flt");$("#fs").onclick=()=>{const g=$("#view");(g.requestFullscreen?g.requestFullscreen():g.webkitRequestFullscreen&&g.webkitRequestFullscreen())};return}
  if(v==="alarmes"){el.innerHTML=`<div class="tools"><b style="flex:1">Alarmes en cours</b><span id="aa"></span></div><div class="alist" id="g"></div>`;return}}
 function update(v){const st=D.state;
+ if(EXT[v]){if(EXT[v].update)EXT[v].update(st);return}
  if(v===""){const rs=st.rows,occ=rs.filter(r=>r.state==="occ").length,ab=rs.filter(r=>r.alarm).length,k=$("#kpi");
   if(k)k.innerHTML=`<div class="kpi"><b>${rs.length}</b><span>fréquences</span></div><div class="kpi"><b>${rs.filter(r=>r.tone==="ok"||r.tone==="free").length}</b><span>OK / libres</span></div><div class="kpi"><b>${occ}</b><span>avec signal</span></div><div class="kpi"><b style="color:${ab?"var(--bad)":"inherit"}">${ab}</b><span>en alarme</span></div>`;return}
  if(v==="liste"){const q=($("#q").value||"").toLowerCase(),oo=$("#oo").checked;
@@ -6495,6 +6504,7 @@ function wfAdd(){const cv=$("#cv");if(!cv)return;const ss=segs(),sp=span(ss);if(
  g.putImageData(img,0,0);wf.n++}
 function wfDraw(c,w,h,f0,f1){if(!wf){c.fillStyle="#8b95a5";c.textAlign="center";c.fillText("Le waterfall se remplit à chaque balayage…",w/2,h/2);return}
  c.imageSmoothingEnabled=false;const rows=Math.min(wf.n,Math.floor((h-PT-PB)/2));c.drawImage(wf.c,0,0,wf.w,rows,PL,PT,w-PL-8,rows*2)}
+/*__EXTRA_JS__*/
 </script></body></html>""".replace("__ICON__", APP_ICON_PNG64).replace(
     "__VIEWS__", "{" + ",".join(f'"{k}":["{i}","{t}","{d}"]' for k, i, t, d in WEB_VIEWS) + "}")
 
@@ -6883,6 +6893,23 @@ def scan_segments(F):
     return [(float(F[a]), float(F[b - 1])) for a, b in zip(cuts[:-1], cuts[1:]) if b > a]
 
 
+def axis_panels(segs, min_gap=10.0, rel_gap=0.05):
+    """Axe des fréquences COUPÉ (dossier de préparation, 7.67.1) : plages mesurées (scan_segments) réunies si
+    l'écart entre deux est petit (< max(min_gap MHz, rel_gap × étendue totale)) -> [(début, fin)] = une case par
+    groupe ; un grand vide (700 -> 820 MHz) devient une coupure au lieu d'un tiers de l'image."""
+    segs = sorted((float(a), float(b)) for a, b in segs if b >= a)
+    if not segs:
+        return []
+    lim = max(min_gap, rel_gap * (segs[-1][1] - segs[0][0]))
+    out = [list(segs[0])]
+    for a, b in segs[1:]:
+        if a - out[-1][1] <= lim:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(a, b) for a, b in out]
+
+
 def covered(x, segs, pad=0.0):
     """Masque : x (MHz, tableau) tombe dans une des plages mesurées segs (± pad MHz)."""
     x = np.asarray(x, dtype=float)
@@ -7134,6 +7161,7 @@ STEPS = (
      (("§Avant d'ouvrir les portes", None),
       ("⚡ Préréglages rapides (festival, salle, nuit…)…", "open_presets"),
       ("✅ Prêt pour le show ? (tout vérifier)…", "open_ready"),
+      ("🩺 Diagnostic RF : ce qui cloche dans la mesure…", "open_rf_diag"),
       ("🎤 Appel des micros (line check)…  Ctrl+L", "open_linecheck"),
       ("§Pendant le show", None),
       ("▶ Démarrer la surveillance", "step_monitor"),
@@ -7172,6 +7200,7 @@ STEPS = (
       ("📡 Relais réseau : partager le tinySA de CE PC…", "open_relay"),
       ("§Mesure et dépannage", None),
       ("🎛 Réglages de mesure (finesse, préampli, atténuateur)…", "open_measure"),
+      ("🩺 Diagnostic RF automatique (bruit, saturation, seuils)…", "open_rf_diag"),
       ("📡 Mode émission (générateur : tester un récepteur)…", "open_emit"),
       ("🩺 Diagnostic tinySA (fichier pour le support)…", "open_diag"),
       ("📦 Tout envoyer pour un dépannage (ZIP)…", "export_bundle"))),
@@ -8328,6 +8357,44 @@ def fmt_duration(s):
     return f"{s // 3600} h {(s % 3600) // 60:02d}"
 
 
+def level_everywhere(docs, f, bw=0.0, win=0.1):
+    """📍 7.68 (« le niveau d'une fréquence partout », Scans par lieu) : niveau de f (MHz, bloc de largeur bw) dans
+    chaque scan gardé. Niveau = max à ± (win + bw/2) MHz ; bruit de fond local (noise_floor) ; None si le scan n'a pas
+    mesuré cette fréquence (hors plage, trou entre deux bandes). -> lignes dict(name, scene, t, level, floor, margin,
+    rbw, rbw_est), les plus fortes d'abord, les non mesurées à la fin."""
+    out = []
+    half = float(win) + float(bw or 0.0) / 2.0
+    for d in docs or ():
+        F = np.asarray(d.get("f") or [], dtype=float)
+        L = np.asarray(d.get("l") or [], dtype=float)
+        i_ = site_scan_info(d)
+        row = dict(name=d.get("name", ""), scene=i_["scene"], t=i_["t"], level=None, floor=None, margin=None,
+                   rbw=i_["rbw"], rbw_est=i_["rbw_est"])
+        if len(F) >= 2 and covered(np.array([f]), scan_segments(F), pad=half)[0]:
+            m = np.abs(F - f) <= max(half, float(np.median(np.diff(F))) / 2.0 + 1e-9)
+            if m.any():
+                row["level"] = float(np.max(L[m]))
+                fl_ = noise_floor(F, L, f, win=2.0 + bw / 2.0, exclude=max(0.15, half))
+                row["floor"] = fl_
+                row["margin"] = (row["level"] - fl_) if fl_ is not None else None
+        out.append(row)
+    out.sort(key=lambda r: (r["level"] is None, -(r["level"] if r["level"] is not None else 0.0)))
+    return out
+
+
+def level_everywhere_text(rows, f, fmt=None):
+    """Phrase de résumé : où c'est le plus fort / le plus calme."""
+    fmt = fmt or (lambda v: f"{v:.0f} dBm")
+    got = [r for r in rows if r["level"] is not None]
+    if not got:
+        return f"{f:.3f} MHz n'a été mesurée dans aucun scan gardé."
+    hi_, lo_ = got[0], got[-1]
+    if len(got) == 1:
+        return f"{f:.3f} MHz : {fmt(hi_['level'])} dans « {hi_['name']} » (seul scan qui la mesure)."
+    return (f"{f:.3f} MHz : la plus forte dans « {hi_['name']} » ({fmt(hi_['level'])}), la plus calme dans "
+            f"« {lo_['name']} » ({fmt(lo_['level'])}), écart {hi_['level'] - lo_['level']:.0f} dB.")
+
+
 def site_rename(scans, old, new):
     """Renomme un scan gardé. -> (nouvelle liste, message d'erreur ou "")."""
     new = str(new).strip()[:60]
@@ -9188,6 +9255,213 @@ def resolution_pairs(items, res_mhz):
     return out
 
 
+# ------------------------------------------------------------------ 🩺 7.68 : diagnostic RF automatique
+# Bruit de fond ATTENDU d'un tinySA Ultra (dBm/Hz) : valeurs de DÉPART (pas mesurées en labo) ; calées sur les scans de
+# Clément (≈ −110 dBm en RBW ~100 kHz, préampli en marche).
+NOISE_DBM_HZ = {True: -160.0, False: -150.0}       # préampli (LNA) en marche / arrêté
+DIAG_NOISE_HIGH = 12.0      # bruit de fond plus haut que prévu de … dB -> à signaler
+DIAG_ZONE_DB = 10.0         # zone plus bruyante que le reste de … dB (hors canaux TV) -> à signaler
+DIAG_ZONE_MHZ = 2.0         # … sur au moins cette largeur
+DIAG_FLAPS = 6              # changements libre <-> occupé en DIAG_FLAP_MIN minutes = « pile au seuil »
+DIAG_FLAP_MIN = 30
+DIAG_EDGE_DB = 4.0          # niveau à moins de … dB du seuil = pile au seuil
+DIAG_TV_MARGIN = 10.0       # micro dans un canal TV : moins de … dB au-dessus de la télé = fragile
+DIAG_ICONS = {"bad": "❌", "warn": "⚠️", "info": "ℹ️", "ok": "✅"}
+
+
+def expected_floor(rbw_khz, lna=True):
+    """Bruit de fond attendu (dBm) pour une RBW (kHz) : densité de bruit + 10·log10(RBW)."""
+    if not rbw_khz or rbw_khz <= 0:
+        return None
+    return NOISE_DBM_HZ[bool(lna)] + 10.0 * math.log10(float(rbw_khz) * 1000.0)
+
+
+def noisy_zones(Fc, Lc, ref, tv=(), above=DIAG_ZONE_DB, min_mhz=DIAG_ZONE_MHZ):
+    """Zones où la courbe du bruit de fond (floor_curve) dépasse `ref` de `above` dB sur au moins `min_mhz`, hors canaux
+    TV mesurés (tv = [(début, fin)]). -> [dict(lo, hi, excess)] (excès médian en dB), les plus fortes d'abord."""
+    if Fc is None or Lc is None or ref is None:
+        return []
+    Fc, Lc = np.asarray(Fc, dtype=float), np.asarray(Lc, dtype=float)
+    m = np.isfinite(Lc) & (Lc >= ref + above)
+    for a, b in tv:
+        m &= ~((Fc >= a - 0.5) & (Fc <= b + 0.5))
+    out, i, n = [], 0, len(Fc)
+    while i < n:
+        if not m[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and m[j + 1]:
+            j += 1
+        if Fc[j] - Fc[i] >= min_mhz - 1e-9:
+            out.append(dict(lo=float(Fc[i]), hi=float(Fc[j]), excess=float(np.median(Lc[i:j + 1]) - ref)))
+        i = j + 1
+    return sorted(out, key=lambda z: -z["excess"])
+
+
+def flap_count(times, now, minutes=DIAG_FLAP_MIN):
+    """Nombre de passages libre <-> occupé dans les `minutes` dernières minutes (times = heures des passages)."""
+    return sum(1 for t in times or () if now - t <= minutes * 60.0)
+
+
+def suggest_own_thr(level, floor, keep_on):
+    """Seuil propre proposé pour un micro « pile au seuil » : sous son niveau habituel (il doit être vu présent) sans
+    descendre dans le bruit ; pour une réserve ou sans statut : au-dessus du niveau qui clignote (le bruit ou une
+    station faible ne doit plus la dire occupée). -> dBm arrondi ou None."""
+    if level is None:
+        return None
+    if keep_on:
+        v = level - 6.0
+        if floor is not None:
+            v = max(v, floor + 4.0)
+        return float(round(v))
+    return float(round(level + 6.0))
+
+
+def rf_diagnose(i):
+    """🩺 Diagnostic RF automatique : ce qui cloche dans la MESURE, en clair, avec quoi faire.
+    i = dict (clés facultatives) : running, demo, F / L (spectre en direct, triés), rbw (kHz, None = auto), rbw_est,
+    step_khz, lna, sat_dbm, thr (seuil global), thr_auto, tv = [(début, fin, canal)] mesurés « TV », unknown = [MHz]
+    (signaux au-dessus du seuil hors liste), watch = [dict(key, name, freq, keep_free, keep_on, paused, level, typ
+    (niveau habituel), floor, margin, ethr, own_thr, flaps, state, tv (canal TV où elle tombe ou None),
+    tv_level)], fmt = fonction dBm -> texte (unité choisie).
+    -> [dict(key, level bad|warn|info|ok, title, text, advice, fix, arg)] ; fix = méthode de MainWindow (ou ""),
+    arg = argument(s) de cette méthode."""
+    fmt = i.get("fmt") or (lambda v: f"{v:.0f} dBm")
+    out = []
+
+    def add(key, level, title, text, advice="", fix="", arg=None):
+        out.append(dict(key=key, level=level, title=title, text=text, advice=advice, fix=fix, arg=arg))
+    F, L = i.get("F"), i.get("L")
+    if not i.get("running") or F is None or L is None or len(F) < 20:
+        add("data", "info", "Pas de mesure en cours",
+            "Le diagnostic lit le spectre en direct : lance la surveillance (▶ Démarrer) et attends un ou deux balayages.",
+            fix="toggle_run")
+        return out
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    ok = np.isfinite(F) & np.isfinite(L)
+    F, L = F[ok], L[ok]
+    tv = list(i.get("tv") or [])
+    tvm = np.zeros(len(F), dtype=bool)
+    for a, b, _c in tv:
+        tvm |= (F >= a) & (F <= b)
+    rest = L[~tvm] if (~tvm).sum() >= 20 else L
+    floor = float(np.percentile(rest, 20))
+    lna = bool(i.get("lna"))
+    # --- saturation
+    sat = sat_level(i.get("sat_dbm"), lna)
+    if sat != "ok":
+        add("sat", "bad" if sat == "bad" else "warn", "Signal très fort : risque de saturation",
+            f"Le tinySA reçoit jusqu'à {fmt(i['sat_dbm'])}. Au-delà de ce niveau il peut se saturer : faux signaux "
+            "(intermod créée par le tinySA lui-même), bruit de fond qui monte, niveaux faux.",
+            "Coupe le préampli (LNA) si il est en marche, ajoute de l'atténuation, ou éloigne l'antenne de l'émetteur "
+            "le plus fort (souvent un émetteur ears / un rack de récepteurs).", "open_measure")
+    # --- bruit de fond général
+    rbw = i.get("rbw") or i.get("rbw_est")
+    exp = expected_floor(rbw, lna)
+    if exp is not None and floor > exp + DIAG_NOISE_HIGH:
+        add("floor", "warn", "Bruit de fond plus haut que prévu",
+            f"Bruit de fond à {fmt(floor)}, environ {floor - exp:.0f} dB au-dessus de ce qu'on attend pour cette finesse "
+            f"de mesure (RBW {rbw:g} kHz{', préampli en marche' if lna else ''}). Les signaux faibles se noient.",
+            ("Avec un signal très fort à côté, c'est sans doute le tinySA qui sature : règle d'abord ça.\n" if sat != "ok"
+             else "") + "Causes fréquentes : écrans LED / murs vidéo, alimentations à découpage, ordinateur ou hub "
+            "USB près de l'antenne, câble d'antenne abîmé. Essaie d'éloigner l'antenne, de changer de câble, puis "
+            "relance le diagnostic.", "open_measure")
+    # --- zones bruitées (hors TV)
+    try:
+        Fc, Lc = floor_curve(F, L)
+        zones = noisy_zones(Fc, Lc, floor, [(a, b) for a, b, _c in tv])
+    except Exception:  # noqa: BLE001
+        zones = []
+    for z in zones[:4]:
+        c = (z["lo"] + z["hi"]) / 2.0
+        add(f"zone{c:.1f}", "warn", f"Zone bruyante {z['lo']:.1f}–{z['hi']:.1f} MHz",
+            f"Le bruit de fond y est {z['excess']:.0f} dB plus haut qu'ailleurs, et ce n'est pas un canal TV mesuré.",
+            "Ça peut être un mur LED / écran, une liaison vidéo HF, un système large (Spectera, WMAS), ou une "
+            "intermod. Évite d'y mettre des micros ; pour trouver la source : 🔎 Chasser.", "open_hunt", c)
+    # --- seuil global (seuils fixes seulement)
+    thr = i.get("thr")
+    if thr is not None and not i.get("thr_auto"):
+        frac = float(np.mean(rest >= thr))
+        if thr - floor < 6.0 or frac > 0.25:
+            add("thr_low", "bad", "Seuil « occupé » trop bas",
+                f"Seuil à {fmt(thr)} pour un bruit de fond à {fmt(floor)} : {frac * 100:.0f} % du spectre (hors TV) "
+                "passe pour « occupé ». Le bruit déclenche des fausses alarmes et des conflits.",
+                f"Passe en seuils Auto (bruit de fond + marge, fréquence par fréquence), ou remonte le seuil à "
+                f"{fmt(round(floor + 12))} environ.", "set_thr_auto", True)
+        elif thr - floor > 35.0:
+            add("thr_high", "warn", "Seuil « occupé » très haut",
+                f"Seuil à {fmt(thr)}, {thr - floor:.0f} dB au-dessus du bruit de fond : un micro faible ou loin ne sera "
+                "pas vu, et un brouilleur faible passera inaperçu.",
+                f"Passe en seuils Auto, ou baisse le seuil vers {fmt(round(floor + 15))}.", "set_thr_auto", True)
+    # --- résolution
+    step = i.get("step_khz")
+    if step and rbw and step > 1.5 * rbw:
+        add("res", "warn", "Des signaux peuvent passer entre deux points",
+            f"Un point tous les {step:.0f} kHz avec une finesse (RBW) de {rbw:g} kHz : un micro étroit qui tombe entre "
+            "deux points est vu plus faible qu'il n'est, voire pas du tout.",
+            "Mets plus de points (⚡ Points › Détaillé) ou la RBW en Auto.", "open_measure")
+    # --- fréquences de la liste
+    now_ws = [w for w in i.get("watch") or [] if not w.get("paused")]
+    for w in now_ws:
+        nm = w.get("name") or f"{w['freq']:.3f}"
+        lv, typ = w.get("level"), w.get("typ") if w.get("typ") is not None else w.get("level")
+        if w.get("flaps", 0) >= DIAG_FLAPS and w.get("ethr") is not None and typ is not None \
+                and abs(typ - w["ethr"]) <= DIAG_EDGE_DB:
+            sug = suggest_own_thr(typ, w.get("floor"), w.get("keep_on"))
+            add(f"flap{w['key']}", "warn", f"{nm} : pile au seuil",
+                f"{nm} ({w['freq']:.3f} MHz) a changé {w['flaps']} fois d'état en {DIAG_FLAP_MIN} min : son niveau "
+                f"({fmt(typ)}) est pile au seuil ({fmt(w['ethr'])}). Ça remplit le journal et peut faire des "
+                "alarmes à répétition.",
+                (f"Donne-lui un seuil à elle : {fmt(sug)} (clic sur « Régler »)." if sug is not None else
+                 "Donne-lui un seuil à elle (clic droit sur la ligne › seuil).")
+                + ("\nSi c'est un émetteur que tu connais, mets-lui le statut « doit émettre »."
+                   if not w.get("keep_on") and not w.get("keep_free") else ""),
+                "diag_set_thr", (w["key"], sug))
+        if w.get("tv") is not None and not w.get("keep_free") and lv is not None and w.get("tv_level") is not None:
+            d = lv - w["tv_level"]
+            if d < DIAG_TV_MARGIN:
+                add(f"tv{w['key']}", "warn", f"{nm} : dans le canal TV {w['tv']}",
+                    f"{nm} ({w['freq']:.3f} MHz) est dans le canal TV {w['tv']}, seulement {d:+.0f} dB au-dessus de la "
+                    "télé. Le récepteur risque de décrocher dès que le micro s'éloigne.",
+                    "Déplace-le hors du canal TV (🆘 Remplacer ce micro), ou rapproche les antennes de la scène.",
+                    "open_replace_key", w["key"])
+        elif w.get("keep_on") and w.get("margin") is not None and lv is not None and w.get("state") in ("weak", "occ") \
+                and w["margin"] < SNR_LOW:
+            add(f"snr{w['key']}", "warn", f"{nm} : à peine au-dessus du bruit",
+                f"{nm} ne dépasse le bruit que de {w['margin']:.0f} dB : on ne peut pas dire de façon sûre s'il émet.",
+                "Antenne de mesure plus près de la scène, pile de l'émetteur, ou préampli (LNA) en marche.",
+                "open_measure")
+    # --- signaux inconnus
+    unk = sorted(set(round(float(x), 1) for x in i.get("unknown") or ()))
+    if unk:
+        lst = ", ".join(f"{x:.1f}" for x in unk[:6]) + (" …" if len(unk) > 6 else "")
+        add("unk", "info", f"{len(unk)} signal(aux) hors de ta liste",
+            f"Au-dessus du seuil mais pas dans « Mes fréquences » : {lst} MHz.",
+            "Si ce sont tes émetteurs, ajoute-les (📡 Depuis le scan) ; sinon note-les et évite-les.", "open_scan_add")
+    if not [x for x in out if x["level"] in ("bad", "warn")]:
+        add("ok", "ok", "Rien d'anormal dans la mesure",
+            (f"Bruit de fond à {fmt(floor)} (attendu ≈ {fmt(exp)})." if exp is not None else
+             f"Bruit de fond à {fmt(floor)}.") + "\nPas de saturation, pas de zone bruyante hors TV, pas de micro "
+            "pile au seuil.")
+    rank = {"bad": 0, "warn": 1, "info": 2, "ok": 3}
+    out.sort(key=lambda x: rank.get(x["level"], 4))
+    return out
+
+
+def rf_diag_summary(items):
+    """-> (niveau le plus grave, phrase)."""
+    bad = sum(1 for x in items if x["level"] == "bad")
+    warn = sum(1 for x in items if x["level"] == "warn")
+    if bad:
+        return "bad", f"❌ {bad} problème(s) qui faussent la surveillance" + (f", {warn} point(s) à voir" if warn else "")
+    if warn:
+        return "warn", f"⚠️ {warn} point(s) à voir"
+    if items and items[0]["key"] == "data":
+        return "info", "ℹ️ Pas de mesure en cours"
+    return "ok", "✅ Mesure saine"
+
+
 # ------------------------------------------------------------------ accueil (7.43 : « écran de base imbuvable »)
 def home_next(i):
     """Prochaine étape pour un débutant : "port" (brancher le tinySA), "list" (ajouter ses micros), "run" (démarrer)
@@ -9489,6 +9763,17 @@ PREP_CSS = ("body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#
             "th,td{border:1px solid #c7ccd6;padding:3px 6px}td.n{text-align:right}")
 
 
+def prep_dates(a, b):
+    """Dates du show pour le dossier : « 12/11/2026 » (un seul jour) ou « 12/11/2026 – 14/11/2026 »."""
+    def f(x):
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", str(x or "").strip())
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else str(x or "").strip()
+    a, b = f(a), f(b)
+    if a and b and a != b:
+        return f"{a} – {b}"
+    return a or b
+
+
 def prep_html(info, tr=None, img=None):
     """Dossier de préparation d'un show (à imprimer / envoyer) : infos du show, plan de fréquences par scène ›
     groupe, réglementation du pays, canaux TNT, scans du lieu (avec leur RBW), vérification du plan.
@@ -9512,8 +9797,14 @@ def prep_html(info, tr=None, img=None):
     p.append(f"<h2>{e(tr('En résumé'))}</h2><ul>")
     p.append("<li>" + e(tr("{} fréquence(s) dans le plan, {} scène(s)").format(len(rows), len([s for s in scenes if s])))
              + "</li>")
-    if len(on_air) != len(rows):
-        p.append("<li>" + e(tr("{} en pause ou éteinte(s) exprès").format(len(rows) - len(on_air))) + "</li>")
+    n_st = sum(1 for r in rows if r.get("why", "state" if r.get("off") else "") == "state")
+    n_mu = sum(1 for r in rows if r.get("why") == "muted")
+    if n_st:
+        p.append("<li>" + e(tr("{} hors de l'état actif « {} » (pas surveillées en ce moment)").format(
+            n_st, info.get("state") or "?") if info.get("state") else
+            tr("{} en pause (état)").format(n_st)) + "</li>")
+    if n_mu:
+        p.append("<li>" + e(tr("{} éteinte(s) exprès (je sais)").format(n_mu)) + "</li>")
     regs = [r for r in rows if r.get("reg")]
     if regs:
         p.append("<li class='warn'>" + e(tr("{} fréquence(s) à vérifier côté réglementation (voir la colonne « Réglementation »)")
@@ -9528,19 +9819,32 @@ def prep_html(info, tr=None, img=None):
         p.append("<li>" + e(tr("Canaux TV occupés ici : {}").format(", ".join(str(t["ch"]) for t in tv))) + "</li>")
     p.append("</ul>")
     if img:
-        p.append(f"<h2>{e(tr('Spectre du lieu'))}</h2><p><img src='{e(img)}' width='680'></p>")
+        iw = int(info.get("img_w") or 0)
+        p.append(f"<h2>{e(tr('Spectre du lieu'))}</h2><p><img src='{e(img)}' "
+                 + (f"width='{iw}'" if iw else "style='width:100%'") + "></p>")
     p.append(f"<h2>{e(tr('Plan de fréquences'))}</h2>")
+    has_reg = any(r.get("reg") for r in rows)          # 7.67.1 : colonnes vides retirées
+    has_note = any(r.get("note") for r in rows)
+    has_rx = any(r.get("rx") for r in rows)
     for sc in scenes:
-        p.append(f"<h3>{e(sc or tr('Sans scène'))}</h3><table width='100%' cellspacing='0' cellpadding='3' border='1'><tr><th>{e(tr('Groupe'))}</th><th>{e(tr('Nom'))}</th>"
-                 f"<th>MHz</th><th>{e(tr('Statut'))}</th><th>{e(tr('Appareil'))}</th>"
-                 f"<th>{e(tr('Réglementation'))}</th><th>{e(tr('Note'))}</th></tr>")
+        p.append(f"<h3>{e(sc or tr('Sans scène'))}</h3><table width='100%' cellspacing='0' cellpadding='3' border='1'>"
+                 f"<tr><th>{e(tr('Groupe'))}</th><th>{e(tr('Nom'))}</th><th>MHz</th><th>{e(tr('Statut'))}</th>"
+                 + (f"<th>{e(tr('Appareil'))}</th>" if has_rx else "")
+                 + (f"<th>{e(tr('Réglementation'))}</th>" if has_reg else "")
+                 + (f"<th>{e(tr('Note'))}</th>" if has_note else "") + "</tr>")
+        prev = None
         for r in [x for x in rows if x["scene"] == sc]:
             st = r.get("status") or ""
-            if r.get("off"):
-                st = (st + " · " if st else "") + tr("en pause")
-            p.append(f"<tr><td>{e(r.get('group') or '')}</td><td>{e(r['name'])}</td><td class='n'>{r['mhz']:.3f}</td>"
-                     f"<td>{e(st)}</td><td>{e(r.get('rx') or '')}</td>"
-                     f"<td class='warn'>{e(tr(r['reg']) if r.get('reg') else '')}</td><td>{e(r.get('note') or '')}</td></tr>")
+            why = r.get("why", "state" if r.get("off") else "")
+            if why:
+                st = (st + " · " if st else "") + (tr("éteint (je sais)") if why == "muted" else tr("hors état"))
+            g = r.get("group") or ""
+            p.append(f"<tr><td>{e(g if g != prev else '')}</td><td>{e(r['name'])}</td><td class='n'>{r['mhz']:.3f}</td>"
+                     f"<td{' class=mut' if why else ''}>{e(st)}</td>"
+                     + (f"<td>{e(r.get('rx') or '')}</td>" if has_rx else "")
+                     + (f"<td class='warn'>{e(tr(r['reg']) if r.get('reg') else '')}</td>" if has_reg else "")
+                     + (f"<td>{e(r.get('note') or '')}</td>" if has_note else "") + "</tr>")
+            prev = g
         p.append("</table>")
     if info.get("reg_lines"):
         p.append(f"<h2>{e(tr('Réglementation du pays (indicatif)'))}</h2><ul>")
@@ -10207,8 +10511,12 @@ class WebServer(threading.Thread):
 
     def __init__(self, port, get_json, host="0.0.0.0", get_pin=None, on_ack=None, get_spec=None, get_cfg=None,
                  get_page=None, default_lang="fr", on_hunt=None, on_terrain=None, on_tech=None, on_tech_req=None,
-                 get_tech=None, get_map=None):
+                 get_tech=None, get_map=None, extra_get=None, extra_pin=None):
         super().__init__(daemon=True)
+        # 7.68 : routes ajoutées par une autre version (V8 : 🎧 écoute sur le téléphone) sans toucher à ce code :
+        # extra_get {chemin: (vues dont une doit être partagée, fn(query) -> (octets, type) ou None)},
+        # extra_pin {chemin: (lecture de la requête, rappel)} = routes POST protégées par le code PIN.
+        self.extra_get, self.extra_pin = dict(extra_get or {}), dict(extra_pin or {})
         self.get_map = get_map or (lambda: b"")      # 🗺 7.64 : image de la carte pour « je suis ici »
         self.port, self.host, self.get_json = int(port), host, get_json
         # langue de CHAQUE personne : get_json(lang) / get_page(lang) si fournis (sinon une seule langue)
@@ -10338,7 +10646,7 @@ class WebServer(threading.Thread):
                         if chosen else []
                     self._send(200, owner.get_page(lang), "text/html; charset=utf-8", extra)
                     return
-                if path not in ("/etat.json", "/spectre.json", "/tech.json", "/carte.png"):
+                if path not in ("/etat.json", "/spectre.json", "/tech.json", "/carte.png") and path not in owner.extra_get:
                     self.send_error(404)
                     return
                 ok, me = self._who(view)
@@ -10354,6 +10662,14 @@ class WebServer(threading.Thread):
                         self._send(200, owner.get_tech(), "application/json; charset=utf-8")
                     else:
                         self._json(200 if st == "pending" else 403, dict(pending=st == "pending", login=st is None))
+                    return
+                if path in owner.extra_get:
+                    need, fn_ = owner.extra_get[path]
+                    res_ = fn_(qs) if any(cfg["views"].get(k_) for k_ in need) else None
+                    if not res_:
+                        self.send_error(404)
+                        return
+                    self._send(200, res_[0], res_[1])
                     return
                 if path == "/carte.png":
                     data = owner.get_map() if (cfg["views"]["chasse"] or cfg["views"]["terrain"]) else b""
@@ -10417,6 +10733,7 @@ class WebServer(threading.Thread):
                     self._tech_post(path)
                     return
                 pin_routes = {"/chasse": (hunt_request, owner.on_hunt), "/terrain": (terrain_request, owner.on_terrain)}
+                pin_routes.update(owner.extra_pin)
                 if path in pin_routes and pin_routes[path][1] is not None:
                     parse_, cb_ = pin_routes[path]
                     ok, _me = self._who()
@@ -14837,7 +15154,14 @@ class HuntDialog(QtWidgets.QDialog):
         rst = QtWidgets.QPushButton("↺ Remettre le max à zéro")
         rst.setToolTip("Oublie le plus fort niveau vu (pour recommencer à un autre endroit).")
         rst.clicked.connect(lambda *_: self._reset_best())
-        lay.addLayout(owner._row(None, rst))
+        xb = []
+        for txt, fn in owner.FREQ_ACTIONS:             # 7.68 : actions d'une autre version (V8 : 🎧 écouter ce signal)
+            if callable(getattr(owner, fn, None)):
+                b_ = QtWidgets.QPushButton(txt)
+                b_.setToolTip(txt)
+                b_.clicked.connect(lambda *_, fn=fn: getattr(owner, fn)(float(self.f_spin.value()), None))
+                xb.append(b_)
+        lay.addLayout(owner._row(*xb, None, rst))
         lay.addStretch(1)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -15713,6 +16037,45 @@ class SitesDialog(QtWidgets.QDialog):
         self.tl_txt.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         tv.addWidget(self.tl_txt)
         self.tabs.addTab(tw, "Dans le temps")
+        # --- 📍 7.68 : une fréquence dans chaque lieu
+        fw = QtWidgets.QWidget()
+        fv = QtWidgets.QVBoxLayout(fw)
+        self.ev_f = QtWidgets.QDoubleSpinBox()
+        self.ev_f.setRange(1.0, 6000.0)
+        self.ev_f.setDecimals(3)
+        self.ev_f.setSuffix(" MHz")
+        self.ev_f.setValue(o.watch[0]["freq"] if o.watch else 600.0)
+        self.ev_f.setToolTip("La fréquence à regarder dans chaque scan gardé.")
+        self.ev_pick = QtWidgets.QComboBox()
+        self.ev_pick.addItem("— ou choisis dans ta liste —", None)
+        for w_ in sorted(o.watch, key=lambda x: x["freq"]):
+            self.ev_pick.addItem(f"{w_['freq']:.3f}  {w_['name'] or ''}", (w_["freq"], float(w_.get("bw") or 0.0)))
+        self.ev_pick.setToolTip("Prend une fréquence de « Mes fréquences » (un bloc large garde sa largeur).")
+        self.ev_pick.activated.connect(lambda *_: self._ev_from_list())
+        self.ev_bw = 0.0
+        self.ev_f.valueChanged.connect(lambda *_: self.ev_draw())
+        fv.addLayout(owner._row("Fréquence :", self.ev_f, self.ev_pick, None))
+        self.ev_table = QtWidgets.QTableWidget(0, 6)
+        self.ev_table.setHorizontalHeaderLabels(["Scan", "Scène", "Date", "Niveau", "Au-dessus du bruit", "RBW"])
+        for c_ in range(1, 6):
+            self.ev_table.horizontalHeader().setSectionResizeMode(c_, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.ev_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.ev_table.verticalHeader().setVisible(False)
+        self.ev_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.ev_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.ev_table.setToolTip("Niveau de cette fréquence dans chaque scan gardé, du plus fort au plus calme.\n"
+                                 "Attention : des scans à RBW différentes n'ont pas les mêmes niveaux.")
+        fv.addWidget(self.ev_table, 2)
+        self.ev_plot = pg.PlotWidget()
+        self.ev_plot.showGrid(x=False, y=True, alpha=0.25)
+        self.ev_plot.setLabel("left", "Niveau (dBm)")
+        self.ev_plot.setMinimumHeight(120)
+        fv.addWidget(self.ev_plot, 1)
+        self.ev_txt = QtWidgets.QLabel("")
+        self.ev_txt.setWordWrap(True)
+        self.ev_txt.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        fv.addWidget(self.ev_txt)
+        self.tabs.addTab(fw, "Une fréquence partout")
         self.tabs.currentChanged.connect(lambda *_: self.refresh_tab())
         mid.addWidget(self.tabs, 1)
         lay.addLayout(mid, 1)
@@ -15910,6 +16273,8 @@ class SitesDialog(QtWidgets.QDialog):
             self.peaks_fill()
         elif k == 3:
             self.tl_draw()
+        elif k == 4:
+            self.ev_draw()
 
     def rename(self):
         d = self._cur()
@@ -16070,6 +16435,54 @@ class SitesDialog(QtWidgets.QDialog):
         txt = "\n".join(f"{p['f']:.3f}\t{p['level']:.1f}" for p in self._sel_peaks())
         QtWidgets.QApplication.clipboard().setText(txt)
         self.msg.setText(f"📋 {len(txt.splitlines())} signal(aux) copié(s)" + (f" ({d['name']})." if d else "."))
+
+    def _ev_from_list(self):
+        v = self.ev_pick.currentData()
+        if v:
+            self.ev_bw = float(v[1] or 0.0)
+            self.ev_f.blockSignals(True)
+            self.ev_f.setValue(float(v[0]))
+            self.ev_f.blockSignals(False)
+            self.ev_draw()
+
+    def show_freq(self, f, bw=0.0):
+        """Ouvre l'onglet « Une fréquence partout » sur f (clic droit de la liste)."""
+        self.ev_bw = float(bw or 0.0)
+        self.ev_f.blockSignals(True)
+        self.ev_f.setValue(float(f))
+        self.ev_f.blockSignals(False)
+        self.tabs.setCurrentIndex(4)
+        self.ev_draw()
+
+    def ev_draw(self):
+        o = self.owner
+        f = self.ev_f.value()
+        rows = level_everywhere(o.site_scans, f, self.ev_bw)
+        self.ev_rows = rows
+        t = self.ev_table
+        t.setRowCount(len(rows))
+        for r, d in enumerate(rows):
+            vals = (d["name"], d["scene"] or "—", _fmt_ts(d["t"], "%d/%m %H:%M"),
+                    o.lvl(d["level"], suffix=True) if d["level"] is not None else TR("pas mesurée"),
+                    f"{d['margin']:+.0f} dB" if d["margin"] is not None else "—",
+                    rbw_text(d["rbw"], d["rbw_est"], TR))
+            for c, v in enumerate(vals):
+                t.setItem(r, c, QtWidgets.QTableWidgetItem(str(v)))
+        self.ev_plot.clear()
+        got = [d for d in rows if d["level"] is not None]
+        if got:
+            lo = min(d["floor"] if d["floor"] is not None else d["level"] for d in got) - 5.0
+            col = QtGui.QColor(o.theme.get("accent", "#0a84ff"))
+            self.ev_plot.addItem(pg.BarGraphItem(x=list(range(len(got))), y0=lo, y1=[d["level"] for d in got], width=0.6,
+                                                 brush=col))
+            fl = [(k, d["floor"]) for k, d in enumerate(got) if d["floor"] is not None]
+            if fl:
+                self.ev_plot.plot([k for k, _ in fl], [v for _, v in fl], pen=None, symbol="t", symbolSize=9,
+                                  symbolBrush=o.theme.get("thr", "#ff9f0a"), name="bruit")
+            ax = self.ev_plot.getAxis("bottom")
+            ax.setTicks([[(k, d["name"][:18]) for k, d in enumerate(got)]])
+        self.ev_txt.setText(TR(level_everywhere_text(rows, f, lambda v: o.lvl(v, suffix=True)))
+                            + ("<br>" + TR("Triangle = bruit de fond du scan ; barre = niveau de la fréquence.") if got else ""))
 
     def tl_draw(self):
         o = self.owner
@@ -17348,7 +17761,10 @@ class ShowModeWindow(QtWidgets.QWidget):
         m = QtWidgets.QMenu(self)
         a_rep = m.addAction("🆘 Remplacer ce micro…")
         a = m.addAction("🔔 Rallumer (surveiller à nouveau)" if w.get("muted") else "💤 Éteint (je sais) : pas d'alarme ABSENT")
+        xa = self.owner.add_freq_actions(m, w["freq"], w)
         act = m.exec(tile.mapToGlobal(pos))
+        if self.owner.run_freq_action(xa, act, w["freq"], w):
+            return
         if act is a:
             self.owner.set_muted([w], not w.get("muted"))
             self.refresh()
@@ -20307,8 +20723,11 @@ class MapWindow(QtWidgets.QWidget):
         super().closeEvent(e)
 
 
-def spectrum_qimage(F, L, w=1360, h=420, thr=None, marks=()):
-    """7.67 : image du spectre pour le dossier de préparation (sans pyqtgraph : QPainter seul). marks = [(MHz, nom)]."""
+def spectrum_qimage(F, L, w=1600, h=560, thr=None, marks=(), tv=()):
+    """Image du spectre pour le dossier de préparation (QPainter seul, sans pyqtgraph). 7.67.1 (PDF de Clément :
+    spectre minuscule, 48 traits par-dessus, grand vide 700-820 MHz) : axe COUPÉ (axis_panels : une case par groupe de
+    bandes, coupure grise entre deux), fréquences du plan = petits repères en haut, canaux TV grisés et numérotés.
+    marks = [(MHz, nom)] ; tv = [(début, fin, canal)]."""
     img = QtGui.QImage(w, h, QtGui.QImage.Format.Format_RGB32)
     img.fill(QtGui.QColor("#ffffff"))
     F = np.asarray(F, dtype=float)
@@ -20317,52 +20736,90 @@ def spectrum_qimage(F, L, w=1360, h=420, thr=None, marks=()):
     if ok.sum() < 2:
         return img
     F, L = F[ok], L[ok]
-    x0, x1 = float(F.min()), float(F.max())
+    o = np.argsort(F)
+    F, L = F[o], L[o]
+    panels = axis_panels(scan_segments(F))
     y0 = math.floor((min(float(np.percentile(L, 1)), thr if thr is not None else 0) - 5) / 10.0) * 10
     y1 = math.ceil((float(L.max()) + 5) / 10.0) * 10
-    ml, mr, mt, mb = 52, 12, 10, 28
-    pw, ph = w - ml - mr, h - mt - mb
-    X = lambda f: ml + (f - x0) / max(1e-9, x1 - x0) * pw
-    Y = lambda v: mt + (y1 - v) / max(1e-9, y1 - y0) * ph
+    ml, mr, mt, mb, brk = 62, 14, 34, 40, 18
+    pw, ph = w - ml - mr - brk * (len(panels) - 1), h - mt - mb
+    spans = [max(1e-6, b_ - a_) for a_, b_ in panels]
+    ws_ = [max(0.12 * pw, pw * s_ / sum(spans)) for s_ in spans]
+    ws_ = [x * pw / sum(ws_) for x in ws_]
+    xs, x = [], float(ml)
+    for wd in ws_:
+        xs.append((x, wd))
+        x += wd + brk
+    Y = lambda v: mt + (y1 - v) / max(1e-9, y1 - y0) * ph          # noqa: E731
+
+    def X(k, f):
+        a_, b_ = panels[k]
+        return xs[k][0] + (f - a_) / max(1e-9, b_ - a_) * xs[k][1]
     p = QtGui.QPainter(img)
     p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-    p.setPen(QtGui.QPen(QtGui.QColor("#d8dde6"), 1))
     fnt = p.font()
-    fnt.setPointSize(8)
+    fnt.setPixelSize(17)
     p.setFont(fnt)
+    grid, mut = QtGui.QColor("#dde2ea"), QtGui.QColor("#6e6e73")
     for v in range(int(y0), int(y1) + 1, 10):
-        p.drawLine(QtCore.QPointF(ml, Y(v)), QtCore.QPointF(ml + pw, Y(v)))
-        p.setPen(QtGui.QColor("#6e6e73"))
-        p.drawText(QtCore.QRectF(0, Y(v) - 7, ml - 6, 14), Qt.AlignmentFlag.AlignRight, f"{v}")
-        p.setPen(QtGui.QPen(QtGui.QColor("#d8dde6"), 1))
-    span = x1 - x0
-    stepx = next((s_ for s_ in (1, 2, 5, 10, 20, 25, 50, 100, 200, 500) if span / s_ <= 12), 1000)
-    f_ = math.ceil(x0 / stepx) * stepx
-    while f_ <= x1:
-        p.drawLine(QtCore.QPointF(X(f_), mt), QtCore.QPointF(X(f_), mt + ph))
-        p.setPen(QtGui.QColor("#6e6e73"))
-        p.drawText(QtCore.QRectF(X(f_) - 30, mt + ph + 4, 60, 16), Qt.AlignmentFlag.AlignHCenter, f"{f_:g}")
-        p.setPen(QtGui.QPen(QtGui.QColor("#d8dde6"), 1))
-        f_ += stepx
-    if thr is not None:
-        p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 1.2, Qt.PenStyle.DashLine))
-        p.drawLine(QtCore.QPointF(ml, Y(thr)), QtCore.QPointF(ml + pw, Y(thr)))
-    for f, _n in marks:
-        if x0 <= f <= x1:
-            p.setPen(QtGui.QPen(QtGui.QColor(10, 132, 255, 90), 1))
-            p.drawLine(QtCore.QPointF(X(f), mt), QtCore.QPointF(X(f), mt + ph))
-    path = QtGui.QPainterPath()
-    gaps = set(int(i) for i in scan_gaps(F)) if len(F) > 2 else set()
-    for i in range(len(F)):
-        pt = QtCore.QPointF(X(F[i]), Y(L[i]))
-        if i == 0 or i in gaps:                      # trou entre deux bandes : pas de trait par-dessus
-            path.moveTo(pt)
-        else:
-            path.lineTo(pt)
-    p.setPen(QtGui.QPen(QtGui.QColor("#0a5bd3"), 1.1))
-    p.drawPath(path)
-    p.setPen(QtGui.QColor("#6e6e73"))
-    p.drawText(QtCore.QRectF(ml, h - 14, pw, 14), Qt.AlignmentFlag.AlignRight, "MHz · dBm")
+        p.setPen(mut)
+        p.drawText(QtCore.QRectF(0, Y(v) - 10, ml - 8, 20), Qt.AlignmentFlag.AlignRight, f"{v}")
+    for k, (a_, b_) in enumerate(panels):
+        x0_, wd = xs[k]
+        for c0, c1, ch in tv:                         # canaux TV : bandeau gris + numéro
+            lo_, hi_ = max(a_, c0), min(b_, c1)
+            if hi_ > lo_:
+                p.fillRect(QtCore.QRectF(X(k, lo_), mt, X(k, hi_) - X(k, lo_), ph), QtGui.QColor(120, 120, 130, 38))
+                p.setPen(mut)
+                p.drawText(QtCore.QRectF(X(k, lo_), mt + ph - 22, X(k, hi_) - X(k, lo_), 20),
+                           Qt.AlignmentFlag.AlignHCenter, f"{ch}")
+        p.setPen(QtGui.QPen(grid, 1))
+        for v in range(int(y0), int(y1) + 1, 10):
+            p.drawLine(QtCore.QPointF(x0_, Y(v)), QtCore.QPointF(x0_ + wd, Y(v)))
+        span = b_ - a_
+        nt = max(2, int(wd / 120))
+        stepx = next((s_ for s_ in (1, 2, 5, 10, 20, 25, 50, 100, 200, 500) if span / s_ <= nt), 1000)
+        f_ = math.ceil(a_ / stepx) * stepx
+        while f_ <= b_ + 1e-9:
+            p.setPen(QtGui.QPen(grid, 1))
+            p.drawLine(QtCore.QPointF(X(k, f_), mt), QtCore.QPointF(X(k, f_), mt + ph))
+            p.setPen(mut)
+            p.drawText(QtCore.QRectF(X(k, f_) - 40, mt + ph + 6, 80, 20), Qt.AlignmentFlag.AlignHCenter, f"{f_:g}")
+            f_ += stepx
+        p.setPen(QtGui.QPen(QtGui.QColor("#c7ccd6"), 1))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(QtCore.QRectF(x0_, mt, wd, ph))
+        if thr is not None:
+            p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 1.6, Qt.PenStyle.DashLine))
+            p.drawLine(QtCore.QPointF(x0_, Y(thr)), QtCore.QPointF(x0_ + wd, Y(thr)))
+        m = (F >= a_ - 1e-9) & (F <= b_ + 1e-9)
+        Fk, Lk = F[m], L[m]
+        path = QtGui.QPainterPath()
+        gaps = set(int(i) for i in scan_gaps(Fk)) if len(Fk) > 2 else set()
+        for i in range(len(Fk)):
+            pt = QtCore.QPointF(X(k, Fk[i]), Y(min(y1, max(y0, Lk[i]))))
+            if i == 0 or i in gaps:                  # trou entre deux bandes : pas de trait par-dessus
+                path.moveTo(pt)
+            else:
+                path.lineTo(pt)
+        p.setPen(QtGui.QPen(QtGui.QColor("#0a5bd3"), 1.4))
+        p.drawPath(path)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QtGui.QColor("#e8590c"))
+        for f, _n in marks:                          # fréquences du plan : petit triangle au-dessus du cadre
+            if a_ <= f <= b_:
+                xx = X(k, f)
+                p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(xx - 5, mt - 14), QtCore.QPointF(xx + 5, mt - 14),
+                                               QtCore.QPointF(xx, mt - 3)]))
+        if k:                                        # coupure de l'axe
+            bx = x0_ - brk
+            p.setPen(QtGui.QPen(QtGui.QColor("#9aa0aa"), 1.4))
+            for dx in (4, brk - 4):
+                p.drawLine(QtCore.QPointF(bx + dx - 4, mt + ph + 6), QtCore.QPointF(bx + dx + 4, mt + ph - 6))
+    p.setPen(mut)
+    p.drawText(QtCore.QRectF(ml, h - 18, pw + brk * (len(panels) - 1), 18), Qt.AlignmentFlag.AlignRight, "MHz · dBm")
+    p.drawText(QtCore.QRectF(ml, 0, pw, 18), Qt.AlignmentFlag.AlignLeft,
+               TR("▼ fréquences du plan · gris = canaux TV · tirets = seuil « occupé »"))
     p.end()
     return img
 
@@ -20634,6 +21091,122 @@ class RecurringDialog(QtWidgets.QDialog):
     def _hunt(self, r, _c):
         if 0 <= r < len(self.pats) and self.pats[r]["mhz"] is not None:
             self.owner.open_hunt(self.pats[r]["mhz"])
+
+
+class RfDiagDialog(QtWidgets.QDialog):
+    """🩺 7.68 : diagnostic RF automatique. Lit le spectre en direct et la liste, dit en clair ce qui cloche dans la
+    MESURE (saturation, bruit de fond, zones bruyantes, seuil, micros pile au seuil, micros dans un canal TV, signaux
+    hors liste) et propose « Régler »."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle("Diagnostic RF")
+        self.setModal(False)
+        self.resize(760, 560)
+        lay = QtWidgets.QVBoxLayout(self)
+        self.head = QtWidgets.QLabel("")
+        self.head.setStyleSheet("font-size:18px; font-weight:bold; padding:6px")
+        lay.addWidget(self.head)
+        intro = QtWidgets.QLabel("Ce que le tinySA voit en ce moment, relu pour toi : ce qui fausse la mesure et quoi "
+                                 "faire. Les seuils de ce diagnostic sont des valeurs de départ : fie-toi aussi à ton "
+                                 "oreille et au spectre.")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        self.table = QtWidgets.QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["", "Point", "Ce qui se passe · quoi faire"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setWordWrap(True)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        hh.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(1, 200)
+        self.table.setToolTip("Chaque ligne = un point relevé dans la mesure. « Régler » applique ou ouvre la correction.")
+        lay.addWidget(self.table, 1)
+        row = QtWidgets.QHBoxLayout()
+        self.again_btn = QtWidgets.QPushButton("↻ Relancer le diagnostic")
+        self.again_btn.setToolTip("Relit le spectre et la liste maintenant (c'est aussi refait toutes les 5 s).")
+        self.again_btn.clicked.connect(lambda *_: self.refresh())
+        man = QtWidgets.QPushButton("❓ Manuel")
+        man.setToolTip("Le chapitre du manuel sur les seuils et la lecture du spectre.")
+        man.clicked.connect(lambda *_: owner.open_manual("seuils"))
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme cette fenêtre.")
+        close.clicked.connect(self.close)
+        row.addWidget(self.again_btn)
+        row.addWidget(man)
+        row.addStretch(1)
+        row.addWidget(close)
+        lay.addLayout(row)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.items = []
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(5000)
+        self.refresh()
+        fit_dialog(self, 760, 560)
+
+    def refresh(self):
+        o = self.owner
+        try:
+            self.items = rf_diagnose(o.rf_diag_info())
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(TR("Diagnostic impossible : {}").format(e))
+            return
+        lvl, txt = rf_diag_summary(self.items)
+        col = {"ok": o.theme.get("st_free", "#3fb950"), "warn": o.theme.get("st_weak", "#d29922"),
+               "bad": o.theme.get("st_occ", "#f85149")}
+        self.head.setText(TR(txt))
+        self.head.setStyleSheet(f"font-size:18px; font-weight:bold; padding:6px; color:{col.get(lvl, '')}")
+        t = self.table
+        t.setRowCount(len(self.items))
+        for r, c in enumerate(self.items):
+            t.setItem(r, 0, QtWidgets.QTableWidgetItem(DIAG_ICONS.get(c["level"], "")))
+            it = QtWidgets.QTableWidgetItem(TR(c["title"]))
+            it.setToolTip(TR(c["title"]))
+            t.setItem(r, 1, it)
+            w = QtWidgets.QWidget()
+            hl = QtWidgets.QHBoxLayout(w)
+            hl.setContentsMargins(4, 2, 4, 2)
+            tx = TR(c["text"]).replace("\n", " ")
+            ad = TR(c["advice"]).replace("\n", " ") if c["advice"] else ""
+            lb = QtWidgets.QLabel(html_esc(tx) + (f"<br><b>→</b> {html_esc(ad)}" if ad else ""))
+            lb.setWordWrap(True)
+            lb.setTextFormat(Qt.TextFormat.RichText)
+            hl.addWidget(lb, 1)
+            if c["fix"] and c["level"] != "ok" and hasattr(o, c["fix"]):
+                b = QtWidgets.QPushButton("Régler")
+                b.setToolTip("Applique la correction proposée ou ouvre le bon réglage.")
+                b.clicked.connect(lambda *_, c=c: self.fix(c))
+                hl.addWidget(b)
+            t.setItem(r, 2, QtWidgets.QTableWidgetItem(""))
+            t.setCellWidget(r, 2, w)
+        t.resizeRowsToContents()
+
+    def fix(self, c):
+        o = self.owner
+        try:
+            fn = getattr(o, c["fix"])
+            a = c.get("arg")
+            if a is None:
+                fn()
+            elif isinstance(a, tuple):
+                fn(*a)
+            else:
+                fn(a)
+        except Exception as e:  # noqa: BLE001
+            self.msg.setText(TR("Impossible : {}").format(e))
+            return
+        self.refresh()
+
+    def closeEvent(self, e):
+        self.timer.stop()
+        super().closeEvent(e)
 
 
 class ReplaceDialog(QtWidgets.QDialog):
@@ -21342,7 +21915,8 @@ class CoordDialog(QtWidgets.QDialog):
                 if cl != (lo, hi):
                     clipped.append(f"{rx_short(L_['rx'])} : {cl[0]:g}–{cl[1]:g} MHz")
                 lo, hi = cl
-            spec.append(dict(n=L_["n"], sep=d["sep"], tol=d["tol"], filt=d["filt"], lo=lo, hi=hi, step=d["step"]))
+            spec.append(dict(n=L_["n"], sep=d["sep"], tol=d["tol"], filt=d["filt"], lo=lo, hi=hi, step=d["step"],
+                             img=float(d.get("img") or 0.0)))
         self._clipped = clipped
         args = (spec, [w["freq"] for w in ws], [not o.is_keep_free(w["status"]) for w in ws],
                 [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P], [q["tol"] for q in P],
@@ -21355,6 +21929,7 @@ class CoordDialog(QtWidgets.QDialog):
 
         def work():
             got = pf_fill_lots(*args, order="low" if order == "low" else "random", tries=COORD_TRIES.get(order, 1),
+                               img=[float(q.get("img") or 0.0) for q in P],
                                progress=lambda k, n: info.update(step=(k, n)),
                                cancel=lambda: bool(info.get("cancel")),
                                found=lambda k, n: info.update(found=(k, n)))
@@ -22240,7 +22815,10 @@ class WallWindow(QtWidgets.QWidget):
         a_mute = m.addAction("🔔 Rallumer" if w.get("muted") else "💤 Éteint (je sais)")
         a_hide = m.addAction(f"Retirer « {w['name']} » du mur")
         a_pick = m.addAction("📋 Choisir les fréquences du mur…")
+        xa = self.owner.add_freq_actions(m, w["freq"], w)
         act = m.exec(self.tiles[k].mapToGlobal(pos))
+        if self.owner.run_freq_action(xa, act, w["freq"], w):
+            return
         if act is a_rep:
             self.owner.open_replace(w)
         elif act is a_mute:
@@ -22718,6 +23296,29 @@ class MainWindow(QtWidgets.QMainWindow):
     }
 
     EXTRA_MENUS = []          # [(titre, [(texte, nom de méthode)])] : sous-menus ajoutés au ☰ Plus (V8 : SDR)
+    # 7.68 : actions « sur une fréquence » ajoutées par une autre version (V8 : 🎧 écouter) SANS toucher aux menus :
+    # [(texte, nom de méthode)] ; méthode(f MHz, fréquence de la liste ou None). Proposées par clic droit sur une alarme,
+    # sur une tuile du mur / du mode Show, et en bouton dans la chasse.
+    FREQ_ACTIONS = []
+
+    def add_freq_actions(self, menu, f, w=None):
+        """Ajoute les FREQ_ACTIONS au menu -> {action: nom de méthode}."""
+        out = {}
+        if not f or not self.FREQ_ACTIONS:
+            return out
+        menu.addSeparator()
+        for txt, fn in self.FREQ_ACTIONS:
+            if callable(getattr(self, fn, None)):
+                out[menu.addAction(txt)] = fn
+        return out
+
+    def run_freq_action(self, acts, act, f, w=None):
+        """Lance l'action choisie si c'en est une de FREQ_ACTIONS -> True."""
+        fn = acts.get(act) if act is not None else None
+        if fn is None:
+            return False
+        getattr(self, fn)(float(f), w)
+        return True
 
     TIPS_MENU = {
         "🔗 Plan suivi": "Le plan importé avec « Suivre ce fichier » (.ezrf3, WWB, WSM, Wisycom, DPA) : à chaque\n"
@@ -26040,7 +26641,7 @@ class MainWindow(QtWidgets.QMainWindow):
                            on_tech=self._web_tech.put, on_tech_req=self._web_techreq.put,
                            get_tech=lambda: self._tech_json, get_map=lambda: self._map_png,
                            get_spec=lambda: self._web_spec, get_cfg=lambda: self.web_cfg, get_page=web_page_bytes,
-                           default_lang=self.lang)
+                           default_lang=self.lang, extra_get=self.web_extra()[0], extra_pin=self.web_extra()[1])
             ws.start()
             ws.ready.wait(3)
             if ws.error:
@@ -26048,6 +26649,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             self.web = ws
             self.set_status("🌐 Page web active : " + self.web_urls_text())
+
+    def web_extra(self):
+        """7.68 : routes web ajoutées par une autre version (V8) -> (extra_get, extra_pin) de WebServer. V7 : aucune."""
+        return {}, {}
 
     def web_urls_text(self):
         if self.web is None:
@@ -27804,6 +28409,7 @@ class MainWindow(QtWidgets.QMainWindow):
         a_wall = m.addAction("🧱 Afficher sur le mur" if wall_hid else "🧱 Masquer sur le mur")
         hid = all(self.watch[r].get("hide_mk") for r in rows)
         a_mk = m.addAction("📍 Réafficher le repère sur le spectre" if hid else "📍 Masquer le repère sur le spectre")
+        a_ev = m.addAction("📍 Niveau de cette fréquence dans chaque lieu…") if self.site_scans else None
         muted = all(self.watch[r].get("muted") for r in rows)
         m.addSeparator()
         a_mute = m.addAction("🔔 Rallumer (surveiller à nouveau)  Ctrl+Espace" if muted
@@ -27855,6 +28461,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.del_watch()
         elif act is a_mk:
             self.hide_marker_rows(rows, not hid)
+        elif a_ev is not None and act is a_ev:
+            w0 = self.watch[rows[0]]
+            self.open_sites(freq=(w0["freq"], float(w0.get("bw") or 0.0)))
         elif act is a_blk:
             self.set_block_rows(rows)
         elif act is a_wall:
@@ -28678,6 +29287,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 pk = w.get("peak")
                 self.log_event(dict(w, note=f"max pendant l'occupation : {self.lvl(pk)}") if pk is not None else w,
                                lvl, f"Libre ({now - w['since']:.0f} s)")
+            if prev is not None and (prev == "occ") != (new == "occ"):     # 🩺 7.68 : « pile au seuil »
+                fl_q = w.get("_flips")
+                if fl_q is None:
+                    fl_q = w["_flips"] = deque(maxlen=200)
+                fl_q.append(now)
+            lh = w.get("_lvh")
+            if lh is None:
+                lh = w["_lvh"] = deque(maxlen=400)
+            if not lh or now - lh[-1][0] >= 2.0:
+                lh.append((now, lvl))
             w["state"] = new
             # ---- alarmes : CONFLIT (signal sur une fréquence « doit rester libre ») et ABSENT (« doit émettre » muette)
             fk = int(round(f * 1000))
@@ -30465,8 +31084,10 @@ class MainWindow(QtWidgets.QMainWindow):
         d = EmitDialog(self)
         d.exec()
 
-    def open_sites(self, before_after=False):
+    def open_sites(self, before_after=False, freq=None):
         d = SitesDialog(self)
+        if freq is not None:                       # 📍 7.68 : une fréquence dans chaque lieu
+            d.show_freq(*freq) if isinstance(freq, tuple) else d.show_freq(freq)
         if before_after:                           # 📸 7.63 : directement sur « avant → après »
             d.tabs.setCurrentIndex(1)
             d.cmp_mode.setCurrentIndex(d.cmp_mode.findData("time"))
@@ -30722,7 +31343,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 P = [rx_profile(self.rx_of(w)) or dflt for w in ws]
                 iss, _ = pf_check([w["freq"] for w in ws], [not self.is_keep_free(w["status"]) for w in ws],
                                   [float(w.get("bw") or 0.0) for w in ws], [q["sep"] for q in P],
-                                  [q["tol"] for q in P], None, [q["filt"] for q in P])
+                                  [q["tol"] for q in P], None, [q["filt"] for q in P],
+                                  [float(q.get("img") or 0.0) for q in P])
                 for k_, (w, q) in enumerate(zip(ws, P)):     # 7.61 : hors de la bande de son appareil
                     if band_issue(w["freq"], w.get("bw"), rx_band(q)):
                         iss[k_].append(dict(kind="band"))
@@ -31097,6 +31719,92 @@ class MainWindow(QtWidgets.QMainWindow):
         self._presets = PresetDialog(self)
         self._presets.show()
         return self._presets
+
+    # ---------------------------------------------------------------- 🩺 7.68 : diagnostic RF automatique
+    def open_rf_diag(self):
+        d = getattr(self, "_rfdiag", None)
+        if d is not None:
+            try:
+                d.refresh()
+                d.show()
+                d.raise_()
+                d.activateWindow()
+                return d
+            except RuntimeError:
+                pass
+        self._rfdiag = RfDiagDialog(self)
+        self._rfdiag.show()
+        return self._rfdiag
+
+    def rf_diag_info(self):
+        """État de la mesure pour rf_diagnose (PURE)."""
+        now = time.time()
+        stale = max(15.0, 4 * (getattr(self, "last_cycle", 0.0) or 0.0))
+        fresh = [k for k in self.latest if k != ZOOM_ID and now - self.latest_t.get(k, 0) <= stale]
+        F = L = None
+        if fresh:
+            F = np.concatenate([self.latest[k][0] for k in fresh])
+            L = np.concatenate([self.latest[k][1] for k in fresh])
+            o_ = np.argsort(F)
+            F, L = F[o_], L[o_]
+        q = self.quality_info() if self.is_running() else {}
+        tv = []
+        try:
+            res = tnt_measure(F, L, tnt_channel_list(self.country_combo.currentData() or "FR")) if F is not None else None
+            res = tnt_apply_manual(res, self.tnt_cfg.get("manual"), self.tnt_cfg.get("plan")) if res else None
+            tv = [(r_["lo"], r_["hi"], r_["ch"]) for r_ in (res or {}).get("rows", []) if r_["state"] == "tv"]
+        except Exception:  # noqa: BLE001
+            tv = []
+        step = scan_step_khz(F) if F is not None else None
+        rbw = self._cfg.get("rbw")
+        ws = []
+        for w in self.watch:
+            if w.get("off") or w.get("muted"):
+                continue
+            ch = next(((a, b, c) for a, b, c in tv if a <= w["freq"] <= b), None)
+            tvl = None
+            if ch is not None and F is not None:
+                m = (F >= ch[0] + 0.5) & (F <= ch[1] - 0.5) & (np.abs(F - w["freq"]) > 0.3)
+                tvl = float(np.median(L[m])) if m.sum() >= 3 else None
+            lv = [v for t_, v in w.get("_lvh") or () if now - t_ <= 600]
+            ws.append(dict(key=int(round(w["freq"] * 1000)), name=w["name"], freq=w["freq"],
+                           keep_free=self.is_keep_free(w["status"]), keep_on=self.is_keep_on(w["status"]),
+                           paused=self.w_paused(w), level=w.get("level"),
+                           typ=float(np.median(lv)) if len(lv) >= 5 else None, floor=w.get("floor"),
+                           margin=w.get("margin"), ethr=w.get("ethr"), own_thr=w.get("thr"),
+                           flaps=flap_count(w.get("_flips"), now), state=w.get("state"),
+                           tv=ch[2] if ch else None, tv_level=tvl))
+        unk = [f for v in self.unk_now.values() for f in v]
+        return dict(running=self.is_running(), demo=self.demo_chk.isChecked(), F=F, L=L, rbw=rbw,
+                    rbw_est=auto_rbw(step) if (step and not rbw) else None, step_khz=step,
+                    lna=self._cfg.get("lna") is True, sat_dbm=q.get("sat_dbm"), thr=self.thr_spin.value(),
+                    thr_auto=self.thr_auto, tv=tv, unknown=unk, watch=ws,
+                    fmt=lambda v: self.lvl(v, suffix=True))
+
+    def watch_by_key(self, key):
+        """Fréquence de la liste d'après sa clé (kHz arrondis) ou None."""
+        return next((w for w in self.watch if int(round(w["freq"] * 1000)) == int(key)), None)
+
+    def diag_set_thr(self, key, v):
+        """🩺 « Régler » d'un micro pile au seuil : lui donne un seuil propre."""
+        w = self.watch_by_key(key)
+        if w is None or v is None:
+            return
+        w["thr"] = float(v)
+        self.rebuild_watch_table()
+        self.log_event(dict(w, note=f"seuil propre {self.lvl(v, suffix=True)} (diagnostic RF)"), w.get("level"),
+                       "RÉGLAGE")
+        self.set_status(TR("🩺 {} : seuil propre à {}").format(w["name"] or f"{w['freq']:.3f}",
+                                                                self.lvl(v, suffix=True)))
+        try:
+            self.undo_track()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def open_replace_key(self, key):
+        w = self.watch_by_key(key)
+        if w is not None:
+            self.open_replace(w)
 
     def open_ready(self):
         if getattr(self, "_ready", None) is not None:
@@ -32358,10 +33066,11 @@ class MainWindow(QtWidgets.QMainWindow):
         a_rep = m.addAction("🆘 Remplacer ce micro (3 propositions)…") if w is not None else None
         a_hunt = m.addAction("🔎 Chasser le brouilleur ici…") if f else None
         a_or = m.addAction("⚡ D'où ça peut venir ? (intermodulation)…") if f and self.coord_on else None
+        xa = self.add_freq_actions(m, f, w)
         m.addSeparator()
         a_ack = m.addAction("✔ Acquitter")
         act = m.exec(self.alarm_table.viewport().mapToGlobal(pos))
-        if act is None:
+        if act is None or self.run_freq_action(xa, act, f, w):
             return
         if act is a_view:
             self.view_range(f - 1.0, f + 1.0)
@@ -32756,12 +33465,13 @@ class MainWindow(QtWidgets.QMainWindow):
         meta = self.show_meta or {}
         code = self.country_code()
         cname = dict(COUNTRIES).get(code, code or "")
-        dates = " – ".join(str(x) for x in (meta.get("date_from"), meta.get("date_to")) if x)
+        dates = prep_dates(meta.get("date_from"), meta.get("date_to"))
         rows = []
         for w in self.watch:
             rows.append(dict(scene=w.get("scene") or "", group=w.get("group") or "", name=w["name"], mhz=w["freq"],
                              status=w.get("status") or "", rx=rx_short(self.rx_of(w)) if self.rx_of(w) else "",
                              note=w.get("note") or "", off=bool(w.get("off") or w.get("muted")),
+                             why="muted" if w.get("muted") else ("state" if w.get("off") else ""),
                              reg=(self.reg_tag(w["freq"], float(w.get("bw") or 0.0))
                                   if not self.is_keep_free(w.get("status")) else "")))
         order = [sc["name"] for sc in self.scenes]
@@ -32801,7 +33511,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return dict(title=meta.get("name") or TR("Dossier de préparation"), place=meta.get("venue") or "",
                     dates=dates, country=cname, generated=datetime.now().strftime("%d/%m/%Y %H:%M"), rows=rows,
                     reg_lines=reg_lines, tnt=tnt, scans=scans, plan=plan, notes=meta.get("notes") or "",
-                    disclaimer=COORD_NOTE)
+                    disclaimer=COORD_NOTE, state=self.state_cur or "")
 
     def export_prep(self, path=None):
         """🖨 Dossier de préparation du show : PDF (à imprimer / envoyer) ou page web."""
@@ -32816,7 +33526,8 @@ class MainWindow(QtWidgets.QMainWindow):
         F, L = self.coord_FL("all")
         img = None
         if F is not None and len(F) > 2:
-            img = spectrum_qimage(F, L, thr=self.busy_limit(L), marks=[(r["mhz"], r["name"]) for r in info["rows"]])
+            img = spectrum_qimage(F, L, thr=self.busy_limit(L), marks=[(r["mhz"], r["name"]) for r in info["rows"]],
+                                  tv=[(t["lo"], t["hi"], t["ch"]) for t in info["tnt"] if t["state"] == "tv"])
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             if str(path).lower().endswith(".html"):
@@ -32832,11 +33543,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 doc = QtGui.QTextDocument()
                 if img is not None:
                     doc.addResource(QtGui.QTextDocument.ResourceType.ImageResource, QtCore.QUrl("spectre.png"), img)
-                doc.setHtml(prep_html(info, TR, "spectre.png" if img is not None else None))
                 wr = QtGui.QPdfWriter(str(path))
                 wr.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
                 wr.setPageMargins(QtCore.QMarginsF(12, 12, 12, 12), QtGui.QPageLayout.Unit.Millimeter)
                 wr.setResolution(150)
+                info["img_w"] = int(wr.width() * 0.97)       # 7.67.1 : l'image prend toute la largeur de la page
+                doc.setHtml(prep_html(info, TR, "spectre.png" if img is not None else None))
                 wr.setTitle(info["title"])
                 doc.setPageSize(QtCore.QSizeF(wr.width(), wr.height()))
                 doc.print_(wr)
@@ -33156,11 +33868,21 @@ def en_translator():
 _WEB_PAGES = {}
 
 
+WEB_EXTRA_JS = ""        # 7.68 : JavaScript ajouté par une autre version (V8 : vues EXT) ; vide en V7
+
+
+def web_page_full():
+    """WEB_PAGE + vues et JavaScript ajoutés par une autre version (WEB_VIEWS complétée, WEB_EXTRA_JS)."""
+    base = set(_WEB_BASE_VIEWS)
+    xv = "{" + ",".join(f'"{k}":["{i}","{t}","{d}"]' for k, i, t, d in WEB_VIEWS if k not in base) + "}"
+    return WEB_PAGE.replace("/*__VIEWS_X__*/{}", xv).replace("/*__EXTRA_JS__*/", WEB_EXTRA_JS)
+
+
 def web_page_bytes(lang):
     """Page web de l'équipe dans la langue de la personne (« fr » : la page d'origine)."""
     if lang not in _WEB_PAGES:
         d = _load_lang_en() if lang == "en" else None
-        page = web_page_lang(WEB_PAGE, d[2], en_translator())[0] if d else WEB_PAGE
+        page = web_page_lang(web_page_full(), d[2], en_translator())[0] if d else web_page_full()
         _WEB_PAGES[lang] = page.encode("utf-8")
     return _WEB_PAGES[lang]
 

@@ -801,5 +801,22 @@ else:
         br.close()
 w.stop()
 wa.stop()
+
+# 7.68 : routes ajoutées par une autre version (V8 : écoute) sans toucher au serveur
+_got = []
+wx = ns["WebServer"](0, lambda: state["v"], host="127.0.0.1", get_cfg=lambda: wcfg, get_pin=lambda: "1234",
+                     extra_get={"/essai.bin": (("liste",), lambda qs: (b"OK:" + qs.encode(), "application/octet-stream"))},
+                     extra_pin={"/essai": (lambda req: dict(a=req.get("a")), _got.append)})
+wx.start()
+wx.ready.wait(3)
+ox = opener()
+check("route GET ajoutée : servie (vue partagée)", get(ox, "/essai.bin?n=3", wx.port) == (200, b"OK:n=3"))
+wcfg["views"] = dict(vn(None), liste=False)
+check("route GET ajoutée : 404 si sa vue n'est pas partagée", get(ox, "/essai.bin", wx.port)[0] == 404)
+wcfg["views"] = vn(None)
+check("route POST ajoutée : PIN faux refusé", post_(ox, "/essai", dict(pin="0000", a=1), wx.port)[0] == 403 and not _got)
+check("route POST ajoutée : PIN bon -> rappel", post_(ox, "/essai", dict(pin="1234", a=2), wx.port)[0] == 200
+      and _got == [dict(a=2)])
+wx.stop()
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

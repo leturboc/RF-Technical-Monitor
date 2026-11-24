@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.67.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.68.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1404,6 +1404,36 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Testé : test_v7 (journal, répétitions dont minuit, dossier HTML), gui_reel (scan de coord raccourci à 4 s en démo :
   RBW 30 / Auto, gardé avec sa RBW, pas ≤ RBW, réglages remis ; PDF « %PDF- » ; HTML avec image ; perturbations sur 3
   faux journaux). **Pas essayé par Clément ; PDF jamais ouvert sous Windows.**
+- **7.67.1 / 7.68.0 (Clément : « go 1234, important la SDR avec démodulation, écoute » + son 1er dossier PDF)** :
+  - **Dossier de préparation revu** (PDF de Clément : spectre minuscule, 48 traits par-dessus, vide 700-820 MHz, tout
+    « en pause ») : PURE `axis_panels` (axe COUPÉ : plages de `scan_segments` réunies si l'écart < max(10 MHz, 5 %)),
+    `prep_dates` (« 12/11/2026 », un seul jour = une date) ; `spectrum_qimage(..., tv=)` 1600 × 560, une case par groupe
+    de bandes + coupure, canaux TV grisés et numérotés, fréquences du plan = ▼ en haut, texte en pixels ;
+    `info["img_w"]` = largeur de la page PDF ; lignes `why` (state = « hors état », muted = « éteint (je sais) »),
+    résumé « N hors de l'état actif « X » », colonnes Appareil / Réglementation / Note retirées si vides, groupe pas
+    répété. Ses 48 fréquences étaient toutes hors de l'état 📸 actif (pas un bug de la pause).
+  - **🩺 Diagnostic RF** (`RfDiagDialog`, `self._rfdiag`, `open_rf_diag` ; 🎚 Surveiller › Avant d'ouvrir et 🔌 Matériel ›
+    Mesure et dépannage) : PURE `rf_diagnose(info)` -> [{key, level, title, text, advice, fix, arg}] (saturation
+    `sat_level`, bruit de fond vs `expected_floor` (`NOISE_DBM_HZ` −160 / −150 dBm/Hz avec / sans LNA, **valeurs de
+    départ**), zones bruyantes hors TV `noisy_zones` sur `floor_curve`, seuil global trop bas / trop haut (seuils
+    fixes), pas > 1,5 × RBW, micro « pile au seuil » (`flap_count` ≥ `DIAG_FLAPS` en 30 min ET niveau habituel à
+    ± `DIAG_EDGE_DB` du seuil -> `suggest_own_thr`), micro dans un canal TV à moins de `DIAG_TV_MARGIN` au-dessus de la
+    télé, « doit émettre » noyé, signaux hors liste) ; `rf_diag_summary`. MainWindow : `rf_diag_info()`,
+    `watch_by_key`, `diag_set_thr(clé kHz, dBm)` (journal « RÉGLAGE »), `open_replace_key`. `update_watch_levels`
+    garde `w["_flips"]` (heures des passages libre <-> occupé) et `w["_lvh"]` (niveaux toutes les 2 s, 400 max) :
+    clés en `_`, PAS enregistrées. Textes en plusieurs lignes (« \n ») : traduits ligne à ligne, affichés sur une ligne.
+  - **📍 Une fréquence partout** (onglet 5 de Scans par lieu ; clic droit liste « 📍 Niveau de cette fréquence dans
+    chaque lieu », `open_sites(freq=(f, bw))`, `SitesDialog.show_freq` / `ev_draw`) : PURE `level_everywhere` (max à ±
+    (0,1 + bw/2) MHz, None si non mesurée, bruit local, marge, RBW), `level_everywhere_text`.
+  - **Fréquence image dans la coordination auto** : `pf_fill_lots(..., img=)` (FI des fréquences existantes, lot
+    `img`), `pf_fill(..., img, new_img)`, `_pf_pick(..., IM, new_img)` -> `pf_suggest(img=)` ; `CoordDialog.compute`
+    passe la FI des profils (avant : seuls Vérifier le plan / Proposer / Remplacer la vérifiaient) ; « Prêt ? » aussi.
+  - **Prises pour la V8 (sans effet en V7)** : `MainWindow.FREQ_ACTIONS` [(texte, méthode(f, w))] proposées par
+    `add_freq_actions` / `run_freq_action` dans le clic droit d'une alarme, des tuiles du mur et du mode Show, et en
+    boutons dans la chasse ; `WebServer(extra_get={chemin: (vues, fn(query) -> (octets, type))}, extra_pin={chemin:
+    (lecture, rappel)})` ; `MainWindow.web_extra()` -> ({}, {}) ; page : `EXT[vue] = {mount(el), update(st)}`,
+    `Object.assign(VIEWS, /*__VIEWS_X__*/{})`, `/*__EXTRA_JS__*/` remplis par `web_page_full()` (WEB_VIEWS ajoutées
+    après `_WEB_BASE_VIEWS`, `WEB_EXTRA_JS`). La V8 les remplit en fin de fichier (affectations au niveau du module).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
@@ -1470,7 +1500,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   1e-6) ; 5ᵉ ordre = case de l'appareil ET option du document ; **chaque zone est calculée à part**. Résultat
   (`pf_check` par zone, réglages par appareil) : Roc d'Azur 0/0, Maalouf 0/0, Isabelle 0/0, PlaneR Samedi 0/0,
   TechFest 6/6, PlaneR complet 104 (logiciel de coord) / 110 (nous, même détail appareil par appareil ; façon de compter
-  différente). Image (10,7 MHz : deux fréquences séparées de 10,7 MHz) : PAS encore calculée.
+  différente). Image : `FréqImage` lue (profil `img`), calculée par `pf_check` (± 1 × FI, 7.51) et, depuis 7.68, évitée
+  par la coordination auto.
 
 ## Tests (`tests/`, à lancer depuis la racine du dépôt)
 ```

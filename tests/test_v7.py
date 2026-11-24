@@ -1034,7 +1034,7 @@ _ph = ns["prep_html"](dict(title="Fest", place="Bourges", dates="2026-11-20", co
                            plan=dict(n=1, lines=["HF 2 : trop près"]), notes="", disclaimer="Coordination basique"),
                       img="spectre.png")
 check("dossier : plan, réglementation, TNT, scans avec RBW, image", all(x in _ph for x in (
-    "HF 1", "520.000", "QLX-D", "hors des bandes", "en pause", "Canaux TV occupés ici : 21", "RBW 30 kHz",
+    "HF 1", "520.000", "QLX-D", "hors des bandes", "hors état", "Canaux TV occupés ici : 21", "RBW 30 kHz",
     "spectre.png", "Vérification du plan : 1 problème(s)", "Coordination basique")), True)
 check("RBW dans le nom de fichier", (ns["rbw_tag"](30.0), ns["rbw_tag"](0.3), ns["rbw_tag"](None), ns["rbw_tag"]("mixed")),
       ("RBW30k", "RBW0,3k", "", ""))
@@ -1999,6 +1999,76 @@ for _bad in (dict(action="mark", x=2, y=0), dict(action="mark", x="a", y=0)):
         check("chasse : position hors plan refusée", True, False)
     except (ValueError, TypeError):
         check("chasse : position hors plan refusée", True, True)
+
+# 7.67.1 (PDF de Clément) : axe coupé, dates, hors état / éteint, colonnes vides retirées
+check("axe coupé : 470-700 + 820-832 = deux cases", ns["axis_panels"]([(470.0, 600.0), (601.0, 700.0), (820.0, 832.0)]),
+      [(470.0, 700.0), (820.0, 832.0)])
+check("axe coupé : rien -> rien", ns["axis_panels"]([]), [])
+check("dates : un seul jour", ns["prep_dates"]("2026-11-12", "2026-11-12"), "12/11/2026")
+check("dates : plusieurs jours", ns["prep_dates"]("2026-11-12", "2026-11-14"), "12/11/2026 – 14/11/2026")
+_ph2 = ns["prep_html"](dict(title="T", rows=[dict(scene="A", group="G", name="X", mhz=500.0, status="", rx="", note="",
+                                                  reg="", off=True, why="state"),
+                                             dict(scene="A", group="G", name="Y", mhz=501.0, status="", rx="", note="",
+                                                  reg="", off=True, why="muted")], state="Samedi"))
+check("dossier : hors de l'état actif nommé", "état actif « Samedi »" in _ph2, True)
+check("dossier : éteinte exprès comptée à part", "1 éteinte(s) exprès" in _ph2, True)
+check("dossier : colonnes vides retirées", ("Réglementation" in _ph2, "Note" in _ph2, "Appareil" in _ph2), (False, False, False))
+check("dossier : groupe pas répété", _ph2.count(">G<"), 1)
+
+# 7.68 : 🩺 diagnostic RF automatique
+_rg = np.random.default_rng(4)
+_F = np.arange(470.0, 700.0, 0.05)
+_L = -110.0 + _rg.normal(0, 1.0, len(_F))
+_L[(_F >= 502) & (_F < 510)] += 25.0                       # canal TV 25
+_L[(_F >= 600) & (_F < 606)] += 15.0                       # zone bruyante hors TV
+_L[np.abs(_F - 540.0) < 0.06] = -60.0                      # micro fort
+_tv = [(502.0, 510.0, 25)]
+_wl = [dict(key=505000, name="Chant", freq=505.0, keep_free=False, keep_on=True, paused=False, level=-80.0, typ=-80.0,
+            floor=-110.0, margin=30.0, ethr=-95.0, own_thr=None, flaps=0, state="occ", tv=25, tv_level=-85.0),
+       dict(key=530000, name="RADIO 2", freq=530.0, keep_free=False, keep_on=False, paused=False, level=-92.0,
+            typ=-92.0, floor=-110.0, margin=18.0, ethr=-91.0, own_thr=None, flaps=14, state="occ", tv=None,
+            tv_level=None),
+       dict(key=531000, name="Pause", freq=531.0, paused=True, flaps=40, level=-91.0, ethr=-91.0)]
+_dg = ns["rf_diagnose"](dict(running=True, F=_F, L=_L, rbw=100.0, lna=True, sat_dbm=-60.0, thr=-100.0, thr_auto=False,
+                              tv=_tv, unknown=[540.0, 540.02], watch=_wl, step_khz=50.0))
+_k = [d["key"] for d in _dg]
+check("diag : zone bruyante 600-606 trouvée (pas le canal TV)", any(k.startswith("zone60") for k in _k)
+      and not any(k.startswith("zone50") for k in _k), True)
+check("diag : micro dans le canal TV, +5 dB seulement", "tv505000" in _k, True)
+check("diag : micro pile au seuil -> seuil propre proposé au-dessus (pas « doit émettre »)",
+      [d["arg"] for d in _dg if d["key"] == "flap530000"], [(530000, -86.0)])
+check("diag : fréquence en pause ignorée", "flap531000" in _k, False)
+check("diag : seuil global trop bas (bruit -110, seuil -100 = ok ; -105 = trop bas)",
+      "thr_low" in [d["key"] for d in ns["rf_diagnose"](dict(running=True, F=_F, L=_L, thr=-107.0, tv=_tv))], True)
+check("diag : signaux hors liste regroupés", [d["title"] for d in _dg if d["key"] == "unk"], ["1 signal(aux) hors de ta liste"])
+check("diag : pas de saturation à -60 dBm", "sat" in _k, False)
+check("diag : saturation à -20 dBm avec préampli", [d["level"] for d in ns["rf_diagnose"](dict(
+    running=True, F=_F, L=_L, lna=True, sat_dbm=-20.0)) if d["key"] == "sat"], ["bad"])
+check("diag : bruit attendu RBW 100 kHz + LNA = -110 dBm", ns["expected_floor"](100.0, True), -110.0)
+_hot = _L + 20.0
+check("diag : bruit de fond 20 dB trop haut", "floor" in [d["key"] for d in ns["rf_diagnose"](dict(
+    running=True, F=_F, L=_hot, rbw=100.0, lna=True))], True)
+check("diag : sans mesure -> lancer la surveillance", [d["key"] for d in ns["rf_diagnose"](dict(running=False))], ["data"])
+check("diag : tri du plus grave au moins grave", [d["level"] for d in _dg] == sorted(
+    [d["level"] for d in _dg], key=lambda x: {"bad": 0, "warn": 1, "info": 2, "ok": 3}[x]), True)
+check("diag : résumé", ns["rf_diag_summary"](_dg)[0], "warn")
+check("diag : pile au seuil d'un « doit émettre » -> seuil sous son niveau, pas dans le bruit",
+      (ns["suggest_own_thr"](-92.0, -110.0, True), ns["suggest_own_thr"](-100.0, -102.0, True)), (-98.0, -98.0))
+check("diag : passages comptés sur 30 min", ns["flap_count"]([0, 300, 1700, 1900], 2000.0), 3)
+
+# 7.68 : 📍 niveau d'une fréquence dans chaque lieu
+_Fa = np.arange(470.0, 700.0, 0.1); _La = np.full(len(_Fa), -105.0); _La[np.abs(_Fa - 600.0) < 0.06] = -60.0
+_Fb = np.arange(470.0, 700.0, 0.1); _Lb = np.full(len(_Fb), -108.0); _Lb[np.abs(_Fb - 600.0) < 0.06] = -90.0
+_Fc = np.arange(800.0, 830.0, 0.1); _Lc = np.full(len(_Fc), -100.0)
+_docs = [dict(name="Jardin", scene="A", t=1.0, f=list(_Fb), l=list(_Lb)), dict(name="Grande scène", scene="B", t=2.0,
+         f=list(_Fa), l=list(_La)), dict(name="Ailleurs", scene="C", t=3.0, f=list(_Fc), l=list(_Lc))]
+_ev = ns["level_everywhere"](_docs, 600.0)
+check("partout : le plus fort d'abord, non mesuré à la fin", [(r["name"], r["level"]) for r in _ev],
+      [("Grande scène", -60.0), ("Jardin", -90.0), ("Ailleurs", None)])
+check("partout : marge au-dessus du bruit", round(_ev[0]["margin"]), 45)
+check("partout : résumé", "écart 30 dB" in ns["level_everywhere_text"](_ev, 600.0), True)
+check("partout : rien mesuré", "aucun scan" in ns["level_everywhere_text"](ns["level_everywhere"](_docs[2:], 600.0), 600.0),
+      True)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
