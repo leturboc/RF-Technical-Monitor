@@ -1658,6 +1658,27 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   piste = rétro-ingénierie sur des enregistrements IQ à niveaux de pile connus, sans garantie.
   **HackRF Pro** (choix de Clément) : d'après Great Scott Gadgets, 8 bits jusqu'à 20 MS/s comme le One, mode 16 bits
   (ENOB 9–11) à débit plus bas ; outils `hackrf_*` a priori identiques — à vérifier à réception.
+- **V8 étape 6 (fait, avec la 7.68 : « go 1234, important la SDR avec démodulation, écoute ») : écouter de partout** :
+  branché sur les prises V7 7.68, sans toucher aux lignes V7 (affectations au niveau du module, juste avant
+  `def self_test`) : `MainWindow.FREQ_ACTIONS += [🎧 listen_freq, ⏱ rt_freq]` (clic droit d'une alarme, tuiles du
+  mur / mode Show, boutons de la chasse), `MainWindow.web_extra = _v8_web_extra`, `WEB_VIEWS` / `WEB_VIEW_KEYS` +
+  « ecoute » (cachée par défaut : `WEB_VIEWS_HIDDEN`), `WEB_EXTRA_JS` (vue `EXT.ecoute`). PURE : `listen_windows`
+  (fenêtres du SDR, ≤ 4 canaux), `HopState` (balayage d'écoute : `dwell` s par fenêtre, reste tant que ça parle +
+  `hang` 2 s), `HOP_OPEN_DB` (squelch ouvert : « ça parle » = 12 dB au-dessus du canal le plus calme vu ; −50 dBFS fixe
+  ne marchait pas : bruit d'un canal SDR au-dessus), `pcm_mono16k`, `PcmRing` (n° de morceaux, 1re demande = ½ s),
+  `pcm_packet` (« TSMA » + n° + taux + PCM), `listen_request`. `ListenWorker.tap` (copie du son) ; taille du bloc IQ
+  d'après `IQ_BYTES` (RSP1B : 4 octets). `ListenDialog(freqs=)` (fréquence hors liste « 📍 »), `rec_btn` /
+  `toggle_rec` (WAV 48 kHz stéréo dans `<journaux>/enregistrements_audio/<date>/`), `pc_mute`, `hop_chk` + `dwell`
+  (`_wins`, `_hop_next` relance le worker sur la fenêtre suivante, son et WAV continuent), `_publish` ->
+  `owner._v8_listen`. MainWindow : `listen_freq(f, w)`, `rt_freq`, `listen_web_push` (seulement si quelqu'un regarde
+  « ecoute »), `web_listen_pcm` / `web_listen_json` (fil du serveur), `web_listen_do` (via `V8Bridge`, signal en file
+  d'attente). Page : « 🔊 Activer le son ici » (le navigateur exige un geste), Web Audio planifié, sondage 250 ms ;
+  PIN demandé pour ▶ / ■. lang_en_v8 : `WEB` (morceaux de page) fusionné dans `lang_en.WEB` par `_load_lang_en`.
+  **Couche appareil** : `SpectrumDevice` (abc : `scan` obligatoire, le reste facultatif ; `family`, `caps`),
+  `SpectrumDevice.register(TinySA)`, `SDRSweep(SpectrumDevice)`, `register_spectrum_driver` / `spectrum_driver` /
+  `open_spectrum_device` (ScanWorker V8). Testé : test_sdr (PURE), gui_reel (faux hackrf_transfer : hors liste, WAV,
+  balayage d'écoute entre 2 fenêtres, téléphone : PIN, son reçu, état, arrêt). **Jamais avec un vrai SDR ni un vrai
+  téléphone** (Web Audio sur iPhone / Android à vérifier, retard réel, Wi-Fi).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

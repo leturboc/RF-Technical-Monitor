@@ -345,5 +345,43 @@ ok("RSP1B : format ci16_le, 4,8 MS/s en écoute, jusqu'à 9,6 MS/s en temps rée
 _x = ns["iq_decode"]("ci16_le", np.array([16384, -16384], dtype="<i2").tobytes())
 ok("IQ 16 bits décodé (pleine échelle ≈ 1)", abs(_x[0] - (0.5 - 0.5j)) < 1e-6, str(_x))
 
+# ---- étape 6 : écouter de partout (fenêtres, balayage d'écoute, son pour le téléphone)
+lw = ns["listen_windows"]([606.0, 607.5, 620.0, 620.5, 621.0, 606.2], "hackrf")
+ok("fenêtres : 2 fenêtres, la plus grosse grappe d'abord", [sorted(u) for _c, u in lw] == [[606.0, 606.2, 607.5], [620.0, 620.5, 621.0]], str(lw))
+ok("fenêtres : au plus 4 canaux par fenêtre", all(len(u) <= 4 for _c, u in ns["listen_windows"]([600 + 0.2 * k for k in range(9)], "hackrf")))
+ok("fenêtres : toutes les fréquences servies", sorted(f for _c, u in ns["listen_windows"]([600 + 0.2 * k for k in range(9)], "hackrf")
+                                                for f in u) == [round(600 + 0.2 * k, 6) for k in range(9)])
+ok("fenêtres : rien -> rien", ns["listen_windows"]([], "rtlsdr") == [])
+hp = ns["HopState"](dwell=3.0, hang=2.0)
+hp.reset(0.0)
+ok("balayage : reste tant que rien ne parle avant 3 s", not hp.feed(2.9, False) and hp.feed(3.0, False))
+hp.reset(10.0)
+ok("balayage : ça parle -> on reste", not hp.feed(11.0, True) and not hp.feed(20.0, True))
+ok("balayage : fin de phrase + 2 s -> on passe", not hp.feed(21.5, False) and hp.feed(22.0, False))
+st = (np.arange(480) % 2 * 2 - 1).astype("<i2")              # G = -1, D = +1 alternés
+ok("son téléphone : 48 kHz stéréo -> 16 kHz mono (1/6 des octets)", len(ns["pcm_mono16k"](st.tobytes())) == len(st.tobytes()) // 6)
+tone = (np.stack([np.full(600, 1000), np.full(600, 3000)], axis=1)).astype("<i2").tobytes()
+ok("son téléphone : moyenne des deux voies", set(np.frombuffer(ns["pcm_mono16k"](tone), "<i2").tolist()) == {2000})
+rg = ns["PcmRing"](rate=16000, keep=1.0)
+for k in range(10):
+    rg.push(bytes([k]) * 3200)                               # 0,1 s chacun
+seq, d = rg.since(0)
+ok("anneau : 1re demande = la dernière ½ s seulement", seq == 10 and len(d) == 16000, (seq, len(d)))
+ok("anneau : la suite seulement", rg.since(8) == (10, bytes([8]) * 3200 + bytes([9]) * 3200))
+ok("anneau : à jour -> rien", rg.since(10) == (10, b""))
+ok("anneau : garde ~1 s", sum(len(x) for _s, x in rg.chunks) <= 32000)
+pk = ns["pcm_packet"](7, 16000, b"\x01\x00")
+ok("paquet : TSMA + n° + fréquence + PCM", pk[:4] == b"TSMA" and np.frombuffer(pk[4:12], "<u4").tolist() == [7, 16000]
+   and pk[12:] == b"\x01\x00")
+lr = ns["listen_request"]
+ok("commande téléphone : écouter", lr(dict(action="start", f="606.1234567")) == dict(action="start", f=606.123457, mode=""))
+ok("commande téléphone : arrêter", lr(dict(action="stop")) == dict(action="stop"))
+for bad in (dict(action="x"), dict(action="start", f=-3), dict(action="start", f="abc"), dict(action="start", f=float("nan")), [1]):
+    try:
+        lr(bad)
+        ok(f"commande téléphone refusée : {bad}", False)
+    except (ValueError, TypeError):
+        ok(f"commande téléphone refusée : {bad}", True)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

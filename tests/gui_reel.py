@@ -1012,8 +1012,84 @@ if len(_pair) > 1:
     step("écoute : autre canal", lambda: _ld._pick(_ld.ws.index(_pair[1])))
     check("écoute : bascule", _ld.worker is not None and _ld.worker.sel == 1)
 step("écoute : ■", _ld.toggle)
-check("écoute : arrêtée proprement", _ld.worker is None and _ld.go_btn.text().startswith("▶"))
+check("écoute : arrêtée proprement", _ld.worker is None and _ld.go_btn.text() == m.plain_btn_text("▶ Écouter"), _ld.go_btn.text())
 _ld.close()
+
+# V8 étape 6 : écouter de partout, ⏺ WAV, 🔁 balayage d'écoute, 📱 écoute sur le téléphone, couche appareil
+check("étape 6 : actions « sur une fréquence » branchées", ("🎧 Écouter avec le SDR", "listen_freq") in win.FREQ_ACTIONS)
+_mn = W.QMenu(win)
+check("étape 6 : proposées dans les menus (alarme, tuiles)", sorted(win.add_freq_actions(_mn, 606.0).values())
+      == ["listen_freq", "rt_freq"])
+check("couche appareil : SDR -> SDRSweep, port série -> tinySA", m.spectrum_driver("hackrf") == "sdr"
+      and m.spectrum_driver("COM4") == "tinysa" and issubclass(m.TinySA, m.SpectrumDevice)
+      and issubclass(m.SDRSweep, m.SpectrumDevice) and m.SDRSweep.caps["listen"] and not m.TinySA.caps["listen"])
+os.environ["FAKE_IQ_CARRIERS"] = f"{_pair[0]['freq']}:1000"
+_lf = step("écouter une fréquence hors liste", lambda: win.listen_freq(_pair[0]["freq"] + 0.123))
+wait(2000)
+check("hors liste : ligne 📍 ajoutée et écoutée", _lf is not None and _lf.worker is not None
+      and _lf.ws[0]["name"].startswith("📍"), _lf.st_lbl.text() if _lf else "")
+step("⏺ enregistrer", lambda: _lf.rec_btn.setChecked(True))
+wait(1500)
+step("⏹ enregistrement", lambda: _lf.rec_btn.setChecked(False))
+import wave as _wave
+check("⏺ son enregistré en WAV", _lf.wav_path is not None and os.path.exists(_lf.wav_path)
+      and _wave.open(str(_lf.wav_path)).getnframes() > 24000, str(_lf.wav_path))
+_lf.close()
+os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
+_hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
+_hd.show()
+_hd.dev_combo.setCurrentIndex(_hd.dev_combo.findData("hackrf"))
+_hd.hop_chk.setChecked(True)
+_hd.dwell.setCurrentIndex(0)
+check("🔁 balayage d'écoute : deux fenêtres", len(_hd._wins) == 2, _hd.win_lbl.text())
+step("🔁 ▶", _hd.toggle)
+_w0, _t0 = _hd._wi, time.time()
+while _hd._wi == _w0 and time.time() - _t0 < 15:
+    wait(300)
+wait(800)
+check("🔁 passe à la fenêtre suivante (tableau et SDR d'accord)", _hd._wi != _w0 and _hd.worker is not None
+      and _hd._plan == _hd._wins[_hd._wi] and _hd.worker.center == _hd._wins[_hd._wi][0], _hd.st_lbl.text())
+shot(_hd, "ecoute_balayage")
+_hd.close()
+win.web_cfg.update(on=True, port=0, pin="2468")
+win.web_cfg["views"]["ecoute"] = True
+step("web (vue écoute)", win.apply_web)
+if win.web is not None:
+    import json as _json8, urllib.request as _ur8, http.cookiejar as _cj8
+    _b8 = f"http://127.0.0.1:{win.web.port}"
+    _o8 = _ur8.build_opener(_ur8.HTTPCookieProcessor(_cj8.CookieJar()))
+    _o8.open(_ur8.Request(_b8 + "/connexion", data=_json8.dumps(dict(name="Tel", password="")).encode(),
+                          headers={"Content-Type": "application/json"}, method="POST"), timeout=5)
+    _pg = _o8.open(_b8 + "/", timeout=5).read().decode("utf-8")
+    check("📱 page : vue 🎧 Écoute ajoutée", "EXT.ecoute" in _pg and '"ecoute":["🎧"' in _pg)
+    _o8.open(_b8 + "/etat.json?v=ecoute", timeout=5).read()
+    os.environ["FAKE_IQ_CARRIERS"] = f"{_pair[0]['freq']}:1000"
+
+    def _post8(obj):
+        try:
+            return _o8.open(_ur8.Request(_b8 + "/ecoute", data=_json8.dumps(obj).encode(),
+                                         headers={"Content-Type": "application/json"}, method="POST"), timeout=5).status
+        except Exception as e:  # noqa: BLE001
+            return getattr(e, "code", 0)
+    check("📱 mauvais code PIN refusé", _post8(dict(pin="0000", action="start", f=_pair[0]["freq"])) == 403)
+    check("📱 écouter depuis le téléphone", _post8(dict(pin="2468", action="start", f=_pair[0]["freq"])) == 200)
+    _t0 = time.time()
+    while (getattr(win, "_listen", None) is None or win._listen.worker is None) and time.time() - _t0 < 6:
+        wait(200)
+    for _k in range(10):
+        _o8.open(_b8 + "/etat.json?v=ecoute", timeout=5).read()
+        wait(250)
+    _pc = _o8.open(_b8 + "/ecoute.pcm?s=0", timeout=5).read()
+    check("📱 son reçu sur le téléphone (PCM 16 kHz)", _pc[:4] == b"TSMA" and len(_pc) > 12 + 4000, str(len(_pc)))
+    _ej = _json8.loads(_o8.open(_b8 + "/ecoute.json", timeout=5).read())
+    check("📱 état de l'écoute", _ej.get("on") is True and abs((_ej.get("f") or 0) - _pair[0]["freq"]) < 0.001, str(_ej))
+    check("📱 arrêter depuis le téléphone", _post8(dict(pin="2468", action="stop")) == 200)
+    wait(800)
+    check("📱 écoute arrêtée sur le PC", win._listen.worker is None)
+    win._listen.close()
+    win.web_cfg.update(on=False, pin="")
+    step("web off", win.apply_web)
+os.environ["FAKE_IQ_CARRIERS"] = ""
 
 # V8 : temps réel (faux rtl_sdr à 2,4 MS/s : micro fixe + signal intermittent)
 os.environ["FAKE_IQ_CARRIERS"] = f"{_pair[0]['freq']}:1000"
@@ -1059,7 +1135,7 @@ if _rbase:
     shot(_rt, "temps_reel_relecture")
     step("relecture : reprise", _rt._pause)
     step("revenir au direct", _rt.leave_file)
-    check("relecture : quittée", _rt.worker is None and not _rt.play_bar.isVisible() and _rt.go_btn.text() == "▶ Démarrer")
+    check("relecture : quittée", _rt.worker is None and not _rt.play_bar.isVisible() and _rt.go_btn.text() == m.plain_btn_text("▶ Démarrer"), _rt.go_btn.text())
 _rt.close()
 os.environ["FAKE_IQ_BURSTS"] = ""
 

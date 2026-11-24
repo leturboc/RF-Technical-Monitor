@@ -248,3 +248,56 @@ SAME_TEMPLATES = [
     'SDR {}',
     'iq_{}_{}MHz',
 ]
+# ---- étape 6 : écouter de partout, ⏺ WAV, 🔁 balayage d'écoute, 📱 écoute sur le téléphone
+EXACT.update({
+    "Coupe le son de ce PC (la page web 🎧 Écoute continue d'en recevoir).":
+        "Mutes this PC (the 🎧 Listen web page still receives the sound).",
+    "Enregistre ce que tu entends (fichier WAV 48 kHz stéréo) dans le dossier des journaux,\n« enregistrements_audio » : pour garder la preuve d'un brouilleur, d'un larsen, d'une coupure.":
+        "Records what you hear (48 kHz stereo WAV file) in the logs folder,\n“enregistrements_audio”: to keep proof of an interferer, feedback, a dropout.",
+    "Le PC écoute avec son SDR (HackRF, RTL-SDR…). Touche 🎧 sur un micro : le son arrive ici, avec un petit retard. Code PIN demandé (celui du PC). Les micros numériques ne s'écoutent pas.":
+        "The PC listens with its SDR (HackRF, RTL-SDR…). Tap 🎧 on a mic: the sound arrives here, with a small delay. PIN code required (the PC's). Digital mics cannot be listened to.",
+    "Les fréquences cochées ne tiennent pas dans une seule fenêtre du SDR : il passe de l'une à\nl'autre et s'arrête là où ça parle (niveau au-dessus du squelch ; squelch ouvert : 12 dB\nau-dessus du canal le plus calme vu),\nle temps de la phrase. Comme un scanner. Quelques dixièmes de seconde de blanc à chaque saut.":
+        "The ticked frequencies do not fit in one SDR window: it goes from one to\nthe other and stops where someone talks (level above the squelch; squelch open: 12 dB\nabove the quietest channel seen),\nfor the length of the sentence. Like a scanner. A few tenths of a second of silence at each hop.",
+    "Temps passé sur une fenêtre où rien ne parle.": "Time spent on a window where nobody talks.",
+    "WEB": "WEB",
+    "requête": "request",
+    "Écoute": "Listen",
+    "Écouter un micro analogique sur le téléphone, avec le SDR du PC": "Listen to an analogue mic on the phone, with the PC's SDR",
+    "⏱ Temps réel autour (SDR)": "⏱ Real time around it (SDR)",
+    "⏺ Enregistrer le son": "⏺ Record the sound",
+    "⏹ Arrêter l'enregistrement": "⏹ Stop recording",
+    "⏺ Son enregistré : {}": "⏺ Sound recorded: {}",
+    "⚠ Enregistrement arrêté : {}": "⚠ Recording stopped: {}",
+    "⚠ Enregistrement impossible : {}": "⚠ Recording impossible: {}",
+    "📱 Écoute arrêtée depuis le téléphone.": "📱 Listening stopped from the phone.",
+    "📱 Écoute demandée depuis le téléphone : {} MHz": "📱 Listening requested from the phone: {} MHz",
+    "🔁 Balayage d'écoute": "🔁 Listening scan",
+    "🔇 Son seulement sur le téléphone": "🔇 Sound on the phone only",
+    "🔊 Activer le son ici": "🔊 Turn on sound here",
+    "🎧 Écouter avec le SDR": "🎧 Listen with the SDR",
+    "🎧 Écouter": "🎧 Listen",
+    "Autre fréquence (MHz)": "Other frequency (MHz)",
+    "Pas d'écoute en cours": "Not listening",
+    "🔊 Son actif": "🔊 Sound on",
+    "Son impossible sur ce navigateur": "Sound not possible in this browser",
+})
+TEMPLATES.update({
+    "🔁 Balayage d'écoute : {} fenêtres du SDR, {} fréquence(s).": "🔁 Listening scan: {} SDR windows, {} frequency(ies).",
+    "{} s par fenêtre": "{} s per window",
+})
+SAME_TEMPLATES += ["ecoute_{}_{}MHz.wav", "📍 {}"]
+# morceaux de la page web propres à la V8 (vue 🎧 Écoute), ajoutés à lang_en.WEB au chargement
+WEB = [
+    ("🔊 Activer le son ici", "🔊 Turn on sound here"),
+    ("Le PC écoute avec son SDR (HackRF, RTL-SDR…). Touche 🎧 sur un micro : le son arrive ici, avec un petit retard. Code PIN demandé (celui du PC). Les micros numériques ne s'écoutent pas.",
+     "The PC listens with its SDR (HackRF, RTL-SDR…). Tap 🎧 on a mic: the sound arrives here, with a small delay. PIN code required (the PC's). Digital mics cannot be listened to."),
+    ('placeholder="Autre fréquence (MHz)"', 'placeholder="Other frequency (MHz)"'),
+    (">🎧 Écouter</button>", ">🎧 Listen</button>"),
+    ('"🎧 Écouter"', '"🎧 Listen"'),
+    ('"■ Arrêter"', '"■ Stop"'),
+    ('"Pas d\'écoute en cours"', '"Not listening"'),
+    ('"Son impossible sur ce navigateur"', '"Sound not possible in this browser"'),
+    ('"🔊 Son actif"', '"🔊 Sound on"'),
+    ('"Refusé ("', '"Refused ("'),
+]
+WEB.append(('"Code PIN incorrect."', '"Wrong PIN code."'))

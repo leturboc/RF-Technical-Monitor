@@ -7259,6 +7259,125 @@ class BurstDetector:
         return done
 
 
+# ------------------------------------------------------------------ V8 étape 6 : écouter de partout
+# Écoute depuis une alarme / une tuile / la chasse (FREQ_ACTIONS de la V7), son enregistré en WAV, balayage d'écoute
+# (passe d'une fenêtre du SDR à l'autre), écoute sur le téléphone (vue web « ecoute », son en PCM 16 kHz mono).
+LISTEN_WEB_RATE = 16000          # son envoyé au téléphone : 16 kHz mono 16 bits (voix, ~32 ko/s)
+LISTEN_WEB_KEEP = 4.0            # secondes gardées pour le téléphone
+LISTEN_HOP_DWELL = (2, 3, 5, 8, 12)   # s par fenêtre (balayage d'écoute)
+HOP_OPEN_DB = 12.0               # squelch ouvert : « ça parle » = 12 dB au-dessus du canal le plus calme vu
+
+
+def listen_windows(freqs_mhz, kind, maxch=4):
+    """Fréquences à écouter -> fenêtres du SDR [(centre Hz, [MHz])] : la plus grande grappe d'abord (listen_center),
+    puis la suivante avec ce qui reste ; au plus `maxch` canaux par fenêtre (démodulation simultanée)."""
+    rest = sorted(set(round(float(f), 6) for f in freqs_mhz))
+    out = []
+    while rest:
+        c, use = listen_center(rest, kind)
+        use = list(use)[:maxch] if use else rest[:1]
+        if c is None or not use:
+            break
+        if len(use) < len(listen_center(rest, kind)[1]):
+            c = listen_center(use, kind)[0]
+        out.append((c, use))
+        rest = [f for f in rest if f not in use]
+    return out
+
+
+class HopState:
+    """Balayage d'écoute : rester `dwell` s par fenêtre ; si un canal est actif (niveau au-dessus du squelch), rester
+    tant qu'il l'est, puis `hang` s de plus (la fin d'une phrase). feed(t, actif) -> True quand il faut passer à la
+    fenêtre suivante (l'appelant change de fenêtre puis appelle reset(t))."""
+
+    def __init__(self, dwell=3.0, hang=2.0):
+        self.dwell, self.hang = float(dwell), float(hang)
+        self.t0 = self.last_on = None
+
+    def reset(self, t):
+        self.t0, self.last_on = t, None
+
+    def feed(self, t, active):
+        if self.t0 is None:
+            self.reset(t)
+        if active:
+            self.last_on = t
+            return False
+        if self.last_on is not None:
+            return t - self.last_on >= self.hang
+        return t - self.t0 >= self.dwell
+
+
+def pcm_mono16k(b):
+    """Son de l'écoute (int16 stéréo entrelacé, 48 kHz) -> int16 mono 16 kHz pour le téléphone (moyenne G + D, puis
+    moyenne de 3 échantillons = petit filtre avant de garder 1 sur 3)."""
+    a = np.frombuffer(b, dtype="<i2").astype(np.float32)
+    n = (len(a) // 6) * 6
+    if n <= 0:
+        return b""
+    m = a[:n].reshape(-1, 2).mean(axis=1)
+    return np.round(m.reshape(-1, 3).mean(axis=1)).astype("<i2").tobytes()
+
+
+class PcmRing:
+    """Son pour le téléphone : morceaux numérotés, les `keep` dernières secondes. since(n) -> (dernier n°, octets
+    des morceaux après n) ; n trop ancien (téléphone en retard, ou 1re demande) = seulement les ~0,5 dernière s."""
+
+    def __init__(self, rate=LISTEN_WEB_RATE, keep=LISTEN_WEB_KEEP):
+        self.rate, self.keep = int(rate), float(keep)
+        self.seq, self.chunks = 0, deque()
+
+    def push(self, b):
+        if not b:
+            return
+        self.seq += 1
+        self.chunks.append((self.seq, b))
+        size = sum(len(x) for _s, x in self.chunks)
+        while self.chunks and size > self.keep * self.rate * 2:
+            size -= len(self.chunks.popleft()[1])
+
+    def clear(self):
+        self.chunks.clear()
+
+    def since(self, n):
+        n = int(n or 0)
+        if not self.chunks:
+            return self.seq, b""
+        first = self.chunks[0][0]
+        if n <= 0 or n < first - 1 or n > self.seq:   # 1re demande, trop vieux, serveur relancé : le présent
+            out, size = [], 0
+            for s, x in reversed(self.chunks):
+                out.append(x)
+                size += len(x)
+                if size >= self.rate:                    # ~0,5 s (16 bits)
+                    break
+            return self.seq, b"".join(reversed(out))
+        return self.seq, b"".join(x for s, x in self.chunks if s > n)
+
+
+def pcm_packet(seq, rate, data):
+    """Réponse de /ecoute.pcm : 4 octets « TSMA », n° (uint32), fréquence d'échantillonnage (uint32), puis PCM int16."""
+    return b"TSMA" + np.array([int(seq) & 0xFFFFFFFF, int(rate)], dtype="<u4").tobytes() + (data or b"")
+
+
+def listen_request(req):
+    """Commande POST /ecoute (téléphone, code PIN) -> dict(action start | stop | pick, f MHz, mode) ; ValueError."""
+    if not isinstance(req, dict):
+        raise ValueError("requête")
+    act = str(req.get("action", ""))
+    if act not in ("start", "stop"):
+        raise ValueError("action")
+    out = dict(action=act)
+    if act == "start":
+        f = float(req.get("f"))
+        if not (1.0 <= f <= 6000.0) or f != f:
+            raise ValueError("fréquence")
+        out["f"] = round(f, 6)
+        mode = str(req.get("mode") or "")
+        out["mode"] = mode if mode in LISTEN_MODES else ""
+    return out
+
+
 # ------------------------------------------------------------------ langues (français par défaut, anglais)
 # Les textes du programme sont écrits en français. Pour l'anglais, une couche posée sur Qt (install_language) fait
 # passer chaque texte affiché par Translator : dictionnaire exact (lang_en.EXACT) + modèles à trous pour les textes
@@ -10748,6 +10867,7 @@ class TinySA:
         return freqs, levels
 
 
+# --------------------------------------------------------------------------
 # Branche V8 : la ligne APP_VER du haut reste celle de la V7 (aucun conflit à chaque version V7) ; surcharge ici.
 APP_VER = f"8.0-dev (base {APP_VER})"
 
@@ -10778,7 +10898,78 @@ def find_sdr_tool(name, extra_dir=""):
     return None
 
 
-class SDRSweep:
+import abc  # noqa: E402  (V8 : interface commune des appareils de mesure)
+
+
+class SpectrumDevice(abc.ABC):
+    """V8 : ce que le ScanWorker attend d'un appareil de mesure (tinySA, SDR, plus tard WiNRADiO / Airspy…).
+    Un appareil = une classe avec ces méthodes, inscrite par register_spectrum_driver(nom, reconnaît, fabrique) :
+    - scan(début Hz, fin Hz, points) -> (fréquences Hz, niveaux dB) : le SEUL indispensable ;
+    - version() (texte pour le diagnostic), set_rbw(kHz), set_input(haute ?), try_cmd(texte) -> (accepté, réponse) ;
+    - expect_scan(points, rbw, pas) : prévenir de la durée d'un balayage (délai de silence) ;
+    - configure(bandes, rbw, gains) : appelé une fois par cycle (un SDR y lance son outil sur toutes les bandes) ;
+    - close() ; attributs abort (fonction -> True = arrêter), rx_bytes / tx_bytes / rtt (compteur réseau).
+    `family` (« tinysa », « sdr »…) et `caps` (listen : peut démoduler, realtime : flux IQ, sweep_all : balaye toutes
+    les bandes d'un coup, calibrated : niveaux en vrais dBm) disent à l'interface ce que l'appareil sait faire."""
+    PROMPT = None
+    family = "?"
+    caps = dict(listen=False, realtime=False, sweep_all=False, calibrated=False)
+    abort = None
+    rx_bytes = tx_bytes = 0
+    rtt = None
+
+    @abc.abstractmethod
+    def scan(self, start_hz, stop_hz, points):
+        """-> (fréquences Hz, niveaux dB)."""
+
+    def version(self):
+        return type(self).__name__
+
+    def try_cmd(self, text):
+        return True, ""
+
+    def set_rbw(self, khz):
+        return True, ""
+
+    def set_input(self, high):
+        return True, ""
+
+    def expect_scan(self, points, rbw_khz, step_khz=None):
+        return None
+
+    def configure(self, bands, rbw_khz, gains):
+        return None
+
+    def close(self):
+        return None
+
+
+SpectrumDevice.register(TinySA)            # le tinySA (classe V7) respecte déjà l'interface
+TinySA.family = "tinysa"
+TinySA.caps = dict(listen=False, realtime=False, sweep_all=False, calibrated=True)
+SPECTRUM_DRIVERS = []                      # [(nom, reconnaît(adresse) -> bool, fabrique(adresse, worker))]
+
+
+def register_spectrum_driver(name, match, make):
+    """Inscrit un type d'appareil (le dernier inscrit est essayé en premier ; le tinySA reste le défaut)."""
+    SPECTRUM_DRIVERS[:] = [d for d in SPECTRUM_DRIVERS if d[0] != name]
+    SPECTRUM_DRIVERS.insert(0, (name, match, make))
+
+
+def spectrum_driver(addr):
+    """Nom du pilote pour une adresse (« COM4 » -> « tinysa », « hackrf » -> « sdr »)."""
+    return next((n for n, match, _mk in SPECTRUM_DRIVERS if match(addr or "")), "tinysa")
+
+
+def open_spectrum_device(addr, worker):
+    """Ouvre l'appareil d'une adresse pour un ScanWorker (tinySA par défaut)."""
+    for _n, match, make in SPECTRUM_DRIVERS:
+        if match(addr or ""):
+            return make(addr, worker)
+    return TinySA(addr, worker.baud, worker._tr)
+
+
+class SDRSweep(SpectrumDevice):
     """Un SDR qui se comporte comme un TinySA pour le ScanWorker : l'outil de balayage tourne en continu sur
     toutes les bandes (une seule commande), un fil lit ses lignes (SweepAccum) ; scan(a, z, pts) rend le dernier
     passage complet rééchantillonné (max par cellule). Outil arrêté (SDR débranché) ou muet : erreur → le worker
@@ -11012,7 +11203,7 @@ class ScanWorker(QtCore.QThread):
                         self.msleep(100)                    # écoute en cours : le SDR est à l'écoute
                     if self.isInterruptionRequested():
                         return
-                    dev = SDRSweep(self.port, self.sdr_dir, self._tr, self.sdr_tool)
+                    dev = open_spectrum_device(self.port, self)
                     dev.abort = lambda: self.isInterruptionRequested() or self.paused
                     self.dev = dev
                     self.info.emit(dev.version())
@@ -15517,6 +15708,12 @@ class PlanCheckDialog(QtWidgets.QDialog):
         self.owner.set_status(f"{w['name']} : {old:.3f} → {c:.3f} MHz (plan vérifié).")
 
 
+SDRSweep.family = "sdr"
+SDRSweep.caps = dict(listen=True, realtime=True, sweep_all=True, calibrated=False)
+register_spectrum_driver("sdr", lambda a: parse_sdr_addr(a) is not None,
+                         lambda a, w: SDRSweep(a, w.sdr_dir, w._tr, w.sdr_tool))
+
+
 class SdrDialog(QtWidgets.QDialog):
     """V8 : réglages des SDR (HackRF One, RTL-SDR) : dossier des outils, gains, et comment les installer."""
 
@@ -15701,6 +15898,7 @@ class ListenWorker(QtCore.QThread):
         self.sel = 0                 # canal entendu ; -1 = mélange de tous
         self.volume = 1.0
         self.audio = deque(maxlen=200)
+        self.tap = deque(maxlen=400)  # étape 6 : copie du son (enregistrement WAV, téléphone), lue par ListenDialog
         self.proc = None
         self.err = deque(maxlen=20)
 
@@ -15722,7 +15920,7 @@ class ListenWorker(QtCore.QThread):
             return
         threading.Thread(target=self._read_err, daemon=True).start()
         self.status.emit(f"🎧 {sp['name']} : écoute autour de {self.center / 1e6:.3f} MHz")
-        chunk = int(self.rate * 0.02) * 2                     # 20 ms d'IQ (2 octets par échantillon)
+        chunk = int(self.rate * 0.02) * IQ_BYTES[SDR_DTYPE.get(self.kind, "ci8")]   # 20 ms d'IQ
         buf, why, t_lv = b"", "", 0.0
         try:
             while not self.isInterruptionRequested():
@@ -15744,7 +15942,9 @@ class ListenWorker(QtCore.QThread):
                 else:
                     a = outs[sel][0]
                 if len(a):
-                    self.audio.append(audio_int16(a, self.volume))
+                    pcm = audio_int16(a, self.volume)
+                    self.audio.append(pcm)
+                    self.tap.append(pcm)
                 now = time.time()
                 if now - t_lv > 0.1:
                     t_lv = now
@@ -15819,10 +16019,13 @@ class ListenDialog(QtWidgets.QDialog):
     """V8 : 🎧 Écouter une ou plusieurs fréquences avec un SDR (FM / AM), niveau RF et audio de chaque canal,
     choix de celui qu'on entend, squelch, expanseur 2:1 (approximation des companders)."""
 
-    def __init__(self, owner, rows=None):
+    def __init__(self, owner, rows=None, freqs=None):
         super().__init__(owner)
         self.owner = owner
         self.setWindowTitle("🎧 Écouter avec le SDR")
+        self.wav = self.wav_path = None                 # étape 6 : ⏺ son enregistré
+        self._wins, self._wi, self.hop, self._hop_floor = [], 0, HopState(), None
+        self._t_hop = 0.0
         self.resize(760, 600)
         self.worker, self.audio, self.paused = None, None, []
         lay = QtWidgets.QVBoxLayout(self)
@@ -15888,11 +16091,37 @@ class ListenDialog(QtWidgets.QDialog):
         close.setToolTip("Arrête l'écoute et ferme.")
         close.clicked.connect(self.close)
         lay.addLayout(R(self.go_btn, self.mix_chk, None, close))
+        # étape 6 : enregistrer le son, son seulement sur le téléphone, balayage d'écoute
+        self.rec_btn = QtWidgets.QPushButton("⏺ Enregistrer le son")
+        self.rec_btn.setCheckable(True)
+        self.rec_btn.setToolTip("Enregistre ce que tu entends (fichier WAV 48 kHz stéréo) dans le dossier des journaux,\n"
+                                "« enregistrements_audio » : pour garder la preuve d'un brouilleur, d'un larsen, d'une coupure.")
+        self.rec_btn.toggled.connect(lambda on: self.toggle_rec(on))
+        self.pc_mute = QtWidgets.QCheckBox("🔇 Son seulement sur le téléphone")
+        self.pc_mute.setToolTip("Coupe le son de ce PC (la page web 🎧 Écoute continue d'en recevoir).")
+        self.hop_chk = QtWidgets.QCheckBox("🔁 Balayage d'écoute")
+        self.hop_chk.setToolTip("Les fréquences cochées ne tiennent pas dans une seule fenêtre du SDR : il passe de l'une à\n"
+                                "l'autre et s'arrête là où ça parle (niveau au-dessus du squelch ; squelch ouvert : 12 dB\n"
+                                "au-dessus du canal le plus calme vu),\n"
+                                "le temps de la phrase. Comme un scanner. Quelques dixièmes de seconde de blanc à chaque saut.")
+        self.hop_chk.toggled.connect(lambda *_: self._window())
+        self.dwell = QtWidgets.QComboBox()
+        for s_ in LISTEN_HOP_DWELL:
+            self.dwell.addItem(f"{s_} s par fenêtre", s_)
+        self.dwell.setCurrentIndex(1)
+        self.dwell.setToolTip("Temps passé sur une fenêtre où rien ne parle.")
+        lay.addLayout(R(self.rec_btn, self.pc_mute, None, self.hop_chk, self.dwell))
         self.st_lbl = QtWidgets.QLabel("Pas encore testé avec un vrai SDR : dis-moi ce que ça donne !")
         self.st_lbl.setWordWrap(True)
         lay.addWidget(self.st_lbl)
         self.ws = list(owner.watch)
         pre = {id(owner.watch[r]) for r in (rows or []) if 0 <= r < len(owner.watch)}
+        for f_ in freqs or ():                       # étape 6 : une fréquence hors de la liste (alarme, chasse…)
+            w_ = next((w for w in self.ws if abs(w["freq"] - f_) < 0.0005), None)
+            if w_ is None:
+                w_ = dict(name=f"📍 {f_:.3f}", freq=float(f_))
+                self.ws.insert(0, w_)
+            pre.add(id(w_))
         self.table.setRowCount(len(self.ws))
         for r, w in enumerate(self.ws):
             it = QtWidgets.QTableWidgetItem("")
@@ -15913,12 +16142,20 @@ class ListenDialog(QtWidgets.QDialog):
                 if self.table.item(r, 0) is not None and self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
 
     def _window(self):
+        if self.worker is not None:      # écoute en cours : la fenêtre ne bouge pas (setText du tableau = itemChanged)
+            return
         rows = self._checked()
         kind = self.dev_combo.currentData()
         c, use = listen_center([self.ws[r]["freq"] for r in rows], kind)
         self._plan = (c, [r for r in rows if self.ws[r]["freq"] in use][:ListenWorker.MAX_CH])
+        wins = listen_windows([self.ws[r]["freq"] for r in rows], kind, ListenWorker.MAX_CH) if rows else []
+        self._wins = [(c_, [r for r in rows if self.ws[r]["freq"] in u_]) for c_, u_ in wins]
+        if self.worker is None:
+            self.hop_chk.setEnabled(len(self._wins) > 1)
         if not rows:
             self.win_lbl.setText("Coche au moins une fréquence.")
+        elif self.hop_chk.isChecked() and len(self._wins) > 1:
+            self.win_lbl.setText(f"🔁 Balayage d'écoute : {len(self._wins)} fenêtres du SDR, {len(rows)} fréquence(s).")
         else:
             out = [r for r in rows if r not in self._plan[1]]
             self.win_lbl.setText(f"Fenêtre du SDR centrée sur {c / 1e6:.3f} MHz : {len(self._plan[1])} canal(aux) "
@@ -15944,6 +16181,17 @@ class ListenDialog(QtWidgets.QDialog):
         if not rows:
             self.st_lbl.setText("Coche au moins une fréquence (proches les unes des autres).")
             return
+        if self.hop_chk.isChecked() and len(self._wins) > 1:
+            self._wi = 0
+            c, rows = self._wins[0]
+            self._plan = (c, rows)
+            self.hop.dwell = float(self.dwell.currentData() or 3)
+            self.hop.reset(time.time())
+            self._hop_floor = None
+        self._start(c, rows)
+
+    def _start(self, c, rows, hopping=False):
+        """Lance (ou relance, balayage d'écoute) le ListenWorker sur une fenêtre du SDR."""
         kind = self.dev_combo.currentData()
         o = self.owner
         rt = getattr(o, "_rt", None)
@@ -15959,11 +16207,16 @@ class ListenDialog(QtWidgets.QDialog):
                                    pp["compander"], dict(o.sdr_cfg), tool=getattr(o, "_listen_tool", None),
                                    tool_dir=o.sdr_cfg.get("dir", ""), dev=pp["dev"], cut=pp["cut"], audio=pp["audio"])
         self.worker.volume = self.vol.value() / 100.0
-        self.worker.levels.connect(self._levels)
-        self.worker.status.connect(self.st_lbl.setText)
-        self.worker.stopped.connect(self._stopped)
+        self.worker.levels.connect(lambda lv, w_=self.worker: self._levels(lv) if w_ is self.worker else None)
+        self.worker.status.connect(lambda t, w_=self.worker: self.st_lbl.setText(t) if w_ is self.worker else None)
+        self.worker.stopped.connect(lambda why, w_=self.worker: self._stopped(why) if w_ is self.worker else None)
         self._sel_row = rows[0]
         self._pick(None)
+        self.last_levels = None
+        self._publish()
+        if hopping and self.audio is not None:      # balayage : on garde la sortie son
+            QtCore.QTimer.singleShot(0, self.worker.start)
+            return
         self.audio = AudioOut(self)
         if self.audio.error:
             self.st_lbl.setText(f"⚠ {self.audio.error} : les niveaux s'affichent quand même.")
@@ -15975,8 +16228,103 @@ class ListenDialog(QtWidgets.QDialog):
             wd.setEnabled(wd is self.table)
 
     def _feed(self):
-        if self.worker is not None and self.audio is not None:
-            self.audio.feed(self.worker.audio)
+        w = self.worker
+        if w is None:
+            return
+        while w.tap:                                   # copie : WAV, téléphone
+            b = w.tap.popleft()
+            if self.wav is not None:
+                try:
+                    self.wav.writeframes(b)
+                except Exception as e:  # noqa: BLE001
+                    self.st_lbl.setText(TR("⚠ Enregistrement arrêté : {}").format(e))
+                    self.rec_btn.setChecked(False)
+            self.owner.listen_web_push(b)
+        if self.audio is not None:
+            if self.pc_mute.isChecked():
+                w.audio.clear()
+            else:
+                self.audio.feed(w.audio)
+        now = time.time()
+        if self.hop_chk.isChecked() and len(self._wins) > 1 and now - self._t_hop >= 0.25:
+            self._t_hop = now
+            sq = None if self.sq_spin.value() <= -121 else float(self.sq_spin.value())
+            lv_ = [lv[0] for lv in (getattr(self, "last_levels", None) or ())]
+            if lv_:                                    # bruit = le plus bas vu sur toutes les fenêtres
+                self._hop_floor = min(lv_ + ([self._hop_floor] if self._hop_floor is not None else []))
+            lim = sq if sq is not None else ((self._hop_floor + HOP_OPEN_DB) if self._hop_floor is not None else 0.0)
+            act = any(v > lim for v in lv_)
+            if self.hop.feed(now, act):
+                self._hop_next()
+
+    def _hop_next(self):
+        """Balayage d'écoute : fenêtre suivante (le son et l'enregistrement continuent)."""
+        w, self.worker = self.worker, None
+        if w is not None:
+            w.requestInterruption()
+            w.wait(5000)
+        self._wi = (self._wi + 1) % len(self._wins)
+        c, rows = self._wins[self._wi]
+        self._plan = (c, rows)
+        self.hop.reset(time.time())
+        self.table.blockSignals(True)            # sinon itemChanged -> _window() remettrait la 1re fenêtre
+        for r in range(self.table.rowCount()):
+            for c_ in (3, 4, 5):
+                if self.table.item(r, c_) is not None:
+                    self.table.item(r, c_).setText("")
+            if self.table.item(r, 1) is not None:
+                self.table.item(r, 1).setText(self.ws[r]["name"] or "—")
+        self.table.blockSignals(False)
+        self._start(c, rows, hopping=True)
+
+    def toggle_rec(self, on):
+        """⏺ Son enregistré en WAV (48 kHz stéréo 16 bits) dans <journaux>/enregistrements_audio/<date>/."""
+        import wave
+        if not on:
+            if self.wav is not None:
+                try:
+                    self.wav.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self.st_lbl.setText(TR("⏺ Son enregistré : {}").format(self.wav_path))
+                self.owner.set_status(TR("⏺ Son enregistré : {}").format(self.wav_path))
+            self.wav = None
+            self.rec_btn.setText("⏺ Enregistrer le son")
+            self._publish()
+            return
+        c, rows = self._plan
+        f = self.ws[rows[0]]["freq"] if rows else (c or 0) / 1e6
+        d = Path(self.owner.log_dir) / "enregistrements_audio" / datetime.now().strftime("%Y-%m-%d")
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            p = d / f"ecoute_{datetime.now():%H%M%S}_{f:.3f}MHz.wav"
+            wv = wave.open(str(p), "wb")
+            wv.setnchannels(2)
+            wv.setsampwidth(2)
+            wv.setframerate(LISTEN_RATE)
+        except Exception as e:  # noqa: BLE001
+            self.st_lbl.setText(TR("⚠ Enregistrement impossible : {}").format(e))
+            self.rec_btn.blockSignals(True)
+            self.rec_btn.setChecked(False)
+            self.rec_btn.blockSignals(False)
+            return
+        self.wav, self.wav_path = wv, p
+        self.rec_btn.setText("⏹ Arrêter l'enregistrement")
+        self._publish()
+
+    def _publish(self):
+        """État de l'écoute pour la page web (vue 🎧 Écoute)."""
+        w = self.worker
+        c, rows = self._plan if w is not None else (None, [])
+        sel = self._sel_row if self._sel_row in rows else (rows[0] if rows else None)
+        lv = getattr(self, "last_levels", None) or []
+        k = rows.index(sel) if sel in rows else 0
+        self.owner._v8_listen = dict(
+            on=w is not None, f=self.ws[sel]["freq"] if sel is not None else None,
+            name=self.ws[sel]["name"] if sel is not None else "",
+            freqs=[self.ws[r]["freq"] for r in rows], rf=round(float(lv[k][0]), 1) if k < len(lv) else None,
+            rec=self.wav is not None, hop=bool(self.hop_chk.isChecked() and len(self._wins) > 1),
+            mode=self.mode_combo.currentText(), pc_mute=self.pc_mute.isChecked())
 
     def _levels(self, lv):
         for (rf, au, pil), r in zip(lv, self._plan[1]):
@@ -15986,6 +16334,7 @@ class ListenDialog(QtWidgets.QDialog):
             m = int(max(0, min(10, au * 10)))
             self.table.item(r, 4).setText("▮" * m)
         self.last_levels = lv
+        self._publish()
 
     def _stopped(self, why):
         if why:
@@ -15997,6 +16346,8 @@ class ListenDialog(QtWidgets.QDialog):
 
     def _end(self):
         self.timer.stop()
+        if self.rec_btn.isChecked():
+            self.rec_btn.setChecked(False)              # ferme le WAV proprement
         w, self.worker = self.worker, None
         if w is not None:
             w.requestInterruption()
@@ -16011,6 +16362,8 @@ class ListenDialog(QtWidgets.QDialog):
         for wd in (self.dev_combo, self.pre_combo, self.mode_combo, self.comp_combo, self.de_combo, self.sq_spin,
                    self.table):
             wd.setEnabled(True)
+        self.owner.listen_web_clear()
+        self._publish()
 
     def closeEvent(self, ev):
         self.stop()
@@ -32866,6 +33219,77 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_status("Réglages SDR enregistrés" + (" (appliqués au prochain cycle)." if self.is_running()
                                                           else "."))
 
+    # ---------------------------------------------------------------- V8 étape 6 : écouter de partout
+    def listen_freq(self, f, w=None):
+        """🎧 Écouter une fréquence (FREQ_ACTIONS : alarme, tuile, chasse ; téléphone). Fréquence de la liste ou non."""
+        d = getattr(self, "_listen", None)
+        if d is not None:
+            try:
+                d.close()
+            except RuntimeError:
+                pass
+        i = next((k for k, x in enumerate(self.watch) if x is w), None) if w is not None else None
+        if i is None:
+            i = next((k for k, x in enumerate(self.watch) if abs(x["freq"] - float(f)) < 0.0005), None)
+        self._listen = ListenDialog(self, rows=[i] if i is not None else [], freqs=[] if i is not None else [float(f)])
+        self._listen.show()
+        self._listen.raise_()
+        self._listen.toggle()
+        return self._listen
+
+    def rt_freq(self, f, w=None):
+        """⏱ Temps réel autour d'une fréquence (FREQ_ACTIONS)."""
+        self.open_realtime(float(f))
+
+    def listen_web_push(self, b):
+        """Son de l'écoute -> téléphone (vue 🎧 Écoute), seulement si quelqu'un la regarde."""
+        if self.web is None or not self.web.watching(("ecoute",)):
+            return
+        if getattr(self, "_v8_ring", None) is None:
+            self._v8_ring, self._v8_ring_lock = PcmRing(), threading.Lock()
+        pcm = pcm_mono16k(b)
+        with self._v8_ring_lock:
+            self._v8_ring.push(pcm)
+
+    def listen_web_clear(self):
+        if getattr(self, "_v8_ring", None) is not None:
+            with self._v8_ring_lock:
+                self._v8_ring.clear()
+
+    def web_listen_pcm(self, qs):
+        """GET /ecoute.pcm?s=n (fil du serveur web) : le son arrivé après le morceau n."""
+        n = next((v for k, _, v in (p.partition("=") for p in qs.split("&")) if k == "s"), "0")
+        try:
+            n = int(n)
+        except ValueError:
+            n = 0
+        if getattr(self, "_v8_ring", None) is None:
+            return pcm_packet(0, LISTEN_WEB_RATE, b""), "application/octet-stream"
+        with self._v8_ring_lock:
+            seq, data = self._v8_ring.since(n)
+        return pcm_packet(seq, LISTEN_WEB_RATE, data), "application/octet-stream"
+
+    def web_listen_json(self, qs):
+        """GET /ecoute.json : ce que le PC écoute (fil du serveur web : lit un dict remplacé d'un bloc)."""
+        st = dict(getattr(self, "_v8_listen", None) or dict(on=False))
+        return json.dumps(st, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8"
+
+    def web_listen_do(self, cmd):
+        """Commande 🎧 du téléphone (code PIN vérifié par le serveur), dans le fil de l'interface."""
+        if cmd.get("action") == "stop":
+            d = getattr(self, "_listen", None)
+            if d is not None and d.worker is not None:
+                d.stop()
+            self.set_status(TR("📱 Écoute arrêtée depuis le téléphone."))
+            return
+        f = cmd["f"]
+        d = self.listen_freq(f)
+        if cmd.get("mode"):
+            k = d.mode_combo.findData(cmd["mode"])
+            if k >= 0 and d.worker is None:
+                d.mode_combo.setCurrentIndex(k)
+        self.set_status(TR("📱 Écoute demandée depuis le téléphone : {} MHz").format(f"{f:.3f}"))
+
     # ------------------------------------------------------- 🆘 7.62 : remplacer un micro en un clic
     def replace_args(self, w):
         """Tout ce qu'il faut (préparé dans le fil de l'interface) pour chercher des remplaçantes de w : le plan actif,
@@ -36053,6 +36477,9 @@ def _load_lang_en():
         import lang_en_v8                                 # textes propres à la V8 (SDR), dans leur propre fichier
         exact.update(lang_en_v8.EXACT)
         tpl.update(lang_en_v8.TEMPLATES)
+        if not getattr(lang_en, "_v8_web", False):        # morceaux de la page web propres à la V8 (vue 🎧 Écoute)
+            lang_en.WEB = list(lang_en.WEB) + list(getattr(lang_en_v8, "WEB", []))
+            lang_en._v8_web = True
     except ImportError:
         pass
     return exact, tpl, lang_en.WEB, lang_en.VOCAB
@@ -36463,6 +36890,54 @@ MainWindow.TIPS_MENU.update({
                           "(hackrf_sweep, rtl_power), gains, et comment les installer.",
         "📡 SDR": "V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.",
 })
+
+
+# ---------------------------------------------------------------- V8 étape 6 : branchements sur les prises de la V7
+class V8Bridge(QtCore.QObject):
+    """Passe une commande du fil du serveur web au fil de l'interface (signal en file d'attente)."""
+    req = Signal(object)
+
+
+def _v8_web_extra(self):
+    br = getattr(self, "_v8_bridge", None)
+    if br is None:
+        br = self._v8_bridge = V8Bridge()
+        br.req.connect(self.web_listen_do, Qt.ConnectionType.QueuedConnection)
+    return ({"/ecoute.pcm": (("ecoute",), self.web_listen_pcm), "/ecoute.json": (("ecoute",), self.web_listen_json)},
+            {"/ecoute": (listen_request, br.req.emit)})
+
+
+MainWindow.web_extra = _v8_web_extra
+MainWindow.FREQ_ACTIONS += [("🎧 Écouter avec le SDR", "listen_freq"), ("⏱ Temps réel autour (SDR)", "rt_freq")]
+WEB_VIEWS.append(("ecoute", "🎧", "Écoute", "Écouter un micro analogique sur le téléphone, avec le SDR du PC"))
+WEB_VIEW_KEYS.append("ecoute")
+WEB_VIEWS_HIDDEN = WEB_VIEWS_HIDDEN + ("ecoute",)     # cachée tant qu'on ne la coche pas (écouter les micros)
+# vue 🎧 Écoute : le PC démodule avec son SDR, le son arrive en PCM 16 kHz (1re ligne en code : pas du texte à traduire)
+WEB_EXTRA_JS += r"""
+function e8(){return 8}
+let EA=null,ESEQ=0,ENEXT=0,ETIMER=null,EST=null;
+EXT.ecoute={mount(el){el.innerHTML=`<div class="tools"><button class="btn" id="eon">🔊 Activer le son ici</button><span id="est" class="mut"></span></div><div class="mut" style="margin:6px 0">Le PC écoute avec son SDR (HackRF, RTL-SDR…). Touche 🎧 sur un micro : le son arrive ici, avec un petit retard. Code PIN demandé (celui du PC). Les micros numériques ne s'écoutent pas.</div><div class="tools"><input class="in" id="eq" placeholder="🔎 Nom, fréquence…"><input class="in" id="ef" placeholder="Autre fréquence (MHz)" inputmode="decimal" style="width:11em"><button class="btn" id="ego">🎧 Écouter</button></div><div class="grid" id="eg"></div>`;
+ $("#eon").onclick=()=>eAudio();$("#eq").oninput=()=>update("ecoute");$("#ego").onclick=()=>{const f=parseFloat(($("#ef").value||"").replace(",","."));if(f>0)eCmd("start",f)};eState()},
+ update(st){const q=($("#eq").value||"").toLowerCase(),L=EST||{};
+  $("#est").textContent=L.on?("🎧 "+(L.name||"")+" · "+(L.f?L.f.toFixed(3)+" MHz":"")+(L.rf!=null?" · "+L.rf+" dBFS":"")+(L.rec?" · ⏺":"")+(L.hop?" · 🔁":"")):"Pas d'écoute en cours";
+  $("#eg").innerHTML=st.rows.filter(r=>!q||(r.name+" "+r.freq.toFixed(3)).toLowerCase().includes(q)).map(r=>{const on=L.on&&L.f!=null&&Math.abs(L.f-r.freq)<0.0006;
+   return `<div class="c ${r.tone}"><div class="n">${esc(r.name)}</div><div>${r.freq.toFixed(3)} MHz</div><button class="btn" data-ef="${on?"stop":r.freq}">${on?"■ Arrêter":"🎧 Écouter"}</button></div>`}).join("");
+  eState()}};
+async function eState(){try{const r=await api("ecoute.json");if(r.ok)EST=await r.json()}catch(e){}}
+document.addEventListener("click",e=>{const b=e.target.closest("button[data-ef]");if(!b)return;if(b.dataset.ef==="stop")eCmd("stop");else eCmd("start",+b.dataset.ef)});
+async function eCmd(a,f){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ let r;try{r=await post("ecoute",{pin:pin,action:a,f:f})}catch(x){alert("PC injoignable");return}
+ if(r.ok){LS.set("pin",pin);if(a==="start")eAudio();setTimeout(eState,600);return}
+ if(r.status===403){LS.set("pin","");alert("Code PIN incorrect.")}else if(r.status===429)alert("Trop d'essais : attends une minute.");else alert("Refusé ("+r.status+")")}
+function eAudio(){try{if(!EA){const C=window.AudioContext||window.webkitAudioContext;EA=new C()}EA.resume();ESEQ=0;ENEXT=0}catch(e){alert("Son impossible sur ce navigateur");return}
+ if(!ETIMER)ETIMER=setInterval(ePull,250);const b=$("#eon");if(b)b.textContent="🔊 Son actif"}
+async function ePull(){if(route()!=="ecoute"||!EA)return;
+ let r;try{r=await api("ecoute.pcm?s="+ESEQ)}catch(e){return}if(!r.ok)return;const b=await r.arrayBuffer();if(b.byteLength<12)return;
+ const h=new DataView(b);ESEQ=h.getUint32(4,true);const rate=h.getUint32(8,true),n=(b.byteLength-12)>>1;if(!n)return;
+ const buf=EA.createBuffer(1,n,rate),ch=buf.getChannelData(0);for(let i=0;i<n;i++)ch[i]=h.getInt16(12+2*i,true)/32768;
+ const s=EA.createBufferSource();s.buffer=buf;s.connect(EA.destination);const now=EA.currentTime;
+ if(ENEXT<now+0.05||ENEXT>now+1.5)ENEXT=now+0.25;s.start(ENEXT);ENEXT+=n/rate}
+"""
 
 
 def self_test(path):
