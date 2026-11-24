@@ -6136,3 +6136,4 @@ for _k in ("\nPas de saturation, pas de zone bruyante hors TV, pas de micro pile
            "\nSi c'est un émetteur que tu connais, mets-lui le statut « doit émettre ».",
            "Avec un signal très fort à côté, c'est sans doute le tinySA qui sature : règle d'abord ça.\n"):
     EXACT[_k] = _k.replace(_k.strip(), EXACT[_k.strip()])
+EXACT.update({"/*__EXTRA_JS__*/": "/*__EXTRA_JS__*/", "/*__VIEWS_X__*/{}": "/*__VIEWS_X__*/{}"})   # 7.68 : prises V8 (code)
