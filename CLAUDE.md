@@ -1743,6 +1743,59 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
      `RealtimeDialog.autorec_chk` (décoché : gros fichiers) -> 15 s d'IQ SigMF.
   5. **Mesures** PURE `obw_khz` (99 % de la puissance au-dessus du bruit), `signal_report` (type · largeur occupée · dB
      au-dessus du bruit · ✔ tient / ⚠ déborde d'un canal de `CHANNEL_KHZ` 200 kHz pour les FM / porteuses).
+- **V8 étape 9 (Clément : « Go ça part là dessus en V8 », tableau de 20 idées ; lot A)** : 📡 **moniteur multicanal**
+  (☰ Plus › 📡 SDR, `open_multimon`, `self._multimon`) : `MultiMonitorWorker` (UNE fenêtre IQ, FFT 4096 par bloc de
+  50 ms -> niveau / bruit / écart / voisins / largeur de TOUS les canaux ; « récepteurs virtuels » = `ChannelDemod`
+  complet pour `plan_vrx` (celui écouté, alarmes, prio critique, puis rotation toutes les 5 s, `VRX_MAX` 8) ; signaux
+  stats / spec / perf ; `t0` posé aux 1res données) ; `MultiMonitorDialog` (colonnes Nom, MHz, RF, Son, Santé, Largeur,
+  Voisins, Diagnostic ; `_plan` = la plus grande grappe de la liste dans la fenêtre ; waterfall ± 150 kHz et historique
+  du micro choisi). PURE `AudioMeter` (RMS / crête / saturation / silence / coupures), `adjacent_db`, `rf_audio_diag`
+  (rf_low, rf_drops, mute, cuts, hot, drift, adj), `plan_vrx`, `MicHistory` (+ `drift_stats`), `perf_view`. Seuils
+  `AUDIO_*`, `ADJ_WARN_DB` = choix de Claude. Testé : faux SDR (2 micros FM), gui_reel.
+- **V8 étape 10 (lot B : incidents)** : PURE `IQ_RING_S` 20 s / `IQ_RING_BUDGET` 256 Mo (`iq_ring_seconds`), `AnomalyTracker`
+  (par micro, 2 mesures / s : drop = RF 15 dB sous sa médiane 30 s s'il y avait une porteuse, sortie = retour à
+  ± 7,5 dB du niveau d'avant (`ref`) ; flaps = 3 drops / 10 min ; noise = bruit 8 dB au-dessus de sa médiane 5 min ;
+  adj = marge voisin < `ADJ_WARN_DB` ; appear = signal sur une « doit rester libre » (keep_on=False) ; diag = diagnostic
+  rouge ; une fois par `INC_COOLDOWN_S` 60 s et par type), `ANOM_LABELS`, `anomaly_text`, `unknown_bursts`,
+  `incident_slug`, `incident_prune`, `_svg_series`, `incident_report_html`. Worker : tampon `PreRing` de l'IQ brut,
+  `inc_req` (file) -> IQ d'avant + `INC_POST_S` 10 s d'après -> `_inc_write` (fil Python : iq.sigmf-data / meta avec
+  annotation) -> signal `incident` ; une demande pendant un enregistrement = MÊME dossier (`merged`, `iq["same"]`) ;
+  `BurstDetector` (médiane + 15 dB) -> `bursts` (inconnus seulement). Dialogue : onglets « Micro choisi » /
+  « Chronologie » (`chron`, `chron_tbl`, 500 lignes), `inc_chk` « 📦 Dossier d'incident automatique » (coché ; un toutes
+  les `INC_GAP_S` 2 min, manuel compris), `iq_chk`, « 📦 Noter un incident » (`manual_incident`), « ▶ Rejouer » / double-clic
+  (`open_incident` : rapport.html dans le navigateur + `RealtimeDialog.open_file(iq)`), `_inc_done` -> mesures.json +
+  rapport.html, `_prune` (`INC_MAX_MB` 2 Go). Dossiers : `<journaux>/incidents/<date>/incident_HHMMSS_<nom>/`. Journal
+  « INCIDENT SDR ». ☰ Plus › 📡 SDR › « 📦 Rejouer un incident SDR… » (`open_incidents`). Testé : faux SDR (le faux
+  va moins vite que le vrai temps : 6 s d'IQ pour 10 s), gui_reel ; **jamais avec un vrai SDR / de vrais micros**
+  (seuils à régler sur le terrain, place disque d'un vrai HackRF à 9,6 Mo/s non vécue).
+- **V8 étape 11 (lot C)** :
+  - **Répétition / spectacle** : PURE `SDR_MODES`, `RehearsalProfile` (learn(ligne) ; `summary` : snr p10 / médiane,
+    bruit, rf, son p50 / p95 ; ≥ `REH_MIN_N` 60 mesures), `rehearsal_norm`, `rehearsal_check` (reh_rf ≥ 10 dB sous le
+    p10, reh_noise + 6 dB, reh_audio + 6 dB au-dessus du p95). Moniteur : `mode_combo`, « 💾 Garder la répétition »
+    (`save_rehearsal` -> `sdr_cfg["rehearsal"]`, relu par `sdr_cfg_extra`), en spectacle les écarts passent dans le
+    diagnostic et l'`AnomalyTracker` (événement « diag » avec la phrase).
+  - **Comparaison des récepteurs** : PURE `compare_receivers(a, b)` (paires à ± 1,5 s, décalage médian, écart-type,
+    corrélation, décrochages vus par un seul), `compare_text` ; l'historique du moniteur note `tsa` (niveau tinySA si
+    un tinySA balaye : `MainWindow.tsa_live`) et `rx` (récepteur Shure de la fréquence) -> lignes sous le micro choisi.
+  - **Télémétrie Shure (14 / 15)** : PURE `SHURE_PORT` 2202, `shure_split`, `shure_parse`, `shure_apply` (CHAN_NAME,
+    FREQUENCY kHz × 1000, RX_RF_LVL − 128 dBm, AUDIO_LVL − 50 dBFS, RF_ANTENNA, TX_BATT_BARS (255 = inconnu), TX_TYPE,
+    SAMPLE … ALL <AX|XB|XX> rf … audio), `shure_init` (GET 0 ALL + METER_RATE 1 s), `DiversityAB`, `shure_addrs`.
+    `ShureClient` (fil Python, reconnexion 5 s, muet 15 s = coupé), `ReceiversDialog` (📶, ☰ Plus › 📡 SDR),
+    `MainWindow.receivers_start` (`sdr_cfg["shure"]`), `receivers`, `receiver_for(f)`, `watch_near`. **Protocole écrit
+    DE MÉMOIRE d'après la doc publique Shure, jamais essayé sur un vrai ULX-D / QLX-D / AD** (format SAMPLE surtout :
+    demander à Clément une capture `telnet <ip> 2202` au 1er essai). Testé avec un faux récepteur TCP (test_sdr_qt,
+    gui_reel).
+  - **Chasse / carte de chaleur avec le SDR (13)** : `sdr_listen_feed` nourrit aussi `HuntDialog.feed` (sans tinySA qui
+    balaye) -> les points de la carte prennent le niveau du SDR (en dBFS + correction du modèle).
+  - **Kit SDR** : `sdr_kit_dirs` (kit-sdr à côté de l'exe, ou Documents/TinySA Monitor/kit-sdr), `find_sdr_tool` y
+    cherche `bin/` et pose `SOAPY_SDR_ROOT` ; `SDR_KIT_HINT` en tête de « Comment l'installer ? » (sauf WiNRADiO) ;
+    `kit-sdr/LISEZMOI.txt` ; workflow **`.github/workflows/kit-sdr.yml`** (fichier propre à la V8 ; push sur v8-sdr qui
+    touche kit-sdr/ ou le workflow, ou à la main) : télécharge l'installateur PothosSDR (URL **supposée**
+    downloads.myriadrf.org …2021.07.25-vc16-x64.exe, 2e essai 2021.01.28), l'extrait au 7-Zip, garde bin (outils + dll)
+    + lib/SoapySDR + licences, publie `kit-sdr-windows.zip` dans une pré-release À PART « kit-sdr » (test-v8-sdr est
+    refaite à chaque compilation). **Jamais lancé au moment de l'écrire** (le réseau de la session ne voit ni GitHub
+    des autres projets ni myriadrf) : lire ses annotations au 1er passage. SDRplay (API) et WiNRADiO (logiciel) ne
+    peuvent pas être dans le kit ; le pilote USB (Zadig) reste à installer.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
