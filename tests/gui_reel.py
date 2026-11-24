@@ -3078,6 +3078,33 @@ check("🔁 perturbations : talkie tous les soirs vers 19 h trouvé", any(p_["na
                                                                     for p_ in _rd.pats), str(_rd.lines))
 shot(_rd, "perturbations")
 _rd.close()
+# 7.68 : 🩺 diagnostic RF, 📍 une fréquence dans chaque lieu, PDF au spectre coupé
+if not win.is_running():
+    win.toggle_run()
+    wait(3000)
+_dg = step("open_rf_diag", win.open_rf_diag)
+if _dg is not None:
+    wait(400)
+    check("🩺 diagnostic : des lignes, et une phrase de résumé", len(_dg.items) >= 1 and _dg.head.text() != "",
+          str([(x["key"], x["level"]) for x in _dg.items]))
+    check("🩺 diagnostic : chaque « Régler » a sa méthode", all(not x["fix"] or callable(getattr(win, x["fix"], None))
+                                                              for x in _dg.items))
+    shot(_dg, "diagnostic_rf")
+    _w0 = win.watch[0]
+    win.diag_set_thr(int(round(_w0["freq"] * 1000)), -97.0)
+    check("🩺 diagnostic : « Régler » donne un seuil propre", _w0["thr"] == -97.0, str(_w0["thr"]))
+    _w0["thr"] = None
+    _dg.close()
+check("🩺 diagnostic : les deux autres « Régler » existent", all(callable(getattr(win, n_, None)) for n_ in
+                                                               ("open_replace_key", "set_thr_auto", "open_scan_add")))
+if win.site_scans:
+    _sd = m.SitesDialog(win)
+    _sd.show_freq(win.watch[0]["freq"])
+    wait(300)
+    check("📍 partout : un niveau par scan gardé", _sd.ev_table.rowCount() == len(win.site_scans)
+          and _sd.tabs.currentIndex() == 4, str(_sd.ev_table.rowCount()))
+    shot(_sd, "frequence_partout")
+    _sd.reject()
 _mp = win.manual_path()
 check("manuel : fichier trouvé", _mp is not None and "Raccourcis clavier" in _mp.read_text(encoding="utf-8"), str(_mp))
 step("waterfall en fenêtre libre (gardée pour la relance)", lambda: win.panel_window(win.dock_wf, True, None, "normal"))
