@@ -621,3 +621,71 @@ SAME_TEMPLATES = list(SAME_TEMPLATES) + [
     "<text x='{}' y='{}' font-size='10' fill='#6b7488'>{} s</text>",
     "<rect x='{}' y='{}' width='{}' height='{}' fill='#f7f9fc' stroke='#d8dde8'/>", "<li>{}</li></ul>",
     "<li class='{}'>{}</li>"]
+
+# ---------------------------------------------------------------- V8 étape 11 : répétition, comparaison, Shure, kit
+EXACT.update({k: k for k in ("< GET 0 ALL >", "AB", "ALL", "FREQUENCY", "SAMPLE", "UNKN", "UNKNOWN", "[AX][BX]")})
+EXACT.update({
+    " · décrochages vus seulement par {} : {}, seulement par {} : {}": " · dropouts seen only by {}: {}, only by {}: {}",
+    "Adresses :": "Addresses:",
+    "Adresses IP des récepteurs (port 2202 par défaut, sinon « adresse:port »).":
+        "IP addresses of the receivers (port 2202 by default, otherwise “address:port”).",
+    "Aucun récepteur : tape une adresse puis Connecter.": "No receiver: type an address then Connect.",
+    "Bruit plus haut qu'en répétition ({} dB)": "Noise higher than in rehearsal ({} dB)",
+    "Connecter": "Connect",
+    "Diversity A / B": "Diversity A / B",
+    "Le plus simple : le kit SDR. Télécharge kit-sdr-windows.zip (pré-release « Kit SDR » du dépôt) et dézippe-le À CÔTÉ "
+    "de TinySA-Monitor.exe (dossier « kit-sdr ») : hackrf_sweep, rtl_power, rx_tools et SoapySDR sont trouvés tout seuls. "
+    "Restent à installer à part : le pilote USB (Zadig), et pour un SDRplay ou un WiNRADiO, le logiciel de la marque.":
+        "Easiest: the SDR kit. Download kit-sdr-windows.zip (the “Kit SDR” pre-release of the repository) and unzip it "
+        "NEXT TO TinySA-Monitor.exe (“kit-sdr” folder): hackrf_sweep, rtl_power, rx_tools and SoapySDR are found "
+        "automatically. Still to install separately: the USB driver (Zadig), and for an SDRplay or a WiNRADiO, the "
+        "brand's software.",
+    "Pile": "Battery",
+    "RF = niveau reçu par le récepteur (dBm) · Antenne = A, B ou aucune · Diversity = part du\ntemps sur chaque antenne et "
+    "bascules (beaucoup de bascules / « aucune » = antennes à revoir).":
+        "RF = level received by the receiver (dBm) · Antenna = A, B or none · Diversity = share of\ntime on each antenna "
+        "and switches (many switches / “none” = check the antennas).",
+    "RF bien plus faible qu'en répétition ({} dB)": "RF much weaker than in rehearsal ({} dB)",
+    "Retient ce qui a été appris pendant la répétition (gardé dans les réglages) : il sert en mode 🎤 Spectacle.":
+        "Keeps what was learned during rehearsal (saved in the settings): it is used in 🎤 Show mode.",
+    "Rien d'appris pour l'instant : laisse tourner la répétition (30 s par micro au moins).":
+        "Nothing learned yet: let the rehearsal run (at least 30 s per mic).",
+    "Récepteur": "Receiver",
+    "Récepteurs Shure (télémétrie)": "Shure receivers (telemetry)",
+    "Se connecte aux récepteurs (et retient les adresses).": "Connects to the receivers (and remembers the addresses).",
+    "Son plus fort qu'en répétition ({} dB)": "Sound louder than in rehearsal ({} dB)",
+    "Surveillance : comme d'habitude.\n🎭 Répétition : le moniteur APPREND ce qui est normal pour chaque micro (niveau, "
+    "bruit, son).\n🎤 Spectacle : il prévient quand un micro s'écarte de sa répétition.":
+        "Monitoring: as usual.\n🎭 Rehearsal: the monitor LEARNS what is normal for each mic (level, noise, sound).\n"
+        "🎤 Show: it warns when a mic drifts away from its rehearsal.",
+    "Tes récepteurs Shure en réseau (ULX-D, QLX-D, SLX-D, Axient Digital…) disent eux-mêmes ce qu'ils reçoivent : niveau "
+    "RF, antenne utilisée, son, pile. Tape leur adresse IP (séparées par des virgules) puis":
+        "Your networked Shure receivers (ULX-D, QLX-D, SLX-D, Axient Digital…) tell you themselves what they receive: RF "
+        "level, antenna in use, sound, battery. Type their IP address (comma-separated) then",
+    "V8 : niveau RF, antenne A / B, diversity, son et pile que voient tes récepteurs\nShure en réseau, reliés à ta liste ; "
+    "comparés au SDR dans le moniteur multicanal.":
+        "V8: RF level, antenna A / B, diversity, sound and battery seen by your networked\nShure receivers, linked to your "
+        "list; compared with the SDR in the multichannel monitor.",
+    "aucune : {} %": "none: {} %",
+    "connexion fermée par le récepteur": "connection closed by the receiver",
+    "connexion…": "connecting…",
+    "plus de réponse depuis 15 s": "no answer for 15 s",
+    "récepteur": "receiver",
+    "{} / {} : décalage {} dB (± {})": "{} / {}: offset {} dB (± {})",
+    "{} / {} : pas assez de mesures communes": "{} / {}: not enough common measurements",
+    "{} bascules": "{} switches",
+    "⚠ Pas encore de répétition gardée : passe en 🎭 Répétition pendant les balances.":
+        "⚠ No rehearsal saved yet: switch to 🎭 Rehearsal during the soundcheck.",
+    "🎤 Comparé à la répétition « {} » ({} micros).": "🎤 Compared with the rehearsal “{}” ({} mics).",
+    "🎤 Spectacle (comparer)": "🎤 Show (compare)",
+    "🎭 J'apprends : {} micro(s) appris (30 s de mesures chacun au moins).":
+        "🎭 Learning: {} mic(s) learned (at least 30 s of measurements each).",
+    "🎭 Répétition (apprendre)": "🎭 Rehearsal (learn)",
+    "💾 Garder la répétition": "💾 Keep the rehearsal",
+    "💾 Répétition gardée : {} micros. Passe en 🎤 Spectacle pour comparer.":
+        "💾 Rehearsal saved: {} mics. Switch to 🎤 Show to compare.",
+    "📦 avec {}": "📦 with {}",
+    "📶 Récepteurs Shure": "📶 Shure receivers",
+    "📶 Récepteurs Shure en réseau (télémétrie)…": "📶 Networked Shure receivers (telemetry)…",
+})
+SAME_TEMPLATES += ["< SET {} METER_RATE {} >"]

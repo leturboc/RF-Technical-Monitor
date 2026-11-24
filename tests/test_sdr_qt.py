@@ -333,5 +333,41 @@ check("WiNRADiO : 4 MHz -> DDC 5 MS/s en 16 bits (préféré au 32 bits)", src.r
 src.close()
 m.WINRADIO_LIB = None
 
+# V8 étape 11 : client Shure sur un faux récepteur (TCP)
+import socket as _so, threading as _th
+srv = _so.socket()
+srv.setsockopt(_so.SOL_SOCKET, _so.SO_REUSEADDR, 1)
+srv.bind(("127.0.0.1", 0))
+srv.listen(1)
+got_cmd = []
+
+
+def fake_rx():
+    c, _ = srv.accept()
+    c.settimeout(2)
+    try:
+        got_cmd.append(c.recv(200).decode())
+        c.sendall(b"< REP 1 CHAN_NAME {Chant} >< REP 1 FREQUENCY 0606000 >")
+        for k in range(6):
+            c.sendall(f"< SAMPLE 1 ALL {'AX' if k % 3 else 'XB'} 0{90 + k} 030 >".encode())
+            time.sleep(0.1)
+        time.sleep(0.5)
+    finally:
+        c.close()
+
+
+_th.Thread(target=fake_rx, daemon=True).start()
+sc = m.ShureClient("127.0.0.1", srv.getsockname()[1])
+sc.start()
+wait_until(lambda: len(sc.snapshot().get(1, {}).get("hist", [])) >= 6, 5)
+sn = sc.snapshot().get(1, {})
+check("Shure : connecté, commandes envoyées", got_cmd and "GET 0 ALL" in got_cmd[0], str(got_cmd))
+check("Shure : canal lu (nom, fréquence, RF, antenne)", sn.get("name") == "Chant" and sn.get("freq") == 606.0
+      and sn.get("rf") == 95 - 128 and len(sn.get("hist", [])) >= 6, str(sn))
+check("Shure : diversity comptée", "bascules" in sn.get("div", ""), sn.get("div"))
+wait_until(lambda: not sc.ok, 5)
+check("Shure : coupure vue", not sc.ok and sc.err, sc.err)
+sc.stop()
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

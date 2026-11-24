@@ -1,0 +1,71 @@
+name: Kit SDR (V8)
+
+# Fabrique kit-sdr-windows.zip (outils SDR libres pour Windows, extraits de l'installateur PothosSDR) et le publie dans la
+# pré-release « kit-sdr ». Se lance quand le dossier kit-sdr/ ou ce fichier change sur v8-sdr, ou à la main.
+# Fichier propre à la V8 (pas dans la V7) : aucun conflit avec build-exe.yml.
+
+on:
+  push:
+    branches: [v8-sdr]
+    paths: ["kit-sdr/**", ".github/workflows/kit-sdr.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kit-sdr
+  cancel-in-progress: true
+
+jobs:
+  kit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Télécharger PothosSDR
+        shell: pwsh
+        run: |
+          $urls = @(
+            "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2021.07.25-vc16-x64.exe",
+            "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2021.01.28-vc16-x64.exe"
+          )
+          $ok = $false
+          foreach ($u in $urls) {
+            try { Invoke-WebRequest -Uri $u -OutFile pothos.exe -UseBasicParsing; $ok = $true; Write-Host "OK $u"; break }
+            catch { Write-Host "raté : $u" }
+          }
+          if (-not $ok) { Write-Host "::error title=Kit SDR::installateur PothosSDR introuvable"; exit 1 }
+      - name: Extraire et ranger
+        shell: pwsh
+        run: |
+          7z x pothos.exe -opothos -y | Out-Null
+          New-Item -ItemType Directory -Force kit/kit-sdr/bin, kit/kit-sdr/lib | Out-Null
+          $need = "hackrf_*.exe","rtl_*.exe","rx_*.exe","SoapySDRUtil.exe","airspy*.exe","*.dll"
+          foreach ($p in $need) { Copy-Item -Path "pothos/bin/$p" -Destination kit/kit-sdr/bin -ErrorAction SilentlyContinue }
+          if (Test-Path pothos/lib/SoapySDR) { Copy-Item -Recurse pothos/lib/SoapySDR kit/kit-sdr/lib/ }
+          foreach ($d in "licenses","share/licenses") { if (Test-Path "pothos/$d") { Copy-Item -Recurse "pothos/$d" kit/kit-sdr/licenses } }
+          Copy-Item kit-sdr/LISEZMOI.txt kit/kit-sdr/
+          $manque = @()
+          foreach ($t in "hackrf_sweep.exe","hackrf_transfer.exe","rtl_power.exe","rtl_sdr.exe","rx_power.exe","rx_sdr.exe","SoapySDRUtil.exe") {
+            if (-not (Test-Path "kit/kit-sdr/bin/$t")) { $manque += $t }
+          }
+          if ($manque) { Write-Host "::warning title=Kit SDR::absents de PothosSDR : $($manque -join ', ')" }
+          else { Write-Host "::notice title=Kit SDR::tous les outils sont dans le kit" }
+          & kit/kit-sdr/bin/SoapySDRUtil.exe --info 2>&1 | Select-Object -First 30
+          Compress-Archive -Path kit/kit-sdr -DestinationPath kit-sdr-windows.zip
+          "{0:N0} Mo" -f ((Get-Item kit-sdr-windows.zip).Length / 1MB)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-sdr-windows
+          path: kit-sdr-windows.zip
+      - name: Publier dans la pré-release kit-sdr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Pré-release à part (« kit-sdr ») : celle de la V8 (test-v8-sdr) est effacée et refaite à chaque compilation.
+          if ! gh release view kit-sdr >/dev/null 2>&1; then
+            gh release create kit-sdr --prerelease --target "$GITHUB_SHA" --title "Kit SDR pour TinySA Monitor (Windows)" \
+              --notes "Outils SDR libres (HackRF, RTL-SDR, rx_tools, SoapySDR) : dézipper à côté de TinySA-Monitor.exe. Voir LISEZMOI.txt dans le zip."
+          fi
+          gh release upload kit-sdr kit-sdr-windows.zip --clobber && echo "::notice title=Kit SDR::publié dans la pré-release kit-sdr"

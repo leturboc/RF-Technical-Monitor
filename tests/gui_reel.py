@@ -1150,17 +1150,20 @@ if _mm is not None:
     check("📦 tampon IQ circulaire actif", _mm.worker is not None and _mm.worker.ring_s >= 1.0,
           str(getattr(_mm.worker, "ring_s", None)))
     step("📦 noter un incident", _mm.manual_incident)
-    _inc = _mm.chron[0]["dir"] if _mm.chron else ""
+    _ci = _mm.chron[0] if _mm.chron else {}           # (rangé dans un incident déjà en cours s'il y en a un)
     _t0 = time.time()
-    while _inc and not os.path.isfile(os.path.join(_inc, "rapport.html")) and time.time() - _t0 < 30:
+    while _ci and "⏳" in (_mm.chron_tbl.item(_mm.chron.index(_ci), 3).text() if _ci in _mm.chron else "") \
+            and time.time() - _t0 < 40:
         wait(500)
+    _inc = _ci.get("dir", "")
     _ok_inc = bool(_inc) and all(os.path.isfile(os.path.join(_inc, f_)) for f_ in
                                  ("rapport.html", "mesures.json", "iq.sigmf-data", "iq.sigmf-meta"))
     check("📦 dossier d'incident : IQ + mesures + rapport", _ok_inc, _inc)
     if _ok_inc:
         import json as _jinc
         _dinc = _jinc.load(open(os.path.join(_inc, "mesures.json"), encoding="utf-8"))
-        check("📦 IQ d'avant ET d'après (≥ 11 s)", _dinc["iq"].get("dur", 0) >= 11.0, str(_dinc["iq"]))
+        check("📦 IQ gardé (avant + 10 s après ; le faux SDR va moins vite que le vrai temps)", _dinc["iq"].get("dur", 0) >= 4.0,
+              str(_dinc["iq"]))
         check("📦 rapport : courbes du micro", "<svg" in open(os.path.join(_inc, "rapport.html"), encoding="utf-8").read())
         check("📦 chronologie : dossier noté", "📦" in (_mm.chron_tbl.item(0, 3).text() if _mm.chron_tbl.item(0, 3) else ""))
     _c0 = _mm.chans[0]
@@ -1171,6 +1174,21 @@ if _mm is not None:
     _mm.tabs.setCurrentIndex(1)
     wait(300)
     shot(_mm, "incidents_chronologie")
+    _mm.tabs.setCurrentIndex(0)
+    # V8 étape 11 : répétition -> spectacle
+    _mm.mode_combo.setCurrentIndex(_mm.mode_combo.findData("learn"))
+    for _ in range(70):
+        for _r in _mm.rows:
+            _mm.reh.learn(_r)
+    check("🎭 répétition gardée", _mm.save_rehearsal() and len(win.sdr_cfg["rehearsal"]["mics"]) >= 1,
+          _mm.reh_lbl.text())
+    _mm.mode_combo.setCurrentIndex(_mm.mode_combo.findData("show"))
+    wait(1500)
+    check("🎤 spectacle : comparé à la répétition", "🎤" in _mm.reh_lbl.text(), _mm.reh_lbl.text())
+    _ref0 = win.sdr_cfg["rehearsal"]["mics"].get(_mm.rows[0]["key"]) if _mm.rows else None
+    check("🎤 spectacle : RF effondrée repérée", bool(m.rehearsal_check(_ref0, dict(_mm.rows[0], snr=-5.0))) if _ref0 else False)
+    shot(_mm, "repetition_spectacle")
+    _mm.mode_combo.setCurrentIndex(0)
     step("multicanal ■", _mm.toggle)
     check("📡 multicanal : arrêté proprement", _mm.worker is None)
     if _ok_inc:
@@ -1182,6 +1200,58 @@ if _mm is not None:
         if _rti is not None:
             _rti.close()
     _mm.close()
+# V8 étape 11 : récepteurs Shure (faux récepteur en TCP), reliés à ma liste par la fréquence
+import socket as _so11, threading as _th11
+_srv11 = _so11.socket()
+_srv11.setsockopt(_so11.SOL_SOCKET, _so11.SO_REUSEADDR, 1)
+_srv11.bind(("127.0.0.1", 0))
+_srv11.listen(2)
+_f11 = _pair[0]["freq"]
+
+
+def _fake_shure():
+    while True:
+        try:
+            c, _ = _srv11.accept()
+        except OSError:
+            return
+        c.settimeout(2)
+        try:
+            c.recv(200)
+            c.sendall(f"< REP 1 CHAN_NAME {{Chant}} >< REP 1 FREQUENCY {int(round(_f11 * 1000)):07d} >"
+                      "< REP 1 TX_BATT_BARS 003 >".encode())
+            for k in range(200):
+                c.sendall(f"< SAMPLE 1 ALL {'AX' if k % 4 else 'XB'} 0{88 + k % 5} 032 >".encode())
+                time.sleep(0.2)
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+
+_th11.Thread(target=_fake_shure, daemon=True).start()
+win.sdr_cfg["shure"] = f"127.0.0.1:{_srv11.getsockname()[1]}"
+_rd = step("📶 récepteurs Shure", win.open_receivers)
+_t0 = time.time()
+while _rd is not None and not win.receivers() and time.time() - _t0 < 8:
+    wait(300)
+wait(1500)
+if _rd is not None:
+    _rd.refresh()
+    _txt11 = [(_rd.table.item(0, c).text() if _rd.table.item(0, c) else "") for c in range(_rd.table.columnCount())] \
+        if _rd.table.rowCount() else []
+    check("📶 récepteur : canal lu (nom, MHz, RF, antenne, pile)", len(_txt11) > 8 and _txt11[2] == "Chant"
+          and "dBm" in _txt11[4] and _txt11[8].startswith("▮▮▮"), str(_txt11))
+    check("📶 récepteur : relié à ma liste par la fréquence", _txt11 and _txt11[9] == (_pair[0]["name"] or f"{_f11:.3f}"),
+          str(_txt11))
+    check("📶 récepteur trouvé pour la fréquence du micro", (win.receiver_for(_f11) or {}).get("name") == "Chant")
+    shot(_rd, "recepteurs_shure")
+    _rd.close()
+for _c11 in list((getattr(win, "_shure", None) or {}).values()):
+    _c11.stop()
+win._shure = {}
+win.sdr_cfg["shure"] = ""
+_srv11.close()
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
 _hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
 _hd.show()

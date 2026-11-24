@@ -556,5 +556,45 @@ h = ns["incident_report_html"](doc)
 ok("rapport d'incident : complet et échappé", "&lt;chant&gt;" in h and h.count("<svg") == 2 and "iq.sigmf-data" in h
    and "stroke='#ff3b30'" in h and "RF trop faible" in h)
 
+# ---------------------------------------------------------------- V8 étape 11 : répétition, comparaison, Shure
+rp = ns["RehearsalProfile"]()
+for i in range(80):
+    rp.learn(dict(key=600125, name="HF1", freq=600.125, snr=30 + (i % 5), noise=-95.0, rf=-60.0,
+                  rms=-20.0 if i % 2 else -70.0))
+rp.learn(dict(key=601000, name="HF2", freq=601.0, snr=20, noise=-95, rf=-70))
+sm = rp.summary()
+ok("répétition : seulement les micros assez mesurés", list(sm) == [600125] and sm[600125]["audio_p95"] == -20.0
+   and sm[600125]["snr_p10"] == 30.0, str(sm))
+ref = sm[600125]
+chk = ns["rehearsal_check"]
+ok("spectacle : comme en répétition = rien", chk(ref, dict(snr=29, noise=-94, rms=-22)) == [])
+ok("spectacle : RF faible, bruit, son trop fort", [x[0] for x in chk(ref, dict(snr=12, noise=-85, rms=-8))]
+   == ["reh_rf", "reh_noise", "reh_audio"])
+rn = ns["rehearsal_norm"]({"t": 5, "name": "Balances", "mics": {"600125": ref, "x": {}}})
+ok("répétition : relue de la config (clés en texte)", list(rn["mics"]) == [600125] and rn["mics"][600125]["snr_p10"] == 30.0)
+ok("répétition : config abîmée ignorée", ns["rehearsal_norm"]({"mics": 3}) is None and ns["rehearsal_norm"](None) is None)
+ok("réglages SDR : répétition + récepteurs gardés", ns["sdr_cfg_extra"]({"rehearsal": {"mics": {"1": ref}},
+   "shure": "10.0.0.5, 10.0.0.6:2300, 10.0.0.5"}).get("shure") == "10.0.0.5, 10.0.0.6:2300")
+A = [(t, -60.0 if t not in (20, 21) else -90.0) for t in range(60)]
+B = [(t + 0.2, -50.0) for t in range(60)]
+cr = ns["compare_receivers"](A, B)
+ok("comparaison : décalage et décrochages vus par un seul", cr["offset"] == 10.0 and cr["only_a"] == 2 and cr["only_b"] == 0,
+   str(cr))
+ok("comparaison : trop peu de mesures", ns["compare_receivers"](A[:5], B) is None)
+ok("comparaison : texte", "+10.0 dB" in ns["compare_text"](cr, "SDR", "tinySA") and "SDR : 2" in ns["compare_text"](cr, "SDR", "tinySA"))
+ms, rest = ns["shure_split"]("< REP 1 CHAN_NAME {Chant 1   } >< REP 1 FREQUENCY 0578125 >< SAMPLE 1 ALL XB 095 040 >< REP 2")
+ok("Shure : messages découpés", len(ms) == 3 and rest == "< REP 2", str((ms, rest)))
+stt = {}
+for x in ms + ["REP 1 TX_BATT_BARS 004", "REP 2 TX_BATT_BARS 255", "REP 0 MODEL {ULXD4Q}"]:
+    ns["shure_apply"](stt, x)
+ok("Shure : nom, fréquence, RF, antenne, son, pile", stt[1] == dict(name="Chant 1", freq=578.125, ant="XB", rf=-33,
+   audio=-10, batt=4) and stt[2] == dict(batt=None) and 0 not in stt, str(stt))
+ok("Shure : commandes d'init", ns["shure_init"](2)[0] == "< GET 0 ALL >" and ns["shure_init"](2)[2] == "< SET 2 METER_RATE 01000 >")
+dv = ns["DiversityAB"]()
+for a_ in ["AX", "AX", "XB", "AX", "XX"]:
+    dv.feed(a_)
+ok("diversity A / B : part et bascules", dv.switches == 2 and "A 60 %" in dv.text() and "aucune : 20 %" in dv.text(), dv.text())
+ok("Shure : adresses", ns["shure_addrs"]("a.b, 1.2.3.4:99; bad!x") == [("a.b", 2202), ("1.2.3.4", 99)])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

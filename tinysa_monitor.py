@@ -7627,6 +7627,11 @@ def sdr_cfg_extra(sd):
             except (TypeError, ValueError):
                 pass
         out["offsets"] = o2
+    rh = rehearsal_norm(sd.get("rehearsal"))           # étape 11 : profil de répétition, récepteurs Shure
+    if rh:
+        out["rehearsal"] = rh
+    if isinstance(sd.get("shure"), str):
+        out["shure"] = ", ".join(f"{h}:{p}" if p != SHURE_PORT else h for h, p in shure_addrs(sd["shure"]))
     return out
 
 
@@ -8061,7 +8066,9 @@ def iq_ring_seconds(bytes_per_s, keep_s=IQ_RING_S, budget=IQ_RING_BUDGET):
 
 
 class AnomalyTracker:
-    """8. Perturbations d'UN micro, repérées dans ses mesures (2 par seconde) : décrochage (RF qui s'effondre),
+    """8. Perturbations d'UN micro, repérées dans ses mesures (2 par seconde). keep_on=True (micro, ou sans statut) :
+    décrochage seulement s'il y avait une porteuse ; False (« doit rester libre ») : un signal qui arrive = anomalie.
+    Décrochage (RF qui s'effondre),
     décrochages répétés, bruit qui monte, voisin qui se rapproche, signal sur une fréquence qui doit rester libre,
     diagnostic qui passe au rouge. feed(t, …) -> [{kind, t, value}] (chaque type : une fois par INC_COOLDOWN_S)."""
 
@@ -8162,6 +8169,246 @@ def incident_prune(entries, max_bytes):
         out.append(p)
         tot -= int(n)
     return out
+
+
+# ------------------------------------------------------------------ V8 étape 11 : répétition, comparaison, récepteurs (lot C)
+# 20. Mode répétition / spectacle : pendant la répétition, le moniteur APPREND ce qui est normal pour chaque micro
+# (niveau, écart au bruit, bruit, son) ; pendant le spectacle, il prévient quand un micro s'en écarte.
+# 10. Comparaison des récepteurs : SDR, tinySA et récepteurs Shure mesurent le même micro -> décalage, décrochages
+# vus par un seul (antenne, placement). 14. / 15. Télémétrie Shure (ULX-D, QLX-D, SLX-D, Axient Digital) : protocole
+# texte TCP port 2202 (« < GET 1 RX_RF_LVL > »), écrit de mémoire d'après la doc publique de Shure : PAS essayé sur un
+# vrai récepteur (formats SAMPLE en particulier).
+REH_MIN_N = 60                   # mesures mini (≈ 30 s) pour qu'un micro soit « appris »
+REH_SNR_DB = 10.0                # spectacle : écart au bruit 10 dB sous le plus faible de la répétition
+REH_NOISE_DB = 6.0               # … bruit 6 dB au-dessus de celui de la répétition
+REH_AUDIO_DB = 6.0               # … son 6 dB au-dessus du plus fort de la répétition
+SDR_MODES = (("watch", "Surveillance"), ("learn", "🎭 Répétition (apprendre)"), ("show", "🎤 Spectacle (comparer)"))
+
+
+class RehearsalProfile:
+    """20. Ce qui est normal pour chaque micro, appris pendant la répétition. learn(row) avec les lignes du moniteur ;
+    summary() -> {clé: {name, freq, n, snr_p10, snr_med, noise_med, rf_med, audio_p50, audio_p95}}."""
+
+    def __init__(self):
+        self.d = {}
+
+    def learn(self, row):
+        k = row.get("key")
+        if k is None:
+            return
+        e = self.d.setdefault(k, dict(name=row.get("name", ""), freq=row.get("freq"), snr=deque(maxlen=7200),
+                                      noise=deque(maxlen=7200), rf=deque(maxlen=7200), audio=deque(maxlen=7200)))
+        for f in ("snr", "noise", "rf"):
+            if row.get(f) is not None:
+                e[f].append(float(row[f]))
+        if row.get("rms") is not None and row.get("rms") > AUDIO_SILENCE_DB:      # le son quand quelqu'un parle
+            e["audio"].append(float(row["rms"]))
+
+    def summary(self):
+        out = {}
+        for k, e in self.d.items():
+            if len(e["snr"]) < REH_MIN_N:
+                continue
+
+            def pc(v, q):
+                return round(float(np.percentile(np.array(v), q)), 1) if len(v) else None
+            out[k] = dict(name=e["name"], freq=e["freq"], n=len(e["snr"]), snr_p10=pc(e["snr"], 10),
+                          snr_med=pc(e["snr"], 50), noise_med=pc(e["noise"], 50), rf_med=pc(e["rf"], 50),
+                          audio_p50=pc(e["audio"], 50), audio_p95=pc(e["audio"], 95))
+        return out
+
+
+def rehearsal_norm(d):
+    """Profil de répétition lu de la config -> {t, name, mics: {clé int: résumé}} (ou None)."""
+    if not isinstance(d, dict) or not isinstance(d.get("mics"), dict):
+        return None
+    mics = {}
+    for k, v in d["mics"].items():
+        try:
+            k = int(k)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(v, dict):
+            mics[k] = {f: (None if v.get(f) is None else float(v[f])) if f not in ("name",) else str(v.get(f, ""))[:60]
+                       for f in ("name", "freq", "n", "snr_p10", "snr_med", "noise_med", "rf_med", "audio_p50", "audio_p95")}
+    return dict(t=float(d.get("t") or 0.0), name=str(d.get("name", ""))[:60], mics=mics) if mics else None
+
+
+def rehearsal_check(ref, row, tr=None):
+    """20. Spectacle : écarts d'un micro à sa répétition -> [(code, ton, phrase)] (vide = comme en répétition)."""
+    tr = tr or (lambda x: x)
+    if not ref:
+        return []
+    out = []
+    if ref.get("snr_p10") is not None and row.get("snr") is not None and row["snr"] < ref["snr_p10"] - REH_SNR_DB:
+        out.append(("reh_rf", "bad", tr("RF bien plus faible qu'en répétition ({} dB)").format(
+            f"{row['snr'] - ref['snr_p10']:+.0f}")))
+    if ref.get("noise_med") is not None and row.get("noise") is not None and row["noise"] > ref["noise_med"] + REH_NOISE_DB:
+        out.append(("reh_noise", "warn", tr("Bruit plus haut qu'en répétition ({} dB)").format(
+            f"{row['noise'] - ref['noise_med']:+.0f}")))
+    if ref.get("audio_p95") is not None and row.get("rms") is not None and row["rms"] > ref["audio_p95"] + REH_AUDIO_DB:
+        out.append(("reh_audio", "warn", tr("Son plus fort qu'en répétition ({} dB)").format(
+            f"{row['rms'] - ref['audio_p95']:+.0f}")))
+    return out
+
+
+def compare_receivers(a, b, tol_s=1.5, drop_db=15.0):
+    """10. Deux séries de niveaux d'un même micro [(t, dB)] (ex. SDR et tinySA, ou antenne A / B d'un récepteur) ->
+    {n, offset (médiane b − a), spread (écart-type), corr, only_a, only_b} ; only_x = décrochages (niveau 15 dB sous sa
+    médiane) vus par x alors que l'autre allait bien (antenne masquée, mauvais placement). None si < 10 paires."""
+    a = sorted((float(t), float(v)) for t, v in a if v is not None)
+    b = sorted((float(t), float(v)) for t, v in b if v is not None)
+    if len(a) < 10 or len(b) < 10:
+        return None
+    tb = np.array([t for t, _ in b])
+    vb = np.array([v for _, v in b])
+    pa, pb = [], []
+    for t, v in a:
+        i = int(np.argmin(np.abs(tb - t)))
+        if abs(tb[i] - t) <= tol_s:
+            pa.append(v)
+            pb.append(vb[i])
+    if len(pa) < 10:
+        return None
+    pa, pb = np.array(pa), np.array(pb)
+    ma, mb = float(np.median(pa)), float(np.median(pb))
+    da, db = pa < ma - drop_db, pb < mb - drop_db
+    d = pb - pa
+    corr = float(np.corrcoef(pa, pb)[0, 1]) if np.std(pa) > 0 and np.std(pb) > 0 else None
+    return dict(n=len(pa), offset=round(float(np.median(d)), 1), spread=round(float(np.std(d)), 1),
+                corr=None if corr is None else round(corr, 2), only_a=int(np.sum(da & ~db)), only_b=int(np.sum(db & ~da)))
+
+
+def compare_text(c, na, nb, tr=None):
+    """Résultat de compare_receivers -> phrase."""
+    tr = tr or (lambda x: x)
+    if not c:
+        return tr("{} / {} : pas assez de mesures communes").format(na, nb)
+    s = tr("{} / {} : décalage {} dB (± {})").format(na, nb, f"{c['offset']:+.1f}", f"{c['spread']:.1f}")
+    if c["only_a"] or c["only_b"]:
+        s += tr(" · décrochages vus seulement par {} : {}, seulement par {} : {}").format(na, c["only_a"], nb, c["only_b"])
+    return s
+
+
+SHURE_PORT = 2202
+
+
+def shure_split(buf):
+    """Flux texte d'un récepteur Shure -> (messages « < … > » complets, reste)."""
+    out = []
+    while True:
+        i = buf.find("<")
+        j = buf.find(">", i + 1) if i >= 0 else -1
+        if i < 0 or j < 0:
+            return out, (buf[i:] if i >= 0 else "")
+        out.append(buf[i + 1:j].strip())
+        buf = buf[j + 1:]
+
+
+def shure_parse(msg):
+    """« REP 1 RX_RF_LVL 095 » / « REP 1 CHAN_NAME {Chant  } » / « SAMPLE 1 ALL AX 095 040 » -> dict(type, ch, key,
+    val (texte), args (liste)) ou None. Canal 0 = tout l'appareil."""
+    m = re.match(r"(REP|SAMPLE|REPORT)\s+(?:(\d+)\s+)?(\w+)\s*(.*)$", str(msg).strip())
+    if not m:
+        return None
+    rest = m.group(4).strip()
+    br = re.match(r"\{(.*)\}", rest)
+    val = br.group(1).strip() if br else rest
+    return dict(type=m.group(1), ch=int(m.group(2) or 0), key=m.group(3).upper(), val=val,
+                args=[] if br else rest.split())
+
+
+def shure_apply(state, msg):
+    """Met à jour {canal: {name, freq MHz, rf dBm, ant, audio dBFS, batt barres, tx}} avec un message. Échelles (doc Shure,
+    de mémoire) : RX_RF_LVL 000–115 = valeur − 128 dBm, AUDIO_LVL 000–050 = valeur − 50 dBFS, FREQUENCY = kHz × 1000 sur
+    6–7 chiffres, TX_BATT_BARS 0–5 (255 = inconnu). -> True si quelque chose a changé."""
+    p = shure_parse(msg) if isinstance(msg, str) else msg
+    if not p or p["ch"] <= 0:
+        return False
+    st = state.setdefault(p["ch"], {})
+    k, v, a = p["key"], p["val"], p["args"]
+
+    def num(x):
+        try:
+            return int(x)
+        except (TypeError, ValueError):
+            return None
+    if k == "CHAN_NAME":
+        st["name"] = v
+    elif k == "FREQUENCY" and num(v) is not None:
+        st["freq"] = num(v) / 1000.0
+    elif k in ("RX_RF_LVL", "RF_LVL") and num(v) is not None:
+        st["rf"] = num(v) - 128
+    elif k == "AUDIO_LVL" and num(v) is not None:
+        st["audio"] = num(v) - 50
+    elif k == "RF_ANTENNA":
+        st["ant"] = v
+    elif k == "TX_BATT_BARS" and num(v) is not None:
+        st["batt"] = None if num(v) == 255 else num(v)
+    elif k == "TX_TYPE":
+        st["tx"] = None if v in ("UNKN", "UNKNOWN") else v
+    elif k == "ALL" and p["type"] == "SAMPLE" and a:
+        if re.fullmatch(r"[AX][BX]", a[0]):
+            st["ant"] = a[0]
+            nums = [num(x) for x in a[1:]]
+            if len(nums) >= 1 and nums[0] is not None:
+                st["rf"] = nums[0] - 128
+            if len(nums) >= 2 and nums[-1] is not None:
+                st["audio"] = nums[-1] - 50
+    else:
+        return False
+    return True
+
+
+def shure_init(n_ch=4, rate_ms=1000):
+    """Commandes envoyées à la connexion : tout lire, puis des mesures toutes les `rate_ms` ms par canal."""
+    out = ["< GET 0 ALL >"]
+    for c in range(1, n_ch + 1):
+        out.append(f"< SET {c} METER_RATE {int(rate_ms):05d} >")
+    return out
+
+
+class DiversityAB:
+    """15. Diversity A / B d'un canal de récepteur : part du temps sur chaque antenne, bascules, secondes sans aucune."""
+
+    def __init__(self):
+        self.n = {"A": 0, "B": 0, "-": 0}
+        self.prev, self.switches = None, 0
+
+    def feed(self, ant):
+        s = "A" if ant and ant[0] == "A" else ("B" if ant and ant[-1] == "B" else "-")
+        self.n[s] += 1
+        if s in "AB" and self.prev in ("A", "B") and s != self.prev:
+            self.switches += 1
+        if s != "-":
+            self.prev = s
+        return s
+
+    def text(self, tr=None):
+        tr = tr or (lambda x: x)
+        tot = sum(self.n.values())
+        if not tot:
+            return "—"
+        s = f"A {100 * self.n['A'] / tot:.0f} % · B {100 * self.n['B'] / tot:.0f} % · " + tr("{} bascules").format(self.switches)
+        if self.n["-"]:
+            s += " · " + tr("aucune : {} %").format(f"{100 * self.n['-'] / tot:.0f}")
+        return s
+
+
+def shure_addrs(text):
+    """« 192.168.1.50, 192.168.1.51:2202 » -> [(hôte, port)] (sans doublons)."""
+    out = []
+    for x in re.split(r"[\s,;]+", str(text or "")):
+        if not x:
+            continue
+        h, _, p = x.partition(":")
+        try:
+            p = int(p) if p else SHURE_PORT
+        except ValueError:
+            continue
+        if re.fullmatch(r"[A-Za-z0-9.\-]+", h) and (h, p) not in out:
+            out.append((h, p))
+    return out[:16]
 
 
 def _svg_series(series, t_mark, w=900, h=190, unit="dB"):
@@ -11778,6 +12025,10 @@ def find_sdr_tool(name, extra_dir=""):
     for d in [extra_dir, str(here), str(here / "outils"), str(here / "tools")]:
         if d and (Path(d) / exe).is_file():
             return str(Path(d) / exe)
+    for kit in sdr_kit_dirs(here):                    # V8 étape 11 : kit SDR dézippé à côté de l'appli
+        if (kit / "bin" / exe).is_file():
+            os.environ.setdefault("SOAPY_SDR_ROOT", str(kit))      # modules SoapySDR du kit (lib/SoapySDR)
+            return str(kit / "bin" / exe)
     w = shutil.which(name)
     if w:
         return w
@@ -11785,6 +12036,20 @@ def find_sdr_tool(name, extra_dir=""):
         if (Path(d) / exe).is_file():
             return str(Path(d) / exe)
     return None
+
+
+def sdr_kit_dirs(here=None):
+    """V8 étape 11 : où chercher le kit SDR (outils open source pour Windows, kit-sdr-windows.zip dézippé) : à côté de
+    l'appli, puis dans Documents/TinySA Monitor."""
+    here = Path(here) if here else (Path(sys.executable).parent if getattr(sys, "frozen", False)
+                                    else Path(__file__).resolve().parent)
+    return [here / "kit-sdr", Path.home() / "Documents" / "TinySA Monitor" / "kit-sdr"]
+
+
+SDR_KIT_HINT = ("Le plus simple : le kit SDR. Télécharge kit-sdr-windows.zip (pré-release « Kit SDR » du dépôt) et dézippe-le "
+                "À CÔTÉ de TinySA-Monitor.exe (dossier « kit-sdr ») : hackrf_sweep, rtl_power, rx_tools et SoapySDR sont "
+                "trouvés tout seuls. Restent à installer à part : le pilote USB (Zadig), et pour un SDRplay ou un "
+                "WiNRADiO, le logiciel de la marque.")
 
 
 import abc  # noqa: E402  (V8 : interface commune des appareils de mesure)
@@ -17226,6 +17491,8 @@ class SdrDialog(QtWidgets.QDialog):
         m = sdr_model(self.model_combo.currentData())
         k = (m or {}).get("kind", "")
         txt = SDR_INSTALL.get(k) or SDR_INSTALL["soapy"]
+        if k != "winradio":
+            txt = TR(SDR_KIT_HINT) + "\n\n" + TR(txt)
         QtWidgets.QMessageBox.information(self, TR("Installer {}").format(m["name"] if m else "SDR"), TR(txt))
 
     def _browse(self):
@@ -17973,6 +18240,8 @@ class MultiMonitorWorker(QtCore.QThread):
             except OSError as e:
                 iq["why"] = str(e)
             self.incident.emit(dict(req=req, iq=iq, also=pend.get("also", [])))
+            for r_ in pend.get("merged", []):        # demandes arrivées pendant l'enregistrement : même dossier
+                self.incident.emit(dict(req=r_, iq=dict(iq, same=req["dir"]), also=[]))
         threading.Thread(target=go, daemon=True).start()
 
     def run(self):
@@ -18015,7 +18284,9 @@ class MultiMonitorWorker(QtCore.QThread):
                     if pend is not None:
                         pend["post"].append(raw)
                         while self.inc_req:                   # demandes pendant l'enregistrement : même dossier
-                            pend["also"].append(self.inc_req.popleft().get("trigger"))
+                            r_ = self.inc_req.popleft()
+                            pend["also"].append(r_.get("trigger"))
+                            pend["merged"].append(r_)
                         if tw - pend["req"]["t"] >= INC_POST_S:
                             self._inc_write(pend, src.dtype, self.center, sp["name"])
                             pend = None
@@ -18023,7 +18294,7 @@ class MultiMonitorWorker(QtCore.QThread):
                         ring.push(raw)
                         if self.inc_req:
                             pre = ring.dump()
-                            pend = dict(req=self.inc_req.popleft(), pre=pre, post=[], also=[],
+                            pend = dict(req=self.inc_req.popleft(), pre=pre, post=[], also=[], merged=[],
                                         t0=tw - len(pre) / float(bps))
                             ring = PreRing(self.ring_s, bps)
                 elif self.inc_req:
@@ -18148,6 +18419,21 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.go_btn.setToolTip("Lance / arrête le moniteur multicanal.")
         self.go_btn.clicked.connect(lambda *_: self.toggle())
         lay.addLayout(R("SDR :", self.dev_combo, "Récepteurs virtuels :", self.vrx_spin, None, self.go_btn))
+        self.mode_combo = QtWidgets.QComboBox()             # V8 étape 11 : répétition / spectacle
+        for k, t in SDR_MODES:
+            self.mode_combo.addItem(t, k)
+        self.mode_combo.setToolTip("Surveillance : comme d'habitude.\n🎭 Répétition : le moniteur APPREND ce qui est normal "
+                                   "pour chaque micro (niveau, bruit, son).\n🎤 Spectacle : il prévient quand un micro "
+                                   "s'écarte de sa répétition.")
+        self.reh = RehearsalProfile()
+        self.reh_btn = QtWidgets.QPushButton("💾 Garder la répétition")
+        self.reh_btn.setToolTip("Retient ce qui a été appris pendant la répétition (gardé dans les réglages) : il sert en "
+                                "mode 🎤 Spectacle.")
+        self.reh_btn.clicked.connect(lambda *_: self.save_rehearsal())
+        self.reh_lbl = QtWidgets.QLabel("")
+        self.reh_lbl.setWordWrap(True)
+        self.mode_combo.currentIndexChanged.connect(lambda *_: self._mode_changed())
+        lay.addLayout(R("Mode :", self.mode_combo, self.reh_btn, self.reh_lbl, None))
         self.win_lbl = QtWidgets.QLabel("")
         self.win_lbl.setWordWrap(True)
         lay.addWidget(self.win_lbl)
@@ -18238,7 +18524,40 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.timer.timeout.connect(self._feed)
         self.dev_combo.currentIndexChanged.connect(lambda *_: self._plan())
         self._plan()
+        self._mode_changed()
         fit_dialog(self, 1000, 720)
+
+    # ---------------------------------------------------------------- V8 étape 11 : répétition / spectacle
+    def _ref(self):
+        return (self.owner.sdr_cfg.get("rehearsal") or {}).get("mics") or {}
+
+    def _mode_changed(self):
+        md = self.mode_combo.currentData()
+        self.reh_btn.setVisible(md == "learn")
+        rh = self.owner.sdr_cfg.get("rehearsal")
+        if md == "learn":
+            n = len(self.reh.summary())
+            self.reh_lbl.setText(TR("🎭 J'apprends : {} micro(s) appris (30 s de mesures chacun au moins).").format(n))
+        elif md == "show":
+            self.reh_lbl.setText(TR("🎤 Comparé à la répétition « {} » ({} micros).").format(
+                rh.get("name", ""), len(rh.get("mics", {}))) if rh else TR("⚠ Pas encore de répétition gardée : passe en "
+                                                                           "🎭 Répétition pendant les balances."))
+        else:
+            self.reh_lbl.setText("")
+
+    def save_rehearsal(self):
+        sm = self.reh.summary()
+        if not sm:
+            self.reh_lbl.setText(TR("Rien d'appris pour l'instant : laisse tourner la répétition (30 s par micro au moins)."))
+            return False
+        o = self.owner
+        o.sdr_cfg["rehearsal"] = dict(t=time.time(), name=datetime.now().strftime("%d/%m %H:%M"), mics=sm)
+        try:
+            o._save_config()
+        except Exception:  # noqa: BLE001
+            pass
+        self.reh_lbl.setText(TR("💾 Répétition gardée : {} micros. Passe en 🎤 Spectacle pour comparer.").format(len(sm)))
+        return True
 
     def _plan(self):
         """Fenêtre du SDR : la plus grande grappe de tes fréquences (au plus 4 MHz utiles sur un HackRF à 4,8 MS/s…)."""
@@ -18258,7 +18577,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.center = ((best[0] + best[-1]) / 2.0 - 0.2) * 1e6 if best else None
         keep = set(best)
         self.chans = [dict(key=int(round(w["freq"] * 1000)), name=w["name"] or f"{w['freq']:.3f}", freq=w["freq"],
-                           bw=float(w.get("bw") or 0.0) * 1000.0, prio=o.freq_prio(w), keep_on=o.is_keep_on(w["status"]))
+                           bw=float(w.get("bw") or 0.0) * 1000.0, prio=o.freq_prio(w), keep_on=o.is_keep_on(w["status"]),
+                           keep_free=o.is_keep_free(w["status"]))
                       for w in ws if w["freq"] in keep]
         n_out = len(ws) - len(self.chans)
         self.win_lbl.setText(TR("Fenêtre : {} – {} MHz · {} fréquence(s) surveillée(s)").format(
@@ -18299,9 +18619,11 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker.incident.connect(self._inc_done)           # même un ancien moniteur : son dossier est fini
         self.worker.bursts.connect(lambda evs, w_=self.worker: self._bursts(evs) if w_ is self.worker else None)
         self.worker.keep_iq = self.iq_chk.isChecked()
-        self.trk = {c["key"]: AnomalyTracker(c.get("keep_on", True)) for c in self.chans}
+        self.trk = {c["key"]: AnomalyTracker(not c.get("keep_free")) for c in self.chans}   # libre : signal = anomalie
         self._seen_al = {a.get("key") for a in o.alarms.active.values()}
         self.audio = AudioOut(self)
+        if o.sdr_cfg.get("shure") and not getattr(o, "_shure", None):       # étape 11 : récepteurs pour comparer
+            o.receivers_start(o.sdr_cfg["shure"])
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)
         self.timer.start(20)
         self.go_btn.setText("■ Arrêter")
@@ -18315,6 +18637,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         w.alarm_keys = {a["key"][1] for a in o.alarms.active.values() if a.get("key") and a["key"][0] in ("CONFLIT", "BREF", "ABSENT")}
         if self.audio is not None:
             self.audio.feed(w.audio)
+        if self.mode_combo.currentData() == "learn" and int(time.time()) % 5 == 0:
+            self._mode_changed()
         if self.chans:                                            # étape 10 : nouvelles alarmes sur un de mes micros
             lo, hi = min(c["freq"] for c in self.chans) - 0.1, max(c["freq"] for c in self.chans) + 0.1
             for a in alarms_in_window(o.alarms.active.values(), lo, hi, self._seen_al):
@@ -18340,6 +18664,17 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                   obw=s.get("obw"), snr=s.get("snr"))
             nom = next((c.get("dev") for c in self.chans if c["key"] == s["key"] and c.get("dev")), 75000) / 1000.0
             dg = rf_audio_diag(dict(s, nominal=nom), TR)
+            md = self.mode_combo.currentData()
+            if md == "learn" and self.worker is not None:
+                self.reh.learn(s)
+            elif md == "show":
+                dd = rehearsal_check(self._ref().get(s["key"]), s, TR)
+                if dd:
+                    dg = sorted([x for x in dg if x[0] != "ok"] + dd, key=lambda x: {"bad": 0, "warn": 1}.get(x[1], 2))
+            w_ = o.watch_by_key(s["key"])                    # 10. comparaison : ce que voit le tinySA, le récepteur
+            rx_ = o.receiver_for(s["freq"])
+            h.pts[-1][1].update(tsa=(w_ or {}).get("level") if o.tsa_live() else None,
+                                rx=rx_.get("rf") if rx_ and rx_.get("live") else None)
             ht, _tone = mic_health(s.get("dev"), nom, s.get("drift"), s.get("pilot"), None)
             vals = [s["name"], f"{s['freq']:.3f}",
                     "—" if s.get("rf") is None else f"{s['rf']:.0f} dBFS · " + (f"+{s['snr']:.0f} dB" if s.get("snr")
@@ -18359,8 +18694,10 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             c_ = next((c for c in self.chans if c["key"] == s["key"]), None)
             tk = self.trk.get(s["key"])
             if tk is not None and c_ is not None and self.worker is not None:      # 8. perturbations
-                bad = dg[0][0] if dg[0][1] == "bad" and s.get("vrx") else None
+                bad = dg[0][0] if dg[0][1] == "bad" and (s.get("vrx") or dg[0][0].startswith("reh")) else None
                 for ev in tk.feed(now, s.get("rf"), s.get("noise"), s.get("adj_margin"), bad):
+                    if ev["kind"] == "diag":
+                        ev["value"] = dg[0][2]
                     self._event(c_, ev)
             tone = dg[0][1]
             self.table.item(r, 7).setForeground(QtGui.QColor(self.owner.tone_color(tone)) if tone != "ok" else QtGui.QBrush())
@@ -18402,9 +18739,18 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             s = next((x for x in self.rows if x["key"] == k), None)
             if s is not None:
                 dg = rf_audio_diag(dict(s, nominal=75.0), TR)
+                if self.mode_combo.currentData() == "show":
+                    dg = [x for x in dg if x[0] != "ok"] + rehearsal_check(self._ref().get(k), s, TR) or dg
+                cmp_ = []                                    # 10. comparaison des récepteurs (10 dernières minutes)
+                for key2, nm in (("tsa", "tinySA"), ("rx", TR("récepteur"))):
+                    t2, v2 = h.series(key2, t_end - 600)
+                    if len(v2):
+                        t1, v1 = h.series("rf", t_end - 600)
+                        cmp_.append(compare_text(compare_receivers(list(zip(t1, v1)), list(zip(t2, v2))), "SDR", nm, TR))
                 self.sel_lbl.setText(f"🎧 {s['name']} ({s['freq']:.3f} MHz) : " + " · ".join(x[2] for x in dg)
                                      + (TR(" · dérive sur 10 min : moyenne {} kHz, ± {} kHz").format(
-                                         f"{ds['mean']:+.1f}", f"{ds['std']:.1f}") if ds else ""))
+                                         f"{ds['mean']:+.1f}", f"{ds['std']:.1f}") if ds else "")
+                                     + "".join("\n" + x for x in cmp_))
 
     # ---------------------------------------------------------------- V8 étape 10 : incidents
     def _inc_root(self):
@@ -18463,6 +18809,16 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         req = res["req"]
         folder = req["dir"]
         info = self.incs.pop(folder, None) or {}
+        same = (res.get("iq") or {}).get("same")
+        if same:                                   # rangé dans le dossier de l'incident en cours à ce moment-là
+            for r, x in enumerate(self.chron):
+                if x.get("dir") == folder:
+                    x["dir"] = same
+                    it = self.chron_tbl.item(r, 3)
+                    if it is not None:
+                        it.setText(TR("📦 avec {}").format(os.path.basename(same)))
+                        it.setToolTip(same)
+            return
         c = info.get("chan") or dict(name=req.get("name", ""), freq=req.get("freq", 0.0))
         t = float(req["t"])
         h = self.hist.get(req.get("key"))
@@ -18545,6 +18901,148 @@ class MultiMonitorDialog(QtWidgets.QDialog):
 
     def closeEvent(self, ev):
         self.stop()
+        super().closeEvent(ev)
+
+
+class ShureClient(threading.Thread):
+    """V8 étape 11 (14. / 15.) : télémétrie d'un récepteur Shure en réseau (TCP 2202) : tout lire, puis les mesures
+    (niveau RF, antenne A / B, son) chaque seconde ; reconnexion toutes les 5 s. Sans Qt (fil Python)."""
+
+    def __init__(self, host, port=SHURE_PORT):
+        super().__init__(daemon=True)
+        self.host, self.port = host, int(port)
+        self.state, self.div, self.hist = {}, {}, {}
+        self.ok, self.err, self.t_last = False, "", 0.0
+        self.lock = threading.Lock()
+        self._halt = threading.Event()
+
+    def run(self):
+        while not self._halt.is_set():
+            try:
+                s = socket.create_connection((self.host, self.port), timeout=3)
+            except OSError as e:
+                self.ok, self.err = False, str(e)
+                self._halt.wait(5)
+                continue
+            try:
+                s.settimeout(1.0)
+                for c in shure_init():
+                    s.sendall(c.encode("ascii"))
+                self.ok, self.err, buf, t_rx = True, "", "", time.time()
+                while not self._halt.is_set():
+                    try:
+                        d = s.recv(4096)
+                    except socket.timeout:
+                        if time.time() - t_rx > 15:
+                            raise OSError("plus de réponse depuis 15 s")
+                        continue
+                    if not d:
+                        raise OSError("connexion fermée par le récepteur")
+                    t_rx = time.time()
+                    msgs, buf = shure_split(buf + d.decode("ascii", "replace"))
+                    buf = buf[-4000:]
+                    with self.lock:
+                        for m in msgs:
+                            p = shure_parse(m)
+                            if p and shure_apply(self.state, p):
+                                self.t_last = t_rx
+                                st = self.state.get(p["ch"], {})
+                                if p["key"] in ("ALL", "RF_ANTENNA"):
+                                    self.div.setdefault(p["ch"], DiversityAB()).feed(st.get("ant"))
+                                if st.get("rf") is not None and p["key"] in ("ALL", "RX_RF_LVL", "RF_LVL"):
+                                    self.hist.setdefault(p["ch"], deque(maxlen=3600)).append((t_rx, float(st["rf"])))
+            except OSError as e:
+                self.ok, self.err = False, str(e)
+            finally:
+                try:
+                    s.close()
+                except OSError:
+                    pass
+            self._halt.wait(5)
+
+    def stop(self):
+        self._halt.set()
+
+    def snapshot(self):
+        with self.lock:
+            return {c: dict(v, div=self.div[c].text(TR) if c in self.div else "—", hist=list(self.hist.get(c, ())))
+                    for c, v in self.state.items()}
+
+
+class ReceiversDialog(QtWidgets.QDialog):
+    """V8 étape 11 : 📶 récepteurs Shure en réseau : ce que VOIT chaque récepteur (niveau RF, antenne A / B, diversity,
+    son, pile), relié à ta liste par la fréquence ; sert aussi à comparer avec le SDR / le tinySA (moniteur multicanal)."""
+    COLS = ["Récepteur", "Canal", "Nom", "MHz", "RF", "Antenne", "Diversity A / B", "Son", "Pile", "Dans ma liste"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Récepteurs Shure (télémétrie)")
+        self.setModal(False)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Tes récepteurs Shure en réseau (ULX-D, QLX-D, SLX-D, Axient Digital…) disent eux-mêmes ce "
+                                "qu'ils reçoivent : niveau RF, antenne utilisée, son, pile. Tape leur adresse IP (séparées "
+                                "par des virgules) puis <b>Connecter</b>.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        self.addr = QtWidgets.QLineEdit(o.sdr_cfg.get("shure", ""))
+        self.addr.setPlaceholderText("192.168.1.50, 192.168.1.51")
+        self.addr.setToolTip("Adresses IP des récepteurs (port 2202 par défaut, sinon « adresse:port »).")
+        self.go = QtWidgets.QPushButton("Connecter")
+        self.go.setToolTip("Se connecte aux récepteurs (et retient les adresses).")
+        self.go.clicked.connect(lambda *_: self.connect_all())
+        lay.addLayout(o._row("Adresses :", self.addr, self.go))
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        hh = self.table.horizontalHeader()
+        for c in range(len(self.COLS) - 1):
+            hh.setSectionResizeMode(c, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(len(self.COLS) - 1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.table.setToolTip("RF = niveau reçu par le récepteur (dBm) · Antenne = A, B ou aucune · Diversity = part du\n"
+                              "temps sur chaque antenne et bascules (beaucoup de bascules / « aucune » = antennes à revoir).")
+        lay.addWidget(self.table, 1)
+        self.st = QtWidgets.QLabel("")
+        self.st.setWordWrap(True)
+        lay.addWidget(self.st)
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(1000)
+        self.refresh()
+        fit_dialog(self, 900, 460)
+
+    def connect_all(self):
+        self.owner.receivers_start(self.addr.text())
+        self.refresh()
+
+    def refresh(self):
+        o = self.owner
+        rows = o.receivers()
+        self.table.setRowCount(len(rows))
+        for r, x in enumerate(rows):
+            w = o.watch_near(x.get("freq"))
+            vals = [x["host"], str(x["ch"]), x.get("name") or "—",
+                    "—" if x.get("freq") is None else f"{x['freq']:.3f}",
+                    "—" if x.get("rf") is None else f"{x['rf']} dBm", x.get("ant") or "—", x.get("div") or "—",
+                    "—" if x.get("audio") is None else f"{x['audio']} dBFS",
+                    "—" if x.get("batt") is None else "▮" * int(x["batt"]) + "▯" * max(0, 5 - int(x["batt"])),
+                    (w["name"] or f"{w['freq']:.3f}") if w else "—"]
+            for c, v in enumerate(vals):
+                it = self.table.item(r, c)
+                if it is None:
+                    self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
+                elif it.text() != v:
+                    it.setText(v)
+        cl = list(getattr(o, "_shure", {}).values())
+        if not cl:
+            self.st.setText(TR("Aucun récepteur : tape une adresse puis Connecter."))
+        else:
+            self.st.setText(" · ".join((f"✔ {c.host}" if c.ok else f"✗ {c.host} : {c.err or TR('connexion…')}") for c in cl))
+
+    def closeEvent(self, ev):
+        self.timer.stop()
         super().closeEvent(ev)
 
 
@@ -35546,6 +36044,8 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             self.update_watch_levels()
             self.update_watch_table()
+            if self._hunt is not None and self._hunt.isVisible():   # 13. chasse (et carte de chaleur) avec le SDR
+                self._hunt.feed(F, L)
         except Exception:  # noqa: BLE001
             pass
         return True
@@ -39209,6 +39709,7 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (HackRF, RTL-SDR)", [      # V8 : sous-
     ("🎧 Écouter avec le SDR…", "open_listen"),
     ("📡 Moniteur multicanal SDR (tous tes micros, son, santé)…", "open_multimon"),
     ("📦 Rejouer un incident SDR…", "open_incidents"),
+    ("📶 Récepteurs Shure en réseau (télémétrie)…", "open_receivers"),
     ("⏱ Temps réel avec le SDR…", "open_realtime")]))
 MainWindow.TIPS_MENU.update({
         "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
@@ -39218,6 +39719,8 @@ MainWindow.TIPS_MENU.update({
         "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
                           "(hackrf_sweep, rtl_power), gains, et comment les installer.",
         "📡 SDR": "V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.",
+        "📶 Récepteurs Shure": "V8 : niveau RF, antenne A / B, diversity, son et pile que voient tes récepteurs\n"
+                               "Shure en réseau, reliés à ta liste ; comparés au SDR dans le moniteur multicanal.",
         "📦 Rejouer un incident": "V8 : choisis un dossier d'incident du moniteur multicanal : son rapport s'ouvre et\n"
                                   "son IQ est rejoué dans le temps réel (écouter, revoir le spectre).",
         "📡 Moniteur multicanal": "V8 : tous tes micros de la fenêtre du SDR mesurés en même temps (niveau, voisins,\n"
@@ -39253,6 +39756,73 @@ def _v8_open_incidents(self):
 
 
 MainWindow.open_incidents = _v8_open_incidents
+
+
+def _v8_receivers_start(self, text):
+    """14. Connecte (ou reconnecte) les récepteurs Shure de la liste d'adresses (retenue dans la config)."""
+    addrs = shure_addrs(text)
+    self.sdr_cfg["shure"] = ", ".join(f"{h}:{p}" if p != SHURE_PORT else h for h, p in addrs)
+    cur = getattr(self, "_shure", None) or {}
+    keep = {f"{h}:{p}" for h, p in addrs}
+    for k in list(cur):
+        if k not in keep:
+            cur.pop(k).stop()
+    for h, p in addrs:
+        if f"{h}:{p}" not in cur:
+            c = cur[f"{h}:{p}"] = ShureClient(h, p)
+            c.start()
+    self._shure = cur
+
+
+def _v8_receivers(self):
+    """Tous les canaux des récepteurs Shure connectés : [dict(host, ch, name, freq, rf, ant, audio, batt, div, hist)]."""
+    out = []
+    for c in (getattr(self, "_shure", None) or {}).values():
+        for ch, st in sorted(c.snapshot().items()):
+            out.append(dict(st, host=c.host, ch=ch, live=c.ok and time.time() - c.t_last < 10))
+    return out
+
+
+def _v8_receiver_for(self, f, tol=0.025):
+    """Canal de récepteur réglé sur la fréquence f (MHz, ± 25 kHz), ou None."""
+    best = None
+    for x in self.receivers():
+        if x.get("freq") is not None and abs(x["freq"] - f) <= tol and (best is None or abs(x["freq"] - f) <
+                                                                         abs(best["freq"] - f)):
+            best = x
+    return best
+
+
+def _v8_watch_near(self, f, tol=0.025):
+    if f is None:
+        return None
+    return min((w for w in self.watch if abs(w["freq"] - f) <= tol), key=lambda w: abs(w["freq"] - f), default=None)
+
+
+def _v8_open_receivers(self):
+    """📶 V8 étape 11 : récepteurs Shure en réseau (fenêtre gardée)."""
+    d = getattr(self, "_recvdlg", None)
+    if d is None:
+        d = self._recvdlg = ReceiversDialog(self)
+    if self.sdr_cfg.get("shure") and not getattr(self, "_shure", None):
+        self.receivers_start(self.sdr_cfg["shure"])
+    d.show()
+    d.raise_()
+    d.activateWindow()
+    return d
+
+
+def _v8_tsa_live(self):
+    """Un tinySA (pas un SDR) balaye en ce moment : ses niveaux peuvent être comparés à ceux du SDR."""
+    return any(w.isRunning() and not getattr(w, "paused", False) and not getattr(w, "sdr", False) for w in self.workers)
+
+
+MainWindow.receivers_start = _v8_receivers_start
+MainWindow.receivers = _v8_receivers
+MainWindow.receiver_for = _v8_receiver_for
+MainWindow.watch_near = _v8_watch_near
+MainWindow.open_receivers = _v8_open_receivers
+MainWindow.tsa_live = _v8_tsa_live
 MainWindow.FREQ_ACTIONS += [("🎧 Écouter avec le SDR", "listen_freq"), ("🔎 C'est quoi ce signal ? (SDR)", "analyze_freq"),
                              ("⏱ Temps réel autour (SDR)", "rt_freq")]
 WEB_VIEWS.append(("ecoute", "🎧", "Écoute", "Écouter un micro analogique sur le téléphone, avec le SDR du PC"))
