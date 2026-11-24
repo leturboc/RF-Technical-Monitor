@@ -512,5 +512,49 @@ ok("historique : un point par seconde", not hh.add(1019.5, rf=0) and len(hh.pts)
 ok("historique : dérive moyenne / écart-type", ns["MicHistory"].drift_stats(hh)["mean"] == 1.1, str(hh.drift_stats()))
 ok("performances : pertes et ton", ns["perf_view"](1000, 900, 0.3)[1] == "bad" and ns["perf_view"](1000, 1000, 0.2)[1] == "ok")
 
+# ---------------------------------------------------------------- V8 étape 10 : incidents
+ok("tampon IQ : borné par la mémoire", ns["iq_ring_seconds"](19.2e6) < 20 and ns["iq_ring_seconds"](1e6) == 20.0)
+AT = ns["AnomalyTracker"]
+tk, evs = AT(keep_on=True), []
+for i in range(120):                       # 60 s de porteuse stable, puis effondrement
+    t = i * 0.5
+    evs += tk.feed(t, -40.0, -95.0, 40.0)
+for i in range(120, 126):
+    evs += tk.feed(i * 0.5, -75.0, -95.0, 40.0)
+ok("perturbation : décrochage RF repéré une fois", [e["kind"] for e in evs] == ["drop"] and evs[0]["value"] >= 30, str(evs))
+evs = []
+for k in range(3):                         # trois décrochages en quelques minutes
+    for i in range(40):
+        evs += tk.feed(100 + k * 70 + i * 0.5, -40.0, -95.0, 40.0)
+    for i in range(6):
+        evs += tk.feed(120 + k * 70 + i * 0.5, -75.0, -95.0, 40.0)
+ok("perturbation : décrochages répétés", "flaps" in [e["kind"] for e in evs], str(evs))
+tk2, ev2 = AT(keep_on=True), []
+for i in range(200):
+    ev2 += tk2.feed(i * 0.5, -40.0, -95.0 + (12.0 if i >= 180 else 0.0), 40.0)
+ok("perturbation : bruit qui monte", [e["kind"] for e in ev2] == ["noise"], str(ev2))
+tk3, ev3 = AT(keep_on=False), []
+for i in range(30):
+    ev3 += tk3.feed(i * 0.5, -95.0 + (30 if i >= 20 else 0), -95.0, None)
+ok("perturbation : signal sur une fréquence libre", [e["kind"] for e in ev3] == ["appear"], str(ev3))
+tk4, ev4 = AT(), []
+for i, m in enumerate([40, 40, 12, 12, 40, 11]):
+    ev4 += tk4.feed(i * 0.5, -40.0, -95.0, m, "rf_low" if i == 3 else None)
+ok("perturbation : voisin trop fort (1 fois / min) + diagnostic rouge", [e["kind"] for e in ev4] == ["adj", "diag"], str(ev4))
+ok("perturbation : texte", ns["anomaly_text"](dict(kind="drop", value=18.2)) == "Décrochage RF : -18 dB"
+   and "3 en 10 min" in ns["anomaly_text"](dict(kind="flaps", value=3)))
+ok("signaux brefs : seulement les inconnus", [e["f"] for e in ns["unknown_bursts"](
+    [dict(f=600.05), dict(f=601.0)], [600.0])] == [601.0])
+ok("dossier : nom propre", ns["incident_slug"]("Chant Lead / Élodie") == "Chant-Lead-Elodie")
+ok("dossiers : les plus anciens effacés", ns["incident_prune"]([("a", 1, 50), ("b", 2, 50), ("c", 3, 50)], 100) == ["a"])
+doc = dict(name="HF 1 <chant>", freq=600.125, t=1000.0, when="24/11/2026 21:00:00", trigger=dict(kind="drop", value=20),
+           series=dict(rf=[[990 + i, -40 if i < 10 else -70] for i in range(20)], noise=[[990 + i, -95] for i in range(20)],
+                       audio=[[990 + i, -20] for i in range(20)]),
+           diag=[("rf_low", "bad", "RF trop faible")], events=[dict(kind="drop", value=20, when="21:00:00")],
+           iq=dict(file="iq.sigmf-data", dur=30, rate=4.8e6, center=600e6))
+h = ns["incident_report_html"](doc)
+ok("rapport d'incident : complet et échappé", "&lt;chant&gt;" in h and h.count("<svg") == 2 and "iq.sigmf-data" in h
+   and "stroke='#ff3b30'" in h and "RF trop faible" in h)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

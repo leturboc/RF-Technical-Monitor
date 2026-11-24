@@ -544,3 +544,80 @@ SAME_TEMPLATES += ["🎧 {} ({} MHz) : ", "{} / {} dB", "{} dBFS · "]
 EXACT["V8 : tous tes micros de la fenêtre du SDR mesurés en même temps (niveau, voisins,\nlargeur) ; les plus importants démodulés (son, déviation, dérive, coupures)."] = \
     "V8: all your mics in the SDR window measured at the same time (level, neighbours,\nwidth); the most important ones demodulated (sound, deviation, drift, dropouts)."
 EXACT["📡 Moniteur multicanal"] = "📡 Multichannel monitor"
+
+# ---------------------------------------------------------------- V8 étape 10 : incidents (lot B)
+EXACT.update({
+    " (sans IQ)": " (no IQ)",
+    " : {} dB": ": {} dB",
+    " : {} en 10 min": ": {} in 10 min",
+    " · dossier : {}": " · folder: {}",
+    "Alarme": "Alarm",
+    "Aussi pendant ce temps : ": "Also during this time: ",
+    "Bruit qui monte": "Noise rising",
+    "Choisis dans la chronologie une ligne qui a un dossier.": "Pick a line with a folder in the timeline.",
+    "Chronologie": "Timeline",
+    "Chronologie du micro": "Mic timeline",
+    "Crée tout de suite un dossier d'incident pour le micro choisi (ou le 1er de la liste).":
+        "Creates an incident folder right now for the selected mic (or the first one in the list).",
+    "Diagnostic RF + son": "RF + audio diagnosis",
+    "Dossier": "Folder",
+    "Dossier d'incident à rejouer": "Incident folder to replay",
+    "Décrochage RF": "RF dropout",
+    "Décrochages répétés": "Repeated dropouts",
+    "Garde le signal brut (IQ) pour pouvoir REJOUER l'incident et l'écouter.\nGros fichiers : environ 10 à 20 Mo par "
+    "seconde selon le SDR.": "Keeps the raw signal (IQ) so you can REPLAY the incident and listen to it.\nBig files: about "
+                             "10 to 20 MB per second depending on the SDR.",
+    "INCIDENT SDR": "SDR INCIDENT",
+    "IQ (SigMF) : {} — {} s, {} MHz autour de {} MHz": "IQ (SigMF): {} — {} s, {} MHz around {} MHz",
+    "IQ non gardé (case décochée)": "IQ not kept (box unticked)",
+    "Incident": "Incident",
+    "Incident noté à la main": "Incident noted by hand",
+    "Lance d'abord le moniteur (▶ Surveiller).": "Start the monitor first (▶ Monitor).",
+    "Mesures : mesures.json": "Measurements: mesures.json",
+    "Mesures autour du moment (trait rouge)": "Measurements around the moment (red line)",
+    "Micro choisi": "Selected mic",
+    "Ouvre le dossier des incidents.": "Opens the incidents folder.",
+    "Ouvre le rapport de l'incident choisi et rejoue son IQ dans le temps réel (son, spectre).":
+        "Opens the selected incident's report and replays its IQ in real-time view (sound, spectrum).",
+    "Pas d'IQ dans ce dossier : seul le rapport s'ouvre.": "No IQ in this folder: only the report opens.",
+    "Pas d’IQ enregistré : {}": "No IQ recorded: {}",
+    "Quand un micro a un souci (alarme, décrochage, bruit qui monte, voisin trop fort…), garde\ntout seul ses mesures, un "
+    "rapport et l'IQ des secondes AVANT et APRÈS (à rejouer).\nUn dossier toutes les 2 min au plus ; les plus anciens sont "
+    "effacés au-delà de 2 Go.": "When a mic has a problem (alarm, dropout, rising noise, strong neighbour…), automatically\n"
+                                "keeps its measurements, a report and the IQ of the seconds BEFORE and AFTER (to replay).\n"
+                                "At most one folder every 2 min; the oldest are deleted beyond 2 GB.",
+    "Rejouer : 📡 Moniteur multicanal › Chronologie › ▶ Rejouer, ou Temps réel › Relire un enregistrement.":
+        "Replay: 📡 Multichannel monitor › Timeline › ▶ Replay, or Real time › Replay a recording.",
+    "Signal bref inconnu": "Unknown short signal",
+    "Signal sur la fréquence": "Signal on the frequency",
+    "Tout ce qui est arrivé à tes micros pendant la surveillance (le plus récent en haut).\nDouble-clic sur une ligne avec "
+    "un dossier = rejouer l'incident.": "Everything that happened to your mics while monitoring (newest at the top).\n"
+                                        "Double-click a line with a folder = replay the incident.",
+    "V8 : choisis un dossier d'incident du moniteur multicanal : son rapport s'ouvre et\nson IQ est rejoué dans le temps "
+    "réel (écouter, revoir le spectre).": "V8: pick an incident folder from the multichannel monitor: its report opens and\n"
+                                         "its IQ is replayed in real-time view (listen, review the spectrum).",
+    "Voisin trop fort": "Neighbour too strong",
+    "avec l'IQ": "with IQ",
+    "dérive": "drift",
+    "moniteur arrêté": "monitor stopped",
+    "{} MHz, {} s, {} dBFS": "{} MHz, {} s, {} dBFS",
+    "⏳ en cours…": "⏳ in progress…",
+    "▶ Rejouer": "▶ Replay",
+    "📂 Dossiers": "📂 Folders",
+    "📦 Dossier d'incident automatique": "📦 Automatic incident folder",
+    "📦 Noter un incident": "📦 Note an incident",
+    "📦 Rejouer un incident": "📦 Replay an incident",
+    "📦 Rejouer un incident SDR…": "📦 Replay an SDR incident…",
+})
+SAME_TEMPLATES = list(SAME_TEMPLATES) + [
+    "<h1>⚠ {} : {} · {} MHz</h1>", "{} : {}{} dB", "<p class='muted'>{} · {}</p>", "<tr><td>{}</td><td>{}</td></tr>",
+    "<title>{} · {}</title>", "<text x='{}' y='{}' font-size='10' text-anchor='end' fill='#6b7488'>{} s</text>",
+    "<text x='{}' y='{}' font-size='11' fill='{}'>■ {}</text>",
+    "<text x='{}' y='{}' font-size='10' text-anchor='end' fill='#6b7488'>{}</text>",
+    "<text x='4' y='{}' font-size='10' fill='#6b7488'>{}</text></svg>", "<h2>{}</h2><table><tr><th>{}</th><th>{}</th></tr>",
+    "<p class='muted'>{}</p>", "<svg viewBox='0 0 {} {}' width='100%' style='max-width:{}px'>",
+    "<line x1='{}' x2='{}' y1='{}' y2='{}' stroke='#ff3b30' stroke-dasharray='4 3'/>",
+    "<polyline fill='none' stroke='{}' stroke-width='1.5' points='{}'/>", "incident_{}_{}",
+    "<text x='{}' y='{}' font-size='10' fill='#6b7488'>{} s</text>",
+    "<rect x='{}' y='{}' width='{}' height='{}' fill='#f7f9fc' stroke='#d8dde8'/>", "<li>{}</li></ul>",
+    "<li class='{}'>{}</li>"]

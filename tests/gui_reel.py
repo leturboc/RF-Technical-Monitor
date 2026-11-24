@@ -1146,8 +1146,41 @@ if _mm is not None:
     check("📡 multicanal : performances affichées", "pertes" in _mm.perf_lbl.text() or "loss" in _mm.perf_lbl.text(),
           _mm.perf_lbl.text())
     shot(_mm, "moniteur_multicanal")
+    # V8 étape 10 : incident noté à la main -> dossier (IQ avant / après, mesures, rapport), puis relecture
+    check("📦 tampon IQ circulaire actif", _mm.worker is not None and _mm.worker.ring_s >= 1.0,
+          str(getattr(_mm.worker, "ring_s", None)))
+    step("📦 noter un incident", _mm.manual_incident)
+    _inc = _mm.chron[0]["dir"] if _mm.chron else ""
+    _t0 = time.time()
+    while _inc and not os.path.isfile(os.path.join(_inc, "rapport.html")) and time.time() - _t0 < 30:
+        wait(500)
+    _ok_inc = bool(_inc) and all(os.path.isfile(os.path.join(_inc, f_)) for f_ in
+                                 ("rapport.html", "mesures.json", "iq.sigmf-data", "iq.sigmf-meta"))
+    check("📦 dossier d'incident : IQ + mesures + rapport", _ok_inc, _inc)
+    if _ok_inc:
+        import json as _jinc
+        _dinc = _jinc.load(open(os.path.join(_inc, "mesures.json"), encoding="utf-8"))
+        check("📦 IQ d'avant ET d'après (≥ 11 s)", _dinc["iq"].get("dur", 0) >= 11.0, str(_dinc["iq"]))
+        check("📦 rapport : courbes du micro", "<svg" in open(os.path.join(_inc, "rapport.html"), encoding="utf-8").read())
+        check("📦 chronologie : dossier noté", "📦" in (_mm.chron_tbl.item(0, 3).text() if _mm.chron_tbl.item(0, 3) else ""))
+    _c0 = _mm.chans[0]
+    _n0 = len(_mm.chron)
+    _mm._event(_c0, dict(kind="drop", t=time.time(), value=20.0))
+    check("📦 perturbation : dans la chronologie (pas de 2ᵉ dossier dans les 2 min)", len(_mm.chron) == _n0 + 1
+          and not _mm.chron[0]["dir"], str(_mm.chron[:1]))
+    _mm.tabs.setCurrentIndex(1)
+    wait(300)
+    shot(_mm, "incidents_chronologie")
     step("multicanal ■", _mm.toggle)
     check("📡 multicanal : arrêté proprement", _mm.worker is None)
+    if _ok_inc:
+        _mm.chron_tbl.selectRow(next(i_ for i_, x_ in enumerate(_mm.chron) if x_["dir"] == _inc))
+        step("▶ rejouer l'incident", _mm.replay)
+        _rti = getattr(win, "_rt", None)
+        check("▶ incident rejoué dans le temps réel", _rti is not None and (_rti._src or {}).get("path", "").startswith(_inc),
+              str(getattr(_rti, "_src", None)))
+        if _rti is not None:
+            _rti.close()
     _mm.close()
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
 _hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
