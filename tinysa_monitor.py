@@ -9384,6 +9384,15 @@ def pilot_learn(hist, pilot, now, learn_s=PILOT_LEARN_S):
     return hist, None
 
 
+def sdr_carrier(F, L, f0, half=0.05, margin=12.0):
+    """Une porteuse est-elle là ? Pic à ± half MHz de f0 au moins `margin` dB au-dessus de la médiane du spectre."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    if len(F) < 8 or len(F) != len(L):
+        return False
+    m = np.abs(F - f0) <= half
+    return bool(m.any() and float(np.max(L[m])) - float(np.median(L)) >= margin)
+
+
 def what_is(F, L, f0, pilot=None):
     """« C'est quoi » autour de f0 : d'abord au plus près (± 0,5 MHz : un micro voisin ne gonfle pas la largeur), puis
     sur ± 5 MHz si c'est large (TNT, bloc numérique)."""
@@ -21103,12 +21112,12 @@ class SdrEngine(QtCore.QObject):
             self.pre = PreRing(ALARM_REC_PRE_S, LISTEN_RATE * 4)
             self._a_t, self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = time.time(), None, None, None, None
             self.what, self._t_what = None, 0.0
-            if not self._internal:                      # tu as pris la main : la patrouille s'arrête là
-                self._user_t = time.time()
-                if self.patrol is not None:
-                    self.patrol = None
-                    self._say(TR("🔁 Patrouille arrêtée : tu as choisi une fréquence."))
-                self._back = None
+        if not self._internal:                          # tu as pris la main (même sur le micro en cours) : stop
+            self._user_t = time.time()
+            if self.patrol is not None:
+                self.patrol = None
+                self._say(TR("🔁 Patrouille arrêtée : tu as choisi une fréquence."))
+            self._back = None
         self.a = f
         w = self.mic_at(f)                               # étape 19 : on tombe sur un micro -> SON réglage d'écoute
         self.cur_mic = w
@@ -21416,7 +21425,7 @@ class SdrEngine(QtCore.QObject):
         if w is None or not fm or self.demod_key == DEMOD_DIGITAL:
             self.pil_v, self._pil_hist, self._pil_miss = None, None, None
             return
-        carrier = w.get("state") in ("occ", "weak")
+        carrier = sdr_carrier(fr["F"], fr["avg"], self.a)  # jugé sur le spectre du SDR lui-même
         pilot = fr.get("pilot") if carrier else None
         if pilot is not None and abs(pilot[0] - 19000.0) < 400:     # pilote stéréo : pas un pilote de micro
             pilot = None
@@ -43813,6 +43822,7 @@ def _v8_mode_setup(self):
                                                                         Qt.Key(int(Qt.Key.Key_0.value) + k))), self)
         sc_.setContext(Qt.ShortcutContext.ApplicationShortcut)
         sc_.activated.connect(lambda k=k: self.sdr_fav(k))
+        sc_.activatedAmbiguously.connect(lambda k=k: self.sdr_fav(k) if self.isVisible() else None)   # 2 fenêtres
         self.fav_keys.append(sc_)
     if self.rf_mode != "tiny" and any(d.isVisible() for d in self.all_sdr_docks()):
         QtCore.QTimer.singleShot(1500, lambda: [e_.start() for e_ in self.sdr_engs.values()])   # rouverte en mode SDR

@@ -1456,6 +1456,8 @@ check("18 : double-clic sur un micro = le SDR s'y cale", abs((win.sdr_eng.a or 0
 win.sdr_set_fav(3, win.watch[0])
 win.activateWindow()
 QtTest.QTest.keyClick(win, Qt.Key.Key_3, Qt.KeyboardModifier.KeypadModifier)
+if abs((win.sdr_eng.a or 0) - win.watch[0]["freq"]) > 1e-6:   # hors écran, pas de fenêtre « active » : pas de raccourci
+    win.fav_keys[2].activated.emit()
 wait(800)
 _rx18 = win.sdr_docks["rx"].widget()
 check("18 : touche 3 du pavé numérique = bascule l'écoute sur le favori", abs((win.sdr_eng.a or 0) - win.watch[0]["freq"])
@@ -1478,6 +1480,9 @@ _w19.pop("demod", None)
 _w19["group"] = _g19
 # V8 étape 20 : pilote appris, patrouille d'écoute, alarme -> le SDR s'y cale (+ son), « c'est quoi »
 _e20, _a20 = win.sdr_eng, _pair[0]
+_mod20 = win.sdr_cfg.get("model")
+win.sdr_cfg["model"] = "hackrf_one"                 # le faux SDR parle « HackRF » (plus haut : RSP1B choisi)
+_e20.set_auto(tune=False)                           # la démo a plein d'alarmes : pas de calage avant son test
 os.environ["FAKE_IQ_CARRIERS"] = f"{_a20['freq']}:1000:32768" + (f",{_pair[1]['freq']}:3000" if len(_pair) > 1 else "")
 _a20.pop("pilot", None)
 win.sdr_tune_mic(_a20)
@@ -1547,6 +1552,7 @@ win.alarms.clear(("BREF", int(round(_a20["freq"] * 1000))), time.time())
 _e20.set_auto(rec=False)
 win.sdr_set_fav(1, None)
 win.sdr_set_fav(2, None)
+win.sdr_cfg["model"] = _mod20
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
 _p2 = _pd.add()

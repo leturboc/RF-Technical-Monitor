@@ -1954,7 +1954,9 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   Récepteur), pas dans les anciennes fenêtres (qui avaient déjà l'enregistrement sur alarme, le pilote, la classification) :
   PURE `SDR_AUTO_DEFAULT` / `sdr_auto_norm` (sdr_cfg « auto » : tune, rec, dwell, src, pilot_alarm ; dans `sdr_cfg_extra`),
   `PATROL_DWELLS`, `PATROL_SRCS`, `patrol_items` (favoris dans l'ordre des touches, sinon tous ; éteints / en pause sautés),
-  `patrol_next`, `alarm_pick` (nouvelle par n° d'alarme, la plus grave), `ALARM_TUNE_KINDS`, `ALARM_REC_PRE_S` 10 /
+  `patrol_next`, `alarm_pick` (nouvelle par n° d'alarme, la plus grave), `ALARM_TUNE_KINDS`, `ALARM_USER_HOLD_S` 30 (fréquence
+  choisie à la main il y a moins de 30 s : pas de calage, `_user_t`), reste 20 s sur une alarme (`_al_until`), `sdr_carrier`
+  (porteuse jugée sur le spectre du SDR : pic ± 50 kHz ≥ médiane + 12 dB), `ALARM_REC_PRE_S` 10 /
   `_POST_S` 20, `ALARM_TUNE_COOLDOWN_S` 60, `pilot_learn` (même pilote ± `PILOT_TOL_HZ` 300 pendant `PILOT_LEARN_S` 3 s),
   `pilot_verdict` (same / other / missing après `PILOT_MISS_S` 5 s / wait / seen / none / off), `what_is` (± 0,5 MHz puis
   ± 5 MHz si large), `what_is_text`. Moteur : `tick` 0,5 s -> `_patrol_tick` (`_tune` = calage par l'appli ; tout autre
@@ -1966,7 +1968,8 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `_pilot_alarm` (clé (« PILOTE », kHz), kind PILOTE, `ALARM_HELP["PILOTE"]`), `forget_pilot`, `info_text`. Récepteur :
   rangée `row_auto` (🔁 Patrouille, durée, source, 🚨 Se caler sur les alarmes, ⏺ et enregistrer (accord vie privée),
   ↩ Revenir, `pat_lbl`) et ligne `info` (🏷 c'est quoi · 🔊 pilote, clic droit : oublier / alarme pilote). En Simple :
-  patrouille + alarme seulement. `fake_iq.py` : « MHz:tonalité:pilote ». Testé : test_sdr, script + gui_reel (pilote
+  patrouille + alarme seulement. Pavé numérique : `activatedAmbiguously` aussi (2 fenêtres principales = raccourci ambigu).
+  Carte : pas de tuiles SDR en mode tinySA. `fake_iq.py` : « MHz:tonalité:pilote ». Testé : test_sdr, script + gui_reel (pilote
   32 768 Hz appris, alarme PILOTE, patrouille, touche du pavé, calage sur alarme + WAV + retour). **Jamais avec un vrai
   SDR ni de vrais micros** : la fréquence réelle des pilotes des marques n'est PAS dans le code (appris sur le terrain) ;
   un pack sans pilote = « pas de pilote vu », rien d'autre ; « c'est quoi » = supposition d'après la forme du spectre.

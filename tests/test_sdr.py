@@ -811,6 +811,7 @@ L20 = np.maximum(L20, -50.0 - 40.0 * ((F20 - 605.0) / 0.05) ** 2)
 c20 = ns["classify_signal"](F20, L20, 605.0)
 ok("c'est quoi : micro FM sur A", c20["kind"] == "fm_ana" and ns["what_is_text"](c20).startswith("🏷"),
    str(c20["kind"]))
+ok("porteuse vue sur le spectre du SDR", ns["sdr_carrier"](F20, L20, 605.0) and not ns["sdr_carrier"](F20, L20, 607.0))
 ok("c'est quoi : rien", "Rien" in ns["what_is_text"](dict(kind="none")))
 
 print("\nÉCHECS:", fails)
