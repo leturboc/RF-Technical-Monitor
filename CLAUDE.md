@@ -1969,7 +1969,10 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   rangée `row_auto` (🔁 Patrouille, durée, source, 🚨 Se caler sur les alarmes, ⏺ et enregistrer (accord vie privée),
   ↩ Revenir, `pat_lbl`) et ligne `info` (🏷 c'est quoi · 🔊 pilote, clic droit : oublier / alarme pilote). En Simple :
   patrouille + alarme seulement. Pavé numérique : `activatedAmbiguously` aussi (2 fenêtres principales = raccourci ambigu).
-  Carte : pas de tuiles SDR en mode tinySA. `fake_iq.py` : « MHz:tonalité:pilote ». Testé : test_sdr, script + gui_reel (pilote
+  Carte : pas de tuiles SDR en mode tinySA. `fake_iq.py` : « MHz:tonalité:pilote ».
+  **Fluidité (2 SDR figeaient l'appli, déjà en étape 19, vu hors écran)** : `SdrEngine._frame_in` ne garde que la DERNIÈRE
+  trame en attente (pics des sautées fusionnés) -> `_frame_go` ; `sdr_light_axes` (grands carreaux seulement) sur les
+  graphes SDR : `QPicture.play` 10,5 s -> 2,9 s sur 25 s. Testé : test_sdr, script + gui_reel (pilote
   32 768 Hz appris, alarme PILOTE, patrouille, touche du pavé, calage sur alarme + WAV + retour). **Jamais avec un vrai
   SDR ni de vrais micros** : la fréquence réelle des pilotes des marques n'est PAS dans le code (appris sur le terrain) ;
   un pack sans pilote = « pas de pilote vu », rien d'autre ; « c'est quoi » = supposition d'après la forme du spectre.

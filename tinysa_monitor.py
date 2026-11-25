@@ -21022,7 +21022,7 @@ class SdrEngine(QtCore.QObject):
                                          serial=self.post()["serial"], tool=getattr(o, "_listen_tool", None),
                                          tool_dir=o.sdr_cfg.get("dir", ""))
         w.listen, w.listen_b, w.split = self._listen("a"), self._listen("b"), self.split
-        w.frame.connect(lambda fr, w_=w: self._frame(fr) if w_ is self.worker else None)
+        w.frame.connect(lambda fr, w_=w: self._frame_in(fr) if w_ is self.worker else None)
         w.stopped.connect(lambda why, w_=w: self._stopped(why) if w_ is self.worker else None)
         w.status.connect(lambda t, w_=w: self._say(t) if w_ is self.worker else None)
         if self.audio is None:
@@ -21159,6 +21159,26 @@ class SdrEngine(QtCore.QObject):
         self._push()
 
     # ---- flux
+    def _frame_in(self, fr):
+        """Trame reçue : on ne garde que la DERNIÈRE en attente (pics des trames sautées fusionnés). Sans ça, avec 2 SDR
+        (ou un PC lent) l'interface prenait du retard sans fin : minuteries, son et clics figés."""
+        p = getattr(self, "_fr_pend", None)
+        if p is not None and len(p.get("mx", ())) == len(fr.get("mx", ())):
+            try:
+                fr = dict(fr, mx=np.maximum(p["mx"], fr["mx"]))
+            except Exception:  # noqa: BLE001
+                pass
+        self._fr_pend = fr
+        if not getattr(self, "_fr_sched", False):
+            self._fr_sched = True
+            QtCore.QTimer.singleShot(0, self._frame_go)
+
+    def _frame_go(self):
+        self._fr_sched = False
+        fr, self._fr_pend = getattr(self, "_fr_pend", None), None
+        if fr is not None and self.worker is not None:
+            self._frame(fr)
+
     def _frame(self, fr):
         self.last = fr
         now = time.time()
@@ -21540,6 +21560,18 @@ class SdrEngine(QtCore.QObject):
         return True
 
 
+def sdr_light_axes(plot, dens=(1.6, 2.6)):
+    """Graphes SDR : grands carreaux seulement (comme le spectre principal depuis 7.54.2). Les sous-graduations de la grille
+    coûtaient la moitié du temps de l'interface avec 2 SDR (QPicture.play, mesuré hors écran)."""
+    for ax, d in (("bottom", dens[0]), ("left", dens[1])):
+        try:
+            a_ = plot.getPlotItem().getAxis(ax)
+            a_.setStyle(maxTickLevel=0, maxTextLevel=0)
+            a_.setTickDensity(d)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 class SdrPanelBase(QtWidgets.QWidget):
     """Base des panneaux SDR : le moteur commun, le niveau d'affichage (Simple / Plus / Expert)."""
 
@@ -21717,6 +21749,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.if_plot.setToolTip("Zoom du canal écouté (A) : la porteuse, sa largeur, les voisins proches.")
         self.if_plot.setLabel("bottom", "kHz autour de A")
         self.if_plot.hideAxis("left")
+        sdr_light_axes(self.if_plot)
         self.if_curve = self.if_plot.plot(pen=pg.mkPen(acc, width=1.3), fillLevel=0.0,
                                           brush=pg.mkBrush(QtGui.QColor(acc).red(), QtGui.QColor(acc).green(),
                                                            QtGui.QColor(acc).blue(), 60))
@@ -21728,6 +21761,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.af_plot.setToolTip("Spectre du son entendu (0 – 15 kHz) : voix, souffle, sifflement, ronflette.")
         self.af_plot.setLabel("bottom", "kHz (son)")
         self.af_plot.hideAxis("left")
+        sdr_light_axes(self.af_plot)
         self.af_plot.setYRange(-100, 0)
         self.af_curve = self.af_plot.plot(pen=pg.mkPen("#30d158", width=1.2))
         self.row_zoom = QtWidgets.QWidget()
@@ -22015,6 +22049,7 @@ class SdrSpectrumPanel(SdrPanelBase):
         self.plot = pg.PlotWidget()
         self.plot.setLabel("left", "dBFS")
         self.plot.showGrid(x=True, y=True, alpha=0.22)
+        sdr_light_axes(self.plot)
         acc = o.theme.get("accent", "#64d2ff")
         self.curve = self.plot.plot(pen=pg.mkPen(o.theme.get("curve", acc), width=1.2))
         self.mh = self.plot.plot(pen=pg.mkPen(o.theme.get("maxhold", "#ff9f0a"), width=1))
@@ -22205,6 +22240,7 @@ class SdrWaterfallPanel(SdrPanelBase):
         self.plot = pg.PlotWidget()
         self.plot.hideAxis("left")
         self.plot.setLabel("bottom", "MHz")
+        sdr_light_axes(self.plot)
         self.img = pg.ImageItem()
         self.img.setLookupTable(make_lut(o.theme.get("wf", "Inferno")))
         self.plot.addItem(self.img)
