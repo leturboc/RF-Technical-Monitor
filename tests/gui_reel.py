@@ -1382,6 +1382,7 @@ win.sdr_cfg["shure"] = ""
 _srv11.close()
 # V8 étape 16 : le SDR au cœur — modes tinySA / SDR / combiné, panneaux déplaçables, pré-affichages, niveaux, profil
 os.environ["FAKE_IQ_CARRIERS"] = ",".join(f"{w['freq']}:{t}" for w, t in zip(_pair, (1000, 3000)))
+_lv16 = win.ui_level                                  # niveau d'origine, rendu à la fin (les tests suivants en dépendent)
 check("16 : bouton de mode dans la barre du haut", win.mode_btn.isVisible() and "tinySA" in win.mode_btn.text(),
       win.mode_btn.text())
 check("16 : panneaux SDR dans 🪟 Fenêtres et en vraies fenêtres", all(d.toggleViewAction() in win.win_menu.actions()
@@ -1445,7 +1446,7 @@ wait(1500)
 check("16 : le profil ramène le mode SDR combiné et ses panneaux", win.rf_mode == "both"
       and win.sdr_docks["spec"].isVisible(), win.rf_mode)
 step("16 : retour tinySA", lambda: win.set_rf_mode("tiny"))
-win.set_level("expert")
+win.set_level(_lv16)
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
 _hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
 _hd.show()
