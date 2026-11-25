@@ -1466,7 +1466,7 @@ win.sdr_set_fav(3, None)
 check("18 : touche vidée", 3 not in m.favs_norm(win.sdr_cfg.get("favs")))
 # V8 étape 19 : réglage d'écoute déduit du micro (plan importé, groupe, nom), modifiable et retenu
 _w19 = win.watch[0]
-_g19, _d19 = _w19.get("group"), _w19.pop("demod", None)
+_g19, _d19, _x19 = _w19.get("group"), _w19.pop("demod", None), _w19.pop("rx", None)   # sans profil d'appareil
 _w19["group"] = "EW 300 G4"
 win.sdr_tune_mic(_w19)
 wait(500)
@@ -1478,6 +1478,8 @@ check("19 : choix à la main retenu pour ce micro", _w19.get("demod") == "wisy_a
 check("19 : … et enregistré avec la liste", any(d_.get("demod") == "wisy_ana" for d_ in win._collect_config(True)["watch"]))
 _w19.pop("demod", None)
 _w19["group"] = _g19
+if _x19:
+    _w19["rx"] = _x19
 # V8 étape 20 : pilote appris, patrouille d'écoute, alarme -> le SDR s'y cale (+ son), « c'est quoi »
 _e20, _a20 = win.sdr_eng, _pair[0]
 _mod20 = win.sdr_cfg.get("model")
@@ -1529,6 +1531,7 @@ win.privacy()["ack"] = True
 _e20._tune(_a20["freq"] + 4.0)
 wait(1500)
 _e20._user_t = 0.0                                  # (personne n'a touché la fréquence depuis 30 s)
+_e20._seen_al |= {a_.get("id") for a_ in win.alarms.active.values()}   # les alarmes de la démo : déjà vues
 win.alarms.raise_(("BREF", int(round(_a20["freq"] * 1000))), "CONFLIT", _a20["name"], _a20["freq"], 2, time.time(),
                   -60.0, "", "test")
 wait(2500)
@@ -1553,6 +1556,7 @@ _e20.set_auto(rec=False)
 win.sdr_set_fav(1, None)
 win.sdr_set_fav(2, None)
 win.sdr_cfg["model"] = _mod20
+_e20.set_auto(tune=False)                           # la suite (2 SDR, démo pleine d'alarmes) : pas de calage auto
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
 _p2 = _pd.add()
