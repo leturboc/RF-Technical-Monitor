@@ -860,3 +860,73 @@ EXACT.update({
     "＋ Ajouter": "＋ Add",
     "Adresse :": "Address:",
 })
+
+# ---------------------------------------------------------------- V8 étape 14 : fiabilité (2ᵉ audit)
+EXACT.update({k: k for k in ("Found HackRF|Serial number", "SoapySDRUtil",
+                             "error|not found|no .*device|failed|impossible|denied")})
+EXACT.update({
+    "(il y a {})": "({} ago)",
+    "il y a {}": "{} ago",
+    "{} min": "{} min",
+    "Ce modèle n'est pas pris en charge.": "This model is not supported.",
+    "Ce que l'appli garde, et quand :\n• En mémoire seulement (rien sur le disque) : le son que tu écoutes, et les ~20 "
+    "dernières secondes de signal brut (IQ) du moniteur. Tout disparaît à l'arrêt.\n• Sur le disque, uniquement quand :\n"
+    "  – tu cliques « ⏺ Enregistrer le son » ou « Enregistrer l'IQ » (jusqu'à ce que tu arrêtes) ;\n  – une alarme part et "
+    "« Sur alarme : garder le son » est coché (10 s avant + 10 s après) ;\n  – un incident du moniteur est noté (dossier : "
+    "IQ d'avant et d'après, mesures, rapport).\n• Où : dans le dossier des journaux (enregistrements_audio, "
+    "enregistrements_iq, incidents).\n• Contenu : des VOIX (artistes, équipes, public) — l'IQ aussi, on peut le "
+    "réécouter.\n• Combien de temps : effacés tout seuls après la durée choisie (vérifié toutes les heures). L'appli "
+    "efface SES fichiers ; elle ne peut rien pour les copies faites ailleurs (clé USB, sauvegarde, e-mail).\nN'enregistre "
+    "que ce qui sert, ne le diffuse pas, et préviens les personnes concernées si les règles du lieu le demandent.":
+        "What the app keeps, and when:\n• In memory only (nothing on disk): the sound you listen to, and the last ~20 "
+        "seconds of raw signal (IQ) of the monitor. Everything is gone when it stops.\n• On disk, only when:\n  – you "
+        "click “⏺ Record sound” or “Record IQ” (until you stop);\n  – an alarm goes off and “On alarm: keep the sound” is "
+        "ticked (10 s before + 10 s after);\n  – a monitor incident is noted (folder: IQ before and after, measurements, "
+        "report).\n• Where: in the logs folder (enregistrements_audio, enregistrements_iq, incidents).\n• Content: VOICES "
+        "(artists, crews, audience) — the IQ too, it can be listened to again.\n• How long: deleted automatically after "
+        "the chosen period (checked every hour). The app deletes ITS files; it can do nothing about copies made "
+        "elsewhere (USB stick, backup, e-mail).\nOnly record what is useful, don't share it, and inform the people "
+        "concerned if the venue's rules require it.",
+    "Débit tenu": "Rate sustained",
+    "Essai du SDR": "SDR test",
+    "Essaie VRAIMENT le SDR branché (quelques secondes) : outil trouvé, SDR vu par son pilote,\nsignal reçu, débit tenu. "
+    "Ferme d'abord les autres logiciels qui l'utilisent.": "REALLY tries the connected SDR (a few seconds): tool found, "
+                                                           "SDR seen by its driver,\nsignal received, rate sustained. "
+                                                           "Close other software using it first.",
+    "G39DDCAPI.dll introuvable : installe le logiciel WiNRADiO": "G39DDCAPI.dll not found: install the WiNRADiO software",
+    "Outil du SDR trouvé": "SDR tool found",
+    "SDR détecté (pilote OK)": "SDR detected (driver OK)",
+    "Signal reçu (IQ)": "Signal received (IQ)",
+    "Suivi": "Coverage",
+    "Valeurs d'il y a {} : le récepteur ne répond plus (réseau, alimentation ?).":
+        "Values from {} ago: the receiver no longer answers (network, power?).",
+    "aucune donnée : SDR occupé par un autre logiciel ?": "no data: SDR busy with other software?",
+    "code de sortie {}": "exit code {}",
+    "enregistrement interrompu pendant l'écriture (fichier .part) : IQ incomplet":
+        "recording interrupted while writing (.part file): incomplete IQ",
+    "fichier IQ vide ou presque (moins de 0,05 s)": "IQ file empty or nearly (less than 0.05 s)",
+    "flux figé : plus de données depuis {} s": "frozen stream: no data for {} s",
+    "le PC ou l'USB ne suit pas (câble, port USB 3, autre logiciel)": "the PC or USB can't keep up (cable, USB 3 port, other software)",
+    "le tinySA ou le balayage s'en occupe": "the tinySA or the sweep handles it",
+    "vérifié à l'ouverture du flux": "checked when the stream opens",
+    "{} MS/s reçus sur {} demandés": "{} MS/s received out of {} requested",
+    "{} Mo en {} s": "{} MB in {} s",
+    "{} introuvable : dézippe le kit SDR à côté de l'appli (ou installe les outils)":
+        "{} not found: unzip the SDR kit next to the app (or install the tools)",
+    "… en attente des premières mesures": "… waiting for the first measurements",
+    "… essai en cours (quelques secondes)": "… test running (a few seconds)",
+    "⏸ mesure ancienne": "⏸ old measurement",
+    "■ arrêté": "■ stopped",
+    "○ PAS surveillé (hors fenêtre)": "○ NOT monitored (outside the window)",
+    "● RF + son en continu": "● RF + sound continuously",
+    "◐ RF en continu, son à tour de rôle": "◐ RF continuously, sound in turn",
+    "⚠ Flux du SDR figé (plus de données depuis {}) : je relance le SDR…": "⚠ SDR stream frozen (no data for {}): restarting the SDR…",
+    "⚠ Le SDR est utilisé (moniteur, écoute ou temps réel) : arrête-les d'abord.":
+        "⚠ The SDR is in use (monitor, listening or real time): stop them first.",
+    "⚠ dégradée (pertes ou retard)": "⚠ degraded (losses or delay)",
+    "✔ Ton SDR marche : il peut surveiller et écouter.": "✔ Your SDR works: it can monitor and listen.",
+    "✗ Essai impossible : {}": "✗ Test impossible: {}",
+    "✗ Il y a un souci : regarde la 1re ligne en rouge, puis « Comment l'installer ? ».":
+        "✗ There is a problem: look at the first line in red, then “How to install it?”.",
+    "🔌 Tester mon SDR": "🔌 Test my SDR",
+})

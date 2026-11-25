@@ -8522,11 +8522,19 @@ def shure_addrs(text):
 # équipes, public). Rien n'est enregistré sans accord explicite, tout est effacé après `keep_days` jours.
 PRIVACY_DEFAULT = dict(alarm_audio=False, keep_days=7, ack=False)
 KEEP_DAYS = (1, 3, 7, 14, 30, 0)                 # 0 = tout garder
-PRIVACY_TEXT = ("Le son démodulé contient des voix : artistes, équipes, public. Avant d'enregistrer :\n"
-                "• n'enregistre que ce qui sert (preuve d'un brouillage, réglage d'un micro) ;\n"
-                "• garde-le peu de temps (effacement automatique après la durée choisie) ;\n"
-                "• ne le diffuse pas, et préviens les personnes concernées si les règles du lieu le demandent.\n"
-                "Les enregistrements IQ des incidents contiennent aussi le son (on peut les réécouter).")
+PRIVACY_TEXT = ("Ce que l'appli garde, et quand :\n"
+                "• En mémoire seulement (rien sur le disque) : le son que tu écoutes, et les ~20 dernières secondes de "
+                "signal brut (IQ) du moniteur. Tout disparaît à l'arrêt.\n"
+                "• Sur le disque, uniquement quand :\n"
+                "  – tu cliques « ⏺ Enregistrer le son » ou « Enregistrer l'IQ » (jusqu'à ce que tu arrêtes) ;\n"
+                "  – une alarme part et « Sur alarme : garder le son » est coché (10 s avant + 10 s après) ;\n"
+                "  – un incident du moniteur est noté (dossier : IQ d'avant et d'après, mesures, rapport).\n"
+                "• Où : dans le dossier des journaux (enregistrements_audio, enregistrements_iq, incidents).\n"
+                "• Contenu : des VOIX (artistes, équipes, public) — l'IQ aussi, on peut le réécouter.\n"
+                "• Combien de temps : effacés tout seuls après la durée choisie (vérifié toutes les heures). L'appli "
+                "efface SES fichiers ; elle ne peut rien pour les copies faites ailleurs (clé USB, sauvegarde, e-mail).\n"
+                "N'enregistre que ce qui sert, ne le diffuse pas, et préviens les personnes concernées si les règles du "
+                "lieu le demandent.")
 
 
 def privacy_norm(d):
@@ -8908,6 +8916,125 @@ def ssc_apply(state, obj):
             continue
         ok = True
     return ok
+
+
+# ------------------------------------------------------------------ V8 étape 14 : fiabilité (lot E, 2ᵉ audit)
+# 1. Une mesure ancienne ne doit JAMAIS passer pour actuelle. 2. Chaque micro dit comment il est surveillé.
+FRESH_S = 2.5            # moniteur : plus de mesure depuis 2,5 s (5 envois manqués) = valeurs « anciennes »
+FROZEN_S = 8.0           # … depuis 8 s = flux figé : on coupe l'outil du SDR et on relance
+RX_STALE_S = 10.0        # récepteur réseau : plus de nouvelles depuis 10 s = valeurs anciennes
+
+
+def freshness(age, stale=FRESH_S, lost=FROZEN_S):
+    """Âge d'une mesure (s) -> « live » | « stale » (ancienne) | « lost » (plus rien) | « none » (jamais mesuré)."""
+    if age is None:
+        return "none"
+    return "live" if age < stale else ("stale" if age < lost else "lost")
+
+
+def age_text(age, tr=None):
+    """Âge lisible : « 4 s », « 3 min », « 2 h »."""
+    tr = tr or (lambda x: x)
+    if age is None:
+        return tr("jamais")
+    a = max(0.0, float(age))
+    if a < 90:
+        return tr("{} s").format(int(round(a)))
+    if a < 5400:
+        return tr("{} min").format(int(round(a / 60)))
+    return tr("{} h").format(int(round(a / 3600)))
+
+
+COVERAGE = {   # 2. comment un micro est surveillé : (texte, ton)
+    "full": ("● RF + son en continu", "ok"),
+    "turn": ("◐ RF en continu, son à tour de rôle", "ok"),
+    "degr": ("⚠ dégradée (pertes ou retard)", "warn"),
+    "stale": ("⏸ mesure ancienne", "warn"),
+    "out": ("○ PAS surveillé (hors fenêtre)", "bad"),
+    "stop": ("■ arrêté", "none"),
+    "wait": ("… en attente des premières mesures", "none"),
+}
+
+
+def coverage_state(running, in_window, vrx, fresh, perf_tone="ok"):
+    """2. État de surveillance d'un micro dans le moniteur : full | turn | degr | stale | out | stop."""
+    if not in_window:
+        return "out"
+    if not running:
+        return "stop"
+    if fresh != "live":
+        return "stale"
+    if perf_tone == "bad":
+        return "degr"
+    return "full" if vrx else "turn"
+
+
+def coverage_text(key, age=None, tr=None):
+    tr = tr or (lambda x: x)
+    t = tr(COVERAGE[key][0])
+    if key == "stale" and age is not None:
+        t += " " + tr("(il y a {})").format(age_text(age, tr))
+    return t
+
+
+# 6. Avalanche d'alertes : un même problème sur un même micro, répété, = une seule ligne « ×N ».
+CHRON_GROUP_S = 600.0
+
+
+def chron_group(rows, name, kind, t, window=CHRON_GROUP_S):
+    """Ligne de la chronologie (index) qui regroupe déjà ce problème (même micro, même type, il y a moins de `window`
+    secondes, sans dossier d'incident propre) ; None = nouvelle ligne."""
+    for i, x in enumerate(rows[:50]):
+        if x.get("name") == name and x.get("kind") == kind and t - x.get("t_last", x.get("t", 0)) <= window \
+                and not x.get("dir"):
+            return i
+    return None
+
+
+# 4. « Tester mon SDR » : vraie vérification (l'outil répond, le SDR est vu, l'IQ arrive au bon débit).
+SDR_PROBE = {   # genre : (outil, arguments, motif « trouvé »)
+    "hackrf": ("hackrf_info", [], r"Found HackRF|Serial number"),
+    "rtlsdr": ("rtl_test", ["-t"], r"Found \d+ device|Using device"),
+    "sdrplay": ("SoapySDRUtil", ["--find=driver=sdrplay"], r"driver\s*=\s*sdrplay"),
+    "soapy": ("SoapySDRUtil", ["--find"], r"driver\s*="),
+}
+PROBE_STEPS = ("tool", "seen", "iq", "rate")
+PROBE_TEXT = {"tool": "Outil du SDR trouvé", "seen": "SDR détecté (pilote OK)", "iq": "Signal reçu (IQ)",
+              "rate": "Débit tenu"}
+
+
+def probe_seen(kind, out):
+    """Sortie de l'outil de détection -> (vu ?, détail : la ligne qui le dit, ou la dernière ligne d'erreur)."""
+    pat = (SDR_PROBE.get(kind) or SDR_PROBE["soapy"])[2]
+    lines = [x.strip() for x in str(out).splitlines() if x.strip()]
+    hit = next((x for x in lines if re.search(pat, x, re.I)), None)
+    if hit:
+        return True, hit[:120]
+    bad = next((x for x in reversed(lines) if re.search(r"error|not found|no .*device|failed|impossible|denied", x, re.I)),
+               lines[-1] if lines else "")
+    return False, bad[:160]
+
+
+def probe_rate(nbytes, secs, rate, nb):
+    """Débit IQ réellement reçu pendant le test -> (MS/s reçus, part du débit demandé)."""
+    if secs <= 0 or rate <= 0:
+        return 0.0, 0.0
+    got = nbytes / float(nb) / secs
+    return round(got / 1e6, 3), round(got / float(rate), 2)
+
+
+def probe_report(res, tr=None):
+    """Résultat du test {étape: (ok | None, détail)} -> lignes « ✔ / ✗ / … étape : détail » et verdict."""
+    tr = tr or (lambda x: x)
+    lines = []
+    for k in PROBE_STEPS:
+        if k not in res:
+            continue
+        ok, d = res[k]
+        mark = "✔" if ok else ("…" if ok is None else "✗")
+        lines.append(f"{mark} {tr(PROBE_TEXT[k])}" + (f" : {d}" if d else ""))
+    done = all(res.get(k, (False,))[0] for k in PROBE_STEPS if k in res) and "rate" in res
+    return lines, done
 
 
 def reconnect_delay(fails):
@@ -12530,6 +12657,41 @@ SDR_TOOL_DIRS = [r"C:\Program Files\PothosSDR\bin", r"C:\Program Files (x86)\Pot
                  "/opt/homebrew/bin"]
 
 
+SDR_PROCS = set()               # étape 14 (7.) : tous les outils SDR lancés (hackrf_sweep, hackrf_transfer, rx_sdr…)
+SDR_PROCS_LOCK = threading.Lock()
+
+
+def sdr_proc_track(p):
+    """Retient un outil SDR lancé, pour pouvoir le tuer à coup sûr à la fermeture de l'appli."""
+    with SDR_PROCS_LOCK:
+        SDR_PROCS.add(p)
+        for q in [q for q in SDR_PROCS if q.poll() is not None]:
+            SDR_PROCS.discard(q)
+    return p
+
+
+def sdr_kill_all():
+    """Tue tous les outils SDR encore vivants (sinon, sous Windows, ils survivent à l'appli et gardent le SDR occupé).
+    -> nombre tués."""
+    n = 0
+    with SDR_PROCS_LOCK:
+        procs = list(SDR_PROCS)
+        SDR_PROCS.clear()
+    for p in procs:
+        try:
+            if p.poll() is None:
+                p.kill()
+                p.wait(timeout=3)
+                n += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return n
+
+
+import atexit  # noqa: E402
+atexit.register(sdr_kill_all)
+
+
 def find_sdr_tool(name, extra_dir=""):
     """Chemin de hackrf_sweep / rtl_power : dossier choisi, à côté de l'appli (et ./outils), PATH, dossiers
     d'installation habituels (PothosSDR…). -> chemin ou None."""
@@ -12730,8 +12892,9 @@ class SDRSweep(SpectrumDevice):
         self.served = {}
         self._t("lancement : " + " ".join(str(x) for x in argv))
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     stdin=subprocess.DEVNULL, text=True, bufsize=1, creationflags=flags)
+        self.proc = sdr_proc_track(subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE,
+                                                    stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
+                                                    bufsize=1, creationflags=flags))
         proc = self.proc
         threading.Thread(target=self._read_out, args=(proc,), daemon=True).start()
         threading.Thread(target=self._read_err, args=(proc,), daemon=True).start()
@@ -17674,9 +17837,9 @@ class ProcIQ:
         self.err = deque(maxlen=20)
         argv = listen_cmd(kind, exe, center, rate, gains.get("lna", 24), gains.get("vga", 20), gains.get("amp", False),
                           serial)
-        self.proc = subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     stdin=subprocess.DEVNULL, bufsize=0,
-                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.proc = sdr_proc_track(subprocess.Popen([str(x) for x in argv], stdout=subprocess.PIPE,
+                                                    stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, bufsize=0,
+                                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)))
         threading.Thread(target=self._read_err, daemon=True).start()
 
     def _read_err(self):
@@ -17767,6 +17930,78 @@ class WinradioIQ:
             d.close()
 
 
+SDR_PROBE_RUNNER = None          # tests : fausse détection (argv -> (code, sortie)) à la place de l'outil réel
+
+
+def sdr_probe(kind, model=None, gains=None, tool_dir="", iq_tool=None, secs=2.0, wr_lib=None):
+    """Étape 14 (4.) : « Tester mon SDR » pour de vrai (sans Qt, dans un fil) : outil trouvé, SDR détecté par son
+    outil, IQ reçu pendant `secs` secondes, débit tenu. -> {étape: (ok, détail)} (s'arrête à la 1re étape ratée)."""
+    res = {}
+    sp = SDR_KINDS.get(kind) or {}
+    if kind == "winradio":
+        dll = find_winradio_dll(tool_dir)
+        res["tool"] = (bool(dll) or wr_lib is not None, dll or ("" if wr_lib is not None else
+                                                                  TR("G39DDCAPI.dll introuvable : installe le logiciel WiNRADiO")))
+        if not res["tool"][0]:
+            return res
+        res["seen"] = (None, TR("vérifié à l'ouverture du flux"))
+    else:
+        name, args, _pat = SDR_PROBE.get(kind) or SDR_PROBE["soapy"]
+        exe = name if SDR_PROBE_RUNNER is not None else find_sdr_tool(name, tool_dir)
+        if exe is None:
+            res["tool"] = (False, TR("{} introuvable : dézippe le kit SDR à côté de l'appli (ou installe les outils)").format(name))
+            return res
+        res["tool"] = (True, str(exe))
+        try:
+            if SDR_PROBE_RUNNER is not None:
+                code, out = SDR_PROBE_RUNNER([exe] + args)
+            else:
+                pr = subprocess.run([str(exe)] + args, capture_output=True, text=True, timeout=10,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                code, out = pr.returncode, (pr.stdout or "") + "\n" + (pr.stderr or "")
+        except (OSError, subprocess.SubprocessError) as e:
+            res["seen"] = (False, str(e)[:160])
+            return res
+        seen, det = probe_seen(kind, out)
+        res["seen"] = (seen, det or TR("code de sortie {}").format(code))
+        if not seen:
+            return res
+    m = model or {}
+    rate = sdr_rate(m, kind) if m else sdr_iq_rate(kind)
+    fmin, fmax = m.get("fmin", sp.get("fmin", 1.0)), m.get("fmax", sp.get("fmax", 2000.0))
+    center = (600.0 if fmin <= 600.0 <= fmax else (fmin + fmax) / 2.0) * 1e6
+    try:
+        src = open_iq_source(kind, center, rate, gains or {}, tool=iq_tool, tool_dir=tool_dir, wr_lib=wr_lib)
+    except RuntimeError as e:
+        res["iq"] = (False, str(e)[:160])
+        return res
+    n, t0, first = 0, time.time(), None
+    try:
+        nb = IQ_BYTES[src.dtype]
+        while time.time() - t0 < secs + 3.0:
+            d = src.read(65536)
+            if not d:
+                break
+            if first is None:
+                first, n = time.time(), 0              # débit compté après la mise en route
+            n += len(d)
+            if first is not None and time.time() - first >= secs:
+                break
+        dt = time.time() - first if first else 0.0
+        err = list(src.err or ())
+        rate = src.rate
+    finally:
+        src.close()
+    if not n:
+        res["iq"] = (False, (err[-1] if err else TR("aucune donnée : SDR occupé par un autre logiciel ?"))[:160])
+        return res
+    res["iq"] = (True, TR("{} Mo en {} s").format(f"{n / 1e6:.1f}", f"{dt:.1f}"))
+    ms, share = probe_rate(n, dt, rate, nb)
+    res["rate"] = (share >= 0.9, TR("{} MS/s reçus sur {} demandés").format(f"{ms:g}", f"{rate / 1e6:g}")
+                   + ("" if share >= 0.9 else " — " + TR("le PC ou l'USB ne suit pas (câble, port USB 3, autre logiciel)")))
+    return res
+
+
 def open_iq_source(kind, center, rate, gains, serial="", tool=None, tool_dir="", wr_lib=None, span=None):
     """Source d'IQ pour l'écoute / le temps réel : .read(n), .close(), .rate, .dtype, .err. Lève RuntimeError."""
     if kind == "winradio":
@@ -17846,10 +18081,19 @@ class SdrDialog(QtWidgets.QDialog):
         self.help_btn = QtWidgets.QPushButton("Comment l'installer ?")
         self.help_btn.setToolTip("Les étapes d'installation pour ce SDR (logiciels à installer sous Windows).")
         self.help_btn.clicked.connect(lambda *_: self._install_help())
+        self.test_btn = QtWidgets.QPushButton("🔌 Tester mon SDR")      # étape 14 (4.) : un vrai essai
+        self.test_btn.setToolTip("Essaie VRAIMENT le SDR branché (quelques secondes) : outil trouvé, SDR vu par son pilote,\n"
+                                 "signal reçu, débit tenu. Ferme d'abord les autres logiciels qui l'utilisent.")
+        self.test_btn.clicked.connect(lambda *_: self.run_probe())
         st_row = QtWidgets.QHBoxLayout()
         st_row.addWidget(self.state, 1)
+        st_row.addWidget(self.test_btn)
         st_row.addWidget(self.help_btn)
         f.addRow("État :", st_row)
+        self.probe_lbl = QtWidgets.QLabel("")
+        self.probe_lbl.setWordWrap(True)
+        self.probe_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        f.addRow("", self.probe_lbl)
         self.sens = QtWidgets.QComboBox()
         for k, t in SDR_SENS:
             self.sens.addItem(t, k)
@@ -18011,6 +18255,36 @@ class SdrDialog(QtWidgets.QDialog):
         ok = not miss
         self.state.setText(TR("✔ Prêt") if ok else TR("✗ Il manque : {}").format(", ".join(miss)))
         self.state.setStyleSheet("" if ok else f"color: {self.owner.theme.get('st_weak', '#d29922')};")
+
+    def run_probe(self):
+        """🔌 Tester mon SDR (dans un fil : la fenêtre reste utilisable)."""
+        o = self.owner
+        m = sdr_model(self.model_combo.currentData())
+        if not m or not m.get("kind"):
+            self.probe_lbl.setText(TR("Ce modèle n'est pas pris en charge."))
+            return None
+        busy = [d for d in (getattr(o, "_multimon", None), getattr(o, "_listen", None), getattr(o, "_rt", None))
+                if d is not None and getattr(d, "worker", None) is not None]
+        if busy:
+            self.probe_lbl.setText(TR("⚠ Le SDR est utilisé (moniteur, écoute ou temps réel) : arrête-les d'abord."))
+            return None
+        kind, d_ = m["kind"], self.dir_edit.text().strip()
+        self.test_btn.setEnabled(False)
+        self.probe_lbl.setText(TR("… essai en cours (quelques secondes)"))
+
+        def done(res, err):
+            self.test_btn.setEnabled(True)
+            if err is not None:
+                self.probe_lbl.setText(TR("✗ Essai impossible : {}").format(err))
+                return
+            lines, ok = probe_report(res, TR)
+            self.last_probe = (res, ok)
+            head = TR("✔ Ton SDR marche : il peut surveiller et écouter.") if ok else \
+                TR("✗ Il y a un souci : regarde la 1re ligne en rouge, puis « Comment l'installer ? ».")
+            self.probe_lbl.setText(head + "\n" + "\n".join(lines))
+            self.probe_lbl.setStyleSheet(f"color: {o.tone_color('ok' if ok else 'bad')};")
+        return o.run_heavy(lambda: sdr_probe(kind, m, o.sdr_gains(kind), d_, getattr(o, "_listen_tool", None),
+                                             wr_lib=WINRADIO_LIB), done, None, TR("Essai du SDR"))
 
     def _install_help(self):
         m = sdr_model(self.model_combo.currentData())
@@ -18777,6 +19051,18 @@ class MultiMonitorWorker(QtCore.QThread):
         self.src, self.err = None, deque(maxlen=20)
         self.demod_opts = dict(mode="wfm", deemph_us=50.0, compander=None)
         self.inc_req, self.ring_s, self.keep_iq = deque(), 0.0, True    # V8 étape 10 : incidents
+        self.frozen = False                                             # étape 14 : coupé par le chien de garde
+
+    def force_close(self):
+        """Étape 14 : flux figé (l'outil ne rend plus rien sans erreur) -> on ferme la source (tue l'outil), la lecture
+        bloquée se termine, le moniteur relance le SDR."""
+        self.frozen = True
+        s_ = self.src
+        if s_ is not None:
+            try:
+                s_.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _inc_write(self, pend, dtype, center, hw):
         """Écrit l'IQ d'un incident (avant + après) en SigMF, dans un fil à part (ne pas perdre d'échantillons)."""
@@ -18789,12 +19075,15 @@ class MultiMonitorWorker(QtCore.QThread):
                 data = pend["pre"] + b"".join(pend["post"])
                 if shutil.disk_usage(req["dir"]).free < max(2e9, 3 * len(data)):   # étape 12 : disque presque plein
                     raise OSError(TR("disque presque plein : IQ non gardé"))
-                with open(base + ".sigmf-data", "wb") as f:
+                with open(base + ".sigmf-data.part", "wb") as f:         # étape 14 : « .part » tant que pas fini
                     f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(base + ".sigmf-data.part", base + ".sigmf-data")
                 ann = [{"core:sample_start": max(0, int(round((req["t"] - pend["t0"]) * self.rate))),
                         "core:sample_count": 1, "core:label": f"incident {req.get('name', '')}"}]
-                with open(base + ".sigmf-meta", "w", encoding="utf-8") as f:
-                    json.dump(sigmf_meta(dtype, self.rate, center, pend["t0"], hw, ann), f, indent=1)
+                write_atomic(base + ".sigmf-meta", json.dumps(sigmf_meta(dtype, self.rate, center, pend["t0"], hw, ann),
+                                                             indent=1))   # le .meta en DERNIER = IQ complet
                 iq = dict(file="iq.sigmf-data", path=base + ".sigmf-data", dur=len(data) / IQ_BYTES[dtype] / self.rate,
                           rate=self.rate, center=center, t0=pend["t0"])
             except OSError as e:
@@ -18833,7 +19122,8 @@ class MultiMonitorWorker(QtCore.QThread):
                 data = src.read(chunk - len(buf))
                 if not data:
                     time.sleep(0.1)
-                    why = (self.err[-1] if self.err else "flux coupé") + f" — {sp['name']} débranché ou occupé ?"
+                    why = (TR("flux figé : plus de données depuis {} s").format(f"{FROZEN_S:.0f}") if self.frozen
+                           else (self.err[-1] if self.err else "flux coupé")) + f" — {sp['name']} débranché ou occupé ?"
                     break
                 if got == 0 and not buf:
                     t0 = time.time()                 # pertes comptées depuis les premières données, pas le lancement
@@ -18962,7 +19252,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
     """V8 étape 9 : 📡 moniteur multicanal SDR. Tous tes micros de la fenêtre du SDR : niveau, écart au bruit, son
     (RMS / crête / silence / coupures / saturation), santé (déviation, dérive), largeur occupée, canaux voisins,
     diagnostic RF + audio ; clic sur une ligne = l'écouter + son waterfall et son historique."""
-    COLS = ["Nom", "MHz", "RF", "Son", "Santé", "Largeur", "Voisins", "Diagnostic"]
+    COLS = ["Nom", "Suivi", "MHz", "RF", "Son", "Santé", "Largeur", "Voisins", "Diagnostic"]
+    C_COV, C_DIAG = 1, 8
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -19249,11 +19540,20 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             ct, ctone = capacity_view(len(ws), len(self.chans), len(self.chans), 0, TR)
             self.cap_lbl.setText(ct)
             self.cap_lbl.setStyleSheet("" if ctone == "ok" else f"color: {o.tone_color(ctone)};")
-        self.table.setRowCount(len(self.chans))
+        self.out_ws = [w for w in ws if w["freq"] not in keep]        # étape 14 : on montre aussi ce qui N'EST PAS suivi
+        self.table.setRowCount(len(self.chans) + len(self.out_ws))
         for r, c in enumerate(self.chans):
-            for col, v in enumerate((c["name"], f"{c['freq']:.3f}", "", "", "", "", "", "")):
+            for col, v in enumerate((c["name"], coverage_text("stop", None, TR), f"{c['freq']:.3f}", "", "", "", "", "", "")):
                 self.table.setItem(r, col, QtWidgets.QTableWidgetItem(v))
             self.hist.setdefault(c["key"], MicHistory())
+        for i, w in enumerate(self.out_ws):
+            r = len(self.chans) + i
+            for col, v in enumerate((w["name"] or f"{w['freq']:.3f}", coverage_text("out", None, TR), f"{w['freq']:.3f}",
+                                     "—", "—", "—", "—", "—", TR("le tinySA ou le balayage s'en occupe"))):
+                it = QtWidgets.QTableWidgetItem(v)
+                it.setForeground(QtGui.QColor(o.theme.get("dim", "#8e8e93")))
+                self.table.setItem(r, col, it)
+            self.table.item(r, 1).setForeground(QtGui.QColor(o.tone_color("bad")))
         if getattr(self, "ph_tbl", None) is not None:
             self._fill_phases()
 
@@ -19277,6 +19577,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                                          tool=getattr(o, "_listen_tool", None), tool_dir=o.sdr_cfg.get("dir", ""))
         self.worker.n_vrx = self.vrx_spin.value()
         self._want = True
+        self._t_stats, self._t_start, self._fr_shown = None, time.time(), None     # étape 14 : âge des mesures
         self.vrx_spin.valueChanged.connect(lambda v: self.worker is not None and setattr(self.worker, "n_vrx", v))
         self.worker.stats.connect(lambda rows, w_=self.worker: self._stats(rows) if w_ is self.worker else None)
         self.worker.spec.connect(lambda F, L, w_=self.worker: self._spec(F, L) if w_ is self.worker else None)
@@ -19303,6 +19604,9 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         if w is None:
             return
         o = self.owner
+        if time.time() - getattr(self, "_t_fresh", 0.0) >= 0.5:          # étape 14 : âge des mesures
+            self._t_fresh = time.time()
+            self._freshen()
         w.alarm_keys = {a["key"][1] for a in o.alarms.active.values() if a.get("key") and a["key"][0] in ("CONFLIT", "BREF", "ABSENT")}
         if self.audio is not None:
             self.audio.feed(w.audio)
@@ -19359,6 +19663,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                      if s.get("vrx") and s.get("rms") is not None else "—"),
                     TR(ht), "—" if s.get("obw") is None else f"{s['obw']:.0f} kHz",
                     "—" if s.get("adj_margin") is None else f"{round(s['adj_margin']):.0f} dB", diag_short(dg[0][2])]
+            vals.insert(1, coverage_text(coverage_state(True, True, s.get("vrx"), "live", getattr(self, "_perf_tone", "ok")),
+                                         None, TR))
             for c, v in enumerate(vals):
                 it = self.table.item(r, c)
                 if it is None:
@@ -19376,9 +19682,52 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                         ev["value"] = dg[0][2]
                     self._event(c_, ev)
             tone = dg[0][1]
-            self.table.item(r, 7).setForeground(QtGui.QColor(self.owner.tone_color(tone)) if tone != "ok" else QtGui.QBrush())
-            self.table.item(r, 7).setToolTip("\n".join(x[2] for x in dg))
+            self.table.item(r, self.C_DIAG).setForeground(QtGui.QColor(self.owner.tone_color(tone)) if tone != "ok"
+                                                          else QtGui.QBrush())
+            self.table.item(r, self.C_DIAG).setToolTip("\n".join(x[2] for x in dg))
+            cs = coverage_state(True, True, s.get("vrx"), "live", getattr(self, "_perf_tone", "ok"))
+            for c in range(len(self.COLS)):                   # valeurs fraîches : couleur normale
+                it = self.table.item(r, c)
+                if it is not None and c != self.C_DIAG:
+                    it.setForeground(QtGui.QBrush())
+            self.table.item(r, self.C_COV).setForeground(QtGui.QColor(self.owner.tone_color(COVERAGE[cs][1]))
+                                                         if COVERAGE[cs][1] != "ok" else QtGui.QBrush())
+        self._t_stats = time.time()
+        self._stale_shown = False
         self._draw_sel()
+
+    def _freshen(self):
+        """Étape 14 (1.) : des valeurs qui ne bougent plus ne doivent JAMAIS passer pour actuelles. Toutes les 0,5 s :
+        âge des dernières mesures -> lignes grisées « ⏸ mesure ancienne (il y a N s) » ; au-delà de FROZEN_S, flux figé :
+        l'outil du SDR est coupé et le moniteur relance (reconnexion automatique)."""
+        w = self.worker
+        t0 = getattr(self, "_t_stats", None)
+        if w is None:
+            fr, age = "none", None
+        else:
+            age = time.time() - (t0 if t0 is not None else getattr(self, "_t_start", time.time()))
+            fr = freshness(age, FRESH_S, FROZEN_S if t0 is not None else FROZEN_S * 2)
+        if fr == "lost" and w is not None and not w.frozen:
+            self.sel_lbl.setText(TR("⚠ Flux du SDR figé (plus de données depuis {}) : je relance le SDR…").format(
+                age_text(age, TR)))
+            w.force_close()
+        if fr == "live" or (fr == getattr(self, "_fr_shown", None) and fr != "stale"):
+            self._fr_shown = fr
+            return
+        self._fr_shown = fr
+        dim = QtGui.QColor(self.owner.theme.get("dim", "#8e8e93"))
+        cs = "stop" if w is None else ("wait" if t0 is None else "stale")
+        txt = coverage_text(cs, age if t0 is not None else None, TR)
+        for r in range(len(self.chans)):
+            for c in range(len(self.COLS)):
+                it = self.table.item(r, c)
+                if it is not None:
+                    it.setForeground(dim)
+            it = self.table.item(r, self.C_COV)
+            if it is not None:
+                it.setText(txt)
+                if cs == "stale":
+                    it.setForeground(QtGui.QColor(self.owner.tone_color("warn")))
 
     def _spec(self, F, L):
         o = self.owner
@@ -19439,8 +19788,20 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             pass
         return d
 
-    def _chron_add(self, t, name, what, folder=""):
-        self.chron.insert(0, dict(t=t, name=name, what=what, dir=folder))
+    def _chron_add(self, t, name, what, folder="", kind=None):
+        """Nouvelle ligne de la chronologie ; étape 14 (6.) : le même problème répété sur le même micro (moins de 10 min)
+        ne fait PAS de nouvelle ligne : « ×N », de la 1re à la dernière fois. -> True si regroupé."""
+        i = chron_group(self.chron, name, kind, t) if kind and not folder else None
+        if i is not None:
+            x = self.chron[i]
+            x["n"], x["t_last"], x["what"] = x.get("n", 1) + 1, t, what
+            for c, v in ((0, f"{datetime.fromtimestamp(x['t']):%H:%M:%S} → {datetime.fromtimestamp(t):%H:%M:%S}"),
+                         (2, f"{what} ×{x['n']}")):
+                it = self.chron_tbl.item(i, c)
+                if it is not None:
+                    it.setText(v)
+            return True
+        self.chron.insert(0, dict(t=t, name=name, what=what, dir=folder, kind=kind, n=1, t_last=t))
         del self.chron[500:]
         tb = self.chron_tbl
         tb.insertRow(0)
@@ -19449,6 +19810,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             tb.setItem(0, c, QtWidgets.QTableWidgetItem(v))
         while tb.rowCount() > 500:
             tb.removeRow(tb.rowCount() - 1)
+        return False
 
     def _event(self, c, ev, force=False):
         """Une perturbation (ou une alarme) sur un micro : dans la chronologie, et dossier d'incident si coché."""
@@ -19465,8 +19827,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                                      if fl is not None else None)
             self.worker.inc_req.append(dict(key=c["key"], name=c["name"], freq=c["freq"], trigger=ev, t=ev["t"],
                                             dir=folder))
-        self._chron_add(ev["t"], c["name"], anomaly_text(ev, TR), folder)
-        if ev["kind"] != "burst":
+        grouped = self._chron_add(ev["t"], c["name"], anomaly_text(ev, TR), folder, ev["kind"])
+        if ev["kind"] != "burst" and not grouped:            # répétition : une seule fois au journal
             self.owner.log_event(dict(name=c["name"], freq=c["freq"], note=anomaly_text(ev, TR) +
                                       (TR(" · dossier : {}").format(folder) if folder else "")), 0.0, "INCIDENT SDR")
 
@@ -19474,7 +19836,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         for e_ in evs[:5]:
             c = dict(key=None, name=TR("inconnu"), freq=float(e_["f"]))
             self._chron_add(e_["t1"], c["name"], anomaly_text(dict(kind="burst", value=TR("{} MHz, {} s, {} dBFS").format(
-                f"{e_['f']:.3f}", f"{max(0.05, e_['t1'] - e_['t0']):.1f}", f"{e_['peak']:.0f}")), TR))
+                f"{e_['f']:.3f}", f"{max(0.05, e_['t1'] - e_['t0']):.1f}", f"{e_['peak']:.0f}")), TR),
+                            "", f"burst{round(float(e_['f']), 1)}")
 
     def manual_incident(self):
         if self.worker is None or not self.chans:
@@ -19537,10 +19900,9 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                 pass
         try:
             os.makedirs(folder, exist_ok=True)
-            with open(os.path.join(folder, "mesures.json"), "w", encoding="utf-8") as f:
-                json.dump(doc, f, ensure_ascii=False, indent=1, default=str)
-            with open(os.path.join(folder, "rapport.html"), "w", encoding="utf-8") as f:
-                f.write(incident_report_html(doc, TR))
+            write_atomic(os.path.join(folder, "mesures.json"),
+                         json.dumps(doc, ensure_ascii=False, indent=1, default=str))       # étape 14 : jamais à moitié
+            write_atomic(os.path.join(folder, "rapport.html"), incident_report_html(doc, TR))
             state = TR("📦 {}").format(os.path.basename(folder)) + ("" if doc["iq"].get("file") else TR(" (sans IQ)"))
         except OSError as e:
             state = TR("⚠ {}").format(e)
@@ -19578,6 +19940,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.perf_lbl.setText(TR("⚙ SDR : {} · {} récepteur(s) virtuel(s)").format(TR(txt), p.get("vrx", 0)))
         self.perf_lbl.setStyleSheet("" if tone == "ok" else f"color: {self.owner.tone_color(tone)};")
         self.perf_lbl.setVisible(tone != "ok")          # tout va bien : le détail reste dans l'onglet Système
+        self._perf_tone = tone
         self._fails = 0                                   # des données arrivent : le SDR va bien
         ct, ctone = capacity_view(getattr(self, "n_asked", len(self.chans)), len(self.chans), p.get("vrx", 0),
                                   p.get("crit", 0), TR)
@@ -19657,6 +20020,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.go_btn.setText("▶ Surveiller")
         self.dev_combo.setEnabled(True)
         self.trk = {}
+        self._fr_shown = None
+        self._freshen()                                # arrêté : plus aucune valeur ne passe pour actuelle
 
     def closeEvent(self, ev):
         self.stop()
@@ -19679,6 +20044,7 @@ class ReceiverClient(threading.Thread):
     def _got(self, ch, t, key_div=True):
         """Après une mise à jour d'un canal : diversity et historique du niveau."""
         st = self.state.get(ch, {})
+        st["t"] = t                                   # étape 14 : heure de la dernière nouvelle de CE canal
         if key_div and st.get("ant"):
             self.div.setdefault(ch, DiversityAB()).feed(st.get("ant"), t)
         if st.get("rf") is not None:
@@ -19891,7 +20257,9 @@ class ReceiversDialog(QtWidgets.QDialog):
         for r, x in enumerate(rows):
             w = o.watch_near(x.get("freq"))
             un = x.get("rf_unit") or "dBm"
-            vals = [x["host"], str(x["ch"]), x.get("name") or "—",
+            vals = [("✔ " if x.get("live") else "⏸ ") + x["host"]
+                    + ("" if x.get("live") else " · " + TR("il y a {}").format(age_text(x.get("age"), TR))),
+                    str(x["ch"]), x.get("name") or "—",
                     "—" if x.get("freq") is None else f"{x['freq']:.3f}",
                     "—" if x.get("rf") is None else f"{x['rf']:g} {un}", x.get("ant") or "—", x.get("div") or "—",
                     "—" if x.get("audio") is None else (f"{x['audio']:g} dBFS" if un == "dBm" else f"{x['audio']:g} %"),
@@ -19904,6 +20272,14 @@ class ReceiversDialog(QtWidgets.QDialog):
                     self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
                 elif it.text() != v:
                     it.setText(v)
+        dim = QtGui.QColor(o.theme.get("dim", "#8e8e93"))
+        for r, x in enumerate(rows):                       # étape 14 : canal sans nouvelles = grisé, valeurs anciennes
+            for c in range(self.table.columnCount()):
+                it = self.table.item(r, c)
+                if it is not None:
+                    it.setForeground(QtGui.QBrush() if x.get("live") else dim)
+                    it.setToolTip("" if x.get("live") else TR("Valeurs d'il y a {} : le récepteur ne répond plus (réseau, "
+                                                                "alimentation ?).").format(age_text(x.get("age"), TR)))
         for r, x in enumerate(rows):                       # 14. alertes : en rouge, notées une fois au journal
             it = self.table.item(r, 10)
             if it is not None:
@@ -19925,6 +20301,17 @@ class ReceiversDialog(QtWidgets.QDialog):
     def closeEvent(self, ev):
         self.timer.stop()
         super().closeEvent(ev)
+
+
+def write_atomic(path, text):
+    """Étape 14 : écrit un fichier texte d'un coup (fichier « .part » puis renommé) : une coupure ne laisse jamais un
+    fichier à moitié écrit sous le vrai nom."""
+    tmp = str(path) + ".part"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def open_incident(owner, folder, parent=None):
@@ -20602,12 +20989,16 @@ class RealtimeDialog(QtWidgets.QDialog):
                                                             "Enregistrement SigMF (*.sigmf-meta *.sigmf-data)")
         if not path:
             return
-        base = re.sub(r"\.sigmf-(meta|data)$", "", path)
+        base = re.sub(r"\.sigmf-(meta|data)(\.part)?$", "", path)
         try:
+            if os.path.isfile(base + ".sigmf-data.part") and not os.path.isfile(base + ".sigmf-data"):
+                raise ValueError(TR("enregistrement interrompu pendant l'écriture (fichier .part) : IQ incomplet"))
             with open(base + ".sigmf-meta", encoding="utf-8") as fm:
                 info = sigmf_info(json.load(fm))
             if not os.path.isfile(base + ".sigmf-data"):
                 raise ValueError("fichier .sigmf-data introuvable à côté")
+            if os.path.getsize(base + ".sigmf-data") < IQ_BYTES[info["dtype"]] * info["rate"] * 0.05:
+                raise ValueError(TR("fichier IQ vide ou presque (moins de 0,05 s)"))
         except (OSError, ValueError, json.JSONDecodeError) as e:
             self.st_lbl.setText(f"⚠ Enregistrement illisible : {e}")
             return
@@ -40701,6 +41092,29 @@ def _v8_open_incidents(self):
 
 MainWindow.open_incidents = _v8_open_incidents
 
+_v7_close_event = MainWindow.closeEvent
+
+
+def _v8_close_event(self, ev):
+    """Étape 14 (7.) : à la fermeture, on arrête les fenêtres SDR et les récepteurs, puis on tue tout outil SDR resté
+    vivant (après la fermeture V7 : si elle est annulée, on ne touche à rien)."""
+    _v7_close_event(self, ev)
+    if not ev.isAccepted():
+        return
+    for nm in ("_multimon", "_listen", "_rt"):
+        d = getattr(self, nm, None)
+        try:
+            if d is not None and hasattr(d, "stop"):
+                d.stop()
+        except Exception:  # noqa: BLE001
+            pass
+    for c in list((getattr(self, "_shure", None) or {}).values()):
+        c.stop()
+    sdr_kill_all()
+
+
+MainWindow.closeEvent = _v8_close_event
+
 
 def _v8_receivers_start(self, text):
     """14. Connecte (ou reconnecte) les récepteurs de la liste (toutes marques : « g4:… », « ssc:… », Shure sans
@@ -40724,14 +41138,19 @@ def _v8_receivers(self):
     out = []
     for c in (getattr(self, "_shure", None) or {}).values():
         for ch, st in sorted(c.snapshot().items()):
-            out.append(dict(st, host=c.host, ch=ch, brand=c.brand, live=c.ok and time.time() - c.t_last < 10))
+            age = time.time() - float(st.get("t") or 0.0) if st.get("t") else None
+            out.append(dict(st, host=c.host, ch=ch, brand=c.brand, age=age,
+                            live=bool(c.ok and age is not None and age < RX_STALE_S)))
     return out
 
 
-def _v8_receiver_for(self, f, tol=0.025):
-    """Canal de récepteur réglé sur la fréquence f (MHz, ± 25 kHz), ou None."""
+def _v8_receiver_for(self, f, tol=0.025, live_only=True):
+    """Canal de récepteur réglé sur la fréquence f (MHz, ± 25 kHz), ou None. live_only : seulement s'il a donné des
+    nouvelles récentes (étape 14 : une valeur ancienne n'alimente ni le diagnostic ni la comparaison)."""
     best = None
     for x in self.receivers():
+        if live_only and not x.get("live"):
+            continue
         if x.get("freq") is not None and abs(x["freq"] - f) <= tol and (best is None or abs(x["freq"] - f) <
                                                                          abs(best["freq"] - f)):
             best = x

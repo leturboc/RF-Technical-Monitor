@@ -1847,6 +1847,33 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   « Mes récepteurs » + Retirer (Suppr), `why` pour Wisycom / autres. Colonne RF en dBm ou % (`rf_unit`). **Protocoles
   Sennheiser écrits de mémoire, jamais essayés sur un vrai récepteur** (testés sur faux récepteurs UDP) : au 1er essai,
   demander à Clément une capture (Wireshark) si rien ne s'affiche. Wisycom : demander une capture Wisycom Manager ↔ MRK.
+- **V8 étape 14 (2ᵉ audit externe de la V8 : « fiabilité avant tout », Clément : « Goo 1/2/3/4/5/6/7/8 »)** :
+  1. **Jamais une valeur ancienne présentée comme actuelle** : PURE `FRESH_S` 2,5 s, `FROZEN_S` 8 s, `RX_STALE_S` 10 s,
+     `freshness`, `age_text`. Moniteur : `_freshen` (toutes les 0,5 s via `_feed`, et à l'arrêt) grise les lignes et
+     écrit « ⏸ mesure ancienne (il y a N s) » ; au-delà de FROZEN_S (2 × avant la 1re mesure), chien de garde :
+     `MultiMonitorWorker.force_close` (ferme la source = tue l'outil, `frozen` -> raison « flux figé ») puis reconnexion
+     automatique. Récepteurs : `st["t"]` par canal (`_got`), `age` / `live` dans `receivers()`, ligne grisée « ⏸ hôte ·
+     il y a … » + bulle, `receiver_for(..., live_only=True)` (diagnostic et comparaison ignorent l'ancien).
+  2. **Couverture par micro** : PURE `COVERAGE` (full, turn, degr, stale, out, stop, wait), `coverage_state`,
+     `coverage_text` ; colonne « Suivi » (`C_COV` = 1, `C_DIAG` = 8) ; les fréquences de la plage du SDR hors fenêtre
+     sont listées en bas (`out_ws`, « ○ PAS surveillé (hors fenêtre) ») ; `_perf_tone` -> « dégradée ».
+  3. **Écriture sûre** : `write_atomic` (.part + fsync + os.replace) pour mesures.json / rapport.html / .sigmf-meta ;
+     IQ des incidents en « .sigmf-data.part » renommé, le .meta en DERNIER ; `RealtimeDialog.open_file` refuse un
+     « .part » seul (« enregistrement interrompu ») et un IQ < 0,05 s.
+  4. **« 🔌 Tester mon SDR »** (Réglages SDR, `run_probe` via `run_heavy`) : PURE `SDR_PROBE` (hackrf_info, rtl_test -t,
+     SoapySDRUtil --find[=driver=sdrplay]), `probe_seen`, `probe_rate`, `probe_report` ; `sdr_probe(kind, model, gains,
+     dir, iq_tool, secs)` (outil, détection, IQ 2 s, débit ≥ 90 %) ; tests : `SDR_PROBE_RUNNER` (fausse détection).
+  5. **Consentement précis** : `PRIVACY_TEXT` réécrit (mémoire / disque / déclencheurs / où / contenu / durée ; l'appli
+     n'efface que SES fichiers, pas les copies).
+  6. **Avalanche** : PURE `CHRON_GROUP_S` 600, `chron_group` ; `_chron_add(..., kind)` regroupe « ×N » (heure « de → à »),
+     journal seulement la 1re fois.
+  7. **Processus** : `SDR_PROCS` / `sdr_proc_track` (les deux Popen des outils SDR) / `sdr_kill_all` (atexit) ;
+     `MainWindow.closeEvent` enveloppé (`_v8_close_event` : après la fermeture V7 acceptée, stop des fenêtres SDR et
+     des récepteurs, puis outils tués).
+  8. **Tests de résistance** `tests/test_sdr_stress.py` (vrai `MultiMonitorWorker`, `FakeSrc` : figé, mort, trou de 3 s,
+     rafale de 5 incidents, disque plein, coupure pendant l'écriture, endurance 25 s à 12 micros, outils tués) ; PAS
+     dans la CI (le workflow est commun à la V7) : à lancer à la main. Testé : tout ça + gui_reel (Suivi, ancien grisé,
+     test du SDR, IQ coupé, récepteur muet). **Toujours rien sur du vrai matériel.**
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

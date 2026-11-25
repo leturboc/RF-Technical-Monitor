@@ -1071,6 +1071,24 @@ check("📡 sensibilité basse : atténuateur au max, préampli coupé", _sdd.ga
 _sdd.more.setChecked(True)
 wait(200)
 shot(_sdd, "reglages_sdr_avances")
+# V8 étape 14 (4.) : « Tester mon SDR » pour de vrai (fausse détection + faux flux IQ)
+_sdd.model_combo.setCurrentIndex(_sdd.model_combo.findData("hackrf_one"))
+m.SDR_PROBE_RUNNER = lambda argv: (0, "hackrf_info version: 2024\nFound HackRF\nSerial number: 0000")
+step("🔌 tester mon SDR", _sdd.run_probe)
+_t0 = time.time()
+while not _sdd.test_btn.isEnabled() and time.time() - _t0 < 20:
+    wait(300)
+check("🔌 test du SDR : détecté, signal reçu, débit mesuré", "Found HackRF" in _sdd.probe_lbl.text()
+      and "Signal reçu" in _sdd.probe_lbl.text() and "MS/s" in _sdd.probe_lbl.text(), _sdd.probe_lbl.text())
+shot(_sdd, "test_sdr")
+m.SDR_PROBE_RUNNER = lambda argv: (1, "No HackRF boards found.")
+step("🔌 tester (rien de branché)", _sdd.run_probe)
+_t0 = time.time()
+while not _sdd.test_btn.isEnabled() and time.time() - _t0 < 20:
+    wait(300)
+check("🔌 test du SDR : rien de branché = dit clairement", "✗" in _sdd.probe_lbl.text()
+      and "No HackRF" in _sdd.probe_lbl.text(), _sdd.probe_lbl.text())
+m.SDR_PROBE_RUNNER = None
 _sdd.model_combo.setCurrentIndex(_sdd.model_combo.findData("rsp1b"))
 win.sdr_cfg.update(_sdd.values())
 _sdd.close()
@@ -1171,6 +1189,14 @@ if _mm is not None:
           str(_mm.sys_tbl.rowCount()))
     check("🕒 horloge : mesures datées à la capture", _mm.rows and abs(_mm.rows[0].get("t", 0) - time.time()) < 5
           and _mm.worker.clock.n > 0)
+    _cov = [_mm.table.item(r_, _mm.C_COV).text() for r_ in range(_mm.table.rowCount()) if _mm.table.item(r_, _mm.C_COV)]
+    check("2. chaque micro dit comment il est suivi (continu / tour de rôle / hors fenêtre)",
+          any("continu" in x for x in _cov) and (not _mm.out_ws or any("PAS surveillé" in x for x in _cov)), str(_cov))
+    _mm._t_stats = time.time() - 5                    # 1. plus de mesure depuis 5 s : valeurs grisées, « ancienne »
+    _mm._freshen()
+    check("1. mesure ancienne : signalée, jamais présentée comme actuelle",
+          "ancienne" in _mm.table.item(0, _mm.C_COV).text(), _mm.table.item(0, _mm.C_COV).text())
+    shot(_mm, "multicanal_ancien")
     _mm.tabs.setCurrentIndex(3)
     wait(200)
     shot(_mm, "multicanal_systeme")
@@ -1204,6 +1230,10 @@ if _mm is not None:
     _mm._event(_c0, dict(kind="drop", t=time.time(), value=20.0))
     check("📦 perturbation : dans la chronologie (pas de 2ᵉ dossier dans les 2 min)", len(_mm.chron) == _n0 + 1
           and not _mm.chron[0]["dir"], str(_mm.chron[:1]))
+    for _k in range(4):                                   # 6. le même problème répété = une ligne « ×N »
+        _mm._event(_c0, dict(kind="drop", t=time.time() + _k, value=20.0))
+    check("6. répétitions regroupées (une ligne ×5)", len(_mm.chron) == _n0 + 1 and _mm.chron[0].get("n") == 5
+          and "×5" in _mm.chron_tbl.item(0, 2).text(), str(_mm.chron[:1]))
     _mm.tabs.setCurrentIndex(1)
     wait(300)
     shot(_mm, "incidents_chronologie")
@@ -1226,7 +1256,15 @@ if _mm is not None:
     _mm.mode_combo.setCurrentIndex(0)
     step("multicanal ■", _mm.toggle)
     check("📡 multicanal : arrêté proprement", _mm.worker is None)
-    if _ok_inc:
+    if _ok_inc:                                       # 3. IQ coupé pendant l'écriture : refusé clairement
+        _cut = os.path.join(os.path.dirname(_inc), "coupe")
+        os.makedirs(_cut, exist_ok=True)
+        open(os.path.join(_cut, "iq.sigmf-data.part"), "wb").write(b"\0" * 100)
+        win.open_realtime()
+        win._rt.open_file(os.path.join(_cut, "iq.sigmf-data.part"))
+        check("3. IQ interrompu pendant l'écriture : refusé, expliqué", "interrompu" in win._rt.st_lbl.text(),
+              win._rt.st_lbl.text())
+        win._rt.close()
         _mm.chron_tbl.selectRow(next(i_ for i_, x_ in enumerate(_mm.chron) if x_["dir"] == _inc))
         step("▶ rejouer l'incident", _mm.replay)
         _rti = getattr(win, "_rt", None)
@@ -1317,6 +1355,20 @@ if _rd is not None:
     check("📶 Sennheiser G4 lu (RF en %)", any(x.get("name") == "Voix G4" and x.get("rf_unit") == "%" for x in win.receivers()),
           str(win.receivers()))
     shot(_rd, "recepteurs_shure")
+    _stop13.set()                                         # 1. récepteur sans nouvelles depuis 1 min : grisé, « il y a »
+    wait(500)
+    for _c13 in win._shure.values():
+        if _c13.brand == "g4":
+            with _c13.lock:
+                _c13.state.setdefault(1, {})["t"] = time.time() - 60
+    _rd.refresh()
+    _g4row = next((r_ for r_ in range(_rd.table.rowCount()) if _rd.table.item(r_, 2).text() == "Voix G4"), None)
+    check("1. récepteur sans nouvelles : marqué ⏸ « il y a … », pas présenté comme actuel", _g4row is not None
+          and _rd.table.item(_g4row, 0).text().startswith("⏸") and "il y a" in _rd.table.item(_g4row, 0).text(),
+          _rd.table.item(_g4row, 0).text() if _g4row is not None else "")
+    check("1. récepteur sans nouvelles : ignoré par le diagnostic et la comparaison",
+          not any(x.get("name") == "Voix G4" and x.get("live") for x in win.receivers()))
+    shot(_rd, "recepteurs_ancien")
     _rd.mine.setCurrentRow(1)
     _rd.remove()
     check("📶 récepteur retiré", _rd.mine.count() == 1 and "g4:" not in win.sdr_cfg["shure"], win.sdr_cfg["shure"])

@@ -693,5 +693,29 @@ import json as _js
 ok("SSC : requêtes JSON valides", all(isinstance(_js.loads(x), dict) for x in ns["ssc_init"]())
    and _js.loads(ns["json_dumps_compact"]({"a": 'x"y\\z', "b": [1, None, True]})) == {"a": 'x"y\\z', "b": [1, None, True]})
 
+# ---------------------------------------------------------------- V8 étape 14 : fiabilité (2ᵉ audit)
+fr = ns["freshness"]
+ok("1. fraîcheur : en direct / ancienne / perdue / jamais", [fr(1.0), fr(3.0), fr(9.0), fr(None)] == ["live", "stale", "lost", "none"])
+ok("1. âge lisible", [ns["age_text"](4.2), ns["age_text"](190), ns["age_text"](7300), ns["age_text"](None)]
+   == ["4 s", "3 min", "2 h", "jamais"])
+cs = ns["coverage_state"]
+ok("2. couverture par micro", [cs(True, True, True, "live"), cs(True, True, False, "live"), cs(True, True, True, "stale"),
+   cs(True, True, True, "live", "bad"), cs(True, False, True, "live"), cs(False, True, True, "live")]
+   == ["full", "turn", "stale", "degr", "out", "stop"])
+ok("2. texte : mesure ancienne avec son âge", ns["coverage_text"]("stale", 12) == "⏸ mesure ancienne (il y a 12 s)")
+rows_ = [dict(name="HF1", kind="drop", t=100.0, t_last=100.0), dict(name="HF1", kind="drop", t=50.0, dir="x")]
+ok("6. même problème, même micro, < 10 min : regroupé", ns["chron_group"](rows_, "HF1", "drop", 400.0) == 0
+   and ns["chron_group"](rows_, "HF1", "drop", 800.0) is None and ns["chron_group"](rows_, "HF2", "drop", 120.0) is None)
+ok("4. détection : HackRF vu", ns["probe_seen"]("hackrf", "hackrf_info version: x\nFound HackRF\nIndex: 0")
+   == (True, "Found HackRF"))
+ok("4. détection : rien de branché", ns["probe_seen"]("rtlsdr", "No supported devices found.")[0] is False
+   and "No supported" in ns["probe_seen"]("rtlsdr", "No supported devices found.")[1])
+ok("4. débit tenu / pas tenu", ns["probe_rate"](9.6e6 * 2, 2.0, 4.8e6, 2) == (4.8, 1.0)
+   and ns["probe_rate"](4.8e6, 2.0, 4.8e6, 2)[1] == 0.25)
+lines_, okp = ns["probe_report"]({"tool": (True, "x"), "seen": (True, "Found"), "iq": (True, "1 Mo"), "rate": (False, "lent")})
+ok("4. rapport du test", not okp and lines_[0].startswith("✔") and lines_[3].startswith("✗"), str(lines_))
+ok("5. consentement précis : mémoire / disque / déclencheurs / où / durée / copies",
+   all(x in ns["PRIVACY_TEXT"] for x in ("En mémoire seulement", "Sur le disque", "alarme", "incidents", "copies")))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
