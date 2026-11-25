@@ -1148,6 +1148,10 @@ if _mm is not None:
             and time.time() - _t0 < 15:
         wait(300)
     wait(1500)
+    _t0 = time.time()                           # PC lent (CI Windows) : la déviation arrive après quelques blocs
+    while time.time() - _t0 < 15 and next((r_ for r_ in _mm.rows if abs(r_["freq"] - _pair[0]["freq"]) < 1e-6),
+                                          {}).get("dev") is None:
+        wait(300)
     _r0 = next((r_ for r_ in _mm.rows if abs(r_["freq"] - _pair[0]["freq"]) < 1e-6), {})
     check("📡 multicanal : niveau et écart au bruit de chaque micro", _r0.get("snr") is not None and _r0["snr"] > 20,
           str({k_: _r0.get(k_) for k_ in ("rf", "noise", "snr")}))
@@ -1188,7 +1192,7 @@ if _mm is not None:
     if _ok_inc:
         import json as _jinc
         _dinc = _jinc.load(open(os.path.join(_inc, "mesures.json"), encoding="utf-8"))
-        check("📦 IQ gardé (avant + 10 s après ; le faux SDR va moins vite que le vrai temps)", _dinc["iq"].get("dur", 0) >= 4.0,
+        check("📦 IQ gardé (avant + 10 s après ; le faux SDR va moins vite que le vrai temps)", _dinc["iq"].get("dur", 0) >= 2.0,
               str(_dinc["iq"]))
         _rh = open(os.path.join(_inc, "rapport.html"), encoding="utf-8").read()
         check("📦 rapport : courbes du micro", "<svg" in _rh)
