@@ -2009,6 +2009,18 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   niveaux, son, émission simulée vue par le démo, refus sans « câble », faux hackrf_transfer : porteuse à +300 kHz,
   gain 0). **Jamais avec un vrai HackRF en émission** : « -t - » (entrée standard) lu dans la doc, puissance réelle à
   mesurer au tinySA ; le compander n'est pas « encodé » dans la démo (couleur du son seulement).
+  **Sons au choix (Clément : « choisir les audios, tous les sons de l'appli, un générateur 20 Hz – 20 kHz fréquence ou
+  sweep, ajouter des WAV »)** : PURE `AUDIO_SRCS` (voice, melody, beep, tone, sweep, white, pink, app, wav, silence),
+  `APP_SOUNDS` / `app_sound_seq` (alarmes 2 / 1 / 0, appel des micros : lus à l'appel, ALARM_TONES est défini plus bas),
+  `WAV_PCM` {chemin: mono 48 kHz}, `audio_spec_norm` / `audio_text`, `_seq_audio`, `demo_audio(source dict…)` (balayage
+  log / linéaire à phase exacte, bruit rose par FFT, WAV en boucle). Qt : `wav_load` (8 / 16 / 24 / 32 bits, mono /
+  stéréo, rééchantillonné à 48 kHz, 10 min max), `AudioPickDialog` (source + réglages qui s'affichent selon la source,
+  ▶ Écouter = QSoundEffect en boucle sur la sortie de l'appli ; `standalone` = 🎵 Générateur audio, `self._audiogen`),
+  `audio_button` (colonne Son de l'émission : `b.spec`), son par micro du SDR démo (`sdr_cfg["demo_snd"]` {kHz: source},
+  gardé par `sdr_cfg_extra` ; clic droit « Mes micros » en démo › 🎵, `demo_sound`, `pick_demo_sound`), menus du mode et
+  du SDR (`open_audio_gen`). Testé : test_sdr (fréquence du générateur, milieu du balayage log, rose, alarme, WAV), script
+  (WAV d'essai 1,5 kHz réentendu à 1 500 Hz après démodulation du SDR démo). **Son du générateur jamais entendu par
+  Claude** (conteneur sans carte son : « format non supporté ») ; aigus coupés vers 15 kHz dans l'écoute FM (voulu).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

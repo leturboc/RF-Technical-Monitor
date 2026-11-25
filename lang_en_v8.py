@@ -1332,3 +1332,73 @@ EXACT.update({
                                                          "intermod, practise hunting).",
 })
 EXACT.update({"📡 Émettre avec un HackRF": "📡 Transmit with a HackRF", "🧪 SDR démo": "🧪 SDR demo"})
+
+# ---------------------------------------------------------------- V8 étape 21 : sources sonores / générateur audio
+EXACT.update({
+    "(aucun fichier)": "(no file)",
+    "Alarme critique": "Critical alarm",
+    "Alarme info": "Info alarm",
+    "Alarme normale": "Normal alarm",
+    "Appel des micros ✓": "Mic roll call ✓",
+    "Balayage {} → {} Hz en {} s ({})": "Sweep {} → {} Hz in {} s ({})",
+    "Bruit blanc": "White noise",
+    "Bruit rose": "Pink noise",
+    "Coché : chaque octave dure le même temps (comme à l'oreille). Décoché : linéaire en Hz.":
+        "Ticked: each octave lasts the same time (like the ear). Unticked: linear in Hz.",
+    "D'où vient le son.": "Where the sound comes from.",
+    "Dans l'écoute d'un micro HF (FM), les aigus au-delà de ~15 kHz sont coupés : c'est la bande audio d'un micro, pas "
+    "un défaut.": "When listening to a wireless mic (FM), highs above ~15 kHz are cut: that's a mic's audio band, not a "
+                  "fault.",
+    "Durée d'un balayage (il recommence ensuite).": "Duration of one sweep (then it starts again).",
+    "Fichier :": "File:",
+    "Fichier WAV": "WAV file",
+    "Fréquence d'arrivée du balayage.": "End frequency of the sweep.",
+    "Fréquence de départ du balayage.": "Start frequency of the sweep.",
+    "Fréquence du son (20 Hz – 20 kHz).": "Frequency of the sound (20 Hz – 20 kHz).",
+    "Générateur : balayage (sweep)": "Generator: sweep",
+    "Générateur : une fréquence (20 Hz – 20 kHz)": "Generator: one frequency (20 Hz – 20 kHz)",
+    "Joue le son sur la sortie audio de l'appli (⚙ Réglages › Son).": "Plays the sound on the app's audio output (⚙ Settings › Sound).",
+    "Le son qui module ce signal : générateur, balayage, bruit, sons de l'appli, ton WAV…":
+        "The sound modulating this signal: generator, sweep, noise, app sounds, your WAV…",
+    "Les sons que joue l'appli (alarmes, appel des micros), répétés.": "The sounds the app plays (alarms, mic roll call), repeated.",
+    "Logarithmique (autant de temps par octave)": "Logarithmic (same time per octave)",
+    "Mon fichier WAV": "My WAV file",
+    "Silence (porteuse seule)": "Silence (carrier only)",
+    "Son :": "Sound:",
+    "Source :": "Source:",
+    "Ton fichier WAV (voix, musique, signal de test), joué en boucle.": "Your WAV file (voice, music, test signal), looped.",
+    "Tonalité {} Hz": "Tone {} Hz",
+    "Un son de l'appli": "An app sound",
+    "Fréquence :": "Frequency:",
+    "De :": "From:",
+    "À :": "To:",
+    "Volume :": "Volume:",
+    "Volume (commence bas : un générateur peut être fort).": "Volume (start low: a generator can be loud).",
+    "▶ Écouter ici": "▶ Listen here",
+    "Écouter ici": "Listen here",
+    "📂 Choisir un WAV…": "📂 Choose a WAV…",
+    "Choisir un WAV…": "Choose a WAV…",
+    "🎵 Choisir un son": "🎵 Choose a sound",
+    "🎵 Générateur audio (20 Hz – 20 kHz)": "🎵 Audio generator (20 Hz – 20 kHz)",
+    "🎵 Générateur audio (20 Hz – 20 kHz)…": "🎵 Audio generator (20 Hz – 20 kHz)…",
+    "🎵 Générateur audio": "🎵 Audio generator",
+    "🎵 Son de {} dans le SDR démo": "🎵 Sound of {} in the SDR demo",
+    "🎵 Son de ce micro dans le SDR démo…": "🎵 Sound of this mic in the SDR demo…",
+    "V8 : une fréquence de 20 Hz à 20 kHz, un balayage, du bruit, les sons de l'appli ou ton\nWAV, joués sur la sortie "
+    "audio de l'appli (et utilisables pour l'émission / le SDR démo).": "V8: a frequency from 20 Hz to 20 kHz, a sweep, "
+                                                                        "noise, the app's sounds or your\nWAV, played on "
+                                                                        "the app's audio output (and usable for "
+                                                                        "transmission / the SDR demo).",
+    "WAV : {}": "WAV: {}",
+    "WAV illisible : {}": "Unreadable WAV: {}",
+    "WAV : format non pris en charge": "WAV: format not supported",
+    "WAV vide": "Empty WAV",
+    "{} s de son": "{} s of sound",
+    "▶ {} (en boucle)": "▶ {} (looped)",
+    "⚠ Son impossible ici : {}": "⚠ Sound impossible here: {}",
+    "log": "log",
+    "linéaire": "linear",
+    "Son WAV (*.wav);;Tous (*)": "WAV sound (*.wav);;All (*)",
+})
+SAME_TEMPLATES += ["tsm_gen_{}.wav"]
+EXACT["color: #8e8e93;"] = "color: #8e8e93;"

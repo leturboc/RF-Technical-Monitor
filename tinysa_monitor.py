@@ -7638,6 +7638,9 @@ def sdr_cfg_extra(sd):
         out["favs"] = favs_norm(sd.get("favs"))
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
         out["demo"] = bool(sd.get("demo"))
+    if isinstance(sd.get("demo_snd"), dict):            # étape 21 : son de chaque micro dans le SDR démo
+        out["demo_snd"] = {str(k): audio_spec_norm(v) for k, v in list(sd["demo_snd"].items())[:200]
+                           if str(k).isdigit()}
     if "auto" in sd:                                   # étape 20 : alarme -> calage, patrouille, pilote
         out["auto"] = sdr_auto_norm(sd.get("auto"))
     if "posts" in sd:                                  # étape 17 : plusieurs postes SDR
@@ -9431,11 +9434,111 @@ TX_MAX_SIGS = 8
 TX_DURATIONS = (1, 5, 15, 30)                # minutes : l'émission s'arrête toute seule
 
 
+AUDIO_SRCS = (("voice", "Voix « un, deux »"), ("melody", "Mélodie"), ("beep", "Bips"),
+              ("tone", "Générateur : une fréquence (20 Hz – 20 kHz)"), ("sweep", "Générateur : balayage (sweep)"),
+              ("white", "Bruit blanc"), ("pink", "Bruit rose"), ("app", "Un son de l'appli"), ("wav", "Mon fichier WAV"),
+              ("silence", "Silence (porteuse seule)"))
+APP_SOUNDS = (("alarm2", "Alarme critique"), ("alarm1", "Alarme normale"), ("alarm0", "Alarme info"),
+              ("ok", "Appel des micros ✓"))
+
+
+def app_sound_seq(key):
+    """Notes [(Hz, ms)] d'un son de l'appli (alarmes, appel des micros)."""
+    return {"alarm2": ALARM_TONES[2], "alarm1": ALARM_TONES[1], "alarm0": ALARM_TONES[0], "ok": TONE_OK}.get(
+        key, ALARM_TONES[2])
+WAV_PCM = {}                  # fichier WAV -> son mono 48 kHz (float32), rempli par l'interface (lecture du fichier)
+
+
+def audio_spec_norm(d):
+    """Source sonore -> dict(src, f, f1, f2, dur, log, app, path) complet et borné (ancien format = un nom simple)."""
+    if isinstance(d, str):
+        d = dict(src=d)
+    d = d if isinstance(d, dict) else {}
+    out = dict(src="voice", f=1000.0, f1=20.0, f2=20000.0, dur=10.0, log=True, app="alarm2", path="")
+    if d.get("src") in dict(AUDIO_SRCS):
+        out["src"] = d["src"]
+    for k, lo, hi in (("f", 20.0, 20000.0), ("f1", 20.0, 20000.0), ("f2", 20.0, 20000.0), ("dur", 1.0, 120.0)):
+        try:
+            out[k] = float(min(hi, max(lo, float(d.get(k, out[k])))))
+        except (TypeError, ValueError):
+            pass
+    out["log"] = bool(d.get("log", True))
+    if d.get("app") in [a for a, _n in APP_SOUNDS]:
+        out["app"] = d["app"]
+    out["path"] = str(d.get("path") or "")[:500]
+    return out
+
+
+def audio_text(d, tr=None):
+    """Source sonore en quelques mots (bouton, journal)."""
+    tr = tr or (lambda x: x)
+    d = audio_spec_norm(d)
+    src = d["src"]
+    if src == "tone":
+        return tr("Tonalité {} Hz").format(f"{d['f']:g}")
+    if src == "sweep":
+        return tr("Balayage {} → {} Hz en {} s ({})").format(f"{d['f1']:g}", f"{d['f2']:g}", f"{d['dur']:g}",
+                                                             tr("log") if d["log"] else tr("linéaire"))
+    if src == "app":
+        return tr(dict(APP_SOUNDS).get(d["app"], ""))
+    if src == "wav":
+        return tr("WAV : {}").format((d["path"].replace("\\", "/").rsplit("/", 1)[-1]) or "—")
+    return tr(dict(AUDIO_SRCS)[src])
+
+
+def _seq_audio(seq, t, gap=0.8):
+    """Suite de notes [(Hz, ms)] jouée en boucle (avec un blanc de `gap` s) aux instants t."""
+    ends = np.cumsum([ms / 1000.0 for _hz, ms in seq])
+    per = float(ends[-1]) + gap
+    c = t % per
+    i = np.searchsorted(ends, c, side="right")
+    hz = np.array([h for h, _ms in seq] + [0.0])[np.minimum(i, len(seq))]
+    st = np.concatenate([[0.0], ends])[np.minimum(i, len(seq))]
+    pos = c - st
+    env = np.clip(np.minimum(pos, 0.02) / 0.005, 0.0, 1.0)
+    return (0.8 * env * (hz > 0) * np.sin(2 * np.pi * hz * t)).astype(np.float32)
+
+
 def demo_audio(kind, t, k=0):
-    """Son de démo (float32, −1…1) aux instants t (s). k = n° du micro : chacun a sa hauteur, on les reconnaît."""
+    """Son de démo (float32, −1…1) aux instants t (s). k = n° du micro : chacun a sa hauteur, on les reconnaît.
+    kind = nom (voice, melody, beep, tone…) ou source complète (dict d'audio_spec_norm : générateur, balayage,
+    bruit, son de l'appli, fichier WAV)."""
     t = np.asarray(t, dtype=np.float64)
+    spec = audio_spec_norm(kind) if isinstance(kind, dict) else None
+    if spec is not None:
+        kind = spec["src"]
+    if kind == "silence":
+        return np.zeros(len(t), dtype=np.float32)
     if kind == "tone":
-        return (0.8 * np.sin(2 * np.pi * 1000.0 * t)).astype(np.float32)
+        f = spec["f"] if spec else 1000.0
+        return (0.8 * np.sin(2 * np.pi * f * t)).astype(np.float32)
+    if kind == "sweep":
+        f1, f2, T = (spec["f1"], spec["f2"], spec["dur"]) if spec else (20.0, 20000.0, 10.0)
+        tau = t % T
+        if (spec["log"] if spec else True) and f1 != f2:
+            K = math.log(f2 / f1)
+            ph = 2 * np.pi * f1 * T / K * (np.exp(K * tau / T) - 1.0)
+        else:
+            ph = 2 * np.pi * (f1 * tau + (f2 - f1) * tau * tau / (2.0 * T))
+        return (0.8 * np.sin(ph)).astype(np.float32)
+    if kind in ("white", "pink"):
+        rng = np.random.default_rng(int(t[0] * 1000) % (2 ** 31) if len(t) else 0)
+        w = rng.standard_normal(len(t))
+        if kind == "pink" and len(t) > 8:
+            X = np.fft.rfft(w)
+            fr = np.arange(len(X), dtype=np.float64)
+            X[1:] = X[1:] / np.sqrt(fr[1:])
+            X[0] = 0.0
+            w = np.fft.irfft(X, len(t))
+            w = w / (np.std(w) + 1e-12)
+        return (0.25 * np.clip(w, -3.5, 3.5)).astype(np.float32)
+    if kind == "app":
+        return _seq_audio(app_sound_seq(spec["app"] if spec else "alarm2"), t)
+    if kind == "wav":
+        pcm = WAV_PCM.get(spec["path"] if spec else "")
+        if pcm is None or not len(pcm):
+            return np.zeros(len(t), dtype=np.float32)
+        return np.asarray(pcm, dtype=np.float32)[(np.round(t * 48000.0).astype(np.int64)) % len(pcm)]
     if kind == "beep":
         on = (t % 1.0) < 0.2
         return (0.8 * on * np.sin(2 * np.pi * (700.0 + 90.0 * k) * t)).astype(np.float32)
@@ -9561,7 +9664,8 @@ def demo_sdr_plan(mics):
             continue
         h = sum(ord(c) for c in str(m.get("name", ""))) % 12
         s = dict(key="mic" + key, kind="fm", f=f, lvl=-6.0 - h, dev=25000.0 + 1500.0 * (h % 8),
-                 audio=DEMO_SOUNDS[k % len(DEMO_SOUNDS)][0], k=k, pilot=DEMO_PILOT)
+                 audio=audio_spec_norm(m["snd"]) if m.get("snd") else DEMO_SOUNDS[k % len(DEMO_SOUNDS)][0], k=k,
+                 pilot=DEMO_PILOT)
         if k == 0:
             s["on"] = (120.0, 105.0, 0.0)
         elif k == 1:
@@ -9597,7 +9701,7 @@ def tx_plan(rows, rates=TX_RATES, fmin=1.0, fmax=6000.0):
     for i, r in enumerate(rows):
         kind = r.get("kind") or "fm"
         sigs.append(dict(key=f"tx{i}", kind=kind, f=float(r["f"]), lvl=float(r.get("lvl", 0.0)),
-                         audio=r.get("audio") or "voice", k=i, bw=float(r.get("bw") or (0.2 if kind == "noise" else 0)),
+                         audio=audio_spec_norm(r.get("audio") or "voice"), k=i, bw=float(r.get("bw") or (0.2 if kind == "noise" else 0)),
                          pilot=DEMO_PILOT if r.get("pilot") and kind in ("fm", "nfm") else 0.0,
                          on=(4.0, 1.0, 0.0) if r.get("burst") else None))
     return c * 1e6, rate, sigs
@@ -22680,6 +22784,8 @@ class SdrMicsPanel(SdrPanelBase):
             cur = o.watch_by_key(favs[k]) if k in favs else None
             sm.addAction(f"{k} · " + ((cur["name"] or f"{cur['freq']:.3f}") if cur else TR("libre"))).triggered.connect(
                 lambda *_, k=k: o.sdr_set_fav(k, w))
+        if o.sdr_cfg.get("demo"):                         # étape 21 : le son de ce micro dans le SDR démo
+            m.addAction(TR("🎵 Son de ce micro dans le SDR démo…")).triggered.connect(lambda *_: o.pick_demo_sound(w))
         m.exec(QtGui.QCursor.pos())
 
     def _pick(self, r, slot):
@@ -43673,6 +43779,7 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
     ("📡 Mes SDR (plusieurs, scènes, carte)…", "open_sdr_posts"),
     ("🧪 SDR démo (allumer / éteindre)", "toggle_sdr_demo"),
     ("📡 Émettre avec un HackRF (en câble)…", "open_sdr_tx"),
+    ("🎵 Générateur audio (20 Hz – 20 kHz)…", "open_audio_gen"),
     ("📡 Moniteur multicanal (tous mes micros d'un coup)…", "open_multimon"),
     ("🎧 Écouter un micro…", "open_listen"),
     ("⏱ Temps réel (un bout de bande, sans trou)…", "open_realtime"),
@@ -43682,6 +43789,8 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
 MainWindow.TIPS_MENU.update({
         "🧪 SDR démo": "V8 : pas de SDR ? L'appli fabrique les signaux de tes micros (son, pilote, brouilleur qui passe,\n"
                        "micro qui s'éteint) : tout le poste SDR marche, écoute comprise.",
+        "🎵 Générateur audio": "V8 : une fréquence de 20 Hz à 20 kHz, un balayage, du bruit, les sons de l'appli ou ton\n"
+                              "WAV, joués sur la sortie audio de l'appli (et utilisables pour l'émission / le SDR démo).",
         "📡 Émettre avec un HackRF": "V8 : faux micros FM, porteuses, brouilleur intermittent émis par un HackRF, EN CÂBLE\n"
                                     "avec un atténuateur (tester un récepteur, l'intermod, s'entraîner à la chasse).",
         "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
@@ -44205,6 +44314,7 @@ def _v8_build_mode_menu(self):
     a_.setChecked(bool(self.sdr_cfg.get("demo")))
     a_.triggered.connect(lambda *_, a=a_: self.set_sdr_demo(a.isChecked()))
     m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
+    m.addAction(TR("🎵 Générateur audio (20 Hz – 20 kHz)…")).triggered.connect(lambda *_: self.open_audio_gen())
     m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
     m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
 
@@ -44618,6 +44728,268 @@ async function ePull(){if(route()!=="ecoute"||!EA)return;
 
 
 # ------------------------------------------------------------------ V8 étape 21 : SDR démo + émission HackRF
+def wav_load(path, max_s=600.0):
+    """Fichier WAV (PCM 8 / 16 / 24 / 32 bits, mono ou stéréo, n'importe quel débit) -> WAV_PCM[path] en mono 48 kHz.
+    -> (ok, texte)."""
+    import wave
+    path = str(path or "")
+    if path in WAV_PCM:
+        return True, ""
+    try:
+        with wave.open(path, "rb") as w:
+            ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+            raw = w.readframes(min(n, int(max_s * fr)))
+    except (OSError, EOFError, wave.Error) as e:
+        return False, TR("WAV illisible : {}").format(e)
+    if sw == 1:
+        a = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif sw == 2:
+        a = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    elif sw == 3:
+        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+        v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
+        a = (np.where(v >= 1 << 23, v - (1 << 24), v)).astype(np.float32) / float(1 << 23)
+    elif sw == 4:
+        a = np.frombuffer(raw, dtype="<i4").astype(np.float32) / float(1 << 31)
+    else:
+        return False, TR("WAV : format non pris en charge")
+    if ch > 1:
+        a = a[: len(a) // ch * ch].reshape(-1, ch).mean(axis=1)
+    if fr != 48000 and len(a) > 1:
+        x = np.arange(int(len(a) * 48000 / fr)) * (fr / 48000.0)
+        a = np.interp(x, np.arange(len(a)), a).astype(np.float32)
+    if not len(a):
+        return False, TR("WAV vide")
+    pk = float(np.max(np.abs(a)))
+    WAV_PCM[path] = (a / pk * 0.9 if pk > 0.9 else a).astype(np.float32)
+    return True, TR("{} s de son").format(f"{len(a) / 48000:.1f}")
+
+
+class AudioPickDialog(QtWidgets.QDialog):
+    """🎵 Choisir un son (étape 21) : générateur 20 Hz – 20 kHz (une fréquence ou un balayage), bruits, voix / mélodie /
+    bips de démo, sons de l'appli, ton fichier WAV ; ▶ pour l'écouter sur le PC. Seul (standalone) = 🎵 Générateur
+    audio qui joue en boucle sur la sortie audio de l'appli."""
+
+    def __init__(self, owner, spec=None, standalone=False, title=None):
+        super().__init__(owner)
+        self.owner, self.standalone, self.fx, self._tmp = owner, standalone, None, None
+        self.setWindowTitle(title or ("🎵 Générateur audio (20 Hz – 20 kHz)" if standalone else "🎵 Choisir un son"))
+        sp = audio_spec_norm(spec or dict(src="tone" if standalone else "voice"))
+        lay = QtWidgets.QVBoxLayout(self)
+        f = QtWidgets.QFormLayout()
+        self.src = QtWidgets.QComboBox()
+        for k_, t_ in AUDIO_SRCS:
+            self.src.addItem(t_, k_)
+        self.src.setCurrentIndex(max(0, self.src.findData(sp["src"])))
+        self.src.setToolTip("D'où vient le son.")
+        f.addRow("Source :", self.src)
+
+        def hz(v, tip):
+            b = QtWidgets.QDoubleSpinBox()
+            b.setRange(20.0, 20000.0)
+            b.setDecimals(0)
+            b.setSuffix(" Hz")
+            b.setValue(v)
+            b.setToolTip(tip)
+            return b
+        self.f = hz(sp["f"], "Fréquence du son (20 Hz – 20 kHz).")
+        self.f1 = hz(sp["f1"], "Fréquence de départ du balayage.")
+        self.f2 = hz(sp["f2"], "Fréquence d'arrivée du balayage.")
+        self.dur = QtWidgets.QDoubleSpinBox()
+        self.dur.setRange(1.0, 120.0)
+        self.dur.setDecimals(0)
+        self.dur.setSuffix(" s")
+        self.dur.setValue(sp["dur"])
+        self.dur.setToolTip("Durée d'un balayage (il recommence ensuite).")
+        self.log = QtWidgets.QCheckBox("Logarithmique (autant de temps par octave)")
+        self.log.setChecked(sp["log"])
+        self.log.setToolTip("Coché : chaque octave dure le même temps (comme à l'oreille). Décoché : linéaire en Hz.")
+        self.app = QtWidgets.QComboBox()
+        for k_, t_ in APP_SOUNDS:
+            self.app.addItem(t_, k_)
+        self.app.setCurrentIndex(max(0, self.app.findData(sp["app"])))
+        self.app.setToolTip("Les sons que joue l'appli (alarmes, appel des micros), répétés.")
+        self.path, self.wav_lbl = sp["path"], QtWidgets.QLabel("")
+        wb = QtWidgets.QPushButton("📂 Choisir un WAV…")
+        wb.setToolTip("Ton fichier WAV (voix, musique, signal de test), joué en boucle.")
+        wb.clicked.connect(lambda *_: self.pick_wav())
+        self.rows = {}
+        for key, lab, w in (("f", "Fréquence :", self.f), ("f1", "De :", self.f1), ("f2", "À :", self.f2),
+                            ("dur", "Durée :", self.dur), ("log", "", self.log), ("app", "Son :", self.app)):
+            f.addRow(lab, w)
+            self.rows[key] = w
+        rw = QtWidgets.QWidget()
+        rl = QtWidgets.QHBoxLayout(rw)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(wb)
+        rl.addWidget(self.wav_lbl, 1)
+        f.addRow("Fichier :", rw)
+        self.rows["wav"] = rw
+        lay.addLayout(f)
+        note = QtWidgets.QLabel("Dans l'écoute d'un micro HF (FM), les aigus au-delà de ~15 kHz sont coupés : c'est la "
+                                "bande audio d'un micro, pas un défaut.")
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #8e8e93;")
+        lay.addWidget(note)
+        self.play_btn = QtWidgets.QPushButton("▶ Écouter ici")
+        self.play_btn.setCheckable(True)
+        self.play_btn.setToolTip("Joue le son sur la sortie audio de l'appli (⚙ Réglages › Son).")
+        self.play_btn.toggled.connect(lambda on: self.play(on))
+        self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        self.vol.setRange(0, 100)
+        self.vol.setValue(40)
+        self.vol.setMaximumWidth(140)
+        self.vol.setToolTip("Volume (commence bas : un générateur peut être fort).")
+        self.vol.valueChanged.connect(lambda v: self.fx.setVolume(v / 100.0) if self.fx is not None else None)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addLayout(owner._row(self.play_btn, "Volume :", self.vol, None))
+        lay.addWidget(self.msg)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close if standalone else
+                                        QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        for w in (self.src, self.app):
+            w.currentIndexChanged.connect(lambda *_: self._changed())
+        for w in (self.f, self.f1, self.f2, self.dur):
+            w.valueChanged.connect(lambda *_: self._changed())
+        self.log.toggled.connect(lambda *_: self._changed())
+        self.finished.connect(lambda *_: self.play(False))
+        self._changed()
+
+    def spec(self):
+        return audio_spec_norm(dict(src=self.src.currentData(), f=self.f.value(), f1=self.f1.value(), f2=self.f2.value(),
+                                    dur=self.dur.value(), log=self.log.isChecked(), app=self.app.currentData(),
+                                    path=self.path))
+
+    def _changed(self):
+        src = self.src.currentData()
+        show = {"tone": ("f",), "sweep": ("f1", "f2", "dur", "log"), "app": ("app",), "wav": ("wav",)}.get(src, ())
+        lay = self.layout().itemAt(0).layout()
+        for k, w in self.rows.items():
+            try:
+                lay.setRowVisible(w, k in show)
+            except Exception:  # noqa: BLE001
+                w.setVisible(k in show)
+        self.wav_lbl.setText(audio_text(self.spec(), TR) if self.path else TR("(aucun fichier)"))
+        if self.play_btn.isChecked():                       # on change le son en l'écoutant : on relance
+            self.play(False)
+            self.play(True)
+
+    def pick_wav(self):
+        p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Fichier WAV", "", "Son WAV (*.wav);;Tous (*)")
+        if not p:
+            return
+        ok, txt = wav_load(p)
+        self.msg.setText(txt)
+        if ok:
+            self.path = p
+            self.src.setCurrentIndex(max(0, self.src.findData("wav")))
+        self._changed()
+
+    def play(self, on):
+        if self.fx is not None:
+            try:
+                self.fx.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.fx = None
+        if not on:
+            if self.play_btn.isChecked():
+                self.play_btn.blockSignals(True)
+                self.play_btn.setChecked(False)
+                self.play_btn.blockSignals(False)
+            return
+        import tempfile
+        import wave
+        sp = self.spec()
+        if sp["src"] == "wav" and sp["path"]:
+            wav_load(sp["path"])
+        secs = sp["dur"] if sp["src"] == "sweep" else (min(30.0, len(WAV_PCM.get(sp["path"], [])) / 48000.0)
+                                                         if sp["src"] == "wav" else 4.0)
+        t = np.arange(int(max(0.5, secs) * 48000)) / 48000.0
+        a = demo_audio(sp, t, 0)
+        try:
+            if self._tmp is None:
+                self._tmp = os.path.join(tempfile.gettempdir(), f"tsm_gen_{os.getpid()}.wav")
+            with wave.open(self._tmp, "wb") as w:        # stéréo 16 bits 48 kHz : le format le plus partout lu
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(48000)
+                w.writeframes(np.repeat((np.clip(a, -1, 1) * 32767).astype("<i2"), 2).tobytes())
+            from PySide6 import QtMultimedia
+            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
+            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
+            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
+            fx.setLoopCount(-2)                              # QSoundEffect.Infinite : en boucle
+            fx.setVolume(self.vol.value() / 100.0)
+            fx.play()
+            self.fx = fx
+            self.msg.setText(TR("▶ {} (en boucle)").format(audio_text(sp, TR)))
+        except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son
+            self.msg.setText(TR("⚠ Son impossible ici : {}").format(e))
+            self.play(False)
+
+
+def audio_button(owner, spec, on_change=None):
+    """Bouton « 🎵 son » qui ouvre AudioPickDialog ; le choix est dans b.spec."""
+    b = QtWidgets.QPushButton()
+    b.spec = audio_spec_norm(spec)
+    b.setToolTip("Le son qui module ce signal : générateur, balayage, bruit, sons de l'appli, ton WAV…")
+
+    def upd():
+        b.setText("🎵 " + audio_text(b.spec, TR))
+
+    def pick():
+        d = AudioPickDialog(owner, b.spec)
+        if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            b.spec = d.spec()
+            upd()
+            if on_change:
+                on_change(b.spec)
+    b.clicked.connect(lambda *_: pick())
+    upd()
+    return b
+
+
+def _v8_open_audio_gen(self):
+    d = getattr(self, "_audiogen", None)
+    if d is None:
+        d = self._audiogen = AudioPickDialog(self, standalone=True)
+    d.show()
+    d.raise_()
+    return d
+
+
+def _v8_demo_sound(self, w, spec):
+    """🎵 Son d'un micro dans le SDR démo (sdr_cfg « demo_snd » {kHz: source}) ; None = son par défaut."""
+    d = dict(self.sdr_cfg.get("demo_snd") or {})
+    k = str(int(round(w["freq"] * 1000)))
+    if spec is None:
+        d.pop(k, None)
+    else:
+        d[k] = audio_spec_norm(spec)
+        if d[k]["src"] == "wav":
+            wav_load(d[k]["path"])
+    self.sdr_cfg["demo_snd"] = d
+    for e in (getattr(self, "sdr_engs", None) or {}).values():
+        e._t_demo = 0.0                                   # le SDR démo prend le nouveau son tout de suite
+
+
+def _v8_pick_demo_sound(self, w):
+    cur = (self.sdr_cfg.get("demo_snd") or {}).get(str(int(round(w["freq"] * 1000))))
+    d = AudioPickDialog(self, cur, title=TR("🎵 Son de {} dans le SDR démo").format(w.get("name") or f"{w['freq']:.3f}"))
+    if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+        self.demo_sound(w, d.spec())
+
+
+MainWindow.open_audio_gen = _v8_open_audio_gen
+MainWindow.demo_sound = _v8_demo_sound
+MainWindow.pick_demo_sound = _v8_pick_demo_sound
+
+
 class SdrTxDialog(QtWidgets.QDialog):
     """📡 Émettre avec un HackRF, EN CÂBLE (étape 21) : faux micros FM (son + pilote), porteuses, talkies, blocs larges,
     brouilleur intermittent — pour tester un récepteur, l'écoute de l'appli, l'intermod ou s'entraîner à la chasse.
@@ -44700,10 +45072,7 @@ class SdrTxDialog(QtWidgets.QDialog):
         for k_, t_ in SIG_KINDS:
             k.addItem(t_, k_)
         k.setCurrentIndex(max(0, k.findData(r["kind"])))
-        a = QtWidgets.QComboBox()
-        for k_, t_ in DEMO_SOUNDS:
-            a.addItem(t_, k_)
-        a.setCurrentIndex(max(0, a.findData(r["audio"])))
+        a = audio_button(self.owner, r["audio"])
         p = QtWidgets.QCheckBox()
         p.setChecked(bool(r["pilot"]))
         p.setToolTip("Tonalité pilote inaudible (32,768 kHz) comme beaucoup de micros analogiques.")
@@ -44725,7 +45094,7 @@ class SdrTxDialog(QtWidgets.QDialog):
         out = []
         for i in range(self.tbl.rowCount()):
             w = [self.tbl.cellWidget(i, c) for c in range(len(self.COLS))]
-            out.append(dict(f=w[0].value(), kind=w[1].currentData(), audio=w[2].currentData(), pilot=w[3].isChecked(),
+            out.append(dict(f=w[0].value(), kind=w[1].currentData(), audio=w[2].spec, pilot=w[3].isChecked(),
                             burst=w[4].isChecked(), lvl=float(w[5].value())))
         return out
 
@@ -44834,9 +45203,12 @@ def _v8_demo_mics(self):
     for w in self.watch:
         if w.get("muted") or w.get("off"):
             continue
+        snd = (self.sdr_cfg.get("demo_snd") or {}).get(str(int(round(w["freq"] * 1000))))
+        if snd and audio_spec_norm(snd)["src"] == "wav" and audio_spec_norm(snd)["path"] not in WAV_PCM:
+            wav_load(audio_spec_norm(snd)["path"])
         out.append(dict(f=w["freq"], name=w.get("name", ""), bw=float(w.get("bw") or 0.0),
                         free=self.is_keep_free(w.get("status")),
-                        digital=self.mic_demod(w)[0] == DEMOD_DIGITAL))
+                        digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd))
     return out
 
 

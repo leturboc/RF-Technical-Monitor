@@ -849,5 +849,28 @@ ok("émission : commande hackrf_transfer", ns["tx_cmd"]("hackrf_transfer", 606.9
 _c8 = np.frombuffer(ns["iq_ci8"](np.array([2.0 + 0j, -2.0j], dtype=np.complex64)), dtype=np.int8)
 ok("IQ int8 : ramené sous la pleine échelle", int(np.max(np.abs(_c8.astype(int)))) <= 127 and _c8[0] > 100)
 
+# ---------------------------------------------------------------- étape 21 : sources sonores (générateur, WAV…)
+asn_ = ns["audio_spec_norm"]
+ok("source sonore : bornes 20 Hz – 20 kHz, ancien nom accepté", asn_(dict(src="tone", f=5))["f"] == 20.0
+   and asn_(dict(src="tone", f=99999))["f"] == 20000.0 and asn_("melody")["src"] == "melody" and asn_(None)["src"] == "voice")
+_ta = np.arange(48000) / 48000.0
+_s1 = ns["demo_audio"](dict(src="tone", f=440), _ta)
+_fk = np.fft.rfftfreq(len(_s1), 1 / 48000.0)[int(np.argmax(np.abs(np.fft.rfft(_s1))))]
+ok("générateur : la bonne fréquence", abs(_fk - 440) < 2, str(_fk))
+_sw = ns["demo_audio"](dict(src="sweep", f1=100, f2=10000, dur=2, log=True), np.arange(96000) / 48000.0)
+_seg = _sw[47000:49000]
+_fm = np.fft.rfftfreq(len(_seg), 1 / 48000.0)[int(np.argmax(np.abs(np.fft.rfft(_seg * np.hanning(len(_seg))))))]
+ok("balayage log : au milieu ≈ moyenne géométrique (1 kHz)", 800 < _fm < 1250, str(_fm))
+_pk = ns["demo_audio"](dict(src="pink"), np.arange(2 ** 15) / 48000.0)
+_P = np.abs(np.fft.rfft(_pk)) ** 2
+_fr = np.fft.rfftfreq(len(_pk), 1 / 48000.0)
+ok("bruit rose : plus de graves que d'aigus", _P[(_fr > 100) & (_fr < 200)].mean() > 5 * _P[(_fr > 10000) & (_fr < 20000)].mean())
+ok("son de l'appli (alarme) et WAV inconnu = silence", float(np.max(np.abs(ns["demo_audio"](dict(src="app", app="alarm2"),
+   _ta)))) > 0.5 and float(np.max(np.abs(ns["demo_audio"](dict(src="wav", path="nope"), _ta)))) == 0.0)
+ns["WAV_PCM"]["essai"] = np.linspace(-0.5, 0.5, 4800).astype(np.float32)
+ok("WAV : joué en boucle", abs(float(ns["demo_audio"](dict(src="wav", path="essai"), np.array([0.0, 0.1, 0.2]))[1]) -
+   float(ns["WAV_PCM"]["essai"][0])) < 1e-6)
+ok("texte d'une source", ns["audio_text"](dict(src="sweep", f1=20, f2=20000, dur=10)).startswith("Balayage 20 → 20000"))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

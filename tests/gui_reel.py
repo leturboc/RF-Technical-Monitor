@@ -1604,6 +1604,13 @@ if sys.platform != "win32":
           and abs(_rep.get("peak_hz", 0) - (_ftx * 1e6 - float(_rep["args"][_rep["args"].index("-f") + 1]))) < 5000
           and _rep["args"][_rep["args"].index("-x") + 1] == "0", str(_rep))
 _tx.close()
+_ag = step("21 : 🎵 générateur audio", win.open_audio_gen)
+_ag.src.setCurrentIndex(_ag.src.findData("sweep"))
+wait(100)
+check("21 : générateur : réglages du balayage seulement", _ag.rows["f1"].isVisible() and not _ag.rows["f"].isVisible()
+      and _ag.spec()["src"] == "sweep")
+shot(_ag, "generateur_audio")
+_ag.close()
 win.set_rf_mode(_rf21)
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
