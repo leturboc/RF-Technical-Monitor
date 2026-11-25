@@ -7634,6 +7634,11 @@ def sdr_cfg_extra(sd):
         out["rehearsal"] = rh
     if "station" in sd:                                # étape 16 : poste SDR (fréquences A / B, réglages)
         out["station"] = station_norm(sd.get("station"))
+    if "posts" in sd:                                  # étape 17 : plusieurs postes SDR
+        out["posts"] = sdr_posts_norm(sd.get("posts"))
+    if isinstance(sd.get("stations"), dict):
+        out["stations"] = {str(k): station_norm(v) for k, v in sd["stations"].items()
+                           if str(k).isdigit() and 2 <= int(k) <= SDR_POSTS_MAX}
     if "rf_mode" in sd:
         out["rf_mode"] = rf_mode_norm(sd.get("rf_mode"))
     if "phases" in sd or rh:                           # 20. phases du show (l'ancienne répétition y est reprise)
@@ -9159,6 +9164,67 @@ def next_mic(freqs, f, direction):
     if direction > 0:
         return next((x for x in F if x > f + 1e-6), None)
     return next((x for x in reversed(F) if x < f - 1e-6), None)
+
+
+LEVEL_WORDS = ((-95.0, "très faible", "bad"), (-80.0, "faible", "warn"), (-55.0, "bon", "ok"),
+               (-30.0, "fort", "ok"), (1e9, "trop fort", "bad"))    # valeurs de départ (choix de Claude)
+
+
+def level_words(dbm, tr=None):
+    """Niveau reçu (dBm) -> (mot simple, ton) pour le vu-mètre : très faible < −95 · faible < −80 · bon < −55 ·
+    fort < −30 · au-delà trop fort. None -> (« — », none)."""
+    tr = tr or (lambda x: x)
+    if dbm is None:
+        return "—", "none"
+    for lim, w, tone in LEVEL_WORDS:
+        if dbm < lim:
+            return tr(w), tone
+    return tr(LEVEL_WORDS[-1][1]), "bad"
+
+
+# Étape 17 (Clément : « plusieurs tinySA sur les scènes ET un ou plusieurs SDR qui tournent pour monitorer, à placer sur la
+# carte comme les tinySA ») : des POSTES SDR (jusqu'à 4), chacun : nom, modèle, n° de série (pour distinguer deux SDR
+# identiques), scènes surveillées, place sur la carte, ses panneaux.
+SDR_POSTS_MAX = 4
+
+
+def sdr_posts_norm(d):
+    """Postes SDR lus de la config -> [{id 1..4, name, model, serial, scenes}] triés ; toujours au moins le poste 1."""
+    out, seen = [], set()
+    for x in (d if isinstance(d, list) else []):
+        if not isinstance(x, dict):
+            continue
+        try:
+            pid = int(x.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if not 1 <= pid <= SDR_POSTS_MAX or pid in seen:
+            continue
+        seen.add(pid)
+        m = str(x.get("model") or "")
+        out.append(dict(id=pid, name=" ".join(str(x.get("name") or f"SDR {pid}").split())[:40] or f"SDR {pid}",
+                        model=m if sdr_model(m) else "", serial=re.sub(r"[^\w:.\-]", "", str(x.get("serial") or ""))[:40],
+                        scenes=[str(s)[:60] for s in (x.get("scenes") or []) if str(s).strip()][:20]))
+    if 1 not in seen:
+        out.append(dict(id=1, name="SDR 1", model="", serial="", scenes=[]))
+    return sorted(out, key=lambda p: p["id"])
+
+
+def post_watch(watch, scenes):
+    """Micros suivis par un poste : ceux de ses scènes (toutes si aucune scène n'est choisie)."""
+    sc = set(scenes or [])
+    return [w for w in watch if not sc or w.get("scene") in sc]
+
+
+def sdr_post_clash(items):
+    """Deux postes sur le MÊME SDR ? items = [(id, genre, n° de série)] -> [(id1, id2)] : même genre ET (même n° de série,
+    ou n° de série vide sur l'un des deux : on ne peut pas savoir lequel est lequel)."""
+    out = []
+    for i, (a, ka, sa) in enumerate(items):
+        for b, kb, sb in items[i + 1:]:
+            if ka == kb and (not sa or not sb or sa == sb):
+                out.append((a, b))
+    return out
 
 
 def reconnect_delay(fails):
@@ -20578,16 +20644,20 @@ class FreqDisplay(QtWidgets.QWidget):
 
 
 class SMeterGauge(QtWidgets.QWidget):
-    """S-mètre à aiguille (S1 … S9, +20, +40, +60 dB ; zone rouge au-dessus de S9), crête qui redescend doucement."""
-    TICKS = [(-141, "1"), (-129, "3"), (-117, "5"), (-105, "7"), (-93, "9"), (-73, "+20"), (-53, "+40"), (-33, "+60")]
-    LO, HI = -147.0, -27.0
+    """Vu-mètre du signal reçu, en mots simples : aiguille sur une échelle en dBm (−120 → −20), zones en couleur
+    (très faible · faible · bon · fort · trop fort) et « −62 dBm · bon » ; la crête redescend doucement."""
+    TICKS = (-120, -100, -80, -60, -40, -20)
+    LO, HI = -125.0, -15.0
+    ZONES = ((-125.0, -95.0, "#ff453a"), (-95.0, -80.0, "#ff9f0a"), (-80.0, -30.0, "#30d158"), (-30.0, -15.0, "#ff453a"))
 
     def __init__(self, parent=None, small=False):
         super().__init__(parent)
         self.dbm, self.peak, self.small = None, None, small
-        self.setMinimumSize(120 if small else 170, 64 if small else 92)
-        self.setToolTip("S-mètre : niveau reçu dans le canal (S9 = −93 dBm, 6 dB par unité). Calé en dBm si le SDR l'est "
-                        "(sinon à caler avec un tinySA).")
+        self.setMinimumSize(130 if small else 190, 70 if small else 100)
+        self.setToolTip("Force du signal reçu dans le canal écouté (dBm) :\n"
+                        "rouge à gauche = très faible (risque de décrochage), orange = faible, vert = bon,\n"
+                        "rouge à droite = trop fort (le SDR sature : baisse la sensibilité).\n"
+                        "Le petit trait orange = le plus fort récemment. Valeurs justes si le SDR est calé (avec un tinySA).")
 
     def set_dbm(self, dbm):
         self.dbm = dbm
@@ -20596,12 +20666,13 @@ class SMeterGauge(QtWidgets.QWidget):
         self.update()
 
     def format(self):
-        st, _f = s_meter(self.dbm)
-        return "—" if self.dbm is None else f"{st} · {self.dbm:.0f} dBm"
+        if self.dbm is None:
+            return "—"
+        return f"{self.dbm:.0f} dBm · {level_words(self.dbm, TR)[0]}"
 
     def _ang(self, v):
         f = (min(self.HI, max(self.LO, v)) - self.LO) / (self.HI - self.LO)
-        return math.radians(150.0 - 120.0 * f)            # arc du haut : de 150° (S0) à 30° (+60)
+        return math.radians(150.0 - 120.0 * f)
 
     def paintEvent(self, _ev):
         p = QtGui.QPainter(self)
@@ -20610,25 +20681,25 @@ class SMeterGauge(QtWidgets.QWidget):
         p.setBrush(QtGui.QColor(10, 14, 20))
         p.setPen(QtGui.QPen(QtGui.QColor("#2c3440"), 1.2))
         p.drawRoundedRect(QtCore.QRectF(1, 1, W - 2, H - 2), 8, 8)
-        txt_h = 13 if self.small else 17
+        txt_h = 14 if self.small else 18
         R = min((W - 16) / (2 * math.cos(math.radians(30))), (H - txt_h - 10) / (1 - math.sin(math.radians(30)) + 0.12))
         R = max(20.0, R * 0.98)
-        cx, cy = W / 2.0, 6 + R                          # centre sous l'arc ; l'arc tient dans le cadre
-        for v0, v1, col in ((self.LO, -93.0, "#64d2ff"), (-93.0, self.HI, "#ff453a")):
-            p.setPen(QtGui.QPen(QtGui.QColor(col), 3))
+        cx, cy = W / 2.0, 6 + R
+        for v0, v1, col in self.ZONES:
+            p.setPen(QtGui.QPen(QtGui.QColor(col), 4))
             a0, a1 = math.degrees(self._ang(v0)), math.degrees(self._ang(v1))
             p.drawArc(QtCore.QRectF(cx - R, cy - R, 2 * R, 2 * R), int(a1 * 16), int((a0 - a1) * 16))
         f = QtGui.QFont()
         f.setPointSize(7)
         p.setFont(f)
-        for v, lab in self.TICKS:
+        for v in self.TICKS:
             a = self._ang(v)
             p.setPen(QtGui.QPen(QtGui.QColor("#c7c7cc"), 1.2))
             p.drawLine(QtCore.QPointF(cx + (R - 6) * math.cos(a), cy - (R - 6) * math.sin(a)),
                        QtCore.QPointF(cx + R * math.cos(a), cy - R * math.sin(a)))
-            if not self.small or lab in ("1", "5", "9", "+40"):
-                xt, yt = cx + (R - 15) * math.cos(a), cy - (R - 15) * math.sin(a)
-                p.drawText(QtCore.QRectF(xt - 13, yt - 6, 26, 12), Qt.AlignmentFlag.AlignCenter, lab)
+            if not self.small or v in (-120, -80, -40):
+                xt, yt = cx + (R - 16) * math.cos(a), cy - (R - 16) * math.sin(a)
+                p.drawText(QtCore.QRectF(xt - 14, yt - 6, 28, 12), Qt.AlignmentFlag.AlignCenter, str(v))
         if self.peak is not None:
             a = self._ang(self.peak)
             p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 2))
@@ -20641,8 +20712,12 @@ class SMeterGauge(QtWidgets.QWidget):
         f.setPointSize(8 if self.small else 10)
         f.setBold(True)
         p.setFont(f)
-        p.setPen(QtGui.QColor("#ffffff"))
-        p.drawText(QtCore.QRectF(0, H - txt_h - 5, W, txt_h), Qt.AlignmentFlag.AlignCenter, self.format())
+        word, tone = level_words(self.dbm, TR)
+        col = {"bad": "#ff453a", "warn": "#ff9f0a", "ok": "#30d158"}.get(tone, "#ffffff")
+        p.setPen(QtGui.QColor(col if self.dbm is not None else "#8e8e93"))
+        txt = self.format() if not self.small or self.dbm is None else f"{self.dbm:.0f} dBm"
+        txt = QtGui.QFontMetrics(f).elidedText(txt, Qt.TextElideMode.ElideRight, W - 8)
+        p.drawText(QtCore.QRectF(0, H - txt_h - 5, W, txt_h), Qt.AlignmentFlag.AlignCenter, txt)
         p.end()
 
 
@@ -20654,10 +20729,10 @@ class SdrEngine(QtCore.QObject):
     changed = Signal()
     status = Signal(str)
 
-    def __init__(self, owner):
+    def __init__(self, owner, pid=1):
         super().__init__(owner)
-        self.owner = owner
-        st = station_norm(owner.sdr_cfg.get("station"))
+        self.owner, self.pid = owner, int(pid)
+        st = station_norm(self._st_cfg())
         self.a, self.b, self.b_on, self.step = st["a"], st["b"], st["b_on"], st["step"]
         self.vol, self.sq, self.split, self.nfft, self.maxhold = st["vol"], st["sq"], st["split"], st["nfft"], st["maxhold"]
         d0 = DEMOD_PRESETS[0] if DEMOD_PRESETS else None
@@ -20676,9 +20751,29 @@ class SdrEngine(QtCore.QObject):
         self.retune.setSingleShot(True)
         self.retune.timeout.connect(self._restart)
 
+    # ---- poste (étape 17 : plusieurs SDR)
+    def _st_cfg(self):
+        c = self.owner.sdr_cfg
+        return c.get("station") if self.pid == 1 else (c.get("stations") or {}).get(str(self.pid))
+
+    def post(self):
+        return next((p for p in sdr_posts_norm(self.owner.sdr_cfg.get("posts")) if p["id"] == self.pid),
+                    dict(id=self.pid, name=f"SDR {self.pid}", model="", serial="", scenes=[]))
+
+    def name(self):
+        return self.post()["name"]
+
+    def ws(self):
+        """Micros suivis par ce poste (ceux de ses scènes, sinon tous)."""
+        return post_watch(self.owner.watch, self.post()["scenes"])
+
+    def bid(self):
+        """« Bande » de ses mesures dans la surveillance (une par poste)."""
+        return self.owner.SDR_LISTEN_ID if self.pid == 1 else -100 - self.pid
+
     # ---- appareil
     def model(self):
-        m = sdr_model(self.owner.sdr_cfg.get("model"))
+        m = sdr_model(self.post()["model"] or self.owner.sdr_cfg.get("model"))
         return m if m and m.get("kind") else sdr_model(SDR_MODEL_DEFAULT.get("hackrf"))
 
     def kind(self):
@@ -20695,8 +20790,12 @@ class SdrEngine(QtCore.QObject):
         return None if lv is None else float(lv) + self.owner.sdr_offset(self.kind())
 
     def save(self):
-        self.owner.sdr_cfg["station"] = dict(a=self.a, b=self.b, b_on=self.b_on, step=self.step, vol=self.vol, sq=self.sq,
-                                             split=self.split, nfft=self.nfft, maxhold=self.maxhold)
+        st = dict(a=self.a, b=self.b, b_on=self.b_on, step=self.step, vol=self.vol, sq=self.sq,
+                  split=self.split, nfft=self.nfft, maxhold=self.maxhold)
+        if self.pid == 1:
+            self.owner.sdr_cfg["station"] = st
+        else:
+            self.owner.sdr_cfg.setdefault("stations", {})[str(self.pid)] = st
 
     # ---- marche / arrêt
     def start(self):
@@ -20708,9 +20807,15 @@ class SdrEngine(QtCore.QObject):
                 self._say(TR("⚠ Le SDR est déjà pris (moniteur, écoute ou temps réel) : ferme-les d'abord."))
                 return False
         m, kind = self.model(), self.kind()
+        others = [(e_.pid, e_.kind(), e_.post()["serial"]) for e_ in (getattr(o, "sdr_engs", None) or {}).values()
+                  if e_ is not self and e_.running()]
+        if sdr_post_clash([(self.pid, kind, self.post()["serial"])] + others):      # étape 17 : un SDR = un poste
+            self._say(TR("⚠ Un autre poste utilise déjà un {} : donne à chacun son n° de série (📡 Mes SDR).").format(
+                m["name"]))
+            return False
         self.rate = sdr_rate(m, kind)
         if self.a is None or not sdr_in_range(m, self.a):
-            ws = [w["freq"] for w in o.watch if sdr_in_range(m, w["freq"])]
+            ws = [w["freq"] for w in self.ws() if sdr_in_range(m, w["freq"])]
             self.a = ws[0] if ws else (600.0 if sdr_in_range(m, 600.0) else (m["fmin"] + m["fmax"]) / 2.0)
         if self.b is None or not sdr_in_range(m, self.b):
             self.b = round(self.a + 0.2, 6)
@@ -20721,7 +20826,8 @@ class SdrEngine(QtCore.QObject):
             for w in self.paused:
                 w.paused = True
         w = self.worker = RealtimeWorker(kind, self.center, self.rate, self.nfft, o.sdr_gains(kind),
-                                         tool=getattr(o, "_listen_tool", None), tool_dir=o.sdr_cfg.get("dir", ""))
+                                         serial=self.post()["serial"], tool=getattr(o, "_listen_tool", None),
+                                         tool_dir=o.sdr_cfg.get("dir", ""))
         w.listen, w.listen_b, w.split = self._listen("a"), self._listen("b"), self.split
         w.frame.connect(lambda fr, w_=w: self._frame(fr) if w_ is self.worker else None)
         w.stopped.connect(lambda why, w_=w: self._stopped(why) if w_ is self.worker else None)
@@ -20748,7 +20854,7 @@ class SdrEngine(QtCore.QObject):
                 w_.paused = False
             self.paused = []
             self.rec_audio(False)
-        self.owner.sdr_listen_clear()
+        self.owner.sdr_listen_clear(self.bid())
         self.changed.emit()
 
     def _restart(self):
@@ -20818,7 +20924,7 @@ class SdrEngine(QtCore.QObject):
         now = time.time()
         if now - self._t_feed >= 0.5 and len(fr["F"]) == len(fr["avg"]):
             self._t_feed = now                          # la fenêtre du SDR surveille aussi tes fréquences
-            self.owner.sdr_listen_feed(self.kind(), fr["F"], fr["avg"])
+            self.owner.sdr_listen_feed(self.kind(), fr["F"], fr["avg"], self.bid())
         self.frame.emit(fr)
 
     def _pump(self):
@@ -20899,9 +21005,9 @@ class SdrEngine(QtCore.QObject):
 class SdrPanelBase(QtWidgets.QWidget):
     """Base des panneaux SDR : le moteur commun, le niveau d'affichage (Simple / Plus / Expert)."""
 
-    def __init__(self, owner):
+    def __init__(self, owner, eng=None):
         super().__init__(owner)
-        self.owner, self.eng = owner, owner.sdr_eng
+        self.owner, self.eng = owner, eng or owner.sdr_eng
 
     def lvl(self):
         return sdr_level(getattr(self.owner, "ui_level", "simple"))
@@ -20915,8 +21021,8 @@ class SdrReceiverPanel(SdrPanelBase):
     aiguille ; Plus : démodulation, pas, squelch, récepteur B, zoom du canal écouté (IF) et spectre du son (AF),
     enregistrements ; Expert : FFT, réglages de l'appareil, charge / saturation."""
 
-    def __init__(self, owner):
-        super().__init__(owner)
+    def __init__(self, owner, eng=None):
+        super().__init__(owner, eng)
         e, o = self.eng, owner
         acc = o.theme.get("accent", "#64d2ff")
         lay = QtWidgets.QVBoxLayout(self)
@@ -20965,8 +21071,15 @@ class SdrReceiverPanel(SdrPanelBase):
         self.sq.setValue(-121 if e.sq is None else int(e.sq))
         self.sq.setToolTip("Squelch : en dessous de ce niveau, le son est coupé (pas de souffle entre deux phrases).")
         self.sq.valueChanged.connect(lambda v: e.set_opts(sq=None if v <= -121 else float(v)))
+        self.dp.pre.setToolTip("Le type d'appareil que tu écoutes : règle tout seul la démodulation, le compander et la "
+                               "désaccentuation\n(Sennheiser evolution, Shure, Wisycom, ears, talkies…).")
+        self.row_listen = QtWidgets.QWidget()                # étape 16 ter : l'écoute, à tous les niveaux
+        rl = o._row("🎧 Écoute :", self.dp.pre, "Compander :", self.dp.comp, None)
+        rl.setContentsMargins(0, 0, 0, 0)
+        self.row_listen.setLayout(rl)
+        lay.addWidget(self.row_listen)
         self.row_dem = QtWidgets.QWidget()
-        rd = o._row(*self.dp.widgets(), "Pas :", self.step, "Squelch :", self.sq, None)
+        rd = o._row("Mode :", self.dp.mode, self.dp.de, "Pas :", self.step, "Squelch :", self.sq, None)
         rd.setContentsMargins(0, 0, 0, 0)
         self.row_dem.setLayout(rd)
         lay.addWidget(self.row_dem)
@@ -21127,6 +21240,8 @@ class SdrReceiverPanel(SdrPanelBase):
         lv = self.lvl()
         for w_ in (self.row_b, self.row_dem, self.row_tools, self.row_zoom):
             w_.setVisible(lv != "simple")
+        if lv == "simple" and self.eng.b_on:            # Simple : un seul récepteur (B n'a pas ses réglages ici)
+            self.eng.set_b(on=False)
         for w_ in (self.nfft, self.set_btn, self.stats):
             w_.setVisible(lv == "expert")
 
@@ -21136,8 +21251,8 @@ class SdrSpectrumPanel(SdrPanelBase):
     couleur de leur état) ; canaux TNT à éviter grisés ; A et B en bandes à faire glisser ; clic = A, clic droit = B ;
     Plus : pics gardés, ◀ ▶ micro précédent / suivant, zoom ; Expert : barre d'état (RBW, FFT…) et curseur."""
 
-    def __init__(self, owner):
-        super().__init__(owner)
+    def __init__(self, owner, eng=None):
+        super().__init__(owner, eng)
         e, o = self.eng, owner
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
@@ -21223,8 +21338,9 @@ class SdrSpectrumPanel(SdrPanelBase):
 
     def _vfo(self):
         e = self.eng
+        b_on = bool(e.b_on and e.b is not None and self.lvl() != "simple")
         for r_, lab, f, on, nm in ((self.reg_a, self.lab_a, e.a, e.a is not None, "A"),
-                                   (self.reg_b, self.lab_b, e.b, bool(e.b_on and e.b is not None), "B")):
+                                   (self.reg_b, self.lab_b, e.b, b_on, "B")):
             r_.setVisible(on)
             lab.setVisible(on)
             if on:
@@ -21360,8 +21476,8 @@ class SdrWaterfallPanel(SdrPanelBase):
     """📡 SDR · Waterfall de la fenêtre du SDR (le temps descend), A et B en traits."""
     ROWS = 240
 
-    def __init__(self, owner):
-        super().__init__(owner)
+    def __init__(self, owner, eng=None):
+        super().__init__(owner, eng)
         e, o = self.eng, owner
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
@@ -21408,8 +21524,8 @@ class SdrMicsPanel(SdrPanelBase):
     (A), clic droit = écouter en B. Celles hors de la fenêtre sont dites."""
     COLS = ["Nom", "MHz", "Niveau SDR", "État"]
 
-    def __init__(self, owner):
-        super().__init__(owner)
+    def __init__(self, owner, eng=None):
+        super().__init__(owner, eng)
         e, o = self.eng, owner
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
@@ -21452,7 +21568,7 @@ class SdrMicsPanel(SdrPanelBase):
             return
         o, e = self.owner, self.eng
         m = e.model()
-        allw = [w for w in o.watch if not m or sdr_in_range(m, w["freq"])]
+        allw = [w for w in e.ws() if not m or sdr_in_range(m, w["freq"])]       # les micros de SES scènes
         if e.center is not None:
             self.ws = [w for w in allw if vfo_inside(e.center, e.span(), w["freq"], 0.0)]
         else:
@@ -21475,6 +21591,176 @@ class SdrMicsPanel(SdrPanelBase):
             self.table.item(r, 3).setForeground(QtGui.QColor(col))
         self.note.setText("" if not n_out else TR("{} autre(s) fréquence(s) hors de la fenêtre du SDR : clique un micro "
                                                     "ou tape sa fréquence en A pour y aller.").format(n_out))
+
+
+class SdrPostsDialog(QtWidgets.QDialog):
+    """📡 Mes SDR (étape 17) : un ou plusieurs SDR qui écoutent / surveillent en même temps que les tinySA. Pour chacun :
+    nom, modèle, n° de série (pour distinguer deux SDR du même modèle), scènes qu'il surveille ; ▶ / ■ ; place sur la
+    carte. Tout s'applique tout de suite."""
+    COLS = ["Nom", "Modèle", "N° de série", "Scènes", "État"]
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = o = owner
+        self.setWindowTitle("Mes SDR")
+        self.setModal(False)
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Plusieurs SDR peuvent tourner en même temps que tes tinySA : chacun surveille et écoute "
+                                "les micros de SES scènes (aucune scène = tout le site), avec ses propres panneaux. "
+                                "Place-les sur la 🗺 carte comme les tinySA.")
+        info.setWordWrap(True)
+        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        lay.addWidget(info)
+        self.table = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.table.setHorizontalHeaderLabels(self.COLS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setToolTip("Nom et n° de série se tapent ; Modèle et Scènes se choisissent dans leur liste.")
+        lay.addWidget(self.table, 1)
+        self.add_btn = QtWidgets.QPushButton("＋ Ajouter un SDR")
+        self.add_btn.setToolTip("Un poste SDR de plus (4 au plus) : ses panneaux apparaissent en onglets, déplace-les où tu veux.")
+        self.add_btn.clicked.connect(lambda *_: self.add())
+        self.del_btn = QtWidgets.QPushButton("Retirer")
+        self.del_btn.setToolTip("Retire le poste choisi (le 1er reste).")
+        self.del_btn.clicked.connect(lambda *_: self.remove())
+        self.go_btn = QtWidgets.QPushButton("Démarrer / arrêter")
+        self.go_btn.setToolTip("Démarre ou arrête le poste choisi.")
+        self.go_btn.clicked.connect(lambda *_: self.toggle())
+        self.map_btn = QtWidgets.QPushButton("🗺 Carte")
+        self.map_btn.setToolTip("Ouvre la carte : fais glisser un SDR sur une scène pour qu'il la surveille.")
+        self.map_btn.clicked.connect(lambda *_: o.open_map())
+        lay.addLayout(o._row(self.add_btn, self.del_btn, self.go_btn, None, self.map_btn))
+        self.st = QtWidgets.QLabel("")
+        self.st.setWordWrap(True)
+        lay.addWidget(self.st)
+        self._busy = False
+        self.fill()
+        self.tm = QtCore.QTimer(self)
+        self.tm.timeout.connect(self._states)
+        self.tm.start(1000)
+        fit_dialog(self, 860, 420)
+
+    def posts(self):
+        return sdr_posts_norm(self.owner.sdr_cfg.get("posts"))
+
+    def _save(self, posts):
+        self.owner.sdr_cfg["posts"] = sdr_posts_norm(posts)
+        self.owner._sdr_posts_sync()
+        try:
+            self.owner.map_scene().sync()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def fill(self):
+        o = self.owner
+        self._busy = True
+        ps = self.posts()
+        self.table.setRowCount(len(ps))
+        for r, p in enumerate(ps):
+            it = QtWidgets.QTableWidgetItem(p["name"])
+            it.setData(Qt.ItemDataRole.UserRole, p["id"])
+            self.table.setItem(r, 0, it)
+            cb = QtWidgets.QComboBox()
+            cb.addItem(TR("(celui des Réglages SDR)"), "")
+            for m in SDR_MODELS:
+                if m.get("kind"):
+                    cb.addItem(m["name"], m["key"])
+            cb.setCurrentIndex(max(0, cb.findData(p["model"])))
+            cb.currentIndexChanged.connect(lambda *_, r=r: self._edit(r))
+            self.table.setCellWidget(r, 1, cb)
+            self.table.setItem(r, 2, QtWidgets.QTableWidgetItem(p["serial"]))
+            sb = QtWidgets.QToolButton()
+            sb.setText(", ".join(p["scenes"]) or TR("tout le site"))
+            sb.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+            mn = QtWidgets.QMenu(sb)
+            for sc in o.scenes:
+                a_ = mn.addAction(sc["name"])
+                a_.setCheckable(True)
+                a_.setChecked(sc["name"] in p["scenes"])
+                a_.toggled.connect(lambda on, r=r, n=sc["name"]: self._scene(r, n, on))
+            sb.setMenu(mn)
+            self.table.setCellWidget(r, 3, sb)
+            self.table.setItem(r, 4, QtWidgets.QTableWidgetItem(""))
+        self._busy = False
+        self.table.itemChanged.connect(self._item) if not getattr(self, "_conn", False) else None
+        self._conn = True
+        self._states()
+
+    def _row_post(self, r):
+        it = self.table.item(r, 0)
+        pid = it.data(Qt.ItemDataRole.UserRole) if it else None
+        ps = self.posts()
+        return ps, next((p for p in ps if p["id"] == pid), None)
+
+    def _item(self, it):
+        if self._busy or it.column() not in (0, 2):
+            return
+        self._edit(it.row())
+
+    def _edit(self, r):
+        if self._busy:
+            return
+        ps, p = self._row_post(r)
+        if p is None:
+            return
+        p["name"] = (self.table.item(r, 0).text() if self.table.item(r, 0) else p["name"]).strip() or p["name"]
+        p["serial"] = (self.table.item(r, 2).text() if self.table.item(r, 2) else "").strip()
+        p["model"] = self.table.cellWidget(r, 1).currentData() or ""
+        self._save(ps)
+
+    def _scene(self, r, name, on):
+        ps, p = self._row_post(r)
+        if p is None:
+            return
+        p["scenes"] = sorted(set(p["scenes"]) | {name}) if on else [s for s in p["scenes"] if s != name]
+        self._save(ps)
+        self.table.cellWidget(r, 3).setText(", ".join(p["scenes"]) or TR("tout le site"))
+
+    def add(self):
+        ps = self.posts()
+        free = [i for i in range(1, SDR_POSTS_MAX + 1) if i not in {p["id"] for p in ps}]
+        if not free:
+            self.st.setText(TR("4 SDR au plus."))
+            return None
+        ps.append(dict(id=free[0], name=f"SDR {free[0]}", model="", serial="", scenes=[]))
+        self._save(ps)
+        self.fill()
+        return free[0]
+
+    def remove(self):
+        r = self.table.currentRow()
+        ps, p = self._row_post(r)
+        if p is None or p["id"] == 1:
+            self.st.setText(TR("Le 1er SDR reste (il suffit de ne pas le démarrer)."))
+            return
+        self._save([x for x in ps if x["id"] != p["id"]])
+        self.fill()
+
+    def toggle(self):
+        r = max(0, self.table.currentRow())
+        _ps, p = self._row_post(r)
+        e = self.owner.sdr_engs.get((p or {}).get("id"))
+        if e is None:
+            return
+        if e.running():
+            e.stop()
+        else:
+            if self.owner.rf_mode == "tiny":
+                self.owner.set_rf_mode("sdr")
+            e.start()
+        self._states()
+
+    def _states(self):
+        for r in range(self.table.rowCount()):
+            _ps, p = self._row_post(r)
+            e = self.owner.sdr_engs.get((p or {}).get("id"))
+            if e is None or self.table.item(r, 4) is None:
+                continue
+            txt = (TR("▶ en marche") if e.running() else TR("■ arrêté")) + (f" · {e.msg}" if e.msg and not e.running()
+                                                                            else "")
+            if self.table.item(r, 4).text() != txt:
+                self.table.item(r, 4).setText(txt)
 
 
 def write_atomic(path, text):
@@ -38571,7 +38857,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     SDR_LISTEN_ID = -40                     # étape 7 : « bande » des mesures venues du flux d'écoute / temps réel
 
-    def sdr_listen_feed(self, kind, F, L):
+    def sdr_listen_feed(self, kind, F, L, bid=None):
         """Étape 7 (Clément : surveiller ET écouter en même temps) : le spectre de la fenêtre écoutée (dBFS + correction
         du modèle, ou dBm d'un WiNRADiO) sert à surveiller les fréquences qui y tombent, SI aucun autre appareil ne
         balaye (un tinySA garde la main : pas de mélange dBFS / dBm). -> True si utilisé."""
@@ -38581,8 +38867,9 @@ class MainWindow(QtWidgets.QMainWindow):
         L = np.asarray(L, dtype=float) + self.sdr_offset(kind)
         if len(F) < 2:
             return False
-        self.latest[self.SDR_LISTEN_ID] = (F, L)
-        self.latest_t[self.SDR_LISTEN_ID] = time.time()
+        bid = self.SDR_LISTEN_ID if bid is None else bid       # étape 17 : une « bande » par poste SDR
+        self.latest[bid] = (F, L)
+        self.latest_t[bid] = time.time()
         try:
             self.update_watch_levels()
             self.update_watch_table()
@@ -38592,9 +38879,10 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         return True
 
-    def sdr_listen_clear(self):
-        self.latest.pop(self.SDR_LISTEN_ID, None)
-        self.latest_t.pop(self.SDR_LISTEN_ID, None)
+    def sdr_listen_clear(self, bid=None):
+        bid = self.SDR_LISTEN_ID if bid is None else bid
+        self.latest.pop(bid, None)
+        self.latest_t.pop(bid, None)
 
     def open_multimon(self):
         """📡 V8 étape 9 : moniteur multicanal SDR (fenêtre gardée : rouverte telle quelle)."""
@@ -42251,6 +42539,7 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
     ("📡 Mode SDR (panneaux SDR à l'écran)", "rf_mode_sdr"),
     ("📟+📡 Mode combiné (tinySA + SDR)", "rf_mode_both"),
     ("📟 Mode tinySA seul", "rf_mode_tiny"),
+    ("📡 Mes SDR (plusieurs, scènes, carte)…", "open_sdr_posts"),
     ("📡 Moniteur multicanal (tous mes micros d'un coup)…", "open_multimon"),
     ("🎧 Écouter un micro…", "open_listen"),
     ("⏱ Temps réel (un bout de bande, sans trou)…", "open_realtime"),
@@ -42267,6 +42556,8 @@ MainWindow.TIPS_MENU.update({
         "📡 SDR": "V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.",
         "📶 Récepteurs en réseau": "V8 : niveau RF, antenne A / B, diversity, son, pile et alertes de tes récepteurs en\n"
                                    "réseau (Shure, Sennheiser), reliés à ta liste ; comparés au SDR dans le moniteur.",
+        "📡 Mes SDR": "V8 : plusieurs SDR en même temps que les tinySA, chacun ses scènes et ses panneaux, placés sur la\n"
+                     "carte comme les tinySA (glisser un SDR sur une scène = il la surveille).",
         "📡 Mode SDR": "V8 : le SDR à l'écran (récepteur, spectre, waterfall, mes micros) à la place du spectre tinySA.\n"
                        "Tous les panneaux se déplacent, s'empilent, se détachent ; ta disposition est retenue.",
         "📟+📡 Mode combiné": "V8 : tinySA et SDR ensemble, les deux spectres côte à côte.",
@@ -42307,6 +42598,162 @@ def _v8_open_incidents(self):
 
 MainWindow.open_incidents = _v8_open_incidents
 
+
+# Étape 17 : les SDR sur la carte, comme les tinySA (tuile « 📡 », glisser sur une scène = la surveiller, liens, état)
+_v7_map_keys, _v7_map_label = MapScene.keys_all, MapScene.label
+_v7_map_refresh, _v7_map_links = MapScene.refresh, MapScene.update_links
+_v7_map_dropped, _v7_map_open = MapScene.node_dropped, MapScene.node_open
+
+
+def _v8_map_keys(self):
+    return _v7_map_keys(self) + [map_key("sdr", p["id"]) for p in sdr_posts_norm(self.owner.sdr_cfg.get("posts"))]
+
+
+def _v8_map_label(self, key):
+    kind, name = key.split(":", 1)
+    if kind != "sdr":
+        return _v7_map_label(self, key)
+    e = (getattr(self.owner, "sdr_engs", None) or {}).get(int(name))
+    return f"📡 {e.name() if e else 'SDR ' + name}"
+
+
+def _v8_post_live(e):
+    return e is not None and e.running() and e.last is not None and time.time() - float(e.last.get("t") or 0) < 5
+
+
+def _v8_map_refresh(self):
+    _v7_map_refresh(self)
+    o, th = self.owner, self.owner.theme
+    for k, n in self.nodes.items():
+        if n.kind != "sdr":
+            continue
+        e = (getattr(o, "sdr_engs", None) or {}).get(int(n.name))
+        live = _v8_post_live(e)
+        n.title = f"📡 {e.name()}" if e else n.name
+        n.col = th["st_free"] if live else (th["st_occ"] if e is not None and e.running() else th["st_none"])
+        n.pill = TR("En ligne") if live else (TR("Pas de flux") if e is not None and e.running() else TR("Arrêté"))
+        m = e.model() if e else None
+        n.sub = (m["name"] if m else "SDR") + (f" · A {e.a:.3f}" if e is not None and e.a is not None else "")
+        scs = e.post()["scenes"] if e else []
+        n.extra = TR("Surveille : {}").format(", ".join(scs) if scs else TR("tout le site"))
+        n.stripe = "#64d2ff"
+        n.update()
+    self._v8_sdr_links()
+
+
+def _v8_map_links(self):
+    _v7_map_links(self)
+    self._v8_sdr_links()
+
+
+def _v8_sdr_links(self):
+    o = self.owner
+    for it in getattr(self, "sdr_links", []):
+        if it.scene() is self:
+            self.removeItem(it)
+    self.sdr_links = []
+    for pid, e in (getattr(o, "sdr_engs", None) or {}).items():
+        a = self.nodes.get(map_key("sdr", pid))
+        if a is None:
+            continue
+        for scn in e.post()["scenes"]:
+            b = self.nodes.get(map_key("scene", scn))
+            if b is None:
+                continue
+            pa, pb = a.port(b.pos().y() < a.pos().y()), b.port(b.pos().y() >= a.pos().y())
+            path = QtGui.QPainterPath(pa)
+            dy = max(40.0, abs(pb.y() - pa.y()) / 2) * (1 if pb.y() >= pa.y() else -1)
+            path.cubicTo(QtCore.QPointF(pa.x(), pa.y() + dy), QtCore.QPointF(pb.x(), pb.y() - dy), pb)
+            pen = QtGui.QPen(QtGui.QColor("#64d2ff"), 2.4)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            if not _v8_post_live(e):
+                pen.setStyle(Qt.PenStyle.DashLine)
+            it = self.addPath(path, pen)
+            it.setZValue(5)
+            self.sdr_links.append(it)
+
+
+def _v8_map_dropped(self, n):
+    if n.kind != "sdr":
+        return _v7_map_dropped(self, n)
+    o = self.owner
+    p = map_snap(n.pos().x(), n.pos().y())
+    n.setPos(QtCore.QPointF(*p))
+    o.map_cfg["pos"][n.key] = p
+    for _k, m in self.nodes.items():                   # SDR posé SUR une scène = il la surveille
+        if m.kind == "scene" and m.sceneBoundingRect().intersects(n.sceneBoundingRect()):
+            ps = sdr_posts_norm(o.sdr_cfg.get("posts"))
+            for pp in ps:
+                if pp["id"] == int(n.name) and m.name not in pp["scenes"]:
+                    pp["scenes"].append(m.name)
+                    o.sdr_cfg["posts"] = ps
+                    o._sdr_posts_sync()
+                    o.set_status(TR("📡 {} surveille maintenant « {} » (glissé sur la carte).").format(
+                        self.label(n.key), m.name))
+            n.setPos(QtCore.QPointF(p[0], m.pos().y() + m.h + MAP_STEP))
+            o.map_cfg["pos"][n.key] = [n.pos().x(), n.pos().y()]
+            break
+    self.refresh()
+
+
+def _v8_map_open(self, n):
+    if n.kind != "sdr":
+        return _v7_map_open(self, n)
+    o = self.owner
+    pid = int(n.name)
+    if o.rf_mode == "tiny":
+        o.set_rf_mode("sdr")
+    for d in o.post_docks.get(pid, {}).values():
+        if d.isHidden() and d is not o.post_docks[pid].get("wf"):
+            d.show()
+        d.raise_()
+    e = o.sdr_engs.get(pid)
+    if e is not None and not e.running():
+        e.start()
+
+
+_v7_scene_state = MapScene.scene_state
+
+
+def _v8_scene_state(self, name):
+    """Une scène surveillée par un SDR en marche n'est pas « Arrêtée », même si les tinySA ne tournent pas."""
+    o = self.owner
+    live = [e for e in (getattr(o, "sdr_engs", None) or {}).values()
+            if _v8_post_live(e) and (not e.post()["scenes"] or name in e.post()["scenes"])]
+    if o.is_running() or not live:
+        return _v7_scene_state(self, name)
+    ws = [w for w in o.watch if w.get("scene") == name and not w.get("off")]
+    tones = [o.sig_view(w)[1] for w in ws]
+    al = sum(1 for a in o.alarms.active.values() if any(abs((a.get("freq") or -1) - w["freq"]) < 0.0015 for w in ws))
+    tone = "bad" if (al or "bad" in tones) else ("warn" if "warn" in tones else "ok")
+    pill = (TR("{} alarme(s)").format(al) if al else TR("À surveiller") if tone in ("bad", "warn") else TR("OK"))
+    sub = TR("{} micro(s)").format(len(ws)) + " · 📡 " + ", ".join(e.name() for e in live)
+    return tone, sub, pill, [o.tone_color(t) for t in tones]
+
+
+MapScene.scene_state = _v8_scene_state
+MapScene.keys_all = _v8_map_keys
+MapScene.label = _v8_map_label
+MapScene.refresh = _v8_map_refresh
+MapScene.update_links = _v8_map_links
+MapScene._v8_sdr_links = _v8_sdr_links
+MapScene.node_dropped = _v8_map_dropped
+MapScene.node_open = _v8_map_open
+
+
+def _v8_open_sdr_posts(self):
+    """📡 Mes SDR (fenêtre gardée)."""
+    d = getattr(self, "_posts_dlg", None)
+    if d is None:
+        d = self._posts_dlg = SdrPostsDialog(self)
+    d.fill()
+    d.show()
+    d.raise_()
+    return d
+
+
+MainWindow.open_sdr_posts = _v8_open_sdr_posts
+
 _v7_close_event = MainWindow.closeEvent
 
 
@@ -42316,8 +42763,8 @@ def _v8_close_event(self, ev):
     _v7_close_event(self, ev)
     if not getattr(ev, "isAccepted", lambda: True)():
         return
-    for nm in ("_multimon", "_listen", "_rt", "sdr_eng"):
-        d = getattr(self, nm, None)
+    for d in [getattr(self, nm, None) for nm in ("_multimon", "_listen", "_rt")] + \
+            list((getattr(self, "sdr_engs", None) or {}).values()):
         try:
             if d is not None and hasattr(d, "stop"):
                 d.stop()
@@ -42363,31 +42810,115 @@ def _v8_build_docks(self, *a, **k):
     """Les panneaux SDR sont créés AVEC ceux de l'appli : la disposition enregistrée (restoreState) les replace, ils
     sont dans 🪟 Fenêtres, dans « Vraies fenêtres / double écran », et on les déplace comme les autres."""
     r = _v7_build_docks(self, *a, **k)
-    self.sdr_eng = SdrEngine(self)
     self.rf_mode = "tiny"
-    self.sdr_docks = {}
+    self.sdr_engs, self.post_docks = {}, {}
+    self._make_post(1)
+    self.sdr_eng, self.sdr_docks = self.sdr_engs[1], self.post_docks[1]
+    return r
+
+
+def _v8_make_post(self, pid):
+    """Étape 17 : un poste SDR = un moteur + ses 4 panneaux (déplaçables, dans 🪟 Fenêtres et les vraies fenêtres)."""
+    eng = self.sdr_engs[pid] = SdrEngine(self, pid)
+    docks = self.post_docks[pid] = {}
     B = Qt.DockWidgetArea.BottomDockWidgetArea
-    for key, title, name, cls in SDR_DOCKS:
-        d = self._make_dock(title, name, globals()[cls](self), B)
-        d.hide()
-        self.sdr_docks[key] = d
-    self.docks += list(self.sdr_docks.values())
     acts = self.win_menu.actions()
     sep = next((x for x in acts if x.isSeparator()), None)
-    for d in self.sdr_docks.values():
+    for key, title, name, cls in SDR_DOCKS:
+        nm = name if pid == 1 else name.replace("dock_sdr_", f"dock_sdr{pid}_")
+        d = self._make_dock(self._post_title(pid, title), nm, globals()[cls](self, eng), B)
+        d.hide()
+        docks[key] = d
+        self.docks.append(d)
         if sep is not None:
             self.win_menu.insertAction(sep, d.toggleViewAction())
         else:
             self.win_menu.addAction(d.toggleViewAction())
+    return eng
+
+
+def _v8_post_title(self, pid, title):
+    if pid == 1:
+        return title
+    p = next((x for x in sdr_posts_norm(self.sdr_cfg.get("posts")) if x["id"] == pid), None)
+    return title.replace("SDR", (p or {}).get("name") or f"SDR {pid}", 1)
+
+
+def _v8_sdr_posts_sync(self):
+    """Moteurs et panneaux d'après la liste des postes (config, 📡 Mes SDR) : création, renommage, retrait."""
+    if not hasattr(self, "sdr_engs"):
+        return
+    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+    ids = {p["id"] for p in posts}
+    for pid in list(self.sdr_engs):
+        if pid not in ids and pid != 1:
+            self.sdr_engs.pop(pid).stop()
+            for d in self.post_docks.pop(pid, {}).values():
+                self.panel_window(d, False)
+                self.win_menu.removeAction(d.toggleViewAction())
+                if d in self.docks:
+                    self.docks.remove(d)
+                self.removeDockWidget(d)
+                d.deleteLater()
+    for p in posts:
+        if p["id"] not in self.sdr_engs:
+            self._make_post(p["id"])
+            if getattr(self, "rf_mode", "tiny") != "tiny":
+                self._post_show(p["id"])
+        for key, title, _n, _c in SDR_DOCKS:
+            d = self.post_docks[p["id"]][key]
+            t = self._post_title(p["id"], title)
+            if d.windowTitle() != t:
+                d.setWindowTitle(t)
+        for d in self.post_docks[p["id"]].values():
+            if hasattr(d.widget(), "refresh"):
+                d.widget().refresh()
+
+
+def _v8_post_show(self, pid):
+    """Panneaux d'un poste 2…4 : en onglets à côté de ceux du poste 1 (l'utilisateur les place ensuite)."""
+    base, mine = self.post_docks[1], self.post_docks[pid]
+    for key in ("rx", "spec", "wf", "mics"):
+        d = mine[key]
+        if d.objectName() in self.panel_wins:
+            continue
+        if base[key].isVisible() and not base[key].isFloating():
+            self.tabifyDockWidget(base[key], d)
+        else:
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, d)
+        d.show()
+        if key == "wf" and not base["wf"].isVisible():
+            d.hide()
+
+
+def _v8_all_sdr_docks(self):
+    return [d for ds in (getattr(self, "post_docks", None) or {}).values() for d in ds.values()]
+
+
+_v7_apply_config = MainWindow._apply_config
+
+
+def _v8_apply_config(self, data, startup=False):
+    r = _v7_apply_config(self, data, startup)
+    try:
+        self._sdr_posts_sync()               # avant restoreState au démarrage : les panneaux des postes y sont replacés
+    except Exception:  # noqa: BLE001
+        pass
     return r
 
 
 MainWindow._build_docks = _v8_build_docks
+MainWindow._make_post = _v8_make_post
+MainWindow._post_title = _v8_post_title
+MainWindow._sdr_posts_sync = _v8_sdr_posts_sync
+MainWindow._post_show = _v8_post_show
+MainWindow.all_sdr_docks = _v8_all_sdr_docks
+MainWindow._apply_config = _v8_apply_config
 _v7_panel_docks = MainWindow.panel_docks
 
 
 def _v8_panel_docks(self):
-    return _v7_panel_docks(self) + list(getattr(self, "sdr_docks", {}).values())
+    return _v7_panel_docks(self) + self.all_sdr_docks()
 
 
 MainWindow.panel_docks = _v8_panel_docks
@@ -42397,7 +42928,7 @@ _v7_layout_standard = MainWindow.layout_standard
 def _v8_layout_standard(self):
     """Disposition de base : celle de l'appli, puis celle du mode (tinySA / SDR / combiné)."""
     _v7_layout_standard(self)
-    for d in getattr(self, "sdr_docks", {}).values():
+    for d in self.all_sdr_docks():
         d.hide()
     if getattr(self, "rf_mode", "tiny") != "tiny":
         self._sdr_arrange(self.rf_mode, "listen", base=False)
@@ -42409,11 +42940,18 @@ _v7_set_level = MainWindow.set_level
 
 def _v8_set_level(self, level):
     r = _v7_set_level(self, level)
-    for d in getattr(self, "sdr_docks", {}).values():       # Simple / Plus / Expert des panneaux SDR
+    for d in self.all_sdr_docks():                          # Simple / Plus / Expert des panneaux SDR
         try:
             d.widget().apply_level()
         except Exception:  # noqa: BLE001
             pass
+    try:
+        rx = self.sdr_docks["rx"]
+        if rx.isVisible() and not rx.isFloating():
+            QtCore.QTimer.singleShot(0, lambda: self.resizeDocks(
+                [rx], [rx.widget().sizeHint().height() + 36], Qt.Orientation.Vertical))
+    except Exception:  # noqa: BLE001
+        pass
     return r
 
 
@@ -42479,12 +43017,16 @@ def _v8_set_rf_mode(self, mode, layout=None):
     self.rf_mode = mode
     self.sdr_cfg["rf_mode"] = mode
     if mode == "tiny":
-        self.sdr_eng.stop()
+        for e_ in self.sdr_engs.values():
+            e_.stop()
         _v8_layout_standard(self)
     else:
         self._sdr_arrange(mode, layout or "listen")
-        if not self.sdr_eng.running():
-            self.sdr_eng.start()
+        for pid in sorted(self.sdr_engs):               # étape 17 : tous les postes SDR
+            if pid != 1:
+                self._post_show(pid)
+            if not self.sdr_engs[pid].running():
+                self.sdr_engs[pid].start()
     self._update_mode_btn()
     self.set_status(dict(tiny=TR("📟 Mode tinySA."), sdr=TR("📡 Mode SDR : tout est déplaçable (barres de titre), "
                                                               "ta disposition est retenue."),
@@ -42512,6 +43054,7 @@ def _v8_build_mode_menu(self):
         a_ = m.addAction(TR(t))
         a_.triggered.connect(lambda *_, k=k: self.set_rf_mode("both" if self.rf_mode == "both" else "sdr", k))
     m.addSeparator()
+    m.addAction(TR("📡 Mes SDR (plusieurs, scènes, carte)…")).triggered.connect(lambda *_: self.open_sdr_posts())
     m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
     m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
 
@@ -42531,8 +43074,8 @@ def _v8_mode_setup(self):
     except Exception:  # noqa: BLE001
         self.cmd_bar.addWidget(b)
     self._sdr_reload()
-    if self.rf_mode != "tiny" and any(d.isVisible() for d in self.sdr_docks.values()):
-        QtCore.QTimer.singleShot(1500, lambda: self.sdr_eng.start())   # l'appli rouverte en mode SDR : il repart
+    if self.rf_mode != "tiny" and any(d.isVisible() for d in self.all_sdr_docks()):
+        QtCore.QTimer.singleShot(1500, lambda: [e_.start() for e_ in self.sdr_engs.values()])   # rouverte en mode SDR
 
 
 MainWindow._sdr_arrange = _v8_sdr_arrange
@@ -42569,15 +43112,16 @@ def user_apply(cfg_now, doc):
 
 def _v8_sdr_reload(self):
     """Réglages du poste et mode relus de sdr_cfg (démarrage, profil chargé), sans toucher à la disposition."""
-    st = station_norm(self.sdr_cfg.get("station"))
-    e = self.sdr_eng
-    e.a, e.b, e.b_on, e.step, e.vol, e.sq, e.split, e.nfft, e.maxhold = (st[k] for k in (
-        "a", "b", "b_on", "step", "vol", "sq", "split", "nfft", "maxhold"))
+    self._sdr_posts_sync()
+    for e in self.sdr_engs.values():                 # chaque poste relit SES réglages
+        st = station_norm(e._st_cfg())
+        e.a, e.b, e.b_on, e.step, e.vol, e.sq, e.split, e.nfft, e.maxhold = (st[k] for k in (
+            "a", "b", "b_on", "step", "vol", "sq", "split", "nfft", "maxhold"))
+        if e.running():
+            e._push()
     self.rf_mode = rf_mode_norm(self.sdr_cfg.get("rf_mode"))
-    if e.running():
-        e._push()
     self._update_mode_btn()
-    for d in self.sdr_docks.values():
+    for d in self.all_sdr_docks():
         d.widget().apply_level()
         if hasattr(d.widget(), "refresh"):
             d.widget().refresh()
@@ -42590,10 +43134,11 @@ def _v8_user_profile_load(self, path):
     ok = _v7_user_profile_load(self, path)
     if ok:
         self._sdr_reload()
-        if self.rf_mode == "tiny":
-            self.sdr_eng.stop()
-        elif not self.sdr_eng.running():
-            self.sdr_eng.start()
+        for e_ in self.sdr_engs.values():
+            if self.rf_mode == "tiny":
+                e_.stop()
+            elif not e_.running():
+                e_.start()
     return ok
 
 

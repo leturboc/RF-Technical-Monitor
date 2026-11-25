@@ -731,5 +731,26 @@ st_ = ns["station_norm"]({"a": 600.1, "step": 12.5, "nfft": 999, "b_on": 1, "vol
 ok("poste SDR relu de la config", st_["a"] == 600.1 and st_["step"] == 12.5 and st_["nfft"] == 4096 and st_["b_on"] is True
    and st_["vol"] == 0.8)
 
+# ---------------------------------------------------------------- V8 étapes 16 bis / 17 : affichage poste, plusieurs SDR
+ok("grande fréquence : texte et crans", ns["freq_digits"](598300000)[0] == "598.300 000"
+   and ns["freq_digits"](598300000)[1][:3] == [100000000, 10000000, 1000000] and ns["freq_digits"](598300000)[1][3] == 0
+   and ns["freq_digits"](598300000)[1][-1] == 1)
+ok("vu-mètre en mots", [ns["level_words"](x)[0] for x in (-100, -85, -70, -40, -10)]
+   == ["très faible", "faible", "bon", "fort", "trop fort"] and ns["level_words"](None)[0] == "—")
+ok("zones TNT à éviter (marquées à la main ou par le plan)", ns["sdr_zones"]("FR", {"36": "tv", "37": "free"}, [37, 38], 594, 610)
+   == [(590.0, 598.0, "TNT 36"), (606.0, 614.0, "TNT 38")])
+ok("barre d'état du spectre", "RBW 2.03 kHz" in ns["spectrum_status"](4.8e6, 4096) and "non calé" in ns["spectrum_status"](4.8e6, 4096)
+   and "SATURATION" in ns["spectrum_status"](4.8e6, 4096, ovf=0.05, calibrated=True))
+ok("micro suivant / précédent", ns["next_mic"]([600.1, 598.3, 602.0], 600.1, 1) == 602.0
+   and ns["next_mic"]([600.1, 598.3], 600.1, -1) == 598.3 and ns["next_mic"]([600.1], 600.1, 1) is None)
+pp = ns["sdr_posts_norm"]([{"id": 2, "name": "  SDR   B ", "model": "rsp1b", "serial": "x y!", "scenes": ["B", ""]},
+                           {"id": 2}, {"id": 9}, "z"])
+ok("postes SDR : le 1er toujours là, doublons / hors bornes écartés", [p_["id"] for p_ in pp] == [1, 2]
+   and pp[1]["name"] == "SDR B" and pp[1]["serial"] == "xy" and pp[1]["scenes"] == ["B"] and pp[1]["model"] == "rsp1b")
+ok("micros d'un poste = ceux de ses scènes", [w["name"] for w in ns["post_watch"]([dict(name="a", scene="A"),
+   dict(name="b", scene="B")], ["B"])] == ["b"] and len(ns["post_watch"]([dict(name="a", scene="A")], [])) == 1)
+ok("deux postes sur le même SDR repérés", ns["sdr_post_clash"]([(1, "hackrf", ""), (2, "hackrf", "AB")]) == [(1, 2)]
+   and ns["sdr_post_clash"]([(1, "hackrf", "A"), (2, "hackrf", "B"), (3, "rtlsdr", "")]) == [])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

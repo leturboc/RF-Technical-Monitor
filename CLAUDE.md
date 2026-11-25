@@ -1902,6 +1902,32 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `user_doc` / `user_apply` enveloppés (mode + poste) ; disposition déjà dans « docks » ; `user_profile_load` enveloppé
   (`_sdr_reload`, SDR relancé ou arrêté). Testé : gui_reel (modes, recentrage, B, niveaux, pré-affichages, combiné côte
   à côte, panneau détaché retenu, profil), gui_en ; **jamais avec un vrai SDR ni sur un vrai 2ᵉ écran**.
+- **V8 étape 16 bis / ter (Clément montre WiNRADiO G33WSM, un analyseur SDR moderne et SDR# ; « montre-moi l'affichage
+  avant » ; « l'écoute avec compandeurs », « le vu-mètre on comprend pas les valeurs »)** : PURE `freq_digits` (texte
+  « 598.300 000 » + valeur d'un cran par chiffre), `sdr_zones` (canaux TNT marqués tv à la main ou dans le plan ->
+  zones « TNT n — à éviter »), `spectrum_status` (RBW = 1,73 × débit / FFT, Blackman), `next_mic`, `LEVEL_WORDS` /
+  `level_words` (très faible < −95, faible < −80, bon < −55, fort < −30, trop fort ; choix de Claude). Widgets
+  `FreqDisplay` (molette sur un chiffre, ←/→ ↑/↓, double-clic = saisir ; signal changed(MHz)) et `SMeterGauge` (arc du
+  haut, échelle −120 → −20 dBm, zones rouge / orange / vert / rouge, « −62 dBm · bon », crête ; `format()`). Récepteur :
+  ▶ / ■, 🔇, volume, A en grand + vu-mètre ; ligne « 🎧 Écoute » (préréglage d'appareil + compander) à TOUS les niveaux ;
+  Plus : mode, désaccentuation, pas, squelch, B (petit vu-mètre ; en Simple, B coupé), zoom du canal (IF) et spectre
+  du son (AF, `SdrEngine.af`) ; Expert : FFT, ⚙, charge. Spectre : micros étiquetés (nom + MHz, couleur d'état, 3
+  hauteurs), zones TNT, A / B légendés, Micro préc. / suiv., zoom ＋ − ⤢, pics gardés, barre d'état + curseur (Expert).
+  Taille du panneau Récepteur recalée sur son contenu à chaque changement de niveau.
+- **V8 étape 17 (Clément : « plusieurs tinySA sur les scènes ET un ou plusieurs SDR qui monitorent, à placer sur la carte
+  comme les tiny »)** : PURE `SDR_POSTS_MAX` 4, `sdr_posts_norm` (sdr_cfg « posts » [{id, name, model, serial, scenes}],
+  le poste 1 toujours là), `post_watch`, `sdr_post_clash` (même genre et n° de série vide / égal). `SdrEngine(owner, pid)`
+  : `post()`, `name()`, `ws()` (micros de SES scènes), `bid()` (bande de mesures : SDR_LISTEN_ID pour le 1, −100 − id
+  sinon ; `sdr_listen_feed(..., bid)` / `sdr_listen_clear(bid)`), modèle et n° de série du poste (`RealtimeWorker(serial=)`),
+  réglages « station » (poste 1) / « stations »[id] ; refus si un autre poste en marche est sur le même SDR. MainWindow :
+  `sdr_engs`, `post_docks`, `_make_post`, `_post_title` (« 📡 <nom> · Spectre »), `_sdr_posts_sync` (création / renommage /
+  retrait, appelé par `_apply_config` enveloppé, donc AVANT restoreState au démarrage), `_post_show` (onglets à côté du
+  poste 1), `all_sdr_docks`. `SdrPostsDialog` (📡 Mes SDR : nom, modèle, n° de série, scènes à cocher, ▶ / ■, carte),
+  `open_sdr_posts` (menu du mode, sous-menu SDR). Carte : tuiles « sdr:<id> » (`MapScene` enveloppé : keys_all, label,
+  refresh, update_links + `_v8_sdr_links`, node_dropped = SDR posé sur une scène -> il la surveille, node_open -> ses
+  panneaux, scene_state : une scène surveillée par un SDR en marche n'est pas « Arrêtée »). Limites : les mesures de
+  tous les postes sont réunies (pire cas) dans la surveillance, pas encore « vu par SDR 2 » dans les alarmes ; testé
+  avec 2 faux SDR (n° de série S1 / S2), **jamais avec plusieurs vrais SDR** (USB, charge du PC).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

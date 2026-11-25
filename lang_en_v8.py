@@ -1024,3 +1024,89 @@ EXACT.update({
     "📟+📡 Mode combiné": "📟+📡 Combined mode",
     "📟 Mode tinySA": "📟 tinySA mode",
 })
+
+# ---------------------------------------------------------------- V8 étapes 16 bis / ter et 17
+EXACT.update({k: k for k in ("DejaVu Sans Mono", "color: #8e8e93; font-family: monospace;", "SDR ", "SDR 1")})
+EXACT.update({
+    "(celui des Réglages SDR)": "(the one in SDR settings)",
+    "4 SDR au plus.": "4 SDRs at most.",
+    "Couper / remettre le son.": "Mute / unmute.",
+    "Début · centre · fin de la fenêtre du SDR, et sa largeur.": "Start · centre · end of the SDR window, and its width.",
+    "Démarre ou arrête le poste choisi.": "Starts or stops the selected SDR.",
+    "Dézoomer.": "Zoom out.",
+    "Force du signal reçu dans le canal écouté (dBm) :\nrouge à gauche = très faible (risque de décrochage), orange = "
+    "faible, vert = bon,\nrouge à droite = trop fort (le SDR sature : baisse la sensibilité).\nLe petit trait orange = le "
+    "plus fort récemment. Valeurs justes si le SDR est calé (avec un tinySA).":
+        "Strength of the signal received in the listened channel (dBm):\nred on the left = very weak (dropout risk), orange "
+        "= weak, green = good,\nred on the right = too strong (the SDR saturates: lower the sensitivity).\nThe small orange "
+        "mark = the strongest recently. Values are right if the SDR is calibrated (with a tinySA).",
+    "Fréquence : molette sur un chiffre = le change ; flèches ←/→ puis ↑/↓ au clavier ;\ndouble-clic = taper la "
+    "fréquence.": "Frequency: wheel over a digit = changes it; ←/→ then ↑/↓ arrows on the keyboard;\ndouble-click = type "
+                  "the frequency.",
+    "Le 1er SDR reste (il suffit de ne pas le démarrer).": "The 1st SDR stays (just don't start it).",
+    "Le type d'appareil que tu écoutes : règle tout seul la démodulation, le compander et la désaccentuation\n(Sennheiser "
+    "evolution, Shure, Wisycom, ears, talkies…).": "The type of device you listen to: sets demodulation, compander and "
+                                                   "de-emphasis automatically\n(Sennheiser evolution, Shure, Wisycom, "
+                                                   "IEMs, walkie-talkies…).",
+    "Mes SDR": "My SDRs",
+    "Micro préc.": "Prev. mic",
+    "Micro suiv.": "Next mic",
+    "Modèle": "Model",
+    "Nom et n° de série se tapent ; Modèle et Scènes se choisissent dans leur liste.":
+        "Name and serial number are typed; Model and Scenes are picked from their list.",
+    "N° de série": "Serial number",
+    "Ouvre la carte : fais glisser un SDR sur une scène pour qu'il la surveille.":
+        "Opens the map: drag an SDR onto a scene so it monitors it.",
+    "Pas : clic sur le spectre et micro suivant arrondis à ce pas.": "Step: clicks on the spectrum and next mic rounded to this step.",
+    "Pas de flux": "No stream",
+    "Plusieurs SDR peuvent tourner en même temps que tes tinySA : chacun surveille et écoute les micros de SES scènes "
+    "(aucune scène = tout le site), avec ses propres panneaux. Place-les sur la 🗺 carte comme les tinySA.":
+        "Several SDRs can run at the same time as your tinySAs: each one monitors and listens to the mics of ITS scenes "
+        "(no scene = the whole site), with its own panels. Place them on the 🗺 map like the tinySAs.",
+    "RBW (finesse) · taille de FFT · fenêtre · détecteur · charge · échelle ; et le curseur.":
+        "RBW (resolution) · FFT size · window · detector · load · scale; and the cursor.",
+    "Retire le poste choisi (le 1er reste).": "Removes the selected SDR (the 1st stays).",
+    "SATURATION {} %": "SATURATION {} %",
+    "Scènes": "Scenes",
+    "Spectre du son entendu (0 – 15 kHz) : voix, souffle, sifflement, ronflette.":
+        "Spectrum of the heard sound (0 – 15 kHz): voice, hiss, whistle, hum.",
+    "Toute la fenêtre du SDR.": "The whole SDR window.",
+    "Un poste SDR de plus (4 au plus) : ses panneaux apparaissent en onglets, déplace-les où tu veux.":
+        "One more SDR (4 at most): its panels appear as tabs, move them wherever you like.",
+    "Zoom du canal écouté (A) : la porteuse, sa largeur, les voisins proches.":
+        "Zoom on the listened channel (A): the carrier, its width, close neighbours.",
+    "Zoomer autour de A.": "Zoom around A.",
+    "charge {} %": "load {} %",
+    "dBFS (non calé)": "dBFS (uncalibrated)",
+    "dBm (calé)": "dBm (calibrated)",
+    "kHz (son)": "kHz (sound)",
+    "kHz autour de A": "kHz around A",
+    "moyenne + crête": "average + peak",
+    "trop fort": "too strong",
+    "très faible": "very weak",
+    "faible": "weak",
+    "bon": "good",
+    "fort": "strong",
+    "{} — à éviter": "{} — avoid",
+    "Écouter le micro précédent (A).": "Listen to the previous mic (A).",
+    "Écouter le micro suivant (A).": "Listen to the next mic (A).",
+    "▶ en marche": "▶ running",
+    "⚠ Un autre poste utilise déjà un {} : donne à chacun son n° de série (📡 Mes SDR).":
+        "⚠ Another SDR slot already uses a {}: give each one its serial number (📡 My SDRs).",
+    "＋ Ajouter un SDR": "＋ Add an SDR",
+    "🎧 Écoute :": "🎧 Listening:",
+    "📡 Mes SDR (plusieurs, scènes, carte)…": "📡 My SDRs (several, scenes, map)…",
+    "🗺 Carte": "🗺 Map",
+    "Fréquence": "Frequency",
+    "Fréquence (MHz) :": "Frequency (MHz):",
+})
+SAME_TEMPLATES += ["{} · {} · {} MHz ({} MHz)", "RBW {} · FFT {} · Blackman · ", "⌖ {} MHz · {} dBFS", "dock_sdr{}_", "{} Hz",
+                   "color: {}; font-weight: bold; font-size: 18px;"]
+SAME_TEMPLATES += ["{} dBm · {}"]
+EXACT.update({
+    "V8 : plusieurs SDR en même temps que les tinySA, chacun ses scènes et ses panneaux, placés sur la\ncarte comme les "
+    "tinySA (glisser un SDR sur une scène = il la surveille).":
+        "V8: several SDRs at the same time as the tinySAs, each with its scenes and panels, placed on the\nmap like the "
+        "tinySAs (drag an SDR onto a scene = it monitors it).",
+    "📡 Mes SDR": "📡 My SDRs",
+})

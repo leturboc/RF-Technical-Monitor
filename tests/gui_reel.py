@@ -1445,6 +1445,46 @@ step("16 : profil chargé", lambda: win.user_profile_load(_p16))
 wait(1500)
 check("16 : le profil ramène le mode SDR combiné et ses panneaux", win.rf_mode == "both"
       and win.sdr_docks["spec"].isVisible(), win.rf_mode)
+# V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
+_pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
+_p2 = _pd.add()
+_sc17 = win.scenes[0]["name"] if win.scenes else ""
+_ps17 = m.sdr_posts_norm(win.sdr_cfg["posts"])
+_ps17[0]["serial"] = "S1"
+_ps17[1].update(serial="S2", name="SDR scène", scenes=[_sc17] if _sc17 else [])
+_pd._save(_ps17)
+_pd.fill()
+check("17 : 2ᵉ SDR = moteur + ses 4 panneaux (titrés à son nom)", _p2 in win.sdr_engs and len(win.all_sdr_docks()) == 8
+      and win.post_docks[_p2]["spec"].windowTitle().startswith("📡 SDR scène"), str(sorted(win.sdr_engs)))
+win.sdr_engs[_p2].a = _pair[0]["freq"] + 0.1
+step("17 : mode SDR avec 2 SDR", lambda: win.set_rf_mode("sdr"))
+_t0 = time.time()
+while any(e_.last is None for e_ in win.sdr_engs.values()) and time.time() - _t0 < 15:
+    wait(300)
+check("17 : les 2 SDR tournent en même temps", all(e_.running() and e_.last is not None for e_ in win.sdr_engs.values()),
+      str({k_: (e_.running(), e_.msg) for k_, e_ in win.sdr_engs.items()}))
+_m17 = win.post_docks[_p2]["mics"].widget()
+_m17.refresh()
+check("17 : le 2ᵉ SDR ne montre que les micros de SA scène", not _sc17 or all(
+      w_["scene"] == _sc17 for w_ in win.sdr_engs[_p2].ws()), _sc17)
+shot(win, "sdr_deux_postes")
+_mp17 = win.map_scene()
+_mp17.auto_place()
+_n17 = _mp17.nodes.get(m.map_key("sdr", _p2))
+check("17 : les SDR sont sur la carte", _n17 is not None and m.map_key("sdr", 1) in _mp17.nodes)
+if _n17 is not None and _sc17:
+    _ps17 = m.sdr_posts_norm(win.sdr_cfg["posts"])
+    _ps17[1]["scenes"] = []
+    win.sdr_cfg["posts"] = _ps17
+    _scn17 = _mp17.nodes[m.map_key("scene", _sc17)]
+    _n17.setPos(_scn17.pos())
+    _mp17.node_dropped(_n17)
+    check("17 : SDR glissé sur une scène = il la surveille", _sc17 in win.sdr_engs[_p2].post()["scenes"],
+          str(win.sdr_engs[_p2].post()))
+_ps17 = [p_ for p_ in m.sdr_posts_norm(win.sdr_cfg["posts"]) if p_["id"] != _p2]
+_pd._save(_ps17)
+check("17 : SDR retiré = moteur et panneaux retirés", _p2 not in win.sdr_engs and len(win.all_sdr_docks()) == 4)
+_pd.close()
 step("16 : retour tinySA", lambda: win.set_rf_mode("tiny"))
 win.set_level(_lv16)
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
