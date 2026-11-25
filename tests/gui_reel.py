@@ -1282,9 +1282,9 @@ if _rd is not None:
         if _rd.table.rowCount() else []
     check("📶 récepteur : canal lu (nom, MHz, RF, antenne, pile)", len(_txt11) > 8 and _txt11[2] == "Chant"
           and "dBm" in _txt11[4] and _txt11[8].startswith("▮▯"), str(_txt11))
-    check("📶 récepteur : alertes (pile, brouillage signalé)", len(_txt11) > 9 and "Pile" in _txt11[9]
-          and "RF_INT_DET" in _txt11[9], str(_txt11))
-    check("📶 récepteur : relié à ma liste par la fréquence", _txt11 and _txt11[10] == (_pair[0]["name"] or f"{_f11:.3f}"),
+    check("📶 récepteur : alertes (pile, brouillage signalé)", len(_txt11) > 10 and "Pile" in _txt11[10]
+          and "RF_INT_DET" in _txt11[10], str(_txt11))
+    check("📶 récepteur : relié à ma liste par la fréquence", _txt11 and _txt11[9] == (_pair[0]["name"] or f"{_f11:.3f}"),
           str(_txt11))
     check("📶 récepteur trouvé pour la fréquence du micro", (win.receiver_for(_f11) or {}).get("name") == "Chant")
     shot(_rd, "recepteurs_shure")

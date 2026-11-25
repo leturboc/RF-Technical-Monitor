@@ -667,5 +667,9 @@ cr2 = ns["compare_receivers"](A, B)
 ok("10. comparaison : stabilité de chacun", cr2["std_b"] == 0.0 and cr2["std_a"] > 0
    and "stabilité" in ns["compare_text"](cr2, "SDR", "tinySA"))
 
+ok("diagnostic court pour la colonne", ns["diag_short"]("RF trop faible : risque de décrochage (antenne).") == "RF trop faible"
+   and ns["diag_short"]("Fréquence qui dérive (+6 kHz) : pack froid") == "Fréquence qui dérive"
+   and ns["anomaly_text"](dict(kind="adj", value=-0.4)) == "Voisin trop fort : 0 dB")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

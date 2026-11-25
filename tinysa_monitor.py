@@ -8020,6 +8020,13 @@ def rf_audio_diag(m, tr=None):
     return sorted(out, key=lambda x: rank[x[1]])
 
 
+def diag_short(txt, n=34):
+    """Phrase de diagnostic -> sa première partie (avant « : » ou « ( »), pour une colonne étroite ; la phrase entière
+    reste en bulle et sous le tableau."""
+    t = re.split(r"\s*(?::\s|\()", str(txt), maxsplit=1)[0].strip()
+    return t if len(t) <= n else t[:n - 1].rstrip() + "…"
+
+
 def plan_vrx(items, n_max, turn=0):
     """16. Gestionnaire de ressources : quels micros ont un récepteur virtuel (démodulation complète) ? items =
     [dict(key, alarm, prio, keep_on, selected)] -> clés retenues : celui qu'on écoute, puis alarmes, puis priorité
@@ -8196,7 +8203,7 @@ def anomaly_text(ev, tr=None):
     if k == "flaps":
         return base + tr(" : {} en 10 min").format(int(v))
     if k in ("adj", "appear"):
-        return base + tr(" : {} dB").format(f"{float(v):.0f}")
+        return base + tr(" : {} dB").format(f"{round(float(v)):.0f}")
     if k == "burst":
         return base + f" : {v}"
     return f"{base} : {tr(str(v))}"
@@ -19169,7 +19176,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                               + (f" · silence {s['silent']:.0f} s" if s.get("silent", 0) >= 2 else ""))
                      if s.get("vrx") and s.get("rms") is not None else "—"),
                     TR(ht), "—" if s.get("obw") is None else f"{s['obw']:.0f} kHz",
-                    "—" if s.get("adj_margin") is None else f"{s['adj_margin']:.0f} dB", dg[0][2]]
+                    "—" if s.get("adj_margin") is None else f"{round(s['adj_margin']):.0f} dB", diag_short(dg[0][2])]
             for c, v in enumerate(vals):
                 it = self.table.item(r, c)
                 if it is None:
@@ -19542,8 +19549,8 @@ class ShureClient(threading.Thread):
 class ReceiversDialog(QtWidgets.QDialog):
     """V8 étape 11 : 📶 récepteurs Shure en réseau : ce que VOIT chaque récepteur (niveau RF, antenne A / B, diversity,
     son, pile), relié à ta liste par la fréquence ; sert aussi à comparer avec le SDR / le tinySA (moniteur multicanal)."""
-    COLS = ["Récepteur", "Canal", "Nom", "MHz", "RF", "Antenne", "Diversity A / B", "Son", "Pile", "Alertes",
-            "Dans ma liste"]
+    COLS = ["Récepteur", "Canal", "Nom", "MHz", "RF", "Antenne", "Diversity A / B", "Son", "Pile", "Dans ma liste",
+            "Alertes"]
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -19599,8 +19606,8 @@ class ReceiversDialog(QtWidgets.QDialog):
                     "—" if x.get("rf") is None else f"{x['rf']} dBm", x.get("ant") or "—", x.get("div") or "—",
                     "—" if x.get("audio") is None else f"{x['audio']} dBFS",
                     "—" if x.get("batt") is None else "▮" * int(x["batt"]) + "▯" * max(0, 5 - int(x["batt"])),
-                    " · ".join(x.get("alerts") or []) or "—",
-                    (w["name"] or f"{w['freq']:.3f}") if w else "—"]
+                    (w["name"] or f"{w['freq']:.3f}") if w else "—",
+                    " · ".join(x.get("alerts") or []) or "—"]
             for c, v in enumerate(vals):
                 it = self.table.item(r, c)
                 if it is None:
@@ -19608,9 +19615,10 @@ class ReceiversDialog(QtWidgets.QDialog):
                 elif it.text() != v:
                     it.setText(v)
         for r, x in enumerate(rows):                       # 14. alertes : en rouge, notées une fois au journal
-            it = self.table.item(r, 9)
+            it = self.table.item(r, 10)
             if it is not None:
                 it.setForeground(QtGui.QColor(o.tone_color("bad")) if x.get("alerts") else QtGui.QBrush())
+                it.setToolTip("\n".join(x.get("alerts") or []))
             seen = o.__dict__.setdefault("_rx_alerts_seen", set())
             for a_ in x.get("alerts") or []:
                 k_ = (x["host"], x["ch"], a_)
