@@ -7636,6 +7636,8 @@ def sdr_cfg_extra(sd):
         out["station"] = station_norm(sd.get("station"))
     if "favs" in sd:                                   # étape 18 : raccourcis du pavé numérique
         out["favs"] = favs_norm(sd.get("favs"))
+    if "auto" in sd:                                   # étape 20 : alarme -> calage, patrouille, pilote
+        out["auto"] = sdr_auto_norm(sd.get("auto"))
     if "posts" in sd:                                  # étape 17 : plusieurs postes SDR
         out["posts"] = sdr_posts_norm(sd.get("posts"))
     if isinstance(sd.get("stations"), dict):
@@ -9281,6 +9283,121 @@ def demod_guess(*texts):
         if re.search(pat, t):
             return key
     return None
+
+
+# Étape 20 (Clément : « 1234 !! » sur : alarme -> le SDR s'y cale et enregistre, patrouille d'écoute, pilote, « c'est quoi
+# ce signal »). Seuils = choix de Claude, pas mesurés sur de vrais micros.
+SDR_AUTO_DEFAULT = dict(tune=True, rec=False, dwell=8, src="favs", pilot_alarm=True)
+PATROL_DWELLS = (3, 5, 8, 12, 20, 30)          # secondes par micro
+PATROL_SRCS = (("favs", "Mes favoris ⭐ (pavé numérique)"), ("all", "Tous les micros de ce SDR"))
+ALARM_TUNE_KINDS = ("CONFLIT", "INTERMOD", "ABSENT", "TROP FORT", "PILOTE")
+ALARM_REC_PRE_S = 10.0       # son gardé AVANT l'alarme (seulement si A était déjà sur ce micro)
+ALARM_REC_POST_S = 20.0      # son enregistré APRÈS l'alarme
+ALARM_TUNE_COOLDOWN_S = 60.0  # même alarme : pas de nouveau calage avant 60 s
+PILOT_TOL_HZ = 300.0         # même pilote si à ± 300 Hz
+PILOT_LEARN_S = 3.0          # pilote vu 3 s d'affilée -> appris pour ce micro
+PILOT_MISS_S = 5.0           # porteuse là mais pilote disparu depuis 5 s -> « pas ton émetteur ? »
+
+
+def sdr_auto_norm(d):
+    """Réglages automatiques du poste SDR (sdr_cfg « auto ») : tune (se caler sur une alarme), rec (enregistrer le son
+    de l'alarme : accord vie privée demandé à part), dwell (s par micro en patrouille), src (favs | all),
+    pilot_alarm (alarme si la porteuse reste sans son pilote)."""
+    d = d if isinstance(d, dict) else {}
+    out = dict(SDR_AUTO_DEFAULT)
+    for k in ("tune", "rec", "pilot_alarm"):
+        if k in d:
+            out[k] = bool(d[k])
+    try:
+        v = int(d.get("dwell", out["dwell"]))
+        out["dwell"] = min(PATROL_DWELLS, key=lambda x: abs(x - v))
+    except (TypeError, ValueError):
+        pass
+    if d.get("src") in dict(PATROL_SRCS):
+        out["src"] = d["src"]
+    return out
+
+
+def patrol_items(favs, mics, src="favs"):
+    """Micros parcourus par la patrouille d'écoute, dans l'ordre -> [kHz]. favs {touche: kHz} ; mics = [(kHz, éteint ou
+    en pause)] des micros du poste (dans sa plage). « favs » : touches 1 à 9 dans l'ordre (s'il n'y en a aucune, tous les
+    micros) ; les micros éteints / en pause sont sautés ; doublons retirés."""
+    ok = {int(k): bool(off) for k, off in mics}
+    if src == "favs":
+        keys = [int(v) for _k, v in sorted(favs_norm(favs).items())]
+        keys = [k for k in keys if k in ok]
+        if keys:
+            return [k for k in dict.fromkeys(keys) if not ok[k]]
+    return [k for k in dict.fromkeys(sorted(ok)) if not ok[k]]
+
+
+def patrol_next(items, cur):
+    """Micro suivant de la patrouille (après cur, en boucle) ; cur absent -> le 1er ; liste vide -> None."""
+    if not items:
+        return None
+    try:
+        return items[(items.index(cur) + 1) % len(items)]
+    except ValueError:
+        return items[0]
+
+
+def alarm_pick(alarms, seen, ok_freq, kinds=ALARM_TUNE_KINDS):
+    """Alarme NOUVELLE (n° — sinon clé — pas dans `seen`) la plus grave sur laquelle le SDR peut se caler (ok_freq(MHz) vrai) ;
+    à gravité égale la plus récente. -> alarme ou None."""
+    c = [a for a in alarms if a.get("kind") in kinds and a.get("id", a.get("key")) not in seen and a.get("freq")
+         and ok_freq(float(a["freq"]))]
+    return max(c, key=lambda a: (int(a.get("prio", 0)), float(a.get("t0", 0.0)))) if c else None
+
+
+def pilot_verdict(learned_hz, pilot, carrier, miss_s=0.0, tr=None):
+    """Ce que dit le pilote d'un micro écouté. learned_hz = pilote appris (Hz) ou None ; pilot = (Hz, dB) vu maintenant
+    ou None ; carrier = une porteuse est là ; miss_s = depuis quand elle est là sans son pilote.
+    -> (clé, texte, ton) ; clés : same, other, missing, wait, seen, none, off."""
+    tr = tr or (lambda x: x)
+    if not carrier:
+        return "off", tr("pas de porteuse : pilote non jugé"), "none"
+    if pilot is not None:
+        k = f"{pilot[0] / 1000.0:.1f}"
+        if learned_hz is None:
+            return "seen", tr("pilote {} kHz vu (il sera retenu pour ce micro)").format(k), "none"
+        if abs(pilot[0] - learned_hz) <= PILOT_TOL_HZ:
+            return "same", tr("✔ pilote {} kHz : c'est bien ton émetteur").format(k), "ok"
+        return "other", tr("⚠ pilote {} kHz au lieu de {} kHz : un autre émetteur ?").format(
+            k, f"{learned_hz / 1000.0:.1f}"), "warn"
+    if learned_hz is None:
+        return "none", tr("pas de pilote vu (normal pour certains micros)"), "none"
+    if miss_s >= PILOT_MISS_S:
+        return "missing", tr("⚠ porteuse SANS son pilote : ce n'est peut-être pas ton émetteur (brouilleur ?)"), "bad"
+    return "wait", tr("pilote attendu ({} kHz)…").format(f"{learned_hz / 1000.0:.1f}"), "warn"
+
+
+def pilot_learn(hist, pilot, now, learn_s=PILOT_LEARN_S):
+    """Apprentissage du pilote : hist = dict(hz, t0) en cours (ou None) ; renvoie (hist mis à jour, Hz appris ou None).
+    Il faut le même pilote (± PILOT_TOL_HZ) pendant learn_s secondes d'affilée."""
+    if pilot is None:
+        return None, None
+    if hist is None or abs(pilot[0] - hist["hz"]) > PILOT_TOL_HZ:
+        return dict(hz=float(pilot[0]), t0=float(now)), None
+    if now - hist["t0"] >= learn_s:
+        return hist, float(round(hist["hz"]))
+    return hist, None
+
+
+def what_is(F, L, f0, pilot=None):
+    """« C'est quoi » autour de f0 : d'abord au plus près (± 0,5 MHz : un micro voisin ne gonfle pas la largeur), puis
+    sur ± 5 MHz si c'est large (TNT, bloc numérique)."""
+    c = classify_signal(F, L, f0, pilot, span=0.5)
+    if c.get("kind") in ("wide", "num") and (c.get("bw_khz") or 0) > 700:
+        c = classify_signal(F, L, f0, pilot, span=5.0)
+    return c
+
+
+def what_is_text(c, tr=None):
+    """Phrase courte « c'est quoi » pour le poste SDR : 🏷 type · largeur · dB au-dessus du bruit."""
+    tr = tr or (lambda x: x)
+    if not c or c.get("kind") == "none":
+        return tr("🏷 Rien de net sur A")
+    return "🏷 " + signal_report(c, tr)
 
 
 def reconnect_delay(fails):
@@ -20807,6 +20924,15 @@ class SdrEngine(QtCore.QObject):
         self.retune = QtCore.QTimer(self)
         self.retune.setSingleShot(True)
         self.retune.timeout.connect(self._restart)
+        # étape 20 : alarme -> calage + son, patrouille, pilote, « c'est quoi »
+        self.pre = PreRing(ALARM_REC_PRE_S, LISTEN_RATE * 4)
+        self._a_t, self._internal = time.time(), False
+        self.patrol, self._back, self.arec = None, None, None
+        self._seen_al, self._al_key_t, self._al_until = set(), {}, 0.0
+        self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = None, None, None, None
+        self.what, self._t_what = None, 0.0
+        self.tick = QtCore.QTimer(self)
+        self.tick.timeout.connect(self._tick)
 
     # ---- poste (étape 17 : plusieurs SDR)
     def _st_cfg(self):
@@ -20892,6 +21018,9 @@ class SdrEngine(QtCore.QObject):
         if self.audio is None:
             self.audio = AudioOut(self.owner)
         self.timer.start(20)
+        if not self.tick.isActive():                    # étape 20 : seules les alarmes NOUVELLES font se caler
+            self._seen_al = {a.get("id") for a in o.alarms.active.values()}
+            self.tick.start(500)
         QtCore.QTimer.singleShot(300 if self.paused else 0, w.start)
         self.changed.emit()
         return True
@@ -20911,6 +21040,10 @@ class SdrEngine(QtCore.QObject):
                 w_.paused = False
             self.paused = []
             self.rec_audio(False)
+            self.tick.stop()                             # étape 20
+            self._arec_end()
+            self.patrol, self._back = None, None
+            self._pilot_alarm(None)
         self.owner.sdr_listen_clear(self.bid())
         self.changed.emit()
 
@@ -20965,6 +21098,15 @@ class SdrEngine(QtCore.QObject):
         f = round(float(f), 6)
         if m and not sdr_in_range(m, f):
             return False
+        if self.a is None or abs(self.a - f) > 1e-6:    # étape 20 : autre fréquence -> tampon et pilote repartent
+            self.pre = PreRing(ALARM_REC_PRE_S, LISTEN_RATE * 4)
+            self._a_t, self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = time.time(), None, None, None, None
+            self.what, self._t_what = None, 0.0
+            if not self._internal:                      # tu as pris la main : la patrouille s'arrête là
+                if self.patrol is not None:
+                    self.patrol = None
+                    self._say(TR("🔁 Patrouille arrêtée : tu as choisi une fréquence."))
+                self._back = None
         self.a = f
         w = self.mic_at(f)                               # étape 19 : on tombe sur un micro -> SON réglage d'écoute
         self.cur_mic = w
@@ -21012,6 +21154,10 @@ class SdrEngine(QtCore.QObject):
         if now - self._t_feed >= 0.5 and len(fr["F"]) == len(fr["avg"]):
             self._t_feed = now                          # la fenêtre du SDR surveille aussi tes fréquences
             self.owner.sdr_listen_feed(self.kind(), fr["F"], fr["avg"], self.bid())
+        try:
+            self._watch_a(fr, now)                       # étape 20 : pilote et « c'est quoi » de A
+        except Exception:  # noqa: BLE001
+            pass
         self.frame.emit(fr)
 
     def _pump(self):
@@ -21027,6 +21173,12 @@ class SdrEngine(QtCore.QObject):
                     self.rec_audio(False)
             self.q.append(b)
             self.af.append(b)
+            self.pre.push(b)                             # étape 20 : 10 s d'avant, pour l'alarme
+            if self.arec is not None:
+                try:
+                    self.arec["wv"].writeframes(b)
+                except Exception:  # noqa: BLE001
+                    self._arec_end()
         if self.audio is not None:
             self.audio.feed(self.q)
 
@@ -21038,6 +21190,291 @@ class SdrEngine(QtCore.QObject):
         F, L = np.asarray(fr["F"]), np.asarray(fr["avg"])
         sel = np.abs(F - f) <= half
         return self.dbm(float(np.max(L[sel]))) if sel.any() else None
+
+
+    # ---- étape 20 : réglages automatiques
+    def auto(self):
+        return sdr_auto_norm(self.owner.sdr_cfg.get("auto"))
+
+    def set_auto(self, **kw):
+        a = self.auto()
+        a.update(kw)
+        self.owner.sdr_cfg["auto"] = sdr_auto_norm(a)
+        self.changed.emit()
+
+    def _tune(self, f, key=None):
+        """Calage décidé par l'appli (patrouille, alarme, retour) : ne compte pas comme « tu as pris la main »."""
+        self._internal = True
+        try:
+            ok = self.set_a(f)
+            if key and ok:
+                self.set_demod_key(key)
+        finally:
+            self._internal = False
+        return ok
+
+    def _tick(self):
+        now = time.time()
+        for fn in (self._patrol_tick, self._alarm_watch, self._pilot_tick):
+            try:
+                fn(now)
+            except Exception as ex:  # noqa: BLE001
+                log_crash("SDR (étape 20)", f"{fn.__name__} : {ex!r}")
+
+    # ---- patrouille d'écoute
+    def _patrol_items(self):
+        o, m = self.owner, self.model()
+        paused = getattr(o, "w_paused", lambda w: bool(w.get("muted") or w.get("off")))
+        mics = [(int(round(w["freq"] * 1000)), bool(paused(w))) for w in self.ws() if not m or sdr_in_range(m, w["freq"])]
+        return patrol_items(o.sdr_cfg.get("favs"), mics, self.auto()["src"])
+
+    def patrol_start(self):
+        items = self._patrol_items()
+        if not items:
+            self._say(TR("🔁 Rien à parcourir : mets des micros en favoris ⭐ (clic droit sur 1…9) ou choisis "
+                         "« Tous les micros »."))
+            return False
+        if not self.running() and not self.start():
+            return False
+        self._back = None
+        self.patrol = dict(cur=None, t_next=0.0, n=len(items))
+        self._patrol_tick(time.time())
+        self.changed.emit()
+        return True
+
+    def patrol_stop(self):
+        if self.patrol is not None:
+            self.patrol = None
+            self._say(TR("🔁 Patrouille arrêtée."))
+        self.changed.emit()
+
+    def _patrol_tick(self, now):
+        p = self.patrol
+        if p is None or self.worker is None or now < p["t_next"]:
+            return
+        items = self._patrol_items()
+        k = patrol_next(items, p["cur"])
+        if k is None:
+            self.patrol_stop()
+            return
+        w = self.owner.watch_by_key(k)
+        p.update(cur=k, t_next=now + self.auto()["dwell"], n=len(items), i=items.index(k) + 1)
+        if w is not None:
+            self._tune(w["freq"])
+        self.changed.emit()
+
+    def patrol_text(self, now=None):
+        p = self.patrol
+        if p is None:
+            return ""
+        w = self.owner.watch_by_key(p["cur"]) if p.get("cur") is not None else None
+        nm = (w["name"] or f"{w['freq']:.3f}") if w else "…"
+        return TR("🔁 {} / {} · {} · encore {} s").format(p.get("i", 0), p.get("n", 0), nm,
+                                                       max(0, int(round(p["t_next"] - (now or time.time())))))
+
+    # ---- alarme : le SDR se cale dessus (et enregistre si tu l'as permis)
+    def _alarm_watch(self, now):
+        o = self.owner
+        if self.arec is not None and now >= self.arec["until"]:
+            self._arec_end()
+        if self._al_until and now >= self._al_until:      # fin de l'épisode : la patrouille reprend
+            self._al_until = 0.0
+            if self._back and self._back.get("patrol") and self.patrol is None:
+                self._back = None
+                self.patrol_start()
+        au = self.auto()
+        if not au["tune"] or self.worker is None or self.arec is not None:
+            return
+        m = self.model()
+
+        def ok(f):
+            if m and not sdr_in_range(m, f):
+                return False
+            w = o.watch_near(f, 0.003) if hasattr(o, "watch_near") else None
+            if w is None:
+                return self.pid == 1
+            eng = o._engine_for(w) if hasattr(o, "_engine_for") else self
+            return eng is self
+        al = [a for a in o.alarms.active.values() if now - self._al_key_t.get(a.get("key"), -1e9) >= ALARM_TUNE_COOLDOWN_S]
+        a = alarm_pick(al, self._seen_al, ok)
+        for a_ in o.alarms.active.values():               # les autres restent « vues » : une seule à la fois
+            if a_ is a or not ok(float(a_.get("freq") or 0.0)):
+                self._seen_al.add(a_.get("id"))
+        if a is None:
+            return
+        self._al_key_t[a.get("key")] = now
+        f = float(a["freq"])
+        here = self.a is not None and abs(self.a - f) < 0.0015 and now - self._a_t > 1.0
+        if self._back is None and not here:
+            self._back = dict(a=self.a, key=self.demod_key, patrol=self.patrol is not None)
+        self.patrol = None
+        if not here:
+            self._tune(f)
+        self._al_until = now + ALARM_REC_POST_S
+        rec = ""
+        if au["rec"]:
+            rec = self._arec_start(a, with_pre=here)
+        nm = a.get("name") or f"{f:.3f}"
+        self._say(TR("🚨 {} sur {} : le SDR s'y est calé.").format(a.get("kind", ""), nm) + (" " + rec if rec else ""))
+        QtCore.QTimer.singleShot(1500, lambda a_=a: self._alarm_what(a_))
+        self.changed.emit()
+
+    def _alarm_what(self, a):
+        """1,5 s après le calage : « c'est quoi » noté au journal et dans l'info de l'alarme."""
+        if self.worker is None or self.last is None:
+            return
+        f = float(a["freq"])
+        fr = self.last
+        c = what_is(fr["F"], fr["avg"], f, fr.get("pilot"))
+        txt = signal_report(c, TR)
+        o = self.owner
+        cur = o.alarms.active.get(a.get("key"))
+        if cur is not None and TR("SDR : ") not in (cur.get("info") or ""):
+            cur["info"] = ((cur.get("info") or "") + " · " if cur.get("info") else "") + TR("SDR : ") + txt
+            try:
+                o.refresh_alarms()
+            except Exception:  # noqa: BLE001
+                pass
+        w = o.watch_near(f, 0.003) if hasattr(o, "watch_near") else None
+        o.log_event(dict(name=a.get("name", ""), freq=f, note=TR("{} · {} : {}").format(
+            self.name(), a.get("kind", ""), txt)), self.level_at(f) or 0.0, "SDR SUR ALARME")
+        if w is not None and self.pil_v and self.pil_v[0] in ("missing", "other", "same"):
+            o.log_event(dict(w, note=self.pil_v[1]), 0.0, "SDR SUR ALARME")
+
+    def _arec_start(self, a, with_pre):
+        import wave
+        if not self.owner.privacy().get("ack"):
+            return TR("(son non enregistré : accord pas encore donné)")
+        d = Path(self.owner.log_dir) / "enregistrements_audio" / datetime.now().strftime("%Y-%m-%d")
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            p = d / f"alarme_{datetime.now():%H%M%S}_{float(a['freq']):.3f}MHz.wav"
+            wv = wave.open(str(p), "wb")
+            wv.setnchannels(2)
+            wv.setsampwidth(2)
+            wv.setframerate(LISTEN_RATE)
+            if with_pre:
+                wv.writeframes(self.pre.dump())
+        except Exception as ex:  # noqa: BLE001
+            return TR("⚠ Enregistrement impossible : {}").format(ex)
+        self.arec = dict(wv=wv, path=p, until=time.time() + ALARM_REC_POST_S, a=a, pre=with_pre)
+        return TR("⏺ Son enregistré ({} s avant, {} s après).").format(
+            f"{ALARM_REC_PRE_S:.0f}" if with_pre else "0", f"{ALARM_REC_POST_S:.0f}")
+
+    def _arec_end(self):
+        r, self.arec = self.arec, None
+        if r is None:
+            return
+        try:
+            r["wv"].close()
+        except Exception:  # noqa: BLE001
+            pass
+        a = r["a"]
+        self.owner.log_event(dict(name=a.get("name", ""), freq=float(a.get("freq") or 0.0),
+                                  note=TR("son de l'alarme : {}").format(r["path"])), 0.0, "ENREGISTRÉ (alarme)")
+        self._say(TR("⏺ Son de l'alarme enregistré : {}").format(r["path"]))
+        self.changed.emit()
+
+    def go_back(self):
+        """↩ Revenir où on était avant l'alarme (fréquence, écoute, patrouille)."""
+        b, self._back = self._back, None
+        self._al_until = 0.0
+        if not b:
+            return False
+        if b.get("patrol"):
+            return self.patrol_start()
+        if b.get("a") is not None:
+            self._tune(b["a"], b.get("key"))
+        self.changed.emit()
+        return True
+
+    def back_text(self):
+        b = self._back
+        if not b or b.get("a") is None and not b.get("patrol"):
+            return ""
+        if b.get("patrol"):
+            return TR("↩ Reprendre la patrouille")
+        w = self.mic_at(b["a"])
+        return TR("↩ Revenir à {}").format(w["name"] if w and w.get("name") else f"{b['a']:.3f}")
+
+    # ---- pilote et « c'est quoi » de A
+    def _watch_a(self, fr, now):
+        if self.a is None:
+            return
+        if now - self._t_what >= 1.0 and len(fr["F"]) == len(fr["avg"]):
+            self._t_what = now
+            self.what = what_is(fr["F"], fr["avg"], self.a, fr.get("pilot"))
+        w = self.cur_mic
+        if w is not None and not any(x is w for x in self.owner.watch):   # liste relue (show, profil) : même micro
+            w = self.cur_mic = self.mic_at(self.a)
+        fm = str(self.demod.get("mode", "")).startswith(("wfm", "nfm"))
+        if w is None or not fm or self.demod_key == DEMOD_DIGITAL:
+            self.pil_v, self._pil_hist, self._pil_miss = None, None, None
+            return
+        carrier = w.get("state") in ("occ", "weak")
+        pilot = fr.get("pilot") if carrier else None
+        if pilot is not None and abs(pilot[0] - 19000.0) < 400:     # pilote stéréo : pas un pilote de micro
+            pilot = None
+        learned = w.get("pilot")
+        if learned is None:
+            self._pil_hist, hz = pilot_learn(self._pil_hist, pilot, now)
+            if hz:
+                w["pilot"] = hz
+                learned = hz
+                self._say(TR("🔊 Pilote de {} retenu : {} kHz (il sert à reconnaître TON émetteur).").format(
+                    w["name"] or f"{w['freq']:.3f}", f"{hz / 1000.0:.1f}"))
+        bad = carrier and learned is not None and (pilot is None or abs(pilot[0] - learned) > PILOT_TOL_HZ)
+        self._pil_miss = (self._pil_miss or now) if bad else None
+        self.pil_v = pilot_verdict(learned, pilot, carrier, now - self._pil_miss if self._pil_miss else 0.0, TR)
+        if self.pil_v[0] == "other" and now - (self._pil_miss or now) < PILOT_MISS_S:
+            self.pil_v = ("wait", TR("pilote attendu ({} kHz)…").format(f"{learned / 1000.0:.1f}"), "warn")
+
+    def forget_pilot(self):
+        w = self.cur_mic
+        if w is not None:
+            w.pop("pilot", None)
+            self._pil_hist, self._pil_miss, self.pil_v = None, None, None
+            self._pilot_alarm(None)
+            self.changed.emit()
+
+    def _pilot_tick(self, now):
+        v = self.pil_v
+        w = self.cur_mic
+        on = self.auto()["pilot_alarm"] and v is not None and v[0] in ("missing", "other") and w is not None
+        self._pilot_alarm(w if on else None, v[1] if on else "")
+
+    def _pilot_alarm(self, w, info=""):
+        """Alarme « PILOTE » (porteuse là, mais pas le pilote de ton émetteur) : levée / effacée."""
+        o = self.owner
+        key_on = ("PILOTE", int(round(w["freq"] * 1000))) if w is not None else None
+        old = getattr(self, "_pil_key", None)
+        if old is not None and old != key_on:
+            o.alarms.clear(old, time.time())
+            self._pil_key = None
+            try:
+                o.refresh_alarms()
+            except Exception:  # noqa: BLE001
+                pass
+        if key_on is None:
+            return
+        self._pil_key = key_on
+        prio = o.freq_prio(w) if hasattr(o, "freq_prio") else 1
+        lv = self.level_at(w["freq"])
+        if o.alarms.raise_(key_on, "PILOTE", w["name"], w["freq"], prio, time.time(), lv,
+                           o.layer_text(w) if hasattr(o, "layer_text") else "", info):
+            o.log_event(dict(w, note=info), lv or 0.0, "PILOTE")
+            o._alarm_sound(prio)
+            o.refresh_alarms()
+
+    def info_text(self):
+        """Ligne d'info du poste : c'est quoi sur A, verdict du pilote. -> (texte, ton)."""
+        parts, tone = [], "none"
+        if self.running() and self.what is not None:
+            parts.append(what_is_text(self.what, TR))
+        if self.pil_v is not None:
+            parts.append("🔊 " + self.pil_v[1])
+            tone = self.pil_v[2]
+        return "  ·  ".join(parts), tone
 
     # ---- enregistrements (accord vie privée)
     def rec_audio(self, on):
@@ -21162,6 +21599,52 @@ class SdrReceiverPanel(SdrPanelBase):
             self.favs.append(b)
         fr_.addStretch(1)
         lay.addLayout(fr_)
+        # ---- étape 20 : patrouille, alarme -> calage, retour, « c'est quoi » et pilote
+        au = e.auto()
+        self.pat_btn = QtWidgets.QPushButton("🔁 Patrouille")
+        self.pat_btn.setCheckable(True)
+        self.pat_btn.setToolTip("Le SDR passe tout seul d'un micro à l'autre (tes favoris ⭐, sinon tous), avec la bonne\n"
+                                "écoute pour chacun. Une touche du pavé numérique ou un clic sur une fréquence l'arrête.")
+        self.pat_btn.toggled.connect(lambda on: self._patrol(on))
+        self.dwell = QtWidgets.QComboBox()
+        for d_ in PATROL_DWELLS:
+            self.dwell.addItem(TR("{} s par micro").format(d_), d_)
+        self.dwell.setCurrentIndex(max(0, self.dwell.findData(au["dwell"])))
+        self.dwell.setToolTip("Temps passé sur chaque micro pendant la patrouille.")
+        self.dwell.currentIndexChanged.connect(lambda *_: e.set_auto(dwell=int(self.dwell.currentData() or 8)))
+        self.psrc = QtWidgets.QComboBox()
+        for k_, t_ in PATROL_SRCS:
+            self.psrc.addItem(t_, k_)
+        self.psrc.setCurrentIndex(max(0, self.psrc.findData(au["src"])))
+        self.psrc.setToolTip("Quels micros la patrouille parcourt (les éteints 💤 et ceux en pause sont sautés).")
+        self.psrc.currentIndexChanged.connect(lambda *_: e.set_auto(src=self.psrc.currentData() or "favs"))
+        self.al_chk = QtWidgets.QCheckBox("🚨 Se caler sur les alarmes")
+        self.al_chk.setChecked(au["tune"])
+        self.al_chk.setToolTip("Une nouvelle alarme (conflit, intermod, absent, trop fort, pilote) sur un micro de ce SDR :\n"
+                               "le SDR s'y cale tout seul, tu entends ce qui se passe, et le journal dit ce que c'est.")
+        self.al_chk.toggled.connect(lambda on: e.set_auto(tune=bool(on)))
+        self.alrec_chk = QtWidgets.QCheckBox("⏺ et enregistrer le son")
+        self.alrec_chk.setChecked(au["rec"])
+        self.alrec_chk.setToolTip("Enregistre le son de l'alarme : 10 s avant (si le SDR écoutait déjà ce micro) et 20 s\n"
+                                  "après, en WAV. Demande ton accord la 1re fois (voix).")
+        self.alrec_chk.toggled.connect(lambda on: self._alrec(on))
+        self.back_btn = QtWidgets.QPushButton("↩ Revenir")
+        self.back_btn.setToolTip("Revenir où tu étais avant l'alarme (fréquence, écoute, patrouille).")
+        self.back_btn.clicked.connect(lambda *_: e.go_back())
+        self.pat_lbl = QtWidgets.QLabel("")
+        self.row_auto = QtWidgets.QWidget()
+        ra = o._row(self.pat_btn, self.dwell, self.psrc, self.al_chk, self.alrec_chk, self.back_btn, self.pat_lbl, None)
+        ra.setContentsMargins(0, 0, 0, 0)
+        self.row_auto.setLayout(ra)
+        lay.addWidget(self.row_auto)
+        self.info = QtWidgets.QLabel("")
+        self.info.setWordWrap(True)
+        self.info.setToolTip("C'est quoi sur A (d'après la forme du spectre : une supposition, pas une certitude) et ce que\n"
+                             "dit le PILOTE : la tonalité inaudible de ton émetteur, retenue la 1re fois qu'on l'entend.\n"
+                             "Porteuse sans son pilote = ce n'est peut-être pas ton émetteur. Clic droit = oublier le pilote.")
+        self.info.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.info.customContextMenuRequested.connect(lambda _p: self._info_menu())
+        lay.addWidget(self.info)
         # ---- Plus : démodulation, pas, squelch
         self._sync = False
         self.dp = DemodPick(lambda: hasattr(self, "dp") and not self._sync and self._dp_changed())
@@ -21281,6 +21764,60 @@ class SdrReceiverPanel(SdrPanelBase):
         else:
             self.eng.start()
 
+    def _patrol(self, on):
+        e = self.eng
+        if on and e.patrol is None:
+            if not e.patrol_start():
+                self._set_chk(self.pat_btn, False)
+        elif not on and e.patrol is not None:
+            e.patrol_stop()
+
+    def _alrec(self, on):
+        if on and not self.owner.privacy_ok(self.owner):
+            self._set_chk(self.alrec_chk, False)
+            return
+        self.eng.set_auto(rec=bool(on))
+
+    @staticmethod
+    def _set_chk(b, on):
+        if b.isChecked() != bool(on):
+            b.blockSignals(True)
+            b.setChecked(bool(on))
+            b.blockSignals(False)
+
+    def _info_menu(self):
+        e = self.eng
+        m = QtWidgets.QMenu(self)
+        w = e.cur_mic
+        a1 = m.addAction(TR("Oublier le pilote de {}").format(w["name"] or f"{w['freq']:.3f}") if w and w.get("pilot")
+                         else TR("Oublier le pilote (aucun retenu pour ce micro)"))
+        a1.setEnabled(bool(w and w.get("pilot")))
+        a1.triggered.connect(lambda *_: e.forget_pilot())
+        a2 = m.addAction(TR("Alarme si la porteuse n'a pas son pilote"))
+        a2.setCheckable(True)
+        a2.setChecked(e.auto()["pilot_alarm"])
+        a2.triggered.connect(lambda *_, a=a2: e.set_auto(pilot_alarm=a.isChecked()))
+        m.exec(QtGui.QCursor.pos())
+
+    def _auto_refresh(self):
+        e = self.eng
+        self._set_chk(self.pat_btn, e.patrol is not None)
+        self.pat_lbl.setText(e.patrol_text())
+        bt = e.back_text()
+        self.back_btn.setVisible(bool(bt))
+        if bt and getattr(self, "_bt", None) != bt:
+            self._bt = bt
+            self.back_btn.setText(bt)
+        au = e.auto()
+        self._set_chk(self.al_chk, au["tune"])
+        self._set_chk(self.alrec_chk, au["rec"])
+        t, tone = e.info_text()
+        if self.info.text() != t:
+            self.info.setText(t)
+        st = f"color: {self.owner.tone_color(tone)};" if tone in ("ok", "warn", "bad") else ""
+        if self.info.styleSheet() != st:
+            self.info.setStyleSheet(st)
+
     def _dp_changed(self):
         """Réglage d'écoute changé à la main : appliqué, et retenu pour le micro écouté (s'il y en a un)."""
         e = self.eng
@@ -21338,6 +21875,7 @@ class SdrReceiverPanel(SdrPanelBase):
         m = e.model()
         run = e.running()
         self._favs_refresh()
+        self._auto_refresh()
         if e.demod_key and self.dp.pre.currentData() != e.demod_key:   # le moteur a changé d'écoute (micro, pavé…)
             i = self.dp.pre.findData(e.demod_key)
             if i >= 0:
@@ -21371,6 +21909,10 @@ class SdrReceiverPanel(SdrPanelBase):
 
     def _frame(self, fr):
         e = self.eng
+        now = time.time()
+        if now - getattr(self, "_t_auto", 0.0) >= 0.5:          # étape 20 : patrouille, pilote, « c'est quoi »
+            self._t_auto = now
+            self._auto_refresh()
         self.a_meter.set_dbm(e.dbm(fr.get("lv_a")))
         self.b_meter.set_dbm(e.dbm(fr.get("lv_b")))
         self.stats.setText(TR("charge {} % · saturation {} %").format(f"{100 * fr.get('load', 0):.0f}",
@@ -21401,6 +21943,8 @@ class SdrReceiverPanel(SdrPanelBase):
     def apply_level(self):
         lv = self.lvl()
         for w_ in (self.row_b, self.row_dem, self.row_tools):
+            w_.setVisible(lv != "simple")
+        for w_ in (self.dwell, self.psrc, self.alrec_chk):     # étape 20 : en Simple, patrouille + alarme seulement
             w_.setVisible(lv != "simple")
         self.row_zoom.setVisible(True)                  # étape 18 : le canal et le son se voient aussi en Simple
         if lv == "simple" and self.eng.b_on:            # Simple : un seul récepteur (B n'a pas ses réglages ici)
@@ -43353,6 +43897,8 @@ def _v8_collect_config(self, *a, **k):
             for d_, w in zip(data["watch"], self.watch):
                 if w.get("demod"):
                     d_["demod"] = w["demod"]
+                if isinstance(w.get("pilot"), (int, float)):       # étape 20 : pilote appris
+                    d_["pilot"] = float(w["pilot"])
     except Exception:  # noqa: BLE001
         pass
     return data
@@ -43370,12 +43916,20 @@ def _v8_apply_config2(self, data, startup=False):
                 k_ = d_.get("demod") if isinstance(d_, dict) else None
                 if k_ and (demod_preset(k_) is not None or k_ == DEMOD_DIGITAL):
                     w["demod"] = k_
+                pl = d_.get("pilot") if isinstance(d_, dict) else None
+                if isinstance(pl, (int, float)) and 5000.0 <= float(pl) <= 120000.0:
+                    w["pilot"] = float(pl)
     except Exception:  # noqa: BLE001
         pass
     return r
 
 
 MainWindow.mic_demod = _v8_mic_demod
+ALARM_HELP["PILOTE"] = (                         # étape 20 : porteuse là, mais pas le pilote de TON émetteur
+    "Le SDR entend une porteuse sur ce micro, mais pas la tonalité pilote de ton émetteur (retenue la 1re fois) : un "
+    "autre émetteur est peut-être sur ta fréquence, ou ton pack a changé de réglage.",
+    "Écoute (le SDR y est calé) ; éteins ton pack : si la porteuse reste, c'est un brouilleur (chasse, fréquence de "
+    "secours). Pilote changé exprès : clic droit sur la ligne d'info du Récepteur › Oublier le pilote.")
 MainWindow.mic_demod_set = _v8_mic_demod_set
 MainWindow._collect_config = _v8_collect_config
 MainWindow._apply_config = _v8_apply_config2

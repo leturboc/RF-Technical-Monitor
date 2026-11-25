@@ -1,6 +1,6 @@
 """Faux hackrf_transfer / rtl_sdr pour les tests : IQ brut sur stdout (int8 si « -r » = HackRF, sinon uint8),
-au rythme réel, avec des micros FM (FAKE_IQ_CARRIERS = « 606.0:1000,607.5:3000 » : MHz:tonalité Hz, déviation
-30 kHz) et des signaux intermittents (FAKE_IQ_BURSTS). FAKE_IQ_SECONDS = s'arrête après n secondes (débranché)."""
+au rythme réel, avec des micros FM (FAKE_IQ_CARRIERS = « 606.0:1000,607.5:3000:32768 » : MHz:tonalité Hz[:pilote Hz],
+déviation 30 kHz) et des signaux intermittents (FAKE_IQ_BURSTS). FAKE_IQ_SECONDS = s'arrête après n secondes (débranché)."""
 import os, sys, time
 import numpy as np
 
@@ -9,10 +9,10 @@ hackrf = "-r" in args
 fc = float(args[args.index("-f") + 1])
 fs = float(args[args.index("-s") + 1])
 car = []
-for x in os.environ.get("FAKE_IQ_CARRIERS", "").split(","):
+for x in os.environ.get("FAKE_IQ_CARRIERS", "").split(","):   # « MHz:tonalité[:pilote Hz] »
     if ":" in x:
-        f, t = x.split(":")
-        car.append((float(f) * 1e6 - fc, float(t)))
+        f, t, *pl = x.split(":")
+        car.append((float(f) * 1e6 - fc, float(t), float(pl[0]) if pl and pl[0] else 0.0))
 stop = float(os.environ.get("FAKE_IQ_SECONDS", "0") or 0)
 bursts = []                                  # FAKE_IQ_BURSTS = « 605.2:0.3:1.0 » : MHz, durée allumé (s), période (s)
 for x in os.environ.get("FAKE_IQ_BURSTS", "").split(","):
@@ -26,8 +26,11 @@ out = sys.stdout.buffer
 while True:
     t = (np.arange(n) + k * n) / fs
     x = 0.02 * (rng.normal(size=n) + 1j * rng.normal(size=n))
-    for off, tone in car:
-        x = x + 0.4 * np.exp(1j * (2 * np.pi * off * t + 30e3 / tone * np.sin(2 * np.pi * tone * t)))
+    for off, tone, pil in car:
+        ph = 2 * np.pi * off * t + 30e3 / tone * np.sin(2 * np.pi * tone * t)
+        if pil:                                   # pilote (tonalité inaudible) : ±4 kHz de déviation
+            ph = ph + 4e3 / pil * np.sin(2 * np.pi * pil * t)
+        x = x + 0.4 * np.exp(1j * ph)
     for off, on, per in bursts:
         m = (t % per) < on
         if m.any():

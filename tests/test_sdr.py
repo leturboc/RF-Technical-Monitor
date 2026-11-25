@@ -768,5 +768,50 @@ ok("écoute déduite : rien d'utile = inconnu", dg_("HF 1", "Scène A") is None 
 ok("écoute déduite : tous les préréglages existent", all(ns["demod_preset"](k) is not None for _p, k in ns["DEMOD_RULES"]
    if k != "digital"))
 
+# ---------------------------------------------------------------- V8 étape 20 : patrouille, alarme, pilote, c'est quoi
+san_ = ns["sdr_auto_norm"]
+ok("réglages auto : défauts", san_(None) == ns["SDR_AUTO_DEFAULT"] and san_({"dwell": 9, "src": "zz"})["dwell"] == 8
+   and san_({"dwell": 9})["src"] == "favs" and san_({"tune": 0})["tune"] is False)
+pi_ = ns["patrol_items"]
+mics_ = [(606000, False), (610000, True), (614000, False), (620000, False)]
+ok("patrouille : favoris dans l'ordre des touches, éteint sauté", pi_({3: 606000, 1: 620000, 2: 610000}, mics_) ==
+   [620000, 606000])
+ok("patrouille : aucun favori -> tous les micros", pi_({}, mics_) == [606000, 614000, 620000])
+ok("patrouille : favori d'un autre SDR ignoré", pi_({1: 999000}, mics_) == [606000, 614000, 620000])
+ok("patrouille : « tous » même avec des favoris", pi_({1: 620000}, mics_, "all") == [606000, 614000, 620000])
+pn_ = ns["patrol_next"]
+ok("patrouille : suivant en boucle", pn_([1, 2, 3], 3) == 1 and pn_([1, 2, 3], 1) == 2 and pn_([1, 2], 9) == 1
+   and pn_([], 1) is None)
+ap_ = ns["alarm_pick"]
+als_ = [dict(id=1, key=("CONFLIT", 606000), kind="CONFLIT", freq=606.0, prio=1, t0=10),
+        dict(id=2, key=("ABSENT", 614000), kind="ABSENT", freq=614.0, prio=2, t0=5),
+        dict(id=3, key=("APPAREIL", -1), kind="APPAREIL", freq=0, prio=2, t0=20),
+        dict(id=4, key=("CONFLIT", 900000), kind="CONFLIT", freq=900.0, prio=2, t0=30)]
+ok("alarme à suivre : la plus grave dans la plage", ap_(als_, set(), lambda f: f < 800)["id"] == 2)
+ok("alarme à suivre : déjà vue = ignorée", ap_(als_, {2}, lambda f: f < 800)["id"] == 1
+   and ap_(als_, {1, 2}, lambda f: f < 800) is None)
+pv_ = ns["pilot_verdict"]
+ok("pilote : même = c'est ton émetteur", pv_(32768, (32800, 30), True)[0] == "same" and pv_(32768, (32800, 30), True)[2] == "ok")
+ok("pilote : autre pilote = autre émetteur ?", pv_(32768, (40000, 30), True)[0] == "other")
+ok("pilote : manquant depuis 5 s = alerte, avant = attente", pv_(32768, None, True, 6)[0] == "missing"
+   and pv_(32768, None, True, 2)[0] == "wait")
+ok("pilote : pas de porteuse = pas jugé ; jamais vu = rien à dire", pv_(32768, None, False)[0] == "off"
+   and pv_(None, None, True)[0] == "none" and pv_(None, (32768, 25), True)[0] == "seen")
+pl_ = ns["pilot_learn"]
+h_, hz_ = pl_(None, (32768, 30), 0.0)
+h_, hz_ = pl_(h_, (32790, 30), 2.0)
+ok("pilote : pas encore appris avant 3 s", hz_ is None)
+h_, hz_ = pl_(h_, (32780, 30), 3.2)
+ok("pilote : appris après 3 s stables", hz_ == 32768)
+ok("pilote : autre tonalité = on recommence", pl_(dict(hz=32768, t0=0), (40000, 30), 5)[1] is None
+   and pl_(dict(hz=32768, t0=0), None, 5) == (None, None))
+F20 = np.linspace(600, 610, 4001)
+L20 = np.full_like(F20, -100.0)
+L20 = np.maximum(L20, -50.0 - 40.0 * ((F20 - 605.0) / 0.05) ** 2)
+c20 = ns["classify_signal"](F20, L20, 605.0)
+ok("c'est quoi : micro FM sur A", c20["kind"] == "fm_ana" and ns["what_is_text"](c20).startswith("🏷"),
+   str(c20["kind"]))
+ok("c'est quoi : rien", "Rien" in ns["what_is_text"](dict(kind="none")))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

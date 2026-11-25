@@ -1446,6 +1446,7 @@ wait(1500)
 check("16 : le profil ramène le mode SDR combiné et ses panneaux", win.rf_mode == "both"
       and win.sdr_docks["spec"].isVisible(), win.rf_mode)
 # V8 étape 18 : double-clic dans « Mes fréquences » = le SDR s'y cale ; favoris au pavé numérique
+_pair = [next((w_ for w_ in win.watch if abs(w_["freq"] - p_["freq"]) < 1e-6), p_) for p_ in _pair]   # liste relue
 win.set_rf_mode("sdr")
 _r18 = win.watch.index(_pair[1]) if len(_pair) > 1 else 0
 win.watch_table.cellDoubleClicked.emit(_r18, m.C_NAME)
@@ -1475,6 +1476,76 @@ check("19 : choix à la main retenu pour ce micro", _w19.get("demod") == "wisy_a
 check("19 : … et enregistré avec la liste", any(d_.get("demod") == "wisy_ana" for d_ in win._collect_config(True)["watch"]))
 _w19.pop("demod", None)
 _w19["group"] = _g19
+# V8 étape 20 : pilote appris, patrouille d'écoute, alarme -> le SDR s'y cale (+ son), « c'est quoi »
+_e20, _a20 = win.sdr_eng, _pair[0]
+os.environ["FAKE_IQ_CARRIERS"] = f"{_a20['freq']}:1000:32768" + (f",{_pair[1]['freq']}:3000" if len(_pair) > 1 else "")
+_a20.pop("pilot", None)
+win.sdr_tune_mic(_a20)
+_e20._restart()
+_t0 = time.time()
+while time.time() - _t0 < 15 and not _a20.get("pilot"):
+    _a20["state"] = "occ"
+    wait(300)
+check("20 : pilote du micro entendu et retenu", abs((_a20.get("pilot") or 0) - 32768) < 300, str(_a20.get("pilot")))
+wait(800)
+check("20 : « c'est bien ton émetteur » + c'est quoi", "🏷" in _rx18.info.text() and "✔" in _rx18.info.text(),
+      _rx18.info.text())
+check("20 : pilote enregistré avec la liste", any(abs((d_.get("pilot") or 0) - 32768) < 300
+      for d_ in win._collect_config(True)["watch"]))
+shot(win.sdr_docks["rx"].widget(), "sdr_pilote")
+os.environ["FAKE_IQ_CARRIERS"] = f"{_a20['freq']}:1000" + (f",{_pair[1]['freq']}:3000" if len(_pair) > 1 else "")
+_e20._restart()
+_t0 = time.time()
+while time.time() - _t0 < 15 and not any(k_[0] == "PILOTE" for k_ in win.alarms.active):
+    _a20["state"] = "occ"
+    wait(300)
+check("20 : porteuse sans son pilote = alarme PILOTE", any(k_[0] == "PILOTE" for k_ in win.alarms.active),
+      str(_e20.pil_v))
+_e20.forget_pilot()
+wait(600)
+check("20 : oublier le pilote = alarme retirée", not any(k_[0] == "PILOTE" for k_ in win.alarms.active)
+      and "pilot" not in _a20)
+if len(_pair) > 1:
+    win.sdr_set_fav(1, _pair[0])
+    win.sdr_set_fav(2, _pair[1])
+    _e20.set_auto(dwell=3)
+    _rx18.pat_btn.setChecked(True)
+    _seen20 = set()
+    for _i in range(16):
+        wait(500)
+        _seen20.add(round(_e20.a, 4))
+    check("20 : patrouille entre les favoris", {round(w_["freq"], 4) for w_ in _pair} <= _seen20, str(_seen20))
+    check("20 : patrouille affichée", "🔁" in _rx18.pat_lbl.text(), _rx18.pat_lbl.text())
+    win.sdr_fav(1)
+    wait(300)
+    check("20 : une touche du pavé arrête la patrouille", _e20.patrol is None and not _rx18.pat_btn.isChecked())
+_e20.set_auto(tune=True, rec=True)
+win.privacy()["ack"] = True
+_e20._tune(_a20["freq"] + 4.0)
+wait(1500)
+win.alarms.raise_(("BREF", int(round(_a20["freq"] * 1000))), "CONFLIT", _a20["name"], _a20["freq"], 2, time.time(),
+                  -60.0, "", "test")
+wait(2500)
+check("20 : alarme -> le SDR s'y cale tout seul", abs(_e20.a - _a20["freq"]) < 0.002 and _rx18.back_btn.isVisible(),
+      f"{_e20.a} {_e20.msg}")
+check("20 : … et enregistre le son", _e20.arec is not None)
+_al20 = win.alarms.active.get(("BREF", int(round(_a20["freq"] * 1000))))
+check("20 : « c'est quoi » ajouté à l'alarme", bool(_al20 and "SDR" in (_al20.get("info") or "")),
+      str(_al20 and _al20.get("info")))
+shot(win.sdr_docks["rx"].widget(), "sdr_alarme")
+if _e20.arec is not None:
+    _e20.arec["until"] = time.time()
+wait(1200)
+check("20 : son de l'alarme écrit (WAV)", _e20.arec is None and any(
+      "alarme_" in (win.log_table.item(r_, c_).text() if win.log_table.item(r_, c_) else "")
+      for r_ in range(min(6, win.log_table.rowCount())) for c_ in range(win.log_table.columnCount())))
+_rx18.back_btn.click()
+wait(800)
+check("20 : ↩ Revenir où on était", abs(_e20.a - (_a20["freq"] + 4.0)) < 0.002, str(_e20.a))
+win.alarms.clear(("BREF", int(round(_a20["freq"] * 1000))), time.time())
+_e20.set_auto(rec=False)
+win.sdr_set_fav(1, None)
+win.sdr_set_fav(2, None)
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
 _p2 = _pd.add()

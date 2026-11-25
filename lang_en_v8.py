@@ -1147,3 +1147,76 @@ EXACT.update({
     "📵 {} : système numérique, il ne s'écoute pas (son chiffré). Le niveau et la santé RF restent surveillés.":
         "📵 {}: digital system, it can't be listened to (encrypted audio). Its level and RF health are still monitored.",
 })
+
+# ---------------------------------------------------------------- V8 étape 20 : patrouille, alarme, pilote, c'est quoi
+EXACT.update({
+    "(son non enregistré : accord pas encore donné)": "(sound not recorded: consent not given yet)",
+    "Alarme si la porteuse n'a pas son pilote": "Alarm if the carrier has no pilot",
+    "C'est quoi sur A (d'après la forme du spectre : une supposition, pas une certitude) et ce que\ndit le PILOTE : la "
+    "tonalité inaudible de ton émetteur, retenue la 1re fois qu'on l'entend.\nPorteuse sans son pilote = ce n'est "
+    "peut-être pas ton émetteur. Clic droit = oublier le pilote.":
+        "What is on A (from the shape of the spectrum: a guess, not a certainty) and what the PILOT\nsays: the inaudible "
+        "tone of your transmitter, remembered the 1st time it is heard.\nCarrier without its pilot = maybe not your "
+        "transmitter. Right-click = forget the pilot.",
+    "Enregistre le son de l'alarme : 10 s avant (si le SDR écoutait déjà ce micro) et 20 s\naprès, en WAV. Demande ton "
+    "accord la 1re fois (voix).": "Records the sound of the alarm: 10 s before (if the SDR was already on this mic) and "
+                                  "20 s\nafter, as WAV. Asks for your consent the 1st time (voices).",
+    "Le SDR entend une porteuse sur ce micro, mais pas la tonalité pilote de ton émetteur (retenue la 1re fois) : un "
+    "autre émetteur est peut-être sur ta fréquence, ou ton pack a changé de réglage.":
+        "The SDR hears a carrier on this mic, but not the pilot tone of your transmitter (remembered the 1st time): "
+        "another transmitter may be on your frequency, or your pack's settings changed.",
+    "Écoute (le SDR y est calé) ; éteins ton pack : si la porteuse reste, c'est un brouilleur (chasse, fréquence de "
+    "secours). Pilote changé exprès : clic droit sur la ligne d'info du Récepteur › Oublier le pilote.":
+        "Listen (the SDR is tuned to it); switch your pack off: if the carrier stays, it's an interferer (hunt, backup "
+        "frequency). Pilot changed on purpose: right-click the Receiver info line › Forget the pilot.",
+    "Le SDR passe tout seul d'un micro à l'autre (tes favoris ⭐, sinon tous), avec la bonne\nécoute pour chacun. Une "
+    "touche du pavé numérique ou un clic sur une fréquence l'arrête.":
+        "The SDR goes from one mic to the next by itself (your ⭐ favourites, otherwise all), with the right\nlistening "
+        "setting for each. A numeric keypad key or a click on a frequency stops it.",
+    "Mes favoris ⭐ (pavé numérique)": "My ⭐ favourites (numeric keypad)",
+    "Oublier le pilote (aucun retenu pour ce micro)": "Forget the pilot (none remembered for this mic)",
+    "Oublier le pilote de {}": "Forget the pilot of {}",
+    "PILOTE": "PILOT",
+    "Quels micros la patrouille parcourt (les éteints 💤 et ceux en pause sont sautés).":
+        "Which mics the patrol goes through (💤 switched-off and paused ones are skipped).",
+    "Revenir où tu étais avant l'alarme (fréquence, écoute, patrouille).":
+        "Go back to where you were before the alarm (frequency, listening, patrol).",
+    "SDR (étape 20)": "SDR (step 20)",
+    "SDR : ": "SDR: ",
+    "SDR SUR ALARME": "SDR ON ALARM",
+    "Temps passé sur chaque micro pendant la patrouille.": "Time spent on each mic during the patrol.",
+    "Tous les micros de ce SDR": "All the mics of this SDR",
+    "Une nouvelle alarme (conflit, intermod, absent, trop fort, pilote) sur un micro de ce SDR :\nle SDR s'y cale tout "
+    "seul, tu entends ce qui se passe, et le journal dit ce que c'est.":
+        "A new alarm (conflict, intermod, absent, too strong, pilot) on a mic of this SDR:\nthe SDR tunes to it by "
+        "itself, you hear what's going on, and the log says what it is.",
+    "pas de pilote vu (normal pour certains micros)": "no pilot seen (normal for some mics)",
+    "pas de porteuse : pilote non jugé": "no carrier: pilot not judged",
+    "pilote attendu ({} kHz)…": "pilot expected ({} kHz)…",
+    "pilote {} kHz vu (il sera retenu pour ce micro)": "pilot {} kHz seen (it will be remembered for this mic)",
+    "{} s par micro": "{} s per mic",
+    "↩ Reprendre la patrouille": "↩ Resume the patrol",
+    "↩ Revenir": "↩ Go back",
+    "Revenir": "Go back",
+    "↩ Revenir à {}": "↩ Back to {}",
+    "⏺ Son enregistré ({} s avant, {} s après).": "⏺ Sound recorded ({} s before, {} s after).",
+    "⏺ et enregistrer le son": "⏺ and record the sound",
+    "⚠ pilote {} kHz au lieu de {} kHz : un autre émetteur ?": "⚠ pilot {} kHz instead of {} kHz: another transmitter?",
+    "⚠ porteuse SANS son pilote : ce n'est peut-être pas ton émetteur (brouilleur ?)":
+        "⚠ carrier WITHOUT its pilot: maybe not your transmitter (interferer?)",
+    "✔ pilote {} kHz : c'est bien ton émetteur": "✔ pilot {} kHz: it really is your transmitter",
+    "🏷 Rien de net sur A": "🏷 Nothing clear on A",
+    "🔁 Patrouille": "🔁 Patrol",
+    "Patrouille": "Patrol",
+    "🔁 Patrouille arrêtée.": "🔁 Patrol stopped.",
+    "🔁 Patrouille arrêtée : tu as choisi une fréquence.": "🔁 Patrol stopped: you chose a frequency.",
+    "🔁 Rien à parcourir : mets des micros en favoris ⭐ (clic droit sur 1…9) ou choisis « Tous les micros ».":
+        "🔁 Nothing to go through: put mics in ⭐ favourites (right-click 1…9) or choose “All the mics”.",
+    "🔁 {} / {} · {} · encore {} s": "🔁 {} / {} · {} · {} s left",
+    "🔊 Pilote de {} retenu : {} kHz (il sert à reconnaître TON émetteur).":
+        "🔊 Pilot of {} remembered: {} kHz (used to recognise YOUR transmitter).",
+    "🚨 Se caler sur les alarmes": "🚨 Tune to alarms",
+    "🚨 {} sur {} : le SDR s'y est calé.": "🚨 {} on {}: the SDR tuned to it.",
+    "⏺ Son de l'alarme enregistré : {}": "⏺ Alarm sound recorded: {}",
+    "{} · {} : {}": "{} · {}: {}",
+})
