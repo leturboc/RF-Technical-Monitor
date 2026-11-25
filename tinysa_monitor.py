@@ -19323,6 +19323,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                    last=s or {}, iq=res.get("iq") or {}, sdr=self.dev_combo.currentText(),
                    duration=incident_duration(series.get("rf", []), t))
         sp = info.get("spec")
+        if not sp and getattr(self, "_lastFL", None) is not None:     # incident parti avant le 1er spectre
+            sp = (np.asarray(self._lastFL[0]).tolist(), np.asarray(self._lastFL[1]).tolist())
         if sp:                                       # 18. capture du spectre, au plus 3000 points
             k_ = max(1, len(sp[0]) // 3000)
             doc["spectrum"] = dict(F=[round(x, 5) for x in sp[0][::k_]], L=[round(x, 1) for x in sp[1][::k_]])
