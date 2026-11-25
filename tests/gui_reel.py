@@ -1523,6 +1523,7 @@ _e20.set_auto(tune=True, rec=True)
 win.privacy()["ack"] = True
 _e20._tune(_a20["freq"] + 4.0)
 wait(1500)
+_e20._user_t = 0.0                                  # (personne n'a touché la fréquence depuis 30 s)
 win.alarms.raise_(("BREF", int(round(_a20["freq"] * 1000))), "CONFLIT", _a20["name"], _a20["freq"], 2, time.time(),
                   -60.0, "", "test")
 wait(2500)

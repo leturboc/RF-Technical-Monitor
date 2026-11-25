@@ -9294,6 +9294,7 @@ ALARM_TUNE_KINDS = ("CONFLIT", "INTERMOD", "ABSENT", "TROP FORT", "PILOTE")
 ALARM_REC_PRE_S = 10.0       # son gardé AVANT l'alarme (seulement si A était déjà sur ce micro)
 ALARM_REC_POST_S = 20.0      # son enregistré APRÈS l'alarme
 ALARM_TUNE_COOLDOWN_S = 60.0  # même alarme : pas de nouveau calage avant 60 s
+ALARM_USER_HOLD_S = 30.0     # tu viens de choisir une fréquence : le SDR ne se cale pas sur une alarme pendant 30 s
 PILOT_TOL_HZ = 300.0         # même pilote si à ± 300 Hz
 PILOT_LEARN_S = 3.0          # pilote vu 3 s d'affilée -> appris pour ce micro
 PILOT_MISS_S = 5.0           # porteuse là mais pilote disparu depuis 5 s -> « pas ton émetteur ? »
@@ -20926,7 +20927,7 @@ class SdrEngine(QtCore.QObject):
         self.retune.timeout.connect(self._restart)
         # étape 20 : alarme -> calage + son, patrouille, pilote, « c'est quoi »
         self.pre = PreRing(ALARM_REC_PRE_S, LISTEN_RATE * 4)
-        self._a_t, self._internal = time.time(), False
+        self._a_t, self._internal, self._user_t = time.time(), False, 0.0
         self.patrol, self._back, self.arec = None, None, None
         self._seen_al, self._al_key_t, self._al_until = set(), {}, 0.0
         self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = None, None, None, None
@@ -21103,6 +21104,7 @@ class SdrEngine(QtCore.QObject):
             self._a_t, self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = time.time(), None, None, None, None
             self.what, self._t_what = None, 0.0
             if not self._internal:                      # tu as pris la main : la patrouille s'arrête là
+                self._user_t = time.time()
                 if self.patrol is not None:
                     self.patrol = None
                     self._say(TR("🔁 Patrouille arrêtée : tu as choisi une fréquence."))
@@ -21283,9 +21285,12 @@ class SdrEngine(QtCore.QObject):
                 self._back = None
                 self.patrol_start()
         au = self.auto()
-        if not au["tune"] or self.worker is None or self.arec is not None:
-            return
+        if not au["tune"] or self.worker is None or self.arec is not None or now < self._al_until:
+            return                                       # déjà sur une alarme : on y reste (la suivante après)
         m = self.model()
+        if now - self._user_t < ALARM_USER_HOLD_S:       # tu viens de choisir une fréquence : on ne te la vole pas
+            self._seen_al |= {a_.get("id") for a_ in o.alarms.active.values()}
+            return
 
         def ok(f):
             if m and not sdr_in_range(m, f):
@@ -43331,6 +43336,8 @@ _v7_map_dropped, _v7_map_open = MapScene.node_dropped, MapScene.node_open
 
 
 def _v8_map_keys(self):
+    if rf_mode_norm(getattr(self.owner, "rf_mode", "tiny")) == "tiny":      # mode tinySA seul : pas de SDR sur la carte
+        return _v7_map_keys(self)
     return _v7_map_keys(self) + [map_key("sdr", p["id"]) for p in sdr_posts_norm(self.owner.sdr_cfg.get("posts"))]
 
 
