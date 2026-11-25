@@ -7634,6 +7634,8 @@ def sdr_cfg_extra(sd):
         out["rehearsal"] = rh
     if "station" in sd:                                # étape 16 : poste SDR (fréquences A / B, réglages)
         out["station"] = station_norm(sd.get("station"))
+    if "favs" in sd:                                   # étape 18 : raccourcis du pavé numérique
+        out["favs"] = favs_norm(sd.get("favs"))
     if "posts" in sd:                                  # étape 17 : plusieurs postes SDR
         out["posts"] = sdr_posts_norm(sd.get("posts"))
     if isinstance(sd.get("stations"), dict):
@@ -9224,6 +9226,32 @@ def sdr_post_clash(items):
         for b, kb, sb in items[i + 1:]:
             if ka == kb and (not sa or not sb or sa == sb):
                 out.append((a, b))
+    return out
+
+
+# Étape 18 (Clément : « double-clic sur mes fréquences = le SDR se cale dessus ; des fréquences hyper importantes sur le
+# pavé numérique qui basculent l'écoute, la fréquence et le SDR »).
+FAV_KEYS = 9
+
+
+def favs_norm(d):
+    """Raccourcis du pavé numérique lus de la config -> {1..9: fréquence en kHz}."""
+    out = {}
+    for k, v in (d.items() if isinstance(d, dict) else []):
+        try:
+            k, v = int(k), int(v)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= k <= FAV_KEYS and v > 0:
+            out[k] = v
+    return out
+
+
+def fav_assign(favs, key, khz):
+    """Met le micro (kHz) sur la touche `key` (une fréquence n'est que sur une touche) ; khz None = vider la touche."""
+    out = {k: v for k, v in favs_norm(favs).items() if v != khz and k != key}
+    if khz:
+        out[int(key)] = int(khz)
     return out
 
 
@@ -21056,6 +21084,25 @@ class SdrReceiverPanel(SdrPanelBase):
         top.addWidget(self.a_disp, 1)
         top.addWidget(self.a_meter)
         lay.addLayout(top)
+        self.favs = []                                   # étape 18 : favoris du pavé numérique (1…9)
+        fr_ = QtWidgets.QHBoxLayout()
+        fr_.setSpacing(3)
+        lab_f = QtWidgets.QLabel("⭐")
+        lab_f.setToolTip("Tes micros les plus importants sur les touches 1 à 9 du PAVÉ NUMÉRIQUE : un appui = le SDR se cale\n"
+                         "dessus et tu l'entends. Clic droit sur un bouton = y mettre le micro écouté (A).")
+        fr_.addWidget(lab_f)
+        for k in range(1, FAV_KEYS + 1):
+            b = QtWidgets.QToolButton()
+            b.setCheckable(True)
+            b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            b.setMinimumWidth(36)
+            b.clicked.connect(lambda *_, k=k: o.sdr_fav(k))
+            b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            b.customContextMenuRequested.connect(lambda _p, k=k: self._fav_menu(k))
+            fr_.addWidget(b)
+            self.favs.append(b)
+        fr_.addStretch(1)
+        lay.addLayout(fr_)
         # ---- Plus : démodulation, pas, squelch
         self.dp = DemodPick(lambda: hasattr(self, "dp") and e.set_opts(demod=self.dp.params()))
         self.step = QtWidgets.QComboBox()
@@ -21171,6 +21218,33 @@ class SdrReceiverPanel(SdrPanelBase):
         else:
             self.eng.start()
 
+    def _fav_menu(self, k):
+        o, e = self.owner, self.eng
+        m = QtWidgets.QMenu(self)
+        w = min((w for w in e.ws() if e.a is not None and abs(w["freq"] - e.a) < 0.0005), default=None,
+                key=lambda w: abs(w["freq"] - e.a))
+        a1 = m.addAction(TR("⭐ Mettre ici : {}").format(w["name"] or f"{w['freq']:.3f}") if w else
+                         TR("⭐ Mettre ici le micro écouté (règle A sur un micro d'abord)"))
+        a1.setEnabled(w is not None)
+        a1.triggered.connect(lambda *_: o.sdr_set_fav(k, w))
+        m.addAction(TR("Vider la touche {}").format(k)).triggered.connect(lambda *_: o.sdr_set_fav(k, None))
+        m.exec(QtGui.QCursor.pos())
+
+    def _favs_refresh(self):
+        o, e = self.owner, self.eng
+        favs = favs_norm(o.sdr_cfg.get("favs"))
+        for k, b in zip(range(1, FAV_KEYS + 1), self.favs):
+            w = o.watch_by_key(favs[k]) if k in favs else None
+            nm = (w["name"] or f"{w['freq']:.3f}") if w else ""
+            t = f"{k} {nm[:10]}" if nm else f"{k}"
+            if b.text() != t:
+                b.setText(t)
+            b.setToolTip(TR("Touche {} du pavé numérique : {}").format(k, f"{nm} ({w['freq']:.3f} MHz)") if w else
+                         TR("Touche {} du pavé numérique : libre (clic droit = y mettre le micro écouté)").format(k))
+            on = bool(w and e.a is not None and abs(w["freq"] - e.a) < 0.0005)
+            if b.isChecked() != on:
+                b.setChecked(on)
+
     def _rec(self, on, what):
         ok = self.eng.rec_audio(on) if what == "audio" else self.eng.rec_iq(on)
         if on and not ok:
@@ -21183,6 +21257,7 @@ class SdrReceiverPanel(SdrPanelBase):
         e = self.eng
         m = e.model()
         run = e.running()
+        self._favs_refresh()
         self.go_btn.setText("■ Arrêter le SDR" if run else "▶ Démarrer le SDR")
         self.dev_lbl.setText(TR("📡 {} · fenêtre {} MHz").format(m["name"], f"{e.span():.1f}") if m else "")
         for dsp, v in ((self.a_disp, e.a), (self.b_disp, e.b)):
@@ -21238,8 +21313,9 @@ class SdrReceiverPanel(SdrPanelBase):
 
     def apply_level(self):
         lv = self.lvl()
-        for w_ in (self.row_b, self.row_dem, self.row_tools, self.row_zoom):
+        for w_ in (self.row_b, self.row_dem, self.row_tools):
             w_.setVisible(lv != "simple")
+        self.row_zoom.setVisible(True)                  # étape 18 : le canal et le son se voient aussi en Simple
         if lv == "simple" and self.eng.b_on:            # Simple : un seul récepteur (B n'a pas ses réglages ici)
             self.eng.set_b(on=False)
         for w_ in (self.nfft, self.set_btn, self.stats):
@@ -21539,10 +21615,11 @@ class SdrMicsPanel(SdrPanelBase):
         for c in range(3):
             hh.setSectionResizeMode(c, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.table.setToolTip("Tes fréquences dans la fenêtre du SDR. Clic = l'écouter (A) ; clic droit = en B.")
+        self.table.setToolTip("Tes fréquences dans la fenêtre du SDR. Clic = l'écouter (A) ; clic droit = en B, ou la mettre "
+                              "sur une touche du pavé numérique.")
         self.table.cellClicked.connect(lambda r, c: self._pick(r, "a"))
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(lambda p: self._pick(self.table.rowAt(p.y()), "b"))
+        self.table.customContextMenuRequested.connect(lambda p: self._menu(self.table.rowAt(p.y())))
         lay.addWidget(self.table, 1)
         self.note = QtWidgets.QLabel("")
         self.note.setWordWrap(True)
@@ -21553,6 +21630,23 @@ class SdrMicsPanel(SdrPanelBase):
         self.tm.start(500)
         e.changed.connect(self.refresh)
         self.refresh()
+
+    def _menu(self, r):
+        """Clic droit sur un micro : écouter en A / en B, le mettre sur une touche du pavé numérique."""
+        if not 0 <= r < len(self.ws):
+            return
+        o, w = self.owner, self.ws[r]
+        m = QtWidgets.QMenu(self)
+        m.addAction(TR("🎧 Écouter (A)")).triggered.connect(lambda *_: self._pick(r, "a"))
+        if self.lvl() != "simple":
+            m.addAction(TR("🎧 Écouter en B")).triggered.connect(lambda *_: self._pick(r, "b"))
+        sm = m.addMenu(TR("⭐ Touche du pavé numérique"))
+        favs = favs_norm(o.sdr_cfg.get("favs"))
+        for k in range(1, FAV_KEYS + 1):
+            cur = o.watch_by_key(favs[k]) if k in favs else None
+            sm.addAction(f"{k} · " + ((cur["name"] or f"{cur['freq']:.3f}") if cur else TR("libre"))).triggered.connect(
+                lambda *_, k=k: o.sdr_set_fav(k, w))
+        m.exec(QtGui.QCursor.pos())
 
     def _pick(self, r, slot):
         if not 0 <= r < len(self.ws):
@@ -43074,10 +43168,79 @@ def _v8_mode_setup(self):
     except Exception:  # noqa: BLE001
         self.cmd_bar.addWidget(b)
     self._sdr_reload()
+    self.watch_table.cellDoubleClicked.connect(self._v8_watch_dbl)      # étape 18 : double-clic = le SDR s'y cale
+    self.fav_keys = []
+    for k in range(1, FAV_KEYS + 1):                   # touches 1…9 du PAVÉ NUMÉRIQUE = favoris
+        sc_ = QtGui.QShortcut(QtGui.QKeySequence(QtCore.QKeyCombination(Qt.KeyboardModifier.KeypadModifier,
+                                                                        Qt.Key(int(Qt.Key.Key_0.value) + k))), self)
+        sc_.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        sc_.activated.connect(lambda k=k: self.sdr_fav(k))
+        self.fav_keys.append(sc_)
     if self.rf_mode != "tiny" and any(d.isVisible() for d in self.all_sdr_docks()):
         QtCore.QTimer.singleShot(1500, lambda: [e_.start() for e_ in self.sdr_engs.values()])   # rouverte en mode SDR
 
 
+def _v8_engine_for(self, w):
+    """Le SDR qui doit écouter ce micro : celui rattaché à sa scène (et qui couvre sa fréquence), sinon le 1er."""
+    engs = sorted((getattr(self, "sdr_engs", None) or {}).items())
+    for _pid, e in engs:
+        sc = e.post()["scenes"]
+        if sc and w.get("scene") in sc and sdr_in_range(e.model(), w["freq"]):
+            return e
+    return next((e for _pid, e in engs if sdr_in_range(e.model(), w["freq"])), self.sdr_eng)
+
+
+def _v8_sdr_tune_mic(self, w, slot="a"):
+    """Étape 18 : le SDR se cale sur ce micro (recentré si besoin) et on l'entend ; son panneau Récepteur passe devant."""
+    e = self._engine_for(w)
+    if self.rf_mode == "tiny":
+        self.set_rf_mode("sdr")
+    if slot == "b":
+        e.set_b(f=w["freq"], on=True)
+    else:
+        e.set_a(w["freq"])
+    if not e.running():
+        e.start()
+    d = self.post_docks.get(e.pid, {}).get("rx")
+    if d is not None:
+        if d.isHidden():
+            d.show()
+        d.raise_()
+    self.set_status(TR("🎧 {} ({} MHz) sur {}").format(w["name"] or "—", f"{w['freq']:.3f}", e.name()))
+    return e
+
+
+def _v8_sdr_fav(self, k):
+    """Touche k du pavé numérique : bascule l'écoute sur le micro rangé là."""
+    favs = favs_norm(self.sdr_cfg.get("favs"))
+    w = self.watch_by_key(favs[k]) if k in favs else None
+    if w is None:
+        self.set_status(TR("⭐ Touche {} libre : clic droit sur un micro (📡 Mes micros) ou sur le bouton {} du Récepteur "
+                           "pour l'y mettre.").format(k, k))
+        return None
+    return self.sdr_tune_mic(w)
+
+
+def _v8_sdr_set_fav(self, k, w):
+    self.sdr_cfg["favs"] = fav_assign(self.sdr_cfg.get("favs"), k, int(round(w["freq"] * 1000)) if w else None)
+    for d in self.all_sdr_docks():
+        if hasattr(d.widget(), "_favs_refresh"):
+            d.widget()._favs_refresh()
+    if w:
+        self.set_status(TR("⭐ Touche {} du pavé numérique : {}").format(k, w["name"] or f"{w['freq']:.3f}"))
+
+
+def _v8_watch_dbl(self, row, col):
+    """Double-clic sur le nom ou la fréquence d'un micro (mode SDR / combiné) : le SDR se cale dessus."""
+    if col in (C_NAME, C_FREQ) and getattr(self, "rf_mode", "tiny") != "tiny" and 0 <= row < len(self.watch):
+        self.sdr_tune_mic(self.watch[row])
+
+
+MainWindow._engine_for = _v8_engine_for
+MainWindow.sdr_tune_mic = _v8_sdr_tune_mic
+MainWindow.sdr_fav = _v8_sdr_fav
+MainWindow.sdr_set_fav = _v8_sdr_set_fav
+MainWindow._v8_watch_dbl = _v8_watch_dbl
 MainWindow._sdr_arrange = _v8_sdr_arrange
 MainWindow.set_rf_mode = _v8_set_rf_mode
 MainWindow._update_mode_btn = _v8_update_mode_btn

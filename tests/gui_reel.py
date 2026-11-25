@@ -1445,6 +1445,22 @@ step("16 : profil chargé", lambda: win.user_profile_load(_p16))
 wait(1500)
 check("16 : le profil ramène le mode SDR combiné et ses panneaux", win.rf_mode == "both"
       and win.sdr_docks["spec"].isVisible(), win.rf_mode)
+# V8 étape 18 : double-clic dans « Mes fréquences » = le SDR s'y cale ; favoris au pavé numérique
+win.set_rf_mode("sdr")
+_r18 = win.watch.index(_pair[1]) if len(_pair) > 1 else 0
+win.watch_table.cellDoubleClicked.emit(_r18, m.C_NAME)
+wait(800)
+check("18 : double-clic sur un micro = le SDR s'y cale", abs((win.sdr_eng.a or 0) - win.watch[_r18]["freq"]) < 1e-6,
+      str(win.sdr_eng.a))
+win.sdr_set_fav(3, win.watch[0])
+win.activateWindow()
+QtTest.QTest.keyClick(win, Qt.Key.Key_3, Qt.KeyboardModifier.KeypadModifier)
+wait(800)
+_rx18 = win.sdr_docks["rx"].widget()
+check("18 : touche 3 du pavé numérique = bascule l'écoute sur le favori", abs((win.sdr_eng.a or 0) - win.watch[0]["freq"])
+      < 1e-6 and _rx18.favs[2].isChecked() and _rx18.favs[2].text().startswith("3 "), str(win.sdr_eng.a))
+win.sdr_set_fav(3, None)
+check("18 : touche vidée", 3 not in m.favs_norm(win.sdr_cfg.get("favs")))
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
 _p2 = _pd.add()

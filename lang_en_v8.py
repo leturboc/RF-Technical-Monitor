@@ -1110,3 +1110,28 @@ EXACT.update({
         "tinySAs (drag an SDR onto a scene = it monitors it).",
     "📡 Mes SDR": "📡 My SDRs",
 })
+
+# ---------------------------------------------------------------- V8 étape 18 : double-clic, pavé numérique
+EXACT.update({
+    "Tes fréquences dans la fenêtre du SDR. Clic = l'écouter (A) ; clic droit = en B, ou la mettre sur une touche du pavé "
+    "numérique.": "Your frequencies in the SDR window. Click = listen (A); right-click = in B, or put it on a numeric "
+                  "keypad key.",
+    "Tes micros les plus importants sur les touches 1 à 9 du PAVÉ NUMÉRIQUE : un appui = le SDR se cale\ndessus et tu "
+    "l'entends. Clic droit sur un bouton = y mettre le micro écouté (A).":
+        "Your most important mics on keys 1 to 9 of the NUMERIC KEYPAD: one press = the SDR tunes to it\nand you hear "
+        "it. Right-click on a button = put the listened mic (A) there.",
+    "Touche {} du pavé numérique : libre (clic droit = y mettre le micro écouté)":
+        "Numeric keypad key {}: free (right-click = put the listened mic there)",
+    "Touche {} du pavé numérique : {}": "Numeric keypad key {}: {}",
+    "Vider la touche {}": "Clear key {}",
+    "⭐ Mettre ici : {}": "⭐ Put here: {}",
+    "⭐ Mettre ici le micro écouté (règle A sur un micro d'abord)": "⭐ Put the listened mic here (tune A to a mic first)",
+    "⭐ Touche du pavé numérique": "⭐ Numeric keypad key",
+    "⭐ Touche {} du pavé numérique : {}": "⭐ Numeric keypad key {}: {}",
+    "⭐ Touche {} libre : clic droit sur un micro (📡 Mes micros) ou sur le bouton {} du Récepteur pour l'y mettre.":
+        "⭐ Key {} is free: right-click a mic (📡 My mics) or button {} of the Receiver to put it there.",
+    "🎧 {} ({} MHz) sur {}": "🎧 {} ({} MHz) on {}",
+    "🎧 Écouter (A)": "🎧 Listen (A)",
+    "🎧 Écouter en B": "🎧 Listen in B",
+})
+SAME_TEMPLATES += ["{} ({} MHz)"]

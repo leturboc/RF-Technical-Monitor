@@ -752,5 +752,10 @@ ok("micros d'un poste = ceux de ses scènes", [w["name"] for w in ns["post_watch
 ok("deux postes sur le même SDR repérés", ns["sdr_post_clash"]([(1, "hackrf", ""), (2, "hackrf", "AB")]) == [(1, 2)]
    and ns["sdr_post_clash"]([(1, "hackrf", "A"), (2, "hackrf", "B"), (3, "rtlsdr", "")]) == [])
 
+# ---------------------------------------------------------------- V8 étape 18 : double-clic, pavé numérique
+ok("favoris : relus (1…9 seulement)", ns["favs_norm"]({"1": 600100, "2": "x", "10": 5, 3: 598300}) == {1: 600100, 3: 598300})
+ok("favoris : une fréquence sur une seule touche", ns["fav_assign"]({1: 600100, 2: 598300}, 3, 600100) == {2: 598300, 3: 600100}
+   and ns["fav_assign"]({1: 600100}, 1, None) == {})
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

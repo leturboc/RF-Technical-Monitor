@@ -1928,6 +1928,16 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   panneaux, scene_state : une scène surveillée par un SDR en marche n'est pas « Arrêtée »). Limites : les mesures de
   tous les postes sont réunies (pire cas) dans la surveillance, pas encore « vu par SDR 2 » dans les alarmes ; testé
   avec 2 faux SDR (n° de série S1 / S2), **jamais avec plusieurs vrais SDR** (USB, charge du PC).
+- **V8 étape 18 (Clément : « double-clic sur mes fréquences = le SDR se cale dessus », « des fréquences hyper importantes au
+  pavé numérique qui basculent l'écoute, la fréquence et le SDR », « le mode écoute fait gros vide en Simple »)** : PURE
+  `FAV_KEYS` 9, `favs_norm`, `fav_assign` (sdr_cfg « favs » {touche: kHz}). `MainWindow._engine_for(w)` (SDR rattaché à
+  la scène du micro et qui couvre sa fréquence, sinon le 1er), `sdr_tune_mic(w, slot)` (passe en mode SDR si besoin,
+  A (ou B) sur le micro, recentrage, démarrage, panneau Récepteur devant), `sdr_fav(k)`, `sdr_set_fav(k, w)`,
+  `_v8_watch_dbl` (double-clic Nom / MHz de « Mes fréquences » en mode SDR / combiné ; en mode tinySA rien ne change)
+  branché dans `mode_setup`, `fav_keys` = QShortcut Keypad+1…9 (ApplicationShortcut ; un champ de saisie garde ses
+  chiffres). Récepteur : barre ⭐ 1…9 (clic = écouter, clic droit = y mettre le micro écouté / vider, bouton allumé =
+  écouté) ; zoom du canal + spectre du son visibles aussi en Simple. Mes micros (SDR) : clic droit = menu (A, B, touche
+  du pavé). Testé : gui_reel (double-clic, touche 3 du pavé avec QTest), script ; **pas sur un vrai clavier Windows**.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
