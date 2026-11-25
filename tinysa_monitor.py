@@ -7906,6 +7906,7 @@ ADJ_WARN_DB = 20.0           # voisin à moins de 20 dB sous le canal = à surve
 VRX_MAX = 8                  # récepteurs virtuels au plus (charge du PC)
 AUDIO_NOISY_DB = -45.0       # 17. le son « entre les mots » plus fort que ça = souffle
 AUDIO_CHOPS = 8              # 17. passages son <-> rien en 10 s (RF bonne) = son haché
+AUDIO_DYN_DB = 15.0          # 17. écart entre le son et les pauses : en dessous, son continu (musique, tonalité)
 WIDE_RATIO = 1.3             # 11. largeur occupée 30 % au-dessus de la largeur attendue = débordement
 ADJ_RISE_DB = 10.0           # 12. canal voisin 10 dB au-dessus de sa médiane des 5 dernières minutes
 
@@ -7958,9 +7959,10 @@ class AudioMeter:
         tt = self.rec[-1][0] if self.rec else 0.0
         r = [v for t_, v in self.rec if tt - t_ <= 10.0]
         floor = round(float(np.percentile(r, 10)), 1) if len(r) >= 40 else None    # le son entre les mots
+        dyn = round(float(np.percentile(r, 90)) - floor, 1) if floor is not None else None   # il y a des pauses ?
         chops = sum(1 for t_ in self.flips if tt - t_ <= 10.0)
         return dict(rms=round(self.rms_db, 1), peak=round(self.peak_db, 1), clip=round(self.clip, 4),
-                    silent=round(self.silent_s, 1), cuts=len(self.cuts), afloor=floor, chops=chops)
+                    silent=round(self.silent_s, 1), cuts=len(self.cuts), afloor=floor, adyn=dyn, chops=chops)
 
 
 def adjacent_db(F, L, f0, chan_khz=200.0):
@@ -7999,7 +8001,8 @@ def rf_audio_diag(m, tr=None):
     if m.get("adj_margin") is not None and m["adj_margin"] < ADJ_WARN_DB:
         out.append(("adj", "warn", tr("Signal fort dans le canal voisin ({} dB sous le canal) : désensibilisation, "
                                       "intermod.").format(f"{m['adj_margin']:.0f}")))
-    if m.get("afloor") is not None and m["afloor"] > AUDIO_NOISY_DB and snr is not None and snr >= 10:
+    if m.get("afloor") is not None and m["afloor"] > AUDIO_NOISY_DB and snr is not None and snr >= 10 \
+            and (m.get("adyn") or 0) >= AUDIO_DYN_DB:        # seulement s'il y a des pauses (pas une musique continue)
         out.append(("noisy", "warn", tr("Souffle dans le son ({} dBFS entre les mots) : réglage du compander, pack "
                                         "fatigué, ou RF juste.").format(f"{m['afloor']:.0f}")))
     if (m.get("chops") or 0) >= AUDIO_CHOPS and snr is not None and snr >= 10:
@@ -19051,11 +19054,12 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                            bw=float(w.get("bw") or 0.0) * 1000.0, prio=o.freq_prio(w), keep_on=o.is_keep_on(w["status"]),
                            keep_free=o.is_keep_free(w["status"]))
                       for w in ws if w["freq"] in keep]
-        n_out = len(ws) - len(self.chans)
-        self.win_lbl.setText(TR("Fenêtre : {} – {} MHz · {} fréquence(s) surveillée(s)").format(
-            f"{best[0] - 0.1:.3f}", f"{best[-1] + 0.1:.3f}", len(self.chans)) +
-            (TR(" · {} hors de la fenêtre (le tinySA ou le balayage s'en occupe)").format(n_out) if n_out else "")
-            if best else TR("Aucune de tes fréquences n'est dans la plage de ce SDR."))
+        self.win_lbl.setText(TR("Fenêtre : {} – {} MHz").format(f"{best[0] - 0.1:.3f}", f"{best[-1] + 0.1:.3f}")
+                             if best else TR("Aucune de tes fréquences n'est dans la plage de ce SDR."))
+        if best and getattr(self, "cap_lbl", None) is not None and self.worker is None:   # avant ▶ : ce qui tient
+            ct, ctone = capacity_view(len(ws), len(self.chans), len(self.chans), 0, TR)
+            self.cap_lbl.setText(ct)
+            self.cap_lbl.setStyleSheet("" if ctone == "ok" else f"color: {o.tone_color(ctone)};")
         self.table.setRowCount(len(self.chans))
         for r, c in enumerate(self.chans):
             for col, v in enumerate((c["name"], f"{c['freq']:.3f}", "", "", "", "", "", "")):

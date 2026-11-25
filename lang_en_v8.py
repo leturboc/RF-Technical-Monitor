@@ -805,3 +805,4 @@ EXACT.update({
 })
 SAME_TEMPLATES += ["color: {}; font-weight: bold;", "<p class='muted'>{} · {}", " : {} kHz",
                    "<h2>{}</h2><img src='{}' style='width:100%;max-width:900px;image-rendering:pixelated'>", "{} Mo · {} s"]
+EXACT["Fenêtre : {} – {} MHz"] = "Window: {} – {} MHz"

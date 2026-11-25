@@ -634,8 +634,10 @@ for i in range(100):
 st2, st3_ = am2.state(), am3.state()
 ok("17. son haché repéré, souffle repéré", st2["chops"] >= 8 and st2["afloor"] < -50 and st3_["afloor"] > -45
    and st3_["chops"] == 0, str((st2, st3_)))
-dg2 = ns["rf_audio_diag"](dict(snr=30, afloor=-40, chops=10, obw=260, obw_exp=130, rx_alerts=["Pile"]))
+dg2 = ns["rf_audio_diag"](dict(snr=30, afloor=-40, adyn=20, chops=10, obw=260, obw_exp=130, rx_alerts=["Pile"]))
 ok("17. / 11. diagnostic : souffle, haché, trop large, alerte récepteur", {"noisy", "chop", "wide", "rx"} <= {x[0] for x in dg2})
+ok("17. son continu (musique, tonalité) : pas de faux « souffle »", "noisy" not in {x[0] for x in ns["rf_audio_diag"](
+   dict(snr=30, afloor=-8, adyn=st3_["adyn"]))}, str(st3_))
 ok("11. largeur attendue d'un micro FM", ns["expected_obw_khz"]("wfm") == 130.0 and ns["expected_obw_khz"]("am") == 200.0)
 tk5, ev5 = ns["AnomalyTracker"](), []
 for i in range(60):
