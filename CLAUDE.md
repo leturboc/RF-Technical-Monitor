@@ -1985,6 +1985,30 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   32 768 Hz appris, alarme PILOTE, patrouille, touche du pavé, calage sur alarme + WAV + retour). **Jamais avec un vrai
   SDR ni de vrais micros** : la fréquence réelle des pilotes des marques n'est PAS dans le code (appris sur le terrain) ;
   un pack sans pilote = « pas de pilote vu », rien d'autre ; « c'est quoi » = supposition d'après la forme du spectre.
+- **V8 étape 21 (Clément : « un mode démo sur le SDR, avec audio pour écouter » + « générer avec du SDR ? » -> « Bothhh »)** :
+  UN générateur pour les deux. PURE `DEMO_RATE` 2,4 MS/s, `DEMO_DBM` −40 (dBFS -> dBm du démo, via `sdr_offset("demo")`),
+  `DEMO_PILOT` 32 768 Hz (exemple, pas une marque), `DEMO_SOUNDS` (voice « un, deux » synthétique, melody, beep, tone),
+  `SIG_KINDS`, `SDR_DEMO_MODEL` (fiche à part : PAS dans `SDR_KINDS` / `SDR_MODELS`, qui alimentent les menus de balayage),
+  `SDR_DEMO_KIND`, `demo_audio(kind, t, k)` (fonction du temps absolu : continue d'un bloc à l'autre), `sched_on` (période,
+  allumé, décalage), `SigGen(rate, centre, signaux)` (`block(n)` : FM = cumul de phase gardé par signal, son à 48 kHz
+  répété, pilote analytique ; noise = bruit filtré par FFT ; hors fenêtre sauté), `demo_sdr_plan(micros)` (tes micros :
+  FM + son + pilote, numérique = bloc 200 kHz, bloc large, 1re « doit rester libre » = brouilleur 8 s / min, 1er micro
+  éteint 15 s / 2 min, 2ᵉ sans pilote 10 s / 90 s, TNT 21 et 30 ; sans micros : 5 micros vers 606 MHz), `tx_plan` (centre
+  décalé du continu, débit `TX_RATES` 4 / 10 / 20 MS/s, `TX_MAX_SIGS` 8), `tx_cmd` (`hackrf_transfer -t - -f -s -x -a
+  [-d]`), `iq_ci8`. Qt : `SDR_DEMO_STATE` / `sdr_demo_set` (plan + émission simulée), `DemoIQ` (rythme réel, ne rattrape
+  pas un gros retard), `open_iq_source("demo")`, `RealtimeWorker` accepte le genre « demo » (`SDR_KINDS.get`,
+  `SDR_DTYPE.get` cf32). `SdrEngine.model()` = démo si `sdr_cfg["demo"]` (gardé par `sdr_cfg_extra`) ; plan rafraîchi
+  toutes les 2 s (`_tick`, `demo_mics` : sans les 💤 / hors état) ; pas de conflit « même SDR » entre postes démo ; arrêt
+  « introuvable » -> conseil « 🧪 SDR démo ». `TxRunner` (fil Python -> stdin de hackrf_transfer, somme des signaux à
+  0,9 de la pleine échelle ; en démo : signaux posés dans le SDR démo), `SdrTxDialog` (`self._sdrtx` : tableau MHz / type
+  / son / pilote / intermittent / niveau, « Depuis ma liste », gain 0–47 (0 d'office), ampli coupé, durée 1–30 min,
+  case « EN CÂBLE » obligatoire hors démo, refus si un poste SDR tient le HackRF, journal « ÉMISSION SDR » / « FIN
+  D'ÉMISSION SDR », arrêt à la fermeture et dans `_v8_close_event`). Menu du mode + sous-menu SDR : `set_sdr_demo`,
+  `toggle_sdr_demo`, `open_sdr_tx`. `fake_iq.py -t` lit l'IQ et écrit ce qu'il a reçu (`FAKE_TX_OUT`). Testé : test_sdr
+  (sons, phase continue, micro démo démodulé avec son et pilote, plan, émission), script + gui_reel (démo sans outil,
+  niveaux, son, émission simulée vue par le démo, refus sans « câble », faux hackrf_transfer : porteuse à +300 kHz,
+  gain 0). **Jamais avec un vrai HackRF en émission** : « -t - » (entrée standard) lu dans la doc, puissance réelle à
+  mesurer au tinySA ; le compander n'est pas « encodé » dans la démo (couleur du son seulement).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

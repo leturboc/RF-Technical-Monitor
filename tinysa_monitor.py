@@ -7636,6 +7636,8 @@ def sdr_cfg_extra(sd):
         out["station"] = station_norm(sd.get("station"))
     if "favs" in sd:                                   # étape 18 : raccourcis du pavé numérique
         out["favs"] = favs_norm(sd.get("favs"))
+    if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
+        out["demo"] = bool(sd.get("demo"))
     if "auto" in sd:                                   # étape 20 : alarme -> calage, patrouille, pilote
         out["auto"] = sdr_auto_norm(sd.get("auto"))
     if "posts" in sd:                                  # étape 17 : plusieurs postes SDR
@@ -9408,6 +9410,215 @@ def what_is_text(c, tr=None):
     if not c or c.get("kind") == "none":
         return tr("🏷 Rien de net sur A")
     return "🏷 " + signal_report(c, tr)
+
+
+# ------------------------------------------------------------------ V8 étape 21 : générateur de signaux
+# Clément : « un mode démo sur le SDR, avec audio pour écouter » + « générer avec du SDR » -> « Bothhh ». Un seul
+# générateur : il fabrique l'IQ du SDR démo (à l'écran, sans matériel) ET ce qu'un HackRF émet en câble.
+DEMO_RATE = 2400000            # débit IQ du SDR démo
+DEMO_DBM = -40.0               # dBFS -> dBm du SDR démo (niveaux et seuils proches d'un vrai SDR)
+DEMO_PILOT = 32768.0           # pilote des micros de démo (Hz) : une valeur d'exemple, pas celle d'une marque
+DEMO_SOUNDS = (("voice", "Voix « un, deux »"), ("melody", "Mélodie"), ("beep", "Bips"), ("tone", "Tonalité 1 kHz"))
+SIG_KINDS = (("fm", "Micro FM (large)"), ("nfm", "Talkie (FM étroite)"), ("cw", "Porteuse pure"),
+             ("noise", "Bloc large (numérique, TNT)"))
+SDR_DEMO_MODEL = dict(key="demo", kind="demo", name="🧪 SDR démo (sans matériel)", fmin=1.0, fmax=6000.0, bits=12,
+                      enob=10.0, rates=[DEMO_RATE], usable=0.8, max_in=None, gains=[], cal=False, src="",
+                      note="Signaux fabriqués par l'appli à partir de tes micros (son, pilote, brouilleur qui passe, "
+                           "micro qui s'éteint) : pour découvrir le poste SDR sans matériel.")
+SDR_DEMO_KIND = dict(name="SDR démo", tool=None, iq_tool=None, fmin=1.0, fmax=6000.0)
+TX_RATES = (4000000, 10000000, 20000000)     # débits d'émission HackRF essayés (le plus petit qui contient tout)
+TX_MAX_SIGS = 8
+TX_DURATIONS = (1, 5, 15, 30)                # minutes : l'émission s'arrête toute seule
+
+
+def demo_audio(kind, t, k=0):
+    """Son de démo (float32, −1…1) aux instants t (s). k = n° du micro : chacun a sa hauteur, on les reconnaît."""
+    t = np.asarray(t, dtype=np.float64)
+    if kind == "tone":
+        return (0.8 * np.sin(2 * np.pi * 1000.0 * t)).astype(np.float32)
+    if kind == "beep":
+        on = (t % 1.0) < 0.2
+        return (0.8 * on * np.sin(2 * np.pi * (700.0 + 90.0 * k) * t)).astype(np.float32)
+    if kind == "melody":
+        notes = np.array([0, 4, 7, 12, 7, 4, 2, 5])
+        i = np.floor(t / 0.3).astype(np.int64) % len(notes)
+        f = 262.0 * 2.0 ** ((notes[i] + 2 * (k % 6)) / 12.0)
+        ph = 2 * np.pi * f * t
+        env = np.clip(np.minimum(t % 0.3, 0.3 - t % 0.3) / 0.03, 0.0, 1.0)
+        return (0.55 * env * (np.sin(ph) + 0.3 * np.sin(2 * ph))).astype(np.float32)
+    # « voice » : deux syllabes (« un », « deux ») sur une voix synthétique (fondamentale + harmoniques façon voyelle)
+    c = t % 2.2
+    on1, on2 = (c < 0.35), (c >= 0.6) & (c < 0.95)
+    env = np.where(on1, np.sin(np.pi * np.clip(c / 0.35, 0, 1)), 0.0) + \
+        np.where(on2, np.sin(np.pi * np.clip((c - 0.6) / 0.35, 0, 1)), 0.0)
+    fb = 110.0 + 18.0 * (k % 5)                    # fondamentale + vibrato de 6 Hz à 5 Hz (phase exacte : continue)
+    f0 = fb + 6.0 * np.sin(2 * np.pi * 5.0 * t)
+    ph = 2 * np.pi * fb * t - (6.0 / 5.0) * np.cos(2 * np.pi * 5.0 * t)
+    fm1 = np.where(on1, 650.0, 450.0)            # 1er formant : « un » plus ouvert que « deux »
+    fm2 = np.where(on1, 1100.0, 1700.0)
+    a = np.zeros(len(t))
+    for h in range(1, 13):
+        fh = h * f0
+        w = np.exp(-((fh - fm1) / 180.0) ** 2) + 0.6 * np.exp(-((fh - fm2) / 250.0) ** 2) + 0.15 / h
+        a = a + w * np.sin(h * ph)
+    return (0.45 * env * a / 2.2).astype(np.float32)
+
+
+def sched_on(s, t):
+    """Programme d'un signal : None = toujours ; (période s, durée allumé s, décalage s)."""
+    if not s:
+        return True
+    per, on, off = float(s[0]), float(s[1]), float(s[2] if len(s) > 2 else 0.0)
+    return ((t + off) % max(per, 1e-3)) < on
+
+
+class SigGen:
+    """Fabrique de l'IQ (complexe, ~ −1…1) autour de `center_hz` à `rate` éch./s, bloc par bloc, sans coupure de phase.
+    Signal = dict(key, kind fm|nfm|cw|noise, f MHz, lvl dB (0 = le plus fort), dev Hz, audio, k, pilot Hz, bw MHz,
+    on (programme), pilot_on (programme du pilote)). Pur numpy : sert au SDR démo et à l'émission HackRF."""
+
+    def __init__(self, rate, center_hz, sigs=(), noise=0.01, seed=7):
+        self.rate, self.center = float(rate), float(center_hz)
+        self.noise, self.n0, self.st = float(noise), 0, {}
+        self.rng = np.random.default_rng(seed)
+        self.sigs = []
+        self.set_sigs(sigs)
+
+    def set_sigs(self, sigs):
+        self.sigs = [dict(s) for s in sigs]
+        keep = {s.get("key") for s in self.sigs}
+        self.st = {k: v for k, v in self.st.items() if k in keep}
+
+    def block(self, n):
+        n = int(n)
+        fs = self.rate
+        idx = self.n0 + np.arange(n, dtype=np.float64)
+        t = idx / fs
+        t0 = float(t[0]) if n else 0.0
+        x = self.noise * (self.rng.standard_normal(n) + 1j * self.rng.standard_normal(n)) / math.sqrt(2.0)
+        spec = None
+        step = max(1, int(round(fs / 48000.0)))
+        for s in self.sigs:
+            if not sched_on(s.get("on"), t0):
+                continue
+            off = float(s["f"]) * 1e6 - self.center
+            bw = float(s.get("bw") or 0.0) * 1e6
+            if abs(off) - bw / 2.0 > 0.5 * fs:
+                continue                                   # hors de la fenêtre
+            amp = 0.3 * 10.0 ** (float(s.get("lvl", 0.0)) / 20.0)
+            kind = s.get("kind", "fm")
+            if kind == "noise":
+                if spec is None:
+                    spec = np.zeros(n)
+                fr = np.fft.fftfreq(n, 1.0 / fs)
+                spec = spec + amp * ((fr >= off - bw / 2.0) & (fr <= off + bw / 2.0))
+                continue
+            ph = 2 * np.pi * ((off * idx / fs) % 1.0)
+            if kind in ("fm", "nfm"):
+                dev = float(s.get("dev") or (30000.0 if kind == "fm" else 2500.0))
+                ta = t[::step]
+                a = np.repeat(demo_audio(s.get("audio", "voice"), ta, int(s.get("k", 0))), step)[:n]
+                st = self.st.setdefault(s.get("key"), dict(acc=0.0))
+                cum = st["acc"] + 2 * np.pi * dev / fs * np.cumsum(a, dtype=np.float64)
+                st["acc"] = float(cum[-1] % (2 * np.pi)) if n else st["acc"]
+                ph = ph + cum
+                p = float(s.get("pilot") or 0.0)
+                if p and sched_on(s.get("pilot_on"), t0):
+                    ph = ph + (4000.0 / p) * np.sin(2 * np.pi * p * t)
+            x = x + amp * np.exp(1j * ph)
+        if spec is not None:
+            w = self.rng.standard_normal(n) + 1j * self.rng.standard_normal(n)
+            x = x + np.fft.ifft(np.fft.fft(w) * spec) * 1.0
+        self.n0 += n
+        return x.astype(np.complex64)
+
+
+def demo_sdr_plan(mics):
+    """Signaux du SDR démo d'après tes micros. mics = [dict(f MHz, name, bw MHz, free (doit rester libre), digital)].
+    Le 1er micro s'éteint 15 s toutes les 2 min (alarme ABSENT), le 2ᵉ perd son pilote 10 s toutes les 90 s (alarme
+    PILOTE), un brouilleur passe 8 s par minute sur la 1re « doit rester libre », + deux canaux TNT. Sans micros :
+    6 micros d'exemple autour de 606 MHz."""
+    mics = list(mics or [])
+    if not mics:
+        mics = [dict(f=f, name=f"HF {i + 1}", bw=0.0, free=False, digital=False)
+                for i, f in enumerate((606.2, 606.9, 607.6, 608.4, 609.1))]
+        mics += [dict(f=605.5, name="Réserve", bw=0.0, free=True, digital=False),
+                 dict(f=610.0, name="Numérique", bw=0.0, free=False, digital=True)]
+    out, k, jam = [], 0, False
+    for m in sorted(mics, key=lambda m: float(m["f"])):
+        f = float(m["f"])
+        key = f"{f:.4f}"
+        if m.get("free"):
+            if not jam:
+                out.append(dict(key="jam" + key, kind="nfm", f=f, lvl=-12.0, audio="beep", k=3, on=(60.0, 8.0, 20.0)))
+                jam = True
+            continue
+        if float(m.get("bw") or 0) > 0:
+            out.append(dict(key="blk" + key, kind="noise", f=f, bw=float(m["bw"]), lvl=-22.0))
+            continue
+        if m.get("digital"):
+            out.append(dict(key="num" + key, kind="noise", f=f, bw=0.2, lvl=-14.0))
+            continue
+        h = sum(ord(c) for c in str(m.get("name", ""))) % 12
+        s = dict(key="mic" + key, kind="fm", f=f, lvl=-6.0 - h, dev=25000.0 + 1500.0 * (h % 8),
+                 audio=DEMO_SOUNDS[k % len(DEMO_SOUNDS)][0], k=k, pilot=DEMO_PILOT)
+        if k == 0:
+            s["on"] = (120.0, 105.0, 0.0)
+        elif k == 1:
+            s["pilot_on"] = (90.0, 80.0, 40.0)
+        out.append(s)
+        k += 1
+    out += [dict(key="tnt21", kind="noise", f=478.0, bw=7.6, lvl=-24.0),
+            dict(key="tnt30", kind="noise", f=546.0, bw=7.6, lvl=-26.0)]
+    return out
+
+
+def tx_plan(rows, rates=TX_RATES, fmin=1.0, fmax=6000.0):
+    """Émission : lignes [dict(f MHz, kind, audio, pilot bool, lvl dB)] -> (centre Hz, débit, signaux) ou un texte
+    d'erreur. Centre décalé pour qu'aucun signal ne tombe sur le continu du HackRF (fuite de l'oscillateur)."""
+    rows = [r for r in rows if r.get("f")]
+    if not rows:
+        return "Ajoute au moins un signal."
+    if len(rows) > TX_MAX_SIGS:
+        return f"{TX_MAX_SIGS} signaux au plus."
+    fs_ = [float(r["f"]) for r in rows]
+    if min(fs_) < fmin or max(fs_) > fmax:
+        return f"Fréquences entre {fmin:g} et {fmax:g} MHz."
+    half = max(float(r.get("bw") or 0.0) / 2.0 if r.get("kind") == "noise" else 0.1 for r in rows)
+    lo, hi = min(fs_) - half, max(fs_) + half
+    c = (lo + hi) / 2.0
+    if any(abs(f - c) < 0.15 for f in fs_):
+        c = c - 0.3 if (hi - lo) < 1.0 else c + 0.15
+    span = 2.0 * max(abs(hi - c), abs(lo - c))
+    rate = next((r_ for r_ in rates if span <= 0.75 * r_ / 1e6), None)
+    if rate is None:
+        return f"Signaux trop écartés ({span:.1f} MHz) : {0.75 * max(rates) / 1e6:.0f} MHz au plus en une fois."
+    sigs = []
+    for i, r in enumerate(rows):
+        kind = r.get("kind") or "fm"
+        sigs.append(dict(key=f"tx{i}", kind=kind, f=float(r["f"]), lvl=float(r.get("lvl", 0.0)),
+                         audio=r.get("audio") or "voice", k=i, bw=float(r.get("bw") or (0.2 if kind == "noise" else 0)),
+                         pilot=DEMO_PILOT if r.get("pilot") and kind in ("fm", "nfm") else 0.0,
+                         on=(4.0, 1.0, 0.0) if r.get("burst") else None))
+    return c * 1e6, rate, sigs
+
+
+def tx_cmd(exe, fc_hz, rate, gain=0, amp=False, serial=""):
+    """Commande hackrf_transfer d'émission : IQ int8 lu sur l'entrée standard (« -t - »), gain d'émission 0–47 dB."""
+    a = [exe, "-t", "-", "-f", str(int(round(fc_hz))), "-s", str(int(rate)), "-x", str(int(max(0, min(47, gain)))),
+         "-a", "1" if amp else "0"]
+    return a + (["-d", str(serial)] if serial else [])
+
+
+def iq_ci8(x, scale=None):
+    """IQ complexe -> octets int8 entrelacés (format HackRF). Ramené sous la pleine échelle (pas d'écrêtage)."""
+    x = np.asarray(x)
+    m = float(np.max(np.abs(x))) if len(x) else 1.0
+    s = scale if scale is not None else (0.9 / m if m > 0.9 else 1.0)
+    out = np.empty(2 * len(x), dtype=np.int8)
+    out[0::2] = np.clip(np.round(x.real * s * 127.0), -127, 127)
+    out[1::2] = np.clip(np.round(x.imag * s * 127.0), -127, 127)
+    return out.tobytes()
 
 
 def reconnect_delay(fails):
@@ -18237,6 +18448,132 @@ class ProcIQ:
                 pass
 
 
+SDR_DEMO_STATE = dict(v=0, plan=[], tx=[])          # étape 21 : signaux du SDR démo (micros + émission simulée)
+
+
+def sdr_demo_set(plan=None, tx=None):
+    """Change ce que « reçoit » le SDR démo (sans rien faire si c'est pareil)."""
+    st = SDR_DEMO_STATE
+    ch = False
+    for k, v in (("plan", plan), ("tx", tx)):
+        if v is not None and v != st[k]:
+            st[k] = list(v)
+            ch = True
+    if ch:
+        st["v"] += 1
+
+
+class DemoIQ:
+    """Source d'IQ du SDR démo (étape 21) : SigGen au rythme réel, signaux = SDR_DEMO_STATE (tes micros + ce qu'émet
+    l'émission simulée). Même interface que ProcIQ : read(n octets), close(), rate, dtype, err."""
+    dtype = "cf32_le"
+
+    def __init__(self, center, rate=None):
+        self.center, self.rate = float(center), int(rate or DEMO_RATE)
+        self.err = deque(maxlen=20)
+        self.gen = SigGen(self.rate, self.center)
+        self._v, self.n, self.closed = None, 0, False
+        self.t0 = time.monotonic()
+
+    def read(self, nbytes):
+        if self.closed:
+            return b""
+        st = SDR_DEMO_STATE
+        if st["v"] != self._v:
+            self._v = st["v"]
+            self.gen.set_sigs(list(st["plan"]) + list(st["tx"]))
+        n = max(1, int(nbytes) // IQ_BYTES[self.dtype])
+        due = self.t0 + (self.n + n) / self.rate
+        dt = due - time.monotonic()
+        if dt > 0:
+            time.sleep(min(dt, 0.5))
+        elif dt < -1.0:                              # PC très occupé : on repart de maintenant (pas de rattrapage)
+            self.t0, self.n = time.monotonic(), 0
+        x = self.gen.block(n)
+        self.n += n
+        return x.tobytes()
+
+    def close(self):
+        self.closed = True
+
+
+class TxRunner:
+    """Émission (étape 21) : un fil Python qui fabrique l'IQ (SigGen) et le donne à « hackrf_transfer -t - » ; ou, en
+    démo, pose les signaux dans le SDR démo (rien n'est émis). Arrêt : stop(), fin de durée, outil qui s'arrête."""
+
+    def __init__(self, fc, rate, sigs, until, exe=None, gain=0, amp=False, serial="", demo=False):
+        self.fc, self.rate, self.sigs, self.until = float(fc), int(rate), list(sigs), float(until)
+        self.exe, self.gain, self.amp, self.serial, self.demo = exe, int(gain), bool(amp), serial, bool(demo)
+        self.err, self.sent, self.done, self.why = deque(maxlen=20), 0, False, ""
+        self._stop = threading.Event()
+        self.proc = None
+        if demo:
+            sdr_demo_set(tx=self.sigs)
+            return
+        argv = tx_cmd(exe, self.fc, self.rate, self.gain, self.amp, serial)
+        self.proc = sdr_proc_track(subprocess.Popen([str(x) for x in argv], stdin=subprocess.PIPE,
+                                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, bufsize=0,
+                                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)))
+        threading.Thread(target=self._err, daemon=True).start()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _err(self):
+        try:
+            for line in self.proc.stderr:
+                t = line.decode(errors="ignore").strip()
+                if t:
+                    self.err.append(t)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _run(self):
+        g = SigGen(self.rate, self.fc, self.sigs, noise=0.0)
+        n = int(self.rate * 0.02)
+        tot = sum(0.3 * 10.0 ** (float(s_.get("lvl", 0.0)) / 20.0) for s_ in self.sigs) or 0.3
+        scale = 0.9 / tot                            # somme des signaux juste sous la pleine échelle (pas d'écrêtage)
+        try:
+            while not self._stop.is_set() and time.time() < self.until:
+                self.proc.stdin.write(iq_ci8(g.block(n), scale=scale))
+                self.sent += n
+        except (BrokenPipeError, OSError, ValueError) as e:
+            self.why = self.err[-1] if self.err else str(e)
+        finally:
+            self._close()
+
+    def running(self):
+        if self.demo:
+            return not self.done and time.time() < self.until
+        return self.proc is not None and not self.done
+
+    def _close(self):
+        self.done = True
+        p, self.proc = self.proc, None
+        if p is None:
+            return
+        try:
+            p.stdin.close()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            p.wait(timeout=2)
+        except Exception:  # noqa: BLE001
+            try:
+                p.kill()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def stop(self):
+        self._stop.set()
+        if self.demo:
+            self.done = True
+            sdr_demo_set(tx=[])
+        elif self.proc is not None and threading.current_thread() is threading.main_thread():
+            t0 = time.time()
+            while self.proc is not None and time.time() - t0 < 2.0:
+                time.sleep(0.05)
+            self._close()
+
+
 class WinradioIQ:
     """Source d'IQ = le DDC1 du G39DDC : type de DDC choisi d'après la largeur voulue (wr_pick_ddc), front-end +
     décalage DDC1 sur le centre demandé, rappel qui copie les échantillons (16 ou 32 bits). rate / dtype = ceux du
@@ -18381,6 +18718,8 @@ def sdr_probe(kind, model=None, gains=None, tool_dir="", iq_tool=None, secs=2.0,
 
 def open_iq_source(kind, center, rate, gains, serial="", tool=None, tool_dir="", wr_lib=None, span=None):
     """Source d'IQ pour l'écoute / le temps réel : .read(n), .close(), .rate, .dtype, .err. Lève RuntimeError."""
+    if kind == "demo":                               # étape 21 : SDR démo (signaux fabriqués par l'appli)
+        return DemoIQ(center, rate)
     if kind == "winradio":
         return WinradioIQ(center, rate, gains, serial, tool_dir, lib=wr_lib, span=span)
     sp = SDR_KINDS[kind]
@@ -20966,6 +21305,8 @@ class SdrEngine(QtCore.QObject):
 
     # ---- appareil
     def model(self):
+        if self.owner.sdr_cfg.get("demo"):                 # étape 21 : SDR démo (sans matériel)
+            return SDR_DEMO_MODEL
         m = sdr_model(self.post()["model"] or self.owner.sdr_cfg.get("model"))
         return m if m and m.get("kind") else sdr_model(SDR_MODEL_DEFAULT.get("hackrf"))
 
@@ -21002,7 +21343,7 @@ class SdrEngine(QtCore.QObject):
         m, kind = self.model(), self.kind()
         others = [(e_.pid, e_.kind(), e_.post()["serial"]) for e_ in (getattr(o, "sdr_engs", None) or {}).values()
                   if e_ is not self and e_.running()]
-        if sdr_post_clash([(self.pid, kind, self.post()["serial"])] + others):      # étape 17 : un SDR = un poste
+        if kind != "demo" and sdr_post_clash([(self.pid, kind, self.post()["serial"])] + others):   # 17 : un SDR = un poste
             self._say(TR("⚠ Un autre poste utilise déjà un {} : donne à chacun son n° de série (📡 Mes SDR).").format(
                 m["name"]))
             return False
@@ -21028,6 +21369,9 @@ class SdrEngine(QtCore.QObject):
         if self.audio is None:
             self.audio = AudioOut(self.owner)
         self.timer.start(20)
+        if kind == "demo":                              # étape 21 : le SDR démo connaît tout de suite tes micros
+            self._t_demo = time.time()
+            sdr_demo_set(plan=demo_sdr_plan(o.demo_mics()))
         if not self.tick.isActive():                    # étape 20 : seules les alarmes NOUVELLES font se caler
             self._seen_al = {a.get("id") for a in o.alarms.active.values()}
             self.tick.start(500)
@@ -21066,7 +21410,8 @@ class SdrEngine(QtCore.QObject):
     def _stopped(self, why):
         self.stop()
         if why:
-            self._say(TR("⚠ SDR arrêté : {}").format(why))
+            hint = TR(" Pas de SDR sous la main ? Essaie 🧪 SDR démo (menu du mode).") if "introuvable" in why else ""
+            self._say(TR("⚠ SDR arrêté : {}").format(why) + hint)
 
     def _say(self, t):
         self.msg = t
@@ -21248,6 +21593,12 @@ class SdrEngine(QtCore.QObject):
 
     def _tick(self):
         now = time.time()
+        if self.kind() == "demo" and now - getattr(self, "_t_demo", 0.0) >= 2.0:   # étape 21 : micros du SDR démo
+            self._t_demo = now
+            try:
+                sdr_demo_set(plan=demo_sdr_plan(self.owner.demo_mics()))
+            except Exception as ex:  # noqa: BLE001
+                log_crash("SDR démo", repr(ex))
         for fn in (self._patrol_tick, self._alarm_watch, self._pilot_tick):
             try:
                 fn(now)
@@ -22592,7 +22943,7 @@ class RealtimeWorker(QtCore.QThread):
         self.gains.update(gains or {})
         self.tool, self.tool_dir = tool, tool_dir
         self.src = src                   # relecture : dict(path, dtype, rate, center, t0, hw) ; None = direct
-        self.dtype = src["dtype"] if src else SDR_DTYPE[kind]
+        self.dtype = src["dtype"] if src else SDR_DTYPE.get(kind, "cf32_le")      # étape 21 : « demo » = cf32
         if src:                          # relecture : le débit et le centre sont ceux du fichier
             self.rate, self.center = int(src["rate"]), float(src["center"])
         self.thr = -60.0                 # seuil du détecteur (dBFS)
@@ -22628,7 +22979,8 @@ class RealtimeWorker(QtCore.QThread):
 
     def _rec_meta(self):
         r = self.rec
-        meta = sigmf_meta(self.dtype, self.rate, self.center, r["t0"], SDR_KINDS[self.kind]["name"], r["ann"])
+        meta = sigmf_meta(self.dtype, self.rate, self.center, r["t0"], SDR_KINDS.get(self.kind, SDR_DEMO_KIND)["name"],
+                          r["ann"])
         try:
             with open(r["base"] + ".sigmf-meta", "w", encoding="utf-8") as fm:
                 json.dump(meta, fm, indent=1)
@@ -22651,7 +23003,7 @@ class RealtimeWorker(QtCore.QThread):
 
     # ------------------------------------------------------------ boucle
     def run(self):
-        sp = SDR_KINDS[self.kind]
+        sp = SDR_KINDS.get(self.kind, SDR_DEMO_KIND)
         nb = IQ_BYTES[self.dtype]
         fh = None
         if self.src is not None:
@@ -39580,6 +39932,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def sdr_offset(self, kind):
         """Correction dBFS -> dBm du modèle (0 pour un appareil calibré)."""
+        if kind == "demo":                              # étape 21 : SDR démo
+            return DEMO_DBM
         m = self.sdr_model_for(kind)
         if m is None or m.get("cal"):
             return 0.0
@@ -43317,6 +43671,8 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
     ("📟+📡 Mode combiné (tinySA + SDR)", "rf_mode_both"),
     ("📟 Mode tinySA seul", "rf_mode_tiny"),
     ("📡 Mes SDR (plusieurs, scènes, carte)…", "open_sdr_posts"),
+    ("🧪 SDR démo (allumer / éteindre)", "toggle_sdr_demo"),
+    ("📡 Émettre avec un HackRF (en câble)…", "open_sdr_tx"),
     ("📡 Moniteur multicanal (tous mes micros d'un coup)…", "open_multimon"),
     ("🎧 Écouter un micro…", "open_listen"),
     ("⏱ Temps réel (un bout de bande, sans trou)…", "open_realtime"),
@@ -43324,6 +43680,10 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
     ("📶 Récepteurs en réseau (Shure, Sennheiser…)…", "open_receivers"),
     ("📡 Réglages SDR (mon SDR, sensibilité)…", "open_sdr")]))
 MainWindow.TIPS_MENU.update({
+        "🧪 SDR démo": "V8 : pas de SDR ? L'appli fabrique les signaux de tes micros (son, pilote, brouilleur qui passe,\n"
+                       "micro qui s'éteint) : tout le poste SDR marche, écoute comprise.",
+        "📡 Émettre avec un HackRF": "V8 : faux micros FM, porteuses, brouilleur intermittent émis par un HackRF, EN CÂBLE\n"
+                                    "avec un atténuateur (tester un récepteur, l'intermod, s'entraîner à la chasse).",
         "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
                          "persistance, waterfall, journal des signaux brefs, clic = écouter.",
         "🎧 Écouter": "V8 : démodule une ou plusieurs fréquences proches avec un HackRF / RTL-SDR (FM, AM),\n"
@@ -43551,6 +43911,12 @@ def _v8_close_event(self, ev):
             pass
     for c in list((getattr(self, "_shure", None) or {}).values()):
         c.stop()
+    tx = getattr(self, "_sdrtx", None)                  # étape 21 : l'émission s'arrête avec l'appli
+    if tx is not None:
+        try:
+            tx.stop()
+        except Exception:  # noqa: BLE001
+            pass
     sdr_kill_all()
 
 
@@ -43834,6 +44200,11 @@ def _v8_build_mode_menu(self):
         a_.triggered.connect(lambda *_, k=k: self.set_rf_mode("both" if self.rf_mode == "both" else "sdr", k))
     m.addSeparator()
     m.addAction(TR("📡 Mes SDR (plusieurs, scènes, carte)…")).triggered.connect(lambda *_: self.open_sdr_posts())
+    a_ = m.addAction(TR("🧪 SDR démo (sans matériel, avec du son)"))          # étape 21
+    a_.setCheckable(True)
+    a_.setChecked(bool(self.sdr_cfg.get("demo")))
+    a_.triggered.connect(lambda *_, a=a_: self.set_sdr_demo(a.isChecked()))
+    m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
     m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
     m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
 
@@ -44244,6 +44615,273 @@ async function ePull(){if(route()!=="ecoute"||!EA)return;
  const s=EA.createBufferSource();s.buffer=buf;s.connect(EA.destination);const now=EA.currentTime;
  if(ENEXT<now+0.05||ENEXT>now+1.5)ENEXT=now+0.25;s.start(ENEXT);ENEXT+=n/rate}
 """
+
+
+# ------------------------------------------------------------------ V8 étape 21 : SDR démo + émission HackRF
+class SdrTxDialog(QtWidgets.QDialog):
+    """📡 Émettre avec un HackRF, EN CÂBLE (étape 21) : faux micros FM (son + pilote), porteuses, talkies, blocs larges,
+    brouilleur intermittent — pour tester un récepteur, l'écoute de l'appli, l'intermod ou s'entraîner à la chasse.
+    En SDR démo, rien n'est émis : le SDR démo « reçoit » l'émission simulée."""
+    COLS = ("MHz", "Type", "Son", "Pilote", "Intermittent", "Niveau")
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner, self.run = owner, None
+        self.setWindowTitle("📡 Émettre avec un HackRF (en câble)")
+        lay = QtWidgets.QVBoxLayout(self)
+        warn = QtWidgets.QLabel("⚠ Émettre à l'antenne sans autorisation est interdit. En CÂBLE seulement, avec un "
+                                "atténuateur (30 dB ou plus) avant l'entrée du récepteur ou du tinySA.")
+        warn.setWordWrap(True)
+        warn.setStyleSheet(f"color: {owner.tone_color('bad')}; font-weight: bold;")
+        lay.addWidget(warn)
+        self.demo_lbl = QtWidgets.QLabel("")
+        self.demo_lbl.setWordWrap(True)
+        lay.addWidget(self.demo_lbl)
+        self.tbl = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.tbl.setHorizontalHeaderLabels(list(self.COLS))
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.setToolTip("Ce que le HackRF émet en même temps (8 au plus, tous dans une même fenêtre de quelques MHz).")
+        lay.addWidget(self.tbl, 1)
+        add = QtWidgets.QPushButton("＋ Ajouter un signal")
+        add.setToolTip("Un faux micro FM de plus (change le type, le son…).")
+        add.clicked.connect(lambda *_: self.add_row())
+        mine = QtWidgets.QPushButton("Depuis ma liste")
+        mine.setToolTip("Ajoute les micros choisis dans « Mes fréquences » (ou les 3 premiers).")
+        mine.clicked.connect(lambda *_: self.from_list())
+        dele = QtWidgets.QPushButton("Retirer")
+        dele.setToolTip("Retire les lignes choisies.")
+        dele.clicked.connect(lambda *_: self.del_rows())
+        lay.addLayout(owner._row(add, mine, dele, None))
+        self.gain = QtWidgets.QSpinBox()
+        self.gain.setRange(0, 47)
+        self.gain.setSuffix(" dB")
+        self.gain.setToolTip("Gain d'émission du HackRF (0 à 47 dB). Commence à 0 : en câble, c'est déjà bien assez.")
+        self.amp = QtWidgets.QCheckBox("Ampli (+ ~11 dB)")
+        self.amp.setToolTip("Ampli de sortie du HackRF. Inutile en câble : laisse-le coupé.")
+        self.dur = QtWidgets.QComboBox()
+        for m_ in TX_DURATIONS:
+            self.dur.addItem(TR("{} min").format(m_), m_)
+        self.dur.setCurrentIndex(1)
+        self.dur.setToolTip("L'émission s'arrête toute seule au bout de ce temps.")
+        lay.addLayout(owner._row("Gain :", self.gain, self.amp, "Durée :", self.dur, None))
+        self.cable = QtWidgets.QCheckBox("Je suis EN CÂBLE avec un atténuateur, aucune antenne branchée")
+        self.cable.setToolTip("Obligatoire pour émettre.")
+        lay.addWidget(self.cable)
+        self.info = QtWidgets.QLabel("")
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        self.go = QtWidgets.QPushButton("📡 Émettre")
+        self.go.setToolTip("Lance / arrête l'émission.")
+        self.go.clicked.connect(lambda *_: self.toggle())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre (l'émission s'arrête).")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(self.go, None, close))
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(500)
+        fit_dialog(self, 760, 520)
+        self.add_row(dict(f=606.0))
+        self.refresh()
+
+    # ---- lignes
+    def add_row(self, r=None):
+        r = dict(dict(f=606.0, kind="fm", audio="voice", pilot=True, burst=False, lvl=0.0), **(r or {}))
+        if self.tbl.rowCount() >= TX_MAX_SIGS:
+            return
+        i = self.tbl.rowCount()
+        self.tbl.insertRow(i)
+        f = QtWidgets.QDoubleSpinBox()
+        f.setRange(1.0, 6000.0)
+        f.setDecimals(3)
+        f.setSingleStep(0.025)
+        f.setValue(float(r["f"]))
+        k = QtWidgets.QComboBox()
+        for k_, t_ in SIG_KINDS:
+            k.addItem(t_, k_)
+        k.setCurrentIndex(max(0, k.findData(r["kind"])))
+        a = QtWidgets.QComboBox()
+        for k_, t_ in DEMO_SOUNDS:
+            a.addItem(t_, k_)
+        a.setCurrentIndex(max(0, a.findData(r["audio"])))
+        p = QtWidgets.QCheckBox()
+        p.setChecked(bool(r["pilot"]))
+        p.setToolTip("Tonalité pilote inaudible (32,768 kHz) comme beaucoup de micros analogiques.")
+        b = QtWidgets.QCheckBox()
+        b.setChecked(bool(r["burst"]))
+        b.setToolTip("Allumé 1 s toutes les 4 s : un brouilleur qui va et vient (chasse, alarmes).")
+        lv = QtWidgets.QSpinBox()
+        lv.setRange(-40, 0)
+        lv.setSuffix(" dB")
+        lv.setValue(int(r["lvl"]))
+        lv.setToolTip("Niveau par rapport au signal le plus fort (0 dB).")
+        for c, w in enumerate((f, k, a, p, b, lv)):
+            self.tbl.setCellWidget(i, c, w)
+        for w in (f, lv):
+            w.valueChanged.connect(lambda *_: self.refresh())
+        k.currentIndexChanged.connect(lambda *_: self.refresh())
+
+    def rows(self):
+        out = []
+        for i in range(self.tbl.rowCount()):
+            w = [self.tbl.cellWidget(i, c) for c in range(len(self.COLS))]
+            out.append(dict(f=w[0].value(), kind=w[1].currentData(), audio=w[2].currentData(), pilot=w[3].isChecked(),
+                            burst=w[4].isChecked(), lvl=float(w[5].value())))
+        return out
+
+    def from_list(self):
+        o = self.owner
+        rows = sorted({ix.row() for ix in o.watch_table.selectionModel().selectedRows()}) if hasattr(o, "watch_table") \
+            else []
+        ws = [o.watch[r] for r in rows if 0 <= r < len(o.watch)] or list(o.watch[:3])
+        for w in ws:
+            dig = o.mic_demod(w)[0] == DEMOD_DIGITAL if hasattr(o, "mic_demod") else False
+            self.add_row(dict(f=w["freq"], kind="noise" if dig or (w.get("bw") or 0) > 0 else "fm"))
+        self.refresh()
+
+    def del_rows(self):
+        for r in sorted({ix.row() for ix in self.tbl.selectionModel().selectedIndexes()}, reverse=True):
+            self.tbl.removeRow(r)
+        self.refresh()
+
+    # ---- émission
+    def demo(self):
+        return bool(self.owner.sdr_cfg.get("demo"))
+
+    def plan(self):
+        return tx_plan(self.rows())
+
+    def refresh(self):
+        r = self.run
+        on = r is not None and r.running()
+        if r is not None and not on:
+            self._ended(r)
+        self.demo_lbl.setText(TR("🧪 SDR démo allumé : émission SIMULÉE, rien ne sort. Le SDR démo la « reçoit » : regarde "
+                                 "le spectre et écoute.") if self.demo() else "")
+        if on:
+            left = max(0, int(r.until - time.time()))
+            self.info.setText(TR("📡 Émission en cours · {} min {:02d} s restantes").format(left // 60, left % 60))
+        else:
+            p = self.plan()
+            self.info.setText(p if isinstance(p, str) else TR("Centre {} MHz · débit {} MS/s · {} signal(aux)").format(
+                f"{p[0] / 1e6:.3f}", f"{p[1] / 1e6:g}", len(p[2])))
+        t = "■ Arrêter l'émission" if on else "📡 Émettre"
+        if getattr(self, "_gt", None) != t:
+            self._gt = t
+            self.go.setText(t)
+
+    def toggle(self):
+        if self.run is not None and self.run.running():
+            self.stop()
+            return
+        o = self.owner
+        if not self.cable.isChecked() and not self.demo():
+            self.info.setText(TR("Coche d'abord « en câble avec un atténuateur »."))
+            return
+        p = self.plan()
+        if isinstance(p, str):
+            self.info.setText(p)
+            return
+        fc, rate, sigs = p
+        until = time.time() + 60.0 * int(self.dur.currentData() or 5)
+        if self.demo():
+            self.run = TxRunner(fc, rate, sigs, until, demo=True)
+        else:
+            busy = [e for e in (getattr(o, "sdr_engs", None) or {}).values() if e.running() and e.kind() == "hackrf"]
+            if busy:
+                self.info.setText(TR("Un poste SDR utilise le HackRF : arrête-le d'abord (un HackRF reçoit OU émet)."))
+                return
+            exe = getattr(o, "_tx_tool", None) or find_sdr_tool("hackrf_transfer", o.sdr_cfg.get("dir", ""))
+            if not exe:
+                self.info.setText(TR("hackrf_transfer introuvable (outils HackRF : PothosSDR, ou 📡 Réglages SDR)."))
+                return
+            ser = next((pp["serial"] for pp in sdr_posts_norm(o.sdr_cfg.get("posts"))
+                        if (sdr_model(pp["model"]) or {}).get("kind") == "hackrf" and pp["serial"]), "")
+            try:
+                self.run = TxRunner(fc, rate, sigs, until, exe=exe, gain=self.gain.value(), amp=self.amp.isChecked(),
+                                    serial=ser)
+            except OSError as ex:
+                self.info.setText(TR("⚠ Impossible de lancer hackrf_transfer : {}").format(ex))
+                return
+        o.log_event(dict(name=TR("Émission SDR"), freq=fc / 1e6, note=TR("{} · gain {} dB{} · {}").format(
+            ", ".join(f"{s_['f']:.3f}" for s_ in sigs), self.gain.value(), TR(" · ampli") if self.amp.isChecked() else "",
+            TR("simulée (SDR démo)") if self.demo() else TR("en câble"))), 0.0, "ÉMISSION SDR")
+        self.refresh()
+
+    def _ended(self, r):
+        self.run = None
+        why = r.why or (r.err[-1] if r.err else "")
+        self.owner.log_event(dict(name=TR("Émission SDR"), freq=r.fc / 1e6, note=why or TR("arrêtée")), 0.0,
+                             "FIN D'ÉMISSION SDR")
+        if why:
+            self.owner.set_status(TR("⚠ Émission arrêtée : {}").format(why))
+
+    def stop(self):
+        r = self.run
+        if r is not None:
+            r.stop()
+            self._ended(r)
+        self.refresh()
+
+    def closeEvent(self, ev):
+        self.stop()
+        super().closeEvent(ev)
+
+
+def _v8_demo_mics(self):
+    """Micros que « reçoit » le SDR démo : ta liste (sauf les 💤 éteints et ceux hors de l'état 📸 actif)."""
+    out = []
+    for w in self.watch:
+        if w.get("muted") or w.get("off"):
+            continue
+        out.append(dict(f=w["freq"], name=w.get("name", ""), bw=float(w.get("bw") or 0.0),
+                        free=self.is_keep_free(w.get("status")),
+                        digital=self.mic_demod(w)[0] == DEMOD_DIGITAL))
+    return out
+
+
+def _v8_set_sdr_demo(self, on):
+    """🧪 SDR démo allumé / éteint : les postes en marche repartent sur la nouvelle source."""
+    on = bool(on)
+    if bool(self.sdr_cfg.get("demo")) == on:
+        return
+    run = [e for e in (getattr(self, "sdr_engs", None) or {}).values() if e.running()]
+    for e in run:
+        e.stop()
+    self.sdr_cfg["demo"] = on
+    tx = getattr(self, "_sdrtx", None)
+    if tx is not None and tx.run is not None:
+        tx.stop()
+    if on:
+        if self.rf_mode == "tiny":
+            self.set_rf_mode("sdr")
+        for e in run or [self.sdr_eng]:
+            e.start()
+        self.set_status(TR("🧪 SDR démo : tes micros sont « reçus » avec du son et un pilote ; un brouilleur passe de temps "
+                           "en temps, un micro s'éteint, un autre perd son pilote."))
+    else:
+        sdr_demo_set(plan=[], tx=[])
+        self.set_status(TR("SDR démo coupé : le poste SDR reprendra ton vrai SDR au prochain ▶."))
+    for d in self.all_sdr_docks():
+        if hasattr(d.widget(), "refresh"):
+            d.widget().refresh()
+
+
+def _v8_open_sdr_tx(self):
+    d = getattr(self, "_sdrtx", None)
+    if d is None:
+        d = self._sdrtx = SdrTxDialog(self)
+    d.show()
+    d.raise_()
+    return d
+
+
+MainWindow.demo_mics = _v8_demo_mics
+MainWindow.set_sdr_demo = _v8_set_sdr_demo
+MainWindow.sdr_demo_on = lambda self: self.set_sdr_demo(True)
+MainWindow.sdr_demo_off = lambda self: self.set_sdr_demo(False)
+MainWindow.open_sdr_tx = _v8_open_sdr_tx
+MainWindow.toggle_sdr_demo = lambda self: self.set_sdr_demo(not self.sdr_cfg.get("demo"))
 
 
 def self_test(path):

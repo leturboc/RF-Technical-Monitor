@@ -5,6 +5,28 @@ import os, sys, time
 import numpy as np
 
 args = sys.argv[1:]
+if "-t" in args:                             # émission (« hackrf_transfer -t - ») : lit l'IQ int8 et note ce qu'il a reçu
+    import json
+    fs_t = float(args[args.index("-s") + 1])
+    raw = bytearray()
+    while True:
+        b = sys.stdin.buffer.read(65536)
+        if not b:
+            break
+        if len(raw) < int(fs_t * 0.4) * 2:
+            raw += b
+        rep = dict(args=args, bytes=len(raw))
+    x = np.frombuffer(bytes(raw), dtype=np.int8).astype(np.float32)
+    iq = x[0::2] + 1j * x[1::2]
+    n = 1 << int(np.log2(max(1024, len(iq) // 2)))
+    sp = np.abs(np.fft.fftshift(np.fft.fft(iq[-n:] * np.hanning(n))))
+    fr = np.fft.fftshift(np.fft.fftfreq(n, 1.0 / fs_t))
+    out = os.environ.get("FAKE_TX_OUT")
+    if out:
+        with open(out, "w") as fh:
+            json.dump(dict(args=args, samples=len(iq), peak_hz=float(fr[int(np.argmax(sp))]),
+                           maxabs=float(np.max(np.abs(x))) if len(x) else 0.0), fh)
+    sys.exit(0)
 hackrf = "-r" in args
 fc = float(args[args.index("-f") + 1])
 fs = float(args[args.index("-s") + 1])

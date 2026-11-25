@@ -1220,3 +1220,115 @@ EXACT.update({
     "⏺ Son de l'alarme enregistré : {}": "⏺ Alarm sound recorded: {}",
     "{} · {} : {}": "{} · {}: {}",
 })
+
+# ---------------------------------------------------------------- V8 étape 21 : SDR démo + émission HackRF
+EXACT.update({
+    " Pas de SDR sous la main ? Essaie 🧪 SDR démo (menu du mode).": " No SDR at hand? Try 🧪 SDR demo (mode menu).",
+    " · ampli": " · amp",
+    "Ajoute au moins un signal.": "Add at least one signal.",
+    "Ajoute les micros choisis dans « Mes fréquences » (ou les 3 premiers).":
+        "Adds the mics selected in “My frequencies” (or the first 3).",
+    "Allumé 1 s toutes les 4 s : un brouilleur qui va et vient (chasse, alarmes).":
+        "On 1 s every 4 s: an interferer that comes and goes (hunt, alarms).",
+    "Ampli (+ ~11 dB)": "Amp (+ ~11 dB)",
+    "Ampli de sortie du HackRF. Inutile en câble : laisse-le coupé.": "HackRF output amp. Useless on a cable: leave it off.",
+    "Bips": "Beeps",
+    "Bloc large (numérique, TNT)": "Wide block (digital, DTT)",
+    "Ce que le HackRF émet en même temps (8 au plus, tous dans une même fenêtre de quelques MHz).":
+        "What the HackRF transmits at the same time (8 at most, all in one window of a few MHz).",
+    "Centre {} MHz · débit {} MS/s · {} signal(aux)": "Centre {} MHz · rate {} MS/s · {} signal(s)",
+    "Coche d'abord « en câble avec un atténuateur ».": "First tick “on a cable with an attenuator”.",
+    "Depuis ma liste": "From my list",
+    "FIN D'ÉMISSION SDR": "SDR TRANSMISSION END",
+    "Ferme la fenêtre (l'émission s'arrête).": "Closes the window (transmission stops).",
+    "Gain :": "Gain:",
+    "Gain d'émission du HackRF (0 à 47 dB). Commence à 0 : en câble, c'est déjà bien assez.":
+        "HackRF transmit gain (0 to 47 dB). Start at 0: on a cable, that's already plenty.",
+    "Intermittent": "Intermittent",
+    "Je suis EN CÂBLE avec un atténuateur, aucune antenne branchée": "I am ON A CABLE with an attenuator, no antenna connected",
+    "L'émission s'arrête toute seule au bout de ce temps.": "Transmission stops by itself after this time.",
+    "Lance / arrête l'émission.": "Starts / stops the transmission.",
+    "Micro FM (large)": "FM mic (wide)",
+    "Mélodie": "Melody",
+    "Niveau par rapport au signal le plus fort (0 dB).": "Level relative to the strongest signal (0 dB).",
+    "Numérique": "Digital",
+    "Pilote": "Pilot",
+    "Retire les lignes choisies.": "Removes the selected rows.",
+    "Réserve": "Reserve",
+    "SDR démo": "SDR demo",
+    "SDR démo coupé : le poste SDR reprendra ton vrai SDR au prochain ▶.":
+        "SDR demo off: the SDR station will use your real SDR on the next ▶.",
+    "MHz": "MHz",
+    "Type": "Type",
+    "Son": "Sound",
+    "Niveau": "Level",
+    "Durée :": "Duration:",
+    "Fermer": "Close",
+    "Ajoute au moins un signal": "Add at least one signal",
+    "Émission SDR": "SDR transmission",
+    "ÉMISSION SDR": "SDR TRANSMISSION",
+    "arrêtée": "stopped",
+    "en câble": "on a cable",
+    "simulée (SDR démo)": "simulated (SDR demo)",
+    "{} min": "{} min",
+    "{} · gain {} dB{} · {}": "{} · gain {} dB{} · {}",
+    "⚠ Émission arrêtée : {}": "⚠ Transmission stopped: {}",
+    "⚠ Impossible de lancer hackrf_transfer : {}": "⚠ Can't start hackrf_transfer: {}",
+    "hackrf_transfer introuvable (outils HackRF : PothosSDR, ou 📡 Réglages SDR).":
+        "hackrf_transfer not found (HackRF tools: PothosSDR, or 📡 SDR settings).",
+    "Un poste SDR utilise le HackRF : arrête-le d'abord (un HackRF reçoit OU émet).":
+        "An SDR station is using the HackRF: stop it first (a HackRF receives OR transmits).",
+    "📡 Émission en cours · {} min {:02d} s restantes": "📡 Transmitting · {} min {:02d} s left",
+    "■ Arrêter l'émission": "■ Stop transmitting",
+    "📡 Émettre": "📡 Transmit",
+    "Émettre": "Transmit",
+    "📡 Émettre avec un HackRF (en câble)": "📡 Transmit with a HackRF (on a cable)",
+    "📡 Émettre avec un HackRF (en câble)…": "📡 Transmit with a HackRF (on a cable)…",
+    "＋ Ajouter un signal": "＋ Add a signal",
+    "Ajouter un signal": "Add a signal",
+    "Retirer": "Remove",
+    "Un faux micro FM de plus (change le type, le son…).": "One more fake FM mic (change the type, the sound…).",
+    "Tonalité pilote inaudible (32,768 kHz) comme beaucoup de micros analogiques.":
+        "Inaudible pilot tone (32.768 kHz) like many analog mics.",
+    "Obligatoire pour émettre.": "Required to transmit.",
+    "Lance / arrête l'émission": "Starts / stops the transmission",
+    "Porteuse pure": "Pure carrier",
+    "Talkie (FM étroite)": "Walkie-talkie (narrow FM)",
+    "Voix « un, deux »": "Voice “one, two”",
+    "Tonalité 1 kHz": "1 kHz tone",
+    "⚠ Émettre à l'antenne sans autorisation est interdit. En CÂBLE seulement, avec un atténuateur (30 dB ou plus) avant "
+    "l'entrée du récepteur ou du tinySA.": "⚠ Transmitting over the air without authorisation is forbidden. ON A CABLE "
+                                          "only, with an attenuator (30 dB or more) before the receiver's or tinySA's "
+                                          "input.",
+    "🧪 SDR démo allumé : émission SIMULÉE, rien ne sort. Le SDR démo la « reçoit » : regarde le spectre et écoute.":
+        "🧪 SDR demo on: SIMULATED transmission, nothing goes out. The SDR demo “receives” it: watch the spectrum and "
+        "listen.",
+    "🧪 SDR démo (sans matériel)": "🧪 SDR demo (no hardware)",
+    "🧪 SDR démo (sans matériel, avec du son)": "🧪 SDR demo (no hardware, with sound)",
+    "🧪 SDR démo (allumer / éteindre)": "🧪 SDR demo (on / off)",
+    "🧪 SDR démo : tes micros sont « reçus » avec du son et un pilote ; un brouilleur passe de temps en temps, un micro "
+    "s'éteint, un autre perd son pilote.": "🧪 SDR demo: your mics are “received” with sound and a pilot; an interferer "
+                                           "passes now and then, a mic switches off, another loses its pilot.",
+    "Signaux fabriqués par l'appli à partir de tes micros (son, pilote, brouilleur qui passe, micro qui s'éteint) : pour "
+    "découvrir le poste SDR sans matériel.": "Signals made by the app from your mics (sound, pilot, passing interferer, mic "
+                                            "switching off): to discover the SDR station without hardware.",
+    "SDR démo (sans matériel)": "SDR demo (no hardware)",
+    "SDR démo (sans matériel, avec du son)": "SDR demo (no hardware, with sound)",
+})
+TEMPLATES.update({
+    "Signaux trop écartés ({} MHz) : {} MHz au plus en une fois.": "Signals too far apart ({} MHz): {} MHz at most at once.",
+    "{} signaux au plus.": "{} signals at most.",
+    "Fréquences entre {} et {} MHz.": "Frequencies between {} and {} MHz.",
+})
+SAME_TEMPLATES += ["HF {}"]
+EXACT.update({
+    "V8 : pas de SDR ? L'appli fabrique les signaux de tes micros (son, pilote, brouilleur qui passe,\nmicro qui s'éteint) : "
+    "tout le poste SDR marche, écoute comprise.": "V8: no SDR? The app makes the signals of your mics (sound, pilot, passing "
+                                                 "interferer,\nmic switching off): the whole SDR station works, listening "
+                                                 "included.",
+    "V8 : faux micros FM, porteuses, brouilleur intermittent émis par un HackRF, EN CÂBLE\navec un atténuateur (tester un "
+    "récepteur, l'intermod, s'entraîner à la chasse).": "V8: fake FM mics, carriers, intermittent interferer transmitted "
+                                                         "by a HackRF, ON A CABLE\nwith an attenuator (test a receiver, "
+                                                         "intermod, practise hunting).",
+})
+EXACT.update({"📡 Émettre avec un HackRF": "📡 Transmit with a HackRF", "🧪 SDR démo": "🧪 SDR demo"})

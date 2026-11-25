@@ -1557,6 +1557,54 @@ win.sdr_set_fav(1, None)
 win.sdr_set_fav(2, None)
 win.sdr_cfg["model"] = _mod20
 _e20.set_auto(tune=False)                           # la suite (2 SDR, démo pleine d'alarmes) : pas de calage auto
+# V8 étape 21 : 🧪 SDR démo (sans matériel, avec du son) + 📡 émission HackRF (simulée, puis vers un faux hackrf_transfer)
+_rf21 = win.rf_mode
+step("21 : 🧪 SDR démo", lambda: win.set_sdr_demo(True))
+_e21 = win.sdr_eng
+_e21.set_auto(tune=False)
+win.sdr_tune_mic(_pair[0])
+_t0 = time.time()
+while time.time() - _t0 < 15 and (_e21.last is None or _e21.level_at(_pair[0]["freq"]) is None):
+    wait(300)
+check("21 : SDR démo en marche, sans aucun outil", _e21.running() and _e21.kind() == "demo", _e21.msg)
+check("21 : tes micros « reçus » (niveau mesuré)", (_e21.level_at(_pair[0]["freq"]) or -200) > -90,
+      str(_e21.level_at(_pair[0]["freq"])))
+wait(2500)
+check("21 : … avec du son", len(_e21.af) > 0 and any(len(b_) for b_ in _e21.af))
+shot(win, "sdr_demo")
+_tx = step("21 : 📡 émission (fenêtre)", win.open_sdr_tx)
+_ftx = round(_pair[0]["freq"] + 0.45, 3)
+_tx.tbl.cellWidget(0, 0).setValue(_ftx)
+_tx.tbl.cellWidget(0, 1).setCurrentIndex(_tx.tbl.cellWidget(0, 1).findData("cw"))
+_lv0 = _e21.level_at(_ftx, 0.02) or -200
+_tx.toggle()
+wait(2500)
+check("21 : émission simulée reçue par le SDR démo", _tx.run is not None and (_e21.level_at(_ftx, 0.02) or -200) > _lv0 + 20,
+      f"{_lv0} -> {_e21.level_at(_ftx, 0.02)}")
+shot(_tx, "sdr_emission")
+_tx.stop()
+step("21 : SDR démo coupé", lambda: win.set_sdr_demo(False))
+check("21 : démo coupée = postes arrêtés", not any(e_.running() for e_ in win.sdr_engs.values()))
+_tx.toggle()
+check("21 : pas d'émission réelle sans « en câble »", _tx.run is None and "câble" in _tx.info.text(), _tx.info.text())
+if sys.platform != "win32":
+    _wr21 = os.path.join(tmp, "hackrf_transfer")
+    with open(_wr21, "w") as _fh:
+        _fh.write(f"#!/bin/sh\nexec {sys.executable} {os.path.join(HERE, 'fake_iq.py')} \"$@\"\n")
+    os.chmod(_wr21, 0o755)
+    os.environ["FAKE_TX_OUT"] = os.path.join(tmp, "tx.json")
+    win._tx_tool = _wr21
+    _tx.cable.setChecked(True)
+    _tx.toggle()
+    wait(1500)
+    _tx.stop()
+    wait(800)
+    _rep = json.load(open(os.environ["FAKE_TX_OUT"])) if os.path.exists(os.environ["FAKE_TX_OUT"]) else {}
+    check("21 : hackrf_transfer reçoit l'IQ (porteuse au bon endroit, gain 0)", _rep.get("samples", 0) > 100000
+          and abs(_rep.get("peak_hz", 0) - (_ftx * 1e6 - float(_rep["args"][_rep["args"].index("-f") + 1]))) < 5000
+          and _rep["args"][_rep["args"].index("-x") + 1] == "0", str(_rep))
+_tx.close()
+win.set_rf_mode(_rf21)
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
 _p2 = _pd.add()

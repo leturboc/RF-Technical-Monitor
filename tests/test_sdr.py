@@ -814,5 +814,40 @@ ok("c'est quoi : micro FM sur A", c20["kind"] == "fm_ana" and ns["what_is_text"]
 ok("porteuse vue sur le spectre du SDR", ns["sdr_carrier"](F20, L20, 605.0) and not ns["sdr_carrier"](F20, L20, 607.0))
 ok("c'est quoi : rien", "Rien" in ns["what_is_text"](dict(kind="none")))
 
+# ---------------------------------------------------------------- V8 étape 21 : générateur (SDR démo + émission)
+da_ = ns["demo_audio"]
+_t21 = np.arange(48000 * 3) / 48000.0
+ok("sons de démo : dans −1…1 et pas muets", all(float(np.max(np.abs(da_(k_, _t21, 2)))) <= 1.0 and
+   float(np.sqrt(np.mean(da_(k_, _t21, 2) ** 2))) > 0.02 for k_, _n in ns["DEMO_SOUNDS"]))
+ok("programme : allumé / éteint", ns["sched_on"](None, 5) and ns["sched_on"]((10, 3, 0), 2) and not ns["sched_on"]((10, 3, 0), 5))
+_g21 = ns["SigGen"](2400000, 606e6, [dict(key="a", kind="cw", f=606.3, lvl=0.0)], noise=0.0)
+_b1, _b2 = _g21.block(1000), _g21.block(1000)
+_ph = np.unwrap(np.angle(np.concatenate([_b1, _b2])))
+ok("générateur : pas de saut de phase entre deux blocs", float(np.max(np.abs(np.diff(np.diff(_ph))))) < 1e-3)
+_g21 = ns["SigGen"](2400000, 605.24e6, ns["demo_sdr_plan"]([]))
+_x21 = np.concatenate([_g21.block(120000) for _i in range(20)])
+_d21 = ns["ChannelDemod"](2400000, 606.2e6 - 605.24e6, "wfm", 50.0, None, None)
+_a21, _l21 = _d21.process(_x21)
+ok("SDR démo : un micro FM s'écoute (son) et a son pilote", float(np.sqrt(np.mean(np.asarray(_a21) ** 2))) > 0.01
+   and _d21.pilot is not None and abs(_d21.pilot[0] - ns["DEMO_PILOT"]) < 300, str(_d21.pilot))
+_p21 = ns["demo_sdr_plan"]([dict(f=606.0, name="A", bw=0, free=False, digital=False),
+                             dict(f=607.0, name="B", bw=0, free=False, digital=True),
+                             dict(f=605.0, name="R", bw=0, free=True, digital=False),
+                             dict(f=610.0, name="S", bw=8.0, free=False, digital=False)])
+_kinds = {s_["key"][:3]: s_ for s_ in _p21}
+ok("plan démo : micro FM, numérique = bloc, réserve = brouilleur intermittent, bloc large, TNT",
+   _kinds["mic"]["kind"] == "fm" and _kinds["num"]["kind"] == "noise" and _kinds["jam"].get("on")
+   and _kinds["blk"]["bw"] == 8.0 and "tnt" in _kinds)
+tp_ = ns["tx_plan"]
+_r21 = tp_([dict(f=606.0, kind="fm"), dict(f=607.0, kind="cw")])
+ok("émission : centre hors des signaux, débit qui contient tout", not isinstance(_r21, str) and
+   all(abs(s_["f"] * 1e6 - _r21[0]) > 1e5 for s_ in _r21[2]) and _r21[1] == 4000000, str(_r21[:2]))
+ok("émission : refus clairs", isinstance(tp_([]), str) and isinstance(tp_([dict(f=470.0), dict(f=500.0)]), str)
+   and isinstance(tp_([dict(f=7000.0)]), str) and isinstance(tp_([dict(f=606.0 + i) for i in range(9)]), str))
+ok("émission : commande hackrf_transfer", ns["tx_cmd"]("hackrf_transfer", 606.95e6, 4000000, 60, True, "ab") ==
+   ["hackrf_transfer", "-t", "-", "-f", "606950000", "-s", "4000000", "-x", "47", "-a", "1", "-d", "ab"])
+_c8 = np.frombuffer(ns["iq_ci8"](np.array([2.0 + 0j, -2.0j], dtype=np.complex64)), dtype=np.int8)
+ok("IQ int8 : ramené sous la pleine échelle", int(np.max(np.abs(_c8.astype(int)))) <= 127 and _c8[0] > 100)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
