@@ -1836,6 +1836,17 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
     **Phases** (`ph_tbl`, `_fill_phases`). 13. carte : rien de neuf en plus de la chasse nourrie par le SDR (étape 11).
   - Seuils (souffle −45 dBFS, haché 8, largeur × 1,3, voisin + 10 dB, budget 0,6) = **choix de Claude, testés sur des
     signaux synthétiques seulement**. Rien de l'étape 12 n'a tourné avec un vrai SDR / récepteur / micro.
+- **V8 étape 13 (Clément : « que Shure ? Sennheiser, Wisycom et les plus grosses marques »)** : PURE `RX_BRANDS` (shure
+  TCP 2202 ; g4 = Sennheiser evolution G3 / G4 / 2000, UDP 53212, texte « Push 60 100 3 » puis « RF1 / RF2 / AF / Bat /
+  Frequency / Name / Msg » ; ssc = Sennheiser Sound Control, UDP 45, JSON : EW-DX, Digital 6000, SpeechLine ; wisycom /
+  other = AUCUN protocole public -> rien envoyé, explication `why`), `RX_ALIASES`, `receiver_addrs` (« g4:ip », « ssc:ip »,
+  sans préfixe = Shure ; config toujours sous la clé `shure`), `receiver_addrs_text`, `g4_init` / `g4_apply` (RF en %,
+  antenne = la plus forte des deux), `ssc_init` (requêtes de mémoire) / `ssc_flatten` / `ssc_apply` (chemins rx<n>/…,
+  mates/tx<n>/battery/gauge), `json_dumps_compact` (pas de json dans la section PURE). `ReceiverClient(hôte, port,
+  marque)` (TCP ou UDP, `_got`), `ShureClient` = sous-classe. `ReceiversDialog` : Marque + Adresse + « ＋ Ajouter », liste
+  « Mes récepteurs » + Retirer (Suppr), `why` pour Wisycom / autres. Colonne RF en dBm ou % (`rf_unit`). **Protocoles
+  Sennheiser écrits de mémoire, jamais essayés sur un vrai récepteur** (testés sur faux récepteurs UDP) : au 1er essai,
+  demander à Clément une capture (Wireshark) si rien ne s'affiche. Wisycom : demander une capture Wisycom Manager ↔ MRK.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

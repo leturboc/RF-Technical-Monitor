@@ -671,5 +671,27 @@ ok("diagnostic court pour la colonne", ns["diag_short"]("RF trop faible : risque
    and ns["diag_short"]("Fréquence qui dérive (+6 kHz) : pack froid") == "Fréquence qui dérive"
    and ns["anomaly_text"](dict(kind="adj", value=-0.4)) == "Voisin trop fort : 0 dB")
 
+# ---------------------------------------------------------------- V8 étape 13 : récepteurs d'autres marques
+ra = ns["receiver_addrs"]("10.0.0.5, g4:10.0.0.6, sennheiser:10.0.0.7:1234; ssc:10.0.0.8, wisycom:10.0.0.9, 10.0.0.5")
+ok("récepteurs : marques et ports", ra == [("shure", "10.0.0.5", 2202), ("g4", "10.0.0.6", 53212), ("g4", "10.0.0.7", 1234),
+   ("ssc", "10.0.0.8", 45), ("wisycom", "10.0.0.9", 0)], str(ra))
+ok("récepteurs : relus de la config à l'identique", ns["receiver_addrs"](ns["receiver_addrs_text"](ra)) == ra
+   and ns["receiver_addrs_text"](ra).startswith("10.0.0.5, g4:10.0.0.6"))
+g4 = {}
+for ln in ["RF1 60", "RF2 75", "AF 40", "Bat 3", "Frequency 556100", "Name HF 1", "Msg RF_Mute", "Bidule 3"]:
+    ns["g4_apply"](g4, ln)
+ok("Sennheiser G4 : RF A / B, antenne, son, pile, fréquence, nom, alerte", g4[1] == dict(rf_unit="%", rf_a=60.0, rf_b=75.0,
+   rf=75.0, ant="XB", audio=40.0, batt=5, freq=556.1, name="HF 1", alarms={"MSG": "RF_Mute"}), str(g4))
+ns["g4_apply"](g4, "Msg OK")
+ok("Sennheiser G4 : alerte retombée", g4[1]["alarms"] == {})
+ssc = {}
+ns["ssc_apply"](ssc, {"rx1": {"name": "Chant", "frequency": 606000, "rf1": {"level": -60}, "rf2": {"level": -72},
+                              "af": {"level": -20}, "warnings": ["RF low"]}, "mates": {"tx1": {"battery": {"gauge": 70}}}})
+ok("Sennheiser SSC : canal lu (JSON)", ssc[1] == dict(name="Chant", freq=606.0, rf_a=-60.0, rf_unit="dBm", rf=-60.0,
+   rf_b=-72.0, ant="AX", audio=-20.0, alarms={"W1": "RF low"}, batt=4), str(ssc))
+import json as _js
+ok("SSC : requêtes JSON valides", all(isinstance(_js.loads(x), dict) for x in ns["ssc_init"]())
+   and _js.loads(ns["json_dumps_compact"]({"a": 'x"y\\z', "b": [1, None, True]})) == {"a": 'x"y\\z', "b": [1, None, True]})
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

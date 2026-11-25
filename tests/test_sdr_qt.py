@@ -369,5 +369,64 @@ wait_until(lambda: not sc.ok, 5)
 check("Shure : coupure vue", not sc.ok and sc.err, sc.err)
 sc.stop()
 
+# V8 étape 13 : Sennheiser G4 (UDP, texte) et SSC (UDP, JSON) sur de faux récepteurs
+import json as _js13
+
+
+def fake_udp(handler):
+    u = _so.socket(_so.AF_INET, _so.SOCK_DGRAM)
+    u.bind(("127.0.0.1", 0))
+    u.settimeout(0.5)
+    stop = _th.Event()
+
+    def run():
+        while not stop.is_set():
+            try:
+                d, a = u.recvfrom(65535)
+            except OSError:
+                continue
+            for out in handler(d.decode()):
+                u.sendto(out.encode(), a)
+    _th.Thread(target=run, daemon=True).start()
+    return u, stop
+
+
+g4srv, g4stop = fake_udp(lambda req: ["RF1 55\rRF2 80\rAF 30\rBat 2\rFrequency 556100\rName Voix\rMsg OK\r"]
+                         if req.startswith("Push") else [])
+gc = m.ReceiverClient("127.0.0.1", g4srv.getsockname()[1], "g4")
+gc.start()
+wait_until(lambda: gc.snapshot().get(1, {}).get("name") == "Voix", 5)
+g1 = gc.snapshot().get(1, {})
+check("Sennheiser G4 (UDP) : canal lu (RF %, antenne B, pile, fréquence)", gc.ok and g1.get("rf") == 80.0
+      and g1.get("ant") == "XB" and g1.get("freq") == 556.1 and g1.get("rf_unit") == "%", str(g1))
+gc.stop()
+g4stop.set()
+
+
+def ssc_answer(req):
+    q = _js13.loads(req)
+    if "rx1" in q:
+        return [_js13.dumps({"rx1": {"name": "Chœur", "frequency": 606125, "rf1": {"level": -55}, "rf2": {"level": -50},
+                                     "warnings": []}})]
+    if q.get("mates", {}).get("tx1"):
+        return [_js13.dumps({"mates": {"tx1": {"battery": {"gauge": 40}}}})]
+    return [_js13.dumps({"osc": {"error": [{"rx2": 404}]}})]
+
+
+sscsrv, sscstop = fake_udp(ssc_answer)
+sc2 = m.ReceiverClient("127.0.0.1", sscsrv.getsockname()[1], "ssc")
+sc2.start()
+wait_until(lambda: sc2.snapshot().get(1, {}).get("batt") is not None, 5)
+s1 = sc2.snapshot().get(1, {})
+check("Sennheiser SSC (UDP, JSON) : nom, fréquence, RF dBm, antenne, pile", sc2.ok and s1.get("name") == "Chœur"
+      and s1.get("freq") == 606.125 and s1.get("rf") == -50.0 and s1.get("ant") == "XB" and s1.get("batt") == 2
+      and not s1.get("alerts"), str(s1))
+sc2.stop()
+sscstop.set()
+wc = m.ReceiverClient("127.0.0.1", None, "wisycom")
+wc.start()
+wc.join(2)
+check("Wisycom : rien envoyé, explication donnée", not wc.ok and "Wisycom" in wc.err, wc.err)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

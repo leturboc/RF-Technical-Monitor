@@ -7634,8 +7634,8 @@ def sdr_cfg_extra(sd):
         out["rehearsal"] = rh
     if "phases" in sd or rh:                           # 20. phases du show (l'ancienne répétition y est reprise)
         out["phases"] = phases_norm(sd.get("phases"), sd.get("rehearsal"))
-    if isinstance(sd.get("shure"), str):
-        out["shure"] = ", ".join(f"{h}:{p}" if p != SHURE_PORT else h for h, p in shure_addrs(sd["shure"]))
+    if isinstance(sd.get("shure"), str):               # étape 13 : toutes marques (préfixe g4: / ssc: …)
+        out["shure"] = receiver_addrs_text(receiver_addrs(sd["shure"]))
     return out
 
 
@@ -8731,6 +8731,183 @@ def _svg_iq_spectrum(F, L, f0, w=900, h=220, half=1.0):
     pts = [(float(a), float(b)) for a, b in zip(F, L)]
     s = _svg_series([("", "#0a84ff", pts)], f0, w, h, unit="dBFS")
     return s.replace(f"{(F[0] - f0):+.0f} s", f"{F[0]:.3f} MHz").replace(f"{(F[-1] - f0):+.0f} s", f"{F[-1]:.3f} MHz")
+
+
+# ------------------------------------------------------------------ V8 étape 13 : récepteurs d'autres marques
+# 14. Télémétrie des récepteurs, par marque. Protocoles écrits DE MÉMOIRE d'après les docs publiques / modules
+# communautaires (Bitfocus Companion…) : JAMAIS essayés sur un vrai récepteur. Lecteurs volontairement tolérants.
+#   shure   : texte « < GET 1 RX_RF_LVL > », TCP 2202 (ULX-D, QLX-D, SLX-D, Axient Digital).
+#   g4      : Sennheiser evolution G3 / G4 / 2000 (« Push 60 100 3 » puis lignes « RF1 45 », « Bat 3 »…), UDP 53212.
+#   ssc     : Sennheiser Sound Control (JSON en UDP 45 : EW-DX, Digital 6000, SpeechLine…), chemins lus en vrac.
+#   wisycom, other : pas de protocole public -> rien envoyé, explication affichée.
+RX_BRANDS = {
+    "shure": dict(name="Shure (ULX-D, QLX-D, SLX-D, Axient Digital)", port=2202, proto="tcp"),
+    "g4": dict(name="Sennheiser evolution G3 / G4 / 2000", port=53212, proto="udp"),
+    "ssc": dict(name="Sennheiser EW-DX / Digital 6000 / SpeechLine (SSC)", port=45, proto="udp"),
+    "wisycom": dict(name="Wisycom (MRK, MCR)", port=None, proto=None,
+                    why="Wisycom n'a pas de protocole public (Wisycom Manager parle en privé avec ses récepteurs). "
+                        "Pour l'ajouter : une capture réseau (Wireshark) entre Wisycom Manager et un récepteur."),
+    "other": dict(name="Autre marque (Sony, Audio-Technica, Lectrosonics, Mipro…)", port=None, proto=None,
+                  why="Pas de protocole réseau public connu pour cette marque. Avec une doc ou une capture réseau "
+                      "(Wireshark) de son logiciel, on peut l'ajouter."),
+}
+RX_ALIASES = {"sennheiser": "g4", "senn": "g4", "ew": "g4", "ewdx": "ssc", "ew-dx": "ssc", "d6000": "ssc",
+              "6000": "ssc", "speechline": "ssc", "wisy": "wisycom"}
+
+
+def receiver_addrs(text):
+    """« 192.168.1.50, g4:192.168.1.60, ssc:10.0.0.7:45 » -> [(marque, hôte, port)] ; sans préfixe = Shure."""
+    out = []
+    for x in re.split(r"[\s,;]+", str(text or "")):
+        if not x:
+            continue
+        b, sep, rest = x.partition(":")
+        bk = RX_ALIASES.get(b.lower(), b.lower())
+        if sep and bk in RX_BRANDS:
+            x = rest
+        else:
+            bk = "shure"
+        h, _, p = x.partition(":")
+        try:
+            p = int(p) if p else (RX_BRANDS[bk]["port"] or 0)
+        except ValueError:
+            continue
+        if re.fullmatch(r"[A-Za-z0-9.\-]+", h) and (bk, h, p) not in out:
+            out.append((bk, h, p))
+    return out[:24]
+
+
+def receiver_addrs_text(addrs):
+    """Inverse de receiver_addrs (pour la config) : Shure sans préfixe, port par défaut omis."""
+    out = []
+    for b, h, p in addrs:
+        s = h if p in (RX_BRANDS[b]["port"], 0, None) else f"{h}:{p}"
+        out.append(s if b == "shure" else f"{b}:{s}")
+    return ", ".join(out)
+
+
+def g4_init():
+    """Sennheiser G3 / G4 : demande des mesures pendant 60 s, toutes les 100 ms (à renvoyer avant la fin)."""
+    return ["Push 60 100 3\r"]
+
+
+def g4_apply(state, line):
+    """Une ligne « Clé valeur… » d'un récepteur G3 / G4 -> canal 1 : rf (%, max des 2 antennes), rf_a / rf_b, ant (AX si
+    l'antenne A est la plus forte, sinon XB), audio (%), batt (0-3 -> barres sur 5), freq (MHz, la valeur est en kHz),
+    name, alarms (« Msg » / « Warnings » sauf OK). -> True si compris."""
+    p = str(line).strip().split(None, 1)
+    if len(p) < 2:
+        return False
+    k, v = p[0].lower(), p[1].strip()
+    st = state.setdefault(1, {})
+    st["rf_unit"] = "%"
+
+    def num(x):
+        m = re.match(r"-?\d+(?:\.\d+)?", x)
+        return float(m.group(0)) if m else None
+    if k in ("rf1", "rf2"):
+        n = num(v)
+        if n is None:
+            return False
+        st["rf_a" if k == "rf1" else "rf_b"] = n
+        a, b = st.get("rf_a"), st.get("rf_b")
+        st["rf"] = max(x for x in (a, b) if x is not None)
+        if a is not None and b is not None:
+            st["ant"] = "AX" if a >= b else "XB"
+    elif k == "af" and num(v) is not None:
+        st["audio"] = num(v)
+    elif k in ("bat", "battery"):
+        n = num(v)
+        st["batt"] = None if n is None else int(round(min(5.0, n * 5.0 / 3.0)))
+    elif k == "frequency" and num(v) is not None:
+        st["freq"] = num(v) / 1000.0
+    elif k == "name":
+        st["name"] = v.strip("\"' ")
+    elif k in ("msg", "warnings", "warning"):
+        al = st.setdefault("alarms", {})
+        if v.upper() in ("OK", "0", "NONE", ""):
+            al.pop("MSG", None)
+        else:
+            al["MSG"] = v
+    else:
+        return False
+    return True
+
+
+def ssc_init():
+    """Sennheiser SSC : demandes JSON (une par trame UDP). Chemins de mémoire ; ceux qui n'existent pas sont ignorés
+    par l'appareil (réponse « error »)."""
+    reqs = [{"device": {"name": None, "identity": {"product": None}}}]
+    for c in (1, 2, 3, 4):
+        reqs.append({f"rx{c}": {"name": None, "frequency": None, "rf_quality": None, "warnings": None,
+                                "rf1": {"level": None}, "rf2": {"level": None}, "af": {"level": None}}})
+        reqs.append({"mates": {f"tx{c}": {"battery": {"gauge": None}}}})
+    return [json_dumps_compact(r) for r in reqs]
+
+
+def json_dumps_compact(o):
+    """JSON compact (la section PURE n'importe pas json : écrit à la main, pour des dicts / listes / None / nombres)."""
+    if o is None:
+        return "null"
+    if isinstance(o, bool):
+        return "true" if o else "false"
+    if isinstance(o, (int, float)):
+        return repr(o)
+    if isinstance(o, str):
+        return '"' + "".join("\\" + c if c in '"\\' else c for c in o) + '"'
+    if isinstance(o, dict):
+        return "{" + ",".join(json_dumps_compact(str(k)) + ":" + json_dumps_compact(v) for k, v in o.items()) + "}"
+    return "[" + ",".join(json_dumps_compact(v) for v in o) + "]"
+
+
+def ssc_flatten(o, pre=""):
+    """Réponse SSC (dict JSON) -> {chemin « rx1/rf1/level »: valeur}."""
+    out = {}
+    if isinstance(o, dict):
+        for k, v in o.items():
+            out.update(ssc_flatten(v, f"{pre}/{k}" if pre else str(k)))
+    else:
+        out[pre] = o
+    return out
+
+
+def ssc_apply(state, obj):
+    """Réponse SSC -> canaux : rx<n>/… (rf, rf_a / rf_b, ant, audio, freq, name, alarms), mates/tx<n>/battery."""
+    ok = False
+    for path, v in ssc_flatten(obj).items():
+        m = re.match(r"(?:mates/)?(rx|tx)(\d+)/(.+)$", path)
+        if not m or v is None:
+            continue
+        st = state.setdefault(int(m.group(2)), {})
+        k = m.group(3)
+        try:
+            if k == "name":
+                st["name"] = str(v).strip()
+            elif k == "frequency":
+                f = float(v)
+                st["freq"] = f / 1000.0 if f > 10000 else f            # kHz ou MHz selon l'appareil
+            elif k in ("rf1/level", "rf2/level"):
+                st["rf_a" if k.startswith("rf1") else "rf_b"] = float(v)
+                st["rf_unit"] = "dBm" if float(v) < 0 else "%"
+                a, b = st.get("rf_a"), st.get("rf_b")
+                st["rf"] = max(x for x in (a, b) if x is not None)
+                if a is not None and b is not None:
+                    st["ant"] = "AX" if a >= b else "XB"
+            elif k == "rf_quality" and "rf" not in st:
+                st["rf"], st["rf_unit"] = float(v), "%"
+            elif k == "af/level":
+                st["audio"] = float(v)
+            elif k.startswith("battery") and k.endswith("gauge"):
+                st["batt"] = int(round(max(0.0, min(100.0, float(v))) / 20.0))
+            elif k == "warnings":
+                ws = [str(x) for x in (v if isinstance(v, list) else [v]) if str(x) not in ("", "[]", "None")]
+                st["alarms"] = {f"W{i + 1}": w for i, w in enumerate(ws)}
+            else:
+                continue
+        except (TypeError, ValueError):
+            continue
+        ok = True
+    return ok
 
 
 def reconnect_delay(fails):
@@ -19486,61 +19663,101 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         super().closeEvent(ev)
 
 
-class ShureClient(threading.Thread):
-    """V8 étape 11 (14. / 15.) : télémétrie d'un récepteur Shure en réseau (TCP 2202) : tout lire, puis les mesures
-    (niveau RF, antenne A / B, son) chaque seconde ; reconnexion toutes les 5 s. Sans Qt (fil Python)."""
+class ReceiverClient(threading.Thread):
+    """V8 étapes 11 / 13 (14. / 15.) : télémétrie d'un récepteur en réseau, toutes marques gérées (RX_BRANDS) : Shure en
+    TCP, Sennheiser G3 / G4 et SSC en UDP ; reconnexion toutes les 5 s, muet 15 s = coupé. Sans Qt (fil Python)."""
 
-    def __init__(self, host, port=SHURE_PORT):
+    def __init__(self, host, port=None, brand="shure"):
         super().__init__(daemon=True)
-        self.host, self.port = host, int(port)
+        self.brand = brand if brand in RX_BRANDS else "shure"
+        self.host, self.port = host, int(port or RX_BRANDS[self.brand]["port"] or 0)
         self.state, self.div, self.hist = {}, {}, {}
         self.ok, self.err, self.t_last = False, "", 0.0
         self.lock = threading.Lock()
         self._halt = threading.Event()
 
+    def _got(self, ch, t, key_div=True):
+        """Après une mise à jour d'un canal : diversity et historique du niveau."""
+        st = self.state.get(ch, {})
+        if key_div and st.get("ant"):
+            self.div.setdefault(ch, DiversityAB()).feed(st.get("ant"), t)
+        if st.get("rf") is not None:
+            self.hist.setdefault(ch, deque(maxlen=3600)).append((t, float(st["rf"])))
+        self.t_last = t
+
     def run(self):
+        if not RX_BRANDS[self.brand]["proto"]:
+            self.err = TR(RX_BRANDS[self.brand].get("why", ""))
+            return
         while not self._halt.is_set():
             try:
-                s = socket.create_connection((self.host, self.port), timeout=3)
+                (self._run_tcp if RX_BRANDS[self.brand]["proto"] == "tcp" else self._run_udp)()
             except OSError as e:
                 self.ok, self.err = False, str(e)
-                self._halt.wait(5)
-                continue
-            try:
-                s.settimeout(1.0)
-                for c in shure_init():
-                    s.sendall(c.encode("ascii"))
-                self.ok, self.err, buf, t_rx = True, "", "", time.time()
-                while not self._halt.is_set():
-                    try:
-                        d = s.recv(4096)
-                    except socket.timeout:
-                        if time.time() - t_rx > 15:
-                            raise OSError("plus de réponse depuis 15 s")
-                        continue
-                    if not d:
-                        raise OSError("connexion fermée par le récepteur")
-                    t_rx = time.time()
-                    msgs, buf = shure_split(buf + d.decode("ascii", "replace"))
-                    buf = buf[-4000:]
-                    with self.lock:
-                        for m in msgs:
-                            p = shure_parse(m)
-                            if p and shure_apply(self.state, p):
-                                self.t_last = t_rx
-                                st = self.state.get(p["ch"], {})
-                                if p["key"] in ("ALL", "RF_ANTENNA"):
-                                    self.div.setdefault(p["ch"], DiversityAB()).feed(st.get("ant"), t_rx)
-                                if st.get("rf") is not None and p["key"] in ("ALL", "RX_RF_LVL", "RF_LVL"):
-                                    self.hist.setdefault(p["ch"], deque(maxlen=3600)).append((t_rx, float(st["rf"])))
-            except OSError as e:
-                self.ok, self.err = False, str(e)
-            finally:
-                try:
-                    s.close()
-                except OSError:
-                    pass
             self._halt.wait(5)
+
+    def _run_tcp(self):
+        s = socket.create_connection((self.host, self.port), timeout=3)
+        try:
+            s.settimeout(1.0)
+            for c in shure_init():
+                s.sendall(c.encode("ascii"))
+            self.ok, self.err, buf, t_rx = True, "", "", time.time()
+            while not self._halt.is_set():
+                try:
+                    d = s.recv(4096)
+                except socket.timeout:
+                    if time.time() - t_rx > 15:
+                        raise OSError("plus de réponse depuis 15 s")
+                    continue
+                if not d:
+                    raise OSError("connexion fermée par le récepteur")
+                t_rx = time.time()
+                msgs, buf = shure_split(buf + d.decode("ascii", "replace"))
+                buf = buf[-4000:]
+                with self.lock:
+                    for m in msgs:
+                        p = shure_parse(m)
+                        if p and shure_apply(self.state, p):
+                            self._got(p["ch"], t_rx, p["key"] in ("ALL", "RF_ANTENNA"))
+        finally:
+            s.close()
+
+    def _run_udp(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.settimeout(1.0)
+            ssc = self.brand == "ssc"
+            t_rx, t_req, first = time.time(), 0.0, True
+            while not self._halt.is_set():
+                if time.time() - t_req >= (5.0 if ssc else 50.0):      # G4 : abonnement de 60 s à renouveler
+                    t_req = time.time()
+                    for c in (ssc_init() if ssc else g4_init()):
+                        s.sendto(c.encode("utf-8"), (self.host, self.port))
+                try:
+                    d, _a = s.recvfrom(65535)
+                except socket.timeout:
+                    if time.time() - t_rx > 15:
+                        self.ok = False
+                        raise OSError("plus de réponse depuis 15 s" if not first else "pas de réponse")
+                    continue
+                t_rx, first = time.time(), False
+                self.ok, self.err = True, ""
+                txt = d.decode("utf-8", "replace")
+                with self.lock:
+                    if ssc:
+                        try:
+                            obj = json.loads(txt)
+                        except ValueError:
+                            continue
+                        if ssc_apply(self.state, obj):
+                            for ch in list(self.state):
+                                self._got(ch, t_rx)
+                    else:
+                        if any([g4_apply(self.state, ln) for ln in re.split(r"[\r\n]+", txt) if ln.strip()]):
+                            self._got(1, t_rx)
+        finally:
+            s.close()
 
     def stop(self):
         self._halt.set()
@@ -19552,6 +19769,13 @@ class ShureClient(threading.Thread):
                     for c, v in self.state.items()}
 
 
+class ShureClient(ReceiverClient):
+    """Récepteur Shure (TCP 2202) — nom gardé de l'étape 11."""
+
+    def __init__(self, host, port=SHURE_PORT):
+        super().__init__(host, port, "shure")
+
+
 class ReceiversDialog(QtWidgets.QDialog):
     """V8 étape 11 : 📶 récepteurs Shure en réseau : ce que VOIT chaque récepteur (niveau RF, antenne A / B, diversity,
     son, pile), relié à ta liste par la fréquence ; sert aussi à comparer avec le SDR / le tinySA (moniteur multicanal)."""
@@ -19561,22 +19785,40 @@ class ReceiversDialog(QtWidgets.QDialog):
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = o = owner
-        self.setWindowTitle("Récepteurs Shure (télémétrie)")
+        self.setWindowTitle("Récepteurs en réseau (télémétrie)")
         self.setModal(False)
         lay = QtWidgets.QVBoxLayout(self)
-        info = QtWidgets.QLabel("Tes récepteurs Shure en réseau (ULX-D, QLX-D, SLX-D, Axient Digital…) disent eux-mêmes ce "
-                                "qu'ils reçoivent : niveau RF, antenne utilisée, son, pile. Tape leur adresse IP (séparées "
-                                "par des virgules) puis <b>Connecter</b>.")
+        info = QtWidgets.QLabel("Tes récepteurs en réseau disent eux-mêmes ce qu'ils reçoivent : niveau RF, antenne, son, "
+                                "pile, alertes. Choisis la marque, tape l'adresse IP, puis <b>＋ Ajouter</b>.")
         info.setWordWrap(True)
-        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        info.setMinimumHeight(info.fontMetrics().height() * 2)
         lay.addWidget(info)
-        self.addr = QtWidgets.QLineEdit(o.sdr_cfg.get("shure", ""))
-        self.addr.setPlaceholderText("192.168.1.50, 192.168.1.51")
-        self.addr.setToolTip("Adresses IP des récepteurs (port 2202 par défaut, sinon « adresse:port »).")
-        self.go = QtWidgets.QPushButton("Connecter")
-        self.go.setToolTip("Se connecte aux récepteurs (et retient les adresses).")
-        self.go.clicked.connect(lambda *_: self.connect_all())
-        lay.addLayout(o._row("Adresses :", self.addr, self.go))
+        self.brand = QtWidgets.QComboBox()                  # étape 13 : toutes marques
+        for k, b in RX_BRANDS.items():
+            self.brand.addItem(b["name"], k)
+        self.brand.setToolTip("La marque / famille du récepteur (le protocole réseau en dépend).")
+        self.addr = QtWidgets.QLineEdit("")
+        self.addr.setPlaceholderText("192.168.1.50")
+        self.addr.setToolTip("Adresse IP du récepteur (le port habituel de la marque est mis tout seul ; sinon « adresse:port »).")
+        self.add_btn = QtWidgets.QPushButton("＋ Ajouter")
+        self.add_btn.setToolTip("Ajoute ce récepteur et s'y connecte (retenu dans les réglages).")
+        self.add_btn.clicked.connect(lambda *_: self.add())
+        self.addr.returnPressed.connect(self.add)
+        lay.addLayout(o._row("Marque :", self.brand, "Adresse :", self.addr, self.add_btn))
+        self.why = QtWidgets.QLabel("")
+        self.why.setWordWrap(True)
+        lay.addWidget(self.why)
+        self.brand.currentIndexChanged.connect(lambda *_: self._brand_changed())
+        self.mine = QtWidgets.QListWidget()
+        self.mine.setMaximumHeight(90)
+        self.mine.setToolTip("Tes récepteurs. Choisis-en un puis « Retirer » (ou touche Suppr).")
+        self.del_btn = QtWidgets.QPushButton("Retirer")
+        self.del_btn.setToolTip("Retire le récepteur choisi de la liste.")
+        self.del_btn.clicked.connect(lambda *_: self.remove())
+        lay.addLayout(o._row(self.mine, self.del_btn))
+        del_key(self.mine, self.remove)
+        self._fill_mine()
+        self._brand_changed()
         self.table = QtWidgets.QTableWidget(0, len(self.COLS))
         self.table.setHorizontalHeaderLabels(self.COLS)
         self.table.verticalHeader().setVisible(False)
@@ -19597,8 +19839,49 @@ class ReceiversDialog(QtWidgets.QDialog):
         self.refresh()
         fit_dialog(self, 900, 460)
 
+    def _brand_changed(self):
+        b = RX_BRANDS.get(self.brand.currentData()) or {}
+        ok = bool(b.get("proto"))
+        self.add_btn.setEnabled(ok)
+        self.addr.setEnabled(ok)
+        self.why.setText("" if ok else "⚠ " + TR(b.get("why", "")))
+        self.why.setStyleSheet("" if ok else f"color: {self.owner.tone_color('warn')};")
+
+    def _fill_mine(self):
+        self.mine.clear()
+        for b, h, p in receiver_addrs(self.owner.sdr_cfg.get("shure", "")):
+            it = QtWidgets.QListWidgetItem(f"{TR(RX_BRANDS[b]['name'])} · {h}" + (f":{p}" if p != RX_BRANDS[b]["port"] else ""))
+            it.setData(Qt.ItemDataRole.UserRole, (b, h, p))
+            self.mine.addItem(it)
+
+    def add(self):
+        b = self.brand.currentData()
+        a = self.addr.text().strip()
+        if not a or not RX_BRANDS[b]["proto"]:
+            return False
+        cur = receiver_addrs(self.owner.sdr_cfg.get("shure", ""))
+        new = receiver_addrs(f"{b}:{a}")
+        if not new:
+            self.why.setText(TR("Adresse illisible : tape une adresse IP (ex. 192.168.1.50)."))
+            return False
+        self.owner.receivers_start(receiver_addrs_text(cur + [x for x in new if x not in cur]))
+        self.addr.clear()
+        self._fill_mine()
+        self.refresh()
+        return True
+
+    def remove(self):
+        it = self.mine.currentItem()
+        if it is None:
+            return
+        x = tuple(it.data(Qt.ItemDataRole.UserRole))
+        cur = [y for y in receiver_addrs(self.owner.sdr_cfg.get("shure", "")) if y != x]
+        self.owner.receivers_start(receiver_addrs_text(cur))
+        self._fill_mine()
+        self.refresh()
+
     def connect_all(self):
-        self.owner.receivers_start(self.addr.text())
+        self.owner.receivers_start(self.owner.sdr_cfg.get("shure", ""))
         self.refresh()
 
     def refresh(self):
@@ -19607,10 +19890,11 @@ class ReceiversDialog(QtWidgets.QDialog):
         self.table.setRowCount(len(rows))
         for r, x in enumerate(rows):
             w = o.watch_near(x.get("freq"))
+            un = x.get("rf_unit") or "dBm"
             vals = [x["host"], str(x["ch"]), x.get("name") or "—",
                     "—" if x.get("freq") is None else f"{x['freq']:.3f}",
-                    "—" if x.get("rf") is None else f"{x['rf']} dBm", x.get("ant") or "—", x.get("div") or "—",
-                    "—" if x.get("audio") is None else f"{x['audio']} dBFS",
+                    "—" if x.get("rf") is None else f"{x['rf']:g} {un}", x.get("ant") or "—", x.get("div") or "—",
+                    "—" if x.get("audio") is None else (f"{x['audio']:g} dBFS" if un == "dBm" else f"{x['audio']:g} %"),
                     "—" if x.get("batt") is None else "▮" * int(x["batt"]) + "▯" * max(0, 5 - int(x["batt"])),
                     (w["name"] or f"{w['freq']:.3f}") if w else "—",
                     " · ".join(x.get("alerts") or []) or "—"]
@@ -19634,7 +19918,7 @@ class ReceiversDialog(QtWidgets.QDialog):
                                      note=a_), 0.0, "RÉCEPTEUR")
         cl = list(getattr(o, "_shure", {}).values())
         if not cl:
-            self.st.setText(TR("Aucun récepteur : tape une adresse puis Connecter."))
+            self.st.setText(TR("Aucun récepteur : choisis la marque, tape une adresse puis ＋ Ajouter."))
         else:
             self.st.setText(" · ".join((f"✔ {c.host}" if c.ok else f"✗ {c.host} : {c.err or TR('connexion…')}") for c in cl))
 
@@ -40369,7 +40653,7 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
     ("🎧 Écouter un micro…", "open_listen"),
     ("⏱ Temps réel (un bout de bande, sans trou)…", "open_realtime"),
     ("📦 Rejouer un incident…", "open_incidents"),
-    ("📶 Récepteurs Shure (pile, antennes)…", "open_receivers"),
+    ("📶 Récepteurs en réseau (Shure, Sennheiser…)…", "open_receivers"),
     ("📡 Réglages SDR (mon SDR, sensibilité)…", "open_sdr")]))
 MainWindow.TIPS_MENU.update({
         "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
@@ -40379,8 +40663,8 @@ MainWindow.TIPS_MENU.update({
         "📡 Réglages SDR": "V8 : HackRF One / RTL-SDR à la place (ou en plus) d'un tinySA : dossier des outils\n"
                           "(hackrf_sweep, rtl_power), gains, et comment les installer.",
         "📡 SDR": "V8 : réglages SDR, écoute (démodulation) et temps réel avec un HackRF / RTL-SDR.",
-        "📶 Récepteurs Shure": "V8 : niveau RF, antenne A / B, diversity, son et pile que voient tes récepteurs\n"
-                               "Shure en réseau, reliés à ta liste ; comparés au SDR dans le moniteur multicanal.",
+        "📶 Récepteurs en réseau": "V8 : niveau RF, antenne A / B, diversity, son, pile et alertes de tes récepteurs en\n"
+                                   "réseau (Shure, Sennheiser), reliés à ta liste ; comparés au SDR dans le moniteur.",
         "📦 Rejouer un incident": "V8 : choisis un dossier d'incident du moniteur multicanal : son rapport s'ouvre et\n"
                                   "son IQ est rejoué dans le temps réel (écouter, revoir le spectre).",
         "📡 Moniteur multicanal": "V8 : tous tes micros de la fenêtre du SDR mesurés en même temps (niveau, voisins,\n"
@@ -40419,17 +40703,18 @@ MainWindow.open_incidents = _v8_open_incidents
 
 
 def _v8_receivers_start(self, text):
-    """14. Connecte (ou reconnecte) les récepteurs Shure de la liste d'adresses (retenue dans la config)."""
-    addrs = shure_addrs(text)
-    self.sdr_cfg["shure"] = ", ".join(f"{h}:{p}" if p != SHURE_PORT else h for h, p in addrs)
+    """14. Connecte (ou reconnecte) les récepteurs de la liste (toutes marques : « g4:… », « ssc:… », Shure sans
+    préfixe), retenue dans la config (clé « shure », gardée pour les configs de l'étape 11)."""
+    addrs = receiver_addrs(text)
+    self.sdr_cfg["shure"] = receiver_addrs_text(addrs)
     cur = getattr(self, "_shure", None) or {}
-    keep = {f"{h}:{p}" for h, p in addrs}
+    keep = {f"{b}:{h}:{p}" for b, h, p in addrs}
     for k in list(cur):
         if k not in keep:
             cur.pop(k).stop()
-    for h, p in addrs:
-        if f"{h}:{p}" not in cur:
-            c = cur[f"{h}:{p}"] = ShureClient(h, p)
+    for b, h, p in addrs:
+        if f"{b}:{h}:{p}" not in cur:
+            c = cur[f"{b}:{h}:{p}"] = ReceiverClient(h, p, b)
             c.start()
     self._shure = cur
 
@@ -40439,7 +40724,7 @@ def _v8_receivers(self):
     out = []
     for c in (getattr(self, "_shure", None) or {}).values():
         for ch, st in sorted(c.snapshot().items()):
-            out.append(dict(st, host=c.host, ch=ch, live=c.ok and time.time() - c.t_last < 10))
+            out.append(dict(st, host=c.host, ch=ch, brand=c.brand, live=c.ok and time.time() - c.t_last < 10))
     return out
 
 

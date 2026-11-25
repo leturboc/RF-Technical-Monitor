@@ -1287,7 +1287,36 @@ if _rd is not None:
     check("📶 récepteur : relié à ma liste par la fréquence", _txt11 and _txt11[9] == (_pair[0]["name"] or f"{_f11:.3f}"),
           str(_txt11))
     check("📶 récepteur trouvé pour la fréquence du micro", (win.receiver_for(_f11) or {}).get("name") == "Chant")
+    _rd.brand.setCurrentIndex(_rd.brand.findData("wisycom"))
+    check("📶 Wisycom : pas de protocole public, expliqué, rien à ajouter", not _rd.add_btn.isEnabled()
+          and "Wisycom" in _rd.why.text(), _rd.why.text())
+    _u13 = _so11.socket(_so11.AF_INET, _so11.SOCK_DGRAM)          # faux Sennheiser G4 (UDP)
+    _u13.bind(("127.0.0.1", 0))
+    _u13.settimeout(0.3)
+    _stop13 = _th11.Event()
+
+    def _fake_g4():
+        while not _stop13.is_set():
+            try:
+                _d, _a = _u13.recvfrom(9999)
+            except OSError:
+                continue
+            _u13.sendto(f"RF1 70\rRF2 40\rAF 20\rBat 3\rFrequency {int(round(_f11 * 1000)) + 500}\rName Voix G4\r".encode(), _a)
+    _th11.Thread(target=_fake_g4, daemon=True).start()
+    _rd.brand.setCurrentIndex(_rd.brand.findData("g4"))
+    _rd.addr.setText(f"127.0.0.1:{_u13.getsockname()[1]}")
+    check("📶 Sennheiser ajouté par la fenêtre", _rd.add() and _rd.mine.count() == 2, str(_rd.mine.count()))
+    _t0 = time.time()
+    while not any(x.get("name") == "Voix G4" for x in win.receivers()) and time.time() - _t0 < 6:
+        wait(300)
+    _rd.refresh()
+    check("📶 Sennheiser G4 lu (RF en %)", any(x.get("name") == "Voix G4" and x.get("rf_unit") == "%" for x in win.receivers()),
+          str(win.receivers()))
     shot(_rd, "recepteurs_shure")
+    _rd.mine.setCurrentRow(1)
+    _rd.remove()
+    check("📶 récepteur retiré", _rd.mine.count() == 1 and "g4:" not in win.sdr_cfg["shure"], win.sdr_cfg["shure"])
+    _stop13.set()
     _rd.close()
 for _c11 in list((getattr(win, "_shure", None) or {}).values()):
     _c11.stop()

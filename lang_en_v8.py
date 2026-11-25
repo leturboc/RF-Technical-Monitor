@@ -822,3 +822,41 @@ EXACT.update({                                      # étape 12 : rangement (men
     "📦 Rejouer un incident…": "📦 Replay an incident…",
     "📶 Récepteurs Shure (pile, antennes)…": "📶 Shure receivers (battery, antennas)…",
 })
+
+# ---------------------------------------------------------------- V8 étape 13 : récepteurs d'autres marques
+EXACT.update({k: k for k in ("AX", "XB", "MSG", "None", "Push 60 100 3\r", "Wisycom (MRK, MCR)",
+                             "Sennheiser EW-DX / Digital 6000 / SpeechLine (SSC)", "Sennheiser evolution G3 / G4 / 2000",
+                             "Shure (ULX-D, QLX-D, SLX-D, Axient Digital)")})
+EXACT.update({
+    "Adresse IP du récepteur (le port habituel de la marque est mis tout seul ; sinon « adresse:port »).":
+        "IP address of the receiver (the brand's usual port is added automatically; otherwise “address:port”).",
+    "Adresse illisible : tape une adresse IP (ex. 192.168.1.50).": "Unreadable address: type an IP address (e.g. 192.168.1.50).",
+    "Ajoute ce récepteur et s'y connecte (retenu dans les réglages).": "Adds this receiver and connects to it (saved in the settings).",
+    "Aucun récepteur : choisis la marque, tape une adresse puis ＋ Ajouter.": "No receiver: choose the brand, type an address then ＋ Add.",
+    "Autre marque (Sony, Audio-Technica, Lectrosonics, Mipro…)": "Other brand (Sony, Audio-Technica, Lectrosonics, Mipro…)",
+    "La marque / famille du récepteur (le protocole réseau en dépend).": "The brand / family of the receiver (the network protocol depends on it).",
+    "Marque :": "Brand:",
+    "Pas de protocole réseau public connu pour cette marque. Avec une doc ou une capture réseau (Wireshark) de son logiciel, "
+    "on peut l'ajouter.": "No known public network protocol for this brand. With documentation or a network capture "
+                         "(Wireshark) of its software, it can be added.",
+    "Retire le récepteur choisi de la liste.": "Removes the selected receiver from the list.",
+    "Récepteurs en réseau (télémétrie)": "Networked receivers (telemetry)",
+    "Tes récepteurs en réseau disent eux-mêmes ce qu'ils reçoivent : niveau RF, antenne, son, pile, alertes. Choisis la "
+    "marque, tape l'adresse IP, puis": "Your networked receivers tell you themselves what they receive: RF level, antenna, "
+                                      "sound, battery, alerts. Choose the brand, type the IP address, then",
+    "Tes récepteurs. Choisis-en un puis « Retirer » (ou touche Suppr).": "Your receivers. Pick one then “Remove” (or the Delete key).",
+    "V8 : niveau RF, antenne A / B, diversity, son, pile et alertes de tes récepteurs en\nréseau (Shure, Sennheiser), reliés "
+    "à ta liste ; comparés au SDR dans le moniteur.": "V8: RF level, antenna A / B, diversity, sound, battery and alerts of "
+                                                     "your networked\nreceivers (Shure, Sennheiser), linked to your list; "
+                                                     "compared with the SDR in the monitor.",
+    "Wisycom n'a pas de protocole public (Wisycom Manager parle en privé avec ses récepteurs). Pour l'ajouter : une capture "
+    "réseau (Wireshark) entre Wisycom Manager et un récepteur.": "Wisycom has no public protocol (Wisycom Manager talks "
+                                                                 "privately with its receivers). To add it: a network "
+                                                                 "capture (Wireshark) between Wisycom Manager and a receiver.",
+    "pas de réponse": "no answer",
+    "📶 Récepteurs en réseau": "📶 Networked receivers",
+    "📶 Récepteurs en réseau (Shure, Sennheiser…)…": "📶 Networked receivers (Shure, Sennheiser…)…",
+    "Retirer": "Remove",
+    "＋ Ajouter": "＋ Add",
+    "Adresse :": "Address:",
+})
