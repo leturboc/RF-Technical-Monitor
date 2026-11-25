@@ -21121,14 +21121,16 @@ class SdrEngine(QtCore.QObject):
         self.a = f
         w = self.mic_at(f)                               # étape 19 : on tombe sur un micro -> SON réglage d'écoute
         self.cur_mic = w
-        if w is not None and w is not getattr(self, "_mic_done", None):
+        if w is not None:                                # (recalculé à chaque fois : groupe / nom changés)
+            new = w is not getattr(self, "_mic_done", None)
             self._mic_done = w
             key, how = self.owner.mic_demod(w)
             self.demod_how = how
             if key == DEMOD_DIGITAL:
-                self._say(TR("📵 {} : système numérique, il ne s'écoute pas (son chiffré). Le niveau et la santé RF "
-                              "restent surveillés.").format(w["name"] or f"{w['freq']:.3f}"))
-            elif key:
+                if new:
+                    self._say(TR("📵 {} : système numérique, il ne s'écoute pas (son chiffré). Le niveau et la santé "
+                                  "RF restent surveillés.").format(w["name"] or f"{w['freq']:.3f}"))
+            elif key and key != self.demod_key:
                 self.set_demod_key(key, push=False)
         elif w is None:
             self._mic_done, self.demod_how = None, None
