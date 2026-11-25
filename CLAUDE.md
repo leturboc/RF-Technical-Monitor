@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.68.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.68.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -9,8 +9,8 @@ workflow GitHub Actions `.github/workflows/build-exe.yml`).
 L'utilisateur (Clément) est technicien son/HF/AV en festivals (utilise des logiciels de coordination : EazyRF, WWB, WSM ;
 « le logiciel de coord » = EazyRF, fichiers `.ezrf3` / `.lst4`). **Depuis le 25/11/2026 (Clément)** : EazyRF peut être cité
 ici et dans les docs (manuel, README) **comme WWB ou WSM** — de façon neutre, pour la compatibilité des fichiers ; toujours
-AUCUNE comparaison « comme EazyRF » ni nom de ses fonctions ; les textes de l'appli restent sans son nom (« .ezrf3 »),
-tant que Clément ne demande pas autre chose. Il parle un français
+AUCUNE comparaison « comme EazyRF » ni nom de ses fonctions. 7.68.1 : aussi dans les textes de l'appli (« Importer un plan
+EazyRF », « Plan EazyRF suivi »…). Il parle un français
 décontracté : réponds en français, ton détendu mais précis, concret et actionnable.
 **Dis toujours ce qui n'est pas vérifié** : l'interface Qt réelle est lancée par `tests/gui_reel.py` (Linux offscreen
 en local, vrai Windows dans la CI) ; ni le vrai tinySA, ni les sons, ni un vrai double écran n'ont été testés par Claude.
@@ -1438,6 +1438,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     (lecture, rappel)})` ; `MainWindow.web_extra()` -> ({}, {}) ; page : `EXT[vue] = {mount(el), update(st)}`,
     `Object.assign(VIEWS, /*__VIEWS_X__*/{})`, `/*__EXTRA_JS__*/` remplis par `web_page_full()` (WEB_VIEWS ajoutées
     après `_WEB_BASE_VIEWS`, `WEB_EXTRA_JS`). La V8 les remplit en fin de fichier (affectations au niveau du module).
+- **7.68.1 (Clément, 25/11/2026 : « tu peux citer EazyRF comme WWB ou WSM »)** : commit 7f4ba10 (7.66.1) défait pour
+  l'appli et `lang_en.py` : `kind` du plan importé = « EazyRF » (comme « Shure WWB »), titres / menus / bulles « EazyRF » ;
+  un `ezrf_link` enregistré avec « .ezrf3 » (7.66.1 → 7.68.0) est migré dans `_apply_config`. Manuel FR + EN, PDF, README :
+  le nom est revenu là où il s'agit d'EazyRF (import, suivi) ; les mentions génériques (« un logiciel de coordination »)
+  restent. Toujours aucune comparaison avec un autre logiciel.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
