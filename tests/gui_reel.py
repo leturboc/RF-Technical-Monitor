@@ -1191,7 +1191,8 @@ if _mm is not None:
           and _mm.worker.clock.n > 0)
     _cov = [_mm.table.item(r_, _mm.C_COV).text() for r_ in range(_mm.table.rowCount()) if _mm.table.item(r_, _mm.C_COV)]
     check("2. chaque micro dit comment il est suivi (continu / tour de rôle / hors fenêtre)",
-          any("continu" in x for x in _cov) and (not _mm.out_ws or any("PAS surveillé" in x for x in _cov)), str(_cov))
+          any(("continu" in x or "dégradée" in x) for x in _cov)            # faux SDR lent : « dégradée » est juste
+          and (not _mm.out_ws or any("PAS surveillé" in x for x in _cov)), str(_cov))
     _mm._t_stats = time.time() - 5                    # 1. plus de mesure depuis 5 s : valeurs grisées, « ancienne »
     _mm._freshen()
     check("1. mesure ancienne : signalée, jamais présentée comme actuelle",

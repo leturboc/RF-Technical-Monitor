@@ -41099,7 +41099,7 @@ def _v8_close_event(self, ev):
     """Étape 14 (7.) : à la fermeture, on arrête les fenêtres SDR et les récepteurs, puis on tue tout outil SDR resté
     vivant (après la fermeture V7 : si elle est annulée, on ne touche à rien)."""
     _v7_close_event(self, ev)
-    if not ev.isAccepted():
+    if not getattr(ev, "isAccepted", lambda: True)():
         return
     for nm in ("_multimon", "_listen", "_rt"):
         d = getattr(self, nm, None)
