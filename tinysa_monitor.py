@@ -43925,11 +43925,14 @@ def _v8_mic_demod(self, w):
     k = w.get("demod")
     if k and (demod_preset(k) is not None or k == DEMOD_DIGITAL):
         return k, "manual"
-    rx = self.rx_of(w) if hasattr(self, "rx_of") else (w.get("rx") or "")
-    names = [n for k_, n, *_r in rx_all() if k_ == rx]
     g = self.group_row(w.get("scene"), w.get("group")) if hasattr(self, "group_row") else None
-    gnames = [n for k_, n, *_r in rx_all() if k_ in (self.group_rxs(g) if g else [])]
-    key = demod_guess(rx, *names, *gnames, w.get("group"), w.get("name"), w.get("scene"))
+    grx = list(self.group_rxs(g)) if g and hasattr(self, "group_rxs") else []
+    own = [x for x in [w.get("rx") or ""] + grx if x]              # appareil du micro, puis de son groupe
+    names = [n for k_, n, *_r in rx_all() if k_ in own]
+    key = demod_guess(*own, *names, w.get("group"), w.get("name"), w.get("scene"))
+    if not key and hasattr(self, "rx_of"):                        # en dernier : l'appareil par défaut du plan
+        d = self.rx_of(w) or ""
+        key = demod_guess(d, *[n for k_, n, *_r in rx_all() if k_ == d])
     return (key, "auto") if key else (None, None)
 
 
