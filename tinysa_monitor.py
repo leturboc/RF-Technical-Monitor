@@ -9114,6 +9114,53 @@ def vfo_center(f_mhz, span_mhz):
     return (float(f_mhz) - 0.25 * float(span_mhz)) * 1e6
 
 
+# Étape 16 bis (Clément montre WiNRADiO G33WSM et un analyseur SDR moderne) : grande fréquence réglable chiffre par
+# chiffre, micros étiquetés sur le spectre, zones à éviter, barre d'état (RBW, FFT…), aller de micro en micro.
+def freq_digits(hz):
+    """Fréquence (Hz) -> texte « 600.100 000 » (MHz, groupes de 3) et, pour chaque caractère, la valeur d'un cran de
+    molette sur lui (Hz) ou 0 (séparateur)."""
+    hz = max(0, int(round(float(hz))))
+    mhz, rest = divmod(hz, 1000000)
+    txt = f"{mhz}.{rest // 1000:03d} {rest % 1000:03d}"
+    w = len(str(mhz))
+    places = [10 ** (6 + w - 1 - i) for i in range(w)] + [0] + [10 ** (5 - i) for i in range(3)] + [0] + \
+             [10 ** (2 - i) for i in range(3)]
+    return txt, places
+
+
+def sdr_zones(code, manual=None, plan=None, lo=None, hi=None):
+    """Zones à éviter dessinées sur le spectre SDR : canaux TV marqués « TNT » (à la main ou dans le plan importé) ->
+    [(début, fin, libellé)] dans [lo, hi] MHz."""
+    manual, plan = manual or {}, set(int(x) for x in (plan or []) if str(x).lstrip("-").isdigit())
+    out = []
+    for n, a, b in tnt_channel_list(code or "FR"):
+        st = manual.get(str(n))
+        if st == "tv" or (n in plan and st != "free"):
+            if (lo is None or b >= lo) and (hi is None or a <= hi):
+                out.append((a, b, f"TNT {n}"))
+    return out
+
+
+def spectrum_status(rate, nfft, load=0.0, ovf=0.0, calibrated=False, tr=None):
+    """Barre d'état du spectre SDR : RBW (fenêtre de Blackman : 1,73 case), FFT, détecteur, charge, saturation, échelle."""
+    tr = tr or (lambda x: x)
+    rbw = 1.73 * float(rate) / max(1, int(nfft))
+    rb = f"{rbw / 1000:.2f} kHz" if rbw >= 1000 else f"{rbw:.0f} Hz"
+    s = f"RBW {rb} · FFT {int(nfft)} · Blackman · " + tr("moyenne + crête") + \
+        " · " + tr("charge {} %").format(f"{100 * float(load):.0f}")
+    if ovf > 0.001:
+        s += " · ⚠ " + tr("SATURATION {} %").format(f"{100 * float(ovf):.1f}")
+    return s + " · " + (tr("dBm (calé)") if calibrated else tr("dBFS (non calé)"))
+
+
+def next_mic(freqs, f, direction):
+    """Micro suivant (+1) ou précédent (−1) de f dans la liste triée des fréquences ; None s'il n'y en a pas."""
+    F = sorted(float(x) for x in freqs)
+    if direction > 0:
+        return next((x for x in F if x > f + 1e-6), None)
+    return next((x for x in reversed(F) if x < f - 1e-6), None)
+
+
 def reconnect_delay(fails):
     """19. Attente avant de relancer un SDR décroché : 3 s, puis 10 s, puis 30 s."""
     return 3.0 if fails <= 1 else (10.0 if fails <= 3 else 30.0)
@@ -20398,6 +20445,207 @@ class ReceiversDialog(QtWidgets.QDialog):
         super().closeEvent(ev)
 
 
+class FreqDisplay(QtWidgets.QWidget):
+    """Grande fréquence façon poste SDR : chaque chiffre se règle à la MOLETTE (au-dessus du chiffre voulu) ou aux
+    flèches (←/→ choisit le chiffre) ; double-clic = taper la fréquence. Signal changed(MHz)."""
+    changed = Signal(float)
+
+    def __init__(self, parent=None, pt=24, color=None):
+        super().__init__(parent)
+        self.hz, self.lo, self.hi = 600000000, 1000, 100000000000
+        self.sel, self.hover, self.rects = None, None, []
+        self.color = color or "#64d2ff"
+        self.fnt = QtGui.QFont("DejaVu Sans Mono")
+        self.fnt.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+        self.fnt.setPointSize(pt)
+        self.fnt.setBold(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)
+        self.setToolTip("Fréquence : molette sur un chiffre = le change ; flèches ←/→ puis ↑/↓ au clavier ;\n"
+                        "double-clic = taper la fréquence.")
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
+
+    def setRange(self, lo_mhz, hi_mhz):
+        self.lo, self.hi = int(lo_mhz * 1e6), int(hi_mhz * 1e6)
+
+    def value(self):
+        return self.hz / 1e6
+
+    def setValue(self, mhz, emit=False):
+        hz = int(min(self.hi, max(self.lo, round(float(mhz) * 1e6))))
+        if hz != self.hz:
+            self.hz = hz
+            self.update()
+            if emit:
+                self.changed.emit(self.hz / 1e6)
+
+    def sizeHint(self):
+        fm = QtGui.QFontMetrics(self.fnt)
+        return QtCore.QSize(fm.horizontalAdvance("00000.000 000") + fm.horizontalAdvance(" MHz") // 2 + 40,
+                            fm.height() + 16)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def paintEvent(self, _ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        r = QtCore.QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        p.setBrush(QtGui.QColor(10, 14, 20))
+        p.setPen(QtGui.QPen(QtGui.QColor(self.color if self.hasFocus() else "#2c3440"), 1.2))
+        p.drawRoundedRect(r, 8, 8)
+        txt, places = freq_digits(self.hz)
+        fm = QtGui.QFontMetrics(self.fnt)
+        p.setFont(self.fnt)
+        x = 12.0
+        y = (self.height() + fm.ascent() - fm.descent()) / 2.0
+        self.rects = []
+        lead = True
+        for ch, pl in zip(txt, places):
+            w = fm.horizontalAdvance(ch)
+            if pl and ch != "0":
+                lead = False
+            col = QtGui.QColor(self.color)
+            if pl and lead and pl >= 1e7:
+                col.setAlpha(70)                          # zéros de tête discrets
+            if pl and pl == self.sel and self.hasFocus():
+                p.fillRect(QtCore.QRectF(x - 1, 4, w + 2, self.height() - 8), QtGui.QColor(100, 210, 255, 50))
+            if pl and pl == self.hover:
+                p.fillRect(QtCore.QRectF(x, self.height() - 6, w, 2), QtGui.QColor(self.color))
+            p.setPen(col)
+            p.drawText(QtCore.QPointF(x, y), ch)
+            if pl:
+                self.rects.append((QtCore.QRectF(x, 0, w, self.height()), pl))
+            x += w
+        small = QtGui.QFont(self.fnt)
+        small.setPointSize(max(8, self.fnt.pointSize() // 2))
+        p.setFont(small)
+        p.setPen(QtGui.QColor("#8e8e93"))
+        p.drawText(QtCore.QPointF(x + 6, y), "MHz")
+        p.end()
+
+    def _place_at(self, pos):
+        return next((pl for rc, pl in self.rects if rc.contains(QtCore.QPointF(pos))), None)
+
+    def _bump(self, place, sign):
+        if place:
+            self.setValue((self.hz + sign * place) / 1e6, emit=True)
+
+    def wheelEvent(self, ev):
+        pl = self._place_at(ev.position()) or self.sel or 1000
+        self._bump(pl, 1 if ev.angleDelta().y() > 0 else -1)
+        ev.accept()
+
+    def mouseMoveEvent(self, ev):
+        h = self._place_at(ev.position())
+        if h != self.hover:
+            self.hover = h
+            self.update()
+
+    def leaveEvent(self, _ev):
+        self.hover = None
+        self.update()
+
+    def mousePressEvent(self, ev):
+        self.sel = self._place_at(ev.position()) or self.sel
+        self.setFocus()
+        self.update()
+
+    def mouseDoubleClickEvent(self, _ev):
+        v, ok = QtWidgets.QInputDialog.getDouble(self, TR("Fréquence"), TR("Fréquence (MHz) :"), self.hz / 1e6,
+                                                 self.lo / 1e6, self.hi / 1e6, 4)
+        if ok:
+            self.setValue(v, emit=True)
+
+    def keyPressEvent(self, ev):
+        pls = [pl for _rc, pl in self.rects]
+        if not pls:
+            return
+        if self.sel not in pls:
+            self.sel = 1000 if 1000 in pls else pls[-1]
+        i = pls.index(self.sel)
+        k = ev.key()
+        if k == Qt.Key.Key_Left and i > 0:
+            self.sel = pls[i - 1]
+        elif k == Qt.Key.Key_Right and i < len(pls) - 1:
+            self.sel = pls[i + 1]
+        elif k in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            self._bump(self.sel, 1 if k == Qt.Key.Key_Up else -1)
+        else:
+            super().keyPressEvent(ev)
+            return
+        self.update()
+
+
+class SMeterGauge(QtWidgets.QWidget):
+    """S-mètre à aiguille (S1 … S9, +20, +40, +60 dB ; zone rouge au-dessus de S9), crête qui redescend doucement."""
+    TICKS = [(-141, "1"), (-129, "3"), (-117, "5"), (-105, "7"), (-93, "9"), (-73, "+20"), (-53, "+40"), (-33, "+60")]
+    LO, HI = -147.0, -27.0
+
+    def __init__(self, parent=None, small=False):
+        super().__init__(parent)
+        self.dbm, self.peak, self.small = None, None, small
+        self.setMinimumSize(120 if small else 170, 64 if small else 92)
+        self.setToolTip("S-mètre : niveau reçu dans le canal (S9 = −93 dBm, 6 dB par unité). Calé en dBm si le SDR l'est "
+                        "(sinon à caler avec un tinySA).")
+
+    def set_dbm(self, dbm):
+        self.dbm = dbm
+        if dbm is not None:
+            self.peak = dbm if self.peak is None or dbm > self.peak else self.peak - 0.4
+        self.update()
+
+    def format(self):
+        st, _f = s_meter(self.dbm)
+        return "—" if self.dbm is None else f"{st} · {self.dbm:.0f} dBm"
+
+    def _ang(self, v):
+        f = (min(self.HI, max(self.LO, v)) - self.LO) / (self.HI - self.LO)
+        return math.radians(150.0 - 120.0 * f)            # arc du haut : de 150° (S0) à 30° (+60)
+
+    def paintEvent(self, _ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+        p.setBrush(QtGui.QColor(10, 14, 20))
+        p.setPen(QtGui.QPen(QtGui.QColor("#2c3440"), 1.2))
+        p.drawRoundedRect(QtCore.QRectF(1, 1, W - 2, H - 2), 8, 8)
+        txt_h = 13 if self.small else 17
+        R = min((W - 16) / (2 * math.cos(math.radians(30))), (H - txt_h - 10) / (1 - math.sin(math.radians(30)) + 0.12))
+        R = max(20.0, R * 0.98)
+        cx, cy = W / 2.0, 6 + R                          # centre sous l'arc ; l'arc tient dans le cadre
+        for v0, v1, col in ((self.LO, -93.0, "#64d2ff"), (-93.0, self.HI, "#ff453a")):
+            p.setPen(QtGui.QPen(QtGui.QColor(col), 3))
+            a0, a1 = math.degrees(self._ang(v0)), math.degrees(self._ang(v1))
+            p.drawArc(QtCore.QRectF(cx - R, cy - R, 2 * R, 2 * R), int(a1 * 16), int((a0 - a1) * 16))
+        f = QtGui.QFont()
+        f.setPointSize(7)
+        p.setFont(f)
+        for v, lab in self.TICKS:
+            a = self._ang(v)
+            p.setPen(QtGui.QPen(QtGui.QColor("#c7c7cc"), 1.2))
+            p.drawLine(QtCore.QPointF(cx + (R - 6) * math.cos(a), cy - (R - 6) * math.sin(a)),
+                       QtCore.QPointF(cx + R * math.cos(a), cy - R * math.sin(a)))
+            if not self.small or lab in ("1", "5", "9", "+40"):
+                xt, yt = cx + (R - 15) * math.cos(a), cy - (R - 15) * math.sin(a)
+                p.drawText(QtCore.QRectF(xt - 13, yt - 6, 26, 12), Qt.AlignmentFlag.AlignCenter, lab)
+        if self.peak is not None:
+            a = self._ang(self.peak)
+            p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 2))
+            p.drawLine(QtCore.QPointF(cx + (R - 9) * math.cos(a), cy - (R - 9) * math.sin(a)),
+                       QtCore.QPointF(cx + (R + 1) * math.cos(a), cy - (R + 1) * math.sin(a)))
+        a = self._ang(self.dbm if self.dbm is not None else self.LO)
+        p.setPen(QtGui.QPen(QtGui.QColor("#ffffff" if self.dbm is not None else "#555555"), 2))
+        p.drawLine(QtCore.QPointF(cx + 0.45 * R * math.cos(a), cy - 0.45 * R * math.sin(a)),
+                   QtCore.QPointF(cx + (R - 4) * math.cos(a), cy - (R - 4) * math.sin(a)))
+        f.setPointSize(8 if self.small else 10)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QtGui.QColor("#ffffff"))
+        p.drawText(QtCore.QRectF(0, H - txt_h - 5, W, txt_h), Qt.AlignmentFlag.AlignCenter, self.format())
+        p.end()
+
+
 class SdrEngine(QtCore.QObject):
     """V8 étape 16 : LE poste SDR de l'appli (un seul flux, partagé par les panneaux Récepteur / Spectre / Waterfall /
     Mes micros) : récepteurs A et B, spectre sans trou, surveillance de la fenêtre (sdr_listen_feed), son, recentrage
@@ -20421,6 +20669,7 @@ class SdrEngine(QtCore.QObject):
         self.center, self.rate, self.last, self.paused, self.msg = None, None, None, [], ""
         self._t_feed = 0.0
         self.q = deque(maxlen=60)
+        self.af = deque(maxlen=8)                       # derniers blocs de son (spectre du son)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._pump)
         self.retune = QtCore.QTimer(self)
@@ -20584,6 +20833,7 @@ class SdrEngine(QtCore.QObject):
                 except Exception:  # noqa: BLE001
                     self.rec_audio(False)
             self.q.append(b)
+            self.af.append(b)
         if self.audio is not None:
             self.audio.feed(self.q)
 
@@ -20661,75 +20911,53 @@ class SdrPanelBase(QtWidgets.QWidget):
 
 
 class SdrReceiverPanel(SdrPanelBase):
-    """📡 SDR · Récepteur : démarrer, fréquence A (grande, à la molette), S-mètre, volume ; Plus : récepteur B,
-    démodulation, squelch, enregistrements ; Expert : FFT, réglages de l'appareil, charge / saturation."""
+    """📡 SDR · Récepteur (façon poste SDR) : ▶ / ■, son, grande fréquence A réglable chiffre par chiffre, S-mètre à
+    aiguille ; Plus : démodulation, pas, squelch, récepteur B, zoom du canal écouté (IF) et spectre du son (AF),
+    enregistrements ; Expert : FFT, réglages de l'appareil, charge / saturation."""
 
     def __init__(self, owner):
         super().__init__(owner)
         e, o = self.eng, owner
+        acc = o.theme.get("accent", "#64d2ff")
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(4)
         self.go_btn = QtWidgets.QPushButton("▶ Démarrer le SDR")
         self.go_btn.setToolTip("Lance / arrête le SDR : spectre sans trou, écoute de A (et B), surveillance de la fenêtre.")
         self.go_btn.clicked.connect(lambda *_: self.toggle())
-        self.dev_lbl = QtWidgets.QLabel("")
-        self.dev_lbl.setToolTip("Ton SDR (📡 Réglages SDR pour le changer).")
-        lay.addLayout(o._row(self.go_btn, self.dev_lbl, None))
-        big = QtGui.QFont()
-        big.setPointSize(20)
-        big.setBold(True)
-        self.a_spin = QtWidgets.QDoubleSpinBox()
-        self.a_spin.setDecimals(4)
-        self.a_spin.setRange(0.01, 100000.0)
-        self.a_spin.setSuffix(" MHz")
-        self.a_spin.setFont(big)
-        self.a_spin.setKeyboardTracking(False)
-        self.a_spin.setToolTip("Fréquence écoutée (récepteur A). Molette / flèches = d'un pas ; clique sur le spectre "
-                               "ou un micro pour y aller.")
-        self.a_spin.valueChanged.connect(lambda v: e.set_a(v))
-        self.a_meter = QtWidgets.QProgressBar()
-        self.a_meter.setRange(0, 1000)
-        self.a_meter.setTextVisible(True)
-        self.a_meter.setMinimumWidth(150)
-        self.a_meter.setToolTip("S-mètre de A : niveau reçu dans le canal (dBm, à caler avec un tinySA).")
+        self.mute = QtWidgets.QToolButton()
+        self.mute.setCheckable(True)
+        self.mute.setText("🔊")
+        self.mute.setToolTip("Couper / remettre le son.")
+        self.mute.toggled.connect(lambda on: (self.mute.setText("🔇" if on else "🔊"),
+                                              e.set_opts(vol=0.0 if on else self.vol.value() / 100.0)))
         self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
         self.vol.setRange(0, 200)
-        self.vol.setValue(int(e.vol * 100))
-        self.vol.setMaximumWidth(110)
+        self.vol.setValue(int((e.vol or 0.8) * 100))
+        self.vol.setMaximumWidth(120)
         self.vol.setToolTip("Volume.")
-        self.vol.valueChanged.connect(lambda v: e.set_opts(vol=v / 100.0))
-        lay.addLayout(o._row("A", self.a_spin, self.a_meter, "🔊", self.vol))
+        self.vol.valueChanged.connect(lambda v: None if self.mute.isChecked() else e.set_opts(vol=v / 100.0))
+        self.dev_lbl = QtWidgets.QLabel("")
+        self.dev_lbl.setToolTip("Ton SDR (📡 Réglages SDR pour le changer).")
+        lay.addLayout(o._row(self.go_btn, self.mute, self.vol, None, self.dev_lbl))
+        self.a_disp = FreqDisplay(self, 24, acc)
+        self.a_disp.changed.connect(lambda v: e.set_a(v))
+        self.a_meter = SMeterGauge(self)
+        top = QtWidgets.QHBoxLayout()
+        lab_a = QtWidgets.QLabel("A")
+        lab_a.setStyleSheet(f"color: {acc}; font-weight: bold; font-size: 18px;")
+        top.addWidget(lab_a)
+        top.addWidget(self.a_disp, 1)
+        top.addWidget(self.a_meter)
+        lay.addLayout(top)
+        # ---- Plus : démodulation, pas, squelch
+        self.dp = DemodPick(lambda: hasattr(self, "dp") and e.set_opts(demod=self.dp.params()))
         self.step = QtWidgets.QComboBox()
         for s_ in SDR_STEPS_KHZ:
             self.step.addItem(f"{s_:g} kHz", s_)
         self.step.setCurrentIndex(max(0, self.step.findData(e.step)))
-        self.step.setToolTip("Pas de la molette.")
-        self.step.currentIndexChanged.connect(lambda *_: self._step())
-        self.b_chk = QtWidgets.QCheckBox("B")
-        self.b_chk.setToolTip("Deuxième récepteur, écouté en même temps que A (dans la même fenêtre du SDR).")
-        self.b_chk.setChecked(e.b_on)
-        self.b_chk.toggled.connect(lambda on: e.set_b(on=on))
-        self.b_spin = QtWidgets.QDoubleSpinBox()
-        self.b_spin.setDecimals(4)
-        self.b_spin.setRange(0.01, 100000.0)
-        self.b_spin.setSuffix(" MHz")
-        self.b_spin.setKeyboardTracking(False)
-        self.b_spin.setToolTip("Fréquence du récepteur B (clic droit sur le spectre ou un micro pour y aller).")
-        self.b_spin.valueChanged.connect(lambda v: e.set_b(f=v))
-        self.b_meter = QtWidgets.QProgressBar()
-        self.b_meter.setRange(0, 1000)
-        self.b_meter.setTextVisible(True)
-        self.b_meter.setToolTip("S-mètre de B.")
-        self.split_chk = QtWidgets.QCheckBox("A gauche / B droite")
-        self.split_chk.setToolTip("Au casque : A dans l'oreille gauche, B dans la droite (sinon mélangés).")
-        self.split_chk.setChecked(e.split)
-        self.split_chk.toggled.connect(lambda on: e.set_opts(split=bool(on)))
-        self.row_b = QtWidgets.QWidget()
-        rb = o._row("Pas :", self.step, self.b_chk, self.b_spin, self.b_meter, self.split_chk, None)
-        rb.setContentsMargins(0, 0, 0, 0)
-        self.row_b.setLayout(rb)
-        lay.addWidget(self.row_b)
-        self.dp = DemodPick(lambda: hasattr(self, "dp") and e.set_opts(demod=self.dp.params()))
+        self.step.setToolTip("Pas : clic sur le spectre et micro suivant arrondis à ce pas.")
+        self.step.currentIndexChanged.connect(lambda *_: e.set_opts(step=float(self.step.currentData() or 25.0)))
         self.sq = QtWidgets.QSpinBox()
         self.sq.setRange(-121, 0)
         self.sq.setSpecialValueText("aucun")
@@ -20738,10 +20966,57 @@ class SdrReceiverPanel(SdrPanelBase):
         self.sq.setToolTip("Squelch : en dessous de ce niveau, le son est coupé (pas de souffle entre deux phrases).")
         self.sq.valueChanged.connect(lambda v: e.set_opts(sq=None if v <= -121 else float(v)))
         self.row_dem = QtWidgets.QWidget()
-        rd = o._row(*self.dp.widgets(), "Squelch :", self.sq, None)
+        rd = o._row(*self.dp.widgets(), "Pas :", self.step, "Squelch :", self.sq, None)
         rd.setContentsMargins(0, 0, 0, 0)
         self.row_dem.setLayout(rd)
         lay.addWidget(self.row_dem)
+        # ---- Plus : récepteur B
+        self.b_chk = QtWidgets.QCheckBox("B")
+        self.b_chk.setToolTip("Deuxième récepteur, écouté en même temps que A (dans la même fenêtre du SDR).")
+        self.b_chk.setChecked(e.b_on)
+        self.b_chk.toggled.connect(lambda on: e.set_b(on=on))
+        self.b_disp = FreqDisplay(self, 13, "#ff9f0a")
+        self.b_disp.setToolTip("Fréquence du récepteur B (clic droit sur le spectre ou un micro pour y aller).")
+        self.b_disp.changed.connect(lambda v: e.set_b(f=v))
+        self.b_meter = SMeterGauge(self, small=True)
+        self.split_chk = QtWidgets.QCheckBox("A gauche / B droite")
+        self.split_chk.setToolTip("Au casque : A dans l'oreille gauche, B dans la droite (sinon mélangés).")
+        self.split_chk.setChecked(e.split)
+        self.split_chk.toggled.connect(lambda on: e.set_opts(split=bool(on)))
+        self.row_b = QtWidgets.QWidget()
+        rb = QtWidgets.QHBoxLayout(self.row_b)
+        rb.setContentsMargins(0, 0, 0, 0)
+        for w_ in (self.b_chk, self.b_disp, self.b_meter, self.split_chk):
+            rb.addWidget(w_)
+        rb.addStretch(1)
+        lay.addWidget(self.row_b)
+        # ---- Plus : zoom du canal (IF) et spectre du son (AF)
+        self.if_plot = pg.PlotWidget()
+        self.if_plot.setMinimumHeight(90)
+        self.if_plot.setMaximumHeight(140)
+        self.if_plot.setToolTip("Zoom du canal écouté (A) : la porteuse, sa largeur, les voisins proches.")
+        self.if_plot.setLabel("bottom", "kHz autour de A")
+        self.if_plot.hideAxis("left")
+        self.if_curve = self.if_plot.plot(pen=pg.mkPen(acc, width=1.3), fillLevel=0.0,
+                                          brush=pg.mkBrush(QtGui.QColor(acc).red(), QtGui.QColor(acc).green(),
+                                                           QtGui.QColor(acc).blue(), 60))
+        self.if_band = pg.LinearRegionItem(movable=False, brush=pg.mkBrush(255, 255, 255, 25))
+        self.if_plot.addItem(self.if_band)
+        self.af_plot = pg.PlotWidget()
+        self.af_plot.setMinimumHeight(90)
+        self.af_plot.setMaximumHeight(140)
+        self.af_plot.setToolTip("Spectre du son entendu (0 – 15 kHz) : voix, souffle, sifflement, ronflette.")
+        self.af_plot.setLabel("bottom", "kHz (son)")
+        self.af_plot.hideAxis("left")
+        self.af_plot.setYRange(-100, 0)
+        self.af_curve = self.af_plot.plot(pen=pg.mkPen("#30d158", width=1.2))
+        self.row_zoom = QtWidgets.QWidget()
+        rz = QtWidgets.QHBoxLayout(self.row_zoom)
+        rz.setContentsMargins(0, 0, 0, 0)
+        rz.addWidget(self.if_plot, 1)
+        rz.addWidget(self.af_plot, 1)
+        lay.addWidget(self.row_zoom)
+        # ---- outils
         self.rec_btn = QtWidgets.QPushButton("⏺ Son")
         self.rec_btn.setCheckable(True)
         self.rec_btn.setToolTip("Enregistre ce que tu entends (WAV). Demande ton accord la 1re fois (voix).")
@@ -20773,15 +21048,9 @@ class SdrReceiverPanel(SdrPanelBase):
         e.changed.connect(self.refresh)
         e.frame.connect(self._frame)
         e.status.connect(self.msg.setText)
-        self._step()
+        self._t_af = 0.0
         self.refresh()
         self.apply_level()
-
-    def _step(self):
-        s_ = float(self.step.currentData() or 25.0)
-        self.a_spin.setSingleStep(s_ / 1000.0)
-        self.b_spin.setSingleStep(s_ / 1000.0)
-        self.eng.set_opts(step=s_)
 
     def toggle(self):
         if self.eng.running():
@@ -20803,17 +21072,18 @@ class SdrReceiverPanel(SdrPanelBase):
         run = e.running()
         self.go_btn.setText("■ Arrêter le SDR" if run else "▶ Démarrer le SDR")
         self.dev_lbl.setText(TR("📡 {} · fenêtre {} MHz").format(m["name"], f"{e.span():.1f}") if m else "")
-        for sp_, v in ((self.a_spin, e.a), (self.b_spin, e.b)):
-            sp_.blockSignals(True)                     # recaler la plage ne doit PAS déplacer A / B
+        for dsp, v in ((self.a_disp, e.a), (self.b_disp, e.b)):
             if m:
-                sp_.setRange(m["fmin"], m["fmax"])
-            if v is not None and abs(sp_.value() - v) > 1e-7:
-                sp_.setValue(v)
-            sp_.blockSignals(False)
-        self.b_spin.setEnabled(e.b_on)
-        self.b_meter.setEnabled(e.b_on)
-        for b, on in ((self.rec_btn, e.wav is not None), (self.iq_btn, run and e.worker.rec_req is not None
-                                                          or (run and e.worker.rec is not None))):
+                dsp.setRange(m["fmin"], m["fmax"])
+            if v is not None:
+                dsp.setValue(v)
+        self.b_disp.setEnabled(e.b_on)
+        if self.b_chk.isChecked() != bool(e.b_on):
+            self.b_chk.blockSignals(True)
+            self.b_chk.setChecked(bool(e.b_on))
+            self.b_chk.blockSignals(False)
+        for b, on in ((self.rec_btn, e.wav is not None),
+                      (self.iq_btn, run and (e.worker.rec_req is not None or e.worker.rec is not None))):
             if b.isChecked() != bool(on):
                 b.blockSignals(True)
                 b.setChecked(bool(on))
@@ -20821,62 +21091,125 @@ class SdrReceiverPanel(SdrPanelBase):
         self.rec_btn.setEnabled(run)
         self.iq_btn.setEnabled(run)
         if not run:
-            for mt in (self.a_meter, self.b_meter):
-                mt.setValue(0)
-                mt.setFormat("—")
+            self.a_meter.set_dbm(None)
+            self.b_meter.set_dbm(None)
 
     def _frame(self, fr):
         e = self.eng
-        for mt, lv in ((self.a_meter, fr.get("lv_a")), (self.b_meter, fr.get("lv_b"))):
-            dbm = e.dbm(lv)
-            st, frac = s_meter(dbm)
-            mt.setValue(int(frac * 1000))
-            mt.setFormat("—" if dbm is None else f"{st} · {dbm:.0f} dBm")
+        self.a_meter.set_dbm(e.dbm(fr.get("lv_a")))
+        self.b_meter.set_dbm(e.dbm(fr.get("lv_b")))
         self.stats.setText(TR("charge {} % · saturation {} %").format(f"{100 * fr.get('load', 0):.0f}",
                                                                       f"{100 * fr.get('ovf', 0):.1f}"))
         self.stats.setStyleSheet(f"color: {self.owner.tone_color('bad')};" if fr.get("ovf", 0) > 0.001 or
                                  fr.get("load", 0) > 1.0 else "")
+        if not self.row_zoom.isVisible() or e.a is None:
+            return
+        F, L = np.asarray(fr["F"]), np.asarray(fr["avg"])
+        bw = max(0.012, expected_obw_khz(e.demod.get("mode", "wfm")) / 1000.0)
+        sel = np.abs(F - e.a) <= 1.5 * bw
+        if sel.sum() > 3:
+            x = (F[sel] - e.a) * 1000.0
+            self.if_curve.setFillLevel(float(np.min(L[sel])))      # remplissage depuis le bruit, pas depuis −160
+            self.if_curve.setData(x, L[sel])
+            self.if_band.setRegion((-bw * 500.0, bw * 500.0))
+        now = time.time()
+        if now - self._t_af >= 0.2 and e.af:                   # spectre du son (dernier ~0,1 s)
+            self._t_af = now
+            a = np.frombuffer(b"".join(list(e.af)[-3:]), dtype="<i2").astype(np.float32)
+            if len(a) >= 1024:
+                mono = a.reshape(-1, 2).mean(axis=1)[-4096:] / 32768.0
+                sp = np.abs(np.fft.rfft(mono * np.hanning(len(mono)))) / max(1.0, len(mono) / 4)
+                fk = np.fft.rfftfreq(len(mono), 1.0 / LISTEN_RATE) / 1000.0
+                keep = fk <= 15.0
+                self.af_curve.setData(fk[keep], 20 * np.log10(sp[keep] + 1e-7))
 
     def apply_level(self):
         lv = self.lvl()
-        self.row_b.setVisible(lv != "simple")
-        self.row_dem.setVisible(lv != "simple")
-        self.row_tools.setVisible(lv != "simple")
+        for w_ in (self.row_b, self.row_dem, self.row_tools, self.row_zoom):
+            w_.setVisible(lv != "simple")
         for w_ in (self.nfft, self.set_btn, self.stats):
             w_.setVisible(lv == "expert")
 
 
 class SdrSpectrumPanel(SdrPanelBase):
-    """📡 SDR · Spectre : la fenêtre du SDR sans trou, A (et B) en bandes à faire glisser, tes micros en repères ;
-    clic = A, clic droit = B. Plus / Expert : pics gardés."""
+    """📡 SDR · Spectre (façon WiNRADiO / SDR#) : la fenêtre du SDR sans trou ; tes micros étiquetés (nom + fréquence,
+    couleur de leur état) ; canaux TNT à éviter grisés ; A et B en bandes à faire glisser ; clic = A, clic droit = B ;
+    Plus : pics gardés, ◀ ▶ micro précédent / suivant, zoom ; Expert : barre d'état (RBW, FFT…) et curseur."""
 
     def __init__(self, owner):
         super().__init__(owner)
         e, o = self.eng, owner
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(2, 2, 2, 2)
+        lay.setSpacing(2)
         self.mh_chk = QtWidgets.QCheckBox("Pics gardés")
         self.mh_chk.setChecked(e.maxhold)
         self.mh_chk.setToolTip("Garde le plus haut niveau vu à chaque fréquence (repérer un signal bref).")
         self.mh_chk.toggled.connect(lambda on: (e.set_opts(maxhold=bool(on)), self._reset_mh()))
+        self.prev_btn = QtWidgets.QToolButton()
+        self.prev_btn.setText("Micro préc.")
+        self.prev_btn.setToolTip("Écouter le micro précédent (A).")
+        self.prev_btn.clicked.connect(lambda *_: self._jump(-1))
+        self.next_btn = QtWidgets.QToolButton()
+        self.next_btn.setText("Micro suiv.")
+        self.next_btn.setToolTip("Écouter le micro suivant (A).")
+        self.next_btn.clicked.connect(lambda *_: self._jump(1))
+        self.zin = QtWidgets.QToolButton()
+        self.zin.setText("＋")
+        self.zin.setToolTip("Zoomer autour de A.")
+        self.zin.clicked.connect(lambda *_: self._zoom(0.5))
+        self.zout = QtWidgets.QToolButton()
+        self.zout.setText("−")
+        self.zout.setToolTip("Dézoomer.")
+        self.zout.clicked.connect(lambda *_: self._zoom(2.0))
+        self.zall = QtWidgets.QToolButton()
+        self.zall.setText("⤢")
+        self.zall.setToolTip("Toute la fenêtre du SDR.")
+        self.zall.clicked.connect(lambda *_: self._zoom(None))
+        self.span_lbl = QtWidgets.QLabel("")
+        self.span_lbl.setToolTip("Début · centre · fin de la fenêtre du SDR, et sa largeur.")
         self.hint = QtWidgets.QLabel("Clic = écouter (A) · clic droit = B")
         self.hint.setToolTip("Tu peux aussi faire glisser les bandes A et B.")
-        lay.addLayout(o._row(self.mh_chk, None, self.hint))
+        self.bar = QtWidgets.QWidget()
+        bl = o._row(self.prev_btn, self.next_btn, self.zin, self.zout, self.zall, self.mh_chk, self.span_lbl, None,
+                    self.hint)
+        bl.setContentsMargins(0, 0, 0, 0)
+        self.bar.setLayout(bl)
+        lay.addWidget(self.bar)
         self.plot = pg.PlotWidget()
-        self.plot.setLabel("bottom", "MHz")
         self.plot.setLabel("left", "dBFS")
-        self.plot.showGrid(x=True, y=True, alpha=0.25)
-        self.curve = self.plot.plot(pen=pg.mkPen(o.theme.get("curve", "#0a84ff"), width=1.2))
+        self.plot.showGrid(x=True, y=True, alpha=0.22)
+        acc = o.theme.get("accent", "#64d2ff")
+        self.curve = self.plot.plot(pen=pg.mkPen(o.theme.get("curve", acc), width=1.2))
         self.mh = self.plot.plot(pen=pg.mkPen(o.theme.get("maxhold", "#ff9f0a"), width=1))
-        self.reg_a = pg.LinearRegionItem(brush=pg.mkBrush(10, 132, 255, 60), movable=True)
-        self.reg_b = pg.LinearRegionItem(brush=pg.mkBrush(255, 159, 10, 50), movable=True)
+        self.reg_a = pg.LinearRegionItem(brush=pg.mkBrush(100, 210, 255, 55), movable=True)
+        self.reg_b = pg.LinearRegionItem(brush=pg.mkBrush(255, 159, 10, 45), movable=True)
+        self.lab_a = pg.InfiniteLine(angle=90, pen=pg.mkPen(None), label="A",
+                                     labelOpts=dict(position=0.06, color="#000000", fill=pg.mkBrush(100, 210, 255, 230)))
+        self.lab_b = pg.InfiniteLine(angle=90, pen=pg.mkPen(None), label="B",
+                                     labelOpts=dict(position=0.06, color="#000000", fill=pg.mkBrush(255, 159, 10, 230)))
         for r_, nm in ((self.reg_a, "A"), (self.reg_b, "B")):
             r_.setZValue(10)
             self.plot.addItem(r_)
             r_.sigRegionChangeFinished.connect(lambda reg, nm=nm: self._dragged(nm, reg))
-        self.marks, self._mh, self._range = [], None, None
+        for it in (self.lab_a, self.lab_b):
+            it.setZValue(12)
+            self.plot.addItem(it)
+        self.marks, self.zones, self._mh, self._range = [], [], None, None
         self.plot.scene().sigMouseClicked.connect(self._click)
+        self.plot.scene().sigMouseMoved.connect(self._moved)
         lay.addWidget(self.plot, 1)
+        self.status = QtWidgets.QLabel("")
+        self.status.setStyleSheet("color: #8e8e93; font-family: monospace;")
+        self.status.setToolTip("RBW (finesse) · taille de FFT · fenêtre · détecteur · charge · échelle ; et le curseur.")
+        self.cursor_lbl = QtWidgets.QLabel("")
+        self.cursor_lbl.setStyleSheet("color: #8e8e93; font-family: monospace;")
+        self.sbar = QtWidgets.QWidget()
+        sb = QtWidgets.QHBoxLayout(self.sbar)
+        sb.setContentsMargins(4, 0, 4, 0)
+        sb.addWidget(self.status, 1)
+        sb.addWidget(self.cursor_lbl)
+        lay.addWidget(self.sbar)
         e.frame.connect(self._frame)
         e.changed.connect(self._vfo)
         self.tm = QtCore.QTimer(self)
@@ -20890,12 +21223,16 @@ class SdrSpectrumPanel(SdrPanelBase):
 
     def _vfo(self):
         e = self.eng
-        for r_, f, on in ((self.reg_a, e.a, e.a is not None), (self.reg_b, e.b, e.b_on and e.b is not None)):
-            r_.setVisible(bool(on))
+        for r_, lab, f, on, nm in ((self.reg_a, self.lab_a, e.a, e.a is not None, "A"),
+                                   (self.reg_b, self.lab_b, e.b, bool(e.b_on and e.b is not None), "B")):
+            r_.setVisible(on)
+            lab.setVisible(on)
             if on:
                 r_.blockSignals(True)
                 r_.setRegion((f - self._bw() / 2.0, f + self._bw() / 2.0))
                 r_.blockSignals(False)
+                lab.setValue(f)
+                lab.label.setFormat(f"{nm} · {f:.4f}")
         self._marks()
 
     def _dragged(self, nm, reg):
@@ -20918,6 +21255,36 @@ class SdrSpectrumPanel(SdrPanelBase):
         elif ev.button() == Qt.MouseButton.LeftButton:
             self.eng.set_a(f)
 
+    def _moved(self, pos):
+        vb = self.plot.getPlotItem().vb
+        fr = self.eng.last
+        if fr is None or not vb.sceneBoundingRect().contains(pos):
+            self.cursor_lbl.setText("")
+            return
+        f = float(vb.mapSceneToView(pos).x())
+        F, L = np.asarray(fr["F"]), np.asarray(fr["avg"])
+        i = int(np.argmin(np.abs(F - f)))
+        self.cursor_lbl.setText(f"⌖ {f:.4f} MHz · {L[i]:.1f} dBFS")
+
+    def _jump(self, d):
+        e = self.eng
+        m = e.model()
+        fs = [w["freq"] for w in self.owner.watch if not m or sdr_in_range(m, w["freq"])]
+        f = next_mic(fs, e.a if e.a is not None else 0.0, d)
+        if f is not None:
+            e.set_a(f)
+
+    def _zoom(self, k):
+        if self._range is None:
+            return
+        if k is None:
+            self.plot.setXRange(*self._range, padding=0.0)
+            return
+        lo, hi = self.plot.getPlotItem().vb.viewRange()[0]
+        c = self.eng.a if self.eng.a is not None else (lo + hi) / 2.0
+        h = max(0.01, (hi - lo) * k / 2.0)
+        self.plot.setXRange(max(self._range[0], c - h), min(self._range[1], c + h), padding=0.0)
+
     def _reset_mh(self):
         self._mh = None
         self.mh.setData([], [])
@@ -20936,28 +21303,54 @@ class SdrSpectrumPanel(SdrPanelBase):
             self.plot.setXRange(*rng, padding=0.0)
             self._reset_mh()
             self._marks()
+            self.span_lbl.setText(f"{rng[0]:.3f} · {(rng[0] + rng[1]) / 2:.3f} · {rng[1]:.3f} MHz "
+                                  f"({rng[1] - rng[0]:.2f} MHz)")
+        e = self.eng
+        cal = bool((e.model() or {}).get("cal")) or bool(self.owner.sdr_offset(e.kind()))
+        self.status.setText(spectrum_status(e.rate or 0, e.nfft, fr.get("load", 0), fr.get("ovf", 0), cal, TR))
 
     def _marks(self):
-        """Tes micros de la fenêtre en repères (couleur de leur état), 40 au plus."""
-        o, e = self.owner, self.eng
-        for it in self.marks:
+        """Tes micros de la fenêtre, étiquetés (nom + fréquence, couleur de leur état), et les canaux TNT à éviter."""
+        o = self.owner
+        for it in self.marks + self.zones:
             self.plot.removeItem(it)
-        self.marks = []
+        self.marks, self.zones = [], []
         if self._range is None:
             return
         lo, hi = self._range
-        for w in [w for w in o.watch if lo <= w["freq"] <= hi][:40]:
-            col = o.sig_view(w)[2]
+        tc = getattr(o, "tnt_cfg", {}) or {}
+        try:
+            code = o.country_code()
+        except Exception:  # noqa: BLE001
+            code = "FR"
+        for a, b, lab in sdr_zones(code, tc.get("manual"), tc.get("plan"), lo, hi):
+            z = pg.LinearRegionItem((a, b), movable=False, brush=pg.mkBrush(120, 130, 160, 70),
+                                    pen=pg.mkPen(120, 130, 160, 160))
+            z.setZValue(-5)
+            t = pg.InfiniteLine(pos=(max(a, lo) + min(b, hi)) / 2.0, angle=90, pen=pg.mkPen(None),
+                                label=TR("{} — à éviter").format(lab),
+                                labelOpts=dict(position=0.5, color="#ffffff", fill=pg.mkBrush(60, 70, 95, 200)))
+            for it in (z, t):
+                self.plot.addItem(it)
+                self.zones.append(it)
+        ws = sorted((w for w in o.watch if lo <= w["freq"] <= hi), key=lambda w: w["freq"])[:40]
+        for i, w in enumerate(ws):
+            col = QtGui.QColor(o.sig_view(w)[2])
+            fill = QtGui.QColor(col)
+            fill.setAlpha(215)
             ln = pg.InfiniteLine(pos=w["freq"], angle=90, movable=False,
                                  pen=pg.mkPen(col, width=1, style=Qt.PenStyle.DashLine),
-                                 label=w["name"] or f"{w['freq']:.3f}", labelOpts=dict(position=0.93, color=col))
+                                 label=f"{w['name'] or '—'}\n{w['freq']:.3f}",
+                                 labelOpts=dict(position=0.92 - (i % 3) * 0.11, color="#000000", fill=pg.mkBrush(fill)))
             ln.setZValue(5)
             self.plot.addItem(ln)
             self.marks.append(ln)
 
     def apply_level(self):
         lv = self.lvl()
-        self.mh_chk.setVisible(lv != "simple")
+        for w_ in (self.prev_btn, self.next_btn, self.zin, self.zout, self.zall, self.mh_chk, self.span_lbl):
+            w_.setVisible(lv != "simple")
+        self.sbar.setVisible(lv == "expert")
         self.hint.setText(TR("Clic = écouter") if lv == "simple" else TR("Clic = écouter (A) · clic droit = B"))
         if lv == "simple":
             self.mh.setData([], [])
