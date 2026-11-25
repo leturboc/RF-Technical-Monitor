@@ -659,8 +659,8 @@ ok("20. phases : tableau micros × phases", ns["phases_table"](ph, [1, 2])[1] ==
 ser = [(t_, -40.0 if (t_ < 100 or t_ >= 112) else -80.0) for t_ in range(60, 130)]
 ok("18. durée de l'incident", ns["incident_duration"](ser, 100.0) == 12.0 and ns["incident_duration"](ser[:45], 100.0) is None)
 Fx = np.linspace(599, 601, 400)
-ok("18. capture du spectre en SVG", "<svg" in ns["_svg_spectrum"](Fx, -90 + 30 * (np.abs(Fx - 600) < 0.05), 600.0)
-   and "MHz" in ns["_svg_spectrum"](Fx, Fx * 0 - 90, 600.0))
+ok("18. capture du spectre en SVG", "<svg" in ns["_svg_iq_spectrum"](Fx, -90 + 30 * (np.abs(Fx - 600) < 0.05), 600.0)
+   and "MHz" in ns["_svg_iq_spectrum"](Fx, Fx * 0 - 90, 600.0))
 cr2 = ns["compare_receivers"](A, B)
 ok("10. comparaison : stabilité de chacun", cr2["std_b"] == 0.0 and cr2["std_a"] > 0
    and "stabilité" in ns["compare_text"](cr2, "SDR", "tinySA"))

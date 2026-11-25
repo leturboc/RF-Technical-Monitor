@@ -8707,7 +8707,7 @@ def incident_duration(series, t, ref_s=30.0, back_db=7.5):
     return None
 
 
-def _svg_spectrum(F, L, f0, w=900, h=220, half=1.0):
+def _svg_iq_spectrum(F, L, f0, w=900, h=220, half=1.0):
     """18. Capture du spectre au moment de l'incident (± half MHz autour du micro, trait rouge sur le micro)."""
     F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
     sel = np.abs(F - f0) <= half
@@ -8811,7 +8811,7 @@ def incident_report_html(doc, tr=None):
     sp = doc.get("spectrum") or {}
     if sp.get("F"):
         p.append(f"<h2>{e(tr('Spectre au moment de l’incident'))}</h2>")
-        p.append(_svg_spectrum(sp["F"], sp["L"], float(doc.get("freq") or 0)))
+        p.append(_svg_iq_spectrum(sp["F"], sp["L"], float(doc.get("freq") or 0)))
     if doc.get("wf_png"):
         p.append(f"<h2>{e(tr('Waterfall du micro (± 150 kHz, le plus récent en haut)'))}</h2>"
                  f"<img src='{e(doc['wf_png'])}' style='width:100%;max-width:900px;image-rendering:pixelated'>")

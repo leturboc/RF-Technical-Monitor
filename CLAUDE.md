@@ -1796,6 +1796,46 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
     refaite à chaque compilation). **Jamais lancé au moment de l'écrire** (le réseau de la session ne voit ni GitHub
     des autres projets ni myriadrf) : lire ses annotations au 1er passage. SDRplay (API) et WiNRADiO (logiciel) ne
     peuvent pas être dans le kit ; le pilote USB (Zadig) reste à installer.
+- **V8 étape 12 (Clément : « tout mettre en place, fiabiliser, hyper user friendly, pas usine à gaz », après une revue
+  « 4 fondations + feuille de route 9-20 »)** :
+  - **Son enregistré / vie privée** : PURE `PRIVACY_DEFAULT` (alarm_audio False, keep_days 7, ack False), `KEEP_DAYS`,
+    `PRIVACY_TEXT`, `privacy_norm`, `keep_text`, `retention_pick` ; `sdr_cfg["privacy"]` (via `sdr_cfg_extra` si présent).
+    `MainWindow.privacy()`, `privacy_ok(parent)` (QMessageBox.question la 1re fois -> `ack`), `sdr_retention()` (efface
+    enregistrements_audio / enregistrements_iq / incidents plus vieux que keep_days, dossiers vides), `sdr_timer()`
+    (1 h, appelé par open_listen / open_multimon). Écoute : `auto_chk` DÉCOCHÉ sauf accord + choix retenu,
+    `_auto_toggled`, `rec_badge` (`_badge` : rouge = enregistre, orange = armé), `toggle_rec` demande l'accord. Moniteur :
+    IQ des incidents = accord aussi. Réglages SDR : « Enregistrements gardés » (`keep_combo`) + « Pourquoi ? ».
+  - **Horloge commune** : PURE `AcqClock` (heure de CAPTURE = ancre aux 1res données + échantillons / débit ; `lag` =
+    retard réel ; recalage au-delà de 2 s compté `resyncs`) ; lignes du moniteur `t` = heure de capture, `MicHistory`
+    datée avec, comparaison tinySA à l'heure de SON balayage (`MultiMonitorDialog._tsa_level` via `latest_t`, séries
+    `self.ext` {clé: {tsa, rx}}), récepteur Shure à l'heure de réception.
+  - **Capacité** : PURE `VRX_BUDGET` 0,6, `vrx_auto(charge FFT, coût d'un récepteur)` (mesurés dans le worker :
+    `b_fft`, `b_vrx`, `n_vb`), `vrx_spin` 0 = « Auto » (défaut), `capacity_view` -> `cap_lbl` (dans la fenêtre / démodulées
+    en continu / à tour de rôle / HORS fenêtre / ⚠ critiques sans récepteur, noté au journal toutes les 5 min) ; `_plan`
+    utilise `sdr_span_mhz` (largeur UTILE du modèle) au lieu de 0,8 × débit.
+  - **Santé du système** : PURE `count_overruns` (lignes d'erreur de l'outil), `resource_view`, `reconnect_delay` (3 /
+    10 / 30 s) ; perf du worker complète (lag, resyncs, overruns, queue, ring_mb / ring_s, crit, vrx_want) ; onglet
+    **Système** (`sys_tbl`, `_sys` : tailles des dossiers relues toutes les 30 s, disque libre) ; incident sans IQ si
+    le disque a moins de max(2 Go, 3 × la taille) ; **reconnexion automatique** (`_want`, `_fails`, `disc`, `_retry`,
+    journal « APPAREIL PERDU »).
+  - **Fiche commune** : PURE `device_caps(kind, model)` / `caps_text` (tinySA : balaye ; SDR : balaye + IQ + largeur
+    utile + bits) ; résumé des Réglages SDR « balaye, écoute et démodule ».
+  - **Compléments** : 9. `RealtimeDialog.show_incident(doc, t0)` (encadré `inc_box` : chronologie du micro surlignée
+    au fil de la lecture, `_inc_sync`, double-clic = `_inc_goto` 2 s avant) appelé par `open_incident` ; 10.
+    `compare_receivers` + `std_a` / `std_b` (stabilité) ; 11. `expected_obw_khz(mode)` (Carson), `WIDE_RATIO` 1,3,
+    événement « wide » (3 mesures de suite) et diag « wide » ; 12. `ADJ_RISE_DB` 10, `adj_lvl` dans les lignes,
+    événement « adj_rise » ; 14. `shure_apply` lit les clés ALARM / WARN / FAULT / ERROR / RF_INT_DET (levées / retombées),
+    `receiver_alerts` (pile ≤ 1 barre, alertes, antenne morte, ≥ 3 pertes de diversité) -> colonne « Alertes » (rouge,
+    journal « RÉCEPTEUR » une fois) et diag du micro ; 15. `DiversityAB.losses` (épisodes sans antenne), `dead()` (< 5 %
+    sur 300 mesures) ; 16. critiques sans récepteur (capacité) ; 17. `AudioMeter` : `afloor` (10ᵉ centile du son sur
+    10 s, RF bonne) -> « souffle » > `AUDIO_NOISY_DB` −45, `chops` (passages son <-> rien en 10 s) -> « son haché » ≥
+    `AUDIO_CHOPS` 8 ; 18. `incident_duration` (retour à ± 7,5 dB du niveau d'avant), `_svg_spectrum`, rapport : durée,
+    capture du spectre (`incs[...]["spec"]` = dernier `_lastFL`), **waterfall.png** du micro ; 20. **phases** : PURE
+    `PHASES`, `phases_norm` (l'ancienne `rehearsal` devient « Répétition »), `phases_table` ; `sdr_cfg["phases"]` ;
+    `phase_combo` (modifiable) à côté du mode (« 🎭 Apprendre la phase » / « 🎤 Comparer à la phase »), onglet
+    **Phases** (`ph_tbl`, `_fill_phases`). 13. carte : rien de neuf en plus de la chasse nourrie par le SDR (étape 11).
+  - Seuils (souffle −45 dBFS, haché 8, largeur × 1,3, voisin + 10 dB, budget 0,6) = **choix de Claude, testés sur des
+    signaux synthétiques seulement**. Rien de l'étape 12 n'a tourné avec un vrai SDR / récepteur / micro.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
