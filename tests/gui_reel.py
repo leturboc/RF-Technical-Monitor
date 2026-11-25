@@ -1136,6 +1136,7 @@ _nd.add_row("Pi · maison", f"127.0.0.1:{_port}")
 _nd.add_row("Pi · festival", "127.0.0.1:1")              # rien n'écoute sur le port 1
 _nd.add_row("", "pas une adresse !")
 _nd.show(); wait(200)
+_nd.table.clearSelection()                               # rien de choisi = toutes les lignes testées
 _nd.test(); wait(200)
 check("réseau : le relais qui répond est vu", _nd.table.item(0, 2).text().startswith("✔"), _nd.table.item(0, 2).text())
 check("réseau : celui qui ne répond pas aussi", _nd.table.item(1, 2).text().startswith("✖"), _nd.table.item(1, 2).text())
@@ -1266,7 +1267,7 @@ check("EazyRF : appareil de chaque fréquence (le 2ᵉ du groupe gardé sur sa l
       and "rx" not in _w500)
 check("EazyRF : interférences en émetteurs extérieurs + scan dans Scans par lieu",
       sum(1 for w_ in win.watch if w_["name"].startswith("Ext.")) == 2
-      and any(d_["name"].startswith(".ezrf3 ·") and len(d_["f"]) == 201 for d_ in win.site_scans))
+      and any(d_["name"].startswith("EazyRF ·") and len(d_["f"]) == 201 for d_ in win.site_scans))
 _nprof = len(m.RX_CUSTOM)
 DLG_ACTION[0] = "accept"
 win.import_ezrf_file(_ezp)
