@@ -188,6 +188,22 @@ for tl in app.topLevelWidgets():
     if tl.isVisible() and tl is not win:
         scan(tl, type(tl).__name__)
         tl.grab().save(os.path.join(OUT, f"{n_shot[0]:02d}_{type(tl).__name__}.png")); n_shot[0] += 1
+if hasattr(win, "set_rf_mode"):                       # V8 étape 16 : panneaux SDR (mode SDR, niveau expert) en anglais
+    try:
+        win._listen_tool = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_iq.py")]
+        _lv0 = win.ui_level
+        win.set_level("expert")
+        win.set_rf_mode("sdr")
+        wait(2500)
+        for _d in win.sdr_docks.values():
+            scan(_d, _d.objectName())
+        win._build_mode_menu()
+        scan(win.mode_btn.menu(), "mode menu")
+        win.grab().save(os.path.join(OUT, "sdr_mode.png"))
+        win.set_rf_mode("tiny")
+        win.set_level(_lv0)
+    except Exception:
+        hook(*sys.exc_info())
 win.toggle_run(); wait(1500)
 for k, v in sorted(found.items(), key=lambda x: x[1]):
     print(f"FR   [{v}] {k}")

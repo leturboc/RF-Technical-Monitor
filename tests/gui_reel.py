@@ -1380,6 +1380,72 @@ for _c11 in list((getattr(win, "_shure", None) or {}).values()):
 win._shure = {}
 win.sdr_cfg["shure"] = ""
 _srv11.close()
+# V8 étape 16 : le SDR au cœur — modes tinySA / SDR / combiné, panneaux déplaçables, pré-affichages, niveaux, profil
+os.environ["FAKE_IQ_CARRIERS"] = ",".join(f"{w['freq']}:{t}" for w, t in zip(_pair, (1000, 3000)))
+check("16 : bouton de mode dans la barre du haut", win.mode_btn.isVisible() and "tinySA" in win.mode_btn.text(),
+      win.mode_btn.text())
+check("16 : panneaux SDR dans 🪟 Fenêtres et en vraies fenêtres", all(d.toggleViewAction() in win.win_menu.actions()
+      for d in win.sdr_docks.values()) and all(d in win.panel_docks() for d in win.sdr_docks.values()))
+win.sdr_eng.a = _pair[0]["freq"]
+step("16 : mode SDR", lambda: win.set_rf_mode("sdr"))
+_t0 = time.time()
+while win.sdr_eng.last is None and time.time() - _t0 < 15:
+    wait(300)
+wait(1200)
+_rx16 = win.sdr_docks["rx"].widget()
+check("16 : mode SDR = panneaux SDR à la place du spectre tinySA", all(d.isVisible() for k_, d in win.sdr_docks.items()
+      if k_ != "mics") and not win.dock_spec.isVisible() and win.sdr_eng.running(),
+      str({k_: d.isVisible() for k_, d in win.sdr_docks.items()}))
+check("16 : S-mètre de A", "dBm" in _rx16.a_meter.format(), _rx16.a_meter.format())
+_mic16 = win.sdr_docks["mics"].widget()
+_mic16.refresh()
+check("16 : mes micros dans la fenêtre du SDR, avec le niveau mesuré", _mic16.table.rowCount() >= 1
+      and "dBm" in "".join(_mic16.table.item(r_, 2).text() for r_ in range(_mic16.table.rowCount())),
+      str(_mic16.table.rowCount()))
+shot(win, "sdr_mode")
+_c16 = win.sdr_eng.center
+win.sdr_eng.set_a(_pair[0]["freq"] + 0.05)
+check("16 : A dans la fenêtre : pas de recentrage", win.sdr_eng.center == _c16 and win.sdr_eng.worker.listen["f"]
+      == round(_pair[0]["freq"] + 0.05, 6))
+win.sdr_eng.set_a(_pair[0]["freq"] + 20.0)
+_t0 = time.time()
+while win.sdr_eng.center == _c16 and time.time() - _t0 < 8:
+    wait(300)
+check("16 : A hors de la fenêtre : le SDR se recentre tout seul", win.sdr_eng.center != _c16
+      and m.vfo_inside(win.sdr_eng.center, win.sdr_eng.span(), win.sdr_eng.a), str(win.sdr_eng.center))
+win.sdr_eng.set_a(_pair[0]["freq"])
+win.set_level("expert")
+win.sdr_eng.set_b(f=_pair[0]["freq"] + 0.2, on=True)
+wait(1500)
+check("16 : niveau Expert : récepteur B, démodulation, FFT visibles", _rx16.row_b.isVisible() and _rx16.row_dem.isVisible()
+      and _rx16.nfft.isVisible() and win.sdr_eng.worker.listen_b is not None)
+check("16 : S-mètre de B", "dBm" in _rx16.b_meter.format() or _rx16.b_meter.format() == "—", _rx16.b_meter.format())
+win.set_level("ultra")
+check("16 : niveau Simple (ultra) : seulement l'essentiel", not _rx16.row_b.isVisible() and not _rx16.nfft.isVisible())
+win.set_level("expert")
+step("16 : pré-affichage « analyser »", lambda: win.set_rf_mode("sdr", "analyze"))
+check("16 : analyser = spectre + waterfall, pics gardés", win.sdr_docks["wf"].isVisible() and win.sdr_eng.maxhold)
+step("16 : mode combiné", lambda: win.set_rf_mode("both"))
+wait(800)
+check("16 : combiné = spectre tinySA ET spectre SDR côte à côte", win.dock_spec.isVisible()
+      and win.sdr_docks["spec"].isVisible() and win.dock_spec.geometry().top() == win.sdr_docks["spec"].geometry().top()
+      and win.dock_spec.geometry().left() >= 0 and win.sdr_docks["spec"].geometry().left() >= 0)
+shot(win, "sdr_combine")
+win.sdr_docks["spec"].setFloating(True)               # l'utilisateur bouge un panneau : c'est retenu
+wait(300)
+_lay16 = win._collect_config(True).get("docks", "")
+check("16 : disposition retenue (panneaux SDR dans l'état enregistré)", bool(_lay16))
+_p16 = win.user_profile_save("Essai SDR", m.Path(tmp) / "essai_sdr.tsauser")
+win.sdr_docks["spec"].setFloating(False)
+step("16 : mode tinySA", lambda: win.set_rf_mode("tiny"))
+check("16 : tinySA = panneaux SDR rangés, SDR arrêté", not any(d.isVisible() for d in win.sdr_docks.values())
+      and not win.sdr_eng.running() and win.dock_spec.isVisible())
+step("16 : profil chargé", lambda: win.user_profile_load(_p16))
+wait(1500)
+check("16 : le profil ramène le mode SDR combiné et ses panneaux", win.rf_mode == "both"
+      and win.sdr_docks["spec"].isVisible(), win.rf_mode)
+step("16 : retour tinySA", lambda: win.set_rf_mode("tiny"))
+win.set_level("expert")
 os.environ["FAKE_IQ_CARRIERS"] = ""                 # rien ne parle : le balayage d'écoute ne s'arrête nulle part
 _hd = m.ListenDialog(win, rows=[], freqs=[_pair[0]["freq"], _pair[0]["freq"] + 30.0])
 _hd.show()

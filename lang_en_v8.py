@@ -932,3 +932,95 @@ EXACT.update({
 })
 EXACT[" · son démodulé pour le plus possible (selon le PC), les autres à tour de rôle"] = \
     " · sound demodulated for as many as possible (depending on the PC), the others in turn"
+
+# ---------------------------------------------------------------- V8 étape 16 : le SDR au cœur (panneaux, modes)
+EXACT.update({k: k for k in ("SdrMicsPanel", "SdrReceiverPanel", "SdrSpectrumPanel", "SdrWaterfallPanel", "⏺ IQ")})
+EXACT.update({
+    "A gauche / B droite": "A left / B right",
+    "Au casque : A dans l'oreille gauche, B dans la droite (sinon mélangés).":
+        "On headphones: A in the left ear, B in the right (otherwise mixed).",
+    "B est hors de la fenêtre du SDR ({} MHz autour de A) : il ne s'entend pas.":
+        "B is outside the SDR window ({} MHz around A): it can't be heard.",
+    "Ce que tu utilises : 📟 tinySA, 📡 SDR, ou les deux (combiné). Chaque mode a sa disposition de base\net des "
+    "pré-affichages ; ensuite tu bouges les panneaux comme tu veux (ta disposition est retenue).":
+        "What you use: 📟 tinySA, 📡 SDR, or both (combined). Each mode has its basic layout\nand preset views; then you "
+        "move the panels as you like (your layout is remembered).",
+    "Charge du calcul et saturation de l'entrée du SDR.": "Processing load and SDR input saturation.",
+    "Choisir le SDR, sa sensibilité, le tester.": "Choose the SDR, its sensitivity, test it.",
+    "Clic = écouter": "Click = listen",
+    "Clic = écouter (A) · clic droit = B": "Click = listen (A) · right-click = B",
+    "Deuxième récepteur, écouté en même temps que A (dans la même fenêtre du SDR).":
+        "Second receiver, heard at the same time as A (in the same SDR window).",
+    "Enregistre ce que tu entends (WAV). Demande ton accord la 1re fois (voix).":
+        "Records what you hear (WAV). Asks for your consent the first time (voices).",
+    "Enregistre le signal brut de toute la fenêtre (gros fichiers), à relire dans le Temps réel.":
+        "Records the raw signal of the whole window (big files), to replay in Real time.",
+    "Finesse du spectre (plus grand = plus fin, plus de calcul).": "Spectrum resolution (larger = finer, more processing).",
+    "Fréquence du récepteur B (clic droit sur le spectre ou un micro pour y aller).":
+        "Frequency of receiver B (right-click on the spectrum or a mic to go there).",
+    "Fréquence écoutée (récepteur A). Molette / flèches = d'un pas ; clique sur le spectre ou un micro pour y aller.":
+        "Listened frequency (receiver A). Wheel / arrows = one step; click the spectrum or a mic to go there.",
+    "Garde le plus haut niveau vu à chaque fréquence (repérer un signal bref).":
+        "Keeps the highest level seen at each frequency (to spot a short signal).",
+    "Lance / arrête le SDR : spectre sans trou, écoute de A (et B), surveillance de la fenêtre.":
+        "Starts / stops the SDR: gap-free spectrum, listening to A (and B), monitoring of the window.",
+    "Niveau SDR": "SDR level",
+    "Pas de la molette.": "Wheel step.",
+    "Pré-affichages SDR (ensuite, bouge tout comme tu veux)": "SDR preset views (then move everything as you like)",
+    "S-mètre de A : niveau reçu dans le canal (dBm, à caler avec un tinySA).":
+        "S-meter of A: level received in the channel (dBm, to calibrate with a tinySA).",
+    "S-mètre de B.": "S-meter of B.",
+    "Squelch : en dessous de ce niveau, le son est coupé (pas de souffle entre deux phrases).":
+        "Squelch: below this level the sound is muted (no hiss between sentences).",
+    "Tes fréquences dans la fenêtre du SDR. Clic = l'écouter (A) ; clic droit = en B.":
+        "Your frequencies in the SDR window. Click = listen to it (A); right-click = in B.",
+    "Ton SDR (📡 Réglages SDR pour le changer).": "Your SDR (📡 SDR settings to change it).",
+    "Tu peux aussi faire glisser les bandes A et B.": "You can also drag the A and B bands.",
+    "Un seul écran : tire le panneau « 📡 SDR · Spectre » par sa barre de titre pour en faire une fenêtre, ou branche le "
+    "2ᵉ écran.": "Only one screen: drag the “📡 SDR · Spectrum” panel by its title bar to make it a window, or connect "
+                 "the 2nd screen.",
+    "charge {} % · saturation {} %": "load {} % · saturation {} %",
+    "{} autre(s) fréquence(s) hors de la fenêtre du SDR : clique un micro ou tape sa fréquence en A pour y aller.":
+        "{} other frequency(ies) outside the SDR window: click a mic or type its frequency in A to go there.",
+    "↺ Disposition de base du mode": "↺ Basic layout of the mode",
+    "⏺ Son": "⏺ Sound",
+    "■ Arrêter le SDR": "■ Stop the SDR",
+    "▶ Démarrer le SDR": "▶ Start the SDR",
+    "⚙ Réglages SDR": "⚙ SDR settings",
+    "⚠ Le SDR est déjà pris (moniteur, écoute ou temps réel) : ferme-les d'abord.":
+        "⚠ The SDR is already in use (monitor, listening or real time): close them first.",
+    "⚠ SDR arrêté : {}": "⚠ SDR stopped: {}",
+    "👁 Surveiller mes micros": "👁 Monitor my mics",
+    "📟 Mode tinySA seul": "📟 tinySA mode only",
+    "📟 Mode tinySA.": "📟 tinySA mode.",
+    "📟 tinySA": "📟 tinySA",
+    "📟+📡 Combiné": "📟+📡 Combined",
+    "📟+📡 Mode combiné (tinySA + SDR)": "📟+📡 Combined mode (tinySA + SDR)",
+    "📟+📡 Mode combiné : tinySA et SDR côte à côte, tout est déplaçable.":
+        "📟+📡 Combined mode: tinySA and SDR side by side, everything can be moved.",
+    "📡 Mode SDR (panneaux SDR à l'écran)": "📡 SDR mode (SDR panels on screen)",
+    "📡 Mode SDR : tout est déplaçable (barres de titre), ta disposition est retenue.":
+        "📡 SDR mode: everything can be moved (title bars), your layout is remembered.",
+    "📡 Réglages SDR…": "📡 SDR settings…",
+    "📡 SDR · Mes micros": "📡 SDR · My mics",
+    "📡 SDR · Récepteur": "📡 SDR · Receiver",
+    "📡 SDR · Spectre": "📡 SDR · Spectrum",
+    "📡 SDR · Waterfall": "📡 SDR · Waterfall",
+    "📡 {} · fenêtre {} MHz": "📡 {} · window {} MHz",
+    "🔎 Analyser le spectre": "🔎 Analyze the spectrum",
+    "🖥 Spectre SDR sur l'autre écran": "🖥 SDR spectrum on the other screen",
+})
+SAME_TEMPLATES += ["{} · {} dBm", "sdr_{}_{}MHz.wav"]
+TEMPLATES["FFT {}"] = "FFT {}"
+EXACT.update({
+    "V8 : le SDR à l'écran (récepteur, spectre, waterfall, mes micros) à la place du spectre tinySA.\nTous les panneaux se "
+    "déplacent, s'empilent, se détachent ; ta disposition est retenue.":
+        "V8: the SDR on screen (receiver, spectrum, waterfall, my mics) instead of the tinySA spectrum.\nAll panels can be "
+        "moved, stacked, detached; your layout is remembered.",
+    "V8 : tinySA et SDR ensemble, les deux spectres côte à côte.": "V8: tinySA and SDR together, both spectra side by side.",
+    "V8 : la disposition tinySA seule (les panneaux SDR sont rangés, le SDR s'arrête).":
+        "V8: the tinySA layout only (SDR panels put away, the SDR stops).",
+    "📡 Mode SDR": "📡 SDR mode",
+    "📟+📡 Mode combiné": "📟+📡 Combined mode",
+    "📟 Mode tinySA": "📟 tinySA mode",
+})

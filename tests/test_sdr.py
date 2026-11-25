@@ -720,5 +720,16 @@ ok("5. consentement précis : mémoire / disque / déclencheurs / où / durée /
 ok("audit V8 : capacité avant ▶ = sans promesse chiffrée", "le plus possible" in ns["capacity_view"](8, 8, 8, 0, planned=True)[0]
    and "en continu" not in ns["capacity_view"](8, 8, 8, 0, planned=True)[0])
 
+# ---------------------------------------------------------------- V8 étape 16 : le SDR au cœur
+ok("S-mètre : S9 = −93 dBm, 6 dB par unité", ns["s_meter"](-93)[0] == "S9" and ns["s_meter"](-105)[0] == "S7"
+   and ns["s_meter"](-73)[0] == "S9+20" and ns["s_meter"](None)[0] == "—")
+ok("niveaux SDR = ceux de l'appli", [ns["sdr_level"](x) for x in ("ultra", "simple", "expert")] == ["simple", "plus", "expert"])
+ok("modes", ns["rf_mode_norm"]("both") == "both" and ns["rf_mode_norm"]("x") == "tiny")
+ok("fenêtre : A dedans / dehors ; centre au quart", ns["vfo_inside"](600e6, 4.0, 601.5) and not ns["vfo_inside"](600e6, 4.0, 602.5)
+   and ns["vfo_center"](600.0, 4.0) == 599e6)
+st_ = ns["station_norm"]({"a": 600.1, "step": 12.5, "nfft": 999, "b_on": 1, "vol": 9})
+ok("poste SDR relu de la config", st_["a"] == 600.1 and st_["step"] == 12.5 and st_["nfft"] == 4096 and st_["b_on"] is True
+   and st_["vol"] == 0.8)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

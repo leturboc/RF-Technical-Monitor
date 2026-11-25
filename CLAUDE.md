@@ -1882,6 +1882,26 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   enveloppé (`_v8_late_layout`) -> `sdr_timer()` dès le démarrage ; petits : `capacity_view(..., planned=True)` avant ▶,
   `vrx_spin` connecté une fois, `stop(keep_paused=True)` pendant la reconnexion (le balayage SDR ne reprend pas 3 s).
   Tests : test_sdr_stress (morceaux, test figé), test_sdr.
+- **V8 étape 16 (Clément : « le SDR doit être au cœur du projet, pas une fonction », « des fenêtres de base que
+  l'utilisateur bouge et modifie à sa sauce, comme la base du soft », « mode Tiny, SDR ou combiné », « lié au profil
+  utilisateur »)** : PURE `RF_MODES` (tiny, sdr, both), `SDR_LAYOUTS` (listen, watch, analyze, dual), `SDR_STEPS_KHZ`,
+  `SDR_NFFT`, `STATION_DEFAULT` / `station_norm` (sdr_cfg « station » : a, b, b_on, step, vol, sq, split, nfft, maxhold),
+  `rf_mode_norm` (sdr_cfg « rf_mode »), `sdr_level` (niveaux de l'appli : ultra = Simple, simple = Plus, expert = Expert),
+  `s_meter` (S9 = −93 dBm), `vfo_inside`, `vfo_center` (A au quart de la fenêtre, pas sur le continu). Moteur :
+  `RealtimeWorker.listen_b` / `split` / squelch `sq` / niveaux `lv_a` `lv_b` dans les trames. `SdrEngine` (`self.sdr_eng`,
+  un seul flux partagé : start / stop / set_a / set_b / set_opts, recentrage auto quand A sort de la fenêtre, son, WAV /
+  IQ avec accord, `sdr_listen_feed`), panneaux `SdrReceiverPanel` / `SdrSpectrumPanel` (bandes A / B glissables, micros en
+  repères, clic = A, clic droit = B) / `SdrWaterfallPanel` / `SdrMicsPanel` (base `SdrPanelBase`, `apply_level`).
+  Docks `SDR_DOCKS` (dock_sdr_rx / _spec / _wf / _mics) créés en enveloppant `_build_docks` (AVANT restoreState : la
+  disposition enregistrée les replace), ajoutés à `self.docks`, 🪟 Fenêtres, `panel_docks` (vraies fenêtres / double
+  écran). `layout_standard` enveloppé (range les panneaux SDR puis dispose le mode), `set_level` enveloppé (niveau des
+  panneaux), `_sdr_arrange(mode, layout)` (removeDockWidget puis replacement : en combiné, spectre SDR dans sa colonne à
+  droite du tinySA ; set_level réappliqué), `set_rf_mode`, `rf_mode_tiny/sdr/both`, bouton `mode_btn` (QToolButton dans
+  `cmd_bar` avant ☰ Plus, `_build_mode_menu` : modes + pré-affichages + « ↺ Disposition de base ») posé par `mode_setup`
+  (dans `_v8_late_layout`, relance le SDR si l'appli rouvre en mode SDR). Profil utilisateur : `USER_KEYS` + « sdr_view »,
+  `user_doc` / `user_apply` enveloppés (mode + poste) ; disposition déjà dans « docks » ; `user_profile_load` enveloppé
+  (`_sdr_reload`, SDR relancé ou arrêté). Testé : gui_reel (modes, recentrage, B, niveaux, pré-affichages, combiné côte
+  à côte, panneau détaché retenu, profil), gui_en ; **jamais avec un vrai SDR ni sur un vrai 2ᵉ écran**.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
