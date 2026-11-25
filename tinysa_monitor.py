@@ -9255,6 +9255,34 @@ def fav_assign(favs, key, khz):
     return out
 
 
+# Étape 19 (Clément : « en favori, si ça vient d'un plan Workbench, .ezrf3… ça met le compandeur automatiquement ? et en
+# switchant au pavé num ça change le compandeur aussi ») : réglage d'écoute DÉDUIT de ce qu'on sait du micro (profil
+# d'appareil, groupe, nom), modifiable (retenu par micro : w["demod"]).
+DEMOD_DIGITAL = "digital"
+DEMOD_RULES = (    # (motif, préréglage) : le 1er qui correspond gagne ; motifs sur le texte en minuscules sans accents
+    (r"ulx-?d|ulxd|axient|\bad\d|\bad ?[124]|qlx|slx-?d|slxd|ew-?dx|ew-?d\b|\bewd\b|digital 6000|\bd6000\b|\b6000\b|spectera|"
+     r"\bwmas\b|numeri|digital|\bdx\b|\bsk ?6\d{3}|\bem ?6000", DEMOD_DIGITAL),
+    (r"psm|\biem\b|in-?ear|\bears?\b|ear ?monitor|\bsr ?3\d\d\b|\bek ?3\d\d iem|\bg[34] iem|ew iem", "iem"),
+    (r"\b(3000|5000)\b|sk ?5212|\bsk ?50\b|em ?3732|em ?3532|\bsk ?5[0-9]{2}\b", "senn_pro"),
+    (r"sennheiser|\bew\b|\bew ?\d{3}|evolution|\bg[234]\b|\bsk ?[13-5]00\b|xsw|\bekp\b", "senn_ana"),
+    (r"shure|\bur ?[124]d?\b|\bur\d\b|\bulx\b|\bslx\b|\bblx\b|\bglx\b|\bpgx\b|\bsvx\b", "shure_ana"),
+    (r"wisycom|wisy|\bmtp\b|\bmrk\b|\bmtk\b|\bmcr\b|\bmpr\b", "wisy_ana"),
+    (r"lectro|lectrosonics|\bssm\b|\bsmqv\b|\bsmdb\b|\bsrc\b", "lectro"),
+    (r"talkie|\bpmr\b|motorola|kenwood|hytera|\bicom\b", "pmr446"),
+    (r"guide|talkback|intercom|interphone", "guide"),
+)
+
+
+def demod_guess(*texts):
+    """Préréglage d'écoute deviné d'après ce qu'on sait d'un micro (profil d'appareil, groupe, nom…) : clé de
+    DEMOD_PRESETS, DEMOD_DIGITAL (système numérique : ne s'écoute pas), ou None (inconnu)."""
+    t = unicodedata.normalize("NFKD", " ".join(str(x or "") for x in texts)).encode("ascii", "ignore").decode().lower()
+    for pat, key in DEMOD_RULES:
+        if re.search(pat, t):
+            return key
+    return None
+
+
 def reconnect_delay(fails):
     """19. Attente avant de relancer un SDR décroché : 3 s, puis 10 s, puis 30 s."""
     return 3.0 if fails <= 1 else (10.0 if fails <= 3 else 30.0)
@@ -20770,6 +20798,7 @@ class SdrEngine(QtCore.QObject):
                           cut=(dp or {}).get("cut"), audio=(dp or {}).get("audio"))
         self.worker = self.audio = self.wav = None
         self.center, self.rate, self.last, self.paused, self.msg = None, None, None, [], ""
+        self.demod_key, self.cur_mic, self.demod_how = (d0[0] if d0 else None), None, None   # étape 19
         self._t_feed = 0.0
         self.q = deque(maxlen=60)
         self.af = deque(maxlen=8)                       # derniers blocs de son (spectre du son)
@@ -20914,12 +20943,42 @@ class SdrEngine(QtCore.QObject):
         self.save()
         self.changed.emit()
 
+    def mic_at(self, f, tol=0.0015):
+        """Le micro de ce poste réglé sur f (± 1,5 kHz), ou None."""
+        ws = [w for w in self.ws() if abs(w["freq"] - f) <= tol]
+        return min(ws, key=lambda w: abs(w["freq"] - f)) if ws else None
+
+    def set_demod_key(self, key, push=True):
+        """Réglage d'écoute d'après un préréglage (démodulation, compander, désaccentuation…)."""
+        d = demod_preset(key)
+        if d is None:
+            return False
+        self.demod_key = key
+        self.demod = dict(mode=d.get("mode", "wfm"), compander=d.get("comp", "none"), deemph=float(d.get("deemph", 50.0)),
+                          dev=d.get("dev"), cut=d.get("cut"), audio=d.get("audio"))
+        if push:
+            self._push()
+        return True
+
     def set_a(self, f):
         m = self.model()
         f = round(float(f), 6)
         if m and not sdr_in_range(m, f):
             return False
         self.a = f
+        w = self.mic_at(f)                               # étape 19 : on tombe sur un micro -> SON réglage d'écoute
+        self.cur_mic = w
+        if w is not None and w is not getattr(self, "_mic_done", None):
+            self._mic_done = w
+            key, how = self.owner.mic_demod(w)
+            self.demod_how = how
+            if key == DEMOD_DIGITAL:
+                self._say(TR("📵 {} : système numérique, il ne s'écoute pas (son chiffré). Le niveau et la santé RF "
+                              "restent surveillés.").format(w["name"] or f"{w['freq']:.3f}"))
+            elif key:
+                self.set_demod_key(key, push=False)
+        elif w is None:
+            self._mic_done, self.demod_how = None, None
         if self.worker is not None and not vfo_inside(self.center, self.span(), f):
             self.retune.start(350)                      # hors de la fenêtre : on recentre (après le réglage)
         self._push()
@@ -21104,7 +21163,8 @@ class SdrReceiverPanel(SdrPanelBase):
         fr_.addStretch(1)
         lay.addLayout(fr_)
         # ---- Plus : démodulation, pas, squelch
-        self.dp = DemodPick(lambda: hasattr(self, "dp") and e.set_opts(demod=self.dp.params()))
+        self._sync = False
+        self.dp = DemodPick(lambda: hasattr(self, "dp") and not self._sync and self._dp_changed())
         self.step = QtWidgets.QComboBox()
         for s_ in SDR_STEPS_KHZ:
             self.step.addItem(f"{s_:g} kHz", s_)
@@ -21121,7 +21181,10 @@ class SdrReceiverPanel(SdrPanelBase):
         self.dp.pre.setToolTip("Le type d'appareil que tu écoutes : règle tout seul la démodulation, le compander et la "
                                "désaccentuation\n(Sennheiser evolution, Shure, Wisycom, ears, talkies…).")
         self.row_listen = QtWidgets.QWidget()                # étape 16 ter : l'écoute, à tous les niveaux
-        rl = o._row("🎧 Écoute :", self.dp.pre, "Compander :", self.dp.comp, None)
+        self.dem_lbl = QtWidgets.QLabel("")
+        self.dem_lbl.setToolTip("« auto » : réglage déduit du micro (son appareil dans le plan importé, son groupe, son nom).\n"
+                                "Change-le ici : il est retenu pour CE micro (liste et shows).")
+        rl = o._row("🎧 Écoute :", self.dp.pre, "Compander :", self.dp.comp, self.dem_lbl, None)
         rl.setContentsMargins(0, 0, 0, 0)
         self.row_listen.setLayout(rl)
         lay.addWidget(self.row_listen)
@@ -21218,6 +21281,23 @@ class SdrReceiverPanel(SdrPanelBase):
         else:
             self.eng.start()
 
+    def _dp_changed(self):
+        """Réglage d'écoute changé à la main : appliqué, et retenu pour le micro écouté (s'il y en a un)."""
+        e = self.eng
+        e.demod_key = self.dp.pre.currentData() or None
+        e.set_opts(demod=self.dp.params())
+        if e.cur_mic is not None and e.demod_key:
+            self.owner.mic_demod_set(e.cur_mic, e.demod_key)
+            e.demod_how = self.owner.mic_demod(e.cur_mic)[1]
+        self._dem_txt()
+
+    def _dem_txt(self):
+        e = self.eng
+        how = e.demod_how if e.cur_mic is not None else None
+        t = {"auto": TR("auto (d'après le micro)"), "manual": TR("✋ choisi pour ce micro")}.get(how, "")
+        if self.dem_lbl.text() != t:
+            self.dem_lbl.setText(t)
+
     def _fav_menu(self, k):
         o, e = self.owner, self.eng
         m = QtWidgets.QMenu(self)
@@ -21258,6 +21338,13 @@ class SdrReceiverPanel(SdrPanelBase):
         m = e.model()
         run = e.running()
         self._favs_refresh()
+        if e.demod_key and self.dp.pre.currentData() != e.demod_key:   # le moteur a changé d'écoute (micro, pavé…)
+            i = self.dp.pre.findData(e.demod_key)
+            if i >= 0:
+                self._sync = True
+                self.dp.pre.setCurrentIndex(i)
+                self._sync = False
+        self._dem_txt()
         self.go_btn.setText("■ Arrêter le SDR" if run else "▶ Démarrer le SDR")
         self.dev_lbl.setText(TR("📡 {} · fenêtre {} MHz").format(m["name"], f"{e.span():.1f}") if m else "")
         for dsp, v in ((self.a_disp, e.a), (self.b_disp, e.b)):
@@ -21653,7 +21740,7 @@ class SdrMicsPanel(SdrPanelBase):
             return
         f = self.ws[r]["freq"]
         if slot == "a":
-            self.eng.set_a(f)
+            self.eng.set_a(f)                            # set_a applique le réglage d'écoute du micro
         elif self.lvl() != "simple":
             self.eng.set_b(f=f, on=True)
 
@@ -43236,6 +43323,62 @@ def _v8_watch_dbl(self, row, col):
         self.sdr_tune_mic(self.watch[row])
 
 
+def _v8_mic_demod(self, w):
+    """Réglage d'écoute d'un micro -> (préréglage | DEMOD_DIGITAL | None, « manual » | « auto » | None)."""
+    k = w.get("demod")
+    if k and (demod_preset(k) is not None or k == DEMOD_DIGITAL):
+        return k, "manual"
+    rx = self.rx_of(w) if hasattr(self, "rx_of") else (w.get("rx") or "")
+    names = [n for k_, n, *_r in rx_all() if k_ == rx]
+    g = self.group_row(w.get("scene"), w.get("group")) if hasattr(self, "group_row") else None
+    gnames = [n for k_, n, *_r in rx_all() if k_ in (self.group_rxs(g) if g else [])]
+    key = demod_guess(rx, *names, *gnames, w.get("group"), w.get("name"), w.get("scene"))
+    return (key, "auto") if key else (None, None)
+
+
+def _v8_mic_demod_set(self, w, key):
+    """Retient le réglage d'écoute choisi à la main pour ce micro (rien si c'est celui qu'on aurait deviné)."""
+    w.pop("demod", None)
+    if key and self.mic_demod(w)[0] != key:
+        w["demod"] = key
+
+
+_v7_collect_config = MainWindow._collect_config
+
+
+def _v8_collect_config(self, *a, **k):
+    data = _v7_collect_config(self, *a, **k)
+    try:                                         # étape 19 : réglage d'écoute choisi à la main (liste + shows)
+        if isinstance(data.get("watch"), list) and len(data["watch"]) == len(self.watch):
+            for d_, w in zip(data["watch"], self.watch):
+                if w.get("demod"):
+                    d_["demod"] = w["demod"]
+    except Exception:  # noqa: BLE001
+        pass
+    return data
+
+
+_v7_apply_config2 = MainWindow._apply_config
+
+
+def _v8_apply_config2(self, data, startup=False):
+    r = _v7_apply_config2(self, data, startup)
+    try:
+        src = data.get("watch") if isinstance(data, dict) else None
+        if isinstance(src, list) and len(src) == len(self.watch):
+            for d_, w in zip(src, self.watch):
+                k_ = d_.get("demod") if isinstance(d_, dict) else None
+                if k_ and (demod_preset(k_) is not None or k_ == DEMOD_DIGITAL):
+                    w["demod"] = k_
+    except Exception:  # noqa: BLE001
+        pass
+    return r
+
+
+MainWindow.mic_demod = _v8_mic_demod
+MainWindow.mic_demod_set = _v8_mic_demod_set
+MainWindow._collect_config = _v8_collect_config
+MainWindow._apply_config = _v8_apply_config2
 MainWindow._engine_for = _v8_engine_for
 MainWindow.sdr_tune_mic = _v8_sdr_tune_mic
 MainWindow.sdr_fav = _v8_sdr_fav

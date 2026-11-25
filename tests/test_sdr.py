@@ -757,5 +757,16 @@ ok("favoris : relus (1…9 seulement)", ns["favs_norm"]({"1": 600100, "2": "x", 
 ok("favoris : une fréquence sur une seule touche", ns["fav_assign"]({1: 600100, 2: 598300}, 3, 600100) == {2: 598300, 3: 600100}
    and ns["fav_assign"]({1: 600100}, 1, None) == {})
 
+# ---------------------------------------------------------------- V8 étape 19 : réglage d'écoute déduit du micro
+dg_ = ns["demod_guess"]
+ok("écoute déduite : analogiques", [dg_(x) for x in ("EW 300 G4", "Sennheiser évolution", "SK 5212", "Shure UR4D", "SLX",
+   "Wisycom MTP40", "Lectrosonics SSM", "PSM 900", "talkie Motorola")] == ["senn_ana", "senn_ana", "senn_pro", "shure_ana",
+   "shure_ana", "wisy_ana", "lectro", "iem", "pmr446"])
+ok("écoute déduite : numériques repérés (ne s'écoutent pas)", all(dg_(x) == "digital" for x in (
+   "ULXD4Q", "Axient AD4D", "QLX-D", "SLX-D", "EW-DX", "EW-D", "EM 6000", "Spectera")))
+ok("écoute déduite : rien d'utile = inconnu", dg_("HF 1", "Scène A") is None and dg_() is None)
+ok("écoute déduite : tous les préréglages existent", all(ns["demod_preset"](k) is not None for _p, k in ns["DEMOD_RULES"]
+   if k != "digital"))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

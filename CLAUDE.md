@@ -1938,6 +1938,18 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   chiffres). Récepteur : barre ⭐ 1…9 (clic = écouter, clic droit = y mettre le micro écouté / vider, bouton allumé =
   écouté) ; zoom du canal + spectre du son visibles aussi en Simple. Mes micros (SDR) : clic droit = menu (A, B, touche
   du pavé). Testé : gui_reel (double-clic, touche 3 du pavé avec QTest), script ; **pas sur un vrai clavier Windows**.
+- **V8 étape 19 (Clément : « en favori, si ça vient d'un plan Workbench / .ezrf3… ça met le compandeur automatiquement ?
+  modifiable ; et au pavé num ça change le compandeur aussi »)** : PURE `DEMOD_DIGITAL`, `DEMOD_RULES` (motifs ->
+  préréglage : numériques ULX-D / AD / QLX-D / SLX-D / EW-D(X) / 6000 / Spectera d'abord, puis ears, Sennheiser 3000-5000,
+  evolution, Shure UR / ULX / SLX / BLX, Wisycom, Lectrosonics, talkies, guide), `demod_guess(*textes)` (sans accents, en
+  minuscules). `MainWindow.mic_demod(w)` -> (clé, « manual » | « auto ») : `w["demod"]` choisi à la main, sinon deviné de
+  `rx_of(w)` + noms des profils (micro et groupe) + groupe + nom + scène ; `mic_demod_set` (rien si = deviné).
+  `_collect_config` / `_apply_config` ENVELOPPÉS pour garder `demod` dans « watch » (liste, shows, annuler) sans toucher
+  la ligne V7 de la liste blanche. Moteur : `SdrEngine.mic_at(f)`, `set_demod_key`, `set_a` applique le réglage du micro
+  sur lequel A tombe (double-clic, pavé, clic spectre / micro, micro suivant…), message 📵 pour un numérique.
+  Récepteur : `dem_lbl` « auto (d'après le micro) » / « ✋ choisi pour ce micro », `_dp_changed` retient le choix,
+  `refresh` aligne la liste sur le moteur (`_sync`). Règles = choix de Claude d'après les gammes connues, **pas
+  vérifiées sur les vrais plans de Clément** (un nom de groupe inattendu -> pas deviné, réglage précédent gardé).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

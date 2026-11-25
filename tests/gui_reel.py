@@ -1461,6 +1461,20 @@ check("18 : touche 3 du pavé numérique = bascule l'écoute sur le favori", abs
       < 1e-6 and _rx18.favs[2].isChecked() and _rx18.favs[2].text().startswith("3 "), str(win.sdr_eng.a))
 win.sdr_set_fav(3, None)
 check("18 : touche vidée", 3 not in m.favs_norm(win.sdr_cfg.get("favs")))
+# V8 étape 19 : réglage d'écoute déduit du micro (plan importé, groupe, nom), modifiable et retenu
+_w19 = win.watch[0]
+_g19, _d19 = _w19.get("group"), _w19.pop("demod", None)
+_w19["group"] = "EW 300 G4"
+win.sdr_tune_mic(_w19)
+wait(500)
+check("19 : micro Sennheiser evolution = compander EVO tout seul", win.sdr_eng.demod_key == "senn_ana"
+      and _rx18.dp.pre.currentData() == "senn_ana" and "auto" in _rx18.dem_lbl.text(), str(win.sdr_eng.demod_key))
+_rx18.dp.pre.setCurrentIndex(_rx18.dp.pre.findData("wisy_ana"))
+wait(200)
+check("19 : choix à la main retenu pour ce micro", _w19.get("demod") == "wisy_ana" and "✋" in _rx18.dem_lbl.text())
+check("19 : … et enregistré avec la liste", any(d_.get("demod") == "wisy_ana" for d_ in win._collect_config(True)["watch"]))
+_w19.pop("demod", None)
+_w19["group"] = _g19
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)
 _p2 = _pd.add()

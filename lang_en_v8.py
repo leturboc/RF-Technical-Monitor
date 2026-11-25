@@ -1135,3 +1135,15 @@ EXACT.update({
     "🎧 Écouter en B": "🎧 Listen in B",
 })
 SAME_TEMPLATES += ["{} ({} MHz)"]
+
+# ---------------------------------------------------------------- V8 étape 19 : réglage d'écoute déduit du micro
+EXACT.update({
+    "auto (d'après le micro)": "auto (from the mic)",
+    "« auto » : réglage déduit du micro (son appareil dans le plan importé, son groupe, son nom).\nChange-le ici : il est "
+    "retenu pour CE micro (liste et shows).": "“auto”: setting deduced from the mic (its device in the imported plan, its "
+                                             "group, its name).\nChange it here: it is remembered for THIS mic (list and "
+                                             "shows).",
+    "✋ choisi pour ce micro": "✋ chosen for this mic",
+    "📵 {} : système numérique, il ne s'écoute pas (son chiffré). Le niveau et la santé RF restent surveillés.":
+        "📵 {}: digital system, it can't be listened to (encrypted audio). Its level and RF health are still monitored.",
+})
