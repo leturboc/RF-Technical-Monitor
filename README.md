@@ -183,7 +183,7 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 ## Démarrage rapide
 
 1. Branche le tinySA Ultra en USB, choisis le port (ou coche **Démo** pour essayer sans matériel), **▶ Démarrer**.
-2. Importe tes fréquences (📥 Importer CSV : plan de ton logiciel de coordination (.ezrf3), WWB, Excel…) ou saisis-les, range-les en
+2. Importe tes fréquences (📥 Importer CSV : plan EazyRF (.ezrf3), WWB, Excel…) ou saisis-les, range-les en
    Scènes › Groupes.
 3. Donne un statut à chaque fréquence : *Libre* (doit rester libre) ou *En service* (doit émettre).
 4. 🔔 en haut à droite = alarmes. Clic droit sur un groupe → priorité des alarmes.
