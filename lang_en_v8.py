@@ -689,3 +689,119 @@ EXACT.update({
     "📶 Récepteurs Shure en réseau (télémétrie)…": "📶 Networked Shure receivers (telemetry)…",
 })
 SAME_TEMPLATES += ["< SET {} METER_RATE {} >"]
+
+# ---------------------------------------------------------------- V8 étape 12 : fondations + compléments (lot D)
+EXACT.update({k: k for k in ("ALARM|WARN|FAULT|ERROR|INTERFERENCE|RF_INT_DET", "CLEAR", "NONE", "_lastFL")})
+EXACT.update({
+    " · stabilité ± {} / ± {} dB": " · stability ± {} / ± {} dB",
+    " · {} HORS de la fenêtre : pas surveillées par ce SDR": " · {} OUTSIDE the window: not monitored by this SDR",
+    " · {} démodulées en continu": " · {} demodulated continuously",
+    " · {} à tour de rôle (toutes les 5 s)": " · {} in turn (every 5 s)",
+    " · ⚠ {} critique(s) sans récepteur : le PC ne suit pas, baisse le nombre de micros ou ferme d'autres fenêtres":
+        " · ⚠ {} critical one(s) without a receiver: the PC can't keep up, reduce the number of mics or close other windows",
+    "1 jour": "1 day",
+    "Alerte du récepteur": "Receiver alert",
+    "Alertes": "Alerts",
+    "Antenne {} presque jamais utilisée : câble, antenne ou booster à vérifier":
+        "Antenna {} almost never used: check the cable, antenna or booster",
+    "Balance": "Soundcheck",
+    "Ce qu'il faut savoir avant d'enregistrer du son.": "What you should know before recording sound.",
+    "Ce que le SDR couvre vraiment et ce que le PC arrive à démoduler en ce moment.":
+        "What the SDR really covers and what the PC manages to demodulate right now.",
+    "Ce qui est arrivé au micro, dans l'ordre. Double-clic = aller à ce moment dans l'IQ.":
+        "What happened to the mic, in order. Double-click = go to that moment in the IQ.",
+    "Chaque micro dans chaque phase apprise : écart au bruit, bruit de fond, niveau du son.\nUn micro bien plus faible au "
+    "show qu'à la balance = antenne masquée, pack mal placé…":
+        "Each mic in each learned phase: margin above noise, noise floor, sound level.\nA mic much weaker during the show "
+        "than at soundcheck = antenna blocked, pack badly placed…",
+    "Charge du calcul": "Processing load",
+    "Conservation : {} (réglable dans 📡 Réglages SDR).": "Kept for: {} (adjustable in 📡 SDR settings).",
+    "D'accord pour enregistrer ?": "OK to record?",
+    "Disque libre": "Free disk",
+    "Début du spectacle": "Start of the show",
+    "Déconnexions du SDR": "SDR disconnections",
+    "Enregistrements gardés :": "Recordings kept:",
+    "Enregistrer du son ?": "Record sound?",
+    "Exploitation": "Running the show",
+    "File du son": "Sound queue",
+    "IQ enregistré": "Recorded IQ",
+    "Incidents gardés": "Incidents kept",
+    "La phase du show : balance, répétition, début, exploitation… (tu peux en taper une autre).\nChaque phase apprise est "
+    "gardée à part ; on compare le show à celle qu'on choisit.":
+        "The phase of the show: soundcheck, rehearsal, start, running… (you can type another one).\nEach learned phase is "
+        "kept separately; the show is compared with the one you choose.",
+    "La santé du SDR et du PC : échantillons perdus, retard, charge, mémoire, disque,\ndéconnexions. Orange / rouge = la "
+    "surveillance n'est plus complète.":
+        "Health of the SDR and the PC: lost samples, delay, load, memory, disk,\ndisconnections. Orange / red = "
+        "monitoring is no longer complete.",
+    "Le canal voisin monte": "The adjacent channel is rising",
+    "Le récepteur signale : {} {}": "The receiver reports: {} {}",
+    "Le son démodulé contient des voix : artistes, équipes, public. Avant d'enregistrer :\n• n'enregistre que ce qui sert "
+    "(preuve d'un brouillage, réglage d'un micro) ;\n• garde-le peu de temps (effacement automatique après la durée "
+    "choisie) ;\n• ne le diffuse pas, et préviens les personnes concernées si les règles du lieu le demandent.\nLes "
+    "enregistrements IQ des incidents contiennent aussi le son (on peut les réécouter).":
+        "Demodulated sound contains voices: artists, crews, audience. Before recording:\n• only record what is useful "
+        "(proof of interference, setting up a mic);\n• keep it for a short time (automatic deletion after the chosen "
+        "period);\n• do not share it, and inform the people concerned if the venue's rules require it.\nIncident IQ "
+        "recordings also contain the sound (they can be listened to again).",
+    "Le son, l'IQ et les dossiers d'incident plus vieux que ça sont effacés tout seuls\n(ils contiennent des voix : ne les "
+    "garde pas plus que nécessaire).":
+        "Sound, IQ and incident folders older than this are deleted automatically\n(they contain voices: don't keep them "
+        "longer than necessary).",
+    "Mémoire du tampon IQ": "IQ buffer memory",
+    "Pertes signalées par le SDR": "Losses reported by the SDR",
+    "Phases": "Phases",
+    "Pile du micro presque vide ({} barre)": "Mic battery almost empty ({} bar)",
+    "Recalages d'horloge": "Clock resyncs",
+    "Retard du calcul": "Processing delay",
+    "Rouge = du son est enregistré en ce moment ; orange = il le sera si une alarme part.\nLes enregistrements sont effacés "
+    "tout seuls après la durée choisie (📡 Réglages SDR).":
+        "Red = sound is being recorded right now; orange = it will be if an alarm goes off.\nRecordings are deleted "
+        "automatically after the chosen period (📡 SDR settings).",
+    "RÉCEPTEUR": "RECEIVER",
+    "Récepteurs virtuels": "Virtual receivers",
+    "Répétition": "Rehearsal",
+    "Signal plus large que prévu": "Signal wider than expected",
+    "Signal plus large que prévu ({} kHz au lieu de {}) : déviation trop forte, pack déréglé, ou deux émetteurs l'un sur "
+    "l'autre.": "Signal wider than expected ({} kHz instead of {}): deviation too high, pack misadjusted, or two "
+                "transmitters on top of each other.",
+    "Son enregistré": "Recorded sound",
+    "Son enregistré et vie privée": "Recorded sound and privacy",
+    "Son haché ({} coupures en 10 s) : contact, câble de capsule, squelch trop haut ?":
+        "Choppy sound ({} cuts in 10 s): contact, capsule cable, squelch too high?",
+    "Souffle dans le son ({} dBFS entre les mots) : réglage du compander, pack fatigué, ou RF juste.":
+        "Hiss in the sound ({} dBFS between words): compander setting, tired pack, or marginal RF.",
+    "Spectre au moment de l’incident": "Spectrum at the time of the incident",
+    "Système": "System",
+    "Waterfall du micro (± 150 kHz, le plus récent en haut)": "Mic waterfall (± 150 kHz, newest at the top)",
+    "balaye, écoute et démodule": "sweeps, listens and demodulates",
+    "bruit {}": "noise {}",
+    "dans {} s : {}": "in {} s: {}",
+    "disque presque plein : IQ non gardé": "disk almost full: IQ not kept",
+    "durée : {} s": "duration: {} s",
+    "il y a {} s : {}": "{} s ago: {}",
+    "ne démodule pas": "does not demodulate",
+    "son {}": "sound {}",
+    "tout garder": "keep everything",
+    "{} fréquences dans la fenêtre : niveau, voisins et largeur de toutes":
+        "{} frequencies in the window: level, neighbours and width of all",
+    "{} jours": "{} days",
+    "{} pertes de diversité (aucune antenne) : micro hors de portée ?": "{} diversity losses (no antenna): mic out of range?",
+    "Échantillons perdus": "Lost samples",
+    "écoute et démodule ({} MHz d'un coup)": "listens and demodulates ({} MHz at once)",
+    "⏺ SON ENREGISTRÉ": "⏺ SOUND RECORDING",
+    "⏺ prêt à enregistrer sur alarme": "⏺ ready to record on alarm",
+    "⚠ SDR décroché ({}) : nouvel essai dans {} s…": "⚠ SDR dropped ({}): retrying in {} s…",
+    "⚠ « {} » pas encore apprise : choisis « 🎭 Apprendre » pendant cette phase.":
+        "⚠ “{}” not learned yet: choose “🎭 Learn” during this phase.",
+    "🎤 Comparer à la phase": "🎤 Compare with the phase",
+    "🎤 Comparé à « {} » ({} micros, {}).": "🎤 Compared with “{}” ({} mics, {}).",
+    "🎭 Apprendre la phase": "🎭 Learn the phase",
+    "🎭 J'apprends « {} » : {} micro(s) appris (30 s de mesures chacun au moins).":
+        "🎭 Learning “{}”: {} mic(s) learned (at least 30 s of measurements each).",
+    "💾 « {} » gardée : {} micros. Choisis « 🎤 Comparer » pendant le show.":
+        "💾 “{}” saved: {} mics. Choose “🎤 Compare” during the show.",
+    "📦 Incident : {} · {} MHz": "📦 Incident: {} · {} MHz",
+})
+SAME_TEMPLATES += ["color: {}; font-weight: bold;", "<p class='muted'>{} · {}", " : {} kHz",
+                   "<h2>{}</h2><img src='{}' style='width:100%;max-width:900px;image-rendering:pixelated'>", "{} Mo · {} s"]

@@ -596,5 +596,74 @@ for a_ in ["AX", "AX", "XB", "AX", "XX"]:
 ok("diversity A / B : part et bascules", dv.switches == 2 and "A 60 %" in dv.text() and "aucune : 20 %" in dv.text(), dv.text())
 ok("Shure : adresses", ns["shure_addrs"]("a.b, 1.2.3.4:99; bad!x") == [("a.b", 2202), ("1.2.3.4", 99)])
 
+# ---------------------------------------------------------------- V8 étape 12 : son et vie privée
+pn = ns["privacy_norm"]
+ok("vie privée : par défaut rien n'est enregistré, 7 jours", pn(None) == dict(alarm_audio=False, keep_days=7, ack=False))
+ok("vie privée : durée inconnue -> 7 jours", pn({"keep_days": 5, "ack": 1})["keep_days"] == 7 and pn({"ack": 1})["ack"] is True)
+ok("vie privée : effacement des vieux", ns["retention_pick"]([("a", 0), ("b", 9 * 86400)], 10 * 86400, 7) == ["a"]
+   and ns["retention_pick"]([("a", 0)], 1e9, 0) == [])
+ok("vie privée : texte de durée", ns["keep_text"](0) == "tout garder" and ns["keep_text"](14) == "14 jours")
+
+# ---------------------------------------------------------------- V8 étape 12 : fondations
+ck = ns["AcqClock"](1000.0)
+t1 = ck.feed(500, 100.0)
+t2 = ck.feed(500, 100.6)
+ok("horloge : heure d'après les échantillons, retard mesuré", t1 == 100.0 and abs(t2 - 100.5) < 1e-9 and abs(ck.lag - 0.1) < 1e-9)
+t3 = ck.feed(500, 110.0)
+ok("horloge : trou de 9 s -> recalage compté", ck.resyncs == 1 and t3 == 110.0 and ck.lag == 0.0)
+ok("pertes signalées par l'outil", ns["count_overruns"](["OOOO", "Found 1 device", "overflow!", "U"]) == 2)
+ok("récepteurs virtuels auto : d'après la charge", ns["vrx_auto"](0.1, 0.1) == 5 and ns["vrx_auto"](0.7, 0.1) == 1
+   and ns["vrx_auto"](0.0, 0.01) == ns["VRX_MAX"] and ns["vrx_auto"](0.2, None) == 4)
+cv = ns["capacity_view"](12, 8, 4, 0)
+ok("capacité : honnête (rotation, hors fenêtre)", "8 fréquences" in cv[0] and "4 à tour de rôle" in cv[0]
+   and "4 HORS" in cv[0] and cv[1] == "warn", cv[0])
+ok("capacité : critiques sans récepteur = rouge", ns["capacity_view"](3, 3, 1, 2)[1] == "bad")
+dc = ns["device_caps"]("hackrf", ns["sdr_model"]("hackrf_one"))
+ok("fiche commune : SDR démodule, tinySA non", dc["iq"] and dc["span"] > 1 and not ns["device_caps"]("")["iq"]
+   and "démodule" in ns["caps_text"](dc), str(dc))
+rv = ns["resource_view"](dict(lost=6.0, load=0.5, lag=0.1, disk_gb=1.0, vrx=2, vrx_want=4))
+ok("santé du système : pertes et disque en rouge", dict((a, c) for a, _b, c in rv)["Échantillons perdus"] == "bad"
+   and dict((a, c) for a, _b, c in rv)["Disque libre"] == "bad" and dict((a, c) for a, _b, c in rv)["Récepteurs virtuels"] == "warn")
+ok("reconnexion : 3 s puis 10 s puis 30 s", [ns["reconnect_delay"](n) for n in (1, 2, 4)] == [3.0, 10.0, 30.0])
+
+# ---------------------------------------------------------------- V8 étape 12 : compléments de la feuille de route
+am2, am3 = ns["AudioMeter"](), ns["AudioMeter"]()
+for i in range(100):
+    am2.feed(np.full(480, 0.001 if i % 2 else 0.2, dtype=np.float32), 0.05, True, i * 0.05)
+    am3.feed(np.full(480, 0.008, dtype=np.float32), 0.05, True, i * 0.05)
+st2, st3_ = am2.state(), am3.state()
+ok("17. son haché repéré, souffle repéré", st2["chops"] >= 8 and st2["afloor"] < -50 and st3_["afloor"] > -45
+   and st3_["chops"] == 0, str((st2, st3_)))
+dg2 = ns["rf_audio_diag"](dict(snr=30, afloor=-40, chops=10, obw=260, obw_exp=130, rx_alerts=["Pile"]))
+ok("17. / 11. diagnostic : souffle, haché, trop large, alerte récepteur", {"noisy", "chop", "wide", "rx"} <= {x[0] for x in dg2})
+ok("11. largeur attendue d'un micro FM", ns["expected_obw_khz"]("wfm") == 130.0 and ns["expected_obw_khz"]("am") == 200.0)
+tk5, ev5 = ns["AnomalyTracker"](), []
+for i in range(60):
+    ev5 += tk5.feed(i * 0.5, -40.0, -95.0, 40.0, None, 120.0 if i < 50 else 260.0, 130.0, -90.0 if i < 55 else -70.0)
+ok("11. / 12. débordement de largeur et voisin qui monte", [e["kind"] for e in ev5] == ["wide", "adj_rise"], str(ev5))
+dv2 = ns["DiversityAB"]()
+for k in range(400):
+    dv2.feed("AX" if k % 50 else "XX", float(k))
+ok("15. antenne B jamais utilisée + pertes comptées", dv2.dead() == "B" and len(dv2.losses) >= 7)
+al = ns["receiver_alerts"](dict(batt=1, alarms={"RF_INT_DET": "CRITICAL"}), dv2)
+ok("14. / 15. alertes du récepteur", len(al) == 4 and "Antenne B" in al[2] and "8 pertes" in al[3], str(al))
+st3 = {}
+ns["shure_apply"](st3, "REP 1 RF_INT_DET CRITICAL")
+ns["shure_apply"](st3, "REP 1 ENCRYPTION_WARNING ON")
+ns["shure_apply"](st3, "REP 1 RF_INT_DET NONE")
+ok("14. alertes Shure : levées et retombées", st3[1]["alarms"] == {"ENCRYPTION_WARNING": "ON"}, str(st3))
+ph = ns["phases_norm"]({"Balance": {"mics": {"1": ref}}, "bad": 3}, {"mics": {"2": ref}})
+ok("20. phases : relues, ancienne répétition reprise", sorted(ph) == ["Balance", "Répétition"])
+ok("20. phases : tableau micros × phases", ns["phases_table"](ph, [1, 2])[1] == {"Balance": ref["snr_med"], "Répétition": None},
+   str(ns["phases_table"](ph, [1, 2])))
+ser = [(t_, -40.0 if (t_ < 100 or t_ >= 112) else -80.0) for t_ in range(60, 130)]
+ok("18. durée de l'incident", ns["incident_duration"](ser, 100.0) == 12.0 and ns["incident_duration"](ser[:45], 100.0) is None)
+Fx = np.linspace(599, 601, 400)
+ok("18. capture du spectre en SVG", "<svg" in ns["_svg_spectrum"](Fx, -90 + 30 * (np.abs(Fx - 600) < 0.05), 600.0)
+   and "MHz" in ns["_svg_spectrum"](Fx, Fx * 0 - 90, 600.0))
+cr2 = ns["compare_receivers"](A, B)
+ok("10. comparaison : stabilité de chacun", cr2["std_b"] == 0.0 and cr2["std_a"] > 0
+   and "stabilité" in ns["compare_text"](cr2, "SDR", "tinySA"))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

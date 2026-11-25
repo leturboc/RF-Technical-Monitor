@@ -7627,9 +7627,13 @@ def sdr_cfg_extra(sd):
             except (TypeError, ValueError):
                 pass
         out["offsets"] = o2
+    if "privacy" in sd:                                 # étape 12 : son enregistré, durée de conservation
+        out["privacy"] = privacy_norm(sd.get("privacy"))
     rh = rehearsal_norm(sd.get("rehearsal"))           # étape 11 : profil de répétition, récepteurs Shure
     if rh:
         out["rehearsal"] = rh
+    if "phases" in sd or rh:                           # 20. phases du show (l'ancienne répétition y est reprise)
+        out["phases"] = phases_norm(sd.get("phases"), sd.get("rehearsal"))
     if isinstance(sd.get("shure"), str):
         out["shure"] = ", ".join(f"{h}:{p}" if p != SHURE_PORT else h for h, p in shure_addrs(sd["shure"]))
     return out
@@ -7900,6 +7904,18 @@ AUDIO_PRESENT_DB = -35.0     # son plus haut que ça = quelqu'un parle / joue
 AUDIO_CLIP = 0.97            # échantillon au-delà = saturation (pleine échelle ≈ 1)
 ADJ_WARN_DB = 20.0           # voisin à moins de 20 dB sous le canal = à surveiller
 VRX_MAX = 8                  # récepteurs virtuels au plus (charge du PC)
+AUDIO_NOISY_DB = -45.0       # 17. le son « entre les mots » plus fort que ça = souffle
+AUDIO_CHOPS = 8              # 17. passages son <-> rien en 10 s (RF bonne) = son haché
+WIDE_RATIO = 1.3             # 11. largeur occupée 30 % au-dessus de la largeur attendue = débordement
+ADJ_RISE_DB = 10.0           # 12. canal voisin 10 dB au-dessus de sa médiane des 5 dernières minutes
+
+
+def expected_obw_khz(mode="wfm"):
+    """11. Largeur attendue d'un micro (Carson : 2 × (déviation + 15 kHz de son) en FM ; 200 kHz sinon)."""
+    m = LISTEN_MODES.get(mode or "wfm") or {}
+    if "fm" in (mode or "wfm") and m.get("dev"):
+        return round(2.0 * (m["dev"] / 1000.0 + 15.0), 1)
+    return CHANNEL_KHZ
 
 
 class AudioMeter:
@@ -7910,6 +7926,7 @@ class AudioMeter:
         self.silent_s, self.was_on, self.cuts, self.t_last = 0.0, False, deque(maxlen=50), None
         self.rms_db = self.peak_db = -120.0
         self.clip = 0.0
+        self.rec, self.flips = deque(maxlen=200), deque(maxlen=60)      # 17. 10 s de blocs, passages son <-> rien
 
     def feed(self, a, dt, rf_ok=True, t=None):
         a = np.asarray(a, dtype=np.float32)
@@ -7928,12 +7945,22 @@ class AudioMeter:
             self.silent_s += float(dt)
         else:
             self.silent_s = 0.0
+        prev = self.was_on
         self.was_on = on or (self.was_on and self.rms_db >= AUDIO_SILENCE_DB)
+        tt = t if t is not None else (self.rec[-1][0] + dt if self.rec else 0.0)
+        if rf_ok:
+            self.rec.append((tt, self.rms_db))
+            if prev != self.was_on:
+                self.flips.append(tt)
         return self.state()
 
     def state(self):
+        tt = self.rec[-1][0] if self.rec else 0.0
+        r = [v for t_, v in self.rec if tt - t_ <= 10.0]
+        floor = round(float(np.percentile(r, 10)), 1) if len(r) >= 40 else None    # le son entre les mots
+        chops = sum(1 for t_ in self.flips if tt - t_ <= 10.0)
         return dict(rms=round(self.rms_db, 1), peak=round(self.peak_db, 1), clip=round(self.clip, 4),
-                    silent=round(self.silent_s, 1), cuts=len(self.cuts))
+                    silent=round(self.silent_s, 1), cuts=len(self.cuts), afloor=floor, chops=chops)
 
 
 def adjacent_db(F, L, f0, chan_khz=200.0):
@@ -7972,6 +7999,18 @@ def rf_audio_diag(m, tr=None):
     if m.get("adj_margin") is not None and m["adj_margin"] < ADJ_WARN_DB:
         out.append(("adj", "warn", tr("Signal fort dans le canal voisin ({} dB sous le canal) : désensibilisation, "
                                       "intermod.").format(f"{m['adj_margin']:.0f}")))
+    if m.get("afloor") is not None and m["afloor"] > AUDIO_NOISY_DB and snr is not None and snr >= 10:
+        out.append(("noisy", "warn", tr("Souffle dans le son ({} dBFS entre les mots) : réglage du compander, pack "
+                                        "fatigué, ou RF juste.").format(f"{m['afloor']:.0f}")))
+    if (m.get("chops") or 0) >= AUDIO_CHOPS and snr is not None and snr >= 10:
+        out.append(("chop", "warn", tr("Son haché ({} coupures en 10 s) : contact, câble de capsule, squelch trop "
+                                       "haut ?").format(m["chops"])))
+    if m.get("obw") is not None and m.get("obw_exp") and m["obw"] > WIDE_RATIO * m["obw_exp"]:
+        out.append(("wide", "warn", tr("Signal plus large que prévu ({} kHz au lieu de {}) : déviation trop forte, "
+                                       "pack déréglé, ou deux émetteurs l'un sur l'autre.").format(
+                                           f"{m['obw']:.0f}", f"{m['obw_exp']:.0f}")))
+    for a_ in m.get("rx_alerts") or []:
+        out.append(("rx", "warn", a_))
     if not out:
         out.append(("ok", "ok", tr("RAS")))
     rank = {"bad": 0, "warn": 1, "ok": 2}
@@ -8056,8 +8095,9 @@ ANOM_LABELS = {
     "drop": "Décrochage RF", "flaps": "Décrochages répétés", "noise": "Bruit qui monte",
     "adj": "Voisin trop fort", "appear": "Signal sur la fréquence", "diag": "Diagnostic RF + son",
     "burst": "Signal bref inconnu", "alarm": "Alarme", "manual": "Incident noté à la main",
+    "wide": "Signal plus large que prévu", "adj_rise": "Le canal voisin monte", "rx": "Alerte du récepteur",
 }
-INC_AUTO_KINDS = ("drop", "flaps", "noise", "adj", "appear", "diag", "alarm")   # ceux qui ouvrent un dossier
+INC_AUTO_KINDS = ("drop", "flaps", "noise", "adj", "appear", "diag", "alarm", "wide", "adj_rise")   # ceux qui ouvrent un dossier
 
 
 def iq_ring_seconds(bytes_per_s, keep_s=IQ_RING_S, budget=IQ_RING_BUDGET):
@@ -8078,6 +8118,7 @@ class AnomalyTracker:
         self.drops, self.last = deque(maxlen=20), {}
         self.in_drop = self.adj_bad = self.on = False
         self.ref = 0.0
+        self.wide_n, self.adjl = 0, deque(maxlen=600)             # 11. / 12.
         self.bad = None
 
     def _emit(self, out, kind, t, value=None):
@@ -8085,8 +8126,18 @@ class AnomalyTracker:
             self.last[kind] = t
             out.append(dict(kind=kind, t=float(t), value=value))
 
-    def feed(self, t, rf=None, noise=None, adj_margin=None, bad=None):
+    def feed(self, t, rf=None, noise=None, adj_margin=None, bad=None, obw=None, obw_exp=None, adj_lvl=None):
         out = []
+        if obw is not None and obw_exp:                              # 11. débordement (3 mesures de suite)
+            self.wide_n = self.wide_n + 1 if obw > WIDE_RATIO * obw_exp else 0
+            if self.wide_n == 3:
+                self._emit(out, "wide", t, round(float(obw), 0))
+        if adj_lvl is not None:                                      # 12. un voisin qui monte
+            al = [v for t_, v in self.adjl if t - t_ <= 300.0]
+            if len(al) >= 20 and adj_lvl - float(np.median(al)) >= ADJ_RISE_DB:
+                self._emit(out, "adj_rise", t, round(adj_lvl - float(np.median(al)), 1))
+            else:
+                self.adjl.append((float(t), float(adj_lvl)))
         rs = [v for t_, v in self.rf if t - t_ <= 30.0]
         nzs = [v for t_, v in self.nz if t - t_ <= 300.0]
         med_nz = float(np.median(nzs)) if len(nzs) >= 20 else None
@@ -8135,8 +8186,10 @@ def anomaly_text(ev, tr=None):
     base = tr(ANOM_LABELS.get(k, str(k)))
     if v is None or v == "":
         return base
-    if k in ("drop", "noise"):
+    if k in ("drop", "noise", "adj_rise"):
         return f"{base} : {'-' if k == 'drop' else '+'}{abs(float(v)):.0f} dB"
+    if k == "wide":
+        return base + f" : {float(v):.0f} kHz"
     if k == "flaps":
         return base + tr(" : {} en 10 min").format(int(v))
     if k in ("adj", "appear"):
@@ -8182,7 +8235,7 @@ REH_MIN_N = 60                   # mesures mini (≈ 30 s) pour qu'un micro soit
 REH_SNR_DB = 10.0                # spectacle : écart au bruit 10 dB sous le plus faible de la répétition
 REH_NOISE_DB = 6.0               # … bruit 6 dB au-dessus de celui de la répétition
 REH_AUDIO_DB = 6.0               # … son 6 dB au-dessus du plus fort de la répétition
-SDR_MODES = (("watch", "Surveillance"), ("learn", "🎭 Répétition (apprendre)"), ("show", "🎤 Spectacle (comparer)"))
+SDR_MODES = (("watch", "Surveillance"), ("learn", "🎭 Apprendre la phase"), ("show", "🎤 Comparer à la phase"))
 
 
 class RehearsalProfile:
@@ -8276,7 +8329,8 @@ def compare_receivers(a, b, tol_s=1.5, drop_db=15.0):
     d = pb - pa
     corr = float(np.corrcoef(pa, pb)[0, 1]) if np.std(pa) > 0 and np.std(pb) > 0 else None
     return dict(n=len(pa), offset=round(float(np.median(d)), 1), spread=round(float(np.std(d)), 1),
-                corr=None if corr is None else round(corr, 2), only_a=int(np.sum(da & ~db)), only_b=int(np.sum(db & ~da)))
+                corr=None if corr is None else round(corr, 2), only_a=int(np.sum(da & ~db)), only_b=int(np.sum(db & ~da)),
+                std_a=round(float(np.std(pa)), 1), std_b=round(float(np.std(pb)), 1))
 
 
 def compare_text(c, na, nb, tr=None):
@@ -8287,6 +8341,8 @@ def compare_text(c, na, nb, tr=None):
     s = tr("{} / {} : décalage {} dB (± {})").format(na, nb, f"{c['offset']:+.1f}", f"{c['spread']:.1f}")
     if c["only_a"] or c["only_b"]:
         s += tr(" · décrochages vus seulement par {} : {}, seulement par {} : {}").format(na, c["only_a"], nb, c["only_b"])
+    if c.get("std_a") is not None:
+        s += tr(" · stabilité ± {} / ± {} dB").format(f"{c['std_a']:.1f}", f"{c['std_b']:.1f}")
     return s
 
 
@@ -8347,6 +8403,12 @@ def shure_apply(state, msg):
         st["batt"] = None if num(v) == 255 else num(v)
     elif k == "TX_TYPE":
         st["tx"] = None if v in ("UNKN", "UNKNOWN") else v
+    elif re.search(r"ALARM|WARN|FAULT|ERROR|INTERFERENCE|RF_INT_DET", k):        # 14. alertes matérielles
+        al = st.setdefault("alarms", {})
+        if v in ("", "OFF", "NONE", "0", "000", "CLEAR", "OK"):
+            al.pop(k, None)
+        else:
+            al[k] = v
     elif k == "ALL" and p["type"] == "SAMPLE" and a:
         if re.fullmatch(r"[AX][BX]", a[0]):
             st["ant"] = a[0]
@@ -8374,10 +8436,16 @@ class DiversityAB:
     def __init__(self):
         self.n = {"A": 0, "B": 0, "-": 0}
         self.prev, self.switches = None, 0
+        self.losses, self._lost = deque(maxlen=50), None            # 15. pertes de diversité [(début, fin)]
 
-    def feed(self, ant):
+    def feed(self, ant, t=None):
         s = "A" if ant and ant[0] == "A" else ("B" if ant and ant[-1] == "B" else "-")
         self.n[s] += 1
+        if s == "-" and self._lost is None:
+            self._lost = t
+        elif s != "-" and self._lost is not None:
+            self.losses.append((self._lost, t))
+            self._lost = None
         if s in "AB" and self.prev in ("A", "B") and s != self.prev:
             self.switches += 1
         if s != "-":
@@ -8394,6 +8462,34 @@ class DiversityAB:
             s += " · " + tr("aucune : {} %").format(f"{100 * self.n['-'] / tot:.0f}")
         return s
 
+    def dead(self, min_n=300, share=0.05):
+        """15. Antenne quasi jamais utilisée (« A » ou « B ») sur au moins min_n mesures : câble, antenne, booster ?"""
+        tot = self.n["A"] + self.n["B"]
+        if tot < min_n:
+            return None
+        for a in ("A", "B"):
+            if self.n[a] / tot < share:
+                return a
+        return None
+
+
+def receiver_alerts(st, div=None, tr=None):
+    """14. / 15. Ce qui ne va pas sur un canal de récepteur -> [phrase]."""
+    tr = tr or (lambda x: x)
+    out = []
+    if st.get("batt") is not None and st["batt"] <= 1:
+        out.append(tr("Pile du micro presque vide ({} barre)").format(st["batt"]))
+    for k, v in sorted((st.get("alarms") or {}).items()):
+        out.append(tr("Le récepteur signale : {} {}").format(k, v))
+    if div is not None:
+        d = div.dead()
+        if d:
+            out.append(tr("Antenne {} presque jamais utilisée : câble, antenne ou booster à vérifier").format(d))
+        n = sum(1 for a, b in div.losses if a is not None and b is not None and b - a >= 1.0)
+        if n >= 3:
+            out.append(tr("{} pertes de diversité (aucune antenne) : micro hors de portée ?").format(n))
+    return out
+
 
 def shure_addrs(text):
     """« 192.168.1.50, 192.168.1.51:2202 » -> [(hôte, port)] (sans doublons)."""
@@ -8409,6 +8505,227 @@ def shure_addrs(text):
         if re.fullmatch(r"[A-Za-z0-9.\-]+", h) and (h, p) not in out:
             out.append((h, p))
     return out[:16]
+
+
+# ------------------------------------------------------------------ V8 étape 12 : fondations (lot D)
+# Son enregistré et vie privée : un enregistrement de son (ou d'IQ, qu'on peut démoduler) contient des VOIX (artistes,
+# équipes, public). Rien n'est enregistré sans accord explicite, tout est effacé après `keep_days` jours.
+PRIVACY_DEFAULT = dict(alarm_audio=False, keep_days=7, ack=False)
+KEEP_DAYS = (1, 3, 7, 14, 30, 0)                 # 0 = tout garder
+PRIVACY_TEXT = ("Le son démodulé contient des voix : artistes, équipes, public. Avant d'enregistrer :\n"
+                "• n'enregistre que ce qui sert (preuve d'un brouillage, réglage d'un micro) ;\n"
+                "• garde-le peu de temps (effacement automatique après la durée choisie) ;\n"
+                "• ne le diffuse pas, et préviens les personnes concernées si les règles du lieu le demandent.\n"
+                "Les enregistrements IQ des incidents contiennent aussi le son (on peut les réécouter).")
+
+
+def privacy_norm(d):
+    """Réglages « son et vie privée » lus de la config (prudemment)."""
+    d = d if isinstance(d, dict) else {}
+    out = dict(PRIVACY_DEFAULT)
+    out["alarm_audio"] = bool(d.get("alarm_audio", False))
+    out["ack"] = bool(d.get("ack", False))
+    try:
+        k = int(d.get("keep_days", 7))
+        out["keep_days"] = k if k in KEEP_DAYS else 7
+    except (TypeError, ValueError):
+        pass
+    return out
+
+
+def keep_text(days, tr=None):
+    tr = tr or (lambda x: x)
+    return tr("tout garder") if not days else (tr("1 jour") if days == 1 else tr("{} jours").format(days))
+
+
+def retention_pick(entries, now, days):
+    """Fichiers / dossiers [(chemin, date)] plus vieux que `days` jours -> chemins à effacer (days 0 = rien)."""
+    if not days:
+        return []
+    lim = float(now) - float(days) * 86400.0
+    return [p for p, t in entries if float(t) < lim]
+
+
+# Horloge commune : chaque mesure porte l'heure où elle a été CAPTÉE (pas celle où le calcul l'a vue passer). tinySA :
+# heure du balayage (sweep_t, V7 7.45) ; SDR : heure d'après le compte d'échantillons ; son : heure du bloc démodulé.
+class AcqClock:
+    """Heure des échantillons d'un flux IQ : ancrée sur l'heure du PC aux 1res données, puis avancée du nombre
+    d'échantillons reçus / débit. Retard = heure du PC − heure des échantillons (ce que le calcul a de retard, plus les
+    échantillons perdus en route) ; au-delà de RESYNC_S, recalage (compté : des échantillons ont été perdus)."""
+    RESYNC_S = 2.0
+
+    def __init__(self, rate):
+        self.rate, self.t0, self.n, self.resyncs, self.lag = float(rate), None, 0, 0, 0.0
+
+    def feed(self, n_samples, now):
+        """Un bloc de n échantillons vient d'arriver à `now` -> heure de la FIN du bloc (heure de capture)."""
+        if self.t0 is None:
+            self.t0 = float(now) - n_samples / self.rate
+        self.n += int(n_samples)
+        t = self.t0 + self.n / self.rate
+        self.lag = float(now) - t
+        if self.lag > self.RESYNC_S or self.lag < -0.5:
+            self.t0 = float(now) - self.n / self.rate
+            self.resyncs += 1
+            self.lag, t = 0.0, float(now)
+        return t
+
+
+_OVR = re.compile(r"overflow|overrun|underrun|dropped|lost samples|samples lost|\bO{2,}\b|^O+$", re.I)
+
+
+def count_overruns(lines):
+    """19. Lignes d'erreur d'un outil SDR (hackrf_transfer, rtl_sdr, rx_sdr…) qui signalent des échantillons perdus."""
+    return sum(1 for x in lines if _OVR.search(str(x).strip()))
+
+
+# Capacité : ce que le SDR COUVRE (fenêtre utile) et ce que le PC peut DÉMODULER (charge mesurée).
+VRX_BUDGET = 0.6                 # part du temps de calcul qu'on s'autorise (le reste : affichage, autres fenêtres)
+
+
+def vrx_auto(base_load, cost_vrx, n_max=VRX_MAX, budget=VRX_BUDGET):
+    """16. Récepteurs virtuels possibles : (budget − charge de la FFT) / coût d'un récepteur (part du temps réel par
+    récepteur, mesurée). Au moins 1, au plus n_max ; coût inconnu -> 4."""
+    if not cost_vrx or cost_vrx <= 0:
+        return min(4, n_max)
+    return int(max(1, min(n_max, math.floor((budget - max(0.0, base_load)) / cost_vrx))))
+
+
+def capacity_view(n_asked, n_in, n_vrx, n_crit, tr=None):
+    """16. Phrase honnête sur ce qui est vraiment surveillé : -> (texte, ton). n_asked = fréquences de la liste dans la
+    plage du SDR, n_in = dans la fenêtre, n_vrx = démodulées en continu, n_crit = critiques qui n'ont pas de récepteur."""
+    tr = tr or (lambda x: x)
+    out_ = max(0, n_asked - n_in)
+    rot = max(0, n_in - n_vrx)
+    s = tr("{} fréquences dans la fenêtre : niveau, voisins et largeur de toutes").format(n_in)
+    s += tr(" · {} démodulées en continu").format(min(n_vrx, n_in))
+    if rot:
+        s += tr(" · {} à tour de rôle (toutes les 5 s)").format(rot)
+    if out_:
+        s += tr(" · {} HORS de la fenêtre : pas surveillées par ce SDR").format(out_)
+    if n_crit:
+        s += tr(" · ⚠ {} critique(s) sans récepteur : le PC ne suit pas, baisse le nombre de micros ou ferme d'autres "
+                "fenêtres").format(n_crit)
+        return s, "bad"
+    return s, ("warn" if out_ else "ok")
+
+
+def device_caps(kind, model=None):
+    """Fiche commune de ce que sait faire un appareil : {name, sweep, iq, span (MHz utiles d'un coup), bits, enob, fmin,
+    fmax, demod}. kind "" / "tinysa" = tinySA (balaye, ne démodule pas)."""
+    if not kind or kind == "tinysa":
+        return dict(name="tinySA", sweep=True, iq=False, span=None, bits=None, enob=None, fmin=0.1, fmax=6000.0,
+                    demod=False)
+    sp = SDR_KINDS.get(kind) or {}
+    m = model or {}
+    rate = sdr_rate(m, kind) if m else sdr_iq_rate(kind)
+    iq = bool(sp.get("iq_tool")) or kind == "winradio"
+    return dict(name=m.get("name") or sp.get("name", kind), sweep=bool(sp.get("tool")) or kind == "winradio", iq=iq,
+                span=round(sdr_span_mhz(m, rate), 2) if iq else None, bits=m.get("bits"), enob=m.get("enob"),
+                fmin=m.get("fmin", sp.get("fmin")), fmax=m.get("fmax", sp.get("fmax")), demod=iq)
+
+
+def caps_text(c, tr=None):
+    tr = tr or (lambda x: x)
+    p = [tr("balaye") if c["sweep"] else None,
+         (tr("écoute et démodule ({} MHz d'un coup)").format(f"{c['span']:g}") if c["iq"] else tr("ne démodule pas")),
+         (tr("{} bits").format(c["bits"]) if c.get("bits") else None)]
+    return f"{c['name']} : " + " · ".join(x for x in p if x)
+
+
+def resource_view(i, tr=None):
+    """19. Santé du système (onglet Système du moniteur) : i = dict(lost %, load, lag s, resyncs, overruns, vrx, vrx_want,
+    ring_mb, ring_s, disk_gb, inc_mb, audio_mb, iq_mb, queue, disc, disc_why) -> [(libellé, valeur, ton)]."""
+    tr = tr or (lambda x: x)
+
+    def tone(v, w, b, hi=True):
+        if v is None:
+            return "none"
+        return ("bad" if v >= b else "warn" if v >= w else "ok") if hi else ("bad" if v <= b else "warn" if v <= w else "ok")
+    out = [
+        (tr("Échantillons perdus"), "—" if i.get("lost") is None else f"{i['lost']:.1f} %", tone(i.get("lost"), 1, 5)),
+        (tr("Pertes signalées par le SDR"), str(i.get("overruns", 0)), tone(i.get("overruns", 0), 1, 20)),
+        (tr("Recalages d'horloge"), str(i.get("resyncs", 0)), tone(i.get("resyncs", 0), 1, 5)),
+        (tr("Retard du calcul"), "—" if i.get("lag") is None else f"{i['lag']:.2f} s", tone(i.get("lag"), 0.5, 2)),
+        (tr("Charge du calcul"), "—" if i.get("load") is None else f"{100 * i['load']:.0f} %", tone(i.get("load"), 0.7, 0.95)),
+        (tr("Récepteurs virtuels"), f"{i.get('vrx', 0)} / {i.get('vrx_want', 0)}",
+         "warn" if i.get("vrx", 0) < i.get("vrx_want", 0) else "ok"),
+        (tr("Mémoire du tampon IQ"), f"{i.get('ring_mb', 0):.0f} Mo · {i.get('ring_s', 0):.0f} s", "ok"),
+        (tr("File du son"), str(i.get("queue", 0)), tone(i.get("queue", 0), 50, 150)),
+        (tr("Disque libre"), "—" if i.get("disk_gb") is None else f"{i['disk_gb']:.1f} Go", tone(i.get("disk_gb"), 10, 2, False)),
+        (tr("Incidents gardés"), f"{i.get('inc_mb', 0):.0f} Mo", tone(i.get("inc_mb", 0), INC_MAX_MB * 0.8, INC_MAX_MB)),
+        (tr("Son enregistré"), f"{i.get('audio_mb', 0):.0f} Mo", "ok"),
+        (tr("IQ enregistré"), f"{i.get('iq_mb', 0):.0f} Mo", "ok"),
+        (tr("Déconnexions du SDR"), str(i.get("disc", 0)) + (f" ({i['disc_why']})" if i.get("disc_why") else ""),
+         tone(i.get("disc", 0), 1, 3)),
+    ]
+    return out
+
+
+# 20. Phases du show (balance, répétition, début, exploitation…) : chaque phase apprise est gardée à part, et le
+# spectacle se compare à celle qu'on choisit ; un tableau les met côte à côte.
+PHASES = ("Balance", "Répétition", "Début du spectacle", "Exploitation")
+
+
+def phases_norm(d, legacy=None):
+    """Phases lues de la config -> {nom: {t, mics}} ; l'ancienne « rehearsal » (étape 11) devient « Répétition »."""
+    out = {}
+    if isinstance(d, dict):
+        for k, v in list(d.items())[:20]:
+            r = rehearsal_norm(v)
+            if r:
+                out[str(k)[:40]] = r
+    lg = rehearsal_norm(legacy)
+    if lg and "Répétition" not in out:
+        out["Répétition"] = lg
+    return out
+
+
+def phases_table(phases, keys, field="snr_med"):
+    """20. Tableau micros × phases : {clé: {phase: valeur}} pour le champ demandé (écart au bruit médian…)."""
+    out = {}
+    for k in keys:
+        out[k] = {p: (v.get("mics") or {}).get(k, {}).get(field) for p, v in phases.items()}
+    return out
+
+
+def incident_duration(series, t, ref_s=30.0, back_db=7.5):
+    """18. Durée d'un incident : du déclenchement au retour du niveau RF à moins de back_db de celui d'avant (médiane
+    des ref_s secondes d'avant). series = [(t, dB)]. -> secondes, ou None (pas revenu dans ce qu'on a)."""
+    before = [v for a, v in series if v is not None and t - ref_s <= a < t - 0.5]
+    if len(before) < 3:
+        return None
+    ref = float(np.median(before))
+    low = False
+    for a, v in series:
+        if a < t or v is None:
+            continue
+        if v < ref - back_db:
+            low = True
+        elif low or a > t + 1.0:
+            return round(max(0.0, a - t), 1) if low else 0.0
+    return None
+
+
+def _svg_spectrum(F, L, f0, w=900, h=220, half=1.0):
+    """18. Capture du spectre au moment de l'incident (± half MHz autour du micro, trait rouge sur le micro)."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    sel = np.abs(F - f0) <= half
+    if sel.sum() < 5:
+        return ""
+    F, L = F[sel], L[sel]
+    if len(F) > 900:
+        k = int(math.ceil(len(F) / 900))
+        n = len(F) // k * k
+        F, L = F[:n].reshape(-1, k).mean(axis=1), L[:n].reshape(-1, k).max(axis=1)
+    pts = [(float(a), float(b)) for a, b in zip(F, L)]
+    s = _svg_series([("", "#0a84ff", pts)], f0, w, h, unit="dBFS")
+    return s.replace(f"{(F[0] - f0):+.0f} s", f"{F[0]:.3f} MHz").replace(f"{(F[-1] - f0):+.0f} s", f"{F[-1]:.3f} MHz")
+
+
+def reconnect_delay(fails):
+    """19. Attente avant de relancer un SDR décroché : 3 s, puis 10 s, puis 30 s."""
+    return 3.0 if fails <= 1 else (10.0 if fails <= 3 else 30.0)
 
 
 def _svg_series(series, t_mark, w=900, h=190, unit="dB"):
@@ -8477,7 +8794,9 @@ def incident_report_html(doc, tr=None):
          "text-align:left}.muted{color:#6b7488}.bad{color:#c0392b}.warn{color:#b9770e}.ok{color:#1e8449}",
          REPORT_PRO_CSS, "</style></head><body>",
          f"<h1>⚠ {e(tr('Incident'))} : {e(doc.get('name', ''))} · {float(doc.get('freq') or 0):.3f} MHz</h1>",
-         f"<p class='muted'>{e(doc.get('when', ''))} · {e(anomaly_text(tg, tr))}</p>"]
+         f"<p class='muted'>{e(doc.get('when', ''))} · {e(anomaly_text(tg, tr))}"
+         + (f" · {e(tr('durée : {} s').format(doc['duration']))}" if doc.get("duration") is not None else "")
+         + "</p>"]
     also = doc.get("also") or []
     if also:
         p.append("<p>" + e(tr("Aussi pendant ce temps : ")) + e(" · ".join(anomaly_text(a, tr) for a in also)) + "</p>")
@@ -8489,6 +8808,13 @@ def incident_report_html(doc, tr=None):
     dr = S("drift")
     if any(v is not None for _t, v in dr):
         p.append(_svg_series([(tr("dérive"), "#af52de", dr)], t, h=150, unit="kHz"))
+    sp = doc.get("spectrum") or {}
+    if sp.get("F"):
+        p.append(f"<h2>{e(tr('Spectre au moment de l’incident'))}</h2>")
+        p.append(_svg_spectrum(sp["F"], sp["L"], float(doc.get("freq") or 0)))
+    if doc.get("wf_png"):
+        p.append(f"<h2>{e(tr('Waterfall du micro (± 150 kHz, le plus récent en haut)'))}</h2>"
+                 f"<img src='{e(doc['wf_png'])}' style='width:100%;max-width:900px;image-rendering:pixelated'>")
     dg = doc.get("diag") or []
     if dg:
         p.append(f"<h2>{e(tr('Diagnostic RF + son'))}</h2><ul>")
@@ -17394,6 +17720,17 @@ class SdrDialog(QtWidgets.QDialog):
         self.rec_spin.setToolTip("Taille maximale d'un enregistrement IQ (⏱ Temps réel) : il s'arrête tout seul au-delà\n"
                                  "(et quand il reste moins de 2 Go sur le disque).")
         af.addRow("Enregistrement IQ max :", self.rec_spin)
+        self.keep_combo = QtWidgets.QComboBox()           # étape 12 : durée de conservation (son, IQ, incidents)
+        for k_ in KEEP_DAYS:
+            self.keep_combo.addItem(keep_text(k_, TR), k_)
+        self.keep_combo.setCurrentIndex(max(0, self.keep_combo.findData(owner.privacy()["keep_days"])))
+        self.keep_combo.setToolTip("Le son, l'IQ et les dossiers d'incident plus vieux que ça sont effacés tout seuls\n"
+                                   "(ils contiennent des voix : ne les garde pas plus que nécessaire).")
+        self.priv_btn = QtWidgets.QPushButton("Pourquoi ?")
+        self.priv_btn.setToolTip("Ce qu'il faut savoir avant d'enregistrer du son.")
+        self.priv_btn.clicked.connect(lambda *_: QtWidgets.QMessageBox.information(self, TR("Son enregistré et vie privée"),
+                                                                                    TR(PRIVACY_TEXT)))
+        f.addRow("Enregistrements gardés :", owner._row(self.keep_combo, self.priv_btn, None))
         av.addLayout(af)
         lay.addWidget(self.adv)
         self.adv.hide()
@@ -17433,7 +17770,8 @@ class SdrDialog(QtWidgets.QDialog):
             f"{m['fmin']:g} – {m['fmax']:g} MHz" if m else "",
             TR("{} bits").format(bits) if bits else "",
             TR("fenêtre jusqu'à {} MHz").format(f"{span:.1f}") if span else "",
-            TR("niveaux en dBm") if (m or {}).get("cal") else TR("niveaux à caler")) if x))
+            TR("niveaux en dBm") if (m or {}).get("cal") else TR("niveaux à caler"),
+            TR("balaye, écoute et démodule") if m and device_caps(m["kind"], m)["iq"] else "") if x))
         while self.gain_form.rowCount():
             self.gain_form.removeRow(0)
         self.gain_w = {}
@@ -17508,7 +17846,8 @@ class SdrDialog(QtWidgets.QDialog):
         if m and m["kind"]:
             models[m["kind"]] = key
         out = dict(dir=self.dir_edit.text().strip(), rec_max_gb=self.rec_spin.value(), model=key, models=models,
-                   gains=self.gains, offsets=dict(self._offs))
+                   gains=self.gains, offsets=dict(self._offs),
+                   privacy=dict(self.owner.privacy(), keep_days=self.keep_combo.currentData()))
         g = self.gains.get(key, {})              # compatibilité : anciens réglages globaux = ceux du modèle choisi
         for k_ in ("lna", "vga", "amp"):
             if k_ in g:
@@ -17816,11 +18155,15 @@ class ListenDialog(QtWidgets.QDialog):
         self.dwell.setToolTip("Temps passé sur une fenêtre où rien ne parle.")
         lay.addLayout(R(self.rec_btn, self.pc_mute, None, self.hop_chk, self.dwell))
         self.auto_chk = QtWidgets.QCheckBox("⏺ Sur alarme : garder le son (10 s avant, 10 s après)")
-        self.auto_chk.setChecked(True)
+        self.auto_chk.setChecked(owner.privacy()["alarm_audio"] and owner.privacy()["ack"])   # étape 12 : accord
+        self.auto_chk.toggled.connect(lambda on: self._auto_toggled(on))
         self.auto_chk.setToolTip("Quand une alarme (conflit, absent) part sur une fréquence de la fenêtre écoutée, le son des\n"
                                  "10 secondes d'avant et des 10 suivantes est enregistré en WAV (preuve du brouillage),\n"
                                  "dans « enregistrements_audio », et noté au journal.")
-        lay.addLayout(R(self.auto_chk, None))
+        self.rec_badge = QtWidgets.QLabel("")           # étape 12 : on voit toujours si du son est enregistré
+        self.rec_badge.setToolTip("Rouge = du son est enregistré en ce moment ; orange = il le sera si une alarme part.\n"
+                                  "Les enregistrements sont effacés tout seuls après la durée choisie (📡 Réglages SDR).")
+        lay.addLayout(R(self.auto_chk, None, self.rec_badge))
         self.pre = PreRing(10.0, LISTEN_RATE * 4)
         self._auto, self._seen, self._t_al, self._types = None, set(), 0.0, {}
         self.mon_lbl = QtWidgets.QLabel("")            # étape 7 : surveillance pendant l'écoute
@@ -17988,6 +18331,8 @@ class ListenDialog(QtWidgets.QDialog):
         now = time.time()
         if self._auto is not None and now >= self._auto["until"]:
             self._auto_end()
+        if now - self._t_al >= 0.5:
+            self._badge()
         if self.auto_chk.isChecked() and now - self._t_al >= 0.5:
             self._t_al = now
             self._alarm_check()
@@ -18065,9 +18410,35 @@ class ListenDialog(QtWidgets.QDialog):
         self.table.blockSignals(False)
         self._start(c, rows, hopping=True)
 
+    def _auto_toggled(self, on):
+        """Étape 12 : cocher « garder le son sur alarme » = accord vie privée la 1re fois, retenu dans les réglages."""
+        if on and not self.owner.privacy_ok(self):
+            self.auto_chk.blockSignals(True)
+            self.auto_chk.setChecked(False)
+            self.auto_chk.blockSignals(False)
+            on = False
+        self.owner.privacy()["alarm_audio"] = bool(on)
+        self._badge()
+
+    def _badge(self):
+        if self.wav is not None or self._auto is not None:
+            t, c = TR("⏺ SON ENREGISTRÉ"), self.owner.theme.get("st_occ", "#ff453a")
+        elif self.auto_chk.isChecked() and self.worker is not None:
+            t, c = TR("⏺ prêt à enregistrer sur alarme"), self.owner.theme.get("st_weak", "#ff9f0a")
+        else:
+            t, c = "", ""
+        if self.rec_badge.text() != t:
+            self.rec_badge.setText(t)
+            self.rec_badge.setStyleSheet(f"color: {c}; font-weight: bold;" if c else "")
+
     def toggle_rec(self, on):
         """⏺ Son enregistré en WAV (48 kHz stéréo 16 bits) dans <journaux>/enregistrements_audio/<date>/."""
         import wave
+        if on and not self.owner.privacy_ok(self):        # étape 12 : accord vie privée la 1re fois
+            self.rec_btn.blockSignals(True)
+            self.rec_btn.setChecked(False)
+            self.rec_btn.blockSignals(False)
+            return
         if not on:
             if self.wav is not None:
                 try:
@@ -18229,6 +18600,8 @@ class MultiMonitorWorker(QtCore.QThread):
             try:
                 os.makedirs(req["dir"], exist_ok=True)
                 data = pend["pre"] + b"".join(pend["post"])
+                if shutil.disk_usage(req["dir"]).free < max(2e9, 3 * len(data)):   # étape 12 : disque presque plein
+                    raise OSError(TR("disque presque plein : IQ non gardé"))
                 with open(base + ".sigmf-data", "wb") as f:
                     f.write(data)
                 ann = [{"core:sample_start": max(0, int(round((req["t"] - pend["t0"]) * self.rate))),
@@ -18263,6 +18636,8 @@ class MultiMonitorWorker(QtCore.QThread):
         buf, why, t0, got, busy = b"", "", time.time(), 0, 0.0
         acc, t_emit, turn, t_turn, active = [], time.time(), 0, 0.0, []
         last = {}
+        clk, b_fft, b_vrx, n_vb, ovr = AcqClock(self.rate), 0.0, 0.0, 0, 0     # étape 12 : horloge, coûts
+        self.n_auto, self.clock = 4, clk
         bps = self.rate * nb                         # V8 étape 10 : tampon IQ circulaire (les secondes AVANT)
         self.ring_s = iq_ring_seconds(bps)
         ring, pend, bd = PreRing(self.ring_s, bps), None, BurstDetector(gap=3)
@@ -18302,16 +18677,23 @@ class MultiMonitorWorker(QtCore.QThread):
                     self.incident.emit(dict(req=r_, iq=dict(file="", why=TR("IQ non gardé (case décochée)")), also=[]))
                 iq, buf = iq_decode(src.dtype, buf), b""
                 got += len(iq)
+                t_cap = clk.feed(len(iq), tw)           # étape 12 : heure de CAPTURE (compte d'échantillons)
                 avg, _mx = rt_frames(iq, self.NFFT)
                 if avg is not None:
                     acc.append(avg)
                 now = time.time()
+                b_fft += now - tw
                 if now - t_turn >= 5.0 or not active:      # 16. récepteurs virtuels : qui est démodulé
                     t_turn, turn = now, turn + 1
                     items = [dict(key=c["key"], prio=c.get("prio", 1), keep_on=c.get("keep_on"),
                                   alarm=c["key"] in self.alarm_keys, selected=c["key"] == self.sel_key)
                              for c in self.chans]
-                    active = plan_vrx(items, min(VRX_MAX, self.n_vrx), turn)
+                    el_ = max(1e-3, now - t0)
+                    if n_vb:                                # étape 12 : combien le PC peut en démoduler
+                        na = vrx_auto(b_fft / el_, b_vrx / n_vb / 0.05)
+                        self.n_auto = max(1, min(VRX_MAX, int(round(0.5 * self.n_auto + 0.5 * na))))
+                    n_eff = self.n_auto if self.n_vrx <= 0 else self.n_vrx
+                    active = plan_vrx(items, min(VRX_MAX, n_eff), turn)
                     for k in list(dem):
                         if k not in active:
                             dem.pop(k)
@@ -18320,6 +18702,8 @@ class MultiMonitorWorker(QtCore.QThread):
                             o = dict(self.demod_opts)
                             o.update({k_: c[k_] for k_ in ("mode", "dev") if c.get(k_)})
                             dem[c["key"]] = ChannelDemod(self.rate, c["freq"] * 1e6 - self.center, **o)
+                tv0 = time.time()
+                n_vb += len(dem)
                 for c in self.chans:
                     d_ = dem.get(c["key"])
                     if d_ is None:
@@ -18330,6 +18714,7 @@ class MultiMonitorWorker(QtCore.QThread):
                     if c["key"] == self.sel_key and len(a):
                         self.audio.append(audio_int16(a, self.volume))
                     last[c["key"]] = (lv, d_.health, d_.pilot)
+                b_vrx += time.time() - tv0
                 busy += time.time() - tw
                 if now - t_emit >= 0.5 and acc:
                     L = np.max(np.array(acc), axis=0)
@@ -18351,7 +18736,8 @@ class MultiMonitorWorker(QtCore.QThread):
                         prev_ok[c["key"]] = ok_
                         lv, hl, pil = last.get(c["key"], (None, None, None))
                         ob = obw_khz(Fb, L, f, 0.3)[0] if ok_ else None
-                        rows.append(dict(key=c["key"], name=c["name"], freq=f, rf=rf, noise=noise,
+                        rows.append(dict(key=c["key"], name=c["name"], freq=f, rf=rf, noise=noise, t=t_cap,
+                                         adj_lvl=max(adj) if adj else None,
                                          snr=(rf - noise) if (rf is not None and noise is not None) else None,
                                          adj_margin=(inb - max(adj)) if (inb is not None and adj) else None,
                                          obw=ob, vrx=c["key"] in dem, pilot=pil,
@@ -18365,8 +18751,13 @@ class MultiMonitorWorker(QtCore.QThread):
                     if ev_:
                         self.bursts.emit(ev_)
                     el = max(1e-3, now - t0)
+                    ovr = max(ovr, count_overruns(list(self.err or ())))
+                    crit = [c["key"] for c in self.chans if int(c.get("prio") or 1) >= 2 and c["key"] not in dem]
                     self.perf.emit(dict(expected=self.rate * el, got=got, load=busy / max(1e-3, now - t_emit_prev),
-                                        lag=0.0, vrx=len(dem)))
+                                        lag=max(0.0, clk.lag), vrx=len(dem), vrx_want=len(self.chans) if self.n_vrx <= 0
+                                        else min(self.n_vrx, len(self.chans)), n_auto=self.n_auto, resyncs=clk.resyncs,
+                                        overruns=ovr, queue=len(self.audio), ring_s=self.ring_s,
+                                        ring_mb=ring.n / 1e6 if self.keep_iq else 0.0, crit=len(crit), t=t_cap))
                     busy = 0.0
         finally:
             s_, self.src = self.src, None
@@ -18394,6 +18785,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker, self.audio, self.paused = None, None, []
         self.hist, self.rows, self.sel, self.wf = {}, [], None, {}
         self.trk, self.chron, self._seen_al, self._last_auto, self.incs = {}, [], set(), -1e18, {}   # étape 10
+        self.ext = {}                     # étape 12 : mesures des autres appareils {clé: {tsa, rx: [(heure, dB)]}}
         lay = QtWidgets.QVBoxLayout(self)
         info = QtWidgets.QLabel("Toutes tes fréquences qui tiennent dans la fenêtre du SDR sont mesurées en même temps "
                                 "(niveau, voisins, largeur). Les plus importantes ont en plus un <b>récepteur virtuel</b> "
@@ -18411,8 +18803,9 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             self.dev_combo.setCurrentIndex(max(0, self.dev_combo.findData(pk[0])))
         self.dev_combo.setToolTip("Le SDR qui écoute (il faut ses outils, ou la DLL WiNRADiO).")
         self.vrx_spin = QtWidgets.QSpinBox()
-        self.vrx_spin.setRange(1, VRX_MAX)
-        self.vrx_spin.setValue(4)
+        self.vrx_spin.setRange(0, VRX_MAX)
+        self.vrx_spin.setSpecialValueText("Auto")            # étape 12 : d'après ce que le PC peut calculer
+        self.vrx_spin.setValue(0)
         self.vrx_spin.setToolTip("Combien de micros sont démodulés en même temps (son, déviation, dérive). Plus = plus de "
                                  "calcul.\nLes autres sont mesurés par la FFT et passent à tour de rôle toutes les 5 s.")
         self.go_btn = QtWidgets.QPushButton("▶ Surveiller")
@@ -18432,11 +18825,24 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.reh_btn.clicked.connect(lambda *_: self.save_rehearsal())
         self.reh_lbl = QtWidgets.QLabel("")
         self.reh_lbl.setWordWrap(True)
+        self.phase_combo = QtWidgets.QComboBox()             # 20. quelle phase du show
+        self.phase_combo.setEditable(True)
+        for p_ in dict.fromkeys(list(PHASES) + list(self._phases())):
+            self.phase_combo.addItem(p_)
+        self.phase_combo.setCurrentIndex(1)
+        self.phase_combo.setToolTip("La phase du show : balance, répétition, début, exploitation… (tu peux en taper une autre).\n"
+                                    "Chaque phase apprise est gardée à part ; on compare le show à celle qu'on choisit.")
+        self.phase_combo.currentTextChanged.connect(lambda *_: self._phase_changed())
         self.mode_combo.currentIndexChanged.connect(lambda *_: self._mode_changed())
-        lay.addLayout(R("Mode :", self.mode_combo, self.reh_btn, self.reh_lbl, None))
+        lay.addLayout(R("Mode :", self.mode_combo, self.phase_combo, self.reh_btn, self.reh_lbl, None))
         self.win_lbl = QtWidgets.QLabel("")
         self.win_lbl.setWordWrap(True)
         lay.addWidget(self.win_lbl)
+        self.cap_lbl = QtWidgets.QLabel("")                    # étape 12 : ce qui est VRAIMENT surveillé
+        self.cap_lbl.setWordWrap(True)
+        self.cap_lbl.setToolTip("Ce que le SDR couvre vraiment et ce que le PC arrive à démoduler en ce moment.")
+        lay.addWidget(self.cap_lbl)
+        self._want, self._fails, self.disc, self.disc_why = False, 0, 0, ""
         self.table = QtWidgets.QTableWidget(0, len(self.COLS))
         self.table.setHorizontalHeaderLabels(self.COLS)
         self.table.verticalHeader().setVisible(False)
@@ -18513,6 +18919,21 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.chron_tbl.cellDoubleClicked.connect(lambda r, c: self.replay(r))
         cl.addWidget(self.chron_tbl)
         self.tabs.addTab(cw, "Chronologie")
+        self.sys_tbl = QtWidgets.QTableWidget(0, 2)            # étape 12 : santé du système
+        self.sys_tbl.setHorizontalHeaderLabels(["Quoi", "État"])
+        self.sys_tbl.verticalHeader().setVisible(False)
+        self.sys_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.sys_tbl.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.sys_tbl.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.sys_tbl.setToolTip("La santé du SDR et du PC : échantillons perdus, retard, charge, mémoire, disque,\n"
+                                "déconnexions. Orange / rouge = la surveillance n'est plus complète.")
+        self.ph_tbl = QtWidgets.QTableWidget(0, 1)              # 20. phases côte à côte
+        self.ph_tbl.verticalHeader().setVisible(False)
+        self.ph_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.ph_tbl.setToolTip("Chaque micro dans chaque phase apprise : écart au bruit, bruit de fond, niveau du son.\n"
+                               "Un micro bien plus faible au show qu'à la balance = antenne masquée, pack mal placé…")
+        self.tabs.addTab(self.ph_tbl, "Phases")
+        self.tabs.addTab(self.sys_tbl, "Système")
         lay.addWidget(self.tabs, 1)
         self.sel_lbl = QtWidgets.QLabel("")
         self.sel_lbl.setWordWrap(True)
@@ -18525,25 +18946,54 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.dev_combo.currentIndexChanged.connect(lambda *_: self._plan())
         self._plan()
         self._mode_changed()
+        self._fill_phases()
         fit_dialog(self, 1000, 720)
 
+    def _tsa_level(self, f):
+        """Étape 12 : niveau du tinySA sur f et l'HEURE de son balayage (pas l'heure où on le lit). -> (t, dBm) ou None."""
+        o = self.owner
+        for bid, (F, L) in list(o.latest.items()):
+            if bid in (o.SDR_LISTEN_ID, ZOOM_ID) or bid < 0 or not len(F) or not F[0] <= f <= F[-1]:
+                continue
+            lv = level_at(F, L, f, 0.1)
+            if lv is not None:
+                return float(o.latest_t.get(bid, 0.0)), float(lv)
+        return None
+
     # ---------------------------------------------------------------- V8 étape 11 : répétition / spectacle
+    def _phases(self):
+        o = self.owner
+        ph = o.sdr_cfg.get("phases")
+        if not isinstance(ph, dict):
+            ph = o.sdr_cfg["phases"] = phases_norm(None, o.sdr_cfg.get("rehearsal"))
+        return ph
+
+    def _phase(self):
+        return self.phase_combo.currentText().strip() or PHASES[1]
+
     def _ref(self):
-        return (self.owner.sdr_cfg.get("rehearsal") or {}).get("mics") or {}
+        return (self._phases().get(self._phase()) or {}).get("mics") or {}
 
     def _mode_changed(self):
         md = self.mode_combo.currentData()
         self.reh_btn.setVisible(md == "learn")
-        rh = self.owner.sdr_cfg.get("rehearsal")
+        self.phase_combo.setVisible(md != "watch")
+        ph = self._phases().get(self._phase())
         if md == "learn":
             n = len(self.reh.summary())
-            self.reh_lbl.setText(TR("🎭 J'apprends : {} micro(s) appris (30 s de mesures chacun au moins).").format(n))
+            self.reh_lbl.setText(TR("🎭 J'apprends « {} » : {} micro(s) appris (30 s de mesures chacun au moins).").format(
+                TR(self._phase()), n))
         elif md == "show":
-            self.reh_lbl.setText(TR("🎤 Comparé à la répétition « {} » ({} micros).").format(
-                rh.get("name", ""), len(rh.get("mics", {}))) if rh else TR("⚠ Pas encore de répétition gardée : passe en "
-                                                                           "🎭 Répétition pendant les balances."))
+            self.reh_lbl.setText(TR("🎤 Comparé à « {} » ({} micros, {}).").format(
+                TR(self._phase()), len(ph.get("mics", {})), ph.get("name", "")) if ph else
+                TR("⚠ « {} » pas encore apprise : choisis « 🎭 Apprendre » pendant cette phase.").format(TR(self._phase())))
         else:
             self.reh_lbl.setText("")
+
+    def _phase_changed(self):
+        if self.mode_combo.currentData() == "learn":
+            self.reh = RehearsalProfile()                # nouvelle phase : on repart de zéro
+        self._mode_changed()
 
     def save_rehearsal(self):
         sm = self.reh.summary()
@@ -18551,13 +19001,33 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             self.reh_lbl.setText(TR("Rien d'appris pour l'instant : laisse tourner la répétition (30 s par micro au moins)."))
             return False
         o = self.owner
-        o.sdr_cfg["rehearsal"] = dict(t=time.time(), name=datetime.now().strftime("%d/%m %H:%M"), mics=sm)
+        self._phases()[self._phase()] = dict(t=time.time(), name=datetime.now().strftime("%d/%m %H:%M"), mics=sm)
         try:
             o._save_config()
         except Exception:  # noqa: BLE001
             pass
-        self.reh_lbl.setText(TR("💾 Répétition gardée : {} micros. Passe en 🎤 Spectacle pour comparer.").format(len(sm)))
+        self.reh_lbl.setText(TR("💾 « {} » gardée : {} micros. Choisis « 🎤 Comparer » pendant le show.").format(
+            TR(self._phase()), len(sm)))
+        self._fill_phases()
         return True
+
+    def _fill_phases(self):
+        """20. Onglet Phases : chaque micro, phase par phase (écart au bruit · bruit · son)."""
+        ph = self._phases()
+        names = list(ph)
+        t = self.ph_tbl
+        t.setColumnCount(1 + len(names))
+        t.setHorizontalHeaderLabels([TR("Micro")] + [TR(n) for n in names])
+        t.setRowCount(len(self.chans))
+        for r, c in enumerate(self.chans):
+            t.setItem(r, 0, QtWidgets.QTableWidgetItem(c["name"]))
+            for j, n in enumerate(names):
+                v = (ph[n].get("mics") or {}).get(c["key"])
+                txt = "—" if not v else " · ".join(x for x in (
+                    f"+{v['snr_med']:.0f} dB" if v.get("snr_med") is not None else "",
+                    TR("bruit {}").format(f"{v['noise_med']:.0f}") if v.get("noise_med") is not None else "",
+                    TR("son {}").format(f"{v['audio_p50']:.0f}") if v.get("audio_p50") is not None else "") if x)
+                t.setItem(r, 1 + j, QtWidgets.QTableWidgetItem(txt))
 
     def _plan(self):
         """Fenêtre du SDR : la plus grande grappe de tes fréquences (au plus 4 MHz utiles sur un HackRF à 4,8 MS/s…)."""
@@ -18566,7 +19036,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         m = o.sdr_model_for(kind)
         rate = sdr_rate(m, kind)
         ws = [w for w in o.watch if not w.get("off") and (m is None or sdr_in_range(m, w["freq"]))]
-        use = 0.4 * rate / 1e6
+        use = sdr_span_mhz(m, rate) / 2.0                 # étape 12 : largeur UTILE du modèle (pas le débit brut)
+        self.n_asked = len(ws)
         F = sorted(w["freq"] for w in ws)
         best = []
         for f0 in F:
@@ -18590,6 +19061,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             for col, v in enumerate((c["name"], f"{c['freq']:.3f}", "", "", "", "", "", "")):
                 self.table.setItem(r, col, QtWidgets.QTableWidgetItem(v))
             self.hist.setdefault(c["key"], MicHistory())
+        if getattr(self, "ph_tbl", None) is not None:
+            self._fill_phases()
 
     def toggle(self):
         if self.worker is not None:
@@ -18610,6 +19083,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker = MultiMonitorWorker(kind, self.center, self.rate, self.chans, o.sdr_gains(kind),
                                          tool=getattr(o, "_listen_tool", None), tool_dir=o.sdr_cfg.get("dir", ""))
         self.worker.n_vrx = self.vrx_spin.value()
+        self._want = True
         self.vrx_spin.valueChanged.connect(lambda v: self.worker is not None and setattr(self.worker, "n_vrx", v))
         self.worker.stats.connect(lambda rows, w_=self.worker: self._stats(rows) if w_ is self.worker else None)
         self.worker.spec.connect(lambda F, L, w_=self.worker: self._spec(F, L) if w_ is self.worker else None)
@@ -18618,6 +19092,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker.stopped.connect(lambda why, w_=self.worker: self._stopped(why) if w_ is self.worker else None)
         self.worker.incident.connect(self._inc_done)           # même un ancien moniteur : son dossier est fini
         self.worker.bursts.connect(lambda evs, w_=self.worker: self._bursts(evs) if w_ is self.worker else None)
+        if self.iq_chk.isChecked() and not o.privacy_ok(self):     # étape 12 : l'IQ contient le son
+            self.iq_chk.setChecked(False)
         self.worker.keep_iq = self.iq_chk.isChecked()
         self.trk = {c["key"]: AnomalyTracker(not c.get("keep_free")) for c in self.chans}   # libre : signal = anomalie
         self._seen_al = {a.get("key") for a in o.alarms.active.values()}
@@ -18660,10 +19136,13 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         now = time.time()
         for r, s in enumerate(rows):
             h = self.hist.setdefault(s["key"], MicHistory())
-            h.add(now, rf=s.get("rf"), noise=s.get("noise"), audio=s.get("rms"), dev=s.get("dev"), drift=s.get("drift"),
+            now = float(s.get("t") or time.time())           # étape 12 : heure de capture
+            h.add(now, adj=s.get("adj_lvl"), rf=s.get("rf"), noise=s.get("noise"), audio=s.get("rms"), dev=s.get("dev"), drift=s.get("drift"),
                   obw=s.get("obw"), snr=s.get("snr"))
             nom = next((c.get("dev") for c in self.chans if c["key"] == s["key"] and c.get("dev")), 75000) / 1000.0
-            dg = rf_audio_diag(dict(s, nominal=nom), TR)
+            rx0 = o.receiver_for(s["freq"])
+            obw_exp = expected_obw_khz(self.worker.demod_opts.get("mode", "wfm") if self.worker else "wfm")
+            dg = rf_audio_diag(dict(s, nominal=nom, obw_exp=obw_exp, rx_alerts=(rx0 or {}).get("alerts")), TR)
             md = self.mode_combo.currentData()
             if md == "learn" and self.worker is not None:
                 self.reh.learn(s)
@@ -18671,10 +19150,13 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                 dd = rehearsal_check(self._ref().get(s["key"]), s, TR)
                 if dd:
                     dg = sorted([x for x in dg if x[0] != "ok"] + dd, key=lambda x: {"bad": 0, "warn": 1}.get(x[1], 2))
-            w_ = o.watch_by_key(s["key"])                    # 10. comparaison : ce que voit le tinySA, le récepteur
-            rx_ = o.receiver_for(s["freq"])
-            h.pts[-1][1].update(tsa=(w_ or {}).get("level") if o.tsa_live() else None,
-                                rx=rx_.get("rf") if rx_ and rx_.get("live") else None)
+            ex = self.ext.setdefault(s["key"], dict(tsa=deque(maxlen=3600), rx=deque(maxlen=3600)))
+            tl = self._tsa_level(s["freq"]) if o.tsa_live() else None      # 10. ce que voit le tinySA, à SON heure
+            if tl and (not ex["tsa"] or ex["tsa"][-1][0] != tl[0]):
+                ex["tsa"].append(tl)
+            rx_ = o.receiver_for(s["freq"])                                # … et le récepteur Shure
+            if rx_ and rx_.get("live") and rx_.get("hist"):
+                ex["rx"] = deque(rx_["hist"], maxlen=3600)
             ht, _tone = mic_health(s.get("dev"), nom, s.get("drift"), s.get("pilot"), None)
             vals = [s["name"], f"{s['freq']:.3f}",
                     "—" if s.get("rf") is None else f"{s['rf']:.0f} dBFS · " + (f"+{s['snr']:.0f} dB" if s.get("snr")
@@ -18695,7 +19177,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             tk = self.trk.get(s["key"])
             if tk is not None and c_ is not None and self.worker is not None:      # 8. perturbations
                 bad = dg[0][0] if dg[0][1] == "bad" and (s.get("vrx") or dg[0][0].startswith("reh")) else None
-                for ev in tk.feed(now, s.get("rf"), s.get("noise"), s.get("adj_margin"), bad):
+                for ev in tk.feed(now, s.get("rf"), s.get("noise"), s.get("adj_margin"), bad, s.get("obw"), obw_exp,
+                                  s.get("adj_lvl")):
                     if ev["kind"] == "diag":
                         ev["value"] = dg[0][2]
                     self._event(c_, ev)
@@ -18706,6 +19189,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
 
     def _spec(self, F, L):
         o = self.owner
+        self._lastFL = (F, L)
         o.sdr_listen_feed(self.dev_combo.currentData(), F, L)
         for c in self.chans:                       # 2. waterfall de chaque micro (± 150 kHz), 300 lignes max
             m = np.abs(F - c["freq"]) <= 0.15
@@ -18742,11 +19226,12 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                 if self.mode_combo.currentData() == "show":
                     dg = [x for x in dg if x[0] != "ok"] + rehearsal_check(self._ref().get(k), s, TR) or dg
                 cmp_ = []                                    # 10. comparaison des récepteurs (10 dernières minutes)
+                ex = self.ext.get(k) or {}
+                t1, v1 = h.series("rf", t_end - 600)
                 for key2, nm in (("tsa", "tinySA"), ("rx", TR("récepteur"))):
-                    t2, v2 = h.series(key2, t_end - 600)
-                    if len(v2):
-                        t1, v1 = h.series("rf", t_end - 600)
-                        cmp_.append(compare_text(compare_receivers(list(zip(t1, v1)), list(zip(t2, v2))), "SDR", nm, TR))
+                    b2 = [(t_, v_) for t_, v_ in ex.get(key2, ()) if t_ >= t_end - 600]
+                    if b2:
+                        cmp_.append(compare_text(compare_receivers(list(zip(t1, v1)), b2), "SDR", nm, TR))
                 self.sel_lbl.setText(f"🎧 {s['name']} ({s['freq']:.3f} MHz) : " + " · ".join(x[2] for x in dg)
                                      + (TR(" · dérive sur 10 min : moyenne {} kHz, ± {} kHz").format(
                                          f"{ds['mean']:+.1f}", f"{ds['std']:.1f}") if ds else "")
@@ -18782,7 +19267,9 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             self._last_auto = ev["t"]                      # un dossier toutes les 2 min au plus (place disque)
             folder = str(self._inc_root() / datetime.fromtimestamp(ev["t"]).strftime("%Y-%m-%d") /
                          f"incident_{datetime.fromtimestamp(ev['t']):%H%M%S}_{incident_slug(c['name'])}")
-            self.incs[folder] = dict(chan=c, ev=ev)
+            fl = getattr(self, "_lastFL", None)
+            self.incs[folder] = dict(chan=c, ev=ev, spec=(np.asarray(fl[0]).tolist(), np.asarray(fl[1]).tolist())
+                                     if fl is not None else None)
             self.worker.inc_req.append(dict(key=c["key"], name=c["name"], freq=c["freq"], trigger=ev, t=ev["t"],
                                             dir=folder))
         self._chron_add(ev["t"], c["name"], anomaly_text(ev, TR), folder)
@@ -18833,7 +19320,26 @@ class MultiMonitorDialog(QtWidgets.QDialog):
                    when=datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M:%S"), trigger=req.get("trigger") or {},
                    also=[a for a in res.get("also") or [] if a], series=series, events=evs,
                    diag=rf_audio_diag(dict(s, nominal=75.0), TR) if s else [],
-                   last=s or {}, iq=res.get("iq") or {}, sdr=self.dev_combo.currentText())
+                   last=s or {}, iq=res.get("iq") or {}, sdr=self.dev_combo.currentText(),
+                   duration=incident_duration(series.get("rf", []), t))
+        sp = info.get("spec")
+        if sp:                                       # 18. capture du spectre, au plus 3000 points
+            k_ = max(1, len(sp[0]) // 3000)
+            doc["spectrum"] = dict(F=[round(x, 5) for x in sp[0][::k_]], L=[round(x, 1) for x in sp[1][::k_]])
+        q = self.wf.get(req.get("key"))
+        if q is not None and np.isfinite(q).any():  # 18. waterfall du micro en image
+            try:
+                os.makedirs(folder, exist_ok=True)
+                v = np.nan_to_num(q, nan=float(np.nanmin(q)))
+                lo, hi = float(np.percentile(v, 5)), float(np.max(v))
+                idx = np.clip((v - lo) / max(10.0, hi - lo) * 255, 0, 255).astype(np.uint8)
+                lut = make_lut(self.owner.theme.get("wf", "Inferno"))
+                rgb = np.ascontiguousarray(lut[idx][:, :, :3].astype(np.uint8))
+                img = QtGui.QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QtGui.QImage.Format.Format_RGB888)
+                if img.scaled(min(900, rgb.shape[1] * 3), rgb.shape[0]).save(os.path.join(folder, "waterfall.png")):
+                    doc["wf_png"] = "waterfall.png"
+            except Exception:  # noqa: BLE001
+                pass
         try:
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, "mesures.json"), "w", encoding="utf-8") as f:
@@ -18876,13 +19382,70 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         txt, tone = perf_view(p["expected"], p["got"], p["load"], p.get("lag", 0.0))
         self.perf_lbl.setText(TR("⚙ SDR : {} · {} récepteur(s) virtuel(s)").format(TR(txt), p.get("vrx", 0)))
         self.perf_lbl.setStyleSheet("" if tone == "ok" else f"color: {self.owner.tone_color(tone)};")
+        self._fails = 0                                   # des données arrivent : le SDR va bien
+        ct, ctone = capacity_view(getattr(self, "n_asked", len(self.chans)), len(self.chans), p.get("vrx", 0),
+                                  p.get("crit", 0), TR)
+        self.cap_lbl.setText(ct)
+        self.cap_lbl.setStyleSheet("" if ctone == "ok" else f"color: {self.owner.tone_color(ctone)};")
+        if p.get("crit") and time.time() - getattr(self, "_t_crit", 0) > 300:      # 16. ressources insuffisantes
+            self._t_crit = time.time()
+            self.owner.log_event(dict(name=TR("SDR"), freq=0.0, note=ct), 0.0, "INCIDENT SDR")
+        self._sys(p)
+
+    def _sys(self, p):
+        """Onglet Système : santé du SDR et du PC."""
+        root = Path(self.owner.log_dir)
+
+        def size_mb(sub):
+            try:
+                return sum(f.stat().st_size for f in (root / sub).rglob("*") if f.is_file()) / 1e6
+            except OSError:
+                return 0.0
+        now = time.time()
+        if now - getattr(self, "_t_sizes", 0) > 30:
+            try:
+                dg = shutil.disk_usage(root).free / 1e9
+            except OSError:
+                dg = None
+            self._sizes = dict(disk_gb=dg, inc_mb=size_mb("incidents"), audio_mb=size_mb("enregistrements_audio"),
+                               iq_mb=size_mb("enregistrements_iq"))
+            self._t_sizes = now
+        lost = None if p["expected"] <= 0 else max(0.0, 1.0 - p["got"] / p["expected"]) * 100.0
+        rows = resource_view(dict(p, lost=lost, disc=self.disc, disc_why=self.disc_why, **getattr(self, "_sizes", {})), TR)
+        t = self.sys_tbl
+        t.setRowCount(len(rows))
+        for r, (k, v, tone) in enumerate(rows):
+            for c, x in enumerate((k, v)):
+                it = t.item(r, c)
+                if it is None:
+                    it = QtWidgets.QTableWidgetItem(x)
+                    t.setItem(r, c, it)
+                elif it.text() != x:
+                    it.setText(x)
+            t.item(r, 1).setForeground(QtGui.QColor(self.owner.tone_color(tone)) if tone in ("warn", "bad")
+                                       else QtGui.QBrush())
 
     def _stopped(self, why):
+        want = self._want
         if why:
             self.sel_lbl.setText(TR("⚠ Moniteur arrêté : {}").format(why))
         self.stop()
+        if why and want:                                  # étape 12 : SDR décroché -> on relance tout seul
+            self.disc += 1
+            self.disc_why = why[:80]
+            self._fails += 1
+            d = reconnect_delay(self._fails)
+            self._want = True
+            self.owner.log_event(dict(name=TR("SDR"), freq=0.0, note=why), 0.0, "APPAREIL PERDU")
+            self.sel_lbl.setText(TR("⚠ SDR décroché ({}) : nouvel essai dans {} s…").format(why, f"{d:.0f}"))
+            QtCore.QTimer.singleShot(int(d * 1000), self._retry)
+
+    def _retry(self):
+        if self._want and self.worker is None and self.isVisible():
+            self.toggle()
 
     def stop(self):
+        self._want = False
         self.timer.stop()
         w, self.worker = self.worker, None
         if w is not None:
@@ -18948,7 +19511,7 @@ class ShureClient(threading.Thread):
                                 self.t_last = t_rx
                                 st = self.state.get(p["ch"], {})
                                 if p["key"] in ("ALL", "RF_ANTENNA"):
-                                    self.div.setdefault(p["ch"], DiversityAB()).feed(st.get("ant"))
+                                    self.div.setdefault(p["ch"], DiversityAB()).feed(st.get("ant"), t_rx)
                                 if st.get("rf") is not None and p["key"] in ("ALL", "RX_RF_LVL", "RF_LVL"):
                                     self.hist.setdefault(p["ch"], deque(maxlen=3600)).append((t_rx, float(st["rf"])))
             except OSError as e:
@@ -18965,14 +19528,16 @@ class ShureClient(threading.Thread):
 
     def snapshot(self):
         with self.lock:
-            return {c: dict(v, div=self.div[c].text(TR) if c in self.div else "—", hist=list(self.hist.get(c, ())))
+            return {c: dict(v, div=self.div[c].text(TR) if c in self.div else "—", hist=list(self.hist.get(c, ())),
+                            alerts=receiver_alerts(v, self.div.get(c), TR))
                     for c, v in self.state.items()}
 
 
 class ReceiversDialog(QtWidgets.QDialog):
     """V8 étape 11 : 📶 récepteurs Shure en réseau : ce que VOIT chaque récepteur (niveau RF, antenne A / B, diversity,
     son, pile), relié à ta liste par la fréquence ; sert aussi à comparer avec le SDR / le tinySA (moniteur multicanal)."""
-    COLS = ["Récepteur", "Canal", "Nom", "MHz", "RF", "Antenne", "Diversity A / B", "Son", "Pile", "Dans ma liste"]
+    COLS = ["Récepteur", "Canal", "Nom", "MHz", "RF", "Antenne", "Diversity A / B", "Son", "Pile", "Alertes",
+            "Dans ma liste"]
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -19028,6 +19593,7 @@ class ReceiversDialog(QtWidgets.QDialog):
                     "—" if x.get("rf") is None else f"{x['rf']} dBm", x.get("ant") or "—", x.get("div") or "—",
                     "—" if x.get("audio") is None else f"{x['audio']} dBFS",
                     "—" if x.get("batt") is None else "▮" * int(x["batt"]) + "▯" * max(0, 5 - int(x["batt"])),
+                    " · ".join(x.get("alerts") or []) or "—",
                     (w["name"] or f"{w['freq']:.3f}") if w else "—"]
             for c, v in enumerate(vals):
                 it = self.table.item(r, c)
@@ -19035,6 +19601,17 @@ class ReceiversDialog(QtWidgets.QDialog):
                     self.table.setItem(r, c, QtWidgets.QTableWidgetItem(v))
                 elif it.text() != v:
                     it.setText(v)
+        for r, x in enumerate(rows):                       # 14. alertes : en rouge, notées une fois au journal
+            it = self.table.item(r, 9)
+            if it is not None:
+                it.setForeground(QtGui.QColor(o.tone_color("bad")) if x.get("alerts") else QtGui.QBrush())
+            seen = o.__dict__.setdefault("_rx_alerts_seen", set())
+            for a_ in x.get("alerts") or []:
+                k_ = (x["host"], x["ch"], a_)
+                if k_ not in seen:
+                    seen.add(k_)
+                    o.log_event(dict(name=x.get("name") or f"{x['host']} #{x['ch']}", freq=x.get("freq") or 0.0,
+                                     note=a_), 0.0, "RÉCEPTEUR")
         cl = list(getattr(o, "_shure", {}).values())
         if not cl:
             self.st.setText(TR("Aucun récepteur : tape une adresse puis Connecter."))
@@ -19057,6 +19634,12 @@ def open_incident(owner, folder, parent=None):
         rt = getattr(owner, "_rt", None)
         if rt is not None:
             rt.open_file(iq)
+            try:                                       # 9. chronologie synchronisée avec la lecture
+                with open(os.path.join(folder, "mesures.json"), encoding="utf-8") as f_:
+                    doc = json.load(f_)
+                rt.show_incident(doc, float((doc.get("iq") or {}).get("t0") or doc.get("t") or 0.0))
+            except (OSError, ValueError, TypeError):
+                pass
             return True
     elif parent is not None and hasattr(parent, "sel_lbl"):
         parent.sel_lbl.setText(TR("Pas d'IQ dans ce dossier : seul le rapport s'ouvre."))
@@ -19568,6 +20151,56 @@ class RealtimeDialog(QtWidgets.QDialog):
         if self._lis_f is not None:
             self._listen(self._lis_f)
 
+    def show_incident(self, doc, t0_file):
+        """9. Relecture d'un incident : la chronologie du micro suit la lecture de l'IQ (ce qui se passe à l'instant
+        lu est surligné) ; double-clic = aller à ce moment."""
+        evs = [dict(e_) for e_ in doc.get("events") or []]
+        tg = dict(doc.get("trigger") or {}, t=doc.get("t"))
+        if tg.get("t") is not None and not any(abs(e_.get("t", 0) - tg["t"]) < 0.01 for e_ in evs):
+            evs.append(tg)
+        evs = sorted((e_ for e_ in evs if e_.get("t") is not None), key=lambda e_: e_["t"])
+        self._inc = dict(doc=doc, t0=float(t0_file), evs=evs)
+        if getattr(self, "inc_box", None) is None:
+            self.inc_box = QtWidgets.QGroupBox("")
+            ib = QtWidgets.QVBoxLayout(self.inc_box)
+            self.inc_lbl = QtWidgets.QLabel("")
+            self.inc_lbl.setWordWrap(True)
+            self.inc_list = QtWidgets.QListWidget()
+            self.inc_list.setMaximumHeight(110)
+            self.inc_list.setToolTip("Ce qui est arrivé au micro, dans l'ordre. Double-clic = aller à ce moment dans l'IQ.")
+            self.inc_list.itemDoubleClicked.connect(lambda it: self._inc_goto(self.inc_list.row(it)))
+            ib.addWidget(self.inc_lbl)
+            ib.addWidget(self.inc_list)
+            self.layout().insertWidget(1, self.inc_box)
+        self.inc_box.setTitle(TR("📦 Incident : {} · {} MHz").format(doc.get("name", ""), f"{float(doc.get('freq') or 0):.3f}"))
+        self.inc_list.clear()
+        for e_ in evs:
+            self.inc_list.addItem(f"{datetime.fromtimestamp(e_['t']):%H:%M:%S} · {anomaly_text(e_, TR)}")
+        self.inc_box.show()
+        try:
+            self._lis_f = float(doc.get("freq"))
+        except (TypeError, ValueError):
+            pass
+
+    def _inc_goto(self, r):
+        inc = getattr(self, "_inc", None)
+        if inc and 0 <= r < len(inc["evs"]) and self.worker is not None:
+            self.worker.seek_to = max(0.0, inc["evs"][r]["t"] - inc["t0"] - 2.0)    # 2 s avant, pour voir arriver
+
+    def _inc_sync(self, t):
+        inc = self._inc
+        past = [i for i, e_ in enumerate(inc["evs"]) if e_["t"] <= t]
+        nxt = next((e_ for e_ in inc["evs"] if e_["t"] > t), None)
+        i = past[-1] if past else -1
+        if self.inc_list.currentRow() != i and i >= 0:
+            self.inc_list.setCurrentRow(i)
+        txt = f"▶ {datetime.fromtimestamp(t):%H:%M:%S}"
+        if i >= 0:
+            txt += " · " + TR("il y a {} s : {}").format(f"{t - inc['evs'][i]['t']:.0f}", anomaly_text(inc["evs"][i], TR))
+        if nxt:
+            txt += " · " + TR("dans {} s : {}").format(f"{nxt['t'] - t:.0f}", anomaly_text(nxt, TR))
+        self.inc_lbl.setText(txt)
+
     def _frame(self, fr):
         F, avg, mx = fr["F"], fr["avg"], fr["mx"]
         self.last = fr
@@ -19626,6 +20259,8 @@ class RealtimeDialog(QtWidgets.QDialog):
                 self.slider.setValue(int(fr["pos"] * 10))
                 self.slider.blockSignals(False)
             self.pos_lbl.setText(f"{datetime.fromtimestamp(fr['t']):%H:%M:%S} · {fr['pos']:.0f} / {fr['dur']:.0f} s")
+            if getattr(self, "_inc", None):
+                self._inc_sync(float(fr["t"]))
         warn = []
         if fr.get("ovf", 0) > 0.001:
             warn.append("⚠ SATURATION : baisse le gain (Outils › 📡) ou retire l'ampli")
@@ -19673,6 +20308,9 @@ class RealtimeDialog(QtWidgets.QDialog):
             self.st_lbl.setText(f"⚠ Enregistrement illisible : {e}")
             return
         self.stop()
+        self._inc = None                              # 9. un autre fichier : plus la chronologie d'un incident
+        if getattr(self, "inc_box", None) is not None:
+            self.inc_box.hide()
         info["path"] = base + ".sigmf-data"
         self._src = info
         self.rec_lbl.setText("")
@@ -35927,6 +36565,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_markers()
 
     def open_listen(self, rows=None):
+        self.sdr_timer()                                 # étape 12 : ménage des enregistrements
         if getattr(self, "_listen", None) is not None and self._listen.worker is not None:
             self._listen.raise_()
             self._listen.activateWindow()
@@ -36056,6 +36695,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def open_multimon(self):
         """📡 V8 étape 9 : moniteur multicanal SDR (fenêtre gardée : rouverte telle quelle)."""
+        self.sdr_timer()
         d = getattr(self, "_multimon", None)
         if d is None:
             d = self._multimon = MultiMonitorDialog(self)
@@ -39817,6 +40457,84 @@ def _v8_tsa_live(self):
     return any(w.isRunning() and not getattr(w, "paused", False) and not getattr(w, "sdr", False) for w in self.workers)
 
 
+def _v8_privacy(self):
+    """Étape 12 : réglages « son et vie privée » (toujours complets)."""
+    p = self.sdr_cfg.get("privacy")
+    if not isinstance(p, dict) or set(p) != set(PRIVACY_DEFAULT):
+        p = self.sdr_cfg["privacy"] = privacy_norm(p)
+    return p
+
+
+def _v8_privacy_ok(self, parent=None):
+    """Accord explicite avant le 1er enregistrement de son (ou d'IQ). -> True si on peut enregistrer."""
+    p = self.privacy()
+    if p["ack"]:
+        return True
+    r = QtWidgets.QMessageBox.question(
+        parent or self, TR("Enregistrer du son ?"),
+        TR(PRIVACY_TEXT) + "\n\n" + TR("Conservation : {} (réglable dans 📡 Réglages SDR).").format(
+            keep_text(p["keep_days"], TR)) + "\n\n" + TR("D'accord pour enregistrer ?"))
+    if r != QtWidgets.QMessageBox.StandardButton.Yes:
+        return False
+    p["ack"] = True
+    try:
+        self._save_config()
+    except Exception:  # noqa: BLE001
+        pass
+    return True
+
+
+def _v8_retention(self, now=None):
+    """Étape 12 : efface le son, l'IQ et les dossiers d'incident plus vieux que la durée choisie. -> nombre effacé."""
+    days = self.privacy()["keep_days"]
+    if not days:
+        return 0
+    now = time.time() if now is None else now
+    ent = []
+    for sub in ("enregistrements_audio", "enregistrements_iq", "incidents"):
+        root = Path(self.log_dir) / sub
+        if not root.is_dir():
+            continue
+        try:
+            for d in root.iterdir():
+                for p in (d.iterdir() if d.is_dir() else [d]):
+                    ent.append((p, p.stat().st_mtime))
+        except OSError:
+            continue
+    n = 0
+    for p in retention_pick(ent, now, days):
+        try:
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+            n += 1
+        except OSError:
+            pass
+    for sub in ("enregistrements_audio", "enregistrements_iq", "incidents"):
+        root = Path(self.log_dir) / sub
+        try:
+            for d in (root.iterdir() if root.is_dir() else []):
+                if d.is_dir() and not any(d.iterdir()):
+                    d.rmdir()
+        except OSError:
+            pass
+    return n
+
+
+def _v8_sdr_timer(self):
+    """Minuteur V8 (créé à l'ouverture d'une fenêtre SDR) : ménage des enregistrements toutes les heures."""
+    if getattr(self, "_v8_tm", None) is None:
+        self._v8_tm = QtCore.QTimer(self)
+        self._v8_tm.timeout.connect(lambda: self.sdr_retention())
+        self._v8_tm.start(3600 * 1000)
+        try:
+            self.sdr_retention()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+MainWindow.privacy = _v8_privacy
+MainWindow.privacy_ok = _v8_privacy_ok
+MainWindow.sdr_retention = _v8_retention
+MainWindow.sdr_timer = _v8_sdr_timer
 MainWindow.receivers_start = _v8_receivers_start
 MainWindow.receivers = _v8_receivers
 MainWindow.receiver_for = _v8_receiver_for

@@ -995,6 +995,22 @@ _sd.close()
 check("SDR : réglages gardés dans la config", win._collect_config()["sdr"]["lna"] == 32
       and win._collect_config()["sdr"]["amp"] is True)
 
+# V8 étape 12 : son enregistré = accord explicite + effacement automatique
+win.sdr_cfg["privacy"] = dict(alarm_audio=False, keep_days=7, ack=False)
+_qb12 = QtWidgets.QMessageBox.question
+QtWidgets.QMessageBox.question = staticmethod(lambda *a, **k: QtWidgets.QMessageBox.StandardButton.No)
+check("🔒 sans accord : pas d'enregistrement de son", not win.privacy_ok())
+QtWidgets.QMessageBox.question = staticmethod(lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes)
+check("🔒 accord donné une fois, retenu", win.privacy_ok() and win.privacy()["ack"] and win.privacy_ok())
+QtWidgets.QMessageBox.question = _qb12
+_old12 = m.Path(win.log_dir) / "enregistrements_audio" / "2026-01-01"
+_old12.mkdir(parents=True, exist_ok=True)
+(_old12 / "vieux.wav").write_bytes(b"x")
+os.utime(_old12 / "vieux.wav", (time.time() - 30 * 86400,) * 2)
+(_old12 / "recent.wav").write_bytes(b"x")
+check("🔒 son de plus de 7 jours effacé, le récent gardé", win.sdr_retention() == 1
+      and not (_old12 / "vieux.wav").exists() and (_old12 / "recent.wav").exists())
+win.privacy()["alarm_audio"] = True
 # V8 : écoute (faux hackrf_transfer : IQ synthétique, micros FM sur les 2 premières fréquences)
 _F0 = sorted(win.watch, key=lambda w: w["freq"])
 _pair = next(([a, b] for a, b in zip(_F0, _F0[1:]) if b["freq"] - a["freq"] < 3.0), _F0[:1])
@@ -1145,6 +1161,16 @@ if _mm is not None:
           and len(_mm.hist[_mm.sel].pts) >= 2, str(_mm.sel))
     check("📡 multicanal : performances affichées", "pertes" in _mm.perf_lbl.text() or "loss" in _mm.perf_lbl.text(),
           _mm.perf_lbl.text())
+    check("📡 capacité : ce qui est vraiment surveillé", "démodulées" in _mm.cap_lbl.text(), _mm.cap_lbl.text())
+    check("🩺 onglet Système rempli (pertes, retard, disque…)", _mm.sys_tbl.rowCount() >= 10
+          and _mm.sys_tbl.item(8, 1) is not None and "Go" in _mm.sys_tbl.item(8, 1).text(),
+          str(_mm.sys_tbl.rowCount()))
+    check("🕒 horloge : mesures datées à la capture", _mm.rows and abs(_mm.rows[0].get("t", 0) - time.time()) < 5
+          and _mm.worker.clock.n > 0)
+    _mm.tabs.setCurrentIndex(3)
+    wait(200)
+    shot(_mm, "multicanal_systeme")
+    _mm.tabs.setCurrentIndex(0)
     shot(_mm, "moniteur_multicanal")
     # V8 étape 10 : incident noté à la main -> dossier (IQ avant / après, mesures, rapport), puis relecture
     check("📦 tampon IQ circulaire actif", _mm.worker is not None and _mm.worker.ring_s >= 1.0,
@@ -1164,7 +1190,10 @@ if _mm is not None:
         _dinc = _jinc.load(open(os.path.join(_inc, "mesures.json"), encoding="utf-8"))
         check("📦 IQ gardé (avant + 10 s après ; le faux SDR va moins vite que le vrai temps)", _dinc["iq"].get("dur", 0) >= 4.0,
               str(_dinc["iq"]))
-        check("📦 rapport : courbes du micro", "<svg" in open(os.path.join(_inc, "rapport.html"), encoding="utf-8").read())
+        _rh = open(os.path.join(_inc, "rapport.html"), encoding="utf-8").read()
+        check("📦 rapport : courbes du micro", "<svg" in _rh)
+        check("📦 rapport : capture du spectre + waterfall du micro", _dinc.get("spectrum") and "waterfall.png" in _rh
+              and os.path.isfile(os.path.join(_inc, "waterfall.png")), str(list(_dinc)))
         check("📦 chronologie : dossier noté", "📦" in (_mm.chron_tbl.item(0, 3).text() if _mm.chron_tbl.item(0, 3) else ""))
     _c0 = _mm.chans[0]
     _n0 = len(_mm.chron)
@@ -1180,12 +1209,14 @@ if _mm is not None:
     for _ in range(70):
         for _r in _mm.rows:
             _mm.reh.learn(_r)
-    check("🎭 répétition gardée", _mm.save_rehearsal() and len(win.sdr_cfg["rehearsal"]["mics"]) >= 1,
+    check("🎭 répétition gardée", _mm.save_rehearsal() and len(win.sdr_cfg["phases"]["Répétition"]["mics"]) >= 1,
           _mm.reh_lbl.text())
+    check("🎭 onglet Phases rempli", _mm.ph_tbl.columnCount() >= 2 and _mm.ph_tbl.rowCount() == len(_mm.chans)
+          and "dB" in (_mm.ph_tbl.item(0, 1).text() if _mm.ph_tbl.item(0, 1) else ""))
     _mm.mode_combo.setCurrentIndex(_mm.mode_combo.findData("show"))
     wait(1500)
     check("🎤 spectacle : comparé à la répétition", "🎤" in _mm.reh_lbl.text(), _mm.reh_lbl.text())
-    _ref0 = win.sdr_cfg["rehearsal"]["mics"].get(_mm.rows[0]["key"]) if _mm.rows else None
+    _ref0 = win.sdr_cfg["phases"]["Répétition"]["mics"].get(_mm.rows[0]["key"]) if _mm.rows else None
     check("🎤 spectacle : RF effondrée repérée", bool(m.rehearsal_check(_ref0, dict(_mm.rows[0], snr=-5.0))) if _ref0 else False)
     shot(_mm, "repetition_spectacle")
     _mm.mode_combo.setCurrentIndex(0)
@@ -1197,6 +1228,15 @@ if _mm is not None:
         _rti = getattr(win, "_rt", None)
         check("▶ incident rejoué dans le temps réel", _rti is not None and (_rti._src or {}).get("path", "").startswith(_inc),
               str(getattr(_rti, "_src", None)))
+        _t0 = time.time()
+        while _rti is not None and getattr(_rti, "inc_box", None) is not None and "▶" not in _rti.inc_lbl.text() \
+                and time.time() - _t0 < 10:
+            wait(300)
+        check("▶ relecture : chronologie de l'incident synchronisée avec la lecture",
+              _rti is not None and getattr(_rti, "inc_box", None) is not None and _rti.inc_list.count() >= 1
+              and "▶" in _rti.inc_lbl.text(), _rti.inc_lbl.text() if getattr(_rti, "inc_box", None) else "")
+        if _rti is not None:
+            shot(_rti, "incident_relecture")
         if _rti is not None:
             _rti.close()
     _mm.close()
@@ -1219,7 +1259,7 @@ def _fake_shure():
         try:
             c.recv(200)
             c.sendall(f"< REP 1 CHAN_NAME {{Chant}} >< REP 1 FREQUENCY {int(round(_f11 * 1000)):07d} >"
-                      "< REP 1 TX_BATT_BARS 003 >".encode())
+                      "< REP 1 TX_BATT_BARS 001 >< REP 1 RF_INT_DET CRITICAL >".encode())
             for k in range(200):
                 c.sendall(f"< SAMPLE 1 ALL {'AX' if k % 4 else 'XB'} 0{88 + k % 5} 032 >".encode())
                 time.sleep(0.2)
@@ -1241,8 +1281,10 @@ if _rd is not None:
     _txt11 = [(_rd.table.item(0, c).text() if _rd.table.item(0, c) else "") for c in range(_rd.table.columnCount())] \
         if _rd.table.rowCount() else []
     check("📶 récepteur : canal lu (nom, MHz, RF, antenne, pile)", len(_txt11) > 8 and _txt11[2] == "Chant"
-          and "dBm" in _txt11[4] and _txt11[8].startswith("▮▮▮"), str(_txt11))
-    check("📶 récepteur : relié à ma liste par la fréquence", _txt11 and _txt11[9] == (_pair[0]["name"] or f"{_f11:.3f}"),
+          and "dBm" in _txt11[4] and _txt11[8].startswith("▮▯"), str(_txt11))
+    check("📶 récepteur : alertes (pile, brouillage signalé)", len(_txt11) > 9 and "Pile" in _txt11[9]
+          and "RF_INT_DET" in _txt11[9], str(_txt11))
+    check("📶 récepteur : relié à ma liste par la fréquence", _txt11 and _txt11[10] == (_pair[0]["name"] or f"{_f11:.3f}"),
           str(_txt11))
     check("📶 récepteur trouvé pour la fréquence du micro", (win.receiver_for(_f11) or {}).get("name") == "Chant")
     shot(_rd, "recepteurs_shure")
