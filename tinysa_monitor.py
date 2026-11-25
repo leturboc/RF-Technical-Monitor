@@ -18797,12 +18797,12 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.trk, self.chron, self._seen_al, self._last_auto, self.incs = {}, [], set(), -1e18, {}   # étape 10
         self.ext = {}                     # étape 12 : mesures des autres appareils {clé: {tsa, rx: [(heure, dB)]}}
         lay = QtWidgets.QVBoxLayout(self)
-        info = QtWidgets.QLabel("Toutes tes fréquences qui tiennent dans la fenêtre du SDR sont mesurées en même temps "
-                                "(niveau, voisins, largeur). Les plus importantes ont en plus un <b>récepteur virtuel</b> "
-                                "qui les démodule : son, déviation, dérive, coupures. Clique une ligne pour l'écouter et "
-                                "voir son waterfall et son historique.")
+        info = QtWidgets.QLabel("Tous tes micros qui tiennent dans la fenêtre du SDR, surveillés en même temps (RF, son, "
+                                "santé). Clique une ligne pour l'écouter.")
         info.setWordWrap(True)
-        info.setMinimumHeight(info.fontMetrics().height() * 3)
+        info.setToolTip("Toutes tes fréquences de la fenêtre sont mesurées en même temps (niveau, voisins, largeur). Les plus\n"
+                        "importantes ont en plus un « récepteur virtuel » qui les démodule : son, déviation, dérive, coupures.")
+        info.setMinimumHeight(info.fontMetrics().height() * 2)
         lay.addWidget(info)
         R = o._row
         self.dev_combo = QtWidgets.QComboBox()
@@ -18821,7 +18821,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.go_btn = QtWidgets.QPushButton("▶ Surveiller")
         self.go_btn.setToolTip("Lance / arrête le moniteur multicanal.")
         self.go_btn.clicked.connect(lambda *_: self.toggle())
-        lay.addLayout(R("SDR :", self.dev_combo, "Récepteurs virtuels :", self.vrx_spin, None, self.go_btn))
+        lay.addLayout(R("SDR :", self.dev_combo, None, self.go_btn))      # récepteurs virtuels : onglet Système
         self.mode_combo = QtWidgets.QComboBox()             # V8 étape 11 : répétition / spectacle
         for k, t in SDR_MODES:
             self.mode_combo.addItem(t, k)
@@ -18943,7 +18943,12 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.ph_tbl.setToolTip("Chaque micro dans chaque phase apprise : écart au bruit, bruit de fond, niveau du son.\n"
                                "Un micro bien plus faible au show qu'à la balance = antenne masquée, pack mal placé…")
         self.tabs.addTab(self.ph_tbl, "Phases")
-        self.tabs.addTab(self.sys_tbl, "Système")
+        sw_ = QtWidgets.QWidget()
+        sl_ = QtWidgets.QVBoxLayout(sw_)
+        sl_.setContentsMargins(0, 4, 0, 0)
+        sl_.addLayout(R("Récepteurs virtuels :", self.vrx_spin, None))
+        sl_.addWidget(self.sys_tbl)
+        self.tabs.addTab(sw_, "Système")
         lay.addWidget(self.tabs, 1)
         self.sel_lbl = QtWidgets.QLabel("")
         self.sel_lbl.setWordWrap(True)
@@ -19395,6 +19400,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         txt, tone = perf_view(p["expected"], p["got"], p["load"], p.get("lag", 0.0))
         self.perf_lbl.setText(TR("⚙ SDR : {} · {} récepteur(s) virtuel(s)").format(TR(txt), p.get("vrx", 0)))
         self.perf_lbl.setStyleSheet("" if tone == "ok" else f"color: {self.owner.tone_color(tone)};")
+        self.perf_lbl.setVisible(tone != "ok")          # tout va bien : le détail reste dans l'onglet Système
         self._fails = 0                                   # des données arrivent : le SDR va bien
         ct, ctone = capacity_view(getattr(self, "n_asked", len(self.chans)), len(self.chans), p.get("vrx", 0),
                                   p.get("crit", 0), TR)
@@ -40358,13 +40364,13 @@ def install_gc_main_thread(app, interval_ms=500):
 
 # Branche V8 : bulles des menus SDR, ajoutées ici (et pas dans MainWindow.TIPS_MENU, partagé avec la V7 : sinon
 # chaque ajout de bulle côté V7 au même endroit provoquait un conflit de fusion).
-MainWindow.EXTRA_MENUS.append(("📡 SDR (HackRF, RTL-SDR)", [      # V8 : sous-menu du ☰ Plus (sans toucher au menu V7)
-    ("📡 Réglages SDR (HackRF, RTL-SDR)…", "open_sdr"),
-    ("🎧 Écouter avec le SDR…", "open_listen"),
-    ("📡 Moniteur multicanal SDR (tous tes micros, son, santé)…", "open_multimon"),
-    ("📦 Rejouer un incident SDR…", "open_incidents"),
-    ("📶 Récepteurs Shure en réseau (télémétrie)…", "open_receivers"),
-    ("⏱ Temps réel avec le SDR…", "open_realtime")]))
+MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous-menu (sans toucher au menu V7), ordre d'usage
+    ("📡 Moniteur multicanal (tous mes micros d'un coup)…", "open_multimon"),
+    ("🎧 Écouter un micro…", "open_listen"),
+    ("⏱ Temps réel (un bout de bande, sans trou)…", "open_realtime"),
+    ("📦 Rejouer un incident…", "open_incidents"),
+    ("📶 Récepteurs Shure (pile, antennes)…", "open_receivers"),
+    ("📡 Réglages SDR (mon SDR, sensibilité)…", "open_sdr")]))
 MainWindow.TIPS_MENU.update({
         "⏱ Temps réel": "V8 : une fenêtre fixe (jusqu'à ~15 MHz sur un HackRF) vue SANS TROU : max-hold,\n"
                          "persistance, waterfall, journal des signaux brefs, clic = écouter.",

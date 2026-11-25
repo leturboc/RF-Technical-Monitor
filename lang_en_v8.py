@@ -806,3 +806,19 @@ EXACT.update({
 SAME_TEMPLATES += ["color: {}; font-weight: bold;", "<p class='muted'>{} · {}", " : {} kHz",
                    "<h2>{}</h2><img src='{}' style='width:100%;max-width:900px;image-rendering:pixelated'>", "{} Mo · {} s"]
 EXACT["Fenêtre : {} – {} MHz"] = "Window: {} – {} MHz"
+EXACT.update({                                      # étape 12 : rangement (menu SDR dans l'ordre d'usage)
+    "Tous tes micros qui tiennent dans la fenêtre du SDR, surveillés en même temps (RF, son, santé). Clique une ligne "
+    "pour l'écouter.": "All your mics that fit in the SDR window, monitored at the same time (RF, sound, health). Click a "
+                       "line to listen to it.",
+    "Toutes tes fréquences de la fenêtre sont mesurées en même temps (niveau, voisins, largeur). Les plus\nimportantes "
+    "ont en plus un « récepteur virtuel » qui les démodule : son, déviation, dérive, coupures.":
+        "All your frequencies in the window are measured at the same time (level, neighbours, width). The most\n"
+        "important ones also get a “virtual receiver” that demodulates them: sound, deviation, drift, cuts.",
+    "⏱ Temps réel (un bout de bande, sans trou)…": "⏱ Real time (a slice of band, without gaps)…",
+    "🎧 Écouter un micro…": "🎧 Listen to a mic…",
+    "📡 Moniteur multicanal (tous mes micros d'un coup)…": "📡 Multichannel monitor (all my mics at once)…",
+    "📡 Réglages SDR (mon SDR, sensibilité)…": "📡 SDR settings (my SDR, sensitivity)…",
+    "📡 SDR (écoute et moniteur)": "📡 SDR (listening and monitor)",
+    "📦 Rejouer un incident…": "📦 Replay an incident…",
+    "📶 Récepteurs Shure (pile, antennes)…": "📶 Shure receivers (battery, antennas)…",
+})
