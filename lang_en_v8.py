@@ -930,3 +930,5 @@ EXACT.update({
         "✗ There is a problem: look at the first line in red, then “How to install it?”.",
     "🔌 Tester mon SDR": "🔌 Test my SDR",
 })
+EXACT[" · son démodulé pour le plus possible (selon le PC), les autres à tour de rôle"] = \
+    " · sound demodulated for as many as possible (depending on the PC), the others in turn"

@@ -717,5 +717,8 @@ ok("4. rapport du test", not okp and lines_[0].startswith("✔") and lines_[3].s
 ok("5. consentement précis : mémoire / disque / déclencheurs / où / durée / copies",
    all(x in ns["PRIVACY_TEXT"] for x in ("En mémoire seulement", "Sur le disque", "alarme", "incidents", "copies")))
 
+ok("audit V8 : capacité avant ▶ = sans promesse chiffrée", "le plus possible" in ns["capacity_view"](8, 8, 8, 0, planned=True)[0]
+   and "en continu" not in ns["capacity_view"](8, 8, 8, 0, planned=True)[0])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

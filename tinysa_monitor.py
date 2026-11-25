@@ -8609,13 +8609,18 @@ def vrx_auto(base_load, cost_vrx, n_max=VRX_MAX, budget=VRX_BUDGET):
     return int(max(1, min(n_max, math.floor((budget - max(0.0, base_load)) / cost_vrx))))
 
 
-def capacity_view(n_asked, n_in, n_vrx, n_crit, tr=None):
+def capacity_view(n_asked, n_in, n_vrx, n_crit, tr=None, planned=False):
     """16. Phrase honnête sur ce qui est vraiment surveillé : -> (texte, ton). n_asked = fréquences de la liste dans la
     plage du SDR, n_in = dans la fenêtre, n_vrx = démodulées en continu, n_crit = critiques qui n'ont pas de récepteur."""
     tr = tr or (lambda x: x)
     out_ = max(0, n_asked - n_in)
     rot = max(0, n_in - n_vrx)
     s = tr("{} fréquences dans la fenêtre : niveau, voisins et largeur de toutes").format(n_in)
+    if planned:                                   # avant ▶ : on ne sait pas encore ce que le PC tiendra
+        s += tr(" · son démodulé pour le plus possible (selon le PC), les autres à tour de rôle")
+        if out_:
+            s += tr(" · {} HORS de la fenêtre : pas surveillées par ce SDR").format(out_)
+        return s, ("warn" if out_ else "ok")
     s += tr(" · {} démodulées en continu").format(min(n_vrx, n_in))
     if rot:
         s += tr(" · {} à tour de rôle (toutes les 5 s)").format(rot)
@@ -17976,6 +17981,9 @@ def sdr_probe(kind, model=None, gains=None, tool_dir="", iq_tool=None, secs=2.0,
         res["iq"] = (False, str(e)[:160])
         return res
     n, t0, first = 0, time.time(), None
+    dog = threading.Timer(secs + 6.0, src.close)       # audit V8 : outil figé -> lecture débloquée, test terminé
+    dog.daemon = True
+    dog.start()
     try:
         nb = IQ_BYTES[src.dtype]
         while time.time() - t0 < secs + 3.0:
@@ -17991,6 +17999,7 @@ def sdr_probe(kind, model=None, gains=None, tool_dir="", iq_tool=None, secs=2.0,
         err = list(src.err or ())
         rate = src.rate
     finally:
+        dog.cancel()
         src.close()
     if not n:
         res["iq"] = (False, (err[-1] if err else TR("aucune donnée : SDR occupé par un autre logiciel ?"))[:160])
@@ -19072,19 +19081,22 @@ class MultiMonitorWorker(QtCore.QThread):
             iq = dict(file="", why="")
             try:
                 os.makedirs(req["dir"], exist_ok=True)
-                data = pend["pre"] + b"".join(pend["post"])
-                if shutil.disk_usage(req["dir"]).free < max(2e9, 3 * len(data)):   # étape 12 : disque presque plein
+                parts = list(pend["pre"]) + list(pend["post"])       # audit V8 : écrit morceau par morceau, sans
+                size = sum(len(x) for x in parts)                    # recoller des centaines de Mo en mémoire
+                if shutil.disk_usage(req["dir"]).free < max(2e9, 3 * size):   # étape 12 : disque presque plein
                     raise OSError(TR("disque presque plein : IQ non gardé"))
                 with open(base + ".sigmf-data.part", "wb") as f:         # étape 14 : « .part » tant que pas fini
-                    f.write(data)
+                    for x in parts:
+                        f.write(x)
                     f.flush()
                     os.fsync(f.fileno())
+                pend["pre"], pend["post"], parts = [], [], None      # mémoire rendue tout de suite
                 os.replace(base + ".sigmf-data.part", base + ".sigmf-data")
                 ann = [{"core:sample_start": max(0, int(round((req["t"] - pend["t0"]) * self.rate))),
                         "core:sample_count": 1, "core:label": f"incident {req.get('name', '')}"}]
                 write_atomic(base + ".sigmf-meta", json.dumps(sigmf_meta(dtype, self.rate, center, pend["t0"], hw, ann),
                                                              indent=1))   # le .meta en DERNIER = IQ complet
-                iq = dict(file="iq.sigmf-data", path=base + ".sigmf-data", dur=len(data) / IQ_BYTES[dtype] / self.rate,
+                iq = dict(file="iq.sigmf-data", path=base + ".sigmf-data", dur=size / IQ_BYTES[dtype] / self.rate,
                           rate=self.rate, center=center, t0=pend["t0"])
             except OSError as e:
                 iq["why"] = str(e)
@@ -19144,10 +19156,10 @@ class MultiMonitorWorker(QtCore.QThread):
                             pend = None
                     else:
                         ring.push(raw)
-                        if self.inc_req:
-                            pre = ring.dump()
+                        if self.inc_req:                      # audit V8 : on PREND les morceaux du tampon (pas de copie)
+                            pre = list(ring.q)
                             pend = dict(req=self.inc_req.popleft(), pre=pre, post=[], also=[], merged=[],
-                                        t0=tw - len(pre) / float(bps))
+                                        t0=tw - ring.n / float(bps))
                             ring = PreRing(self.ring_s, bps)
                 elif self.inc_req:
                     r_ = self.inc_req.popleft()
@@ -19284,6 +19296,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.vrx_spin.setRange(0, VRX_MAX)
         self.vrx_spin.setSpecialValueText("Auto")            # étape 12 : d'après ce que le PC peut calculer
         self.vrx_spin.setValue(0)
+        self.vrx_spin.valueChanged.connect(lambda v: self.worker is not None and setattr(self.worker, "n_vrx", v))
         self.vrx_spin.setToolTip("Combien de micros sont démodulés en même temps (son, déviation, dérive). Plus = plus de "
                                  "calcul.\nLes autres sont mesurés par la FFT et passent à tour de rôle toutes les 5 s.")
         self.go_btn = QtWidgets.QPushButton("▶ Surveiller")
@@ -19310,7 +19323,9 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.phase_combo.setCurrentIndex(1)
         self.phase_combo.setToolTip("La phase du show : balance, répétition, début, exploitation… (tu peux en taper une autre).\n"
                                     "Chaque phase apprise est gardée à part ; on compare le show à celle qu'on choisit.")
-        self.phase_combo.currentTextChanged.connect(lambda *_: self._phase_changed())
+        self._phase_name = self.phase_combo.currentText()      # audit V8 : changement seulement une fois le nom fini
+        self.phase_combo.activated.connect(lambda *_: self._phase_changed())
+        self.phase_combo.lineEdit().editingFinished.connect(lambda: self._phase_changed())
         self.mode_combo.currentIndexChanged.connect(lambda *_: self._mode_changed())
         lay.addLayout(R("Mode :", self.mode_combo, self.phase_combo, self.reh_btn, self.reh_lbl, None))
         self.win_lbl = QtWidgets.QLabel("")
@@ -19474,6 +19489,10 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             self.reh_lbl.setText("")
 
     def _phase_changed(self):
+        name = self._phase()
+        if name == getattr(self, "_phase_name", None):
+            return                                         # même phase (ou nom en cours de frappe) : rien n'est effacé
+        self._phase_name = name
         if self.mode_combo.currentData() == "learn":
             self.reh = RehearsalProfile()                # nouvelle phase : on repart de zéro
         self._mode_changed()
@@ -19537,7 +19556,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.win_lbl.setText(TR("Fenêtre : {} – {} MHz").format(f"{best[0] - 0.1:.3f}", f"{best[-1] + 0.1:.3f}")
                              if best else TR("Aucune de tes fréquences n'est dans la plage de ce SDR."))
         if best and getattr(self, "cap_lbl", None) is not None and self.worker is None:   # avant ▶ : ce qui tient
-            ct, ctone = capacity_view(len(ws), len(self.chans), len(self.chans), 0, TR)
+            ct, ctone = capacity_view(len(ws), len(self.chans), len(self.chans), 0, TR, planned=True)
             self.cap_lbl.setText(ct)
             self.cap_lbl.setStyleSheet("" if ctone == "ok" else f"color: {o.tone_color(ctone)};")
         self.out_ws = [w for w in ws if w["freq"] not in keep]        # étape 14 : on montre aussi ce qui N'EST PAS suivi
@@ -19578,7 +19597,6 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker.n_vrx = self.vrx_spin.value()
         self._want = True
         self._t_stats, self._t_start, self._fr_shown = None, time.time(), None     # étape 14 : âge des mesures
-        self.vrx_spin.valueChanged.connect(lambda v: self.worker is not None and setattr(self.worker, "n_vrx", v))
         self.worker.stats.connect(lambda rows, w_=self.worker: self._stats(rows) if w_ is self.worker else None)
         self.worker.spec.connect(lambda F, L, w_=self.worker: self._spec(F, L) if w_ is self.worker else None)
         self.worker.perf.connect(lambda p, w_=self.worker: self._perf(p) if w_ is self.worker else None)
@@ -19988,7 +20006,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         want = self._want
         if why:
             self.sel_lbl.setText(TR("⚠ Moniteur arrêté : {}").format(why))
-        self.stop()
+        self.stop(keep_paused=bool(why and want))         # audit V8 : le balayage SDR reste en pause jusqu'au retour
         if why and want:                                  # étape 12 : SDR décroché -> on relance tout seul
             self.disc += 1
             self.disc_why = why[:80]
@@ -20002,8 +20020,12 @@ class MultiMonitorDialog(QtWidgets.QDialog):
     def _retry(self):
         if self._want and self.worker is None and self.isVisible():
             self.toggle()
+        elif self.worker is None:                         # plus de relance : on rend le SDR au balayage
+            for w in self.paused:
+                w.paused = False
+            self.paused = []
 
-    def stop(self):
+    def stop(self, keep_paused=False):
         self._want = False
         self.timer.stop()
         w, self.worker = self.worker, None
@@ -20013,9 +20035,10 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         if self.audio is not None:
             self.audio.close()
             self.audio = None
-        for w in self.paused:
-            w.paused = False
-        self.paused = []
+        if not keep_paused:
+            for w in self.paused:
+                w.paused = False
+            self.paused = []
         self.owner.sdr_listen_clear()
         self.go_btn.setText("▶ Surveiller")
         self.dev_combo.setEnabled(True)
@@ -20625,6 +20648,8 @@ class RealtimeDialog(QtWidgets.QDialog):
         self.autorec_chk = QtWidgets.QCheckBox("⏺ Sur alarme : enregistrer l'IQ 15 s")
         self.autorec_chk.setToolTip("Quand une alarme part sur une fréquence de la fenêtre, enregistre 15 s d'IQ (toute la\n"
                                     "fenêtre, pour réécouter et analyser après). Gros fichiers : décoché d'office.")
+        self.autorec_chk.toggled.connect(lambda on: on and not self.owner.privacy_ok(self)
+                                         and self.autorec_chk.setChecked(False))       # audit V8 : accord
         lay.addLayout(R(self.burst_chk, self.autorec_chk, None))
         self.plot = pg.PlotWidget()
         pi = self.plot.getPlotItem()
@@ -20977,6 +21002,8 @@ class RealtimeDialog(QtWidgets.QDialog):
             w.stop_rec()
             self.rec_btn.setText("⏺ Enregistrer l'IQ")
             self.rec_lbl.setText("")
+            return
+        if not self.owner.privacy_ok(self):            # audit V8 : l'IQ contient le son, accord comme partout ailleurs
             return
         base = self._rec_dir() / f"iq_{datetime.now():%H%M%S}_{w.center / 1e6:.3f}MHz"
         w.start_rec(str(base))
@@ -41114,6 +41141,22 @@ def _v8_close_event(self, ev):
 
 
 MainWindow.closeEvent = _v8_close_event
+
+_v7_late_layout = MainWindow._late_layout
+
+
+def _v8_late_layout(self, *a, **k):
+    """Audit V8 (5.) : le ménage des enregistrements (son, IQ, incidents) démarre avec l'appli, pas seulement quand on
+    ouvre l'écoute ou le moniteur."""
+    r = _v7_late_layout(self, *a, **k)
+    try:
+        self.sdr_timer()
+    except Exception:  # noqa: BLE001
+        pass
+    return r
+
+
+MainWindow._late_layout = _v8_late_layout
 
 
 def _v8_receivers_start(self, text):

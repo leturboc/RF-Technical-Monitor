@@ -1874,6 +1874,14 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
      rafale de 5 incidents, disque plein, coupure pendant l'écriture, endurance 25 s à 12 micros, outils tués) ; PAS
      dans la CI (le workflow est commun à la V7) : à lancer à la main. Testé : tout ça + gui_reel (Suivi, ancien grisé,
      test du SDR, IQ coupé, récepteur muet). **Toujours rien sur du vrai matériel.**
+- **V8 étape 15 (audit « comme un nouveau projet » fait par Claude, Clément : « go »)** : 1. incident = morceaux du
+  tampon PRIS (`list(ring.q)`, plus de `dump()`), écrits un par un, mémoire rendue (avant : ~500-650 Mo de pic avec un
+  HackRF) ; 2. Temps réel : « Enregistrer l'IQ » et « Sur alarme : enregistrer l'IQ 15 s » demandent l'accord vie privée ;
+  3. `sdr_probe` : chien de garde `threading.Timer(secs + 6, src.close)` (outil figé) ; 4. phases : `activated` +
+  `lineEdit().editingFinished`, `_phase_name` (taper un nom n'efface plus l'apprentissage) ; 5. `_late_layout`
+  enveloppé (`_v8_late_layout`) -> `sdr_timer()` dès le démarrage ; petits : `capacity_view(..., planned=True)` avant ▶,
+  `vrx_spin` connecté une fois, `stop(keep_paused=True)` pendant la reconnexion (le balayage SDR ne reprend pas 3 s).
+  Tests : test_sdr_stress (morceaux, test figé), test_sdr.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

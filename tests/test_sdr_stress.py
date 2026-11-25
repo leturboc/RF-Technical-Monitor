@@ -169,6 +169,27 @@ check("disque presque plein : incident gardé SANS IQ, raison dite", got["inc"] 
       and "disque" in got["inc"][0]["iq"].get("why", ""), str(got["inc"][:1]))
 stop(w, got)
 
+# 4 bis. audit V8 : l'incident n'est plus recollé en mémoire (morceaux écrits un par un, mémoire rendue)
+pend_ = dict(req=dict(dir=os.path.join(inc_dir, "morceaux"), t=time.time(), name="HF1"), pre=[b"\1\2" * 50000] * 4,
+             post=[b"\3\4" * 50000] * 2, also=[], merged=[], t0=time.time() - 1)
+res_ = []
+w2 = m.MultiMonitorWorker("hackrf", 600e6, RATE, [])
+w2.incident.connect(lambda r: res_.append(r))
+w2._inc_write(pend_, "ci8", 600e6, "test")
+wait_until(lambda: res_, 10)
+f_ = os.path.join(inc_dir, "morceaux", "iq.sigmf-data")
+check("incident écrit morceau par morceau (taille exacte, mémoire rendue)", res_ and os.path.getsize(f_) == 6 * 100000
+      and pend_["pre"] == [] and pend_["post"] == [] and open(f_, "rb").read(2) == b"\1\2", str(res_[:1]))
+
+# 4 ter. audit V8 : « Tester mon SDR » ne reste jamais bloqué sur un outil figé
+m.SDR_PROBE_RUNNER = lambda argv: (0, "Found HackRF")
+m.open_iq_source = lambda *a, **k: FakeSrc([(0.3, "ok"), (999, "freeze")])
+t_ = time.time()
+r_ = m.sdr_probe("hackrf", m.sdr_model("hackrf_one"), {}, "", secs=1.0)
+m.SDR_PROBE_RUNNER = None
+check("test du SDR : outil figé -> le test se termine quand même (< 10 s)", time.time() - t_ < 10 and "rate" in r_,
+      f"{time.time() - t_:.1f} s {r_}")
+
 # 5. coupure pendant l'écriture : write_atomic ne laisse jamais un fichier à moitié sous le vrai nom
 p = os.path.join(tmp, "rapport.html")
 m.write_atomic(p, "version 1")
