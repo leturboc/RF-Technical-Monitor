@@ -1564,6 +1564,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `tone_pcm(..., timbre="chime")` -> `_chime_pcm` (harmoniques, attaque 8 ms, résonne et s'éteint) ; anciens sons =
     `ALARM_TONES_CLASSIC` / `TONE_OK_CLASSIC`, style « classic » (📟 Bips nets) de `SOUND_STYLES`. WAV d'essai envoyés à
     Clément. **Jamais entendus par Claude sur une vraie carte son.**
+  - **SDR démo plus léger** (Clément : « en balayage ça saccade, même 1 s ») : `SigGen.block` mettait ~1 s de calcul pour
+    1 s d'IQ (7 micros) -> blocs sautés. Maintenant : rotations de porteuse / pilote gardées (`_rot`), exp(jφ) par cos / sin
+    en complex64 (`np.exp` complexe = 13× plus lent), bruit des blocs larges (TNT, numérique) mis en forme UNE fois
+    (`_tex`, 8 blocs relus en boucle) : 0,28 s pour 1 s. Pas mesuré sur le PC de Clément.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
