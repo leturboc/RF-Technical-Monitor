@@ -45607,7 +45607,14 @@ MainWindow.toggle_sdr_demo = lambda self: self.set_sdr_demo(not self.sdr_cfg.get
 try:
     import manual_sdr as _manual_sdr                # chapitres SDR du manuel (HTML FR / EN), embarqués dans l'exe
 except Exception:  # noqa: BLE001
-    _manual_sdr = None
+    try:                                             # programme chargé par son chemin (tests) : le module est à côté
+        import importlib.util as _ilu
+        _sp = _ilu.spec_from_file_location("manual_sdr", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                                     "manual_sdr.py"))
+        _manual_sdr = _ilu.module_from_spec(_sp)
+        _sp.loader.exec_module(_manual_sdr)
+    except Exception:  # noqa: BLE001
+        _manual_sdr = None
 
 
 def sdr_gain_scan(kind, model, base_gains, tool_dir="", iq_tool=None, center=600e6, key="lna", secs=0.4, cancel=None,
