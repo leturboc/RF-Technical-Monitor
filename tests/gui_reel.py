@@ -3674,8 +3674,13 @@ if win.web is not None:
     while win._tech_sugg is not None and win._tech_sugg.get("busy") and time.time() - _t0r < 120:
         wait(250)
     _dt_tech = round(time.time() - _t0r, 1)
-    win._alarm_tick()
-    _tj = _json.loads(_op.open(base + "/tech.json", timeout=5).read())
+    _t1r = time.time()
+    while True:                     # /tech.json = copie refaite chaque seconde : attendre qu'elle suive
+        win._alarm_tick()
+        _tj = _json.loads(_op.open(base + "/tech.json", timeout=5).read())
+        if not (_tj.get("sugg") or {}).get("busy") or time.time() - _t1r > 6:
+            break
+        wait(300)
     check("tech (appli) : 🆘 propositions dans l'état", _tj.get("sugg") and _tj["sugg"]["key"] == 641125
           and len(_tj["sugg"]["cands"]) >= 1, str(_tj.get("sugg")) + f" · calcul {_dt_tech} s · postes SDR "
           f"{[k_ for k_, e_ in win.sdr_engs.items() if e_.running()]}")
