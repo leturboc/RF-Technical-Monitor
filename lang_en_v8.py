@@ -1712,3 +1712,37 @@ EXACT.update({
 })
 
 SAME_TEMPLATES += ["tsm_{}_{}_{}.wav", "tsm_{}_{}_"]   # 8.0.2 : noms de fichiers temporaires
+
+# 8.0.3 : une seule instance, générateur affectable, carillons
+EXACT.update({
+    'Applique ce son (et ce type de signal) à la cible choisie.': 'Applies this sound (and this signal type) to the chosen target.',
+    "Automatique (d'après le statut)": 'Automatic (from the status)',
+    'Brouilleur': 'Jammer',
+    'Ce que ce micro émet dans les démos (tinySA et SDR) : micro FM avec ce son, micro numérique, coupures, brouilleur, rien.': 'What this mic transmits in the demos (tinySA and SDR): FM mic with this sound, digital mic, dropouts, jammer, nothing.',
+    'Cible :': 'Target:',
+    'Coupe de temps en temps': 'Drops out now and then',
+    'Micro FM (avec son)': 'FM mic (with sound)',
+    'Micro numérique (bloc)': 'Digital mic (block)',
+    "Où va ce son : un micro de ta liste (il l'émet dans les démos tinySA / SDR), un son d'alarme, ou l'émission avec un HackRF.": 'Where this sound goes: a mic of your list (it transmits it in the tinySA / SDR demos), an alarm sound, or transmission with a HackRF.',
+    'PySide6.QtNetwork': 'PySide6.QtNetwork',
+    'Rien (éteint)': 'Nothing (off)',
+    'Signal (démos) :': 'Signal (demos):',
+    'TinySA Monitor est déjà ouvert sur ce PC (regarde dans la barre des tâches).': 'TinySA Monitor is already open on this PC (look in the taskbar).',
+    'TinySA Monitor était déjà ouvert : le voici.': 'TinySA Monitor was already open: here it is.',
+    'TinySAMonitor-': 'TinySAMonitor-',
+    'Utiliser ce son pour…': 'Use this sound for…',
+    'une seule instance (PySide6.QtNetwork)': 'single instance (PySide6.QtNetwork)',
+    "À quoi ça sert ? Écouter un son de test ici, ou l'affecter (en bas) : à un micro de ta liste (il l'émet dans les modes démo tinySA et SDR), à un son d'alarme, ou à l'émission avec un HackRF.": 'What is it for? Listen to a test sound here, or assign it (below): to a mic of your list (it transmits it in the tinySA and SDR demo modes), to an alarm sound, or to transmission with a HackRF.',
+    "✓ Son de l'appel des micros": '✓ Mic roll-call sound',
+    '✔ Affecter': '✔ Assign',
+    "✔ Ligne ajoutée à l'émission HackRF : règle sa fréquence.": '✔ Row added to the HackRF transmission: set its frequency.',
+    '✔ Son « {} » affecté : {}.': '✔ Sound “{}” assigned: {}.',
+    "✔ {} : « {} », {} — lance le mode démo (tinySA ou 🧪 SDR démo) pour le voir et l'écouter.": '✔ {}: “{}”, {} — start the demo mode (tinySA or 🧪 SDR demo) to see and hear it.',
+    '🎤 {} · {} MHz (démos tinySA / SDR)': '🎤 {} · {} MHz (tinySA / SDR demos)',
+    '🎵 Carillons doux (sortie audio au choix)': '🎵 Soft chimes (audio output of your choice)',
+    '📟 Bips nets (anciens sons)': '📟 Sharp beeps (old sounds)',
+    '📡 Émettre avec un HackRF (nouvelle ligne)': '📡 Transmit with a HackRF (new row)',
+    "🔔 Son d'alarme critique": '🔔 Critical alarm sound',
+    "🔔 Son d'alarme info": '🔔 Info alarm sound',
+    "🔔 Son d'alarme normale": '🔔 Normal alarm sound',
+})

@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "8.0.2"
+APP_VER = "8.0.3"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -7643,6 +7643,9 @@ def sdr_cfg_extra(sd):
     if isinstance(sd.get("demo_snd"), dict):            # étape 21 : son de chaque micro dans le SDR démo
         out["demo_snd"] = {str(k): audio_spec_norm(v) for k, v in list(sd["demo_snd"].items())[:200]
                            if str(k).isdigit()}
+    if isinstance(sd.get("demo_kind"), dict):           # 8.0.3 : type de signal de chaque micro dans les démos
+        out["demo_kind"] = {str(k): v for k, v in list(sd["demo_kind"].items())[:300]
+                            if str(k).isdigit() and v in dict(DEMO_SIG_KINDS)}
     if "auto" in sd:                                   # étape 20 : alarme -> calage, patrouille, pilote
         out["auto"] = sdr_auto_norm(sd.get("auto"))
     if "posts" in sd:                                  # étape 17 : plusieurs postes SDR
@@ -9714,6 +9717,18 @@ def demo_sdr_plan(mics):
     for m in sorted(mics, key=lambda m: float(m["f"])):
         f = float(m["f"])
         key = f"{f:.4f}"
+        kind = m.get("kind") or "auto"                # 8.0.3 : type de signal choisi pour ce micro (générateur)
+        if kind == "off":
+            continue
+        if kind == "jam":
+            out.append(dict(key="jam" + key, kind="nfm", f=f, lvl=-12.0, audio=audio_spec_norm(m["snd"]) if m.get("snd")
+                            else "beep", k=3))
+            continue
+        if kind == "digital":
+            out.append(dict(key="num" + key, kind="noise", f=f, bw=0.2, lvl=-14.0))
+            continue
+        if kind in ("fm", "intermittent"):
+            m = dict(m, free=False, bw=0.0, digital=False)
         if m.get("free"):
             if not jam:
                 out.append(dict(key="jam" + key, kind="nfm", f=f, lvl=-12.0, audio="beep", k=3, on=(60.0, 8.0, 20.0)))
@@ -9729,7 +9744,11 @@ def demo_sdr_plan(mics):
         s = dict(key="mic" + key, kind="fm", f=f, lvl=-6.0 - h, dev=25000.0 + 1500.0 * (h % 8),
                  audio=audio_spec_norm(m["snd"]) if m.get("snd") else DEMO_SOUNDS[k % len(DEMO_SOUNDS)][0], k=k,
                  pilot=DEMO_PILOT)
-        if k == 0:
+        if kind == "intermittent":
+            s["on"] = (40.0, 25.0, 0.0)
+        elif kind == "fm":
+            pass                                          # choisi « micro FM » : toujours là
+        elif k == 0:
             s["on"] = (120.0, 105.0, 0.0)
         elif k == 1:
             s["pilot_on"] = (90.0, 80.0, 40.0)
@@ -9738,6 +9757,39 @@ def demo_sdr_plan(mics):
     out += [dict(key="tnt21", kind="noise", f=478.0, bw=7.6, lvl=-24.0),
             dict(key="tnt30", kind="noise", f=546.0, bw=7.6, lvl=-26.0)]
     return out
+
+
+DEMO_SIG_KINDS = (("auto", "Automatique (d'après le statut)"), ("fm", "Micro FM (avec son)"),
+                  ("digital", "Micro numérique (bloc)"), ("intermittent", "Coupe de temps en temps"),
+                  ("jam", "Brouilleur"), ("off", "Rien (éteint)"))
+
+
+def demo_plan_levels(fr_mhz, plan, t, rng=None):
+    """8.0.3 (Clément : « le mode démo devrait générer la fréquence monitorée ») : le démo du tinySA voit le MÊME plan que
+    le SDR démo (tes micros, le brouilleur, les coupures, la TNT). -> niveaux dBm (NaN là où rien n'émet)."""
+    fr = np.asarray(fr_mhz, dtype=float)
+    lv = np.full(len(fr), np.nan)
+    if not len(fr):
+        return lv
+    for sg in plan or ():
+        if not sched_on(sg.get("on"), t):
+            continue
+        f, top = float(sg["f"]), DEMO_DBM + float(sg.get("lvl", 0.0)) - 8.0
+        if sg.get("kind") == "noise":
+            bw = float(sg.get("bw") or 0.2)
+            d = np.maximum(0.0, np.abs(fr - f) - bw / 2.0)
+            m = d < 0.4
+            if not m.any():
+                continue
+            x = top - 60.0 * d[m] + (rng.normal(0, 1.5, int(m.sum())) if rng is not None else 0.0)
+        else:
+            w = 0.06 if sg.get("kind") == "nfm" else 0.1
+            m = np.abs(fr - f) < 0.6
+            if not m.any():
+                continue
+            x = top - 12.0 * ((fr[m] - f) / w) ** 2 + (rng.normal(0, 0.8, int(m.sum())) if rng is not None else 0.0)
+        lv[m] = np.fmax(lv[m], x)
+    return lv
 
 
 def tx_plan(rows, rates=TX_RATES, fmin=1.0, fmax=6000.0):
@@ -10915,11 +10967,18 @@ SOUND_DEFAULT = dict(device="", volume=70, style="tones",      # device "" = sor
                      repeat=30, confirm=3, occ_beep=False)      # critiques rejouées / CONFLIT confirmé après / bip « occupé »
 ALARM_REPEATS = ((10, "toutes les 10 s"), (30, "toutes les 30 s"), (60, "toutes les minutes"),
                  (300, "toutes les 5 minutes"), (0, "jamais (un seul son)"))
-SOUND_STYLES = (("tones", "🎵 Sons de l'appli (sortie audio au choix)"), ("beep", "🔔 Bip de Windows"))
-ALARM_TONES = {2: [(1320, 140), (0, 60), (1320, 140), (0, 60), (1760, 260)],   # critique : 3 notes, aiguë à la fin
-               1: [(990, 160), (0, 80), (990, 160)],                              # normale : 2 notes
-               0: [(880, 110)]}                                                   # info : 1 note
-TONE_OK = [(1500, 70)]                                                            # appel des micros : ✓
+SOUND_STYLES = (("tones", "🎵 Carillons doux (sortie audio au choix)"), ("classic", "📟 Bips nets (anciens sons)"),
+                ("beep", "🔔 Bip de Windows"))
+# 8.0.3 (Clément : « les sons d'alarme font chippppp ») : notes plus graves, timbre de carillon (harmoniques, attaque
+# douce, son qui résonne et s'éteint) au lieu de bips purs très aigus. Les anciens restent au choix (« Bips nets »).
+ALARM_TONES = {2: [(784, 170), (0, 40), (988, 170), (0, 40), (1175, 520)],     # critique : 3 notes qui montent
+               1: [(880, 260), (0, 50), (698, 520)],                             # normale : « ding-dong »
+               0: [(784, 420)]}                                                  # info : 1 note
+TONE_OK = [(1047, 160)]                                                          # appel des micros : ✓
+ALARM_TONES_CLASSIC = {2: [(1320, 140), (0, 60), (1320, 140), (0, 60), (1760, 260)],
+                       1: [(990, 160), (0, 80), (990, 160)],
+                       0: [(880, 110)]}
+TONE_OK_CLASSIC = [(1500, 70)]
 
 
 def sound_cfg_norm(d):
@@ -11091,8 +11150,12 @@ def snooze_left(until, now):
     return max(0, int(round(until - now))) if until and until > now else 0
 
 
-def tone_pcm(seq, rate=22050, volume=0.7):
-    """Suite de notes [(Hz, ms)] (Hz 0 = silence) -> octets PCM 16 bits mono, petit fondu (5 ms) contre les clics."""
+def tone_pcm(seq, rate=22050, volume=0.7, timbre="sine"):
+    """Suite de notes [(Hz, ms)] (Hz 0 = silence) -> octets PCM 16 bits mono, petit fondu (5 ms) contre les clics.
+    timbre « chime » (8.0.3) : carillon (fondamentale + harmoniques douces, attaque 8 ms, son qui s'éteint en
+    résonnant ; chaque note déborde sur le silence qui suit, la fin est fondue)."""
+    if timbre == "chime":
+        return _chime_pcm(seq, rate, volume)
     parts = []
     fade = max(1, int(rate * 0.005))
     for hz, ms in seq:
@@ -11111,6 +11174,31 @@ def tone_pcm(seq, rate=22050, volume=0.7):
     sig = np.concatenate(parts) if parts else np.zeros(1)
     v = min(1.0, max(0.0, float(volume)))
     return (sig * v * 32000).astype("<i2").tobytes()
+
+
+def _chime_pcm(seq, rate=22050, volume=0.7):
+    total = sum(max(1, int(rate * float(ms) / 1000.0)) for _hz, ms in seq) or 1
+    tail = int(rate * 0.25)
+    out = np.zeros(total + tail)
+    pos = 0
+    for hz, ms in seq:
+        n = max(1, int(rate * float(ms) / 1000.0))
+        if hz:
+            ln = n + tail
+            t = np.arange(ln) / float(rate)
+            f = float(hz)
+            x = (np.sin(2 * np.pi * f * t) + 0.28 * np.sin(2 * np.pi * 2 * f * t)
+                 + 0.08 * np.sin(2 * np.pi * 3 * f * t) + 0.05 * np.sin(2 * np.pi * 4.2 * f * t) * np.exp(-t / 0.05))
+            env = np.exp(-t / max(0.12, 0.55 * ms / 1000.0))       # résonne, puis s'éteint
+            a = max(1, int(rate * 0.008))
+            env[:a] *= np.linspace(0.0, 1.0, a)
+            out[pos:pos + ln] += x * env
+        pos += n
+    k = max(1, int(rate * 0.03))
+    out[-k:] *= np.linspace(1.0, 0.0, k)
+    peak = float(np.max(np.abs(out))) or 1.0
+    v = min(1.0, max(0.0, float(volume)))
+    return (out / peak * v * 30000).astype("<i2").tobytes()
 
 
 # ------------------------------------------------------------------ chasse au brouilleur (bip qui suit le niveau)
@@ -14301,6 +14389,19 @@ class ScanWorker(QtCore.QThread):
 
     def _demo_levels(self, fr, b, cfg):
         lv = -98 + self.rng.normal(0, 1.2, len(fr))
+        if cfg.get("demo_plan") is not None:             # 8.0.3 : même plan que le SDR démo (toute ta liste)
+            key = ("bg", b["id"], round(b["start_hz"] / 1e5), round(b["stop_hz"] / 1e5))
+            if len(self.demo_carriers) > 40:
+                self.demo_carriers.clear()
+            bg = self.demo_carriers.setdefault(          # quelques signaux inconnus en plus
+                key, [(self.rng.uniform(b["start_hz"], b["stop_hz"]), self.rng.uniform(-78, -60),
+                       self.rng.uniform(0.3, 1.2), self.rng.uniform(0, 6)) for _ in range(3)])
+            t = time.time()
+            for pos, amp, w, ph in bg:
+                if fr[0] - 2e5 <= pos <= fr[-1] + 2e5 and np.sin(t * w + ph) > -0.2:
+                    lv = np.maximum(lv, amp - 12 * ((fr - pos) / 100e3) ** 2 + self.rng.normal(0, 0.8, len(fr)))
+            pl = demo_plan_levels(fr / 1e6, cfg["demo_plan"], t, self.rng)
+            return np.fmax(lv, pl)
         key = (b["id"], round(b["start_hz"] / 1e5), round(b["stop_hz"] / 1e5))
         if len(self.demo_carriers) > 40:
             self.demo_carriers.clear()
@@ -24894,7 +24995,8 @@ class SoundOut:
     def play(self, seq):
         if not self.cfg.get("volume"):
             return
-        mm = self._mm() if self.cfg.get("style", "tones") == "tones" else None
+        style = self.cfg.get("style", "tones")
+        mm = self._mm() if style in ("tones", "classic") else None
         if mm is None:
             QtWidgets.QApplication.beep()
             return
@@ -24911,7 +25013,10 @@ class SoundOut:
             self.sink = mm.QAudioSink(dev, fmt)
             self.sink.setVolume(self.cfg.get("volume", 70) / 100.0)
             self.buf = QtCore.QBuffer()
-            self.buf.setData(QtCore.QByteArray(tone_pcm(seq, 22050, 1.0)))
+            if style == "classic":                       # 8.0.3 : les anciens bips, au choix
+                seq = next((ALARM_TONES_CLASSIC[k] for k, v in ALARM_TONES.items() if v is seq),
+                           TONE_OK_CLASSIC if seq is TONE_OK else seq)
+            self.buf.setData(QtCore.QByteArray(tone_pcm(seq, 22050, 1.0, "sine" if style == "classic" else "chime")))
             self.buf.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
             self.sink.start(self.buf)
             self.error = ""
@@ -34751,8 +34856,13 @@ class MainWindow(QtWidgets.QMainWindow):
             freqs = [w["freq"] for w in self.watch if not w.get("bw")]
             blocks = [(w["freq"], w["bw"]) for w in self.watch if w.get("bw") and self.is_keep_on(w["status"])]
             off = c["offset"] + self.dev_offset(dev)
+            try:                                         # 8.0.3 : le démo du tinySA suit le plan du SDR démo
+                plan = demo_sdr_plan(self.demo_mics()) if self.watch else None
+            except Exception:  # noqa: BLE001
+                plan = None
             return dict(bands=bands, rbw=rbw, input=c["input"], lna=c["lna"], att=c["att"],
-                        offset=off, seg=c["seg"], demo_freqs=freqs, demo_blocks=blocks, ver=self._ver)
+                        offset=off, seg=c["seg"], demo_freqs=freqs, demo_blocks=blocks, ver=self._ver,
+                        demo_plan=plan)
 
     def _load_config(self):
         data = {}
@@ -44067,6 +44177,7 @@ def restart_app():
         if k.startswith("_PYI_") or k in ("_MEIPASS2", "_MEIPASS"):
             env.remove(k)
     env.insert("PYINSTALLER_RESET_ENVIRONMENT", "1")
+    env.insert("TSM_WAIT_INSTANCE", "1")              # 8.0.3 : attend que l'ancienne fenêtre soit fermée
     pr = QtCore.QProcess()
     pr.setProgram(sys.executable)
     pr.setArguments(args)
@@ -44082,7 +44193,8 @@ GUARD_LOG = CFG_PATH.parent / "garde.log"
 def _guard_env(beat, restarted):
     """Environnement de l'appli lancée par la garde (exe PyInstaller : dossier _MEI… à elle, cf. restart_app)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k not in ("_MEIPASS2", "_MEIPASS")}
-    env.update(PYINSTALLER_RESET_ENVIRONMENT="1", TSM_HEARTBEAT=str(beat), TSM_GUARD_RESTART="1" if restarted else "0")
+    env.update(PYINSTALLER_RESET_ENVIRONMENT="1", TSM_HEARTBEAT=str(beat), TSM_GUARD_RESTART="1" if restarted else "0",
+               TSM_WAIT_INSTANCE="1")
     return env
 
 
@@ -45411,6 +45523,12 @@ class AudioPickDialog(QtWidgets.QDialog):
         self.setWindowTitle(title or ("🎵 Générateur audio (20 Hz – 20 kHz)" if standalone else "🎵 Choisir un son"))
         sp = audio_spec_norm(spec or dict(src="tone" if standalone else "voice"))
         lay = QtWidgets.QVBoxLayout(self)
+        if standalone:
+            why = QtWidgets.QLabel(TR("À quoi ça sert ? Écouter un son de test ici, ou l'affecter (en bas) : à un micro de ta "
+                                      "liste (il l'émet dans les modes démo tinySA et SDR), à un son d'alarme, ou à "
+                                      "l'émission avec un HackRF."))
+            why.setWordWrap(True)
+            lay.addWidget(why)
         f = QtWidgets.QFormLayout()
         self.src = QtWidgets.QComboBox()
         for k_, t_ in AUDIO_SRCS:
@@ -45480,6 +45598,26 @@ class AudioPickDialog(QtWidgets.QDialog):
         self.msg.setWordWrap(True)
         lay.addLayout(owner._row(self.play_btn, "Volume :", self.vol, None))
         lay.addWidget(self.msg)
+        if standalone:                                      # 8.0.3 : « le générateur sert à quoi ? » -> l'affecter
+            box = QtWidgets.QGroupBox(TR("Utiliser ce son pour…"))
+            bl = QtWidgets.QFormLayout(box)
+            self.target = QtWidgets.QComboBox()
+            self.target.setToolTip(TR("Où va ce son : un micro de ta liste (il l'émet dans les démos tinySA / SDR), un son "
+                                      "d'alarme, ou l'émission avec un HackRF."))
+            self.sig = QtWidgets.QComboBox()
+            for k_, t_ in DEMO_SIG_KINDS:
+                self.sig.addItem(TR(t_), k_)
+            self.sig.setToolTip(TR("Ce que ce micro émet dans les démos (tinySA et SDR) : micro FM avec ce son, micro "
+                                   "numérique, coupures, brouilleur, rien."))
+            self.assign_btn = QtWidgets.QPushButton(TR("✔ Affecter"))
+            self.assign_btn.setToolTip(TR("Applique ce son (et ce type de signal) à la cible choisie."))
+            self.assign_btn.clicked.connect(lambda *_: self.assign())
+            bl.addRow(TR("Cible :"), self.target)
+            bl.addRow(TR("Signal (démos) :"), self.sig)
+            bl.addRow("", self.assign_btn)
+            self.target.currentIndexChanged.connect(lambda *_: self._target_changed())
+            lay.addWidget(box)
+            self.fill_targets()
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close if standalone else
                                         QtWidgets.QDialogButtonBox.StandardButton.Ok |
                                         QtWidgets.QDialogButtonBox.StandardButton.Cancel)
@@ -45493,6 +45631,63 @@ class AudioPickDialog(QtWidgets.QDialog):
         self.log.toggled.connect(lambda *_: self._changed())
         self.finished.connect(lambda *_: self.play(False))
         self._changed()
+
+    def fill_targets(self):
+        """Cibles : tes micros (démos), les sons d'alarme, l'émission HackRF."""
+        o = self.owner
+        cur = self.target.currentData()
+        self.target.blockSignals(True)
+        self.target.clear()
+        for w in sorted(o.watch, key=lambda w: w["freq"]):
+            self.target.addItem(TR("🎤 {} · {} MHz (démos tinySA / SDR)").format(w.get("name") or "—", f"{w['freq']:.3f}"),
+                                f"mic:{int(round(w['freq'] * 1000))}")
+        for k_, t_ in (("alarm2", "🔔 Son d'alarme critique"), ("alarm1", "🔔 Son d'alarme normale"),
+                       ("alarm0", "🔔 Son d'alarme info"), ("ok", "✓ Son de l'appel des micros")):
+            self.target.addItem(TR(t_), f"alarm:{k_}")
+        self.target.addItem(TR("📡 Émettre avec un HackRF (nouvelle ligne)"), "tx:")
+        i = self.target.findData(cur) if cur is not None else -1
+        self.target.setCurrentIndex(max(0, i))
+        self.target.blockSignals(False)
+        self._target_changed()
+
+    def _tgt(self):
+        k, _, v = str(self.target.currentData() or ":").partition(":")
+        return k, (int(v) if k == "mic" and v.isdigit() else v)
+
+    def _target_changed(self):
+        t = self._tgt()
+        self.sig.setEnabled(t[0] == "mic")
+        if t[0] == "mic":
+            k = (self.owner.sdr_cfg.get("demo_kind") or {}).get(str(t[1])) or "auto"
+            self.sig.setCurrentIndex(max(0, self.sig.findData(k)))
+
+    def assign(self):
+        o, sp = self.owner, self.spec()
+        t = self._tgt()
+        if t[0] == "mic":
+            w = o.watch_by_key(t[1])
+            if w is None:
+                return
+            o.demo_sound(w, sp)
+            dk = dict(o.sdr_cfg.get("demo_kind") or {})
+            if self.sig.currentData() == "auto":
+                dk.pop(str(t[1]), None)
+            else:
+                dk[str(t[1])] = self.sig.currentData()
+            o.sdr_cfg["demo_kind"] = dk
+            for e_ in (getattr(o, "sdr_engs", None) or {}).values():
+                e_._t_demo = 0.0                            # le SDR démo prend le nouveau signal tout de suite
+            self.msg.setText(TR("✔ {} : « {} », {} — lance le mode démo (tinySA ou 🧪 SDR démo) pour le voir et "
+                                "l'écouter.").format(w.get("name") or f"{w['freq']:.3f}", audio_text(sp, TR),
+                                                     self.sig.currentText()))
+        elif t[0] == "alarm":
+            o.set_alarm_sound(t[1], sp)
+            self.msg.setText(TR("✔ Son « {} » affecté : {}.").format(self.target.currentText(), audio_text(sp, TR)))
+        elif t[0] == "tx":
+            d = o.open_sdr_tx()
+            if d is not None:
+                d.add_row(dict(f=606.0, kind="fm", audio=sp))
+                self.msg.setText(TR("✔ Ligne ajoutée à l'émission HackRF : règle sa fréquence."))
 
     def spec(self):
         return audio_spec_norm(dict(src=self.src.currentData(), f=self.f.value(), f1=self.f1.value(), f2=self.f2.value(),
@@ -45591,6 +45786,7 @@ def _v8_open_audio_gen(self):
     d = getattr(self, "_audiogen", None)
     if d is None:
         d = self._audiogen = AudioPickDialog(self, standalone=True)
+    d.fill_targets()
     d.show()
     d.raise_()
     return d
@@ -45949,7 +46145,8 @@ def _v8_demo_mics(self):
             wav_load(audio_spec_norm(snd)["path"])
         out.append(dict(f=w["freq"], name=w.get("name", ""), bw=float(w.get("bw") or 0.0),
                         free=self.is_keep_free(w.get("status")),
-                        digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd))
+                        digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd,
+                        kind=(self.sdr_cfg.get("demo_kind") or {}).get(str(int(round(w["freq"] * 1000)))) or "auto"))
     return out
 
 
@@ -47257,12 +47454,66 @@ def self_test(path):
     check("tinySA en réseau (socket://, relais / Raspberry Pi)", net)
     check("traductions anglaises (lang_en)", lambda: importlib.import_module("lang_en"))
     check("son (PySide6.QtMultimedia)", lambda: importlib.import_module("PySide6.QtMultimedia"))
+    check("une seule instance (PySide6.QtNetwork)", lambda: importlib.import_module("PySide6.QtNetwork").QLocalServer)
     check("QR code (segno)", lambda: importlib.import_module("segno").make("http://192.168.1.2:8080/").matrix)
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     check("manuels embarqués (FR + EN)", lambda: [(base / "docs" / n).stat() for n in ("manuel.html", "manual_en.html")])
     out.append(f"ÉCHECS: {fails}")
     Path(path).write_text("\n".join(out) + "\n", encoding="utf-8")
     return fails
+
+
+def _instance_name():
+    """Nom du canal local de l'appli (un par dossier de config, donc un par utilisateur Windows)."""
+    import hashlib
+    return "TinySAMonitor-" + hashlib.sha1(str(CFG_PATH.parent).encode("utf-8")).hexdigest()[:12]
+
+
+def single_instance(app):
+    """8.0.3 (Clément : « je peux ouvrir plusieurs fois le logiciel ») : un verrou dans le dossier de config. Déjà
+    ouverte -> on lui demande de revenir devant et on rend None (cette 2ᵉ copie se ferme). Une relance (langue, garde)
+    attend jusqu'à 20 s que l'ancienne soit fermée. TSM_MULTI=1 : plusieurs copies permises (dépannage).
+    -> le serveur local (QLocalServer) à garder, ou None."""
+    from PySide6 import QtNetwork
+    if os.environ.get("TSM_MULTI") == "1":
+        return QtNetwork.QLocalServer(app)
+    CFG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock = QtCore.QLockFile(str(CFG_PATH.parent / "instance.lock"))
+    lock.setStaleLockTime(0)                 # verrou d'une appli plantée (processus mort) : repris tout seul
+    wait = 20000 if os.environ.get("TSM_WAIT_INSTANCE") == "1" else 300
+    if not lock.tryLock(wait):
+        sock = QtNetwork.QLocalSocket()
+        sock.connectToServer(_instance_name())
+        if sock.waitForConnected(1500):
+            sock.write(b"show")
+            sock.flush()
+            sock.waitForBytesWritten(1000)
+            sock.disconnectFromServer()
+        else:
+            QtWidgets.QMessageBox.information(None, APP_NAME, TR("TinySA Monitor est déjà ouvert sur ce PC (regarde dans la "
+                                                                 "barre des tâches)."))
+        return None
+    app._instance_lock = lock
+    srv = QtNetwork.QLocalServer(app)
+    QtNetwork.QLocalServer.removeServer(_instance_name())
+    srv.listen(_instance_name())
+    return srv
+
+
+def _instance_wake(srv, win):
+    """Une 2ᵉ copie a été lancée : la fenêtre déjà ouverte revient devant."""
+    while srv.hasPendingConnections():
+        c = srv.nextPendingConnection()
+        c.disconnected.connect(c.deleteLater)
+    try:
+        if win.isMinimized():
+            win.showNormal()
+        win.show()
+        win.raise_()
+        win.activateWindow()
+        win.set_status(TR("TinySA Monitor était déjà ouvert : le voici."))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def main():
@@ -47287,7 +47538,11 @@ def main():
     if "--relais" in sys.argv:              # PC où est branché le 2ᵉ tinySA : juste le relais réseau
         win = RelayWindow()
     else:
+        inst = single_instance(app)         # 8.0.3 : déjà ouverte -> on la ramène devant, on ne s'ouvre pas 2 fois
+        if inst is None:
+            sys.exit(0)
         win = MainWindow()
+        inst.newConnection.connect(lambda: _instance_wake(inst, win))
     win.show()
     sys.exit(app.exec())
 

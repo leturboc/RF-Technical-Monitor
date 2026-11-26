@@ -1714,6 +1714,23 @@ check("8.0.2 : générateur : la fréquence choisie est bien celle jouée (nouve
       _f1 is not None and abs(_f1 - 440) < 3 and _f2 is not None and abs(_f2 - 5000) < 3 and _p1 != _p2,
       f"{_f1} Hz · {_f2} Hz · {_p1} -> {_p2} · {_ag.msg.text()}")
 _ag.play_btn.setChecked(False)
+_wg = win.watch[0]
+_kg = int(round(_wg["freq"] * 1000))
+_ag.fill_targets()
+_ag.target.setCurrentIndex(_ag.target.findData(f"mic:{_kg}"))
+_ag.sig.setCurrentIndex(_ag.sig.findData("intermittent"))
+_ag.assign()
+check("8.0.3 : générateur affecté à un micro (son + signal des démos)",
+      (win.sdr_cfg.get("demo_kind") or {}).get(str(_kg)) == "intermittent"
+      and (win.sdr_cfg.get("demo_snd") or {}).get(str(_kg), {}).get("f") == 5000.0
+      and any(d_.get("kind") == "intermittent" for d_ in win.demo_mics()), _ag.msg.text())
+_ag.target.setCurrentIndex(_ag.target.findData("alarm:alarm1"))
+_ag.assign()
+check("8.0.3 : générateur affecté à un son d'alarme", win.sound.custom.get("alarm1", {}).get("f") == 5000.0, _ag.msg.text())
+win.set_alarm_sound("alarm1", None)
+win.sdr_cfg.pop("demo_kind", None)
+win.demo_sound(_wg, None)
+check("8.0.3 : démo du tinySA = plan des micros (toute la liste)", win.get_cfg(0).get("demo_plan") is not None)
 _ag.close()
 win.set_alarm_sound("alarm2", dict(src="tone", f=880))
 _sd21 = m.SettingsDialog(win)

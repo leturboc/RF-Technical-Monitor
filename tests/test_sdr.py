@@ -944,5 +944,21 @@ ok("micros choisis : remplacent les scènes", [w["name"] for w in ns["post_watch
 ok("postes : micros gardés", ns["sdr_posts_norm"]([{"id": 2, "mics": [470300]}])[1]["mics"] == [470300]
    and ns["sdr_posts_norm"]([])[0]["mics"] == [])
 
+# 8.0.3 : démo du tinySA = plan du SDR démo, type de signal par micro
+_pl = ns["demo_sdr_plan"]([dict(f=600.0, name="A"), dict(f=610.0, name="B", kind="off"),
+                           dict(f=620.0, name="C", free=True, kind="fm"), dict(f=630.0, name="D", kind="digital"),
+                           dict(f=640.0, name="E", kind="jam")])
+_keys = {s_["key"][:3]: s_ for s_ in _pl}
+ok("démo : « rien » = pas de signal, « micro FM » même sur une réserve",
+   not any(abs(s_["f"] - 610.0) < 1e-6 for s_ in _pl) and any(abs(s_["f"] - 620.0) < 1e-6 and s_["kind"] == "fm" for s_ in _pl))
+ok("démo : numérique = bloc, brouilleur = toujours là",
+   any(abs(s_["f"] - 630.0) < 1e-6 and s_["kind"] == "noise" for s_ in _pl)
+   and any(abs(s_["f"] - 640.0) < 1e-6 and s_["key"].startswith("jam") and not s_.get("on") for s_ in _pl))
+_fr = np.linspace(599.0, 641.0, 4201)
+_lv = ns["demo_plan_levels"](_fr, [s_ for s_ in _pl if s_["key"] != "mic600.0000" or True], 30.0)
+_at = lambda f: float(np.nanmax(_lv[np.abs(_fr - f) < 0.02])) if np.any(~np.isnan(_lv[np.abs(_fr - f) < 0.02])) else None
+ok("démo tinySA : niveaux sur les micros, rien sur l'éteint", _at(620.0) is not None and _at(620.0) > -70
+   and _at(610.0) is None and _at(630.0) is not None, f"{_at(620.0)} {_at(610.0)} {_at(630.0)}")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

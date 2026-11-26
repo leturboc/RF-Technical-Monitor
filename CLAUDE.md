@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.2**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.3**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1489,6 +1489,26 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   décochait ▶ -> plus aucune relance ensuite. `temp_wav_path(kind, old)` = nom neuf à chaque lecture (générateur et
   ⏪ remonter le temps) ; `_changed` -> `play(True)`. gui_reel relit le WAV joué (440 puis 5 000 Hz). **Son toujours
   jamais entendu par Claude.**
+- **8.0.3 (Clément : « je peux ouvrir plusieurs fois le logiciel », « le générateur sert à quoi ? je peux l'affecter nulle
+  part », « le mode test devrait générer la fréquence monitorée », « les sons d'alarme font chippppp »)** :
+  - **Une seule instance** : `single_instance(app)` dans `main()` (pas pour `--relais`) : `QLockFile` instance.lock dans le
+    dossier de config (`setStaleLockTime(0)` : verrou d'une appli plantée repris), 2ᵉ copie -> `QLocalSocket` « show » vers
+    `_instance_name()` puis sortie (code 0) ; la 1re revient devant (`_instance_wake`). Relances (langue `restart_app`,
+    garde `_guard_env`) : `TSM_WAIT_INSTANCE=1` = attend 20 s. `TSM_MULTI=1` = plusieurs copies (dépannage).
+    `--hidden-import PySide6.QtNetwork` (workflow, build.bat, `self_test`). Test `tests/test_instance.py` (vrais processus,
+    CI Linux). ⚠ Ne pas mettre HOME dans l'environnement d'un sous-processus de test (les paquets « --user » disparaissent).
+  - **Démo du tinySA = plan du SDR démo** : `get_cfg` -> `demo_plan = demo_sdr_plan(self.demo_mics())` ; PURE
+    `demo_plan_levels(fr, plan, t, rng)` (dBm = `DEMO_DBM` + lvl − 8) dans `ScanWorker._demo_levels` (+ 3 signaux inconnus) :
+    tous tes micros émettent (avant : 1 sur 4). Type de signal par micro : `DEMO_SIG_KINDS` (auto, fm, digital,
+    intermittent, jam, off), `sdr_cfg["demo_kind"]` {kHz: type} (gardé par `sdr_cfg_extra`), lu par `demo_mics` -> clé
+    `kind` de `demo_sdr_plan`.
+  - **Générateur affectable** : `AudioPickDialog` (standalone) « Utiliser ce son pour… » : `target` (données TEXTE
+    « mic:kHz » / « alarm:alarm2 » / « tx: » — un tuple Python n'est pas retrouvé par `findData`), `sig`, `assign` ->
+    `demo_sound` + `demo_kind`, `set_alarm_sound`, ou nouvelle ligne de `SdrTxDialog` ; phrase « À quoi ça sert ? ».
+  - **Sons d'alarme** : `ALARM_TONES` plus graves (784 / 988 / 1 175 Hz montants ; 880 -> 698 « ding-dong » ; 784),
+    `tone_pcm(..., timbre="chime")` -> `_chime_pcm` (harmoniques, attaque 8 ms, résonne et s'éteint) ; anciens sons =
+    `ALARM_TONES_CLASSIC` / `TONE_OK_CLASSIC`, style « classic » (📟 Bips nets) de `SOUND_STYLES`. WAV d'essai envoyés à
+    Clément. **Jamais entendus par Claude sur une vraie carte son.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

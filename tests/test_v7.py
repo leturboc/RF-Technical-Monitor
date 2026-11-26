@@ -642,6 +642,13 @@ a_ = np.frombuffer(pc_, dtype="<i2")
 ok("son : la note est là puis le silence", np.abs(a_[:2205]).max() > 10000 and np.abs(a_[2205:]).max() == 0)
 ok("son : fondu (pas de clic au début)", abs(int(a_[0])) < 200)
 ok("son : alarme critique = 3 notes", sum(1 for hz, _ms in ns["ALARM_TONES"][2] if hz) == 3)
+_ch = np.frombuffer(tpcm_(ns["ALARM_TONES"][2], 22050, 0.8, "chime"), dtype="<i2").astype(float)
+ok("son 8.0.3 : carillon = pas de clic, fin fondue, résonne après la dernière note",
+   abs(_ch[0]) < 300 and abs(_ch[-1]) < 300 and len(_ch) > sum(ms for _h, ms in ns["ALARM_TONES"][2]) * 22.05
+   and np.abs(_ch).max() > 20000, f"{_ch[0]} {_ch[-1]} {len(_ch)}")
+ok("son 8.0.3 : notes plus graves qu'avant (moins « chip »)",
+   max(hz for hz, _ in ns["ALARM_TONES"][2]) < max(hz for hz, _ in ns["ALARM_TONES_CLASSIC"][2]))
+check("son 8.0.3 : style « bips nets » gardé", scn_({"style": "classic"})["style"], "classic")
 
 # --- chasse au brouilleur
 hl_, ht_ = ns["hunt_level"], ns["hunt_tone"]
