@@ -1970,3 +1970,4 @@ EXACT.update({                                      # 8.1 : gain du générateur
 EXACT["spectre {} · démod {} · reste {} ms/50"] = "spectrum {} · demod {} · other {} ms/50"
 EXACT["spectre allégé (PC à la peine), son prioritaire"] = "lighter spectrum (PC struggling), sound first"
 EXACT.update({"FM": "FM", "pilote+santé": "pilot+health", "mix": "mix", "filtre": "filter", "compander": "compander"})
+EXACT["Volume. Double-clic = 100 % (0 dB)."] = "Volume. Double-click = 100 % (0 dB)."

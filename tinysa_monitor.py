@@ -9470,6 +9470,9 @@ class SdrReceiverPanel(SdrPanelBase):
                                    "il mesure le niveau reçu, avant le volume."))
         self.vol.valueChanged.connect(self._vol_txt)
         self._vol_txt(self.vol.value())
+        self.vol.installEventFilter(self)                 # 8.1 : double-clic = 100 % (0 dB)
+        self.vol_lbl.installEventFilter(self)
+        self.vol.setToolTip(TR("Volume. Double-clic = 100 % (0 dB)."))
         self.dev_lbl = QtWidgets.QLabel("")
         self.dev_lbl.setToolTip(TR(DEVICE_HELP["sdr"]) + "\n\n" + TR("Ton SDR : 📡 Réglages SDR pour le changer."))
         lay.addLayout(self._wrap(self.go_btn, self.mute, self.vol, self.vol_lbl, o._elastic(self.dev_lbl)))
@@ -9749,6 +9752,13 @@ class SdrReceiverPanel(SdrPanelBase):
     def _af_post_set(self, on):
         self.af_post.setText("POST" if on else "PRÉ")
         self.owner.sdr_cfg["af_post"] = bool(on)
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.Type.MouseButtonDblClick and obj in (getattr(self, "vol", None),
+                                                                          getattr(self, "vol_lbl", None)):
+            self.vol.setValue(100)
+            return True
+        return super().eventFilter(obj, ev)
 
     def _vol_txt(self, v):
         v = int(v)

@@ -1741,6 +1741,10 @@ check("8.1 : vu-mètre du son POST volume, choix gardé", win.sdr_cfg.get("af_po
 _rxp.af_post.setChecked(False)
 check("8.1 : vu-mètre du son PRÉ volume", win.sdr_cfg.get("af_post") is False and _rxp.af_post.text() == "PRÉ")
 check("8.1 : volume affiché en % et dB", "%" in _rxp.vol_lbl.text() and "dB" in _rxp.vol_lbl.text(), _rxp.vol_lbl.text())
+_rxp.vol.setValue(160)
+QtTest.QTest.mouseDClick(_rxp.vol, Qt.MouseButton.LeftButton)
+check("8.1 : double-clic sur le volume = 100 % (0 dB)", _rxp.vol.value() == 100 and "+0,0 dB" in _rxp.vol_lbl.text(),
+      _rxp.vol_lbl.text())
 _scd = win.open_scales()
 _scd.unit.setCurrentIndex(_scd.unit.findData("dbu"))
 check("8.1 : 📏 échelles : −18 dBFS = 0 dBu (EBU), unité retenue", win.audio_ref["unit"] == "dbu"
