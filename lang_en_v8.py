@@ -1415,3 +1415,138 @@ EXACT.update({
     "🎵 {}": "🎵 {}",
     "{} :": "{}:",
 })
+
+# ---------------------------------------------------------------- V8 étape 22 : premier branchement, calibration, ⏪
+EXACT.update({
+    " · ⚠ écarts importants : antennes à des endroits différents ?": " · ⚠ large differences: antennas in different places?",
+    ".wav / .png": ".wav / .png",
+    "1. Mon SDR": "1. My SDR", "2. Le trouver": "2. Find it", "3. Régler le gain tout seul": "3. Set the gain automatically",
+    "4. Écouter un micro": "4. Listen to a mic", "5. Caler les niveaux (facultatif)": "5. Calibrate the levels (optional)",
+    "6. Diagnostic": "6. Diagnostics",
+    "Branche ton SDR, puis fais les étapes dans l'ordre. Si une étape bloque, le 🩺 diagnostic en bas résume tout pour le "
+    "support.": "Plug in your SDR, then do the steps in order. If a step gets stuck, the 🩺 diagnostics at the bottom sums "
+                "everything up for support.",
+    "Choisis d'abord un instant (clic sur le waterfall).": "First pick a moment (click on the waterfall).",
+    "Clique sur le waterfall pour choisir un instant.": "Click on the waterfall to pick a moment.",
+    "Combien de temps le poste SDR garde en mémoire (son : ~11 Mo par minute).":
+        "How long the SDR station keeps in memory (sound: ~11 MB per minute).",
+    "Compare les mêmes signaux vus par le tinySA et le SDR : niveaux du SDR en vrais dBm.":
+        "Compares the same signals seen by the tinySA and the SDR: SDR levels in real dBm.",
+    "Correction de niveau": "Level correction",
+    "Correction mesurée : {} dB (± {} dB sur {} signaux) · actuelle : {} dB":
+        "Measured correction: {} dB (± {} dB over {} signals) · current: {} dB",
+    "Couper le SDR démo": "Turn the SDR demo off",
+    "Dossier des outils": "Tools folder",
+    "ENREGISTRÉ (SDR)": "RECORDED (SDR)",
+    "Enregistre le son (WAV, 60 s) et l'image du waterfall. Demande ton accord la 1re fois.":
+        "Saves the sound (WAV, 60 s) and the waterfall image. Asks for your consent the 1st time.",
+    "Essaie chaque gain et garde le plus fort qui ne sature pas.": "Tries each gain and keeps the highest that doesn't saturate.",
+    "Ferme l'assistant (ce qui est réglé reste réglé).": "Closes the wizard (what's set stays set).",
+    "Ferme la fenêtre (la mémoire continue de se remplir).": "Closes the window (the memory keeps filling).",
+    "Gains": "Gains",
+    "Garde cette correction pour ce modèle de SDR (📡 Réglages SDR › correction de niveau).":
+        "Keeps this correction for this SDR model (📡 SDR settings › level correction).",
+    "Il y a {} min {:02d} s · A = {}": "{} min {:02d} s ago · A = {}",
+    "Lance d'abord la surveillance du tinySA (▶ Démarrer).": "First start the tinySA monitoring (▶ Start).",
+    "Lance d'abord le poste SDR (▶ du Récepteur), en mode combiné avec le tinySA.":
+        "First start the SDR station (▶ of the Receiver), in combined mode with the tinySA.",
+    "Lance la comparaison.": "Starts the comparison.",
+    "Lance le poste SDR sur un de tes micros : tu dois l'entendre.": "Starts the SDR station on one of your mics: you should hear it.",
+    "Le SDR démo est allumé : coupe-le pour régler ton vrai SDR.": "The SDR demo is on: turn it off to set up your real SDR.",
+    "Le SDR démo n'a rien à caler : ses niveaux sont fabriqués. Coupe-le pour caler ton vrai SDR.":
+        "The SDR demo has nothing to calibrate: its levels are made up. Turn it off to calibrate your real SDR.",
+    "Le modèle exact de ton SDR (règle ses débits, gains et plage).": "The exact model of your SDR (sets its rates, gains and range).",
+    "Le plus récent en haut. Clic = choisir cet instant.": "Most recent at the top. Click = pick this moment.",
+    "Le tinySA mesure en dBm, le SDR en dBFS (relatif à son convertisseur). Avec les DEUX en marche (mode combiné) et des "
+    "signaux dans la fenêtre du SDR (tes micros allumés), l'appli compare les mêmes signaux pendant 15 s et en déduit la "
+    "correction du SDR. Mets les deux antennes au même endroit.":
+        "The tinySA measures in dBm, the SDR in dBFS (relative to its converter). With BOTH running (combined mode) and "
+        "signals in the SDR window (your mics on), the app compares the same signals for 15 s and deduces the SDR's "
+        "correction. Put both antennas in the same place.",
+    "Les signaux vus par les deux (puissance sur ± 100 kHz).": "The signals seen by both (power over ± 100 kHz).",
+    "Manuel SDR introuvable.": "SDR manual not found.",
+    "Mesure… {} s": "Measuring… {} s",
+    "Outil trouvé, SDR détecté, signal reçu, débit tenu.": "Tool found, SDR detected, signal received, rate kept up.",
+    "Pas assez de signaux vus par les deux (il en faut {}) : allume des micros dans la fenêtre du SDR, ou rapproche les "
+    "antennes.": "Not enough signals seen by both ({} needed): switch on mics in the SDR window, or bring the antennas "
+                 "closer.",
+    "Pas de son gardé à cet instant (poste arrêté, ou trop ancien).": "No sound kept at this moment (station stopped, or too old).",
+    "Recharge les dernières secondes.": "Reloads the latest seconds.",
+    "Rejoue ce que le poste SDR faisait entendre à cet instant (60 s au plus).":
+        "Replays what the SDR station was playing at that moment (60 s at most).",
+    "Rien en mémoire : lance le poste SDR (▶ du Récepteur), puis reviens ici.":
+        "Nothing in memory: start the SDR station (▶ of the Receiver), then come back here.",
+    "Rien à comparer : le tinySA balaye-t-il la fenêtre du SDR ?": "Nothing to compare: does the tinySA sweep the SDR window?",
+    "Réglage du gain": "Gain setting",
+    "Test du SDR": "SDR test",
+    "aucun essai": "no test",
+    "aucun micro dans la plage du SDR : règle A à la main (fréquence du Récepteur)":
+        "no mic in the SDR range: set A by hand (Receiver frequency)",
+    "aucune donnée reçue": "no data received",
+    "ce SDR n'a pas de gain réglable ici : règle-le dans 📡 Réglages SDR": "this SDR has no adjustable gain here: set it in 📡 SDR settings",
+    "en marche": "running",
+    "essai des gains…": "trying the gains…",
+    "essai impossible : {}": "test impossible: {}",
+    "gain auto {} : {} dB ({})": "auto gain {}: {} dB ({})",
+    "gain maximal sans saturer": "maximum gain without saturating",
+    "le plus haut sans saturer ({} dB de marge)": "the highest without saturating ({} dB of headroom)",
+    "niveaux calés sur le tinySA : {} dB ({})": "levels calibrated on the tinySA: {} dB ({})",
+    "passage gardé : {}": "passage kept: {}",
+    "poste SDR lancé sur {} : tu dois l'entendre (🔊 volume du Récepteur)":
+        "SDR station started on {}: you should hear it (🔊 Receiver volume)",
+    "premier branchement SDR": "first SDR connection",
+    "recherche…": "searching…",
+    "rien reçu": "nothing received",
+    "rien": "nothing",
+    "sature même au plus bas : éloigne l'antenne ou ajoute un atténuateur":
+        "saturates even at the lowest: move the antenna away or add an attenuator",
+    "signal très fort : peu de marge, même au plus bas (atténuateur conseillé)":
+        "very strong signal: little headroom, even at the lowest (attenuator advised)",
+    "tinySA (dBm)": "tinySA (dBm)",
+    "SDR (dBFS)": "SDR (dBFS)",
+    "{} : {} – {} MHz, fenêtre jusqu'à {} MHz": "{}: {} – {} MHz, window up to {} MHz",
+    "{} Mo en mémoire": "{} MB in memory",
+    "{} min gardées": "{} min kept",
+    "Écart (dB)": "Difference (dB)",
+    "Écrit un fichier qui résume tout (à m'envoyer si ça coince).": "Writes a file that sums everything up (send it to me if it gets stuck).",
+    "↻ Mettre à jour": "↻ Refresh", "Mettre à jour": "Refresh",
+    "⏪ Remonter le temps · {}": "⏪ Go back in time · {}",
+    "▶ Mesurer (15 s)": "▶ Measure (15 s)", "Mesurer (15 s)": "Measure (15 s)",
+    "▶ Réécouter à partir d'ici": "▶ Replay from here", "Réécouter à partir d'ici": "Replay from here",
+    "✔ Appliquer la correction": "✔ Apply the correction", "Appliquer la correction": "Apply the correction",
+    "✔ Correction gardée pour {} : {} dB.": "✔ Correction kept for {}: {} dB.",
+    "✔ Gardé : {}": "✔ Kept: {}",
+    "🎚 Régler le gain": "🎚 Set the gain", "Régler le gain": "Set the gain",
+    "🎧 Écouter": "🎧 Listen",
+    "💾 Garder ce passage": "💾 Keep this passage", "Garder ce passage": "Keep this passage",
+    "📏 Caler les niveaux du SDR sur le tinySA": "📏 Calibrate the SDR levels on the tinySA",
+    "📏 Caler les niveaux du SDR sur le tinySA…": "📏 Calibrate the SDR levels on the tinySA…",
+    "📏 Caler sur le tinySA": "📏 Calibrate on the tinySA", "Caler sur le tinySA": "Calibrate on the tinySA",
+    "🔌 Chercher mon SDR": "🔌 Look for my SDR", "Chercher mon SDR": "Look for my SDR",
+    "🔌 Premier branchement SDR": "🔌 First SDR connection",
+    "🔌 Premier branchement SDR (assistant)…": "🔌 First SDR connection (wizard)…",
+    "🧪 Le SDR démo est allumé : l'assistant règle ton VRAI SDR, coupe la démo d'abord.":
+        "🧪 The SDR demo is on: the wizard sets up your REAL SDR, turn the demo off first.",
+    "🩺 Diagnostic à envoyer": "🩺 Diagnostics to send", "Diagnostic à envoyer": "Diagnostics to send",
+    "⏪ Remonter le temps": "⏪ Go back in time", "Remonter le temps": "Go back in time",
+    "⏪ Remonter le temps (dernières minutes)…": "⏪ Go back in time (last minutes)…",
+    "📖 Manuel SDR": "📖 SDR manual",
+    "Les dernières minutes de ce poste : waterfall, réécouter un passage, le garder.":
+        "The last minutes of this station: waterfall, replay a passage, keep it.",
+    "il y a (s)": "ago (s)",
+    "Modèle": "Model", "Poste": "Station", "arrêté": "stopped", "saturation": "saturation", "bruit": "noise",
+    "crête": "peak",
+    "V8 : choisir son SDR, le trouver, régler le gain tout seul, écouter un micro,\ncaler les niveaux, et un diagnostic à "
+    "envoyer si ça coince.": "V8: choose your SDR, find it, set the gain automatically, listen to a mic,\ncalibrate the "
+                             "levels, and diagnostics to send if it gets stuck.",
+    "V8 : compare les mêmes signaux vus par le tinySA et le SDR : niveaux du SDR en vrais dBm.":
+        "V8: compares the same signals seen by the tinySA and the SDR: SDR levels in real dBm.",
+    "V8 : les dernières minutes du poste SDR (waterfall + son) : réécouter un passage, le garder.":
+        "V8: the last minutes of the SDR station (waterfall + sound): replay a passage, keep it.",
+    "V8 : le manuel du poste SDR (écoute, surveillance, démo, émission, calibration…).":
+        "V8: the SDR station manual (listening, monitoring, demo, transmission, calibration…).",
+})
+SAME_TEMPLATES += ["TinySA Monitor {} — {} — {}", "  gain {} : {} {} %, {} {} dBFS, {} {} dBFS", "{} : {} dB",
+                   "tsm_rewind_{}.wav", "diagnostic_sdr_{}.txt", "  err : {}", "{} : {}", "{} {}", "{}:{}%"]
+EXACT.update({"peu de marge": "little headroom", "{} = {} dB : {}": "{} = {} dB: {}",
+              "📏 Caler les niveaux du SDR": "📏 Calibrate the SDR levels"})

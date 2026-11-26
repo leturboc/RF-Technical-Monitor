@@ -879,5 +879,39 @@ ok("son d'alarme coupé à 4 s, fondu (pas de clic)", len(_ap) == int(48000 * ns
 ok("son d'alarme d'origine ré-utilisable", 0.2 < len(ns["alarm_pcm"](dict(src="app", app="alarm2"))) / 48000.0 < 1.0)
 ok("texte d'une source", ns["audio_text"](dict(src="sweep", f1=20, f2=20000, dur=10)).startswith("Balayage 20 → 20000"))
 
+# ---------------------------------------------------------------- V8 étape 22 : gain auto, calibration, remonter le temps
+gs_ = ns["gain_steps"]
+_hk = ns["sdr_model"]("hackrf_one")
+ok("gain : étapes du LNA du modèle", gs_(_hk) == [0, 8, 16, 24, 32, 40] and gs_(None) == [])
+agp_ = ns["auto_gain_pick"]
+_rows = [dict(gain=0, ovf=0, peak=-40), dict(gain=16, ovf=0, peak=-20), dict(gain=24, ovf=0, peak=-8),
+         dict(gain=32, ovf=0.01, peak=-0.5)]
+ok("gain auto : le plus haut sans saturer avec 6 dB de marge", agp_(_rows)[0] == 24)
+ok("gain auto : fort sans écrêter -> le plus bas, « peu de marge »", agp_([dict(gain=0, ovf=0, peak=-2), dict(gain=8, ovf=0,
+   peak=-1)])[0] == 0 and "marge" in agp_([dict(gain=0, ovf=0, peak=-2)])[1])
+ok("gain auto : tout sature -> le plus bas + conseil", agp_([dict(gain=8, ovf=0.2, peak=0), dict(gain=0, ovf=0.05, peak=0)])
+   == (0, "sature même au plus bas : éloigne l'antenne ou ajoute un atténuateur"))
+_F = np.linspace(600, 604, 4001)
+_Lt = np.full_like(_F, -100.0)
+_Ls = np.full_like(_F, -140.0)
+for _fc, _p in ((601.0, -50.0), (602.5, -60.0), (603.2, -45.0)):
+    _m = np.abs(_F - _fc) < 0.01
+    _Lt[_m] = _p
+    _Ls[_m] = _p - 40.0 + 0.3                       # SDR : même signal, 40 dB plus bas (dBFS), à 0,3 dB près
+_c = ns["calib_candidates"](_F, _Lt, _F, _Ls, rbw_khz=1.0, enbw=1.0)
+_o = ns["sdr_tsa_offset"](_c)
+ok("calibration : 3 signaux communs, correction ≈ +39,7 dB", len(_c) == 3 and _o and abs(_o["offset"] - 39.7) < 0.2
+   and _o["spread"] < 0.2, str((_c, _o)))
+ok("calibration : pas assez de signaux = None", ns["sdr_tsa_offset"](_c[:1]) is None)
+_rb = ns["RewindBuffer"](1, bytes_per_s=1000)
+for _i in range(200):
+    _rb.push_frame(_i * 0.5, np.linspace(600, 602, 4096), np.full(4096, -90.0 + (_i % 3)))
+    _rb.push_audio(_i * 0.5, b"x" * 500)
+    _rb.push_tune(_i * 0.5, 606.2 if _i < 150 else 607.0, "A")
+ok("remonter le temps : 1 min gardée, spectres réduits à 1024 cases", 60 <= _rb.span()[1] - _rb.span()[0] <= 61
+   and len(_rb.frames[-1][2]) == 1024)
+ok("remonter le temps : fréquence de A à un instant", _rb.tune_at(60.0)[0] == 606.2 and _rb.tune_at(99.0)[0] == 607.0)
+ok("remonter le temps : son à partir d'un instant", len(_rb.audio_from(90.0, 5.0)) == 5000)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

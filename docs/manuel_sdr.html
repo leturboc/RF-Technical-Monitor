@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Manuel SDR</title><style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d2125; --muted: #5d6670; --line: #dde1e5;
+  --accent: #1f6feb; --ok: #1a7f37; --warn: #b26b00; --bad: #c62828; --code: #eef1f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171b; --panel: #1b1f24; --text: #e6e8eb; --muted: #9aa4ae; --line: #2c333b;
+    --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --code: #232a31;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171b; --panel: #1b1f24; --text: #e6e8eb; --muted: #9aa4ae; --line: #2c333b;
+  --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --code: #232a31;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 32px; max-width: 1180px;
+  margin: 0 auto; padding: 24px 16px 80px; }
+nav { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto;
+  font-size: 14px; border-right: 1px solid var(--line); padding-right: 16px; }
+nav b { display: block; margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); }
+nav a { display: block; padding: 3px 0; color: var(--text); text-decoration: none; }
+nav a:hover { color: var(--accent); }
+main { min-width: 0; }
+h1 { font-size: 2rem; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 24px; }
+h2 { font-size: 1.4rem; margin: 48px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.08rem; margin: 24px 0 8px; }
+p, li { max-width: 74ch; }
+a { color: var(--accent); }
+code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: .9em; background: var(--code);
+  border-radius: 4px; padding: 1px 5px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; }
+table { border-collapse: collapse; width: 100%; max-width: 820px; margin: 12px 0; font-size: 15px; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+.box { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 6px; padding: 10px 14px; margin: 14px 0; max-width: 820px; }
+.box.warn { border-left-color: var(--warn); }
+.box.ok { border-left-color: var(--ok); }
+.steps { counter-reset: s; list-style: none; padding-left: 0; }
+.steps > li { counter-increment: s; position: relative; padding-left: 38px; margin: 10px 0; }
+.steps > li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+  display: grid; place-items: center; }
+.ok { color: var(--ok); font-weight: 600; } .warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+.theme { position: fixed; top: 10px; right: 12px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+code { overflow-wrap: anywhere; }
+@media (max-width: 860px) {
+  .wrap { grid-template-columns: 1fr; }
+  table { display: block; overflow-x: auto; }
+  nav { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line);
+    padding: 0 0 12px; columns: 2; }
+}
+@media print { .theme { display: none; } .wrap { display: block; padding: 0; } body { background: #fff; } nav { position: static; max-height: none; border: 0; columns: 2; padding: 0 0 12px; font-size: 12px; } h2, h3 { break-after: avoid; } table, .box, li { break-inside: avoid; } }
+/*pro*/
+body { font: 16px/1.65 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+.cover { display: flex; gap: 22px; align-items: center; max-width: 1148px; margin: 0 auto; padding: 34px 0 22px;
+  border-bottom: 3px solid var(--accent); }
+@media (max-width: 1180px) { .cover { margin: 0 16px; } }
+.cover img { width: 80px; height: 80px; flex: none; }
+.cover .kicker { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cover h1 { font-size: 2.5rem; line-height: 1.1; margin: 4px 0 6px; letter-spacing: -.01em; }
+.cover .sub { margin: 0; }
+.part { margin: 76px 0 0; padding: 0 0 8px; border-bottom: 2px solid var(--accent); background: none; color: var(--accent);
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; border-radius: 0; }
+h2 { font-size: 1.5rem; font-weight: 650; margin: 46px 0 12px; border-top: 0; padding-top: 0; }
+h2 .n { color: var(--accent); margin-right: .35em; font-variant-numeric: tabular-nums; }
+h3 { font-weight: 650; }
+.box { border-radius: 4px; }
+.box.ok, .box.warn, .box.bad { color: var(--text); font-weight: 400; }   /* seule la bordure est colorée */
+figure.shot { margin: 18px 0 22px; max-width: 900px; }
+figure.shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .14); }
+figure.shot figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
+nav .np { margin: 14px 0 2px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent); }
+@media print { .cover { margin: 0 0 18px; } .part { break-before: page; margin-top: 0; } figure.shot { break-inside: avoid; } h2 { break-after: avoid; } }
+/*/pro*/
+</style></head><body><main><header><h1>Manuel SDR</h1><p class="muted">TinySA Monitor — le poste SDR (V8)</p></header><nav><h2>Sommaire</h2><ol><li><a href="#poste">Le poste SDR</a></li>
+<li><a href="#branchement">Premier branchement</a></li>
+<li><a href="#ecoute">Écouter</a></li>
+<li><a href="#favoris">Favoris et patrouille</a></li>
+<li><a href="#surveiller">Surveiller avec le SDR</a></li>
+<li><a href="#plusieurs">Plusieurs SDR et la carte</a></li>
+<li><a href="#caler">Caler les niveaux sur le tinySA</a></li>
+<li><a href="#remonter">Remonter le temps</a></li>
+<li><a href="#demo">Le SDR démo</a></li>
+<li><a href="#emettre">Émettre avec un HackRF</a></li>
+<li><a href="#sons">Sons, générateur et alarmes</a></li>
+<li><a href="#avance">Outils avancés</a></li>
+<li><a href="#savoir">Bon à savoir</a></li></ol></nav><section id="poste"><h2>1. Le poste SDR</h2>
+<p>Un <b>SDR</b> (radio logicielle : HackRF, SDRplay RSP1B, RTL-SDR, Airspy, WiNRADiO…) reçoit une <b>fenêtre</b> de
+quelques MHz d'un seul coup, sans trou, et peut <b>démoduler</b> : tu entends ce qui passe sur une fréquence. Le tinySA,
+lui, balaye toute une bande mais n'écoute rien. Les deux se complètent.</p>
+<h3>Trois modes</h3>
+<p>Le bouton de mode, dans la barre du haut, choisit ce que tu utilises :</p>
+<table>
+  <tr><th>Mode</th><th>À l'écran</th></tr>
+  <tr><td><b>📟 tinySA</b></td><td>L'appli comme avant : spectre, waterfall, mur, liste.</td></tr>
+  <tr><td><b>📡 SDR</b></td><td>Les panneaux du poste SDR : Récepteur, Spectre, Waterfall, Mes micros.</td></tr>
+  <tr><td><b>📟+📡 Combiné</b></td><td>Le spectre du tinySA ET celui du SDR côte à côte : le tinySA surveille tout le
+    site, le SDR écoute et regarde de près.</td></tr>
+</table>
+<p>Chaque mode a une disposition de base et des <b>pré-affichages</b> (écouter, surveiller, analyser, double écran).
+Ensuite tu bouges les panneaux comme tu veux : ta disposition est retenue, et elle suit ton profil utilisateur.</p>
+<h3>Les quatre panneaux</h3>
+<ul>
+  <li><b>Récepteur</b> : ▶ / ■, le son, la grande fréquence <b>A</b> (molette sur un chiffre pour le changer), le
+    vu-mètre en dBm avec un mot (très faible, faible, bon, fort, trop fort), les favoris ⭐, la patrouille, les
+    alarmes, l'info « c'est quoi » et le pilote.</li>
+  <li><b>Spectre</b> : la fenêtre du SDR. Tes micros y sont marqués par leur nom. <b>Clic = écouter (A)</b>,
+    <b>clic droit = B</b>. Micro précédent / suivant, zoom, pics gardés.</li>
+  <li><b>Waterfall</b> : l'historique de la fenêtre, A et B en traits.</li>
+  <li><b>Mes micros</b> : les micros de ce SDR avec leur niveau ; double-clic = écouter, clic droit = menu.</li>
+</ul>
+<h3>Simple, Plus, Expert</h3>
+<p>Le niveau d'affichage de l'appli s'applique aussi au poste SDR. <b>Simple</b> : écouter, favoris, patrouille,
+alarmes. <b>Plus</b> : démodulation, pas, squelch, récepteur B, enregistrements. <b>Expert</b> : taille de FFT,
+réglages de l'appareil, charge et saturation.</p>
+</section>
+<section id="branchement"><h2>2. Premier branchement</h2>
+<p>La première fois, ouvre <b>🔌 Premier branchement SDR</b> (menu du mode, ou 🔌 Matériel › 📡 SDR). L'assistant fait
+six étapes et dit pour chacune ✔, ⚠ ou ✖ avec quoi faire :</p>
+<ol>
+  <li><b>Mon SDR</b> : choisis le modèle exact. Il règle les débits, les gains et la plage de fréquences.</li>
+  <li><b>Le trouver</b> : l'outil du SDR est cherché, l'appareil détecté, un signal reçu pendant 2 s et le débit
+    vérifié. Si une ligne est ✖, elle dit pourquoi (outil manquant, pilote USB, SDR pris par un autre logiciel,
+    port USB trop lent).</li>
+  <li><b>Régler le gain tout seul</b> : chaque valeur du gain d'entrée est essayée ; l'appli garde <b>la plus forte qui
+    ne sature pas</b> en laissant 6 dB de marge. S'il sature même au plus bas, elle te conseille un atténuateur.</li>
+  <li><b>Écouter un micro</b> : le poste démarre sur un de tes micros : tu dois l'entendre.</li>
+  <li><b>Caler les niveaux</b> (facultatif) : voir le chapitre « Caler les niveaux sur le tinySA ».</li>
+  <li><b>Diagnostic</b> : un fichier résume tout (modèle, gains, résultats, messages de l'outil). C'est celui à
+    envoyer au support si quelque chose coince.</li>
+</ol>
+<div class="box">Les outils des SDR (hackrf_transfer, rtl_sdr, SoapySDR…) viennent du <b>kit SDR</b> à dézipper à côté
+de l'appli, ou de PothosSDR. Le SDRplay demande aussi l'API du fabricant, le WiNRADiO son logiciel.</div>
+</section>
+<section id="ecoute"><h2>3. Écouter</h2>
+<p>Un micro HF analogique s'écoute comme une radio : le poste démodule la FM et te fait entendre le son. Deux façons
+rapides de se caler sur un micro :</p>
+<ul>
+  <li><b>Double-clic</b> sur son nom ou sa fréquence dans « Mes fréquences » (en mode SDR ou combiné) ;</li>
+  <li><b>clic</b> sur lui dans le spectre SDR, ou dans « Mes micros ».</li>
+</ul>
+<h3>Le réglage d'écoute se fait tout seul</h3>
+<p>Chaque appareil a sa façon d'émettre : FM large, désaccentuation, <b>compander</b> (le compresseur à l'émission
+et l'expanseur à la réception). L'appli <b>devine le bon réglage</b> d'après ce qu'elle sait du micro : son appareil dans
+le plan importé (EazyRF, WWB, WSM…), le nom de son groupe, son nom. La ligne 🎧 Écoute montre « auto (d'après le
+micro) ». Si tu changes le préréglage ou le compander, ton choix est <b>retenu pour ce micro</b> (« ✋ choisi pour ce
+micro »), dans la liste et dans les shows.</p>
+<div class="box warn">Les systèmes <b>numériques</b> (ULX-D, Axient Digital, QLX-D, SLX-D, EW-D / EW-DX, 6000, Spectera…)
+<b>ne s'écoutent pas</b> : leur son est codé et souvent chiffré. L'appli le dit (📵) et continue de surveiller leur
+niveau. Les companders des marques ne sont pas publiés : ceux de l'appli sont des approximations, réglées pour que ce
+soit agréable à l'oreille, pas des copies exactes.</div>
+<h3>Récepteurs A et B</h3>
+<p>En niveau Plus, un deuxième récepteur <b>B</b> écoute une autre fréquence de la même fenêtre. « A gauche / B droite »
+met chacun dans une oreille du casque.</p>
+<h3>Squelch, volume, enregistrer</h3>
+<p>Le <b>squelch</b> coupe le souffle quand rien ne passe. <b>⏺ Son</b> enregistre ce que tu entends en WAV,
+<b>⏺ IQ</b> enregistre le signal brut de toute la fenêtre (gros fichiers, à relire dans le Temps réel). Les deux
+demandent ton accord la première fois (on peut enregistrer des voix).</p>
+</section>
+<section id="favoris"><h2>4. Favoris et patrouille</h2>
+<h3>Favoris au pavé numérique</h3>
+<p>Mets tes micros les plus importants sur les touches <b>1 à 9 du pavé numérique</b> : clic droit sur un bouton ⭐ du
+Récepteur (« y mettre le micro écouté ») ou clic droit sur un micro dans « Mes micros ». Ensuite, <b>une touche =
+le SDR se cale sur ce micro, avec son réglage d'écoute</b>, où que tu sois dans l'appli.</p>
+<h3>🔁 Patrouille</h3>
+<p>La patrouille fait passer le SDR d'un favori à l'autre (ou de tous les micros de ce SDR), quelques secondes chacun.
+Les micros éteints 💤 ou en pause sont sautés. <b>Une touche du pavé, un clic sur une fréquence ou un double-clic
+arrête la patrouille</b> : tu as repris la main.</p>
+</section>
+<section id="surveiller"><h2>5. Surveiller avec le SDR</h2>
+<p>La fenêtre du SDR <b>surveille aussi tes fréquences</b> : les micros qui y tombent ont leur niveau, leurs états et
+leurs alarmes, comme avec le tinySA. Si un tinySA balaye en même temps, c'est lui qui garde la surveillance (les deux
+échelles ne sont pas mélangées).</p>
+<h3>🚨 Se caler sur les alarmes</h3>
+<p>Quand une <b>nouvelle</b> alarme arrive (conflit, intermod, absent, trop fort, pilote) sur un micro de ce SDR, le
+poste <b>s'y cale tout seul</b> : tu entends ce qui se passe, et le journal note ce que le SDR y voit (« c'est
+quoi »). Il ne te vole pas une fréquence que tu viens de choisir (30 s), et il reste au moins 20 s sur une alarme
+avant de passer à la suivante. <b>↩ Revenir</b> te ramène où tu étais. Coche « et enregistrer le son » pour garder un
+WAV de l'alarme (10 s d'avant si le SDR écoutait déjà ce micro, 20 s d'après).</p>
+<h3>🏷 C'est quoi ?</h3>
+<p>Sous la fréquence, l'appli dit ce qu'elle voit sur A d'après la forme du spectre : micro FM analogique, FM étroite
+(talkie), porteuse pure, bloc numérique, TV… avec la largeur occupée et le nombre de dB au-dessus du bruit. C'est une
+<b>supposition</b> utile pour trier, pas une identification certaine.</p>
+<h3>🔊 Le pilote : « c'est bien ton émetteur »</h3>
+<p>Beaucoup de micros analogiques émettent une tonalité inaudible, le <b>pilote</b>. La première fois que le SDR
+l'entend sur un micro, il la <b>retient</b>. Ensuite : « ✔ c'est bien ton émetteur ». Si une porteuse est là
+<b>sans</b> son pilote pendant 5 s, une alarme <b>PILOTE</b> se lève : c'est peut-être un autre émetteur sur ta
+fréquence. Un pack sans pilote affiche simplement « pas de pilote vu ». Clic droit sur la ligne d'info = oublier le
+pilote (si tu as changé de pack).</p>
+</section>
+<section id="plusieurs"><h2>6. Plusieurs SDR et la carte</h2>
+<p><b>📡 Mes SDR</b> ajoute des postes (jusqu'à 4) : chacun a son nom, son modèle, son numéro de série (pour savoir
+lequel est lequel) et <b>ses scènes</b>. Un SDR rattaché à une scène ne s'occupe que des micros de cette scène, et
+c'est lui qui répond au pavé numérique et aux alarmes de ces micros. Chaque poste a ses quatre panneaux, titrés à son
+nom.</p>
+<p>Sur la <b>🗺 carte du site</b>, les SDR sont des tuiles comme les tinySA : <b>glisse un SDR sur une scène</b> pour
+qu'il la surveille ; le trait entre eux montre qui surveille quoi.</p>
+</section>
+<section id="caler"><h2>7. Caler les niveaux sur le tinySA</h2>
+<p>Un SDR mesure en <b>dBFS</b> (par rapport à son convertisseur), pas en dBm. Sans calibration, ses niveaux sont
+approximatifs. <b>📏 Caler les niveaux du SDR sur le tinySA</b> les rend comparables :</p>
+<ol>
+  <li>Mets le tinySA et le SDR en marche en même temps (mode combiné), les antennes <b>au même endroit</b>.</li>
+  <li>Allume des micros dans la fenêtre du SDR (il faut au moins 2 signaux vus par les deux).</li>
+  <li>▶ Mesurer : pendant 15 s, l'appli compare la puissance de chaque signal (sur ± 100 kHz) vue par les deux.</li>
+  <li>Elle affiche la correction (et l'écart entre signaux). <b>✔ Appliquer</b> la garde pour ce modèle de SDR.</li>
+</ol>
+<p>Ensuite, seuils, alarmes et niveaux du SDR sont en vrais dBm, cohérents avec le tinySA. Refais-le si tu changes
+d'antenne, de câble ou de gain.</p>
+</section>
+<section id="remonter"><h2>8. Remonter le temps</h2>
+<p>Le poste SDR garde en mémoire les <b>dernières minutes</b> (1, 3 ou 5) : le spectre et le son entendu.
+<b>⏪ Remonter le temps</b> (bouton du Récepteur) montre le waterfall de ces minutes, le plus récent en haut, avec les
+alarmes en repères.</p>
+<ul>
+  <li><b>Clic</b> sur le waterfall = choisir un instant ; la fenêtre dit sur quel micro était A à ce moment-là.</li>
+  <li><b>▶ Réécouter à partir d'ici</b> : jusqu'à 60 s de ce que tu entendais.</li>
+  <li><b>💾 Garder ce passage</b> : le son (WAV) et l'image, dans le dossier des enregistrements.</li>
+</ul>
+<div class="box">Tout reste <b>en mémoire</b> et disparaît quand tu fermes l'appli, sauf ce que tu gardes. Le son
+prend environ 11 Mo par minute.</div>
+</section>
+<section id="demo"><h2>9. Le SDR démo</h2>
+<p>Pas encore de SDR ? <b>🧪 SDR démo</b> (menu du mode) fait tourner tout le poste <b>sans matériel</b> : l'appli
+fabrique les signaux de <b>tes micros</b>, chacun avec un son (voix « un, deux », mélodie, bips…) et un pilote. Pour que
+ce soit vivant : un brouilleur passe sur ta première fréquence « doit rester libre », un micro s'éteint de temps en
+temps, un autre perd son pilote, et deux canaux TV sont là. Tu peux tout essayer : écoute, favoris, patrouille,
+alarmes, remonter le temps, plusieurs SDR.</p>
+<p>Clic droit sur un micro dans « Mes micros » › <b>🎵 Son de ce micro dans le SDR démo</b> pour lui donner le son de
+ton choix (voir « Sons, générateur et alarmes »).</p>
+</section>
+<section id="emettre"><h2>10. Émettre avec un HackRF</h2>
+<div class="box warn"><b>Émettre à l'antenne sans autorisation est interdit.</b> Cette fonction est faite pour
+travailler <b>en câble</b>, avec un atténuateur de 30 dB ou plus avant l'entrée du récepteur ou du tinySA.</div>
+<p>Un HackRF peut <b>émettre</b> (les SDRplay, RTL-SDR, Airspy et WiNRADiO ne font que recevoir).
+<b>📡 Émettre avec un HackRF</b> envoie jusqu'à 8 signaux à la fois dans une fenêtre de quelques MHz :</p>
+<ul>
+  <li><b>micro FM</b> avec son et pilote (tester un récepteur, son squelch, l'écoute de l'appli) ;</li>
+  <li><b>talkie</b> (FM étroite), <b>porteuse pure</b>, <b>bloc large</b> (numérique, TV) ;</li>
+  <li><b>intermittent</b> : allumé 1 s toutes les 4 s, comme un brouilleur qui va et vient (s'entraîner à la chasse,
+    tester les alarmes) ;</li>
+  <li>plusieurs porteuses à la fois : de l'<b>intermodulation</b> volontaire, à observer au tinySA.</li>
+</ul>
+<p>Le gain d'émission part de 0 dB et l'ampli est coupé : en câble, c'est déjà bien assez. L'émission s'arrête toute
+seule (1 à 30 min), à la fermeture de la fenêtre et de l'appli, et elle est notée au journal. La case « en câble » est
+obligatoire. Un HackRF reçoit OU émet : arrête le poste SDR qui l'utilise avant d'émettre.</p>
+<p>Avec le <b>SDR démo</b> allumé, l'émission est <b>simulée</b> : rien ne sort, et le SDR démo « reçoit » ce que tu
+émets. Pratique pour tout essayer sans matériel.</p>
+</section>
+<section id="sons"><h2>11. Sons, générateur et alarmes</h2>
+<p>Partout où l'appli joue ou fabrique un son, tu peux choisir la <b>source</b> :</p>
+<table>
+  <tr><th>Source</th><th>Ce que c'est</th></tr>
+  <tr><td>Générateur : une fréquence</td><td>Une tonalité de 20 Hz à 20 kHz.</td></tr>
+  <tr><td>Générateur : balayage</td><td>De f1 à f2 en N secondes, logarithmique (autant de temps par octave) ou
+    linéaire, en boucle.</td></tr>
+  <tr><td>Bruit blanc, bruit rose</td><td>Pour écouter le comportement d'une chaîne audio.</td></tr>
+  <tr><td>Voix, mélodie, bips, silence</td><td>Les sons de démo (silence = porteuse seule).</td></tr>
+  <tr><td>Un son de l'appli</td><td>Alarmes critique, normale, info, appel des micros.</td></tr>
+  <tr><td>Mon fichier WAV</td><td>Ta voix, ta musique, un signal de test : joué en boucle.</td></tr>
+</table>
+<p>On la choisit : pour chaque signal émis, pour chaque micro du SDR démo, dans le <b>🎵 Générateur audio</b> (qui joue
+sur la sortie audio de l'appli, en continu) et pour les <b>sons des alarmes</b> : ⚙ Réglages › Son › Sons des
+alarmes, un choix par son (▶ pour écouter, ↺ pour revenir au son d'origine). Un son d'alarme personnalisé est coupé à
+4 s ; s'il ne peut pas être joué, l'appli joue le son d'origine.</p>
+<div class="box">Dans l'écoute d'un micro HF, les aigus au-delà de ~15 kHz sont coupés : c'est la bande audio d'un
+micro, pas un défaut.</div>
+</section>
+<section id="avance"><h2>12. Outils avancés</h2>
+<ul>
+  <li><b>📡 Moniteur multicanal</b> : tous les micros d'une fenêtre mesurés en même temps (niveau, voisins, largeur), les
+    plus importants démodulés (son, déviation, dérive, coupures), dossiers d'incident automatiques (IQ d'avant et
+    d'après, rapport), phases du show (répétition / spectacle) comparées.</li>
+  <li><b>⏱ Temps réel</b> : une fenêtre fixe vue sans trou, avec persistance, signaux brefs notés, enregistrement et
+    relecture IQ.</li>
+  <li><b>📦 Rejouer un incident</b> : le rapport et l'IQ d'un incident, la chronologie du micro suivie à la lecture.</li>
+  <li><b>📶 Récepteurs en réseau</b> : niveaux RF, piles et alertes lus directement dans les récepteurs Shure
+    (ULX-D, QLX-D, Axient Digital…) et Sennheiser (evolution G3 / G4, EW-DX, 6000 par Sound Control), comparés à ce
+    que mesurent le tinySA et le SDR. Wisycom ne publie pas de protocole : pas de lecture directe.</li>
+  <li><b>📱 Écoute sur le téléphone</b> : la vue « Écoute » de la page web (cachée par défaut) fait entendre le SDR
+    sur un téléphone du réseau, avec le code PIN.</li>
+</ul>
+</section>
+<section id="savoir"><h2>13. Bon à savoir</h2>
+<ul>
+  <li>Un SDR n'est utilisable que par <b>un logiciel à la fois</b> : ferme l'autre logiciel (et les fenêtres SDR de
+    l'appli qui l'utilisent) avant de démarrer le poste.</li>
+  <li>La <b>fenêtre</b> d'un SDR fait quelques MHz (HackRF jusqu'à ~15 MHz, RSP1B ~8 MHz, RTL-SDR ~2 MHz) : quand A sort
+    de la fenêtre, le poste se recentre tout seul.</li>
+  <li>Un HackRF a 8 bits : un émetteur très fort à côté le sature vite. Le réglage automatique du gain et un
+    atténuateur règlent ça.</li>
+  <li>Les niveaux d'un SDR ne sont en vrais dBm qu'après <b>calibration</b> sur le tinySA (ou pour un WiNRADiO,
+    calibré d'usine).</li>
+  <li>Le son et l'IQ enregistrés sont gardés le temps que tu choisis (📡 Réglages SDR › enregistrements gardés),
+    puis effacés.</li>
+</ul>
+</section></main></body></html>

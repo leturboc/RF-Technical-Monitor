@@ -1,0 +1,205 @@
+<!--CH poste|The SDR station-->
+<p>An <b>SDR</b> (software-defined radio: HackRF, SDRplay RSP1B, RTL-SDR, Airspy, WiNRADiO…) receives a <b>window</b> of a
+few MHz at once, without gaps, and can <b>demodulate</b>: you hear what is on a frequency. The tinySA sweeps a whole
+band but listens to nothing. The two complement each other.</p>
+<h3>Three modes</h3>
+<p>The mode button, in the top bar, chooses what you use:</p>
+<table>
+  <tr><th>Mode</th><th>On screen</th></tr>
+  <tr><td><b>📟 tinySA</b></td><td>The app as before: spectrum, waterfall, wall, list.</td></tr>
+  <tr><td><b>📡 SDR</b></td><td>The SDR station panels: Receiver, Spectrum, Waterfall, My mics.</td></tr>
+  <tr><td><b>📟+📡 Combined</b></td><td>The tinySA spectrum AND the SDR spectrum side by side: the tinySA watches the whole
+    site, the SDR listens and looks closely.</td></tr>
+</table>
+<p>Each mode has a base layout and <b>preset views</b> (listen, monitor, analyse, dual screen). Then move the panels as
+you like: your layout is remembered, and it follows your user profile.</p>
+<h3>The four panels</h3>
+<ul>
+  <li><b>Receiver</b>: ▶ / ■, sound, the big <b>A</b> frequency (scroll wheel on a digit to change it), the meter in
+    dBm with a word (very weak, weak, good, strong, too strong), ⭐ favourites, patrol, alarms, the “what is it” info
+    and the pilot.</li>
+  <li><b>Spectrum</b>: the SDR window. Your mics are marked by name. <b>Click = listen (A)</b>, <b>right-click = B</b>.
+    Previous / next mic, zoom, peak hold.</li>
+  <li><b>Waterfall</b>: the history of the window, A and B as lines.</li>
+  <li><b>My mics</b>: this SDR's mics with their level; double-click = listen, right-click = menu.</li>
+</ul>
+<h3>Simple, Plus, Expert</h3>
+<p>The app's display level also applies to the SDR station. <b>Simple</b>: listen, favourites, patrol, alarms.
+<b>Plus</b>: demodulation, step, squelch, receiver B, recordings. <b>Expert</b>: FFT size, device settings, load and
+saturation.</p>
+
+<!--CH branchement|First connection-->
+<p>The first time, open <b>🔌 First SDR connection</b> (mode menu, or 🔌 Hardware › 📡 SDR). The wizard does six steps
+and says ✔, ⚠ or ✖ for each, with what to do:</p>
+<ol>
+  <li><b>My SDR</b>: choose the exact model. It sets the rates, gains and frequency range.</li>
+  <li><b>Find it</b>: the SDR tool is looked for, the device detected, a signal received for 2 s and the rate
+    checked. If a line is ✖, it says why (missing tool, USB driver, SDR taken by another program, USB port too
+    slow).</li>
+  <li><b>Set the gain automatically</b>: each input gain value is tried; the app keeps <b>the highest that doesn't
+    saturate</b>, with 6 dB of headroom. If it saturates even at the lowest, it advises an attenuator.</li>
+  <li><b>Listen to a mic</b>: the station starts on one of your mics: you should hear it.</li>
+  <li><b>Calibrate the levels</b> (optional): see the chapter “Calibrating the levels on the tinySA”.</li>
+  <li><b>Diagnostics</b>: a file sums everything up (model, gains, results, tool messages). Send it to support if
+    something gets stuck.</li>
+</ol>
+<div class="box">The SDR tools (hackrf_transfer, rtl_sdr, SoapySDR…) come from the <b>SDR kit</b> to unzip next to the
+app, or from PothosSDR. The SDRplay also needs the maker's API, the WiNRADiO its software.</div>
+
+<!--CH ecoute|Listening-->
+<p>An analog wireless mic is listened to like a radio: the station demodulates the FM and plays the sound. Two quick
+ways to tune to a mic:</p>
+<ul>
+  <li><b>Double-click</b> its name or frequency in “My frequencies” (in SDR or combined mode);</li>
+  <li><b>click</b> it in the SDR spectrum, or in “My mics”.</li>
+</ul>
+<h3>The listening setting is automatic</h3>
+<p>Each device transmits its own way: wide FM, de-emphasis, <b>compander</b> (compressor at the transmitter, expander at
+the receiver). The app <b>guesses the right setting</b> from what it knows about the mic: its device in the imported plan
+(EazyRF, WWB, WSM…), its group name, its name. The 🎧 Listening line shows “auto (from the mic)”. If you change the
+preset or the compander, your choice is <b>remembered for this mic</b> (“✋ chosen for this mic”), in the list and in
+shows.</p>
+<div class="box warn"><b>Digital</b> systems (ULX-D, Axient Digital, QLX-D, SLX-D, EW-D / EW-DX, 6000, Spectera…)
+<b>can't be listened to</b>: their sound is coded and often encrypted. The app says so (📵) and keeps monitoring their
+level. Manufacturers don't publish their companders: the app's are approximations, tuned to sound pleasant, not exact
+copies.</div>
+<h3>Receivers A and B</h3>
+<p>At Plus level, a second receiver <b>B</b> listens to another frequency of the same window. “A left / B right” puts
+each in one ear of the headphones.</p>
+<h3>Squelch, volume, recording</h3>
+<p>The <b>squelch</b> cuts the hiss when nothing is on. <b>⏺ Sound</b> records what you hear as WAV, <b>⏺ IQ</b>
+records the raw signal of the whole window (large files, to replay in Real time). Both ask for your consent the first
+time (voices can be recorded).</p>
+
+<!--CH favoris|Favourites and patrol-->
+<h3>Favourites on the numeric keypad</h3>
+<p>Put your most important mics on keys <b>1 to 9 of the numeric keypad</b>: right-click a ⭐ button of the Receiver
+(“put the listened mic here”) or right-click a mic in “My mics”. Then <b>one key = the SDR tunes to that mic, with its
+listening setting</b>, wherever you are in the app.</p>
+<h3>🔁 Patrol</h3>
+<p>The patrol moves the SDR from one favourite to the next (or through all this SDR's mics), a few seconds each.
+Switched-off 💤 or paused mics are skipped. <b>A keypad key, a click on a frequency or a double-click stops the
+patrol</b>: you took over.</p>
+
+<!--CH surveiller|Monitoring with the SDR-->
+<p>The SDR window <b>also monitors your frequencies</b>: the mics in it get their level, states and alarms, as with the
+tinySA. If a tinySA sweeps at the same time, it keeps the monitoring (the two scales aren't mixed).</p>
+<h3>🚨 Tune to alarms</h3>
+<p>When a <b>new</b> alarm comes in (conflict, intermod, absent, too strong, pilot) on a mic of this SDR, the station
+<b>tunes to it by itself</b>: you hear what's going on, and the log notes what the SDR sees there (“what is it”). It
+doesn't steal a frequency you just chose (30 s), and it stays at least 20 s on an alarm before moving to the next.
+<b>↩ Go back</b> takes you back to where you were. Tick “and record the sound” to keep a WAV of the alarm (10 s before
+if the SDR was already on that mic, 20 s after).</p>
+<h3>🏷 What is it?</h3>
+<p>Under the frequency, the app says what it sees on A from the shape of the spectrum: analog FM mic, narrow FM
+(walkie-talkie), pure carrier, digital block, TV… with the occupied width and the dB above the noise. It's a useful
+<b>guess</b> for sorting, not a certain identification.</p>
+<h3>🔊 The pilot: “it really is your transmitter”</h3>
+<p>Many analog mics transmit an inaudible tone, the <b>pilot</b>. The first time the SDR hears it on a mic, it
+<b>remembers</b> it. Then: “✔ it really is your transmitter”. If a carrier is there <b>without</b> its pilot for 5 s, a
+<b>PILOT</b> alarm is raised: maybe another transmitter on your frequency. A pack without a pilot simply shows “no
+pilot seen”. Right-click the info line = forget the pilot (if you changed pack).</p>
+
+<!--CH plusieurs|Several SDRs and the map-->
+<p><b>📡 My SDRs</b> adds stations (up to 4): each has its name, model, serial number (to tell them apart) and <b>its
+scenes</b>. An SDR attached to a scene only handles that scene's mics, and it answers the keypad and the alarms of
+those mics. Each station has its four panels, titled with its name.</p>
+<p>On the <b>🗺 site map</b>, SDRs are tiles like the tinySAs: <b>drag an SDR onto a scene</b> so it monitors it; the
+line between them shows who monitors what.</p>
+
+<!--CH caler|Calibrating the levels on the tinySA-->
+<p>An SDR measures in <b>dBFS</b> (relative to its converter), not in dBm. Without calibration, its levels are
+approximate. <b>📏 Calibrate the SDR levels on the tinySA</b> makes them comparable:</p>
+<ol>
+  <li>Run the tinySA and the SDR at the same time (combined mode), antennas <b>in the same place</b>.</li>
+  <li>Switch on mics in the SDR window (at least 2 signals seen by both are needed).</li>
+  <li>▶ Measure: for 15 s, the app compares the power of each signal (over ± 100 kHz) seen by both.</li>
+  <li>It shows the correction (and the spread between signals). <b>✔ Apply</b> keeps it for this SDR model.</li>
+</ol>
+<p>Then the SDR's thresholds, alarms and levels are in real dBm, consistent with the tinySA. Do it again if you change
+antenna, cable or gain.</p>
+
+<!--CH remonter|Going back in time-->
+<p>The SDR station keeps the <b>last minutes</b> (1, 3 or 5) in memory: the spectrum and the sound heard.
+<b>⏪ Go back in time</b> (Receiver button) shows the waterfall of those minutes, most recent at the top, with alarms as
+markers.</p>
+<ul>
+  <li><b>Click</b> the waterfall = pick a moment; the window says which mic A was on at that time.</li>
+  <li><b>▶ Replay from here</b>: up to 60 s of what you were hearing.</li>
+  <li><b>💾 Keep this passage</b>: the sound (WAV) and the image, in the recordings folder.</li>
+</ul>
+<div class="box">Everything stays <b>in memory</b> and disappears when you close the app, except what you keep. Sound
+takes about 11 MB per minute.</div>
+
+<!--CH demo|The SDR demo-->
+<p>No SDR yet? <b>🧪 SDR demo</b> (mode menu) runs the whole station <b>without hardware</b>: the app makes the signals
+of <b>your mics</b>, each with a sound (voice “one, two”, melody, beeps…) and a pilot. To make it lively: an interferer
+passes on your first “must stay free” frequency, a mic switches off now and then, another loses its pilot, and two TV
+channels are there. You can try everything: listening, favourites, patrol, alarms, going back in time, several
+SDRs.</p>
+<p>Right-click a mic in “My mics” › <b>🎵 Sound of this mic in the SDR demo</b> to give it the sound of your choice (see
+“Sounds, generator and alarms”).</p>
+
+<!--CH emettre|Transmitting with a HackRF-->
+<div class="box warn"><b>Transmitting over the air without authorisation is forbidden.</b> This feature is for working
+<b>on a cable</b>, with an attenuator of 30 dB or more before the receiver's or tinySA's input.</div>
+<p>A HackRF can <b>transmit</b> (SDRplay, RTL-SDR, Airspy and WiNRADiO only receive). <b>📡 Transmit with a HackRF</b>
+sends up to 8 signals at once in a window of a few MHz:</p>
+<ul>
+  <li><b>FM mic</b> with sound and pilot (test a receiver, its squelch, the app's listening);</li>
+  <li><b>walkie-talkie</b> (narrow FM), <b>pure carrier</b>, <b>wide block</b> (digital, TV);</li>
+  <li><b>intermittent</b>: on 1 s every 4 s, like an interferer that comes and goes (hunting practice, alarm tests);</li>
+  <li>several carriers at once: deliberate <b>intermodulation</b>, to watch on the tinySA.</li>
+</ul>
+<p>The transmit gain starts at 0 dB and the amp is off: on a cable, that's plenty. Transmission stops by itself (1 to
+30 min), when the window or the app closes, and it is logged. The “on a cable” box is required. A HackRF receives OR
+transmits: stop the SDR station using it before transmitting.</p>
+<p>With the <b>SDR demo</b> on, transmission is <b>simulated</b>: nothing goes out, and the SDR demo “receives” what you
+transmit. Handy to try everything without hardware.</p>
+
+<!--CH sons|Sounds, generator and alarms-->
+<p>Wherever the app plays or makes a sound, you can choose the <b>source</b>:</p>
+<table>
+  <tr><th>Source</th><th>What it is</th></tr>
+  <tr><td>Generator: one frequency</td><td>A tone from 20 Hz to 20 kHz.</td></tr>
+  <tr><td>Generator: sweep</td><td>From f1 to f2 in N seconds, logarithmic (same time per octave) or linear,
+    looped.</td></tr>
+  <tr><td>White noise, pink noise</td><td>To hear how an audio chain behaves.</td></tr>
+  <tr><td>Voice, melody, beeps, silence</td><td>The demo sounds (silence = carrier only).</td></tr>
+  <tr><td>An app sound</td><td>Critical, normal, info alarms, mic roll call.</td></tr>
+  <tr><td>My WAV file</td><td>Your voice, your music, a test signal: looped.</td></tr>
+</table>
+<p>It can be chosen: for each transmitted signal, for each mic of the SDR demo, in the <b>🎵 Audio generator</b> (which
+plays on the app's audio output, continuously) and for the <b>alarm sounds</b>: ⚙ Settings › Sound › Alarm sounds, one
+choice per sound (▶ to listen, ↺ back to the original sound). A custom alarm sound is cut at 4 s; if it can't be
+played, the app plays the original sound.</p>
+<div class="box">When listening to a wireless mic, highs above ~15 kHz are cut: that's a mic's audio band, not a
+fault.</div>
+
+<!--CH avance|Advanced tools-->
+<ul>
+  <li><b>📡 Multichannel monitor</b>: all the mics of a window measured at once (level, neighbours, width), the most
+    important demodulated (sound, deviation, drift, dropouts), automatic incident folders (IQ before and after,
+    report), show phases (rehearsal / show) compared.</li>
+  <li><b>⏱ Real time</b>: a fixed window seen without gaps, with persistence, short signals logged, IQ recording and
+    replay.</li>
+  <li><b>📦 Replay an incident</b>: the report and IQ of an incident, the mic's timeline followed during playback.</li>
+  <li><b>📶 Network receivers</b>: RF levels, batteries and alerts read straight from Shure receivers (ULX-D, QLX-D,
+    Axient Digital…) and Sennheiser (evolution G3 / G4, EW-DX, 6000 via Sound Control), compared with what the tinySA
+    and SDR measure. Wisycom publishes no protocol: no direct reading.</li>
+  <li><b>📱 Listening on the phone</b>: the “Listening” view of the web page (hidden by default) plays the SDR on a
+    phone of the network, with the PIN code.</li>
+</ul>
+
+<!--CH savoir|Good to know-->
+<ul>
+  <li>An SDR can only be used by <b>one program at a time</b>: close the other program (and the app's SDR windows using
+    it) before starting the station.</li>
+  <li>An SDR's <b>window</b> is a few MHz wide (HackRF up to ~15 MHz, RSP1B ~8 MHz, RTL-SDR ~2 MHz): when A leaves the
+    window, the station re-centres by itself.</li>
+  <li>A HackRF has 8 bits: a very strong transmitter nearby saturates it quickly. The automatic gain setting and an
+    attenuator fix that.</li>
+  <li>An SDR's levels are only in real dBm after <b>calibration</b> on the tinySA (or for a WiNRADiO, factory
+    calibrated).</li>
+  <li>Recorded sound and IQ are kept for the time you choose (📡 SDR settings › recordings kept), then deleted.</li>
+</ul>

@@ -1624,6 +1624,55 @@ check("21 : son d'alarme choisi gardé dans la config", win._collect_config(True
       .get("f") == 880.0)
 win.sound.alarm(2)                                   # joue le son choisi (ou, sans carte son, le son d'origine)
 win.set_alarm_sound("alarm2", None)
+# V8 étape 22 : 🔌 premier branchement (faux SDR), ⏪ remonter le temps, 📏 calibration, 📖 manuel SDR
+_mod22 = win.sdr_cfg.get("model")
+m.SDR_PROBE_RUNNER = lambda argv: (0, "Found HackRF\nSerial number: 0000000000000000abcd")
+_wz = step("22 : 🔌 premier branchement", win.open_sdr_setup)
+_wz.model.setCurrentIndex(_wz.model.findData("hackrf_one"))
+_wz.probe()
+_t0 = time.time()
+while _wz.job is not None and not _wz.job.get("done") and time.time() - _t0 < 40:
+    wait(300)
+wait(500)
+check("22 : SDR trouvé (outil, détecté, signal, débit)", _wz.res.get("probe", ("",))[0] == "✔", str(_wz.res.get("probe")))
+_wz.gain()
+_t0 = time.time()
+while _wz.job is not None and not _wz.job.get("done") and time.time() - _t0 < 120:
+    wait(300)
+wait(500)
+check("22 : gain réglé tout seul et gardé", _wz.res.get("gain", ("",))[0] in ("✔", "⚠")
+      and "lna" in (win.sdr_cfg.get("gains") or {}).get("hackrf_one", {}), str(_wz.res.get("gain")))
+_wz.listen()
+wait(3500)
+check("22 : écoute lancée sur un micro", win.sdr_eng.running() and _wz.res.get("listen", ("",))[0] in ("✔", "⚠"))
+_wz.diag()
+check("22 : diagnostic écrit", _wz.res.get("diag", ("",))[0] == "✔", str(_wz.res.get("diag")))
+shot(_wz, "sdr_premier_branchement")
+_wz.close()
+m.SDR_PROBE_RUNNER = None
+wait(2500)
+_rw = step("22 : ⏪ remonter le temps", win.open_rewind)
+_sp22 = win.sdr_eng.rew.span()
+check("22 : les dernières secondes sont gardées (spectre + son)", _sp22 is not None and len(win.sdr_eng.rew.frames) > 2
+      and len(win.sdr_eng.rew.audio_from(_sp22[1] - 2.0, 1.0)) > 0, str(_sp22))
+_rw.select(_sp22[1] - 1.0)
+check("22 : l'instant choisi dit sur quoi était A", "MHz" in _rw.at.text(), _rw.at.text())
+shot(_rw, "sdr_remonter_le_temps")
+_rw.close()
+_cd = step("22 : 📏 calibration", win.open_sdr_calib)
+_F22 = np.linspace(605, 608, 3000)
+_Lt22, _Ls22 = np.full_like(_F22, -100.0), np.full_like(_F22, -140.0)
+for _fc in (605.8, 606.6, 607.3):
+    _m22 = np.abs(_F22 - _fc) < 0.01
+    _Lt22[_m22], _Ls22[_m22] = -55.0, -95.0
+_cd.e, _cd.acc, _cd.tsa = win.sdr_eng, (_F22, _Ls22), {0: (_F22, _Lt22)}
+_cd.compute()
+check("22 : calibration : correction calculée sur 3 signaux", _cd.result is not None and _cd.result["n"] == 3, _cd.msg.text())
+shot(_cd, "sdr_calibration")
+_cd.close()
+win.sdr_cfg["model"] = _mod22
+check("22 : manuel SDR embarqué (FR + EN)", m._manual_sdr is not None and "Premier branchement" in m._manual_sdr.HTML["fr"]
+      and "First connection" in m._manual_sdr.HTML["en"])
 win.set_rf_mode(_rf21)
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)

@@ -7638,6 +7638,8 @@ def sdr_cfg_extra(sd):
         out["favs"] = favs_norm(sd.get("favs"))
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
         out["demo"] = bool(sd.get("demo"))
+    if sd.get("rewind_min") in REWIND_MINUTES:          # étape 22 : ⏪ minutes gardées
+        out["rewind_min"] = int(sd["rewind_min"])
     if isinstance(sd.get("demo_snd"), dict):            # étape 21 : son de chaque micro dans le SDR démo
         out["demo_snd"] = {str(k): audio_spec_norm(v) for k, v in list(sd["demo_snd"].items())[:200]
                            if str(k).isdigit()}
@@ -9757,6 +9759,178 @@ def iq_ci8(x, scale=None):
     out[0::2] = np.clip(np.round(x.real * s * 127.0), -127, 127)
     out[1::2] = np.clip(np.round(x.imag * s * 127.0), -127, 127)
     return out.tobytes()
+
+
+# ------------------------------------------------------------------ V8 étape 22 : premier branchement, calibration,
+# remonter le temps (Clément : « 1234 !! » sur assistant / calibrer avec le tinySA / remonter le temps / manuel + 8.0).
+GAIN_OVF_MAX = 0.001          # au-delà de 0,1 % d'échantillons à pleine échelle : saturation
+GAIN_HEADROOM_DB = 6.0        # le plus fort signal doit rester 6 dB sous la pleine échelle
+CAL_SNR_DB = 15.0             # un signal sert à la calibration s'il dépasse son bruit de 15 dB des DEUX côtés
+CAL_HALF_MHZ = 0.1            # puissance de canal mesurée sur ± 100 kHz (micro FM, porteuse)
+CAL_MIN_SIGNALS = 2
+REWIND_MINUTES = (1, 3, 5)
+REWIND_FRAME_S = 0.5          # un spectre gardé toutes les 0,5 s (max des trames reçues entre deux)
+REWIND_BINS = 1024
+
+
+def gain_steps(model, key="lna"):
+    """Valeurs d'un étage de gain du modèle à essayer (du plus bas au plus haut, 8 au plus)."""
+    g = next((x for x in (model or {}).get("gains", []) if x[0] == key), None)
+    if g is None:
+        return []
+    _k, _n, lo, hi, st, _d = g
+    vals = list(range(int(lo), int(hi) + 1, max(1, int(st))))
+    if len(vals) > 8:
+        vals = [vals[int(round(i * (len(vals) - 1) / 7))] for i in range(8)]
+    return vals
+
+
+def auto_gain_pick(rows, ovf_max=GAIN_OVF_MAX, headroom=GAIN_HEADROOM_DB):
+    """Essais [dict(gain, ovf, floor, peak)] (dBFS) -> (gain conseillé, raison). Le plus fort sans saturer et avec
+    `headroom` dB de marge ; s'ils saturent tous : le plus bas (+ raison « trop fort même au minimum »)."""
+    rows = sorted([r for r in rows if r.get("gain") is not None], key=lambda r: r["gain"])
+    if not rows:
+        return None, "aucun essai"
+    ok = [r for r in rows if r.get("ovf", 1.0) <= ovf_max and (r.get("peak") is None or r["peak"] <= -headroom)]
+    if not ok:
+        clean = [r for r in rows if r.get("ovf", 1.0) <= ovf_max]
+        if clean:                                  # rien n'écrête, mais la crête frôle le maximum
+            return clean[0]["gain"], "signal très fort : peu de marge, même au plus bas (atténuateur conseillé)"
+        return rows[0]["gain"], "sature même au plus bas : éloigne l'antenne ou ajoute un atténuateur"
+    best = ok[-1]
+    if best is rows[-1]:
+        return best["gain"], "gain maximal sans saturer"
+    return best["gain"], "le plus haut sans saturer ({} dB de marge)".format(f"{-(best.get('peak') or 0.0):.0f}")
+
+
+def chan_power(F, L, f, half=CAL_HALF_MHZ, bin_bw_khz=None, enbw=1.0):
+    """Puissance d'un canal (dB) : somme des cases à f ± half MHz, ramenée à la largeur de chaque case (bin_bw_khz :
+    RBW du tinySA ; 1 case FFT = 1) et divisée par l'ENBW de la fenêtre (Blackman ≈ 1,73 case). None si hors mesure."""
+    F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+    m = (np.abs(F - f) <= half) & np.isfinite(L)
+    if m.sum() < 2:
+        return None
+    p = 10.0 ** (L[m] / 10.0)
+    if bin_bw_khz:
+        step = float(np.median(np.diff(F[m]))) * 1000.0 if m.sum() > 1 else bin_bw_khz
+        p = p * min(1.0, step / float(bin_bw_khz))
+    return float(10.0 * np.log10(p.sum() / max(1e-9, enbw)))
+
+
+def calib_candidates(Ft, Lt, Fs, Ls, rbw_khz, snr=CAL_SNR_DB, half=CAL_HALF_MHZ, enbw=1.73):
+    """Signaux vus par le tinySA (Ft, Lt dBm) ET par le SDR (Fs, Ls dBFS) à plus de `snr` dB de leur bruit, dans la
+    fenêtre du SDR -> [dict(f, tsa, sdr)] (puissances de canal)."""
+    Ft, Lt, Fs, Ls = (np.asarray(x, dtype=float) for x in (Ft, Lt, Fs, Ls))
+    if len(Fs) < 16 or len(Ft) < 8:
+        return []
+    lo, hi = float(Fs.min()) + half, float(Fs.max()) - half
+    fl_s, fl_t = float(np.percentile(Ls, 20)), float(np.nanpercentile(Lt, 20))
+    out, last = [], -1e9
+    order = np.argsort(Ls)[::-1]
+    for i in order[:400]:
+        f = float(Fs[i])
+        if not lo <= f <= hi or Ls[i] < fl_s + snr or any(abs(f - c["f"]) < 2 * half for c in out):
+            continue
+        mt = np.abs(Ft - f) <= half
+        if not mt.any() or float(np.max(Lt[mt])) < fl_t + snr:
+            continue
+        pt = chan_power(Ft, Lt, f, half, rbw_khz)
+        ps = chan_power(Fs, Ls, f, half, None, enbw)
+        if pt is not None and ps is not None:
+            out.append(dict(f=round(f, 4), tsa=round(pt, 1), sdr=round(ps, 1)))
+        if len(out) >= 12:
+            break
+    return sorted(out, key=lambda c: c["f"])
+
+
+def sdr_tsa_offset(cands, min_n=CAL_MIN_SIGNALS):
+    """Correction dBFS -> dBm du SDR d'après les signaux communs -> dict(offset, spread, n) ou None (pas assez)."""
+    d = [c["tsa"] - c["sdr"] for c in cands]
+    if len(d) < min_n:
+        return None
+    med = float(np.median(d))
+    return dict(offset=round(med, 1), spread=round(float(np.max(np.abs(np.asarray(d) - med))), 1), n=len(d))
+
+
+class RewindBuffer:
+    """⏪ Les dernières minutes du poste SDR, EN MÉMOIRE seulement : spectres (max par tranche de REWIND_FRAME_S,
+    REWIND_BINS cases, float16), son entendu (octets PCM stéréo 48 kHz) et fréquence de A dans le temps."""
+
+    def __init__(self, minutes=3, bytes_per_s=192000):
+        self.set_minutes(minutes)
+        self.bps = int(bytes_per_s)
+        self.frames, self.audio, self.tunes = deque(), deque(), deque()
+        self._acc, self._acc_t = None, 0.0
+
+    def set_minutes(self, minutes):
+        self.keep = 60.0 * max(1, int(minutes))
+
+    def _trim(self, now):
+        for q in (self.frames, self.audio):
+            while len(q) > 1 and q[0][0] < now - self.keep:
+                q.popleft()
+        while len(self.tunes) > 1 and self.tunes[1][0] < now - self.keep:   # garde le réglage en cours au début
+            self.tunes.popleft()
+
+    def push_frame(self, t, F, L):
+        F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+        if len(L) > REWIND_BINS:
+            k = len(L) // REWIND_BINS
+            L = L[: k * REWIND_BINS].reshape(REWIND_BINS, k).max(axis=1)
+            F = F[: k * REWIND_BINS].reshape(REWIND_BINS, k).mean(axis=1)
+        if self._acc is not None and len(self._acc[1]) == len(L) and abs(self._acc[0][0] - F[0]) < 1e-6:
+            self._acc = (F, np.maximum(self._acc[1], L))
+        else:
+            self._acc = (F, L)
+        if t - self._acc_t >= REWIND_FRAME_S:
+            self._acc_t = t
+            self.frames.append((float(t), self._acc[0].astype(np.float32), self._acc[1].astype(np.float16)))
+            self._acc = None
+            self._trim(t)
+
+    def push_audio(self, t, b):
+        if b:
+            self.audio.append((float(t), bytes(b)))
+
+    def push_tune(self, t, f, name=""):
+        if not self.tunes or abs(self.tunes[-1][1] - f) > 1e-6:
+            self.tunes.append((float(t), float(f), str(name or "")))
+
+    def span(self):
+        """(début, fin) de ce qui est gardé (s), ou None."""
+        ts = [q[0][0] for q in (self.frames, self.audio) if q] + [q[-1][0] for q in (self.frames, self.audio) if q]
+        return (min(ts), max(ts)) if ts else None
+
+    def tune_at(self, t):
+        """(MHz, nom) de A à l'instant t (le dernier réglage avant t)."""
+        out = None
+        for tt, f, n in self.tunes:
+            if tt > t:
+                break
+            out = (f, n)
+        return out or ((self.tunes[0][1], self.tunes[0][2]) if self.tunes else None)
+
+    def audio_from(self, t0, secs=60.0):
+        """Son entendu de t0 à t0 + secs (octets PCM stéréo 16 bits 48 kHz)."""
+        out, n = [], 0
+        lim = int(secs * self.bps)
+        for t, b in self.audio:
+            if t + len(b) / self.bps < t0:
+                continue
+            if n >= lim:
+                break
+            out.append(b)
+            n += len(b)
+        return b"".join(out)[:lim]
+
+    def mem_mb(self):
+        return (sum(len(b) for _t, b in self.audio) + sum(f.nbytes + l.nbytes for _t, f, l in self.frames)) / 1e6
+
+    def clear(self):
+        self.frames.clear()
+        self.audio.clear()
+        self.tunes.clear()
+        self._acc = None
 
 
 def reconnect_delay(fails):
@@ -21418,6 +21592,7 @@ class SdrEngine(QtCore.QObject):
         self._seen_al, self._al_key_t, self._al_until = set(), {}, 0.0
         self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = None, None, None, None
         self.what, self._t_what = None, 0.0
+        self.rew = RewindBuffer(int(owner.sdr_cfg.get("rewind_min", 3) or 3), LISTEN_RATE * 4)   # étape 22 : ⏪
         self.tick = QtCore.QTimer(self)
         self.tick.timeout.connect(self._tick)
 
@@ -21602,7 +21777,8 @@ class SdrEngine(QtCore.QObject):
                 self._say(TR("🔁 Patrouille arrêtée : tu as choisi une fréquence."))
             self._back = None
         self.a = f
-        w = self.mic_at(f)                               # étape 19 : on tombe sur un micro -> SON réglage d'écoute
+        w = self.mic_at(f)                               # étape 19
+        self.rew.push_tune(time.time(), f, (w or {}).get("name", ""))     # étape 22 : ⏪ A dans le temps : on tombe sur un micro -> SON réglage d'écoute
         self.cur_mic = w
         if w is not None:                                # (recalculé à chaque fois : groupe / nom changés)
             new = w is not getattr(self, "_mic_done", None)
@@ -21671,6 +21847,8 @@ class SdrEngine(QtCore.QObject):
             self._t_feed = now                          # la fenêtre du SDR surveille aussi tes fréquences
             self.owner.sdr_listen_feed(self.kind(), fr["F"], fr["avg"], self.bid())
         try:
+            if len(fr["F"]) == len(fr["avg"]):
+                self.rew.push_frame(now, fr["F"], fr["avg"])      # étape 22 : ⏪
             self._watch_a(fr, now)                       # étape 20 : pilote et « c'est quoi » de A
         except Exception:  # noqa: BLE001
             pass
@@ -21690,6 +21868,7 @@ class SdrEngine(QtCore.QObject):
             self.q.append(b)
             self.af.append(b)
             self.pre.push(b)                             # étape 20 : 10 s d'avant, pour l'alarme
+            self.rew.push_audio(time.time() - len(b) / (LISTEN_RATE * 4.0), b)   # étape 22 : ⏪ remonter le temps
             if self.arec is not None:
                 try:
                     self.arec["wv"].writeframes(b)
@@ -22170,7 +22349,11 @@ class SdrReceiverPanel(SdrPanelBase):
         self.back_btn.clicked.connect(lambda *_: e.go_back())
         self.pat_lbl = QtWidgets.QLabel("")
         self.row_auto = QtWidgets.QWidget()
-        ra = o._row(self.pat_btn, self.dwell, self.psrc, self.al_chk, self.alrec_chk, self.back_btn, self.pat_lbl, None)
+        self.rew_btn = QtWidgets.QPushButton("⏪ Remonter le temps")
+        self.rew_btn.setToolTip("Les dernières minutes de ce poste : waterfall, réécouter un passage, le garder.")
+        self.rew_btn.clicked.connect(lambda *_: o.open_rewind(e))
+        ra = o._row(self.pat_btn, self.dwell, self.psrc, self.al_chk, self.alrec_chk, self.back_btn, self.pat_lbl, None,
+                    self.rew_btn)
         ra.setContentsMargins(0, 0, 0, 0)
         self.row_auto.setLayout(ra)
         lay.addWidget(self.row_auto)
@@ -43811,7 +43994,11 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
     ("📟+📡 Mode combiné (tinySA + SDR)", "rf_mode_both"),
     ("📟 Mode tinySA seul", "rf_mode_tiny"),
     ("📡 Mes SDR (plusieurs, scènes, carte)…", "open_sdr_posts"),
+    ("🔌 Premier branchement SDR (assistant)…", "open_sdr_setup"),
     ("🧪 SDR démo (allumer / éteindre)", "toggle_sdr_demo"),
+    ("📏 Caler les niveaux du SDR sur le tinySA…", "open_sdr_calib"),
+    ("⏪ Remonter le temps (dernières minutes)…", "open_rewind"),
+    ("📖 Manuel SDR", "open_sdr_manual"),
     ("📡 Émettre avec un HackRF (en câble)…", "open_sdr_tx"),
     ("🎵 Générateur audio (20 Hz – 20 kHz)…", "open_audio_gen"),
     ("📡 Moniteur multicanal (tous mes micros d'un coup)…", "open_multimon"),
@@ -43823,6 +44010,11 @@ MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous
 MainWindow.TIPS_MENU.update({
         "🧪 SDR démo": "V8 : pas de SDR ? L'appli fabrique les signaux de tes micros (son, pilote, brouilleur qui passe,\n"
                        "micro qui s'éteint) : tout le poste SDR marche, écoute comprise.",
+        "🔌 Premier branchement SDR": "V8 : choisir son SDR, le trouver, régler le gain tout seul, écouter un micro,\n"
+                                     "caler les niveaux, et un diagnostic à envoyer si ça coince.",
+        "📏 Caler les niveaux du SDR": "V8 : compare les mêmes signaux vus par le tinySA et le SDR : niveaux du SDR en vrais dBm.",
+        "⏪ Remonter le temps": "V8 : les dernières minutes du poste SDR (waterfall + son) : réécouter un passage, le garder.",
+        "📖 Manuel SDR": "V8 : le manuel du poste SDR (écoute, surveillance, démo, émission, calibration…).",
         "🎵 Générateur audio": "V8 : une fréquence de 20 Hz à 20 kHz, un balayage, du bruit, les sons de l'appli ou ton\n"
                               "WAV, joués sur la sortie audio de l'appli (et utilisables pour l'émission / le SDR démo).",
         "📡 Émettre avec un HackRF": "V8 : faux micros FM, porteuses, brouilleur intermittent émis par un HackRF, EN CÂBLE\n"
@@ -44349,6 +44541,11 @@ def _v8_build_mode_menu(self):
     a_.triggered.connect(lambda *_, a=a_: self.set_sdr_demo(a.isChecked()))
     m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
     m.addAction(TR("🎵 Générateur audio (20 Hz – 20 kHz)…")).triggered.connect(lambda *_: self.open_audio_gen())
+    m.addSeparator()
+    m.addAction(TR("🔌 Premier branchement SDR (assistant)…")).triggered.connect(lambda *_: self.open_sdr_setup())
+    m.addAction(TR("📏 Caler les niveaux du SDR sur le tinySA…")).triggered.connect(lambda *_: self.open_sdr_calib())
+    m.addAction(TR("⏪ Remonter le temps (dernières minutes)…")).triggered.connect(lambda *_: self.open_rewind())
+    m.addAction(TR("📖 Manuel SDR")).triggered.connect(lambda *_: self.open_sdr_manual())
     m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
     m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
 
@@ -45403,6 +45600,616 @@ MainWindow.sdr_demo_on = lambda self: self.set_sdr_demo(True)
 MainWindow.sdr_demo_off = lambda self: self.set_sdr_demo(False)
 MainWindow.open_sdr_tx = _v8_open_sdr_tx
 MainWindow.toggle_sdr_demo = lambda self: self.set_sdr_demo(not self.sdr_cfg.get("demo"))
+
+
+# ------------------------------------------------------------------ V8 étape 22 : premier branchement, calibration,
+# remonter le temps (le manuel SDR est à part : docs/manuel_sdr.html, module manual_sdr)
+try:
+    import manual_sdr as _manual_sdr                # chapitres SDR du manuel (HTML FR / EN), embarqués dans l'exe
+except Exception:  # noqa: BLE001
+    _manual_sdr = None
+
+
+def sdr_gain_scan(kind, model, base_gains, tool_dir="", iq_tool=None, center=600e6, key="lna", secs=0.4, cancel=None,
+                  progress=None, wr_lib=None):
+    """🎚 Essaie chaque valeur de l'étage `key` (sans Qt, dans un fil) : saturation (part d'échantillons à pleine
+    échelle), bruit (médiane du spectre) et crête (dBFS de l'échantillon le plus fort). -> [dict(gain, ovf, floor,
+    peak)] ou lève RuntimeError (SDR introuvable…)."""
+    steps = gain_steps(model, key) or [None]
+    rate = sdr_rate(model, kind)
+    rows = []
+    for i, g in enumerate(steps):
+        if cancel is not None and cancel():
+            break
+        gains = dict(base_gains or {})
+        if g is not None:
+            gains[key] = g
+        src = open_iq_source(kind, center, rate, gains, tool=iq_tool, tool_dir=tool_dir, wr_lib=wr_lib)
+        dog = threading.Timer(secs + 6.0, src.close)
+        dog.daemon = True
+        dog.start()
+        try:
+            nb = IQ_BYTES[src.dtype]
+            want = int((secs + 0.15) * src.rate) * nb
+            buf, t0 = bytearray(), time.time()
+            while len(buf) < want and time.time() - t0 < secs + 4.0:
+                d = src.read(min(262144, want - len(buf)))
+                if not d:
+                    break
+                buf += d
+        finally:
+            dog.cancel()
+            src.close()
+        skip = int(0.15 * src.rate) * nb
+        if len(buf) <= skip + 4096 * nb:
+            raise RuntimeError((list(src.err or []) or [TR("aucune donnée reçue")])[-1][:160])
+        iq = iq_decode(src.dtype, bytes(buf[skip: skip + (len(buf) - skip) // nb * nb]))
+        ovf = float(np.mean((np.abs(iq.real) > 0.98) | (np.abs(iq.imag) > 0.98)))
+        avg, _mx = rt_frames(iq, 4096)
+        pk = float(np.max(np.abs(iq))) if len(iq) else 0.0
+        rows.append(dict(gain=g, ovf=round(ovf, 5), floor=round(float(np.median(avg)), 1) if avg is not None else None,
+                         peak=round(20.0 * math.log10(max(pk, 1e-6)), 1)))
+        if progress:
+            progress(i + 1, len(steps))
+    return rows
+
+
+class SdrSetupWizard(QtWidgets.QDialog):
+    """🔌 Premier branchement SDR (étape 22) : choisir son SDR, le trouver, régler le gain tout seul, écouter un micro,
+    caler les niveaux sur le tinySA, et un diagnostic à envoyer. Chaque étape dit ✔ / ✖ et quoi faire."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner, self.res, self.job = owner, {}, None
+        self.setWindowTitle("🔌 Premier branchement SDR")
+        lay = QtWidgets.QVBoxLayout(self)
+        intro = QtWidgets.QLabel("Branche ton SDR, puis fais les étapes dans l'ordre. Si une étape bloque, le 🩺 diagnostic "
+                                 "en bas résume tout pour le support.")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        self.demo_lbl = QtWidgets.QLabel("")
+        self.demo_lbl.setWordWrap(True)
+        self.demo_btn = QtWidgets.QPushButton("Couper le SDR démo")
+        self.demo_btn.setToolTip("Le SDR démo est allumé : coupe-le pour régler ton vrai SDR.")
+        self.demo_btn.clicked.connect(lambda *_: (owner.set_sdr_demo(False), self.refresh()))
+        lay.addLayout(owner._row(self.demo_lbl, self.demo_btn))
+        g = QtWidgets.QGridLayout()
+        self.model = QtWidgets.QComboBox()
+        for m_ in SDR_MODELS:
+            if m_["kind"]:
+                self.model.addItem(m_["name"], m_["key"])
+        cur = owner.sdr_cfg.get("model") or SDR_MODEL_DEFAULT.get("hackrf")
+        self.model.setCurrentIndex(max(0, self.model.findData(cur)))
+        self.model.setToolTip("Le modèle exact de ton SDR (règle ses débits, gains et plage).")
+        self.model.currentIndexChanged.connect(lambda *_: self.set_model())
+        self.st = {}
+        steps = (("model", "1. Mon SDR", self.model),
+                 ("probe", "2. Le trouver", self._btn("🔌 Chercher mon SDR", "Outil trouvé, SDR détecté, signal reçu, débit tenu.", self.probe)),
+                 ("gain", "3. Régler le gain tout seul", self._btn("🎚 Régler le gain", "Essaie chaque gain et garde le plus fort qui ne sature pas.", self.gain)),
+                 ("listen", "4. Écouter un micro", self._btn("🎧 Écouter", "Lance le poste SDR sur un de tes micros : tu dois l'entendre.", self.listen)),
+                 ("calib", "5. Caler les niveaux (facultatif)", self._btn("📏 Caler sur le tinySA", "Compare les mêmes signaux vus par le tinySA et le SDR : niveaux du SDR en vrais dBm.", lambda: owner.open_sdr_calib())),
+                 ("diag", "6. Diagnostic", self._btn("🩺 Diagnostic à envoyer", "Écrit un fichier qui résume tout (à m'envoyer si ça coince).", self.diag)))
+        for r, (k, t, w) in enumerate(steps):
+            g.addWidget(QtWidgets.QLabel(f"<b>{TR(t)}</b>"), r, 0)
+            g.addWidget(w, r, 1)
+            lab = QtWidgets.QLabel("")
+            lab.setWordWrap(True)
+            lab.setMinimumWidth(320)
+            g.addWidget(lab, r, 2)
+            self.st[k] = lab
+        g.setColumnStretch(2, 1)
+        lay.addLayout(g)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setVisible(False)
+        lay.addWidget(self.bar)
+        lay.addStretch(1)
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme l'assistant (ce qui est réglé reste réglé).")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(None, close))
+        fit_dialog(self, 860, 460)
+        self.refresh()
+
+    def _btn(self, text, tip, fn):
+        b = QtWidgets.QPushButton(text)
+        b.setToolTip(tip)
+        b.clicked.connect(lambda *_: fn())
+        return b
+
+    def mdl(self):
+        return sdr_model(self.model.currentData()) or sdr_model(SDR_MODEL_DEFAULT["hackrf"])
+
+    def set_model(self):
+        o, m_ = self.owner, self.mdl()
+        o.sdr_cfg["model"] = m_["key"]
+        o.sdr_cfg.setdefault("models", {})[m_["kind"]] = m_["key"]
+        self.say("model", "✔", TR("{} : {} – {} MHz, fenêtre jusqu'à {} MHz").format(
+            m_["name"], f"{m_['fmin']:g}", f"{m_['fmax']:g}", f"{sdr_span_mhz(m_, sdr_rate(m_)):.1f}"))
+
+    def say(self, key, mark, txt):
+        self.res[key] = (mark, txt)
+        c = {"✔": "ok", "✖": "bad", "⚠": "warn"}.get(mark)
+        self.st[key].setText(f"{mark} {txt}")
+        self.st[key].setStyleSheet(f"color: {self.owner.tone_color(c)};" if c else "")
+
+    def refresh(self):
+        on = bool(self.owner.sdr_cfg.get("demo"))
+        self.demo_lbl.setText(TR("🧪 Le SDR démo est allumé : l'assistant règle ton VRAI SDR, coupe la démo d'abord.")
+                              if on else "")
+        self.demo_btn.setVisible(on)
+        if "model" not in self.res:
+            self.set_model()
+
+    def _busy(self):
+        if self.job is not None and not self.job.get("done"):
+            return True
+        for e in (getattr(self.owner, "sdr_engs", None) or {}).values():
+            if e.running():
+                e.stop()                                 # un SDR ne sert qu'à un logiciel à la fois
+        return False
+
+    def probe(self):
+        if self._busy():
+            return
+        o, m_ = self.owner, self.mdl()
+        self.say("probe", "…", TR("recherche…"))
+
+        def done(res, err=None):
+            if err is not None or not isinstance(res, dict):
+                self.say("probe", "✖", str(err or res)[:200])
+                return
+            lines, ok = probe_report(res, TR)
+            self.say("probe", "✔" if ok else "✖", " · ".join(lines) if lines else TR("rien"))
+        self.job = o.run_heavy(lambda: sdr_probe(m_["kind"], m_, o.sdr_gains(m_["kind"]), o.sdr_cfg.get("dir", ""),
+                                                 getattr(o, "_listen_tool", None), 2.0, wr_lib=WINRADIO_LIB),
+                               done, self.st["probe"], what="Test du SDR")
+
+    def gain(self):
+        if self._busy():
+            return
+        o, m_ = self.owner, self.mdl()
+        key = "lna" if gain_steps(m_, "lna") else None
+        if key is None or m_["kind"] == "winradio":
+            self.say("gain", "⚠", TR("ce SDR n'a pas de gain réglable ici : règle-le dans 📡 Réglages SDR"))
+            return
+        self.say("gain", "…", TR("essai des gains…"))
+        self.bar.setVisible(True)
+        self.bar.setRange(0, len(gain_steps(m_, key)))
+        prog = {"v": 0}
+        mics = [w["freq"] for w in o.watch if sdr_in_range(m_, w["freq"])]
+        center = (mics[0] if mics else (600.0 if sdr_in_range(m_, 600.0) else (m_["fmin"] + m_["fmax"]) / 2)) * 1e6
+
+        ref = {}
+
+        def run():
+            return sdr_gain_scan(m_["kind"], m_, o.sdr_gains(m_["kind"]), o.sdr_cfg.get("dir", ""),
+                                 getattr(o, "_listen_tool", None), center, key,
+                                 cancel=lambda: (ref.get("job") or {}).get("cancel"),
+                                 progress=lambda a, b: prog.update(v=a), wr_lib=WINRADIO_LIB)
+
+        def done(rows, err=None):
+            self.bar.setVisible(False)
+            if err is not None or isinstance(rows, Exception) or not rows:
+                self.say("gain", "✖", TR("essai impossible : {}").format(err or rows or TR("rien reçu")))
+                return
+            g_, why = auto_gain_pick(rows)
+            self.gain_rows = rows
+            gs = o.sdr_cfg.setdefault("gains", {}).setdefault(m_["key"], {})
+            gs[key] = int(g_)
+            o.log_event(dict(name=TR("SDR"), freq=center / 1e6, note=TR("gain auto {} : {} dB ({})").format(
+                key.upper(), g_, TR(why))), 0.0, "RÉGLAGE")
+            self.say("gain", "⚠" if ("sature" in why or "peu de marge" in why) else "✔", TR("{} = {} dB : {}").format(key.upper(), g_, TR(why)) +
+                     " · " + " ".join(f"{r_['gain']}:{100 * r_['ovf']:.1f}%" for r_ in rows))
+        self.job = ref["job"] = o.run_heavy(run, done, self.st["gain"], what="Réglage du gain")
+        t = QtCore.QTimer(self)
+        t.timeout.connect(lambda: self.bar.setValue(prog["v"]) if self.bar.isVisible() else t.stop())
+        t.start(300)
+
+    def listen(self):
+        o = self.owner
+        m_ = self.mdl()
+        ws = [w for w in o.watch if sdr_in_range(m_, w["freq"]) and not w.get("muted")]
+        if ws:
+            o.sdr_tune_mic(ws[0])
+            self.say("listen", "✔", TR("poste SDR lancé sur {} : tu dois l'entendre (🔊 volume du Récepteur)").format(
+                ws[0]["name"] or f"{ws[0]['freq']:.3f}"))
+        else:
+            o.set_rf_mode("sdr")
+            o.sdr_eng.start()
+            self.say("listen", "⚠", TR("aucun micro dans la plage du SDR : règle A à la main (fréquence du Récepteur)"))
+
+    def report(self):
+        o, m_ = self.owner, self.mdl()
+        lines = [f"TinySA Monitor {APP_VER} — {TR('premier branchement SDR')} — {datetime.now():%Y-%m-%d %H:%M:%S}",
+                 f"{TR('Modèle')} : {m_['name']} ({m_['key']}, {m_['kind']})",
+                 f"{TR('Gains')} : {o.sdr_gains(m_['kind'])}",
+                 f"{TR('Correction de niveau')} : {o.sdr_offset(m_['kind']):+.1f} dB",
+                 f"{TR('Dossier des outils')} : {o.sdr_cfg.get('dir', '') or '—'}", ""]
+        for k, (mark, txt) in self.res.items():
+            lines.append(f"[{k}] {mark} {txt}")
+        for r_ in getattr(self, "gain_rows", []) or []:
+            lines.append(f"  gain {r_['gain']} : {TR('saturation')} {100 * r_['ovf']:.2f} %, {TR('bruit')} {r_['floor']} dBFS, "
+                         f"{TR('crête')} {r_['peak']} dBFS")
+        for e in (getattr(o, "sdr_engs", None) or {}).values():
+            lines.append(f"{TR('Poste')} {e.pid} ({e.name()}) : {TR('en marche') if e.running() else TR('arrêté')} · {e.msg}")
+            w = e.worker
+            if w is not None:
+                lines += [f"  err : {x}" for x in list(getattr(w, "err", []) or [])[-10:]]
+        return "\n".join(lines) + "\n"
+
+    def diag(self):
+        d = Path(self.owner.log_dir) / "diagnostic"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            p = d / f"diagnostic_sdr_{datetime.now():%Y%m%d_%H%M%S}.txt"
+            write_atomic(str(p), self.report())
+            self.say("diag", "✔", str(p))
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(d)))
+        except OSError as ex:
+            self.say("diag", "✖", str(ex))
+
+
+class SdrCalibDialog(QtWidgets.QDialog):
+    """📏 Caler les niveaux du SDR sur le tinySA (étape 22) : les mêmes signaux vus par les deux pendant ~15 s
+    (puissance de canal ± 100 kHz), écart médian = correction dBFS -> dBm du modèle de SDR."""
+    SECS = 15.0
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner, self.t0, self.acc = owner, None, None
+        self.setWindowTitle("📏 Caler les niveaux du SDR sur le tinySA")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Le tinySA mesure en dBm, le SDR en dBFS (relatif à son convertisseur). Avec les DEUX en "
+                                "marche (mode combiné) et des signaux dans la fenêtre du SDR (tes micros allumés), l'appli "
+                                "compare les mêmes signaux pendant 15 s et en déduit la correction du SDR. Mets les deux "
+                                "antennes au même endroit.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.tbl = QtWidgets.QTableWidget(0, 4)
+        self.tbl.setHorizontalHeaderLabels([TR("MHz"), TR("tinySA (dBm)"), TR("SDR (dBFS)"), TR("Écart (dB)")])
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.setToolTip("Les signaux vus par les deux (puissance sur ± 100 kHz).")
+        lay.addWidget(self.tbl, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.go = QtWidgets.QPushButton("▶ Mesurer (15 s)")
+        self.go.setToolTip("Lance la comparaison.")
+        self.go.clicked.connect(lambda *_: self.start())
+        self.apply_btn = QtWidgets.QPushButton("✔ Appliquer la correction")
+        self.apply_btn.setToolTip("Garde cette correction pour ce modèle de SDR (📡 Réglages SDR › correction de niveau).")
+        self.apply_btn.setEnabled(False)
+        self.apply_btn.clicked.connect(lambda *_: self.apply())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(self.go, self.apply_btn, None, close))
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.result = None
+        fit_dialog(self, 640, 460)
+
+    def eng(self):
+        return next((e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()), None)
+
+    def start(self):
+        o, e = self.owner, self.eng()
+        if o.sdr_cfg.get("demo"):
+            self.msg.setText(TR("Le SDR démo n'a rien à caler : ses niveaux sont fabriqués. Coupe-le pour caler ton vrai SDR."))
+            return
+        if e is None:
+            self.msg.setText(TR("Lance d'abord le poste SDR (▶ du Récepteur), en mode combiné avec le tinySA."))
+            return
+        if not o.is_running():
+            self.msg.setText(TR("Lance d'abord la surveillance du tinySA (▶ Démarrer)."))
+            return
+        self.e, self.t0, self.acc, self.tsa, self.result = e, time.time(), None, {}, None
+        self.apply_btn.setEnabled(False)
+        self.timer.start(500)
+        self._tick()
+
+    def _tick(self):
+        o, e = self.owner, getattr(self, "e", None)
+        if self.t0 is None or e is None:
+            return
+        fr = e.last
+        if fr is not None and len(fr["F"]) == len(fr["avg"]):
+            F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
+            if self.acc is not None and len(self.acc[0]) == len(F) and abs(self.acc[0][0] - F[0]) < 1e-6:
+                self.acc = (F, np.maximum(self.acc[1], L))
+            else:
+                self.acc = (F, L)
+        for bid, v in list(o.latest.items()):
+            if isinstance(bid, int) and bid >= 0 and v is not None and len(v[0]):
+                F, L = np.asarray(v[0], dtype=float), np.asarray(v[1], dtype=float)
+                old = self.tsa.get(bid)
+                self.tsa[bid] = (F, np.maximum(old[1], L)) if old is not None and len(old[0]) == len(F) else (F, L)
+        left = self.SECS - (time.time() - self.t0)
+        if left > 0:
+            self.msg.setText(TR("Mesure… {} s").format(int(left) + 1))
+            return
+        self.timer.stop()
+        self.t0 = None
+        self.compute()
+
+    def compute(self):
+        o = self.owner
+        if self.acc is None or not self.tsa:
+            self.msg.setText(TR("Rien à comparer : le tinySA balaye-t-il la fenêtre du SDR ?"))
+            return
+        Fs, Ls = self.acc
+        parts = sorted(self.tsa.values(), key=lambda v: float(v[0][0]))
+        Ft = np.concatenate([p[0] for p in parts])
+        Lt = np.concatenate([p[1] for p in parts])
+        rbw = (o.live_rbw()[0] if hasattr(o, "live_rbw") else None) or 100.0
+        cands = calib_candidates(Ft, Lt, Fs, Ls, rbw)
+        self.tbl.setRowCount(len(cands))
+        for r, c in enumerate(cands):
+            for col, v in enumerate((f"{c['f']:.3f}", f"{c['tsa']:.1f}", f"{c['sdr']:.1f}", f"{c['tsa'] - c['sdr']:+.1f}")):
+                self.tbl.setItem(r, col, QtWidgets.QTableWidgetItem(v))
+        res = sdr_tsa_offset(cands)
+        self.result = res
+        if res is None:
+            self.msg.setText(TR("Pas assez de signaux vus par les deux (il en faut {}) : allume des micros dans la fenêtre du "
+                                "SDR, ou rapproche les antennes.").format(CAL_MIN_SIGNALS))
+            return
+        cur = o.sdr_offset(self.e.kind())
+        self.msg.setText(TR("Correction mesurée : {} dB (± {} dB sur {} signaux) · actuelle : {} dB").format(
+            f"{res['offset']:+.1f}", f"{res['spread']:.1f}", res["n"], f"{cur:+.1f}") +
+            (TR(" · ⚠ écarts importants : antennes à des endroits différents ?") if res["spread"] > 6 else ""))
+        self.apply_btn.setEnabled(True)
+
+    def apply(self):
+        o, res = self.owner, self.result
+        if not res:
+            return
+        m_ = self.e.model()
+        o.sdr_cfg.setdefault("offsets", {})[m_["key"]] = float(res["offset"])
+        o.log_event(dict(name=TR("SDR"), freq=0.0, note=TR("niveaux calés sur le tinySA : {} dB ({})").format(
+            f"{res['offset']:+.1f}", m_["name"])), 0.0, "RÉGLAGE")
+        self.msg.setText(TR("✔ Correction gardée pour {} : {} dB.").format(m_["name"], f"{res['offset']:+.1f}"))
+        self.apply_btn.setEnabled(False)
+
+    def closeEvent(self, ev):
+        self.timer.stop()
+        super().closeEvent(ev)
+
+
+class RewindDialog(QtWidgets.QDialog):
+    """⏪ Remonter le temps (étape 22) : le waterfall des dernières minutes du poste SDR (le plus récent en haut, les
+    alarmes en repères), clic = choisir un instant, ▶ réécouter à partir de là, 💾 garder le passage (son + image).
+    Tout est en mémoire (rien sur le disque tant qu'on ne garde pas)."""
+
+    def __init__(self, owner, eng=None):
+        super().__init__(owner)
+        self.owner, self.eng = owner, eng or owner.sdr_eng
+        self.t_sel, self.fx, self._tmp, self.img_arr = None, None, None, None
+        self.setWindowTitle(TR("⏪ Remonter le temps · {}").format(self.eng.name()))
+        lay = QtWidgets.QVBoxLayout(self)
+        self.dur = QtWidgets.QComboBox()
+        for m_ in REWIND_MINUTES:
+            self.dur.addItem(TR("{} min gardées").format(m_), m_)
+        self.dur.setCurrentIndex(max(0, self.dur.findData(int(owner.sdr_cfg.get("rewind_min", 3) or 3))))
+        self.dur.setToolTip("Combien de temps le poste SDR garde en mémoire (son : ~11 Mo par minute).")
+        self.dur.currentIndexChanged.connect(lambda *_: self.set_dur())
+        rf = QtWidgets.QPushButton("↻ Mettre à jour")
+        rf.setToolTip("Recharge les dernières secondes.")
+        rf.clicked.connect(lambda *_: self.draw())
+        self.mem = QtWidgets.QLabel("")
+        lay.addLayout(owner._row(self.dur, rf, None, self.mem))
+        self.plot = pg.PlotWidget()
+        self.plot.setLabel("bottom", "MHz")
+        self.plot.setLabel("left", TR("il y a (s)"))
+        sdr_light_axes(self.plot)
+        self.plot.setToolTip("Le plus récent en haut. Clic = choisir cet instant.")
+        self.img = pg.ImageItem()
+        self.img.setLookupTable(make_lut(owner.theme.get("wf", "Inferno")))
+        self.plot.addItem(self.img)
+        self.sel_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#ffd60a", width=1.5))
+        self.plot.addItem(self.sel_line)
+        self.sel_line.hide()
+        self.plot.scene().sigMouseClicked.connect(self._click)
+        self.marks = []
+        lay.addWidget(self.plot, 1)
+        self.at = QtWidgets.QLabel("Clique sur le waterfall pour choisir un instant.")
+        self.at.setWordWrap(True)
+        lay.addWidget(self.at)
+        self.play_btn = QtWidgets.QPushButton("▶ Réécouter à partir d'ici")
+        self.play_btn.setCheckable(True)
+        self.play_btn.setToolTip("Rejoue ce que le poste SDR faisait entendre à cet instant (60 s au plus).")
+        self.play_btn.toggled.connect(lambda on: self.play(on))
+        self.keep_btn = QtWidgets.QPushButton("💾 Garder ce passage")
+        self.keep_btn.setToolTip("Enregistre le son (WAV, 60 s) et l'image du waterfall. Demande ton accord la 1re fois.")
+        self.keep_btn.clicked.connect(lambda *_: self.keep())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre (la mémoire continue de se remplir).")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(self.play_btn, self.keep_btn, None, close))
+        self.finished.connect(lambda *_: self.play(False))
+        fit_dialog(self, 900, 600)
+        self.draw()
+
+    def set_dur(self):
+        m_ = int(self.dur.currentData() or 3)
+        self.owner.sdr_cfg["rewind_min"] = m_
+        for e in (getattr(self.owner, "sdr_engs", None) or {}).values():
+            e.rew.set_minutes(m_)
+
+    def draw(self):
+        rb = self.eng.rew
+        fr = list(rb.frames)
+        now = time.time()
+        self.mem.setText(TR("{} Mo en mémoire").format(f"{rb.mem_mb():.0f}"))
+        for it in self.marks:
+            self.plot.removeItem(it)
+        self.marks = []
+        if not fr:
+            self.img.clear()
+            self.at.setText(TR("Rien en mémoire : lance le poste SDR (▶ du Récepteur), puis reviens ici."))
+            return
+        lo = min(float(f[0]) for _t, f, _l in fr)
+        hi = max(float(f[-1]) for _t, f, _l in fr)
+        cols = 800
+        grid = np.linspace(lo, hi, cols)
+        arr = np.full((len(fr), cols), np.nan, dtype=np.float32)
+        for i, (_t, f, l) in enumerate(fr):
+            m = (grid >= f[0]) & (grid <= f[-1])
+            arr[i, m] = np.interp(grid[m], f, l.astype(np.float32))
+        fl = float(np.nanpercentile(arr, 10)) if np.isfinite(arr).any() else -100.0
+        arr = np.nan_to_num(arr, nan=fl)
+        self.img_arr, self.t_rows = arr, np.array([t for t, _f, _l in fr])
+        age_old = now - fr[0][0]
+        self.img.setImage(arr[::-1].T, autoLevels=False, levels=(fl, fl + 50.0))
+        self.img.setRect(QtCore.QRectF(lo, 0.0, max(1e-6, hi - lo), max(0.5, age_old)))
+        self.plot.getViewBox().invertY(True)                 # 0 s (maintenant) en haut
+        self.plot.setXRange(lo, hi, padding=0)
+        self.plot.setYRange(0, max(0.5, age_old), padding=0)
+        o = self.owner
+        for a in list(o.alarms.active.values()) + list(o.alarms.done):
+            if a.get("freq") and lo <= float(a["freq"]) <= hi and fr[0][0] <= a["t0"] <= now:
+                ti = pg.TextItem(f"⚠ {a['kind']}", color=o.tone_color("bad"), anchor=(0.5, 1.0))
+                ti.setPos(float(a["freq"]), now - a["t0"])
+                self.plot.addItem(ti)
+                self.marks.append(ti)
+
+    def _click(self, ev):
+        vb = self.plot.getViewBox()
+        p = vb.mapSceneToView(ev.scenePos())
+        self.select(time.time() - float(p.y()))
+
+    def select(self, t):
+        self.t_sel = float(t)
+        self.sel_line.setValue(time.time() - self.t_sel)
+        self.sel_line.show()
+        tu = self.eng.rew.tune_at(self.t_sel)
+        ago = int(max(0, time.time() - self.t_sel))
+        self.at.setText(TR("Il y a {} min {:02d} s · A = {}").format(ago // 60, ago % 60, (
+            f"{tu[0]:.3f} MHz" + (f" ({tu[1]})" if tu[1] else "")) if tu else "—"))
+        if self.play_btn.isChecked():
+            self.play(False)
+            self.play(True)
+
+    def play(self, on):
+        if self.fx is not None:
+            try:
+                self.fx.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.fx = None
+        if not on:
+            if self.play_btn.isChecked():
+                self.play_btn.blockSignals(True)
+                self.play_btn.setChecked(False)
+                self.play_btn.blockSignals(False)
+            return
+        if self.t_sel is None:
+            self.select((self.eng.rew.span() or (time.time() - 10, time.time()))[0])
+        b = self.eng.rew.audio_from(self.t_sel, 60.0)
+        if not b:
+            self.at.setText(TR("Pas de son gardé à cet instant (poste arrêté, ou trop ancien)."))
+            self.play(False)
+            return
+        import tempfile
+        import wave
+        try:
+            if self._tmp is None:
+                self._tmp = os.path.join(tempfile.gettempdir(), f"tsm_rewind_{os.getpid()}.wav")
+            with wave.open(self._tmp, "wb") as w:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(LISTEN_RATE)
+                w.writeframes(b)
+            from PySide6 import QtMultimedia
+            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
+            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
+            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
+            fx.setVolume(0.8)
+            fx.play()
+            self.fx = fx
+        except Exception as ex:  # noqa: BLE001
+            self.at.setText(TR("⚠ Son impossible ici : {}").format(ex))
+            self.play(False)
+
+    def keep(self):
+        import wave
+        o = self.owner
+        if self.t_sel is None:
+            self.at.setText(TR("Choisis d'abord un instant (clic sur le waterfall)."))
+            return
+        if not o.privacy_ok(self):
+            return
+        d = Path(o.log_dir) / "enregistrements_audio" / datetime.now().strftime("%Y-%m-%d")
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            base = d / f"rewind_{datetime.fromtimestamp(self.t_sel):%H%M%S}"
+            with wave.open(str(base) + ".wav", "wb") as w:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(LISTEN_RATE)
+                w.writeframes(self.eng.rew.audio_from(self.t_sel, 60.0))
+            self.plot.grab().save(str(base) + ".png")
+        except OSError as ex:
+            self.at.setText(TR("⚠ Enregistrement impossible : {}").format(ex))
+            return
+        tu = self.eng.rew.tune_at(self.t_sel)
+        o.log_event(dict(name=(tu[1] if tu else "") or TR("SDR"), freq=tu[0] if tu else 0.0,
+                         note=TR("passage gardé : {}").format(str(base) + ".wav")), 0.0, "ENREGISTRÉ (SDR)")
+        self.at.setText(TR("✔ Gardé : {}").format(str(base) + ".wav / .png"))
+
+
+def _v8_open_sdr_setup(self):
+    d = getattr(self, "_sdrsetup", None)
+    if d is None:
+        d = self._sdrsetup = SdrSetupWizard(self)
+    d.refresh()
+    d.show()
+    d.raise_()
+    return d
+
+
+def _v8_open_sdr_calib(self):
+    d = getattr(self, "_sdrcalib", None)
+    if d is None:
+        d = self._sdrcalib = SdrCalibDialog(self)
+    d.show()
+    d.raise_()
+    return d
+
+
+def _v8_open_rewind(self, eng=None):
+    d = getattr(self, "_rewind", None)
+    if d is None or (eng is not None and d.eng is not eng):
+        d = self._rewind = RewindDialog(self, eng)
+    d.draw()
+    d.show()
+    d.raise_()
+    return d
+
+
+def _v8_open_sdr_manual(self):
+    """📖 Manuel SDR (V8) : fichier docs/manuel_sdr.html s'il est là, sinon les chapitres embarqués (module manual_sdr)."""
+    en = getattr(TR, "lang", "") == "en" or getattr(self, "lang", "fr") == "en"
+    name = "manual_sdr_en.html" if en else "manuel_sdr.html"
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    p = base / "docs" / name
+    if not p.exists() and _manual_sdr is not None:
+        import tempfile
+        p = Path(tempfile.gettempdir()) / name
+        try:
+            p.write_text(_manual_sdr.HTML["en" if en else "fr"], encoding="utf-8")
+        except (OSError, KeyError):
+            p = None
+    if p is None or not Path(p).exists():
+        self.set_status(TR("Manuel SDR introuvable."))
+        return None
+    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p)))
+    return p
+
+
+MainWindow.open_sdr_setup = _v8_open_sdr_setup
+MainWindow.open_sdr_calib = _v8_open_sdr_calib
+MainWindow.open_rewind = _v8_open_rewind
+MainWindow.open_sdr_manual = _v8_open_sdr_manual
 
 
 def self_test(path):

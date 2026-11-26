@@ -2028,6 +2028,31 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `SettingsDialog.__init__` ENVELOPPÉ : rubrique Son + « Sons des alarmes » (bouton par son, ▶ `test_alarm_sound`, ↺),
   `set_alarm_sound`. Config « alarm_sounds » (enveloppes collect / apply), `USER_KEYS` + « alarm_sounds » (profil
   utilisateur, pas les shows). **Jamais entendu par Claude** (pas de carte son ici : repli sur le son d'origine testé).
+- **V8 étape 22 (Clément : « 1234 !! » sur : assistant premier branchement, calibrer avec le tinySA, remonter le temps,
+  manuel SDR + liste du passage en 8.0)** : PURE `GAIN_OVF_MAX` 0,1 %, `GAIN_HEADROOM_DB` 6, `gain_steps(modèle, étage)`
+  (8 valeurs au plus), `auto_gain_pick` (le plus fort sans écrêter avec 6 dB de marge ; crête proche du max sans
+  écrêtage = le plus bas « peu de marge » ; tout écrête = le plus bas « sature »), `chan_power` (somme ± 100 kHz, case
+  tinySA ramenée à pas / RBW, FFT divisée par l'ENBW Blackman 1,73), `calib_candidates` (signaux à + `CAL_SNR_DB` 15 des
+  deux côtés), `sdr_tsa_offset` (médiane, écart max, ≥ `CAL_MIN_SIGNALS` 2), `RewindBuffer` (spectres max par 0,5 s réduits
+  à 1 024 cases float16, son PCM, réglages de A ; `_trim` garde le réglage en cours au début ; `audio_from`, `tune_at`,
+  `mem_mb`), `REWIND_MINUTES` 1 / 3 / 5. Qt : `sdr_gain_scan` (fil : chaque gain, 0,4 s d'IQ après 0,15 s jetées :
+  écrêtage, bruit, crête), `SdrSetupWizard` (`self._sdrsetup` : 1 modèle, 2 `sdr_probe` via `run_heavy`, 3 gain ->
+  `sdr_cfg["gains"][modèle]["lna"]` + journal « RÉGLAGE », 4 `sdr_tune_mic`, 5 calibration, 6 `diagnostic_sdr_*.txt` ;
+  coupe le SDR démo ; arrête les postes avant de toucher au SDR), `SdrCalibDialog` (`self._sdrcalib` : 15 s de max hold
+  SDR (`e.last`) et tinySA (`latest` des bandes ≥ 0) -> `calib_candidates` avec la RBW de `live_rbw` -> ✔ Appliquer =
+  `sdr_cfg["offsets"][clé du modèle]` ; refus en SDR démo / sans tinySA / sans poste), `RewindDialog` (`self._rewind` :
+  waterfall des minutes gardées, 0 s en haut, alarmes en repères, clic = instant + A à ce moment, ▶ 60 s en QSoundEffect,
+  💾 WAV + PNG avec accord vie privée, journal « ENREGISTRÉ (SDR) »), bouton ⏪ du Récepteur (`rew_btn`),
+  `SdrEngine.rew` (son poussé dans `_pump`, spectres dans `_frame`, réglages dans `set_a`), `sdr_cfg["rewind_min"]`.
+  **Manuel SDR À PART** (pour ne pas toucher aux fichiers de la V7) : `docs/src/sdr_fr.html` / `sdr_en.html` (13 chapitres,
+  blocs `<!--CH id|Titre-->`) -> `python tests/make_manual_sdr.py` -> `docs/manuel_sdr.html`, `docs/manual_sdr_en.html`, les
+  PDF et **`manual_sdr.py`** (HTML embarqué : importé par le programme, PyInstaller le prend sans toucher au workflow) ;
+  `open_sdr_manual` (fichier docs/ s'il est là, sinon le module écrit dans le dossier temporaire). **À refaire après toute
+  modif du manuel SDR.** `docs/passage_v8.md` = la liste des essais en vrai + la procédure du passage en 8.0 (fondre le
+  manuel SDR dans le principal ce jour-là). Menus du mode et SDR : 🔌 / 📏 / ⏪ / 📖. Testé : test_sdr (gain, calibration à
+  0,2 dB, mémoire), script + gui_reel (faux SDR : assistant complet, gain, diagnostic, remonter le temps avec son,
+  calibration sur données injectées, manuel embarqué). **Jamais avec un vrai SDR** : gain choisi, puissance de canal
+  tinySA / SDR (RBW, ENBW) et calibration réelle à vérifier sur le terrain.
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
