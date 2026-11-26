@@ -917,5 +917,22 @@ _rb0.push_audio(1.0, b"x" * 500)
 _rb0.push_frame(1.0, np.linspace(600, 602, 100), np.zeros(100))
 ok("remonter le temps : 0 = désactivé, rien gardé", not _rb0.audio and not _rb0.frames and _rb0.span() is None)
 
+# 8.0.2 : plusieurs écrans
+_sp = ns["screen_preset"]("tiny_sdr", 0, 1)
+ok("écrans : tinySA ici, SDR sur l'autre", _sp["dock_sdr_rx"] == 1 and _sp["dock_spectre"] == 0 and _sp["dock_freq"] == 0)
+_sp2 = ns["screen_preset"]("list_out", 1, 0, sdr=False)
+ok("écrans : liste sur l'autre, SDR non utilisé = caché", _sp2["dock_freq"] == 0 and _sp2["dock_spectre"] == 1
+   and _sp2["dock_sdr_spec"] == -1)
+ok("écrans : mode d'après les panneaux", ns["screen_rf_mode"](_sp) == "both"
+   and ns["screen_rf_mode"](ns["screen_preset"]("all_here", sdr=False)) == "tiny"
+   and ns["screen_rf_mode"]({"dock_sdr_spec": 0, "dock_alarmes": 0}) == "sdr")
+ok("écrans utilisés", ns["screens_used"](_sp, 0) == [1] and ns["screens_used"](ns["screen_preset"]("all_here"), 0) == [])
+ok("écran débranché : ses panneaux reviennent", ns["screen_plan_fit"]({"a": 2, "b": -1, "c": 1}, 2, 0)
+   == {"a": 0, "b": -1, "c": 1})
+_sn = ns["screens_norm"]({"on": True, "plan": {"dock_freq": 1, "x": 3, "dock_wf": True, "dock_spectre": -2},
+                          "hosts": {"1": {"geo": "abc", "state": 5}, "z": {}}})
+ok("écrans : config nettoyée", _sn["on"] and _sn["plan"] == {"dock_freq": 1} and _sn["hosts"] == {"1": {"geo": "abc"}}
+   and not ns["screens_norm"]({"on": True})["on"], str(_sn))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

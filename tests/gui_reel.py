@@ -136,6 +136,10 @@ _bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Yes | W.QDialogButton
 _txt = (_bb.button(W.QDialogButtonBox.StandardButton.Yes).text(), _bb.button(W.QDialogButtonBox.StandardButton.Cancel).text())
 check("boutons standard en français", _txt == ("&Oui", "&Annuler") or "Oui" in _txt[0], str(_txt))
 
+class ScreenStub:
+    items = {}
+
+
 win = m.MainWindow()
 win.plan_opts["coord_order"] = "random1"   # 7.60.2 : 1 essai (3 par défaut) : la CI Windows a 8 min pour tout
 win.log_dir = m.Path(tmp) / "journaux"
@@ -1409,6 +1413,40 @@ check("8.0.1 : mode SDR = Mes fréquences et Journal en onglets, dans la fenêtr
       and ((win.dock_freq.geometry().bottom() <= win.height() and win.dock_freq.geometry().top() >= 0)
            or win.sdr_docks["rx"] in win.tabifiedDockWidgets(win.dock_freq)),     # petit écran : Récepteur en onglet
       f"{win.dock_freq.geometry()} / {win.height()} · onglets {[d.objectName() for d in win.tabifiedDockWidgets(win.dock_freq)]}")
+
+# 8.0.2 : plusieurs écrans (un 2ᵉ écran simulé : le même écran 2 fois)
+win.screen_list = lambda: ([win.screen(), win.screen()], 0)
+win.screens_apply(m.screen_preset("tiny_sdr", 0, 1))
+wait(1200)
+_h2 = win.screen_hosts.get(1)
+check("8.0.2 : tinySA ici · SDR sur l'autre écran = une fenêtre complète avec les 4 panneaux SDR",
+      _h2 is not None and sorted(_h2.items) == ["dock_sdr_mics", "dock_sdr_rx", "dock_sdr_spec", "dock_sdr_wf"]
+      and win.rf_mode == "both" and win.dock_spec.isVisible() and not win.sdr_docks["rx"].isVisible(),
+      f"{sorted(_h2.items) if _h2 else None} · mode {win.rf_mode}")
+check("8.0.2 : le programme parle toujours aux panneaux prêtés (Récepteur, SDR en marche)",
+      hasattr(win.dock_widget(win.sdr_docks["rx"]), "go_btn") and win.sdr_eng.running()
+      and win.sdr_docks["rx"] not in win.panel_docks())
+if _h2 is not None:
+    shot(_h2, "ecran_2_sdr")
+_st2 = win.screens_state()
+check("8.0.2 : répartition retenue (config)", _st2["on"] and "1" in _st2["hosts"] and _st2["plan"]["dock_sdr_rx"] == 1,
+      str({k: v for k, v in _st2.items() if k != "hosts"}))
+win.screens_off()
+wait(600)
+check("8.0.2 : 📌 Tout ramener = panneaux revenus", not win.screen_hosts
+      and hasattr(win.sdr_docks["rx"].widget(), "go_btn") and win.sdr_docks["rx"].isVisible())
+_sd2 = win.open_screens()
+_sd2.preset("sdr_tiny")
+_sd2.apply()
+wait(1000)
+check("8.0.2 : SDR ici · tinySA sur l'autre écran", sorted((win.screen_hosts.get(1) or ScreenStub).items)
+      == ["dock_alarmes", "dock_spectre", "dock_wf"] and win.sdr_docks["spec"].isVisible(),
+      str({k: sorted(h.items) for k, h in win.screen_hosts.items()}))
+win.set_rf_mode("sdr")                     # changer de mode ramène tout
+wait(800)
+check("8.0.2 : changer de mode ramène les panneaux", not win.screen_hosts and win.sdr_docks["spec"].isVisible())
+_sd2.close()
+del win.screen_list
 _mic16 = win.sdr_docks["mics"].widget()
 _mic16.refresh()
 check("16 : mes micros dans la fenêtre du SDR, avec le niveau mesuré", _mic16.table.rowCount() >= 1

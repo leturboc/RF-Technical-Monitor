@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.2**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1465,6 +1465,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   0-1 dBFS et waterfall 0-600 MHz). Mesuré hors écran : 1920 × 1040 dans les 3 modes, mini 914 × 850 (SDR), 1 270 × 850
   (combiné) ; écran trop petit (portable) -> le Récepteur passe en onglet avec Mes fréquences ; `set_level` ne réaffiche plus
   le spectre / waterfall du tinySA en mode SDR. **Pas revu sur le vrai écran de Clément.**
+- **8.0.2 (Clément : « un vrai mode double écran ou plus : tinySA complet sur l'un, SDR complet sur l'autre, ou un mix
+  qu'on choisit »)** : PURE `SCREEN_PANELS` (panneau, groupe tiny | list | sdr, titre), `SCREEN_PRESETS` (tiny_sdr, sdr_tiny,
+  list_out, all_here), `screen_preset`, `screens_norm` (config « screens » {on, plan {panneau: écran | -1}, full, hosts
+  {écran: {geo, state}}}), `screens_used`, `screen_rf_mode` (le mode suit les panneaux montrés), `screen_plan_fit` (écran
+  débranché -> fenêtre principale). `ScreenWindow` (QMainWindow d'un autre écran : panneaux PRÊTÉS par échange de widget
+  comme `PanelWindow` — les objets dock restent dans MainWindow —, `arrange`, `place`, F11, fermer = tout ramener),
+  `ScreensDialog` (`self._screens_dlg` : tableau panneau -> écran / caché, préréglages, 👋 `identify_screens`, plein
+  écran). MainWindow : `dock_widget(d)` (le VRAI panneau, où qu'il soit : à utiliser au lieu de `d.widget()`),
+  `screen_list`, `screens_docks`, `screens_current`, `screens_apply`, `screens_off`, `screens_state`, `screens_restore`
+  (`_late_layout`), `open_screens` (menu du mode + 🪟 Fenêtres). Disposition de base, changement de mode, fermeture : tout
+  revient. Testé : test_sdr (PURE), gui_reel (2ᵉ écran simulé = même écran 2 fois), script de session avec 2 écrans
+  virtuels (`offscreen:configfile=` 2 × 1920 × 1040 : fenêtre sur S2, config relue). **Jamais vu sur un vrai double écran.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

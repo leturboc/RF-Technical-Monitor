@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "8.0.1"
+APP_VER = "8.0.2"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -13433,6 +13433,85 @@ def prep_html(info, tr=None, img=None):
         p.append(f"<p class='mut'>{e(tr(info['disclaimer']))}</p>")
     p.append("</body></html>")
     return "".join(p)
+
+
+# 8.0.2 (Clément : « un vrai mode double écran ou plus : tinySA complet sur l'un, SDR complet sur l'autre, ou un mix
+# qu'on choisit ») : chaque panneau va sur l'écran choisi ; un écran autre que celui de la fenêtre principale reçoit
+# une fenêtre complète qui réunit ses panneaux (rangés, en onglets…).
+SCREEN_PANELS = (
+    ("dock_spectre", "tiny", "📟 Spectre tinySA"),
+    ("dock_wf", "tiny", "📟 Waterfall tinySA"),
+    ("dock_alarmes", "tiny", "🔔 Alarmes"),
+    ("dock_freq", "list", "📋 Mes fréquences"),
+    ("dock_journal", "list", "📝 Journal"),
+    ("dock_sdr_rx", "sdr", "📡 SDR · Récepteur"),
+    ("dock_sdr_spec", "sdr", "📡 SDR · Spectre"),
+    ("dock_sdr_wf", "sdr", "📡 SDR · Waterfall"),
+    ("dock_sdr_mics", "sdr", "📡 SDR · Mes micros"),
+)
+SCREEN_PRESETS = (
+    ("tiny_sdr", "📟 tinySA ici · 📡 SDR sur l'autre écran"),
+    ("sdr_tiny", "📡 SDR ici · 📟 tinySA sur l'autre écran"),
+    ("list_out", "📋 Mes fréquences et journal sur l'autre écran"),
+    ("all_here", "🧩 Tout dans la fenêtre principale"),
+)
+SCREEN_HIDE = -1
+
+
+def screen_preset(key, main=0, other=1, sdr=True):
+    """Plan {panneau: n° d'écran (0 = 1er), -1 = caché} d'un préréglage. sdr : le SDR est utilisé (sinon ses panneaux
+    restent cachés quand le préréglage ne les demande pas)."""
+    plan = {}
+    for n, g, _t in SCREEN_PANELS:
+        if key == "tiny_sdr":
+            v = other if g == "sdr" else main
+        elif key == "sdr_tiny":
+            v = other if g == "tiny" else main
+        elif key == "list_out":
+            v = other if g == "list" else main
+        else:
+            v = main
+        if g == "sdr" and not sdr and key not in ("tiny_sdr", "sdr_tiny"):
+            v = SCREEN_HIDE
+        if n == "dock_alarmes" and key == "all_here":
+            v = SCREEN_HIDE                                  # comme la disposition de base (bandeau au besoin)
+        plan[n] = v
+    return plan
+
+
+def screens_norm(d, nscr=8):
+    """Config « screens » : {on, plan {panneau: écran | -1}, full, hosts {écran: {geo, state}}} nettoyée."""
+    d = d if isinstance(d, dict) else {}
+    names = {n for n, _g, _t in SCREEN_PANELS}
+    plan = {}
+    if isinstance(d.get("plan"), dict):
+        for n, v in d["plan"].items():
+            if n in names and isinstance(v, int) and not isinstance(v, bool) and SCREEN_HIDE <= v < nscr:
+                plan[n] = v
+    hosts = {}
+    if isinstance(d.get("hosts"), dict):
+        for k, v in d["hosts"].items():
+            if isinstance(v, dict) and str(k).isdigit():
+                hosts[str(k)] = {x: str(v[x]) for x in ("geo", "state") if isinstance(v.get(x), str)}
+    return dict(on=bool(d.get("on")) and bool(plan), plan=plan, full=bool(d.get("full")), hosts=hosts)
+
+
+def screens_used(plan, main):
+    """Écrans (autres que celui de la fenêtre principale) qui reçoivent au moins un panneau."""
+    return sorted({v for v in (plan or {}).values() if v >= 0 and v != main})
+
+
+def screen_rf_mode(plan):
+    """Mode d'après les panneaux montrés : tinySA, SDR ou combiné."""
+    groups = {n: g for n, g, _t in SCREEN_PANELS}
+    shown = {groups[n] for n, v in (plan or {}).items() if v >= 0 and n in groups and n != "dock_alarmes"}
+    tiny, sdr = "tiny" in shown, "sdr" in shown
+    return "both" if tiny and sdr else ("sdr" if sdr else "tiny")
+
+
+def screen_plan_fit(plan, nscr, main):
+    """Écran débranché depuis : ses panneaux reviennent dans la fenêtre principale."""
+    return {n: (v if v < nscr else main) for n, v in (plan or {}).items()}
 
 
 # ===== PURE-END
@@ -44530,8 +44609,8 @@ def _v8_sdr_posts_sync(self):
             if d.windowTitle() != t:
                 d.setWindowTitle(t)
         for d in self.post_docks[p["id"]].values():
-            if hasattr(d.widget(), "refresh"):
-                d.widget().refresh()
+            if hasattr(self.dock_widget(d), "refresh"):
+                self.dock_widget(d).refresh()
 
 
 def _v8_post_show(self, pid):
@@ -44631,7 +44710,7 @@ def _v8_set_level(self, level):
         self.dock_wf.hide()
     for d in self.all_sdr_docks():                          # Simple / Plus / Expert des panneaux SDR
         try:
-            d.widget().apply_level()
+            self.dock_widget(d).apply_level()
         except Exception:  # noqa: BLE001
             pass
     try:
@@ -44846,8 +44925,8 @@ def _v8_sdr_fav(self, k):
 def _v8_sdr_set_fav(self, k, w):
     self.sdr_cfg["favs"] = fav_assign(self.sdr_cfg.get("favs"), k, int(round(w["freq"] * 1000)) if w else None)
     for d in self.all_sdr_docks():
-        if hasattr(d.widget(), "_favs_refresh"):
-            d.widget()._favs_refresh()
+        if hasattr(self.dock_widget(d), "_favs_refresh"):
+            self.dock_widget(d)._favs_refresh()
     if w:
         self.set_status(TR("⭐ Touche {} du pavé numérique : {}").format(k, w["name"] or f"{w['freq']:.3f}"))
 
@@ -44985,9 +45064,11 @@ def _v8_sdr_reload(self):
     self.rf_mode = rf_mode_norm(self.sdr_cfg.get("rf_mode"))
     self._update_mode_btn()
     for d in self.all_sdr_docks():
-        d.widget().apply_level()
-        if hasattr(d.widget(), "refresh"):
-            d.widget().refresh()
+        pw_ = self.dock_widget(d)
+        if hasattr(pw_, "apply_level"):
+            pw_.apply_level()
+        if hasattr(pw_, "refresh"):
+            pw_.refresh()
 
 
 _v7_user_profile_load = MainWindow.user_profile_load
@@ -45808,8 +45889,8 @@ def _v8_set_sdr_demo(self, on):
         sdr_demo_set(plan=[], tx=[])
         self.set_status(TR("SDR démo coupé : le poste SDR reprendra ton vrai SDR au prochain ▶."))
     for d in self.all_sdr_docks():
-        if hasattr(d.widget(), "refresh"):
-            d.widget().refresh()
+        if hasattr(self.dock_widget(d), "refresh"):
+            self.dock_widget(d).refresh()
 
 
 def _v8_open_sdr_tx(self):
@@ -46430,6 +46511,529 @@ MainWindow.open_sdr_setup = _v8_open_sdr_setup
 MainWindow.open_sdr_calib = _v8_open_sdr_calib
 MainWindow.open_rewind = _v8_open_rewind
 MainWindow.open_sdr_manual = _v8_open_sdr_manual
+
+
+class ScreenWindow(QtWidgets.QMainWindow):
+    """8.0.2 : une fenêtre COMPLÈTE sur un autre écran, qui réunit plusieurs panneaux (rangeables, en onglets). Les
+    panneaux y sont prêtés : leurs objets restent ceux de la fenêtre principale (tout le programme continue de leur
+    parler). Fermer = tout ramener dans la fenêtre principale."""
+
+    def __init__(self, owner, idx):
+        super().__init__(None)
+        self.owner, self.idx, self.closing, self.items = owner, idx, False, {}
+        self.setWindowTitle(f"{APP_NAME} – " + TR("Écran {}").format(idx + 1))
+        self.setWindowIcon(owner.windowIcon())
+        self.setDockNestingEnabled(True)
+        c = QtWidgets.QWidget()
+        c.setMaximumHeight(0)
+        self.setCentralWidget(c)
+        for cn, ar in ((Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+                       (Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)):
+            self.setCorner(cn, ar)
+        tb = QtWidgets.QToolBar()
+        tb.setObjectName("barre_ecran")
+        tb.setMovable(False)
+        self.addToolBar(tb)
+        lab = QtWidgets.QLabel(" 🖥 " + TR("Écran {}").format(idx + 1) + "  ")
+        lab.setToolTip(TR("Fenêtre de cet écran : ses panneaux se déplacent par leur barre de titre (côte à côte, en "
+                          "onglets). F11 : plein écran."))
+        tb.addWidget(lab)
+        for txt, tip, fn in (("⛶ Plein écran", "Plein écran sur cet écran (F11 ; Échap pour sortir).", self.toggle_full),
+                             ("🖥 Écrans…", "Choisir quel panneau va sur quel écran.", lambda: owner.open_screens()),
+                             ("📌 Tout ramener", "Remet tous les panneaux dans la fenêtre principale.",
+                              lambda: owner.screens_off())):
+            b = QtWidgets.QPushButton(TR(txt))
+            b.setToolTip(TR(tip))
+            b.clicked.connect(lambda *_, fn=fn: fn())
+            tb.addWidget(b)
+        QtGui.QShortcut(QtGui.QKeySequence("F11"), self, activated=self.toggle_full)
+        QtGui.QShortcut(QtGui.QKeySequence("Escape"), self, activated=lambda: self.isFullScreen() and self.toggle_full())
+
+    def put(self, name, title, w):
+        d = QtWidgets.QDockWidget(title, self)
+        d.setObjectName("scr_" + name)
+        d.setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable)
+        d.setWidget(w)
+        w.show()
+        self.items[name] = d
+
+    def arrange(self):
+        """Disposition de départ : spectres en haut, waterfalls dessous, Récepteur + listes (onglets) à droite."""
+        B, R = Qt.DockWidgetArea.BottomDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
+        it = self.items
+        center = [n for n in ("dock_spectre", "dock_sdr_spec", "dock_wf", "dock_sdr_wf", "dock_alarmes") if n in it]
+        tops = [n for n in ("dock_spectre", "dock_sdr_spec") if n in it]
+        prev = None
+        for n in tops:
+            if prev is None:
+                self.addDockWidget(B, it[n])
+            else:
+                self.splitDockWidget(it[prev], it[n], Qt.Orientation.Horizontal)
+            prev = n
+        for wf, sp in (("dock_wf", "dock_spectre"), ("dock_sdr_wf", "dock_sdr_spec")):
+            if wf in it:
+                if sp in it:
+                    self.splitDockWidget(it[sp], it[wf], Qt.Orientation.Vertical)
+                elif prev is None:
+                    self.addDockWidget(B, it[wf])
+                    prev = wf
+                else:
+                    self.splitDockWidget(it[prev], it[wf], Qt.Orientation.Horizontal)
+                    prev = wf
+        if "dock_alarmes" in it:
+            below = next((n for n in ("dock_wf", "dock_spectre", "dock_sdr_wf", "dock_sdr_spec") if n in it), None)
+            if below:
+                self.splitDockWidget(it[below], it["dock_alarmes"], Qt.Orientation.Vertical)
+            else:
+                self.addDockWidget(B, it["dock_alarmes"])
+        side = R if center else B
+        tabs = [n for n in ("dock_freq", "dock_journal", "dock_sdr_mics") if n in it]
+        if "dock_sdr_rx" in it:
+            self.addDockWidget(side, it["dock_sdr_rx"])
+            if tabs:
+                self.splitDockWidget(it["dock_sdr_rx"], it[tabs[0]], Qt.Orientation.Vertical)
+        elif tabs:
+            self.addDockWidget(side, it[tabs[0]])
+        for n in tabs[1:]:
+            self.tabifyDockWidget(it[tabs[0]], it[n])
+        if tabs:
+            it[tabs[0]].raise_()
+        for d in it.values():
+            d.show()
+
+    def place(self, screen, full=False):
+        self.setGeometry(screen.availableGeometry().adjusted(30, 30, -30, -30))
+        if full:
+            self.showFullScreen()
+        else:
+            self.showMaximized()
+        QtCore.QTimer.singleShot(120, self._sizes)
+
+    def _sizes(self):
+        try:
+            it, W = self.items, max(self.width(), 800)
+            side = [it[n] for n in ("dock_sdr_rx", "dock_freq") if n in it]
+            if side and any(n in it for n in ("dock_spectre", "dock_sdr_spec", "dock_wf", "dock_sdr_wf")):
+                self.resizeDocks(side[:1], [int(W * 0.32)], Qt.Orientation.Horizontal)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def toggle_full(self):
+        if self.isFullScreen():
+            self.showMaximized()
+        else:
+            self.showFullScreen()
+
+    def take(self):
+        """Rend les panneaux (nom, widget) et vide la fenêtre."""
+        out = []
+        for n, d in list(self.items.items()):
+            w = d.widget()
+            d.setWidget(QtWidgets.QWidget())
+            out.append((n, w))
+        self.items = {}
+        return out
+
+    def state(self):
+        return dict(geo=bytes(self.saveGeometry().toBase64()).decode(),
+                    state=bytes(self.saveState().toBase64()).decode())
+
+    def closeEvent(self, e):
+        if not self.closing:
+            QtCore.QTimer.singleShot(0, lambda: self.owner.screens_off())
+        super().closeEvent(e)
+
+
+class ScreensDialog(QtWidgets.QDialog):
+    """🖥 Plusieurs écrans : quel panneau sur quel écran (ou caché), préréglages, identifier les écrans."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle(TR("🖥 Plusieurs écrans"))
+        lay = QtWidgets.QVBoxLayout(self)
+        self.info = QtWidgets.QLabel()
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        ident = QtWidgets.QPushButton(TR("👋 Identifier les écrans"))
+        ident.setToolTip(TR("Affiche un grand numéro sur chaque écran pendant 3 secondes."))
+        ident.clicked.connect(lambda *_: owner.identify_screens())
+        lay.addLayout(owner._row(ident, None))
+        pre = QtWidgets.QGroupBox(TR("Préréglages"))
+        pl = FlowLayout(pre)
+        self.pre_btns = {}
+        for k, t in SCREEN_PRESETS:
+            b = QtWidgets.QPushButton(TR(t))
+            b.setToolTip(TR("Remplit le tableau ci-dessous ; « Appliquer » pour le mettre en place."))
+            b.clicked.connect(lambda *_, k=k: self.preset(k))
+            pl.addWidget(b)
+            self.pre_btns[k] = b
+        lay.addWidget(pre)
+        self.tbl = QtWidgets.QTableWidget(len(SCREEN_PANELS), 2)
+        self.tbl.setHorizontalHeaderLabels([TR("Panneau"), TR("Va sur")])
+        self.tbl.verticalHeader().hide()
+        self.tbl.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tbl.setColumnWidth(1, 250)
+        self.tbl.setToolTip(TR("Pour chaque panneau : l'écran où il va (« fenêtre principale » = celui de la fenêtre "
+                               "avec les menus), ou caché. Les panneaux d'un même autre écran sont réunis dans une "
+                               "fenêtre complète, où tu les ranges comme tu veux."))
+        self.combos = {}
+        for r, (n, _g, t) in enumerate(SCREEN_PANELS):
+            it = QtWidgets.QTableWidgetItem(TR(t))
+            it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl.setItem(r, 0, it)
+            cb = QtWidgets.QComboBox()
+            cb.setToolTip(TR("Écran où va ce panneau, ou « Caché »."))
+            self.tbl.setCellWidget(r, 1, cb)
+            self.combos[n] = cb
+        lay.addWidget(self.tbl, 1)
+        self.full = QtWidgets.QCheckBox(TR("Plein écran sur les autres écrans (sans barre des tâches)"))
+        self.full.setToolTip(TR("Sinon : fenêtre agrandie (la barre des tâches reste visible). F11 pour basculer."))
+        lay.addWidget(self.full)
+        ok = QtWidgets.QPushButton(TR("✔ Appliquer"))
+        ok.setToolTip(TR("Met les panneaux sur les écrans choisis."))
+        ok.clicked.connect(lambda *_: self.apply())
+        back = QtWidgets.QPushButton(TR("📌 Tout ramener"))
+        back.setToolTip(TR("Remet tous les panneaux dans la fenêtre principale (disposition de base du mode)."))
+        back.clicked.connect(lambda *_: (owner.screens_off(), self.fill()))
+        close = QtWidgets.QPushButton(TR("Fermer"))
+        close.setToolTip(TR("Ferme cette fenêtre (la répartition reste en place)."))
+        close.clicked.connect(lambda *_: self.close())
+        lay.addLayout(owner._row(ok, back, None, close))
+        self.resize(640, 580)
+        fit_dialog(self, 640, 580)
+        self.fill()
+
+    def fill(self):
+        o = self.owner
+        scrs, main = o.screen_list()
+        lines = [TR("Écran {} : {} · {}×{}").format(k + 1, sc.name(), sc.size().width(), sc.size().height())
+                 + (" · " + TR("fenêtre principale ici") if k == main else "") for k, sc in enumerate(scrs)]
+        if len(scrs) < 2:
+            lines.append(TR("⚠ Un seul écran détecté : branche le 2ᵉ (Windows : Paramètres › Affichage › « Étendre "
+                            "ces affichages »), puis rouvre cette fenêtre. Tu peux déjà cacher ou montrer des panneaux."))
+        self.info.setText("\n".join(lines))
+        for k, b in self.pre_btns.items():
+            b.setEnabled(len(scrs) > 1 or k == "all_here")
+        plan = o.screens_cfg["plan"] if o.screen_hosts else o.screens_current()
+        for n, cb in self.combos.items():
+            cb.blockSignals(True)
+            cb.clear()
+            for k in range(len(scrs)):
+                cb.addItem(TR("Écran {}").format(k + 1) + (" · " + TR("fenêtre principale") if k == main else ""), k)
+            cb.addItem(TR("Caché"), SCREEN_HIDE)
+            v = plan.get(n, SCREEN_HIDE)
+            i = cb.findData(v if v < len(scrs) else main)
+            cb.setCurrentIndex(max(0, i))
+            cb.blockSignals(False)
+        self.full.setChecked(bool(o.screens_cfg.get("full")))
+
+    def plan(self):
+        return {n: int(cb.currentData()) for n, cb in self.combos.items()}
+
+    def preset(self, key):
+        scrs, main = self.owner.screen_list()
+        other = next((k for k in range(len(scrs)) if k != main), main)
+        pl = screen_preset(key, main, other, sdr=getattr(self.owner, "rf_mode", "tiny") != "tiny"
+                           or key in ("tiny_sdr", "sdr_tiny"))
+        for n, cb in self.combos.items():
+            cb.setCurrentIndex(max(0, cb.findData(pl.get(n, SCREEN_HIDE))))
+
+    def apply(self):
+        self.owner.screens_apply(self.plan(), self.full.isChecked())
+        self.fill()
+
+
+def _v8_dock_widget(self, d):
+    """Le vrai panneau d'un dock, où qu'il soit (fenêtre principale, vraie fenêtre, fenêtre d'un autre écran)."""
+    n = d.objectName()
+    for host in (getattr(self, "screen_hosts", None) or {}).values():
+        if n in host.items:
+            return host.items[n].widget()
+    pw = (getattr(self, "panel_wins", None) or {}).get(n)
+    if pw is not None and pw.body.count():
+        return pw.body.itemAt(0).widget()
+    return d.widget()
+
+
+def _v8_screen_list(self):
+    scrs = QtGui.QGuiApplication.screens()
+    cur = self.screen()
+    main = next((k for k, s_ in enumerate(scrs) if s_ == cur), 0)
+    return scrs, main
+
+
+def _v8_screens_docks(self):
+    by = {d.objectName(): d for d in list(self.docks) + self.all_sdr_docks()}
+    return {n: by[n] for n, _g, _t in SCREEN_PANELS if n in by}
+
+
+def _v8_screens_current(self):
+    """Plan qui décrit ce qu'on voit maintenant (tout dans la fenêtre principale)."""
+    _scrs, main = self.screen_list()
+    return {n: (main if d.isVisible() or n in self.panel_wins else SCREEN_HIDE) for n, d in self.screens_docks().items()}
+
+
+def _v8_screens_apply(self, plan, full=False, quiet=False):
+    """Met chaque panneau sur l'écran choisi (plan {panneau: écran | -1}) ; les autres écrans reçoivent une fenêtre
+    complète avec leurs panneaux. Le mode (tinySA / SDR / combiné) suit les panneaux montrés."""
+    self.screens_off(relayout=False)
+    self.panel_attach_all()
+    scrs, main = self.screen_list()
+    docks = self.screens_docks()
+    plan = screen_plan_fit({n: plan.get(n, SCREEN_HIDE) for n in docks}, len(scrs), main)
+    mode = screen_rf_mode(plan)
+    self.rf_mode = mode
+    self.sdr_cfg["rf_mode"] = mode
+    groups = {n: g for n, g, _t in SCREEN_PANELS}
+    here = {groups[n] for n, v in plan.items() if v == main}
+    try:
+        if "sdr" in here and "tiny" in here:
+            self._sdr_arrange("both", "listen")
+        elif "sdr" in here:
+            self._sdr_arrange("sdr", "listen")
+        else:
+            _v7_layout_standard(self)
+            for d in self.all_sdr_docks():
+                d.hide()
+    except Exception:  # noqa: BLE001
+        pass
+    for n, d in docks.items():
+        v = plan[n]
+        if v == main:
+            d.show()
+        elif v == SCREEN_HIDE:
+            d.hide()
+    self.screen_hosts = {}
+    for idx in screens_used(plan, main):
+        host = ScreenWindow(self, idx)
+        for n, _g, _t in SCREEN_PANELS:
+            if plan.get(n) != idx or n not in docks:
+                continue
+            d = docks[n]
+            w = d.widget()
+            ph = QtWidgets.QPushButton(TR("🖥 « {} » est sur l'écran {} — cliquer pour tout ramener").format(
+                d.windowTitle(), idx + 1))
+            ph.setToolTip(TR("Remet tous les panneaux dans la fenêtre principale."))
+            ph.clicked.connect(lambda *_: self.screens_off())
+            d.setWidget(ph)
+            d.hide()
+            host.put(n, d.windowTitle(), w)
+        host.arrange()
+        host.place(scrs[idx], full)
+        self.screen_hosts[idx] = host
+    if mode != "tiny":
+        for e_ in self.sdr_engs.values():
+            if not e_.running():
+                e_.start()
+    else:
+        for e_ in self.sdr_engs.values():
+            e_.stop()
+    self._update_mode_btn()
+    self.screens_cfg = dict(self.screens_cfg, on=bool(self.screen_hosts), plan=plan, full=bool(full))
+    for d in self.all_sdr_docks():
+        try:
+            self.dock_widget(d).apply_level()
+        except Exception:  # noqa: BLE001
+            pass
+    QtCore.QTimer.singleShot(0, self._fit_screen)
+    if not quiet:
+        self.set_status(TR("🖥 Panneaux répartis sur {} écran(s) : bouge-les par leur barre de titre ; « 📌 Tout ramener » "
+                           "pour revenir.").format(1 + len(self.screen_hosts)) if self.screen_hosts
+                        else TR("🖥 Tout est dans la fenêtre principale."))
+    return plan
+
+
+def _v8_screens_off(self, relayout=True):
+    """Ramène les panneaux des autres écrans dans la fenêtre principale."""
+    hosts = getattr(self, "screen_hosts", None) or {}
+    if not hosts:
+        return False
+    docks = self.screens_docks()
+    for host in hosts.values():
+        for n, w in host.take():
+            d = docks.get(n)
+            if d is None:
+                w.deleteLater()
+                continue
+            old = d.widget()
+            d.setWidget(w)
+            w.show()
+            if old is not None:
+                old.deleteLater()
+        host.closing = True
+        host.close()
+        host.deleteLater()
+    self.screen_hosts = {}
+    self.screens_cfg["on"] = False
+    if relayout:
+        _v8_layout_standard(self)
+        self.set_status(TR("📌 Tous les panneaux sont revenus dans la fenêtre principale."))
+    return True
+
+
+def _v8_screens_state(self):
+    st = dict(self.screens_cfg)
+    st["on"] = bool(getattr(self, "screen_hosts", None))
+    st["hosts"] = {str(k): h.state() for k, h in (getattr(self, "screen_hosts", None) or {}).items()}
+    return st
+
+
+def _v8_screens_restore(self):
+    """Au démarrage : les fenêtres des autres écrans rouvertes comme on les a laissées (écran débranché : ses panneaux
+    reviennent dans la fenêtre principale)."""
+    cfg = self.screens_cfg
+    if not cfg.get("on") or not cfg.get("plan"):
+        return
+    try:
+        self.screens_apply(cfg["plan"], cfg.get("full"), quiet=True)
+        for k, host in self.screen_hosts.items():
+            h = cfg.get("hosts", {}).get(str(k)) or {}
+            if h.get("state"):
+                host.restoreState(QtCore.QByteArray.fromBase64(h["state"].encode()))
+    except Exception:  # noqa: BLE001
+        self.screens_off()
+
+
+def _v8_identify_screens(self):
+    """Un grand numéro sur chaque écran (3 s)."""
+    for lb in getattr(self, "_ident_lbls", []):
+        lb.close()
+    self._ident_lbls = []
+    _scrs, main = self.screen_list()
+    for k, sc in enumerate(_scrs):
+        lb = QtWidgets.QLabel(f"{k + 1}" + ("\n" + TR("fenêtre principale") if k == main else ""))
+        lb.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        lb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lb.setStyleSheet("background: rgba(10,132,255,0.92); color: white; font-size: 96px; font-weight: bold; "
+                         "border-radius: 24px; padding: 20px;")
+        g = sc.availableGeometry()
+        lb.setGeometry(g.center().x() - 220, g.center().y() - 160, 440, 320)
+        lb.show()
+        self._ident_lbls.append(lb)
+    QtCore.QTimer.singleShot(3000, lambda: [lb.close() for lb in getattr(self, "_ident_lbls", [])])
+
+
+def _v8_open_screens(self):
+    dlg = getattr(self, "_screens_dlg", None)
+    if dlg is None:
+        dlg = self._screens_dlg = ScreensDialog(self)
+    dlg.fill()
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+    return dlg
+
+
+_v8_layout_standard_0 = _v8_layout_standard
+
+
+def _v8_layout_standard_s(self):
+    self.screens_off(relayout=False)              # 8.0.2 : la disposition de base ramène tout
+    _v8_layout_standard_0(self)
+
+
+_v8_set_rf_mode_0 = _v8_set_rf_mode
+
+
+def _v8_set_rf_mode_s(self, mode, layout=None):
+    self.screens_off(relayout=False)              # 8.0.2 : changer de mode ramène tout (puis dispose le mode)
+    return _v8_set_rf_mode_0(self, mode, layout)
+
+
+def _v8_panel_docks_s(self):
+    hosted = {n for h in (getattr(self, "screen_hosts", None) or {}).values() for n in h.items}
+    return [d for d in _v8_panel_docks(self) if d.objectName() not in hosted]
+
+
+_v8_close_event_0 = MainWindow.closeEvent
+
+
+def _v8_close_event_s(self, ev):
+    _v8_close_event_0(self, ev)
+    if getattr(ev, "isAccepted", lambda: True)():
+        for host in (getattr(self, "screen_hosts", None) or {}).values():
+            host.closing = True
+            host.close()
+        for lb in getattr(self, "_ident_lbls", []):
+            lb.close()
+
+
+_v8_collect_config_s0 = MainWindow._collect_config
+
+
+def _v8_collect_config_s(self, *a, **k):
+    data = _v8_collect_config_s0(self, *a, **k)
+    try:
+        data["screens"] = self.screens_state()
+    except Exception:  # noqa: BLE001
+        pass
+    return data
+
+
+_v8_apply_config_s0 = MainWindow._apply_config
+
+
+def _v8_apply_config_s(self, data, startup=False):
+    r = _v8_apply_config_s0(self, data, startup)
+    if isinstance(data, dict) and "screens" in data:
+        self.screens_cfg = screens_norm(data.get("screens"))
+    return r
+
+
+_v8_late_layout_s0 = MainWindow._late_layout
+
+
+def _v8_late_layout_s(self, *a, **k):
+    r = _v8_late_layout_s0(self, *a, **k)
+    try:
+        self.win_menu.addSeparator()
+        self.win_menu.addAction(TR("🖥 Plusieurs écrans (tinySA, SDR, listes)…")).triggered.connect(
+            lambda *_: self.open_screens())
+    except Exception:  # noqa: BLE001
+        pass
+    QtCore.QTimer.singleShot(900, self.screens_restore)
+    return r
+
+
+_v8_build_mode_menu_0 = _v8_build_mode_menu
+
+
+def _v8_build_mode_menu_s(self):
+    _v8_build_mode_menu_0(self)
+    m = self.mode_btn.menu()
+    acts = m.actions()
+    a_ = QtGui.QAction(TR("🖥 Plusieurs écrans (tinySA sur l'un, SDR sur l'autre…)"), m)
+    a_.setToolTip(TR("Choisis quel panneau va sur quel écran : tinySA complet sur l'un, SDR complet sur l'autre, ou "
+                     "ton mélange."))
+    a_.triggered.connect(lambda *_: self.open_screens())
+    sec = next((x for x in acts if x.isSeparator()), None)
+    if sec is not None:
+        m.insertAction(sec, a_)
+    else:
+        m.addAction(a_)
+
+
+MainWindow.screen_hosts = {}
+MainWindow.screens_cfg = screens_norm(None)
+MainWindow.dock_widget = _v8_dock_widget
+MainWindow.screen_list = _v8_screen_list
+MainWindow.screens_docks = _v8_screens_docks
+MainWindow.screens_current = _v8_screens_current
+MainWindow.screens_apply = _v8_screens_apply
+MainWindow.screens_off = _v8_screens_off
+MainWindow.screens_state = _v8_screens_state
+MainWindow.screens_restore = _v8_screens_restore
+MainWindow.identify_screens = _v8_identify_screens
+MainWindow.open_screens = _v8_open_screens
+MainWindow.layout_standard = _v8_layout_standard_s
+MainWindow.set_rf_mode = _v8_set_rf_mode_s
+MainWindow.panel_docks = _v8_panel_docks_s
+MainWindow.closeEvent = _v8_close_event_s
+MainWindow._collect_config = _v8_collect_config_s
+MainWindow._apply_config = _v8_apply_config_s
+MainWindow._late_layout = _v8_late_layout_s
+MainWindow._build_mode_menu = _v8_build_mode_menu_s
 
 
 def self_test(path):
