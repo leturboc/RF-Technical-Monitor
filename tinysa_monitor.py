@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "7.68.1"
+APP_VER = "8.0.0"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -9065,7 +9065,7 @@ def probe_report(res, tr=None):
 # ------------------------------------------------------------------ V8 étape 16 : le SDR au cœur (panneaux, modes)
 # Clément : « le SDR doit être au cœur du projet, pas une fonction ; des fenêtres de base que l'utilisateur bouge et
 # modifie à sa sauce, comme la base du soft ; modes tinySA / SDR / combiné ; simple / plus / expert ».
-RF_MODES = (("tiny", "📟 tinySA"), ("sdr", "📡 SDR"), ("both", "📟+📡 Combiné"))
+RF_MODES = (("tiny", "📟 tinySA"), ("sdr", "📡 SDR (bêta)"), ("both", "📟+📡 Combiné (bêta)"))   # 8.0 : SDR en bêta
 SDR_LAYOUTS = (("listen", "🎧 Écouter"), ("watch", "👁 Surveiller mes micros"), ("analyze", "🔎 Analyser le spectre"),
                ("dual", "🖥 Spectre SDR sur l'autre écran"))
 SDR_STEPS_KHZ = (1.0, 5.0, 10.0, 12.5, 25.0, 100.0, 1000.0)
@@ -13540,11 +13540,6 @@ class TinySA:
         if not len(levels):
             raise RuntimeError("Le tinySA n'a renvoyé aucune mesure (scan).")
         return freqs, levels
-
-
-# --------------------------------------------------------------------------
-# Branche V8 : la ligne APP_VER du haut reste celle de la V7 (aucun conflit à chaque version V7) ; surcharge ici.
-APP_VER = f"8.0-dev (base {APP_VER})"
 
 
 # --------------------------------------------------------------------------
@@ -44079,7 +44074,7 @@ def install_gc_main_thread(app, interval_ms=500):
 
 # Branche V8 : bulles des menus SDR, ajoutées ici (et pas dans MainWindow.TIPS_MENU, partagé avec la V7 : sinon
 # chaque ajout de bulle côté V7 au même endroit provoquait un conflit de fusion).
-MainWindow.EXTRA_MENUS.append(("📡 SDR (écoute et moniteur)", [   # V8 : sous-menu (sans toucher au menu V7), ordre d'usage
+MainWindow.EXTRA_MENUS.append(("📡 SDR (bêta : écoute et moniteur)", [   # V8 : sous-menu (sans toucher au menu V7), ordre d'usage
     ("📡 Mode SDR (panneaux SDR à l'écran)", "rf_mode_sdr"),
     ("📟+📡 Mode combiné (tinySA + SDR)", "rf_mode_both"),
     ("📟 Mode tinySA seul", "rf_mode_tiny"),
@@ -45696,18 +45691,7 @@ MainWindow.toggle_sdr_demo = lambda self: self.set_sdr_demo(not self.sdr_cfg.get
 
 
 # ------------------------------------------------------------------ V8 étape 22 : premier branchement, calibration,
-# remonter le temps (le manuel SDR est à part : docs/manuel_sdr.html, module manual_sdr)
-try:
-    import manual_sdr as _manual_sdr                # chapitres SDR du manuel (HTML FR / EN), embarqués dans l'exe
-except Exception:  # noqa: BLE001
-    try:                                             # programme chargé par son chemin (tests) : le module est à côté
-        import importlib.util as _ilu
-        _sp = _ilu.spec_from_file_location("manual_sdr", os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                                     "manual_sdr.py"))
-        _manual_sdr = _ilu.module_from_spec(_sp)
-        _sp.loader.exec_module(_manual_sdr)
-    except Exception:  # noqa: BLE001
-        _manual_sdr = None
+# remonter le temps (8.0 : les chapitres SDR sont dans le manuel principal, partie « Le SDR (bêta) »)
 
 
 def sdr_gain_scan(kind, model, base_gains, tool_dir="", iq_tool=None, center=600e6, key="lna", secs=0.4, cancel=None,
@@ -46299,23 +46283,8 @@ def _v8_open_rewind(self, eng=None):
 
 
 def _v8_open_sdr_manual(self):
-    """📖 Manuel SDR (V8) : fichier docs/manuel_sdr.html s'il est là, sinon les chapitres embarqués (module manual_sdr)."""
-    en = getattr(TR, "lang", "") == "en" or getattr(self, "lang", "fr") == "en"
-    name = "manual_sdr_en.html" if en else "manuel_sdr.html"
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    p = base / "docs" / name
-    if not p.exists() and _manual_sdr is not None:
-        import tempfile
-        p = Path(tempfile.gettempdir()) / name
-        try:
-            p.write_text(_manual_sdr.HTML["en" if en else "fr"], encoding="utf-8")
-        except (OSError, KeyError):
-            p = None
-    if p is None or not Path(p).exists():
-        self.set_status(TR("Manuel SDR introuvable."))
-        return None
-    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p)))
-    return p
+    """📖 Manuel SDR : le manuel principal, partie « Le SDR (bêta) » (8.0)."""
+    return self.open_manual("sdr-poste")
 
 
 MainWindow.open_sdr_setup = _v8_open_sdr_setup

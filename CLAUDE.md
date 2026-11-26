@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **7.68.1**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.0**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -26,29 +26,23 @@ aux comptes qui y ont accès.
 **Quota de minutes (épuisé le 10/11/2026 : ~1 660 min de machine en 10 jours, une minute Windows compte double)** :
 `concurrency` (un push annule la compilation en cours de la même branche, jamais sur main) ; `paths-ignore` (CLAUDE.md,
 README, apercu/) ; job `gate` : sur main, aucune compilation si la release `v<APP_VER>` existe, sinon compilation +
-auto-test + release SANS tests ni captures (commit déjà testé sur ui-validation) ; la V8 n'est plus recompilée par
-la synchro (à la main : Actions › Run workflow › v8-sdr, ou `gh workflow run build-exe.yml --ref v8-sdr`).
+auto-test + release SANS tests ni captures (commit déjà testé sur ui-validation).
 **Regrouper les modifs en peu de pushs.**
 Depuis le conteneur Claude, `gh run view <id>` montre les annotations, mais les journaux et artefacts (stockage Azure)
 sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : il n'y a aucune police (mesures ×2).
 
-## Deux branches : V7 (stable) et V8 (SDR)
-- **V7** = `ui-validation` → `main` (releases `v7.x`). **V8** = `v8-sdr` (SDR : HackRF, RTL-SDR ; pré-release
-  `test-v8-sdr` seulement). Ne PAS fusionner la V8 dans main avant le feu vert de Clément (quand il aura testé avec
-  son HackRF Pro) : ce jour-là, retirer la surcharge `APP_VER` de la V8, monter la version (8.0.0), fusionner.
-- **Toute modif de la V7 doit aller dans la V8** (demande de Clément, sinon conflits). Automatique : le workflow
-  `.github/workflows/sync-v8.yml` fusionne `ui-validation` dans `v8-sdr` à chaque push sur `ui-validation` (sans
-  la recompiler depuis 11/2026 : quota de minutes) ; en cas de conflit il échoue (annotation « Conflit V7 → V8 dans : … ») sans rien
-  pousser. Par sécurité, après chaque version V7, vérifier : `git fetch origin && git log origin/v8-sdr..origin/ui-validation`
-  (doit être vide), sinon fusionner à la main.
-- **Pour éviter les conflits** : la V8 ne modifie JAMAIS les lignes communes qui bougent à chaque version V7. La ligne
-  `APP_VER = "7.x"` reste identique dans les deux branches ; la V8 la surcharge plus bas (`APP_VER = f"8.0-dev
-  (base {APP_VER})"`, juste avant le bloc Qt « V8 : SDR ») — le workflow lit la 1re ligne `APP_VER`. L'en-tête de ce
-  fichier (« Version courante ») est le même dans les deux branches ; les notes V8 vont dans « Reste à faire ».
-  Le code V8 est surtout AJOUTÉ (nouvelles fonctions / classes en fin de sections) : garder ce style.
-  Vu en 7.10.0 : V7 et V8 avaient chacune inséré une bulle juste après `TIPS_MENU = {` → conflit (le robot l'a
-  signalé, fusion à la main). Règle : la V8 n'insère RIEN aux mêmes points d'ancrage que la V7 (début d'un dict,
-  d'une liste de menu…) ; ses bulles sont dans `MainWindow.TIPS_MENU.update({...})` juste avant `def main()`.
+## Branches (depuis 8.0.0, 26/11/2026)
+- **Une seule version** : `ui-validation` (pré-release `test-ui-validation`) -> `main` (release `v<APP_VER>`). La V8 (SDR)
+  a été fusionnée en 8.0.0 à la demande de Clément (« on passe en V8 ») AVANT son essai avec un vrai SDR : les fonctions
+  SDR sont marquées **« bêta »** (mode du menu, sous-menu SDR, partie E du manuel) jusqu'à ce que `docs/passage_v8.md`
+  soit coché. En mode 📟 tinySA, l'appli se comporte comme la V7.
+- `v8-sdr` est figée (historique) ; `sync-v8.yml` supprimé ; `kit-sdr.yml` suit `ui-validation`.
+- Le code SDR est encore écrit « façon V8 » : ajouté en fin de sections et branché par des ENVELOPPES (fonctions V7
+  remplacées en fin de fichier : `_collect_config`, `_apply_config`, `closeEvent`, `SoundOut.play`,
+  `SettingsDialog.__init__`, `MapScene`…) et ses traductions dans `lang_en_v8.py`. Prévu : refonte en 8.1 (modules,
+  enveloppes repliées dans le vrai code) sur une branche à part, publiée seulement après un essai de Clément.
+  Historique : de la 7.10 à la 7.68, la V8 n'avait pas le droit de toucher aux lignes de la V7 (conflits de synchro) ;
+  cette règle ne s'applique plus.
 
 ## Organisation du fichier
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
@@ -1443,6 +1437,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   un `ezrf_link` enregistré avec « .ezrf3 » (7.66.1 → 7.68.0) est migré dans `_apply_config`. Manuel FR + EN, PDF, README :
   le nom est revenu là où il s'agit d'EazyRF (import, suivi) ; les mentions génériques (« un logiciel de coordination »)
   restent. Toujours aucune comparaison avec un autre logiciel.
+- **8.0.0 (Clément, 26/11/2026 : « on passe en V8 » -> « Okey gooo »)** : la branche `v8-sdr` (étapes 1-22 + audit) devient la
+  version unique. `APP_VER = "8.0.0"` (la surcharge « 8.0-dev (base …) » retirée) ; SDR marqué « bêta » (`RF_MODES`,
+  sous-menu SDR) ; manuel SDR fondu dans le manuel principal : partie **E. Le SDR (bêta)** de `tests/make_manual.py`
+  (chapitres `sdr-*` lus dans `docs/src/sdr_fr.html` / `sdr_en.html`, préfixe car « surveiller » existait), Aide = F ;
+  `manual_sdr.py`, `make_manual_sdr.py`, `docs/manuel_sdr.*` supprimés, `open_sdr_manual` = `open_manual("sdr-poste")`.
+  `sync-v8.yml` supprimé, `kit-sdr.yml` sur `ui-validation`. Les notes « V8 étape N » plus bas restent l'historique du SDR.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

@@ -1,12 +1,11 @@
-name: Kit SDR (V8)
+name: Kit SDR
 
 # Fabrique kit-sdr-windows.zip (outils SDR libres pour Windows, extraits de l'installateur PothosSDR) et le publie dans la
-# pré-release « kit-sdr ». Se lance quand le dossier kit-sdr/ ou ce fichier change sur v8-sdr, ou à la main.
-# Fichier propre à la V8 (pas dans la V7) : aucun conflit avec build-exe.yml.
+# pré-release « kit-sdr ». Se lance quand le dossier kit-sdr/ ou ce fichier change sur ui-validation, ou à la main.
 
 on:
   push:
-    branches: [v8-sdr]
+    branches: [ui-validation]
     paths: ["kit-sdr/**", ".github/workflows/kit-sdr.yml"]
   workflow_dispatch:
 

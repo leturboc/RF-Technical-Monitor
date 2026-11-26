@@ -1577,3 +1577,8 @@ EXACT.update({
     "🚨 Aller à l'alarme": "🚨 Go to the alarm", "Aller à l'alarme": "Go to the alarm",
     "🚨 {} sur {} : hors de la fenêtre du SDR.": "🚨 {} on {}: outside the SDR window.",
 })
+
+# ---------------------------------------------------------------- 8.0 : SDR en bêta
+EXACT.update({"📡 SDR (bêta)": "📡 SDR (beta)", "📟+📡 Combiné (bêta)": "📟+📡 Combined (beta)",
+              "📡 SDR (bêta : écoute et moniteur)": "📡 SDR (beta: listening and monitor)",
+              "SDR (bêta)": "SDR (beta)", "Combiné (bêta)": "Combined (beta)"})

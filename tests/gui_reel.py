@@ -1679,8 +1679,9 @@ check("22 : calibration : correction calculée sur 3 signaux", _cd.result is not
 shot(_cd, "sdr_calibration")
 _cd.close()
 win.sdr_cfg["model"] = _mod22
-check("22 : manuel SDR embarqué (FR + EN)", m._manual_sdr is not None and "Premier branchement" in m._manual_sdr.HTML["fr"]
-      and "First connection" in m._manual_sdr.HTML["en"])
+check("22 : chapitres SDR dans le manuel (FR + EN)", 'id="sdr-branchement"' in open(os.path.join(HERE, "..", "docs",
+      "manuel.html"), encoding="utf-8").read() and 'id="sdr-branchement"' in open(os.path.join(HERE, "..", "docs",
+      "manual_en.html"), encoding="utf-8").read())
 win.set_rf_mode(_rf21)
 # V8 étape 17 : plusieurs SDR en même temps, chacun ses scènes, sur la carte
 _pd = step("17 : 📡 Mes SDR", win.open_sdr_posts)

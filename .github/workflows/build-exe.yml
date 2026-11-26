@@ -15,7 +15,7 @@ permissions:
 # - un nouveau push sur la même branche annule la compilation en cours (jamais sur main : c'est la release) ;
 # - sur main, le commit a déjà été testé sur ui-validation : tests et captures d'interface sautés, seulement
 #   compilation + auto-test de l'exe + release, et RIEN si la release de cette version existe déjà ;
-# - la V8 n'est plus recompilée à chaque synchro (sync-v8.yml) : à la demande (Actions › Run workflow › v8-sdr).
+# - 8.0 : une seule branche de travail (ui-validation -> main) ; la synchro V7 -> V8 (sync-v8.yml) n'existe plus.
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}

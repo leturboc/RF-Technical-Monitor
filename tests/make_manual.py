@@ -28,7 +28,10 @@ PARTS = [
     ("D", "Référence des outils", "Tool reference",
      ["show", "seuils", "surveiller", "signal", "mur", "fenetres", "coordination", "filtre", "linecheck", "spectera",
       "deux", "alertes", "sessions", "journal", "apparence"]),
-    ("E", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees"]),
+    ("E", "Le SDR (bêta)", "The SDR (beta)",
+     ["sdr-poste", "sdr-branchement", "sdr-ecoute", "sdr-favoris", "sdr-surveiller", "sdr-plusieurs", "sdr-caler",
+      "sdr-remonter", "sdr-demo", "sdr-emettre", "sdr-sons", "sdr-avance", "sdr-savoir"]),
+    ("F", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees"]),
 ]
 DROP = {"limites"}          # chapitres retirés (« ce qui n'est pas vérifié » : suivi dans CLAUDE.md, pas dans le manuel)
 # mise en page sobre (7.28, Clément : « un manuel beaucoup plus pro ») : couverture, parties en intertitres,
@@ -158,6 +161,9 @@ def build(lang):
     nouveaux = open(os.path.join(ROOT, "docs", "src", f"nouveaux_{lang}.html"), encoding="utf-8").read()
     for m in re.finditer(r"<!--CH ([\w-]+)\|([^>]*)-->(.*?)(?=<!--CH |\Z)", nouveaux, re.S):
         chap[m.group(1)] = [m.group(2), "\n" + m.group(3).strip() + "\n\n"]
+    sdr = open(os.path.join(ROOT, "docs", "src", f"sdr_{lang}.html"), encoding="utf-8").read()   # 8.0 : partie SDR
+    for m in re.finditer(r"<!--CH ([\w-]+)\|([^>]*)-->(.*?)(?=<!--CH |\Z)", sdr, re.S):
+        chap["sdr-" + m.group(1)] = [m.group(2), "\n" + m.group(3).strip() + "\n\n"]
     # lexique depuis l'appli
     rows = []
     for t, x in GLOSSARY:

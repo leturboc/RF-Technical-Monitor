@@ -1,5 +1,8 @@
 # Passage en 8.0 — la liste
 
+**8.0.0 publiée le 26/11/2026** (demande de Clément) AVANT les essais ci-dessous : les fonctions SDR restent marquées
+« bêta » tant que la partie 1 n'est pas cochée.
+
 La V8 (branche `v8-sdr`, pré-release `test-v8-sdr`) part sur `main` quand **tout ce qui suit a été essayé en vrai**.
 Coche au fur et à mesure (✅ fait, ⚠ à revoir, ✖ ne marche pas) et envoie le 🩺 diagnostic de ce qui coince.
 
@@ -33,7 +36,7 @@ Coche au fur et à mesure (✅ fait, ⚠ à revoir, ✖ ne marche pas) et envoie
 - [ ] Shure (ULX-D / QLX-D / AD) : niveaux et piles lus (sinon : capture `telnet <ip> 2202`).
 - [ ] Sennheiser (G4 / EW-DX / 6000) : niveaux lus (sinon : capture Wireshark).
 
-## 2. Ce que fait Claude ce jour-là
+## 2. Ce que Claude a fait (26/11/2026)
 1. Vérifier que `v8-sdr` contient toute la V7 : `git log origin/v8-sdr..origin/ui-validation` vide.
 2. Retirer la surcharge `APP_VER = f"8.0-dev (base {APP_VER})"` (fin du fichier) ; mettre `APP_VER = "8.0.0"`.
 3. Fondre le manuel SDR dans le manuel principal : chapitres de `docs/src/sdr_*.html` dans `PARTS` de
