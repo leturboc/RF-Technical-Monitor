@@ -1716,6 +1716,10 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   niveaux » + manuel + lexique avec SON tableau (0 dBu = 0,775 V ; 0 dBV = 1 V = +2,21 dBu ; +4 dBu = 1,228 V = +1,78 dBV
   = 0 VU ; −10 dBV = 0,316 V = −7,78 dBu ; dB SPL réf 20 µPa ; dBFS 0 = pleine échelle). Préciser : dBm audio = 1 mW
   sur 600 Ω, mais dBm RF (appli, tinySA) = 1 mW sur 50 Ω ; dBW = 1 W (pas d'impédance).
+  **Aussi en RÉCEPTION** (Clément : « et why not en réception ») : son démodulé des micros écoutés au SDR (poste,
+  🎧 Écouter, moniteur) avec vu-mètre crête + RMS dans l'unité choisie, déviation FM MESURÉE (déjà dans `mic_health`)
+  comparée à la nominale de l'appareil (« 18 kHz sur 48 kHz -> −8,5 dB »), repère de niveau cible : régler le gain d'un
+  pack sans aller au récepteur.
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
