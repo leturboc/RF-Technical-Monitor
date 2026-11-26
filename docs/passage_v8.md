@@ -32,6 +32,18 @@ Coche au fur et à mesure (✅ fait, ⚠ à revoir, ✖ ne marche pas) et envoie
 - [ ] Sons des alarmes personnalisés entendus (un WAV en alarme critique).
 - [ ] 🧪 SDR démo : on entend les micros, le brouilleur passe, les alarmes tombent.
 
+### Nouveautés 8.0.1 → 8.0.3
+- [ ] Passer de tinySA à SDR / combiné et revenir : la fenêtre reste à la taille de l'écran, rien ne se chevauche,
+      « Mes fréquences » toujours accessible (vrai écran de 1920 × 1080).
+- [ ] 🖥 Plusieurs écrans sur ton vrai double écran : « tinySA ici · SDR sur l'autre », l'inverse, relance de l'appli.
+- [ ] Micros suivis par le SDR : Ctrl+Maj+F sur un vrai clavier, clic droit › 📡, patrouille sur les suivis.
+- [ ] 🎵 Générateur : le son choisi est bien celui entendu ; balayage FLUIDE dans le SDR démo (plus de saccade).
+- [ ] Générateur affecté à un micro : son + type de signal (FM, numérique, coupures, brouilleur, rien) dans les démos.
+- [ ] Mode démo du tinySA : toutes tes fréquences apparaissent sur le spectre.
+- [ ] Nouveaux sons d'alarme (carillons) à l'oreille ; « Bips nets » si tu préfères les anciens (⚙ › Son).
+- [ ] Ouvrir le logiciel deux fois : la 2ᵉ fois ramène la fenêtre déjà ouverte ; changer de langue (relance) marche
+      toujours ; la garde relance bien l'appli après un plantage.
+
 ### Récepteurs en réseau (si dispo)
 - [ ] Shure (ULX-D / QLX-D / AD) : niveaux et piles lus (sinon : capture `telnet <ip> 2202`).
 - [ ] Sennheiser (G4 / EW-DX / 6000) : niveaux lus (sinon : capture Wireshark).
