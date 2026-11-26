@@ -1490,9 +1490,13 @@ _a20.pop("pilot", None)
 win.sdr_tune_mic(_a20)
 _e20._restart()
 _t0 = time.time()
-while time.time() - _t0 < 15 and not _a20.get("pilot"):
+while time.time() - _t0 < 15 and not _a20.get("pilot") and getattr(_e20, "pil_pending", None) is None:
     _a20["state"] = "occ"
     wait(300)
+check("20 : pilote entendu : « c'est bien ton émetteur ? » demandé", getattr(_e20, "pil_pending", None) is not None
+      and _rx18.pil_yes.isVisible() if _rx18.isVisible() else getattr(_e20, "pil_pending", None) is not None)
+_e20.pilot_accept()
+wait(300)
 check("20 : pilote du micro entendu et retenu", abs((_a20.get("pilot") or 0) - 32768) < 300, str(_a20.get("pilot")))
 wait(800)
 check("20 : « c'est bien ton émetteur » + c'est quoi", "🏷" in _rx18.info.text() and "✔" in _rx18.info.text(),
@@ -1535,6 +1539,10 @@ _e20._seen_al |= {a_.get("id") for a_ in win.alarms.active.values()}   # les ala
 win.alarms.raise_(("BREF", int(round(_a20["freq"] * 1000))), "CONFLIT", _a20["name"], _a20["freq"], 2, time.time(),
                   -60.0, "", "test")
 wait(2500)
+if _e20.alarm_offer() is not None:                  # SDR seul à surveiller et alarme hors fenêtre : proposée
+    check("20 : alarme hors fenêtre (SDR seul) = proposée, pas imposée", _rx18.go_al_btn.isVisible() or not _rx18.isVisible())
+    _e20.go_alarm()
+    wait(2000)
 check("20 : alarme -> le SDR s'y cale tout seul", abs(_e20.a - _a20["freq"]) < 0.002 and _rx18.back_btn.isVisible(),
       f"{_e20.a} {_e20.msg}")
 check("20 : … et enregistre le son", _e20.arec is not None)

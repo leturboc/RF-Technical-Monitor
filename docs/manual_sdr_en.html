@@ -174,7 +174,8 @@ time (voices can be recorded).</p>
 (“put the listened mic here”) or right-click a mic in “My mics”. Then <b>one key = the SDR tunes to that mic, with its
 listening setting</b>, wherever you are in the app.</p>
 <h3>🔁 Patrol</h3>
-<p>The patrol moves the SDR from one favourite to the next (or through all this SDR's mics), a few seconds each.
+<p>The patrol moves the SDR from one favourite to the next (or through all this SDR's mics), a few seconds each,
+in frequency order (the SDR re-centres as little as possible).
 Switched-off 💤 or paused mics are skipped. <b>A keypad key, a click on a frequency or a double-click stops the
 patrol</b>: you took over.</p>
 </section>
@@ -185,7 +186,8 @@ tinySA. If a tinySA sweeps at the same time, it keeps the monitoring (the two sc
 <p>When a <b>new</b> alarm comes in (conflict, intermod, absent, too strong, pilot) on a mic of this SDR, the station
 <b>tunes to it by itself</b>: you hear what's going on, and the log notes what the SDR sees there (“what is it”). It
 doesn't steal a frequency you just chose (30 s), and it stays at least 20 s on an alarm before moving to the next.
-<b>↩ Go back</b> takes you back to where you were. Tick “and record the sound” to keep a WAV of the alarm (10 s before
+<b>↩ Go back</b> takes you back to where you were. If the SDR monitors alone and the alarm is outside its window, it
+doesn't move by itself (the other mics would lose their measurement): it offers <b>🚨 Go to the alarm</b>. Tick “and record the sound” to keep a WAV of the alarm (10 s before
 if the SDR was already on that mic, 20 s after).</p>
 <h3>🏷 What is it?</h3>
 <p>Under the frequency, the app says what it sees on A from the shape of the spectrum: analog FM mic, narrow FM
@@ -193,7 +195,8 @@ if the SDR was already on that mic, 20 s after).</p>
 <b>guess</b> for sorting, not a certain identification.</p>
 <h3>🔊 The pilot: “it really is your transmitter”</h3>
 <p>Many analog mics transmit an inaudible tone, the <b>pilot</b>. The first time the SDR hears it on a mic, it
-<b>remembers</b> it. Then: “✔ it really is your transmitter”. If a carrier is there <b>without</b> its pilot for 5 s, a
+asks <b>“is it really your transmitter?”</b>: ✔ Yes remembers it, ✖ No ignores it (an interferer can have a pilot
+too). Then: “✔ it really is your transmitter”. If a carrier is there <b>without</b> its pilot for 5 s, a
 <b>PILOT</b> alarm is raised: maybe another transmitter on your frequency. A pack without a pilot simply shows “no
 pilot seen”. Right-click the info line = forget the pilot (if you changed pack).</p>
 </section>
@@ -217,7 +220,7 @@ approximate. <b>📏 Calibrate the SDR levels on the tinySA</b> makes them compa
 antenna, cable or gain.</p>
 </section>
 <section id="remonter"><h2>8. Going back in time</h2>
-<p>The SDR station keeps the <b>last minutes</b> (1, 3 or 5) in memory: the spectrum and the sound heard.
+<p>The SDR station keeps the <b>last minutes</b> (1, 3 or 5, or off) in memory: the spectrum and the sound heard.
 <b>⏪ Go back in time</b> (Receiver button) shows the waterfall of those minutes, most recent at the top, with alarms as
 markers.</p>
 <ul>
@@ -226,7 +229,7 @@ markers.</p>
   <li><b>💾 Keep this passage</b>: the sound (WAV) and the image, in the recordings folder.</li>
 </ul>
 <div class="box">Everything stays <b>in memory</b> and disappears when you close the app, except what you keep. Sound
-takes about 11 MB per minute.</div>
+takes about 11 MB per minute and per station.</div>
 </section>
 <section id="demo"><h2>9. The SDR demo</h2>
 <p>No SDR yet? <b>🧪 SDR demo</b> (mode menu) runs the whole station <b>without hardware</b>: the app makes the signals

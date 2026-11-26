@@ -77,7 +77,8 @@ demandent ton accord la première fois (on peut enregistrer des voix).</p>
 Récepteur (« y mettre le micro écouté ») ou clic droit sur un micro dans « Mes micros ». Ensuite, <b>une touche =
 le SDR se cale sur ce micro, avec son réglage d'écoute</b>, où que tu sois dans l'appli.</p>
 <h3>🔁 Patrouille</h3>
-<p>La patrouille fait passer le SDR d'un favori à l'autre (ou de tous les micros de ce SDR), quelques secondes chacun.
+<p>La patrouille fait passer le SDR d'un favori à l'autre (ou de tous les micros de ce SDR), quelques secondes chacun,
+par ordre de fréquence (le SDR se recentre le moins possible).
 Les micros éteints 💤 ou en pause sont sautés. <b>Une touche du pavé, un clic sur une fréquence ou un double-clic
 arrête la patrouille</b> : tu as repris la main.</p>
 
@@ -89,7 +90,9 @@ leurs alarmes, comme avec le tinySA. Si un tinySA balaye en même temps, c'est l
 <p>Quand une <b>nouvelle</b> alarme arrive (conflit, intermod, absent, trop fort, pilote) sur un micro de ce SDR, le
 poste <b>s'y cale tout seul</b> : tu entends ce qui se passe, et le journal note ce que le SDR y voit (« c'est
 quoi »). Il ne te vole pas une fréquence que tu viens de choisir (30 s), et il reste au moins 20 s sur une alarme
-avant de passer à la suivante. <b>↩ Revenir</b> te ramène où tu étais. Coche « et enregistrer le son » pour garder un
+avant de passer à la suivante. <b>↩ Revenir</b> te ramène où tu étais. Si le SDR est seul à surveiller et que
+l'alarme est hors de sa fenêtre, il ne bouge pas tout seul (les autres micros perdraient leur mesure) : il te propose
+<b>🚨 Aller à l'alarme</b>. Coche « et enregistrer le son » pour garder un
 WAV de l'alarme (10 s d'avant si le SDR écoutait déjà ce micro, 20 s d'après).</p>
 <h3>🏷 C'est quoi ?</h3>
 <p>Sous la fréquence, l'appli dit ce qu'elle voit sur A d'après la forme du spectre : micro FM analogique, FM étroite
@@ -97,7 +100,8 @@ WAV de l'alarme (10 s d'avant si le SDR écoutait déjà ce micro, 20 s d'après
 <b>supposition</b> utile pour trier, pas une identification certaine.</p>
 <h3>🔊 Le pilote : « c'est bien ton émetteur »</h3>
 <p>Beaucoup de micros analogiques émettent une tonalité inaudible, le <b>pilote</b>. La première fois que le SDR
-l'entend sur un micro, il la <b>retient</b>. Ensuite : « ✔ c'est bien ton émetteur ». Si une porteuse est là
+l'entend sur un micro, il te demande <b>« c'est bien ton émetteur ? »</b> : ✔ Oui le retient, ✖ Non l'ignore (un
+brouilleur peut aussi avoir un pilote). Ensuite : « ✔ c'est bien ton émetteur ». Si une porteuse est là
 <b>sans</b> son pilote pendant 5 s, une alarme <b>PILOTE</b> se lève : c'est peut-être un autre émetteur sur ta
 fréquence. Un pack sans pilote affiche simplement « pas de pilote vu ». Clic droit sur la ligne d'info = oublier le
 pilote (si tu as changé de pack).</p>
@@ -123,7 +127,7 @@ approximatifs. <b>📏 Caler les niveaux du SDR sur le tinySA</b> les rend compa
 d'antenne, de câble ou de gain.</p>
 
 <!--CH remonter|Remonter le temps-->
-<p>Le poste SDR garde en mémoire les <b>dernières minutes</b> (1, 3 ou 5) : le spectre et le son entendu.
+<p>Le poste SDR garde en mémoire les <b>dernières minutes</b> (1, 3 ou 5, ou désactivé) : le spectre et le son entendu.
 <b>⏪ Remonter le temps</b> (bouton du Récepteur) montre le waterfall de ces minutes, le plus récent en haut, avec les
 alarmes en repères.</p>
 <ul>
@@ -132,7 +136,7 @@ alarmes en repères.</p>
   <li><b>💾 Garder ce passage</b> : le son (WAV) et l'image, dans le dossier des enregistrements.</li>
 </ul>
 <div class="box">Tout reste <b>en mémoire</b> et disparaît quand tu fermes l'appli, sauf ce que tu gardes. Le son
-prend environ 11 Mo par minute.</div>
+prend environ 11 Mo par minute et par poste.</div>
 
 <!--CH demo|Le SDR démo-->
 <p>Pas encore de SDR ? <b>🧪 SDR démo</b> (menu du mode) fait tourner tout le poste <b>sans matériel</b> : l'appli

@@ -2057,12 +2057,13 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   tinySA × pas / RBW sans plafond : avant, pas 75 kHz / RBW 10 kHz = micro FM sous-estimé d'environ 9 dB -> calibration
   fausse ; message ⚠ si le pas > 1,5 × RBW) ; alarme PILOTE gardée jusqu'à 3 s de pilote retrouvé (`_pil_ok_t` : avant,
   elle retombait et renaissait avec un son à chaque fois) ; `wav_load` 3 min au plus (10 min = 115 Mo) ; `_seen_al`
-  réduit aux alarmes en cours ; émission refusée aussi si un balayage `hackrf_sweep` tient le HackRF. Laissé (à voir
-  avec Clément) : le pilote APPRIS est le 1er entendu (un brouilleur avec pilote pourrait être retenu à la place du
-  bon émetteur -> « Oublier le pilote ») ; une patrouille entre micros éloignés relance l'outil SDR à chaque pas (USB) ;
-  le calage sur alarme déplace la fenêtre (en SDR seul, les autres micros perdent leur mesure le temps de l'alarme) ;
-  ⏪ ≈ 11 Mo / min / poste (5 min × 4 postes ≈ 230 Mo) ; l'assistant arrête les postes SDR sans demander ; test
-  d'interface Windows de la CI au-delà de 8 min depuis l'étape 20 (plus de verdict Windows pour l'interface).
+  réduit aux alarmes en cours ; émission refusée aussi si un balayage `hackrf_sweep` tient le HackRF. Puis (Clément : « les
+  points à voir avec moi, tu peux y aller ») : pilote vu = QUESTION « c'est bien ton émetteur ? » (`pil_pending`,
+  `pilot_accept`, `pilot_reject` -> `w["_pil_rej"]`, non enregistré ; rangée `row_pil` du Récepteur) ; patrouille par
+  fréquence (`patrol_items` trié : moins de recentrages) ; SDR seul à surveiller + alarme hors fenêtre = proposée
+  (`_al_offer`, `alarm_offer`, `go_alarm`, bouton `go_al_btn` ; `_alarm_go` = le calage) ; ⏪ « Désactivé » (`REWIND_MINUTES`
+  0, `RewindBuffer` n'enregistre rien) + mémoire par poste dans la bulle ; l'assistant DEMANDE avant d'arrêter un poste
+  (`_busy`). Limite du test d'interface Windows de la CI : 12 min (workflow, côté V7).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain

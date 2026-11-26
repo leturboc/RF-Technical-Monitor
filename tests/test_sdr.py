@@ -774,8 +774,8 @@ ok("réglages auto : défauts", san_(None) == ns["SDR_AUTO_DEFAULT"] and san_({"
    and san_({"dwell": 9})["src"] == "favs" and san_({"tune": 0})["tune"] is False)
 pi_ = ns["patrol_items"]
 mics_ = [(606000, False), (610000, True), (614000, False), (620000, False)]
-ok("patrouille : favoris dans l'ordre des touches, éteint sauté", pi_({3: 606000, 1: 620000, 2: 610000}, mics_) ==
-   [620000, 606000])
+ok("patrouille : favoris par fréquence (moins de recentrages), éteint sauté", pi_({3: 606000, 1: 620000, 2: 610000},
+   mics_) == [606000, 620000])
 ok("patrouille : aucun favori -> tous les micros", pi_({}, mics_) == [606000, 614000, 620000])
 ok("patrouille : favori d'un autre SDR ignoré", pi_({1: 999000}, mics_) == [606000, 614000, 620000])
 ok("patrouille : « tous » même avec des favoris", pi_({1: 620000}, mics_, "all") == [606000, 614000, 620000])
@@ -912,6 +912,10 @@ ok("remonter le temps : 1 min gardée, spectres réduits à 1024 cases", 60 <= _
    and len(_rb.frames[-1][2]) == 1024)
 ok("remonter le temps : fréquence de A à un instant", _rb.tune_at(60.0)[0] == 606.2 and _rb.tune_at(99.0)[0] == 607.0)
 ok("remonter le temps : son à partir d'un instant", len(_rb.audio_from(90.0, 5.0)) == 5000)
+_rb0 = ns["RewindBuffer"](0, bytes_per_s=1000)
+_rb0.push_audio(1.0, b"x" * 500)
+_rb0.push_frame(1.0, np.linspace(600, 602, 100), np.zeros(100))
+ok("remonter le temps : 0 = désactivé, rien gardé", not _rb0.audio and not _rb0.frames and _rb0.span() is None)
 
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

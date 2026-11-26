@@ -9327,14 +9327,13 @@ def sdr_auto_norm(d):
 
 
 def patrol_items(favs, mics, src="favs"):
-    """Micros parcourus par la patrouille d'écoute, dans l'ordre -> [kHz]. favs {touche: kHz} ; mics = [(kHz, éteint ou
-    en pause)] des micros du poste (dans sa plage). « favs » : touches 1 à 9 dans l'ordre (s'il n'y en a aucune, tous les
-    micros) ; les micros éteints / en pause sont sautés ; doublons retirés."""
+    """Micros parcourus par la patrouille d'écoute, par fréquence (les micros d'une même fenêtre du SDR à la suite : il
+    se recentre le moins possible) -> [kHz]. favs {touche: kHz} ; mics = [(kHz, éteint ou en pause)] des micros du poste
+    (dans sa plage). « favs » : les favoris (s'il n'y en a aucun, tous les micros) ; éteints / en pause sautés."""
     ok = {int(k): bool(off) for k, off in mics}
     if src == "favs":
-        keys = [int(v) for _k, v in sorted(favs_norm(favs).items())]
-        keys = [k for k in keys if k in ok]
-        if keys:
+        keys = sorted(int(v) for v in favs_norm(favs).values() if int(v) in ok)   # audit : par fréquence, pour que
+        if keys:                                                                # le SDR se recentre le moins possible
             return [k for k in dict.fromkeys(keys) if not ok[k]]
     return [k for k in dict.fromkeys(sorted(ok)) if not ok[k]]
 
@@ -9768,7 +9767,7 @@ GAIN_HEADROOM_DB = 6.0        # le plus fort signal doit rester 6 dB sous la ple
 CAL_SNR_DB = 15.0             # un signal sert à la calibration s'il dépasse son bruit de 15 dB des DEUX côtés
 CAL_HALF_MHZ = 0.1            # puissance de canal mesurée sur ± 100 kHz (micro FM, porteuse)
 CAL_MIN_SIGNALS = 2
-REWIND_MINUTES = (1, 3, 5)
+REWIND_MINUTES = (0, 1, 3, 5)      # 0 = désactivé (rien gardé en mémoire)
 REWIND_FRAME_S = 0.5          # un spectre gardé toutes les 0,5 s (max des trames reçues entre deux)
 REWIND_BINS = 1024
 
@@ -9863,7 +9862,9 @@ class RewindBuffer:
         self._acc, self._acc_t = None, 0.0
 
     def set_minutes(self, minutes):
-        self.keep = 60.0 * max(1, int(minutes))
+        self.keep = 60.0 * max(0, int(minutes))
+        if not self.keep and hasattr(self, "frames"):
+            self.clear()
 
     def _trim(self, now):
         for q in (self.frames, self.audio):
@@ -9873,6 +9874,8 @@ class RewindBuffer:
             self.tunes.popleft()
 
     def push_frame(self, t, F, L):
+        if not self.keep:
+            return
         F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
         if len(L) > REWIND_BINS:
             k = len(L) // REWIND_BINS
@@ -9889,7 +9892,7 @@ class RewindBuffer:
             self._trim(t)
 
     def push_audio(self, t, b):
-        if b:
+        if b and self.keep:
             self.audio.append((float(t), bytes(b)))
 
     def push_tune(self, t, f, name=""):
@@ -21592,7 +21595,8 @@ class SdrEngine(QtCore.QObject):
         self._seen_al, self._al_key_t, self._al_until = set(), {}, 0.0
         self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = None, None, None, None
         self.what, self._t_what = None, 0.0
-        self.rew = RewindBuffer(int(owner.sdr_cfg.get("rewind_min", 3) or 3), LISTEN_RATE * 4)   # étape 22 : ⏪
+        rm = owner.sdr_cfg.get("rewind_min", 3)
+        self.rew = RewindBuffer(int(rm) if rm in REWIND_MINUTES else 3, LISTEN_RATE * 4)        # étape 22 : ⏪
         self.tick = QtCore.QTimer(self)
         self.tick.timeout.connect(self._tick)
 
@@ -21769,6 +21773,7 @@ class SdrEngine(QtCore.QObject):
         if self.a is None or abs(self.a - f) > 1e-6:    # étape 20 : autre fréquence -> tampon et pilote repartent
             self.pre = PreRing(ALARM_REC_PRE_S, LISTEN_RATE * 4)
             self._a_t, self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = time.time(), None, None, None, None
+            self.pil_pending = None
             self.what, self._t_what = None, 0.0
         if not self._internal:                          # tu as pris la main (même sur le micro en cours) : stop
             self._user_t = time.time()
@@ -22007,6 +22012,31 @@ class SdrEngine(QtCore.QObject):
                 self._seen_al.add(a_.get("id"))
         if a is None:
             return
+        f = float(a["freq"])
+        alone = not any(w_.isRunning() and not getattr(w_, "paused", False) for w_ in getattr(o, "workers", []))
+        if alone and self.center is not None and not vfo_inside(self.center, self.span(), f):
+            self._al_offer = a                           # audit : en SDR seul, y aller = les autres micros perdent
+            self._seen_al.add(a.get("id"))               # leur mesure -> on propose au lieu d'y aller
+            self.changed.emit()
+            return
+        self._alarm_go(a, now)
+
+    def alarm_offer(self):
+        """Alarme proposée (hors de la fenêtre, SDR seul à surveiller) encore en cours, ou None."""
+        a = getattr(self, "_al_offer", None)
+        if a is not None and a.get("key") not in self.owner.alarms.active:
+            a = self._al_offer = None
+        return a
+
+    def go_alarm(self):
+        a = self.alarm_offer()
+        self._al_offer = None
+        if a is not None:
+            self._alarm_go(a, time.time())
+        self.changed.emit()
+
+    def _alarm_go(self, a, now):
+        au = self.auto()
         self._al_key_t[a.get("key")] = now
         f = float(a["freq"])
         here = self.a is not None and abs(self.a - f) < 0.0015 and now - self._a_t > 1.0
@@ -22123,16 +22153,33 @@ class SdrEngine(QtCore.QObject):
         learned = w.get("pilot")
         if learned is None:
             self._pil_hist, hz = pilot_learn(self._pil_hist, pilot, now)
-            if hz:
-                w["pilot"] = hz
-                learned = hz
-                self._say(TR("🔊 Pilote de {} retenu : {} kHz (il sert à reconnaître TON émetteur).").format(
-                    w["name"] or f"{w['freq']:.3f}", f"{hz / 1000.0:.1f}"))
+            rej = w.get("_pil_rej") or []
+            if hz and not any(abs(hz - r_) <= PILOT_TOL_HZ for r_ in rej) and getattr(self, "pil_pending", None) is None:
+                self.pil_pending = (w, hz)              # audit : on demande avant de retenir (un brouilleur a aussi
+                self.changed.emit()                     # parfois un pilote)
         bad = carrier and learned is not None and (pilot is None or abs(pilot[0] - learned) > PILOT_TOL_HZ)
         self._pil_miss = (self._pil_miss or now) if bad else None
         self.pil_v = pilot_verdict(learned, pilot, carrier, now - self._pil_miss if self._pil_miss else 0.0, TR)
         if self.pil_v[0] == "other" and now - (self._pil_miss or now) < PILOT_MISS_S:
             self.pil_v = ("wait", TR("pilote attendu ({} kHz)…").format(f"{learned / 1000.0:.1f}"), "warn")
+
+    def pilot_accept(self):
+        """✔ C'est bien mon émetteur : le pilote vu est retenu pour ce micro."""
+        p, self.pil_pending = getattr(self, "pil_pending", None), None
+        if p is not None:
+            w, hz = p
+            w["pilot"] = hz
+            self._say(TR("🔊 Pilote de {} retenu : {} kHz (il sert à reconnaître TON émetteur).").format(
+                w["name"] or f"{w['freq']:.3f}", f"{hz / 1000.0:.1f}"))
+        self.changed.emit()
+
+    def pilot_reject(self):
+        """✖ Ce n'est pas mon émetteur : ce pilote n'est plus proposé pour ce micro (jusqu'à la fermeture)."""
+        p, self.pil_pending = getattr(self, "pil_pending", None), None
+        if p is not None:
+            p[0].setdefault("_pil_rej", []).append(p[1])
+            self._pil_hist = None
+        self.changed.emit()
 
     def forget_pilot(self):
         w = self.cur_mic
@@ -22381,6 +22428,23 @@ class SdrReceiverPanel(SdrPanelBase):
         self.info.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.info.customContextMenuRequested.connect(lambda _p: self._info_menu())
         lay.addWidget(self.info)
+        self.pil_ask = QtWidgets.QLabel("")
+        self.pil_ask.setWordWrap(True)
+        self.pil_yes = QtWidgets.QPushButton("✔ Oui, le retenir")
+        self.pil_yes.setToolTip("Ce pilote sert ensuite à reconnaître ton émetteur (alarme PILOTE s'il manque).")
+        self.pil_yes.clicked.connect(lambda *_: e.pilot_accept())
+        self.pil_no = QtWidgets.QPushButton("✖ Non")
+        self.pil_no.setToolTip("Ce n'est pas ton émetteur (brouilleur ?) : ce pilote n'est pas retenu.")
+        self.pil_no.clicked.connect(lambda *_: e.pilot_reject())
+        self.go_al_btn = QtWidgets.QPushButton("🚨 Aller à l'alarme")
+        self.go_al_btn.setToolTip("L'alarme est hors de la fenêtre du SDR : y aller (les autres micros ne sont plus mesurés\n"
+                                  "par le SDR pendant ce temps ; « ↩ Revenir » pour revenir).")
+        self.go_al_btn.clicked.connect(lambda *_: e.go_alarm())
+        self.row_pil = QtWidgets.QWidget()
+        rp = o._row(self.pil_ask, self.pil_yes, self.pil_no, self.go_al_btn, None)
+        rp.setContentsMargins(0, 0, 0, 0)
+        self.row_pil.setLayout(rp)
+        lay.addWidget(self.row_pil)
         # ---- Plus : démodulation, pas, squelch
         self._sync = False
         self.dp = DemodPick(lambda: hasattr(self, "dp") and not self._sync and self._dp_changed())
@@ -22549,6 +22613,16 @@ class SdrReceiverPanel(SdrPanelBase):
         au = e.auto()
         self._set_chk(self.al_chk, au["tune"])
         self._set_chk(self.alrec_chk, au["rec"])
+        pp = getattr(e, "pil_pending", None)
+        ofr = e.alarm_offer()
+        ask = (TR("🔊 Pilote {} kHz entendu sur {} : c'est bien ton émetteur ?").format(
+            f"{pp[1] / 1000.0:.1f}", pp[0]["name"] or f"{pp[0]['freq']:.3f}") if pp else
+            TR("🚨 {} sur {} : hors de la fenêtre du SDR.").format(ofr.get("kind", ""), ofr.get("name", "")) if ofr else "")
+        if self.pil_ask.text() != ask:
+            self.pil_ask.setText(ask)
+        for w_, on_ in ((self.pil_yes, bool(pp)), (self.pil_no, bool(pp)), (self.go_al_btn, bool(ofr) and not pp)):
+            w_.setVisible(on_)
+        self.row_pil.setVisible(bool(pp or ofr))
         t, tone = e.info_text()
         if self.info.text() != t:
             self.info.setText(t)
@@ -45769,9 +45843,15 @@ class SdrSetupWizard(QtWidgets.QDialog):
     def _busy(self):
         if self.job is not None and not self.job.get("done"):
             return True
-        for e in (getattr(self.owner, "sdr_engs", None) or {}).values():
-            if e.running():
-                e.stop()                                 # un SDR ne sert qu'à un logiciel à la fois
+        run = [e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()]
+        if run:                                          # audit : on demande avant d'arrêter l'écoute en cours
+            q = QtWidgets.QMessageBox.question(self, TR("Poste SDR en marche"),
+                                               TR("Le poste SDR est en marche : l'arrêter le temps du test ?\n"
+                                                  "(un SDR ne sert qu'à un logiciel à la fois)"))
+            if q != QtWidgets.QMessageBox.StandardButton.Yes:
+                return True
+            for e in run:
+                e.stop()
         return False
 
     def probe(self):
@@ -46017,9 +46097,11 @@ class RewindDialog(QtWidgets.QDialog):
         lay = QtWidgets.QVBoxLayout(self)
         self.dur = QtWidgets.QComboBox()
         for m_ in REWIND_MINUTES:
-            self.dur.addItem(TR("{} min gardées").format(m_), m_)
-        self.dur.setCurrentIndex(max(0, self.dur.findData(int(owner.sdr_cfg.get("rewind_min", 3) or 3))))
-        self.dur.setToolTip("Combien de temps le poste SDR garde en mémoire (son : ~11 Mo par minute).")
+            self.dur.addItem(TR("{} min gardées").format(m_) if m_ else TR("Désactivé (rien gardé)"), m_)
+        rm = owner.sdr_cfg.get("rewind_min", 3)
+        self.dur.setCurrentIndex(max(0, self.dur.findData(rm if rm in REWIND_MINUTES else 3)))
+        self.dur.setToolTip("Combien de temps CHAQUE poste SDR garde en mémoire (son : ~11 Mo par minute et par poste ;\n"
+                            "5 min avec 4 postes ≈ 230 Mo). « Désactivé » : rien n'est gardé.")
         self.dur.currentIndexChanged.connect(lambda *_: self.set_dur())
         rf = QtWidgets.QPushButton("↻ Mettre à jour")
         rf.setToolTip("Recharge les dernières secondes.")
@@ -46059,7 +46141,7 @@ class RewindDialog(QtWidgets.QDialog):
         self.draw()
 
     def set_dur(self):
-        m_ = int(self.dur.currentData() or 3)
+        m_ = int(self.dur.currentData() if self.dur.currentData() is not None else 3)
         self.owner.sdr_cfg["rewind_min"] = m_
         for e in (getattr(self.owner, "sdr_engs", None) or {}).values():
             e.rew.set_minutes(m_)
@@ -46074,7 +46156,8 @@ class RewindDialog(QtWidgets.QDialog):
         self.marks = []
         if not fr:
             self.img.clear()
-            self.at.setText(TR("Rien en mémoire : lance le poste SDR (▶ du Récepteur), puis reviens ici."))
+            self.at.setText(TR("Désactivé : choisis une durée en haut à gauche.") if not rb.keep else
+                            TR("Rien en mémoire : lance le poste SDR (▶ du Récepteur), puis reviens ici."))
             return
         lo = min(float(f[0]) for _t, f, _l in fr)
         hi = max(float(f[-1]) for _t, f, _l in fr)

@@ -1552,3 +1552,28 @@ EXACT.update({"peu de marge": "little headroom", "{} = {} dB : {}": "{} = {} dB:
               "📏 Caler les niveaux du SDR": "📏 Calibrate the SDR levels"})
 EXACT[" · ⚠ pas du tinySA ({} kHz) plus grand que sa RBW ({} kHz) : mesure moins sûre (zoome ou affine le pas)"] = \
     " · ⚠ tinySA step ({} kHz) larger than its RBW ({} kHz): less reliable measurement (zoom in or use a finer step)"
+
+# ---------------------------------------------------------------- V8 : points de l'audit vus avec Clément
+EXACT.update({
+    "Ce n'est pas ton émetteur (brouilleur ?) : ce pilote n'est pas retenu.":
+        "It's not your transmitter (interferer?): this pilot isn't remembered.",
+    "Ce pilote sert ensuite à reconnaître ton émetteur (alarme PILOTE s'il manque).":
+        "This pilot is then used to recognise your transmitter (PILOT alarm if it's missing).",
+    "Combien de temps CHAQUE poste SDR garde en mémoire (son : ~11 Mo par minute et par poste ;\n5 min avec 4 postes ≈ "
+    "230 Mo). « Désactivé » : rien n'est gardé.": "How long EACH SDR station keeps in memory (sound: ~11 MB per minute "
+                                                  "and per station;\n5 min with 4 stations ≈ 230 MB). “Off”: nothing is "
+                                                  "kept.",
+    "Désactivé (rien gardé)": "Off (nothing kept)",
+    "Désactivé : choisis une durée en haut à gauche.": "Off: choose a duration at the top left.",
+    "L'alarme est hors de la fenêtre du SDR : y aller (les autres micros ne sont plus mesurés\npar le SDR pendant ce "
+    "temps ; « ↩ Revenir » pour revenir).": "The alarm is outside the SDR window: go there (the other mics are no longer "
+                                           "measured\nby the SDR meanwhile; “↩ Go back” to return).",
+    "Le poste SDR est en marche : l'arrêter le temps du test ?\n(un SDR ne sert qu'à un logiciel à la fois)":
+        "The SDR station is running: stop it for the test?\n(an SDR serves only one program at a time)",
+    "Poste SDR en marche": "SDR station running",
+    "✔ Oui, le retenir": "✔ Yes, remember it", "Oui, le retenir": "Yes, remember it",
+    "✖ Non": "✖ No", "Non": "No",
+    "🔊 Pilote {} kHz entendu sur {} : c'est bien ton émetteur ?": "🔊 Pilot {} kHz heard on {}: is it really your transmitter?",
+    "🚨 Aller à l'alarme": "🚨 Go to the alarm", "Aller à l'alarme": "Go to the alarm",
+    "🚨 {} sur {} : hors de la fenêtre du SDR.": "🚨 {} on {}: outside the SDR window.",
+})
