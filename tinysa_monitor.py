@@ -44694,6 +44694,13 @@ def _v8_sdr_arrange(self, mode, layout="listen", base=True):
             self.resizeDocks([self.dock_spec, sd["spec"]], [w_ // 2, w_ // 2], Qt.Orientation.Horizontal)
     except Exception:  # noqa: BLE001
         pass
+    try:                                                  # 8.0.1 : petit écran (portable) -> Récepteur en onglet
+        if self.minimumSizeHint().height() > self.screen().availableGeometry().height() - 20 \
+                and sd["rx"].objectName() not in self.panel_wins:
+            self.tabifyDockWidget(self.dock_freq, sd["rx"])
+            sd["rx"].raise_()
+    except Exception:  # noqa: BLE001
+        pass
     QtCore.QTimer.singleShot(0, self._fit_screen)
     if layout == "dual":
         scr = self._other_screen()

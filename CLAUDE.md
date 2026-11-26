@@ -1463,7 +1463,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Journal en onglet avec Mes fréquences ; `_fit_screen` (après chaque mode / disposition et au démarrage) recale une
   fenêtre agrandie plus grande que l'écran ; `idle_sdr_view` : SDR pas démarré = axes de la fenêtre qu'il recevra (avant :
   0-1 dBFS et waterfall 0-600 MHz). Mesuré hors écran : 1920 × 1040 dans les 3 modes, mini 914 × 850 (SDR), 1 270 × 850
-  (combiné). **Pas revu sur le vrai écran de Clément.**
+  (combiné) ; écran trop petit (portable) -> le Récepteur passe en onglet avec Mes fréquences ; `set_level` ne réaffiche plus
+  le spectre / waterfall du tinySA en mode SDR. **Pas revu sur le vrai écran de Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
