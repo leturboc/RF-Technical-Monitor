@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.3**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.3** (branche `refonte-8.1` : **8.1.0 « RF Technical Monitor »**, pas encore publiée).
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -54,6 +54,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `tests/_src.py` (`source()` = tinysa_monitor.py puis tsm_core.py). Étapes suivantes prévues : replier les enveloppes
   `_v7_… / _v8_…` dans les vraies méthodes, découper l'interface (appareils, dialogues, SDR, fenêtre) en modules,
   tests plus rapides.
+- **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
+  build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
+  `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du
+  module) : config COPIÉE de `LEGACY_CFG_DIR`, Documents RENOMMÉ (repli : l'ancien reste utilisé), chemins de la config
+  réécrits (`_swap_paths`), note dans `migration.txt` (test dans smoke_test6). Clé Run : « RFTechnicalMonitor », l'ancienne
+  « TinySAMonitor » comptée puis retirée (`windows_startup_on`, `set_windows_startup`, recalée au démarrage). Formats
+  internes GARDÉS (`.tsashow`, `.tsauser`, « tinysa-show », service Pi `tinysa-relais`, `tinysa_relais.py`). Icône
+  maison `assets/make_icon.py` (Pillow) : carré graphite, trace menthe #4fd1c5, marqueur ambre #ffb300, seuil corail ;
+  `APP_ICON_PNG64` (favicon + logo de la page de connexion). Couverture du manuel « tinySA Ultra et SDR ».
 - **Nouveau nom à la 8.1 (Clément, 26/11/2026) : « RF Technical Monitor »** (sigle RFTM : le clin d'œil à « RTFM » est
   voulu, Clément : « je kiffe »). Raisons : depuis la V8 le logiciel n'est plus que tinySA, et « tinySA » est le nom du
   produit d'Erik Kaashoek (pas d'affiliation à laisser croire). « FreqWatch » écarté (logiciel RTL-SDR existant).

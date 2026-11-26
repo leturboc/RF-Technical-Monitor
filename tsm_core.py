@@ -1,4 +1,4 @@
-# TinySA Monitor — le cœur SANS interface (8.1) : formats de scans et de plans, intermodulation, alarmes, seuils,
+# RF Technical Monitor — le cœur SANS interface (8.1) : formats de scans et de plans, intermodulation, alarmes, seuils,
 # occupation, rapports, page web, SDR (calculs)… Rien ici ne dépend de Qt : c'est testé seul (tests/test_*.py
 # exécutent la partie PURE dans un espace de noms restreint). L'interface (tinysa_monitor.py) importe tout d'ici.
 import bisect
@@ -4731,9 +4731,9 @@ def scan_write(F, L, fmt="wwb", sep=";", dec=",", funit="MHz", lunit="dbm", head
     if fmt == "wsm":                              # comme un vrai export WSM (Clément, 7.32.1) : kHz, niveau en dB µV
         stp = max(1.0, round(_scan_step(F, 0.025) * 1000.0))          # pas entier en kHz
         G, V = scan_uniform(F, L, stp / 1000.0)
-        now = title or "TinySA Monitor"
+        now = title or "RF Technical Monitor"
         meta = [("Receiver", "tinySA"), ("Date/Time", ""), ("RFUnit", "dB"), ("Owner", ""), ("ScanCity", ""),
-                ("ScanComment", "TinySA Monitor"), ("ScanCountry", ""), ("ScanDescription", ""),
+                ("ScanComment", "RF Technical Monitor"), ("ScanCountry", ""), ("ScanDescription", ""),
                 ("ScanInteriorExterior", ""), ("ScanLatitude", ""), ("ScanLongitude", ""), ("ScanName", now),
                 ("ScanPostalCode", "")]
         out = [f"{k};{v}" for k, v in meta] + [
@@ -4993,7 +4993,7 @@ def read_user(text):
     except ValueError as e:
         raise ValueError("Fichier illisible (pas du JSON).") from e
     if not isinstance(d, dict) or d.get("format") != "tinysa-user" or not isinstance(d.get("prefs"), dict):
-        raise ValueError("Ce n'est pas un profil utilisateur TinySA Monitor.")
+        raise ValueError("Ce n'est pas un profil utilisateur RF Technical Monitor.")
     return dict(name=" ".join(str(d.get("name") or "").split())[:60] or "Profil", app=str(d.get("app") or ""),
                 prefs={k: v for k, v in d["prefs"].items() if k in USER_KEYS})
 
@@ -5446,7 +5446,7 @@ def build_report_html(d):
     p.append("</table>")
     if len(ev) > 1500:
         p.append(f"<p class='muted'>… {len(ev) - 1500} événements de plus dans le journal CSV.</p>")
-    p.append(f"<p class='muted'>Généré par {e(d.get('app', 'TinySA Monitor'))}. Mesures indicatives du tinySA : "
+    p.append(f"<p class='muted'>Généré par {e(d.get('app', 'RF Technical Monitor'))}. Mesures indicatives du tinySA : "
              "elles ne remplacent pas ta coordination (logiciel dédié).</p></body></html>")
     return "".join(p)
 
@@ -5454,7 +5454,7 @@ def build_report_html(d):
 # --------------------------------------------------------------------------
 # Plusieurs tinySA : adresses (USB ou réseau) et répartition des bandes
 # --------------------------------------------------------------------------
-RELAY_PORT = 5025            # port TCP par défaut du relais réseau (TinySA-Monitor.exe --relais)
+RELAY_PORT = 5025            # port TCP par défaut du relais réseau (RF-Technical-Monitor.exe --relais)
 
 
 def parse_device_addr(s, default_port=RELAY_PORT):
@@ -5761,7 +5761,7 @@ def telegram_chats(updates):
 TUTO_ALERTES = """<h3>📱 ntfy — le plus simple (gratuit, sans compte)</h3>
 <ol>
 <li>Sur le téléphone, installe l'appli <b>ntfy</b> (App Store / Google Play / F-Droid).</li>
-<li>Dans TinySA Monitor (cette fenêtre) : <b>Service</b> = ntfy, garde le <b>Canal ntfy</b> proposé
+<li>Dans RF Technical Monitor (cette fenêtre) : <b>Service</b> = ntfy, garde le <b>Canal ntfy</b> proposé
 (ex. <code>tinysa-3f9a1c7e</code>) ou mets le tien — long et difficile à deviner : <b>quiconque connaît ce
 nom peut lire tes alertes</b>.</li>
 <li>Dans l'appli ntfy : <b>+</b> (S'abonner à un sujet) → tape <b>exactement le même nom</b> de canal → serveur
@@ -5781,7 +5781,7 @@ donne un nom (ex. « TinySA Festival ») puis un identifiant qui finit par <code
 bot</b>. Garde-le secret (il permet d'écrire au nom du bot).</li>
 <li>Ouvre la discussion avec ton bot (lien donné par BotFather) et envoie-lui un message, par exemple
 <code>/start</code>. Pour un <b>groupe</b> d'équipe : ajoute le bot au groupe et écris un message dans le groupe.</li>
-<li>Clique <b>🔎 Trouver mon chat id</b> : TinySA Monitor demande à Telegram qui a écrit au bot et remplit le
+<li>Clique <b>🔎 Trouver mon chat id</b> : RF Technical Monitor demande à Telegram qui a écrit au bot et remplit le
 <b>Chat id</b> (un groupe a un id négatif, ex. <code>-1001234…</code>).</li>
 <li><b>Envoyer une alerte de test</b>.</li>
 </ol>
@@ -5833,7 +5833,7 @@ class PinGuard:
 
 
 # icône de l'appli (parabole 📡, Noto Color Emoji — Apache 2.0), 64 px, pour la page web (favicon / écran d'accueil)
-APP_ICON_PNG64 = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAATEUlEQVR42t2beYyc9XnHP8/vveba2cNeH9jG2AZ8BWOKG646CZAmRIHcRk1oEylV/+gf/SN/VaGJAKmlUiK1KFGLohxKVUVqcRqUQloSJVDVAQzmDLbxweFrvbb38u7sXO/xe/rHOzu7Ozvj3bXdlHSkmdE78x6/5/k+9/P8hDYvBeExjNxLAqDfXX01Yj6FlY8AG7H0o2RABJ26SJoXtz8GkJbj1vNkcedPn6NADRhC5DDwCxLzuHz9wNsA+tguh3t32xl3a75kDvEPYOQhLIB+b80ORL6CcjeeKZJA860XIlbSg0URt0ji2x0bSd8iENoJhCdQ+4h87fBLrbS1ZcDUCfrA2gyr9W8x8hcE4lBVSEgAQUXS75ZFNFH5LSLf+r+qgiiKYsTBNxBqgtVv83b5q/JPx2utTJA5xD+6ehWB2U3GuYVSoigWxDSIn01s24Xr9O+/DeQ7MgNFNV17zhVqyfPUwl3y8NGBmUyQOcR75hkCcw0VG4F4c5DttND/S+Rbn9u6VktE1vGo26OE7u3y8OtNJogqwm4M5bUeke4hZ3ZQbhCvMwRFf0eQp5N90oiM61FNXsJM7uTg8YjdWMPuhrUP7TcoOIsnXqXluxMxXBryrcygHfK0sfPNZ3hUk4icu4Ok8A3ZTcJju4w0rb0xLxJjUQw6dfffYeTbq2iqEI4xhPb98vD+lwwAsdyPZwQLCyb+vY58e/uU0uiKIHo/gOijq67BcV8HMg3nIAsiHlJhafO/oIjy3kB+lnSSegcRsFrD2m0u4nyGQLJUNEFw5rf2U79ZRCuIasvDBXAAD8Vp/KqXbO0VQTGkVlvn0fdOnknSD6sJvpslTD7tItzZRH4hfh4BG2HF40B2J8fd9SROFkHxkzJ94SArw5OsjAdxbRkwQIBtLp75kaeVGQbRBEkqYHzAm8mZzsi3fYY0VEHB8ocuKpuIW6LCDmKvCGJjql4f/7H5AU45m1ibcSjmMohAFCccr9V5Y3wUGT9O/8QBtpZfYl34NsaWQQK0sXhRnR95TdVMbMSk28sry+5hy/mXWVo9CRLMFoELIT834pc0y5FNoo+uLSOSW4i+KgaJyzy98X4Orf8id/nDFDwHq2k2IpI+KLLCaCicmow4PTKCDL3JlrE93FDZRzYeA/GweBjVeW2Aotg44fHr7ufAmo9SfPdFvvz2N+muD6PitpEoaR8HtPVcWnZRshcUpRmLEhLUKXCi53quNpPkjFCOQVo4LGJZ6gvLlzpc37ecgVXLODSyg1fPHGHL0NPcNLmHXDwKkkFxUtPcQryqYMXBRFX2rL2PE9feRe7caSJcVMxcFZgP+ZnET51nJesiM1LatnqkDTMmiFrqTpbIZPEELIJIGwFDiBSiGESUNXm4Mp/nTP923hjayP7BO7nx3M+4qfQsTlJBJcVAVJvGzmiCEw1zMn8D+9bvwowNMXl+ki+c/hE9lQHUySNq59f5OVI94zwR486f1bWQZxWNYyZseyM8i/eNS8M0vmBZRvjIlTlO929j3+AGXh/YyR3nHmdj+XXAQcVDkjpiQ2p+Pwd6d/LqktspjYyCuHz43BNsHN07l/iFIt8mYHM7hI1N5KfFP7XGXlzFqZznXHwVdV9xZwrQPMyIFCILK7KGu9cVONx3Kz8buJY3Tv2Su0b/nUJ9iLPZ9bzWcxuHi9vpSUo8fWqMJOfyha4z7Bz8KdbJpbajY2B0AeR1rrt0O7ukdlmbwSEiP36Kk8uu53QI6zIpYcL8rylG1JP0YVv7PDb2rOTZ/i/w/cPXsLx2grHCVfRWTrFr4Ac8PepTr1zBpzdX6a0MIzZCTQaa6C8S+TYSbZq+nZnIt/cIFgGN6Zk8Tr1S451IqNvU0y/kNQWc7xiynsNYNWb/mXHGRs7gL9/AwLqPE5QG+KMT32Zy7Cx/Z2/iwdxL9PqCSerzhMSdIk25YJjtLgz52XxZXX+LF8dGGMv0ccR1uC7bWQp0SoUEAtegKGcn6xwaKjEwXiHvu2zoK7BlZR+93UWe6rmH7/kFfnLwHb7i7OU6Z5B9poc10f4Oa1wk8i3XuLORv3CxIv3XY014DL88TDju847XS79jWeHPZsIU4Y4RPFeox5Yjw5McGZ7gfC1ieSHDzqv6WdWdxTVCNYqo1Op89ob1fOnl1yjlV3Nz1wkY9bHGIx+XGhEhi9d57ZBAzbYB8yDfSHIUl2I4xMroJO+M9+DlfH4jObocJWsg1rQu6RnBGGG8GnF0pMQ7o2WsKut7C9y6dil9WR9ViKwlThRVxcQR3/nFHoZHzvLIfZ/gqaM3ctWR1STikY8mQdwW13MRyOtsNXfb36TzsWIwtsw11d9wJLeN2rlhWL2KV6uGm3NKxnVIFAZLVQ4NTXCmVKMrcNm2soe1PTlynkOcKPXYTuWdKEoh8PnN6SG+818v8Mgff4ob161ibV+Rn2TzjA6epDseB1VUpBFGL1Ln5+YDgOA8+LHeBxdVw2uoQj6psL94C/VYMHFILVegrkKtNMmeY8McGS5RDDzev6aPG67oZVk+AIUoUSw0AygFXGMohzFf/ekzfOx91/DJ664mRugp5FiZM7xweoJRU2Rz6QCOjVFxWpiwUOQ72YBFVG5SNfDpqw9wVeUgB7puIiyVMJ7Hif6lHBmPubYrw8ZlRYqBh1UltkqsaRou0uoZlGzg8w97XmZJPseXb7mekfEJcokln80wVku4shhg1n6WfybgvhPfx0vCNA+Yw4SFNmmmGeZeuILTSQ0E0Zgbx/fwZmEHGIfK6HnEccgt6SMXKF2+Uk9s0wNIh0DBiFCLIj6yaQPLunJYaxExVCbLJN1FymFE4Hns2r6GH5t7+BHKnxz7HsbahiTYxRM/QwJMewN4YW9gVMFkWF/Zz6raO4QmwBihPDxKdXSMAxV4rZyWQ0SYN1KMrbJlRR89GZ8oSRrXKBMT40xWa2R8F8Tw2a0rKOy4hx+v/nyjKHIxxOusMpppX8+fXy0sDk5c5uaxX6ZpMoqIUB4aIR4/z1uR4dWyNrk8X95Qi+KGmjSQEUO9HjIyXqKQTXP/yBo+s3Ul4Y2f42crP4nYEKvSBrR5DOCMJ5vFID/z2KiiJsuWiRdZWzlMXTKzmTA2xruJYV85jf/deSRBRNoEUspkPaQQ+ICkdQdxuHfbaga2f54X+nZikhqqZoG9yrmFVHPx1VsABzep8KHhJzAzeo4iwuTQKNHQCAOx8FwFxmPFW4A6tCSe1OPUtdJQp8RafNflc9vX8+L7vsTJ/AbE1tCpgHw+5Fu8gLmUdpWoRU2Wq0uvsG18L1WTw6S1JsQIlbHz1M+cZTRSnq0YTtbTghjMzwgjEMaWRBWN6miSIAgiQphY+vI+d954HU9uuI/Q5EATdEHIy6xSvrnkXp0KqOHOs//GkvAcsfjN1rEYQ600SeX0IOVqnZfrDm9UFdWFqUSYWKyCo5ZqvY4x0vQc9diypT/Pmt/7IM8s/zBiww4GUeYWTZg+x1xS3R5J4wLj010f5K4z/0Iizuz0D0hqdepnzxFOTHA4cni+AmMx+NJeGqayktBaIqtkXKFWq81hUGKV2zf0c2zzPQxmrkzT5aYt0w6NnNm5wAJtwIU7NqIWa3JsGXuOD557kqqTQ2yC8VzcYoGB8iSnhoapnhshHBribJiqxJvVNBDyZG6ZXwRqUYIj4DsOYRhiVWd5jtgqec+wfetmnr3idrB2RkInFyiXTdNoFpYIzVO3V8GgqMlwx+CP2THy31S8IoX+PpyuPNds3shAeZITIyNEE5NUTg1QK1c4EBp+XRbOhIoLODIzfRbqcYJnDK4R4sSm8w8tQVScKNuWFRjfcBvDwXIkiWbbAm1XJZaZEiAXjXwrM1IjZbj7xA+4pfwCw+U6zz73PPVanWvXr+Po4CAqQlQPKZ0+Q31omJHQsrfmsK8CEw1PMaWptdjiuykDtKOnULK+YcWadbzZvRls3FCDTsi3AneJyLfeWHHxkhofGH6KwFh8P4OoJZfPU41CrLUEvo+IUB07z+SpAWrjExwLlT1lw+tlpZxYAkmDI8+kS/RcD8d0qD0prOzt4mxx7Yy6xYWRn06GLnYyo1OXtmF/JpxuuvtXcuv7C+TyOcbGJ4is5eCpk1zR20s2CMh4PpJYwqFR/HKFuK+Xd02WM6FyNcpYaCn4DvlMBr/QldqAqQRIppMpRXAFqm4+ze9UWxuiHb9dLqpXN08lVpWaXyQxDtlsgCr4rovnOuw7cQpzeogeTyhmArJ+QD4ICBwH13HIdhXI9/Yw1t8P1qEvrDEaC6tdB78REKlqg3AwxkVEOXRmjCAqg8aoeu1bb22O3UW3pOlcXpr5qvldaZPDKhjF81zUy3C78w6BEZ6tL+dUpTJLv6XhlgzQV+zmqv5+lhZ7OF06xKqeAquXdLOyJ09fLkPGdzFArR7yysAoB4+d4YsjrzZiuzZusAMz3MuKPNPpXzXobubAqkrgOiRuhtV2ggecX/Nyfivf7P4Uh84ONZOlJEkIxUWNy+lSmcGJEoXAp79YZGmhi+5cnu5shnwmg+u6xDiMRwn10hifP/lT1o/sR02AUbvg5Mi9vMhPG55q0NvAMo38xHHoDjzepA+rLhuChFW9fRw8cw5pWPPVy1ZwRTSMjB1nwOlhjIBaFPLu0DDHhocJXI9cEFD0Pboc5SpbYnM0yK0TB9lYG0CdYPa8wgWnVmfZgMuA/ExDKg41r6sREqfiKCIUswEDmkesEDtZzkdgkwTXdbFxxJLefj7nVrhr+BeU6KKkLiV8yqQFVK2DrVnyNqRH6yzRGhmNwLgziF9cTcBtO/1xETo/83w1PjW/MN2/SxMDunIBR9TnL+VDlEvdvFk52XRtCpSrk5zuW0JiAro0pItaw6K31PtMai1QB4sHqrPbZYuoCbjtfOPFIN8cX4kmQRxCv6vJgKnZgXwmQ6zwuFyL1BMyWsIYAyKIMdTrNUruUiInwKmNok4eK05Dklp6lVORXKc22QKHt90FGcB5kFcxSFQDcTi58mYOrvsoI91rcWyY/tdwW4Hv4xhDXkLUpFUlay1xkhDGCZXKJJPeOh7b9Gdcf3Yvm4dfx48mUSfbGLrSzmtbNPGd4oBFIy9IWGGobzPPbftTTqzYQewGeHF12hc3av+ZII0Aa3Ea1xsRAs+jEAT05PMs7+5BVTnas5W3erewvHyanSd+zrYzzzemdi9igvxCI7zaLhJcDPIYJKry7uoP8POb76cWFPHjCk4YNaY4ZmfGgR+QCwIK2Sx9hQJ9hQK9uTy5IMBz0iAnThIyNk19z+VW8K+bvsxQ0M+dx55EjdthyOoi9yw0AqFp5dJFIp+ETBau4Klb/orQL5Ctj5MYd04NXERIkoTurgIf3raNjOPiOm4jmbFYVaJ4elIrUUXUEtiETJDhuT/4c9bKOFcf/RXqFdqO1FzUhg1FXZQaQrZjxtTB2stUTTCuce3xZziy9g7K2T6MjXFshLHJbC+gSuB7rFizisroGHEYpeltQxVkaqODMUiQQbI5TKFIxhNWnTtIcXwQjLewMbsFTa4LKFXRv950AkfWEKtOh24Lmb1tlBRtDEnE8JItvLX6NgaXbmG0+0qqmR4iNzvtGmVaGlBFE4u1Nh3ph6Y3cDUmG5bpLp9jxdk3WXdsL1eeegWSGNwgrZQuqhfQHnmMERI94aLsx8gawKaDOouZwFQQF3U9lo4cYum5/eBmKWeXcr5rFRO5ZUxmlxIGBep+gdgJZltyEYxNCMIKfr1EvjJKV3mY4vhpiqUhnNpEulfDzaJuBrH20olPAzOLMQ5xfMAFeRqRj3V0MfNOYDb6hU4WnHSSLF8eIj8xyCpNFjZ4Mev+BowLxkODrmbJTS4H8q1zQsivRB/YdC2uvAaSaYiXdM4OOzCn5Vxtjt3Ixemr0iamv0zETw1Lq9aIud7IQ4eOoDxFYCTdH3SBTlGnmZyWYQVRRaxN3zrzW+c5nvpNO1dyLhl5tXiOYOU/5YcvHE2ddWIfJmz0r23j1E4l5QtOZjD/+Np8C7+cfn7ucTrEE1vF6MNpKP3YLkceOvwSoX2UrOugxAtGftGTGfN1bPjfQz7dKxITeA6x/Uf53gsv665dTjrB/iACN2aQ2rMEznYqcYyI21HnFz2Ts/DQ9LLrfJN4jQk8lzB+laLcxqk1Ibt3WzM16CkPvVwh4hOE9i0yrovV6P8R8hGB5xLZoyTJJ+Xv91bZsrvR1APS3aIY+ZsDJwn1DkK7j5znNTYfJo29uS1ztrpIpBfasblsOq/YxtqznkdsX6Sa3CE/fOnkzI2TzYxlFhMmCh+kZr+FESXrOulEuSYoNmVKq0S8R5BXFKsWNAERAs/BGKUef4vz+iH50YunOm6dbRr1mZunv77190G+gsrHcZ1iWrnU9P1e1PlGLtGYu5lA5EmUR+S7z+9rpa0jA5rB3WO7jNy7O90+/7Xt10ByNyo7sWxDuaK5fX7RQY5cpOrMg7xSw8gAmDdQ3YPlCfn+3rcAdNcuh93tt8//D5b6x0vwpxIIAAAAAElFTkSuQmCC"
+APP_ICON_PNG64 = "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"
 
 # vues de la page web (façon Ontime : une adresse, plusieurs écrans au choix) ; le PC choisit celles qu'il partage
 WEB_VIEWS = [("liste", "📋", "Liste", "Toutes les fréquences, filtrables par scène / groupe"),
@@ -5981,7 +5981,7 @@ def web_state(rows, alarms, info):
 
 WEB_PAGE = r"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#000000"><title>TinySA Monitor</title>
+<meta name="theme-color" content="#000000"><title>RF Technical Monitor</title>
 <link rel="icon" href="data:image/png;base64,__ICON__"><link rel="apple-touch-icon" href="data:image/png;base64,__ICON__">
 <style>
 :root{--bg:#000000;--panel:#1c1c1e;--panel2:#2c2c2e;--line:#38383a;--fg:#f5f5f7;--mut:#98989d;--acc:#0a84ff;
@@ -6095,7 +6095,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
 <div id="stale">⚠ Plus de nouvelles du PC de surveillance</div>
 <div id="ident" class="hidden"><div>👋<b id="identn"></b><span>C'est cet écran-ci</span></div></div>
 <div id="login" class="hidden"><form class="card" id="lf">
- <div class="logo">📡</div><h1 id="lt">TinySA Monitor</h1><p>Surveillance HF en direct</p>
+ <div class="logo"><img src="data:image/png;base64,__ICON__" alt="" width="56" height="56"></div><h1 id="lt">RF Technical Monitor</h1><p>Surveillance HF en direct</p>
  <label for="ln">Ton nom (pour que la régie sache qui regarde)</label>
  <input class="in" id="ln" maxlength="32" placeholder="ex. Alex — FOH" autocomplete="name">
  <div id="lpw"><label for="lp">Mot de passe</label><input class="in" id="lp" type="password" autocomplete="current-password"></div>
@@ -6103,7 +6103,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
  <div class="err" id="le"></div></form></div>
 <div id="app" class="hidden">
  <header class="top"><div class="bar"><div class="logo">📡</div>
-  <div class="ttl"><b id="t">TinySA Monitor</b><span id="meta" class="mut"></span></div>
+  <div class="ttl"><b id="t">RF Technical Monitor</b><span id="meta" class="mut"></span></div>
   <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button><a id="lng" class="chip" href="?lang=en" title="English" style="text-decoration:none;color:inherit">EN</a></div>
   <nav id="nav"></nav></header>
  <section id="al"></section><main id="view"></main>
@@ -6156,7 +6156,7 @@ window.addEventListener("hashchange",()=>{render();tick()});
 window.addEventListener("resize",()=>{if(mounted==="spectre"||mounted==="waterfall"){wf=null;draw()}else if(mounted==="mur")render()});
 // ---------- rendu
 function render(){if(!D)return;const st=D.state,v0=route(),v=(v0===""||D.views.includes(v0))?v0:"";
- $("#t").textContent=st.title||"TinySA Monitor";document.title=st.title||"TinySA Monitor";$("#lt").textContent=st.title||"TinySA Monitor";
+ $("#t").textContent=st.title||"RF Technical Monitor";document.title=st.title||"RF Technical Monitor";$("#lt").textContent=st.title||"RF Technical Monitor";
  $("#meta").textContent=(st.running?"● en surveillance":"○ arrêté")+(st.cycle?" · cycle "+st.cycle:"")+(st.ver?" · v"+st.ver:"");
  const un=st.alarms.filter(a=>!a.acked).length,all=st.alarms.length,p=$("#pill");
  p.className="pill "+(un?"bad":(all?"":"ok"));p.textContent=un?("⚠ "+un+" alarme"+(un>1?"s":"")):(all?all+" acquittée"+(all>1?"s":""):"✔ Tout va bien");
@@ -6208,7 +6208,7 @@ function keepLayer(id){const s=$("#"+id);if(s)s.onchange=()=>{LS.set("flt",s.val
 function inLayer(r){const f=LS.get("flt","");return !f||lay(r)===f||r.scene===f}
 function mount(v){const el=$("#view");
  if(EXT[v]){EXT[v].mount(el);return}
- if(v===""){el.innerHTML=`<div class="sum" id="kpi"></div><div class="home">${D.views.map(k=>`<a class="vcard" href="#/${k}"><div class="i">${VIEWS[k][0]}</div><b>${VIEWS[k][1]}</b><span>${VIEWS[k][2]}</span></a>`).join("")}</div><div class="who">Connecté en tant que <b>${esc(D.me||"Invité")}</b>${D.state.ver?" · TinySA Monitor v"+esc(D.state.ver):""}</div>`;return}
+ if(v===""){el.innerHTML=`<div class="sum" id="kpi"></div><div class="home">${D.views.map(k=>`<a class="vcard" href="#/${k}"><div class="i">${VIEWS[k][0]}</div><b>${VIEWS[k][1]}</b><span>${VIEWS[k][2]}</span></a>`).join("")}</div><div class="who">Connecté en tant que <b>${esc(D.me||"Invité")}</b>${D.state.ver?" · RF Technical Monitor v"+esc(D.state.ver):""}</div>`;return}
  if(v==="liste"){el.innerHTML=`<div class="tools">${layerSel("flt")}<input class="in" id="q" placeholder="🔎 Nom, fréquence…"><label class="sw"><input type="checkbox" id="oo"> Occupées seulement</label></div><div class="grid" id="g"></div>`;
   keepLayer("flt");$("#q").oninput=()=>update(v);$("#oo").onchange=()=>update(v);return}
  if(v==="mur"){el.innerHTML=`<div class="tools">${layerSel("flt")}<label class="sw"><input type="checkbox" id="oo"> Occupées / faibles seulement</label><button class="btn" id="fs">⛶ Plein écran</button></div><div class="wall" id="g"></div>`;
@@ -7041,8 +7041,8 @@ def listen_center(freqs_mhz, kind):
 def sigmf_meta(dtype, rate, center_hz, t0, hw="", annotations=()):
     """Métadonnées SigMF (fichier .sigmf-meta, JSON) d'un enregistrement IQ."""
     return {"global": {"core:datatype": dtype, "core:sample_rate": float(rate), "core:version": "1.0.0",
-                       "core:recorder": "TinySA Monitor", "core:hw": hw,
-                       "core:description": "Enregistrement IQ (TinySA Monitor, temps réel)"},
+                       "core:recorder": "RF Technical Monitor", "core:hw": hw,
+                       "core:description": "Enregistrement IQ (RF Technical Monitor, temps réel)"},
             "captures": [{"core:sample_start": 0, "core:frequency": float(center_hz),
                           "core:datetime": datetime_utc_iso(t0)}],
             "annotations": list(annotations)}
@@ -13181,9 +13181,9 @@ PROBLEM_CARDS = {
                  "Clique sur « ① Le tinySA » puis choisis la ligne marquée ✔ tinySA (ou « Chercher à nouveau »).",
                  "Pas de tinySA sous la main ? Choisis « Mode démo » pour essayer l'appli.")),
     "busy": ("La prise du tinySA est déjà utilisée",
-             "Un autre programme parle déjà au tinySA (tinySA-App, une 2ᵉ fenêtre de TinySA Monitor…) : une seule "
+             "Un autre programme parle déjà au tinySA (tinySA-App, une 2ᵉ fenêtre de RF Technical Monitor…) : une seule "
              "application à la fois peut l'utiliser.",
-             ("Ferme tinySA-App et tout autre logiciel du tinySA (ou l'autre fenêtre de TinySA Monitor).",
+             ("Ferme tinySA-App et tout autre logiciel du tinySA (ou l'autre fenêtre de RF Technical Monitor).",
               "Débranche le câble USB, attends 5 secondes, rebranche-le.",
               "Clique sur « Réessayer ».")),
     "gone": ("Le tinySA n'est pas trouvé",
@@ -13218,7 +13218,7 @@ PROBLEM_CARDS = {
                     "a changé.",
                     ("Mets le PC et le Raspberry Pi (ou l'autre PC) sur le même réseau.",
                      "L'adresse du Pi change d'un réseau à l'autre : « 🔌 Matériel › Adresses réseau » puis « Tester ».",
-                     "Un pare-feu peut bloquer : autorise TinySA Monitor sur un réseau privé, puis « Réessayer ».")),
+                     "Un pare-feu peut bloquer : autorise RF Technical Monitor sur un réseau privé, puis « Réessayer ».")),
     "range": ("Bande de fréquences refusée",
               "Le tinySA refuse une des bandes à balayer (hors de ce qu'il sait mesurer).",
               ("Ouvre « Vue › Gérer les bandes » et vérifie le début et la fin de chaque bande (en MHz).",
@@ -13396,7 +13396,7 @@ def prep_html(info, tr=None, img=None):
     sub = " · ".join(x for x in (info.get("place"), info.get("dates"), info.get("country")) if x)
     if sub:
         p.append(f"<div>{e(sub)}</div>")
-    p.append(f"<div class='mut'>{e(tr('Généré le'))} {e(info.get('generated', ''))} · TinySA Monitor</div>")
+    p.append(f"<div class='mut'>{e(tr('Généré le'))} {e(info.get('generated', ''))} · RF Technical Monitor</div>")
     rows = info.get("rows") or []
     on_air = [r for r in rows if not r.get("off")]
     scenes = []

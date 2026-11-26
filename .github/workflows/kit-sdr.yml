@@ -64,7 +64,7 @@ jobs:
         run: |
           # Pré-release à part (« kit-sdr ») : celle de la V8 (test-v8-sdr) est effacée et refaite à chaque compilation.
           if ! gh release view kit-sdr >/dev/null 2>&1; then
-            gh release create kit-sdr --prerelease --target "$GITHUB_SHA" --title "Kit SDR pour TinySA Monitor (Windows)" \
-              --notes "Outils SDR libres (HackRF, RTL-SDR, rx_tools, SoapySDR) : dézipper à côté de TinySA-Monitor.exe. Voir LISEZMOI.txt dans le zip."
+            gh release create kit-sdr --prerelease --target "$GITHUB_SHA" --title "Kit SDR pour RF Technical Monitor (Windows)" \
+              --notes "Outils SDR libres (HackRF, RTL-SDR, rx_tools, SoapySDR) : dézipper à côté de RF-Technical-Monitor.exe. Voir LISEZMOI.txt dans le zip."
           fi
           gh release upload kit-sdr kit-sdr-windows.zip --clobber && echo "::notice title=Kit SDR::publié dans la pré-release kit-sdr"

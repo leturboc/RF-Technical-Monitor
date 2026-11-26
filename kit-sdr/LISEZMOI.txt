@@ -1,16 +1,16 @@
-KIT SDR pour TinySA Monitor (V8) — Windows 64 bits
+KIT SDR pour RF Technical Monitor (V8) — Windows 64 bits
 ==================================================
 
-À quoi ça sert : faire marcher un SDR (HackRF, RTL-SDR, Airspy, LimeSDR, Pluto, USRP, bladeRF…) avec TinySA Monitor
+À quoi ça sert : faire marcher un SDR (HackRF, RTL-SDR, Airspy, LimeSDR, Pluto, USRP, bladeRF…) avec RF Technical Monitor
 SANS installer les logiciels SDR un par un. Le kit contient les outils libres dont l'appli a besoin :
 hackrf_sweep / hackrf_transfer, rtl_power / rtl_sdr, rx_power / rx_sdr (rx_tools), SoapySDR et ses modules.
 
 Installation
-1. Dézippe ce fichier À CÔTÉ de TinySA-Monitor.exe : tu dois avoir un dossier « kit-sdr » (avec « bin » dedans)
-   dans le même dossier que l'exe. (Autre place possible : Documents\TinySA Monitor\kit-sdr.)
+1. Dézippe ce fichier À CÔTÉ de RF-Technical-Monitor.exe : tu dois avoir un dossier « kit-sdr » (avec « bin » dedans)
+   dans le même dossier que l'exe. (Autre place possible : Documents\RF Technical Monitor\kit-sdr.)
 2. Pilote USB : la 1re fois, lance Zadig (https://zadig.akeo.ie), choisis ton SDR et installe le pilote WinUSB.
    (RTL-SDR : choisir « Bulk-In, Interface 0 ».)
-3. Dans TinySA Monitor : ☰ Plus › 📡 SDR › Réglages SDR : choisis ton SDR, l'état doit dire « ✔ Prêt ».
+3. Dans RF Technical Monitor : ☰ Plus › 📡 SDR › Réglages SDR : choisis ton SDR, l'état doit dire « ✔ Prêt ».
 
 Ce que le kit NE peut PAS contenir (licences des marques) :
 - SDRplay (RSP1B, RSPdx…) : installe l'API SDRplay depuis sdrplay.com (et le module SoapySDRPlay3).

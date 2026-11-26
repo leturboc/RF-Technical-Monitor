@@ -206,10 +206,10 @@ def build(lang):
     word = "chapter" if lang == "en" else "chapitre"
     body = re.sub(rf"({word}s?) (\d+)\b", lambda m: f"{m.group(1)} {num.get(old_num.get(m.group(2), ''), m.group(2))}",
                   body)
-    sub = (f"Version {VER} · tinySA Ultra on Windows · RF coordination for festivals, concerts and events" if lang == "en"
-           else f"Version {VER} · tinySA Ultra sous Windows · coordination HF en festival, concert, événementiel")
+    sub = (f"Version {VER} · tinySA Ultra and SDR on Windows · RF coordination for festivals, concerts and events" if lang == "en"
+           else f"Version {VER} · tinySA Ultra et SDR sous Windows · coordination HF en festival, concert, événementiel")
     cover = (f'<header class="cover"><img src="{data_uri(ICON, "image/png")}" alt="">\n<div><div class="kicker">'
-             f'{"User manual" if lang == "en" else "Manuel d&#39;utilisation"}</div>\n<h1>TinySA Monitor</h1>\n'
+             f'{"User manual" if lang == "en" else "Manuel d&#39;utilisation"}</div>\n<h1>RF Technical Monitor</h1>\n'
              f'<p class="sub">{sub}</p></div></header>\n')
     top = re.sub(r'<header class="cover">.*?</header>\n', "", top, flags=re.S)
     top = re.sub(r"<h1>.*?</h1>\s*<p class=\"sub\">.*?</p>\n", "", top, flags=re.S)

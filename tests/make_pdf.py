@@ -16,6 +16,6 @@ with sync_playwright() as p:
                margin=dict(top="16mm", bottom="16mm", left="14mm", right="14mm"),
                display_header_footer=True, header_template="<span></span>",
                footer_template='<div style="font-size:8px;width:100%;text-align:center;color:#888">'
-                               'TinySA Monitor — <span class="pageNumber"></span> / <span class="totalPages"></span></div>')
+                               'RF Technical Monitor — <span class="pageNumber"></span> / <span class="totalPages"></span></div>')
         print("écrit", dst, os.path.getsize(os.path.join(ROOT, "docs", dst)) // 1024, "Ko")
     br.close()

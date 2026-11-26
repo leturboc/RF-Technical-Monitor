@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TinySA Monitor v7
+RF Technical Monitor v7
 Analyse spectrale + monitoring de 100+ fréquences pour tinySA Ultra.
 
 Nouveautés v7 :
@@ -85,8 +85,8 @@ except ImportError:                       # faux pyserial des tests
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
-APP_NAME = "TinySA Monitor"
-APP_VER = "8.0.3"
+APP_NAME = "RF Technical Monitor"
+APP_VER = "8.1.0"
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
 WF_ROWS = 150                # profondeur du waterfall
@@ -102,7 +102,67 @@ SEL_MAX = 12                 # nb max de fréquences choisies surlignées
 OCC_LOG_S = 3.0              # journal : une occupation plus courte n'est pas notée (journal de Clément 16/11/2026 :
                              # 310 lignes OCCUPÉ / Libre (1 s) pour un micro qui oscillait autour du seuil)
 TINYSA_VID, TINYSA_PID = 0x0483, 0x5740
-CFG_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "TinySAMonitor" / "config.json"
+LEGACY_CFG_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "TinySAMonitor"     # nom d'avant la 8.1
+LEGACY_DOCS = Path.home() / "Documents" / "TinySA Monitor"
+CFG_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "RFTechnicalMonitor" / "config.json"
+DOCS_ROOT = Path.home() / "Documents" / "RF Technical Monitor"
+
+
+def _swap_paths(v, old, new):
+    """Chemins enregistrés dans la config : old/… -> new/… (récursif)."""
+    if isinstance(v, str):
+        for o, n in zip(old, new):
+            if v == o or v.startswith(o + os.sep) or v.startswith(o + "/"):
+                return n + v[len(o):]
+        return v
+    if isinstance(v, list):
+        return [_swap_paths(x, old, new) for x in v]
+    if isinstance(v, dict):
+        return {k: _swap_paths(x, old, new) for k, x in v.items()}
+    return v
+
+
+def migrate_legacy(cfg_dir, docs, old_cfg=None, old_docs=None):
+    """8.1 (TinySA Monitor -> RF Technical Monitor) : rien ne se perd. La 1re fois, la config est COPIÉE (l'ancienne reste
+    pour revenir à une 8.0) et le dossier Documents est RENOMMÉ (journaux, shows, profils : pas de copie de plusieurs Go) ;
+    les chemins enregistrés dans la config suivent. Dossier Documents impossible à renommer (fichier ouvert) : l'ancien
+    reste utilisé. -> dossier Documents à utiliser."""
+    old_cfg = Path(old_cfg) if old_cfg else LEGACY_CFG_DIR
+    old_docs = Path(old_docs) if old_docs else LEGACY_DOCS
+    cfg_dir, docs, notes = Path(cfg_dir), Path(docs), []
+    try:
+        if not cfg_dir.exists() and old_cfg.is_dir():
+            shutil.copytree(old_cfg, cfg_dir, ignore=shutil.ignore_patterns("instance.lock"))
+            notes.append(f"config copiée de {old_cfg}")
+    except OSError as e:
+        notes.append(f"config : copie impossible ({e})")
+    use_docs = docs
+    if not docs.exists() and old_docs.is_dir():
+        try:
+            os.rename(old_docs, docs)
+            notes.append(f"dossier {old_docs} renommé en {docs}")
+        except OSError as e:
+            use_docs = old_docs
+            notes.append(f"dossier {old_docs} gardé tel quel ({e})")
+    if notes and cfg_dir.is_dir():
+        for f in ("config.json", "config.json.bak"):
+            p = cfg_dir / f
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                old = [str(old_cfg)] + ([str(old_docs)] if use_docs == docs else [])
+                new = [str(cfg_dir)] + ([str(docs)] if use_docs == docs else [])
+                p.write_text(json.dumps(_swap_paths(d, old, new), ensure_ascii=False, indent=1), encoding="utf-8")
+            except (OSError, ValueError):
+                pass
+        try:
+            with open(cfg_dir / "migration.txt", "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now():%Y-%m-%d %H:%M} · " + " ; ".join(notes) + "\n")
+        except OSError:
+            pass
+    return use_docs
+
+
+DOCS_ROOT = migrate_legacy(Path(os.environ.get("APPDATA", str(Path.home()))) / "RFTechnicalMonitor", DOCS_ROOT)
 PROFILE_DIR = CFG_PATH.parent / "profils"
 REF_PATH = CFG_PATH.parent / "reference.json"
 CRASH_PATH = CFG_PATH.parent / "crash.log"
@@ -110,10 +170,10 @@ CFG_BAK = CFG_PATH.with_suffix(".json.bak")
 AUTOSAVE_MS = 60_000
 STOP_FORCE_MS = 4000
 LAYOUT_VER = 4                # à monter quand la disposition de base change (les anciennes sont ignorées)          # « Arrêter » : au-delà, on ferme le port pour débloquer
-LOG_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Journaux"
-SHOW_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Shows"
+LOG_DIR = DOCS_ROOT / "Journaux"
+SHOW_DIR = DOCS_ROOT / "Shows"
 TNT_DB_PATH = CFG_PATH.parent / "anfr_tnt.json"     # 📺 base ANFR réduite aux sites TNT (7.58)
-USER_DIR = Path.home() / "Documents" / "TinySA Monitor" / "Profils"      # 👤 profils utilisateur (7.57)
+USER_DIR = DOCS_ROOT / "Profils"      # 👤 profils utilisateur (7.57)
 
 # 8.1 : la partie sans interface est dans tsm_core.py (testée seule) ; tout est importé ici.
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path:     # tests qui chargent ce fichier par son chemin
@@ -427,14 +487,14 @@ def find_sdr_tool(name, extra_dir=""):
 
 def sdr_kit_dirs(here=None):
     """V8 étape 11 : où chercher le kit SDR (outils open source pour Windows, kit-sdr-windows.zip dézippé) : à côté de
-    l'appli, puis dans Documents/TinySA Monitor."""
+    l'appli, puis dans Documents/RF Technical Monitor."""
     here = Path(here) if here else (Path(sys.executable).parent if getattr(sys, "frozen", False)
                                     else Path(__file__).resolve().parent)
-    return [here / "kit-sdr", Path.home() / "Documents" / "TinySA Monitor" / "kit-sdr"]
+    return [here / "kit-sdr", DOCS_ROOT / "kit-sdr"]
 
 
 SDR_KIT_HINT = ("Le plus simple : le kit SDR. Télécharge kit-sdr-windows.zip (pré-release « Kit SDR » du dépôt) et dézippe-le "
-                "À CÔTÉ de TinySA-Monitor.exe (dossier « kit-sdr ») : hackrf_sweep, rtl_power, rx_tools et SoapySDR sont "
+                "À CÔTÉ de RF-Technical-Monitor.exe (dossier « kit-sdr ») : hackrf_sweep, rtl_power, rx_tools et SoapySDR sont "
                 "trouvés tout seuls. Restent à installer à part : le pilote USB (Zadig), et pour un SDRplay ou un "
                 "WiNRADiO, le logiciel de la marque.")
 
@@ -1052,7 +1112,7 @@ def local_ips():
 
 
 class SerialRelay(threading.Thread):
-    """Relaie les octets entre un port série (le tinySA) et UN client TCP (TinySA Monitor sur l'autre PC).
+    """Relaie les octets entre un port série (le tinySA) et UN client TCP (RF Technical Monitor sur l'autre PC).
     Un nouveau client remplace l'ancien (reconnexion après une coupure réseau). Port USB débranché :
     réouverture automatique toutes les 2 s."""
 
@@ -1795,7 +1855,7 @@ class AlertsDialog(QtWidgets.QDialog):
 
     def send_test(self):
         n, _w = self.values()
-        err = self.owner.send_notify("✔ Test TinySA Monitor", "Les alertes arrivent bien sur ce téléphone.", 2, cfg=n)
+        err = self.owner.send_notify("✔ Test RF Technical Monitor", "Les alertes arrivent bien sur ce téléphone.", 2, cfg=n)
         self.n_lbl.setText(f"⚠ {err}" if err else "Envoyé… (vérifie le téléphone ; une erreur s'affichera ici)")
         QtCore.QTimer.singleShot(4000, self.refresh)
 
@@ -1879,7 +1939,7 @@ class AlertsDialog(QtWidgets.QDialog):
 
 
 class RelayWindow(QtWidgets.QWidget):
-    """Petite fenêtre « relais » à lancer sur le PC où est branché le 2ᵉ tinySA (TinySA-Monitor.exe --relais)."""
+    """Petite fenêtre « relais » à lancer sur le PC où est branché le 2ᵉ tinySA (RF-Technical-Monitor.exe --relais)."""
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
@@ -4685,17 +4745,17 @@ class RxProfileEdit(QtWidgets.QDialog):
 COORD_NOTE = ("⚠ Coordination BASIQUE, pour vérifier et dépanner sur place à partir du spectre mesuré : elle ne "
               "remplace pas un logiciel de coordination. Pour construire ton plan, utilise un outil dédié, bien plus "
               "complet (EazyRF, Shure WWB, Sennheiser WSM, Soundbase…), puis importe-le ici pour le surveiller.")
-TRADEMARKS = ("TinySA Monitor n'est ni affilié ni approuvé par les éditeurs de ces logiciels ; leurs noms (marques de "
+TRADEMARKS = ("RF Technical Monitor n'est ni affilié ni approuvé par les éditeurs de ces logiciels ; leurs noms (marques de "
               "leurs propriétaires) servent seulement à dire avec quels fichiers il est compatible.")
 
 
 def coord_note():
-    """Rappel en tête des outils de coordination : TinySA Monitor fait une coordination SIMPLE (vérifier, dépanner sur
+    """Rappel en tête des outils de coordination : RF Technical Monitor fait une coordination SIMPLE (vérifier, dépanner sur
     place) ; un vrai plan complet se construit dans un logiciel dédié (demande de Clément)."""
     lab = QtWidgets.QLabel(COORD_NOTE)
     lab.setWordWrap(True)
     lab.setStyleSheet("color:#d29922; font-size: 90%;")
-    lab.setToolTip("TinySA Monitor reste un moniteur : ses calculs reprennent les règles de base (écart, intermod "
+    lab.setToolTip("RF Technical Monitor reste un moniteur : ses calculs reprennent les règles de base (écart, intermod "
                    "3ᵉ / 5ᵉ ordre,\nfiltre du récepteur), pas tout ce que fait un logiciel de coordination.\n"
                    + TRADEMARKS)
     return lab
@@ -13620,7 +13680,7 @@ class SettingsDialog(QtWidgets.QDialog):
         f.addRow(self.smooth_chk)
         self.coord_chk = QtWidgets.QCheckBox("Outils de coordination (avancé) : vérifier le plan, coordonner, intermod, profils")
         self.coord_chk.setChecked(bool(getattr(o, "coord_on", False)))
-        self.coord_chk.setToolTip("Cachés par défaut : TinySA Monitor surveille, il ne remplace pas un logiciel de\n"
+        self.coord_chk.setToolTip("Cachés par défaut : RF Technical Monitor surveille, il ne remplace pas un logiciel de\n"
                                   "coordination. La fréquence de secours reste toujours disponible.")
         self.coord_chk.toggled.connect(lambda *_: o.set_coord(self.coord_chk.isChecked()))
         f.addRow(self.coord_chk)
@@ -14376,7 +14436,7 @@ def anfr_download(job):
     """Fil de travail : télécharge la base ANFR (data.gouv.fr), la réduit aux sites TNT. job = dict partagé (pct, msg,
     done, err, db, date). Aucun objet Qt ici."""
     tmpd = Path(tempfile.mkdtemp(prefix="tsm_anfr_"))
-    hdr = {"User-Agent": "TinySA-Monitor"}
+    hdr = {"User-Agent": "RF-Technical-Monitor"}
     try:
         job["msg"] = "Recherche de la dernière version de la base ANFR…"
         with urllib.request.urlopen(urllib.request.Request(ANFR_DATASET, headers=hdr), timeout=30) as r:
@@ -15260,7 +15320,7 @@ class ReadyDialog(QtWidgets.QDialog):
         if o.notify_cfg.get("mode", "off") == "off":
             self.msg.setText("Alertes téléphone désactivées : règle-les d'abord (📣 Alertes).")
             return
-        err = o.send_notify("✅ Test de TinySA Monitor", "Les alertes arrivent bien sur ce téléphone.", 0)
+        err = o.send_notify("✅ Test de RF Technical Monitor", "Les alertes arrivent bien sur ce téléphone.", 0)
         self.msg.setText(err or "Message de test envoyé : vérifie le téléphone.")
 
     def refresh(self):
@@ -15334,7 +15394,7 @@ class FestivalDialog(QtWidgets.QDialog):
         self.auto_chk = QtWidgets.QCheckBox("Reprendre la surveillance tout seul au lancement de l'appli\n"
                                             "(après une coupure de courant, un plantage, un redémarrage de Windows)")
         self.auto_chk.setChecked(c["autostart"])
-        self.boot_chk = QtWidgets.QCheckBox("Lancer TinySA Monitor au démarrage de Windows")
+        self.boot_chk = QtWidgets.QCheckBox("Lancer RF Technical Monitor au démarrage de Windows")
         self.boot_chk.setChecked(o.windows_startup_on())
         self.boot_chk.setEnabled(sys.platform == "win32")
         self.boot_chk.setToolTip("Ajoute l'appli aux programmes lancés à l'ouverture de ta session Windows.\n"
@@ -15810,7 +15870,7 @@ def tour_steps(o, key="ecran"):
         ]
     return [
         (g("port_combo"), "Bienvenue 👋",
-         "TinySA Monitor écoute en permanence les fréquences radio de tes micros sans fil grâce à un petit appareil, "
+         "RF Technical Monitor écoute en permanence les fréquences radio de tes micros sans fil grâce à un petit appareil, "
          "le tinySA.",
          "Il te prévient tout de suite si un micro se tait ou si quelqu'un vient émettre sur ta fréquence.",
          "Ici tu choisis où est branché le tinySA (la ligne « ✔ tinySA »).", None),
@@ -19053,7 +19113,7 @@ class UserProfilesDialog(QtWidgets.QDialog):
         head.setWordWrap(True)
         lay.addWidget(head)
         self.lst = QtWidgets.QListWidget()
-        self.lst.setToolTip("Les profils du dossier Documents › TinySA Monitor › Profils. ✓ = le profil chargé.")
+        self.lst.setToolTip("Les profils du dossier Documents › RF Technical Monitor › Profils. ✓ = le profil chargé.")
         self.lst.itemDoubleClicked.connect(lambda *_: self.load())
         lay.addWidget(self.lst, 1)
         self.info = QtWidgets.QLabel("")
@@ -19149,7 +19209,7 @@ class UserProfilesDialog(QtWidgets.QDialog):
 
     def import_file(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Importer un profil", "",
-                                                        "Profils TinySA Monitor (*.tsauser);;Tous les fichiers (*)")
+                                                        "Profils RF Technical Monitor (*.tsauser);;Tous les fichiers (*)")
         if not path:
             return
         try:
@@ -19169,7 +19229,7 @@ class UserProfilesDialog(QtWidgets.QDialog):
         if p_ is None:
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Exporter le profil", p_.name,
-                                                        "Profils TinySA Monitor (*.tsauser)")
+                                                        "Profils RF Technical Monitor (*.tsauser)")
         if path:
             try:
                 Path(path).write_text(p_.read_text(encoding="utf-8"), encoding="utf-8")
@@ -19899,7 +19959,7 @@ class MainWindow(QtWidgets.QMainWindow):
         "📶 Ajouter un bloc": "Ajoute un porteur large Sennheiser Spectera / WMAS (canal 6 / 8 MHz) à surveiller.",
         "🧱 Mur": "Grandes tuiles, une par fréquence : panneau à détacher sur un 2ᵉ écran (F11 plein écran).",
         "🔤 Mots": "Choisis tes mots ET leurs couleurs pour la colonne Signal : OK, libre, ABSENT, INTERMOD, CONFLIT…",
-        "ℹ À propos": "Version de TinySA Monitor, du tinySA branché, et où sont la config et les journaux.",
+        "ℹ À propos": "Version de RF Technical Monitor, du tinySA branché, et où sont la config et les journaux.",
         "🎛 Mode expert": "Affiche tous les réglages (RBW, entrée, LNA, atténuateur, offset, calibration, relais…).",
         "Disposition standard": "Remet les panneaux à leur place d'origine.",
         "Double écran": "Envoie la liste, le journal et le waterfall sur l'autre écran.",
@@ -20296,7 +20356,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 c = self.home.cards
                 steps = [
                     (c["port"][0], "Bienvenue 👋",
-                     "TinySA Monitor écoute en permanence les fréquences radio de tes micros sans fil grâce à un "
+                     "RF Technical Monitor écoute en permanence les fréquences radio de tes micros sans fil grâce à un "
                      "petit appareil, le tinySA.",
                      "Il te prévient tout de suite si un micro se tait ou si quelqu'un vient émettre sur ta fréquence.",
                      "① « 🔌 Choisir… » : où est branché le tinySA (USB, réseau), ou le mode démo pour essayer sans "
@@ -22259,7 +22319,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _port_chosen(self, *_):
         """Choix dans la liste des ports : « 🌐 tinySA en réseau… » demande l'adresse du relais (Raspberry Pi ou
-        TinySA-Monitor.exe --relais) ; le 1er tinySA peut alors être dans le sac, loin du PC."""
+        RF-Technical-Monitor.exe --relais) ; le 1er tinySA peut alors être dans le sac, loin du PC."""
         d = self.port_combo.currentData()
         if d != self.NET_ITEM:
             self.port_net = bool(d) and str(d).startswith("socket://")
@@ -22583,7 +22643,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev2_addr.setEditable(True)
         self.dev2_addr.setToolTip("USB : choisis le port (COM4…).\nRéseau : adresse du PC où le tinySA est branché, "
                                   "ex. 192.168.1.20:5025\n(sur ce PC-là : 🔧 Outils › 📡 Relais réseau, ou "
-                                  "TinySA-Monitor.exe --relais).")
+                                  "RF-Technical-Monitor.exe --relais).")
         self.dev2_addr.lineEdit().setPlaceholderText("COM4  ou  192.168.1.20:5025")
         self.dev2_addr.currentTextChanged.connect(lambda *_: self._dev2_changed())
         self.dev2_off = QtWidgets.QDoubleSpinBox()
@@ -22981,7 +23041,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return m
 
     def _map_bg_restore(self):
-        """Show ouvert sur ce PC : son plan embarqué est recopié dans Documents/TinySA Monitor/Plans (si le chemin
+        """Show ouvert sur ce PC : son plan embarqué est recopié dans Documents/RF Technical Monitor/Plans (si le chemin
         d'origine n'existe pas ici) ; config.json ne garde que le chemin."""
         m = self.map_cfg
         got = map_bg_extract(m)
@@ -23159,7 +23219,7 @@ class MainWindow(QtWidgets.QMainWindow):
         cyc = f"{self.last_cycle:.1f} s" if self.is_running() else ""
         site = self.notify_cfg.get("site", "")
         st = web_state(rows, self.alarms.listing(), dict(
-            title=f"TinySA Monitor — {site}" if site else "TinySA Monitor", time=datetime.now().strftime("%H:%M:%S"),
+            title=f"RF Technical Monitor — {site}" if site else "RF Technical Monitor", time=datetime.now().strftime("%H:%M:%S"),
             running=self.is_running(), cycle=cyc, ack=len(self.web_cfg.get("pin", "").strip()) >= 4, ver=APP_VER,
             hunt=self.hunt_state(), terrain=self.terrain_state(), health=self.health(),
             thr=round(float(self.thr_spin.value()), 1),
@@ -28734,7 +28794,13 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             import winreg
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as k:
-                return bool(winreg.QueryValueEx(k, "TinySAMonitor")[0])
+                for nm in ("RFTechnicalMonitor", "TinySAMonitor"):       # 8.1 : l'ancien nom compte aussi
+                    try:
+                        if winreg.QueryValueEx(k, nm)[0]:
+                            return True
+                    except OSError:
+                        pass
+                return False
         except OSError:
             return False
 
@@ -28745,10 +28811,10 @@ class MainWindow(QtWidgets.QMainWindow):
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
                                 winreg.KEY_SET_VALUE) as k:
                 if on:
-                    winreg.SetValueEx(k, "TinySAMonitor", 0, winreg.REG_SZ, self._startup_cmd())
-                else:
+                    winreg.SetValueEx(k, "RFTechnicalMonitor", 0, winreg.REG_SZ, self._startup_cmd())
+                for nm in (("TinySAMonitor",) if on else ("RFTechnicalMonitor", "TinySAMonitor")):
                     try:
-                        winreg.DeleteValue(k, "TinySAMonitor")
+                        winreg.DeleteValue(k, nm)                # 8.1 : l'entrée de l'ancien nom disparaît
                     except FileNotFoundError:
                         pass
             return ""
@@ -30869,7 +30935,7 @@ def _kill_tree(pr):
 
 def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_GRACE_S, poll_s=2.0,
               max_runs=None, stop=None):
-    """TinySA-Monitor.exe --garde : petit processus SANS fenêtre qui lance l'appli et la surveille. Elle plante
+    """RF-Technical-Monitor.exe --garde : petit processus SANS fenêtre qui lance l'appli et la surveille. Elle plante
     (code ≠ 0) -> relancée ; elle ne bat plus depuis `hang_s` (figée) -> fermée de force puis relancée ; fermée
     exprès (code 0) -> la garde s'arrête aussi. Relancée, l'appli reprend la surveillance si elle tournait.
     -> nombre de relances."""
@@ -32996,7 +33062,7 @@ class SdrSetupWizard(QtWidgets.QDialog):
 
     def report(self):
         o, m_ = self.owner, self.mdl()
-        lines = [f"TinySA Monitor {APP_VER} — {TR('premier branchement SDR')} — {datetime.now():%Y-%m-%d %H:%M:%S}",
+        lines = [f"RF Technical Monitor {APP_VER} — {TR('premier branchement SDR')} — {datetime.now():%Y-%m-%d %H:%M:%S}",
                  f"{TR('Modèle')} : {m_['name']} ({m_['key']}, {m_['kind']})",
                  f"{TR('Gains')} : {o.sdr_gains(m_['kind'])}",
                  f"{TR('Correction de niveau')} : {o.sdr_offset(m_['kind']):+.1f} dB",
@@ -33965,6 +34031,11 @@ def _v8_sdr_follow_key(self):
 
 def _v8_late_layout_f(self, *a, **k):
     r = _v8_late_layout_s(self, *a, **k)
+    try:                                        # 8.1 : démarrage avec Windows réglé sous l'ancien nom -> nouveau nom / exe
+        if sys.platform == "win32" and self.windows_startup_on():
+            self.set_windows_startup(True)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Shift+F"), self.watch_table)
         sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -34004,7 +34075,7 @@ MainWindow._late_layout = _v8_late_layout_f
 
 
 def self_test(path):
-    """TinySA-Monitor.exe --selftest fichier : vérifie que l'EXE contient bien ce qui est chargé à la demande
+    """RF-Technical-Monitor.exe --selftest fichier : vérifie que l'EXE contient bien ce qui est chargé à la demande
     (réseau socket://, traductions, son). Lancé par la CI après PyInstaller (7.23.2 : sans protocol_socket dans
     l'exe, le tinySA en réseau était impossible : « invalid URL, protocol 'socket' not known »)."""
     import importlib
@@ -34048,7 +34119,7 @@ def self_test(path):
 def _instance_name():
     """Nom du canal local de l'appli (un par dossier de config, donc un par utilisateur Windows)."""
     import hashlib
-    return "TinySAMonitor-" + hashlib.sha1(str(CFG_PATH.parent).encode("utf-8")).hexdigest()[:12]
+    return "RFTechnicalMonitor-" + hashlib.sha1(str(CFG_PATH.parent).encode("utf-8")).hexdigest()[:12]
 
 
 def single_instance(app):
@@ -34072,7 +34143,7 @@ def single_instance(app):
             sock.waitForBytesWritten(1000)
             sock.disconnectFromServer()
         else:
-            QtWidgets.QMessageBox.information(None, APP_NAME, TR("TinySA Monitor est déjà ouvert sur ce PC (regarde dans la "
+            QtWidgets.QMessageBox.information(None, APP_NAME, TR("RF Technical Monitor est déjà ouvert sur ce PC (regarde dans la "
                                                                  "barre des tâches)."))
         return None
     app._instance_lock = lock
@@ -34093,7 +34164,7 @@ def _instance_wake(srv, win):
         win.show()
         win.raise_()
         win.activateWindow()
-        win.set_status(TR("TinySA Monitor était déjà ouvert : le voici."))
+        win.set_status(TR("RF Technical Monitor était déjà ouvert : le voici."))
     except Exception:  # noqa: BLE001
         pass
 

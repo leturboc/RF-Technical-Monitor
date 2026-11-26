@@ -1,4 +1,4 @@
-name: Build TinySA-Monitor.exe
+name: Build RF-Technical-Monitor.exe
 
 on:
   push:
@@ -130,7 +130,7 @@ jobs:
           # traductions françaises de Qt (boutons Oui / Non, Annuler…) embarquées explicitement
           tr=$(python -c "from PySide6.QtCore import QLibraryInfo as Q; print(Q.path(Q.LibraryPath.TranslationsPath))")
           extra=""; [ -f lang_en_v8.py ] && extra="--hidden-import lang_en_v8"     # V8 : ses traductions
-          python -m PyInstaller --noconfirm --onefile --noconsole --name TinySA-Monitor \
+          python -m PyInstaller --noconfirm --onefile --noconsole --name RF-Technical-Monitor \
             --icon assets/icone.ico --add-data "assets/icone.png;." --add-data "docs/manuel.html;docs" --add-data "docs/manual_en.html;docs" \
             --add-data "$tr/qtbase_fr.qm;PySide6/Qt/translations" --hidden-import lang_en --hidden-import PySide6.QtMultimedia --hidden-import PySide6.QtNetwork --hidden-import segno \
             --hidden-import serial.urlhandler.protocol_socket --hidden-import serial.urlhandler.protocol_rfc2217 $extra tinysa_monitor.py
@@ -140,7 +140,7 @@ jobs:
         run: |
           # ce qui est chargé à la demande peut manquer dans l'exe sans qu'aucun test Python ne le voie (7.23.1 :
           # pas de socket:// → tinySA en réseau impossible) ; l'exe sans console écrit son résultat dans un fichier
-          timeout 180 ./dist/TinySA-Monitor.exe --selftest selftest.txt || true
+          timeout 180 ./dist/RF-Technical-Monitor.exe --selftest selftest.txt || true
           cat selftest.txt || echo "pas de selftest.txt"
           n=$(grep -oP 'ÉCHECS: \K\d+' selftest.txt || echo 99)
           if [ "$n" = "0" ]; then echo "::notice title=auto-test exe::ÉCHECS 0"; else
@@ -166,8 +166,8 @@ jobs:
         continue-on-error: true            # l'exe est aussi dans la (pré-)release
         uses: actions/upload-artifact@v4
         with:
-          name: TinySA-Monitor
-          path: dist/TinySA-Monitor.exe
+          name: RF-Technical-Monitor
+          path: dist/RF-Technical-Monitor.exe
           retention-days: 3
 
       - name: Release (sur tag v*)
@@ -175,15 +175,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/TinySA-Monitor.exe
+            dist/RF-Technical-Monitor.exe
             dist/relais-raspberry-pi.zip
           # v7.1-beta1 (avec tiret) = pré-release de test ; v7.1 = version stable (« latest »)
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           body: |
-            **Télécharger :** `TinySA-Monitor.exe` ci-dessous (Windows, aucune installation).
+            **Télécharger :** `RF-Technical-Monitor.exe` ci-dessous (Windows, aucune installation).
             Au premier lancement, SmartScreen peut avertir (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
-            PC du 2ᵉ tinySA en réseau : lancer `TinySA-Monitor.exe --relais`.
+            PC du 2ᵉ tinySA en réseau : lancer `RF-Technical-Monitor.exe --relais`.
 
       - name: Pré-release de test (push sur une branche autre que main)
         if: github.ref_type == 'branch' && github.ref_name != 'main'
@@ -193,11 +193,11 @@ jobs:
         run: |
           tag="test-${GITHUB_REF_NAME//\//-}"
           gh release delete "$tag" --cleanup-tag -y || true
-          gh release create "$tag" dist/TinySA-Monitor.exe dist/relais-raspberry-pi.zip --prerelease --target "$GITHUB_SHA" \
+          gh release create "$tag" dist/RF-Technical-Monitor.exe dist/relais-raspberry-pi.zip --prerelease --target "$GITHUB_SHA" \
             --title "Test ${GITHUB_REF_NAME} — $(date -u +'%d/%m %H:%M') UTC" \
             --notes "Version de test (branche ${GITHUB_REF_NAME}, commit ${GITHUB_SHA::7}), remplacée à chaque push.
-          Télécharger TinySA-Monitor.exe ci-dessous. SmartScreen (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
-          PC du 2ᵉ tinySA en réseau : lancer TinySA-Monitor.exe --relais. Raspberry Pi : relais-raspberry-pi.zip (voir LISEZMOI.md)."
+          Télécharger RF-Technical-Monitor.exe ci-dessous. SmartScreen (exe non signé) : « Informations complémentaires » › « Exécuter quand même ».
+          PC du 2ᵉ tinySA en réseau : lancer RF-Technical-Monitor.exe --relais. Raspberry Pi : relais-raspberry-pi.zip (voir LISEZMOI.md)."
 
       - name: Release stable (push sur main, une fois par version)
         if: github.ref == 'refs/heads/main'
@@ -209,7 +209,7 @@ jobs:
           if gh release view "v$ver" >/dev/null 2>&1; then
             echo "Release v$ver déjà publiée : rien à faire (monte APP_VER pour une nouvelle version)."
           else
-            gh release create "v$ver" dist/TinySA-Monitor.exe dist/relais-raspberry-pi.zip --target "$GITHUB_SHA" --title "TinySA Monitor $ver" \
+            gh release create "v$ver" dist/RF-Technical-Monitor.exe dist/relais-raspberry-pi.zip --target "$GITHUB_SHA" --title "RF Technical Monitor $ver" \
               --generate-notes --latest
           fi
 

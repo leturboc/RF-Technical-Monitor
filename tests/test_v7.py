@@ -222,7 +222,7 @@ html = ns["build_report_html"](dict(title="Festival <X>", venue="Lyon", operator
                                     duration="3 h 12", notes="ligne 1\nligne 2", events=ev, rows=rws, F=Fx, L=Lx, thr=-80.0,
                                     groups=[dict(name="Main Stage › A", n=1, occ=0, events=2, conflicts=1, absents=0, prio="Critique")],
                                     im=[dict(f=499.0, order="IM3", text="2×HF 1 − HF 2", tname="Victime (499.000)", delta="+0", verdict="à risque")],
-                                    app="TinySA Monitor 7.0"))
+                                    app="RF Technical Monitor 7.0"))
 ok("rapport : titre échappé", "Festival &lt;X&gt;" in html and "Festival <X>" not in html)
 ok("rapport : noms échappés", "Chant &lt;b&gt;" in html and "<b>)" not in html.replace("<b>", "", 0))
 ok("rapport : aucun script", "<script" not in html.lower())
@@ -354,7 +354,7 @@ mine = dict(cfg_full, theme=dict(ui_base="#123"), watch=[], thr=-90, log_dir="/c
 ap = ns["show_apply"](mine, back)
 check("show appliqué : fréquences et seuils du show", (len(ap["watch"]), ap["thr"]), (2, -75))
 check("show appliqué : mes préférences gardées", (ap["theme"], ap["log_dir"]), (dict(ui_base="#123"), "/cette-annee"))
-old = ns["read_show"](_json.dumps(dict(cfg_full, profil="TinySA Monitor")), "evenement")
+old = ns["read_show"](_json.dumps(dict(cfg_full, profil="RF Technical Monitor")), "evenement")
 check("ancien profil : lu, préférences ignorées", (old["meta"]["name"], "theme" in old["show"], len(old["show"]["watch"])),
       ("evenement", False, 2))
 try:

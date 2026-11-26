@@ -235,7 +235,7 @@ def post_(op, path, obj, port=None):
 o1 = opener()
 code, page = get(o1, "/")
 page = page.decode("utf-8")
-check("page servie", code == 200 and "<title>TinySA Monitor</title>" in page and "etat.json" in page)
+check("page servie", code == 200 and "<title>RF Technical Monitor</title>" in page and "etat.json" in page)
 check("page : icône (parabole) en favicon", 'rel="icon" href="data:image/png;base64,iVBOR' in page and "__ICON__" not in page)
 check("icône de l'exe présente", all(os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", f))
                                      for f in ("icone.ico", "icone.png")))

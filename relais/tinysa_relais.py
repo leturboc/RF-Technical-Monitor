@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Relais réseau du tinySA pour Raspberry Pi (ou tout Linux / Mac / PC sans écran) — TinySA Monitor.
+"""Relais réseau du tinySA pour Raspberry Pi (ou tout Linux / Mac / PC sans écran) — RF Technical Monitor.
 
 Le tinySA est branché en USB sur le Pi ; ce script le partage sur le réseau (TCP, port 5025 par défaut).
-Sur le PC de régie, dans TinySA Monitor : « 2ᵉ tinySA » = l'adresse du Pi, ex. « 192.168.1.42 » ou
+Sur le PC de régie, dans RF Technical Monitor : « 2ᵉ tinySA » = l'adresse du Pi, ex. « 192.168.1.42 » ou
 « raspberrypi.local ». Seul besoin : Python 3 et pyserial (sudo apt install python3-serial).
 
     python3 tinysa_relais.py                 # trouve le tinySA tout seul, port 5025
@@ -13,7 +13,7 @@ En --multi, chaque tinySA est reconnu par son numéro de série USB : le même t
 réseau (quelle que soit la prise), retenu dans ~/.tinysa_relais_ports.json. Un tinySA branché plus tard reçoit le
 port suivant.
 
-Même protocole que « TinySA-Monitor.exe --relais » : les octets passent tels quels, un seul client à la fois
+Même protocole que « RF-Technical-Monitor.exe --relais » : les octets passent tels quels, un seul client à la fois
 (un nouveau remplace l'ancien : reconnexion après une coupure Wi-Fi), réouverture du port USB s'il est débranché.
 """
 import argparse
@@ -295,7 +295,7 @@ def serve_multi(base_port=RELAY_PORT, host="0.0.0.0", stop=None, opener=None, li
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Relais réseau du tinySA (TinySA Monitor)")
+    ap = argparse.ArgumentParser(description="Relais réseau du tinySA (RF Technical Monitor)")
     ap.add_argument("--serial", help="port du tinySA (défaut : trouvé tout seul)")
     ap.add_argument("--port", type=int, default=int(os.environ.get("TSM_RELAY_PORT", RELAY_PORT)),
                     help=f"port TCP (défaut {RELAY_PORT})")

@@ -13,7 +13,7 @@ sudo cp "$(dirname "$0")/tinysa_relais.py" "$DIR/"
 sudo usermod -aG dialout "$U"
 sudo tee /etc/systemd/system/tinysa-relais.service >/dev/null <<UNIT
 [Unit]
-Description=Relais réseau du tinySA (TinySA Monitor)
+Description=Relais réseau du tinySA (RF Technical Monitor)
 After=network-online.target
 Wants=network-online.target
 
@@ -33,8 +33,8 @@ echo "Relais installé et lancé (il redémarre tout seul). Adresse(s) du Pi :"
 hostname -I
 if [ -n "$OPT" ]; then
   echo "Mode plusieurs tinySA : le 1er tinySA branché a le port 5025, le suivant 5026, etc. (chaque tinySA garde le sien)."
-  echo "Dans TinySA Monitor (PC) : adresse:port, ex. $(hostname).local:5025 puis $(hostname).local:5026…"
+  echo "Dans RF Technical Monitor (PC) : adresse:port, ex. $(hostname).local:5025 puis $(hostname).local:5026…"
 else
-  echo "Dans TinySA Monitor (PC) : 2ᵉ tinySA = une de ces adresses, ou $(hostname).local"
+  echo "Dans RF Technical Monitor (PC) : 2ᵉ tinySA = une de ces adresses, ou $(hostname).local"
 fi
 echo "Voir ce qu'il fait :  journalctl -u tinysa-relais -f"

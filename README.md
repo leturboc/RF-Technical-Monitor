@@ -1,4 +1,9 @@
-# TinySA Monitor
+<img src="assets/icone.png" width="96" align="right" alt="">
+
+# RF Technical Monitor
+
+*Anciennement « TinySA Monitor » (jusqu'à la 8.0). Compatible tinySA Ultra et SDR ; projet indépendant, sans lien avec
+les fabricants.*
 
 Application Windows (Python / PySide6) pour **analyser le spectre** et **surveiller en continu 100+ fréquences**
 avec un **tinySA Ultra** — et, depuis la **version 8**, avec un **SDR** (HackRF, SDRplay, RTL-SDR, Airspy, WiNRADiO…)
@@ -70,13 +75,13 @@ English Windows). User manual: [`docs/manual_en.pdf`](docs/manual_en.pdf) (PDF) 
 ## Installer
 
 ### Option 1 — l'exe prêt à l'emploi
-Page **Releases** du dépôt : `TinySA-Monitor.exe` dans la dernière version (stable, publiée à chaque nouvelle version
+Page **Releases** du dépôt : `RF-Technical-Monitor.exe` dans la dernière version (stable, publiée à chaque nouvelle version
 sur `main`) ou dans la pré-release « Test … » (dernière version de test, remplacée à chaque push de la branche).
 Lien direct vers la dernière version stable :
-`https://github.com/leturboc/TinySA-Monitor/releases/latest/download/TinySA-Monitor.exe`
+`https://github.com/leturboc/RF-Technical-Monitor/releases/latest/download/RF-Technical-Monitor.exe`
 
 ### Option 2 — le compiler toi-même
-Double-clique sur `build.bat` (installe Python via winget si besoin, puis crée `dist\TinySA-Monitor.exe`).
+Double-clique sur `build.bat` (installe Python via winget si besoin, puis crée `dist\RF-Technical-Monitor.exe`).
 
 ### Option 3 — lancer depuis Python
 ```
@@ -92,7 +97,7 @@ reprend toutes les bandes** (alarme critique ⚠ APPAREIL, nouvel essai de conne
 
 1. **Réglages › 2ᵉ tinySA** : coche « Utiliser un 2ᵉ tinySA » et donne son adresse.
    - branché sur le même PC : son port (`COM4`) ;
-   - branché sur **un autre PC** : sur ce PC-là, lance `TinySA-Monitor.exe --relais` (ou 🔧 Outils › 📡 Relais
+   - branché sur **un autre PC** : sur ce PC-là, lance `RF-Technical-Monitor.exe --relais` (ou 🔧 Outils › 📡 Relais
      réseau), choisis le port du tinySA et clique « Partager ». La fenêtre affiche l'adresse à saisir sur le PC
      principal, par ex. `192.168.1.20:5025`. Windows demande d'autoriser l'accès réseau : accepte (réseau privé).
      Un pont série-TCP en mode brut (ser2net, Raspberry Pi…) marche aussi.
@@ -116,7 +121,7 @@ Bouton **🎪 Shows** (en haut) :
   **Enregistrer sous…** pour l'édition de l'année suivante ou une autre scène. **Récents** dans le menu.
 - Un show **ne contient pas tes préférences** (couleurs, fenêtres, repères, alertes, page web, adresse du 2ᵉ tinySA,
   dossier des journaux) : rouvrir le show de l'an dernier ne dérègle pas ton installation.
-- Fichiers `.tsashow` dans `Documents\TinySA Monitor\Shows` (à sauvegarder / copier sur clé). Les anciens profils
+- Fichiers `.tsashow` dans `Documents\RF Technical Monitor\Shows` (à sauvegarder / copier sur clé). Les anciens profils
   `.json` s'ouvrent aussi (seule leur partie « show » est reprise).
 
 ## Repères du spectre : choisir ce qu'on affiche
@@ -216,10 +221,10 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 
 ## Où sont mes données ?
 
-- Réglages : `%APPDATA%\TinySAMonitor\` (`config.json` sauvegardé toutes les minutes + copie de secours
+- Réglages : `%APPDATA%\RFTechnicalMonitor\` (`config.json` sauvegardé toutes les minutes + copie de secours
   `config.json.bak`, `reference.json`, `crash.log` en cas d'erreur imprévue : à m'envoyer)
-- Shows : `Documents\TinySA Monitor\Shows\`
-- Journaux, enregistrements, rapports : `Documents\TinySA Monitor\Journaux\` (dossier modifiable dans l'appli)
+- Shows : `Documents\RF Technical Monitor\Shows\`
+- Journaux, enregistrements, rapports : `Documents\RF Technical Monitor\Journaux\` (dossier modifiable dans l'appli)
 
 ## Crédits
 

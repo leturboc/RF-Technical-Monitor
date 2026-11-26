@@ -1,7 +1,7 @@
 # Kit Raspberry Pi : le tinySA dans le sac, le PC en régie
 
 Un tinySA branché en USB sur un Raspberry Pi (dans un sac, avec une batterie USB), partagé en Wi-Fi.
-TinySA Monitor, sur le PC de régie, le voit comme s'il était branché sur le PC. Ton téléphone affiche la chasse
+RF Technical Monitor, sur le PC de régie, le voit comme s'il était branché sur le PC. Ton téléphone affiche la chasse
 (page web, vue **🔎 Chasse**) et bippe.
 
 - **Un seul tinySA** : il va dans le sac, et c'est le **1er tinySA** (liste des ports › « 🌐 tinySA en réseau… »).
@@ -15,7 +15,7 @@ Ce dossier contient :
 | `install_pi.sh` | L'installeur, à lancer **une seule fois** sur le Pi : installe pyserial, copie le programme dans `/opt/tinysa-relais` et le lance tout seul à chaque allumage. |
 | `LISEZMOI.md` | Ce mode d'emploi. |
 
-Où le trouver : sur la page de la release, à côté de `TinySA-Monitor.exe`, le fichier **`relais-raspberry-pi.zip`**.
+Où le trouver : sur la page de la release, à côté de `RF-Technical-Monitor.exe`, le fichier **`relais-raspberry-pi.zip`**.
 
 ## 1. Préparer la carte SD (sur le PC, une seule fois)
 
@@ -55,7 +55,7 @@ Si `tinysa-sac.local` ne répond pas, utilise l'adresse IP du Pi (visible dans l
 
 1. Branche le tinySA sur le Pi (câble USB-C), allume le tinySA, alimente le Pi. Le relais démarre tout seul,
    retrouve le tinySA même débranché / rebranché.
-2. Dans TinySA Monitor (PC) :
+2. Dans RF Technical Monitor (PC) :
    - liste des ports en haut › **🌐 tinySA en réseau : adresses enregistrées…** › **＋ Ajouter** (`tinysa-sac.local`
      ou l'IP du Pi) › **🔌 Tester** › **Utiliser pour le 1er tinySA** (un seul tinySA) ou **pour le 2ᵉ** (deux
      tinySA). Puis ▶ Démarrer ;
@@ -76,7 +76,7 @@ Un Pi peut partager jusqu'à 8 tinySA (un réseau, une boîte, plusieurs antenne
    numéro de série USB : le même tinySA garde **toujours** le même port, quelle que soit la prise (souvenir gardé
    dans `~/.tinysa_relais_ports.json`). Pour voir qui est sur quel port : `journalctl -u tinysa-relais -f`
    (« tinySA … → port 5026 ») ou `python3 /opt/tinysa-relais/tinysa_relais.py --diag`.
-4. Dans TinySA Monitor : une adresse enregistrée par tinySA, avec le port : `tinysa-sac.local:5025`,
+4. Dans RF Technical Monitor : une adresse enregistrée par tinySA, avec le port : `tinysa-sac.local:5025`,
    `tinysa-sac.local:5026`… puis ⚙ › Plusieurs tinySA (le 2ᵉ, puis le tableau des 3ᵉ à 8ᵉ).
 
 Astuce : colle une étiquette « 5025 », « 5026 »… sur chaque tinySA une fois les ports attribués.
@@ -113,7 +113,7 @@ Le Pi ne voit pas le tinySA. Lance le diagnostic : `python3 /opt/tinysa-relais/t
 
 1. **Le tinySA est éteint** : éteint, il ne fait que se charger, il n'apparaît pas en USB. Allume-le.
 2. **Le câble ne fait que la charge** : beaucoup de câbles USB-C n'ont pas les fils de données. Prends celui qui marche
-   avec le PC (tinySA-App / TinySA Monitor).
+   avec le PC (tinySA-App / RF Technical Monitor).
 3. **Mauvaise prise du Pi** : sur un Pi 4 / Pi 5, la prise USB-C sert **seulement** à l'alimentation → branche le
    tinySA sur un port USB-A (câble USB-A ↔ USB-C). Sur un Pi Zero : la prise marquée « USB » (pas « PWR ») avec un
    adaptateur OTG.

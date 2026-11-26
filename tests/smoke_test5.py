@@ -430,7 +430,7 @@ check("telegram : requête", win.send_notify("t", "b", 2, cfg=tg) == "" and "api
 js = json.loads(win.web_json()["fr"])
 check("état web : toutes les fréquences", len(js["rows"]) == len(win.watch), str(len(js["rows"])))
 check("état web : alarmes en cours", any(a["kind"] == "ABSENT" for a in js["alarms"]))
-check("état web : titre avec le site", js["title"] == "TinySA Monitor — Fest", js["title"])
+check("état web : titre avec le site", js["title"] == "RF Technical Monitor — Fest", js["title"])
 js_en = json.loads(win.web_json()["en"])
 check("état web en anglais (pour qui choisit EN sur son téléphone)",
       any(a["kind"] == "MISSING" for a in js_en["alarms"]), str([a["kind"] for a in js_en["alarms"]]))

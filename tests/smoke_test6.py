@@ -260,5 +260,21 @@ _fh.disable()
 if fh:
     fh.close()
 
+# 8.1 : TinySA Monitor -> RF Technical Monitor, sans rien perdre
+import json as _js
+_mt = tempfile.mkdtemp()
+_oc, _od = os.path.join(_mt, "TinySAMonitor"), os.path.join(_mt, "Docs", "TinySA Monitor")
+os.makedirs(_oc)
+os.makedirs(os.path.join(_od, "Shows"))
+open(os.path.join(_od, "Shows", "a.tsashow"), "w").write("{}")
+open(os.path.join(_oc, "config.json"), "w").write(_js.dumps({"log_dir": os.path.join(_od, "Journaux")}))
+_nc, _nd = os.path.join(_mt, "RFTechnicalMonitor"), os.path.join(_mt, "Docs", "RF Technical Monitor")
+_r = m.migrate_legacy(_nc, _nd, _oc, _od)
+_cfg = _js.load(open(os.path.join(_nc, "config.json")))
+check("8.1 : config copiée (l'ancienne reste), dossier Documents renommé, chemins suivis",
+   str(_r) == _nd and os.path.exists(os.path.join(_nd, "Shows", "a.tsashow")) and os.path.exists(os.path.join(_oc, "config.json"))
+   and _cfg["log_dir"] == os.path.join(_nd, "Journaux"), str(_cfg))
+check("8.1 : nom de l'appli", m.APP_NAME == "RF Technical Monitor")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

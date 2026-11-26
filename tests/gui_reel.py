@@ -3807,7 +3807,7 @@ if win.web is not None:
     check("tech (appli) : accès retiré", _tpost("/tech", dict(action="ack_all"))[0] == 403)
     win.web_cfg.update(tech="")
     win.web_cfg["views"]["tech"] = False
-    check("page web : page HTML", b"TinySA Monitor" in _ur.urlopen(base + "/", timeout=5).read())
+    check("page web : page HTML", b"RF Technical Monitor" in _ur.urlopen(base + "/", timeout=5).read())
     # acquitter depuis le téléphone (code PIN)
     import json as _js
     win.web_cfg["pin"] = "2468"

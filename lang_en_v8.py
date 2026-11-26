@@ -55,7 +55,7 @@ EXACT = {
     'Désaccentuation :': 'De-emphasis:',
     'Ear monitor analogique stéréo (PSM, EW IEM)': 'Analogue stereo in-ear monitor (PSM, EW IEM)',
     "Enregistre TOUTE la fenêtre (IQ brut, format SigMF) pour la rejouer plus tard : réécouter n'importe quel micro,\nretrouver un brouilleur… Attention à la place : ≈ 38 Mo/s à 19,2 MS/s, 19 Mo/s à 9,6 MS/s, 5 Mo/s à 2,4 MS/s.\nArrêt automatique sous 2 Go libres ou à la taille maximale (Outils › 📡 Réglages SDR).": 'Records the WHOLE window (raw IQ, SigMF format) to play it back later: listen again to any mic,\ntrack down an interferer… Watch the disk space: ≈ 38 MB/s at 19.2 MS/s, 19 MB/s at 9.6 MS/s, 5 MB/s at 2.4 MS/s.\nStops automatically below 2 GB free or at the maximum size (Tools › 📡 SDR settings).',
-    'Enregistrement IQ (TinySA Monitor, temps réel)': 'IQ recording (TinySA Monitor, real time)',
+    'Enregistrement IQ (RF Technical Monitor, temps réel)': 'IQ recording (RF Technical Monitor, real time)',
     'Enregistrement IQ max :': 'Max IQ recording:',
     'Enregistrement SigMF (*.sigmf-meta *.sigmf-data)': 'SigMF recording (*.sigmf-meta *.sigmf-data)',
     'Entendre tous les canaux démodulés en même temps (sinon : la ligne choisie).': 'Hear all demodulated channels at the same time (otherwise: the selected row).',
@@ -634,10 +634,10 @@ EXACT.update({
     "Connecter": "Connect",
     "Diversity A / B": "Diversity A / B",
     "Le plus simple : le kit SDR. Télécharge kit-sdr-windows.zip (pré-release « Kit SDR » du dépôt) et dézippe-le À CÔTÉ "
-    "de TinySA-Monitor.exe (dossier « kit-sdr ») : hackrf_sweep, rtl_power, rx_tools et SoapySDR sont trouvés tout seuls. "
+    "de RF-Technical-Monitor.exe (dossier « kit-sdr ») : hackrf_sweep, rtl_power, rx_tools et SoapySDR sont trouvés tout seuls. "
     "Restent à installer à part : le pilote USB (Zadig), et pour un SDRplay ou un WiNRADiO, le logiciel de la marque.":
         "Easiest: the SDR kit. Download kit-sdr-windows.zip (the “Kit SDR” pre-release of the repository) and unzip it "
-        "NEXT TO TinySA-Monitor.exe (“kit-sdr” folder): hackrf_sweep, rtl_power, rx_tools and SoapySDR are found "
+        "NEXT TO RF-Technical-Monitor.exe (“kit-sdr” folder): hackrf_sweep, rtl_power, rx_tools and SoapySDR are found "
         "automatically. Still to install separately: the USB driver (Zadig), and for an SDRplay or a WiNRADiO, the "
         "brand's software.",
     "Pile": "Battery",
@@ -1546,7 +1546,7 @@ EXACT.update({
     "V8 : le manuel du poste SDR (écoute, surveillance, démo, émission, calibration…).":
         "V8: the SDR station manual (listening, monitoring, demo, transmission, calibration…).",
 })
-SAME_TEMPLATES += ["TinySA Monitor {} — {} — {}", "  gain {} : {} {} %, {} {} dBFS, {} {} dBFS", "{} : {} dB",
+SAME_TEMPLATES += ["RF Technical Monitor {} — {} — {}", "  gain {} : {} {} %, {} {} dBFS, {} {} dBFS", "{} : {} dB",
                    "tsm_rewind_{}.wav", "diagnostic_sdr_{}.txt", "  err : {}", "{} : {}", "{} {}", "{}:{}%"]
 EXACT.update({"peu de marge": "little headroom", "{} = {} dB : {}": "{} = {} dB: {}",
               "📏 Caler les niveaux du SDR": "📏 Calibrate the SDR levels"})
@@ -1727,9 +1727,9 @@ EXACT.update({
     'PySide6.QtNetwork': 'PySide6.QtNetwork',
     'Rien (éteint)': 'Nothing (off)',
     'Signal (démos) :': 'Signal (demos):',
-    'TinySA Monitor est déjà ouvert sur ce PC (regarde dans la barre des tâches).': 'TinySA Monitor is already open on this PC (look in the taskbar).',
-    'TinySA Monitor était déjà ouvert : le voici.': 'TinySA Monitor was already open: here it is.',
-    'TinySAMonitor-': 'TinySAMonitor-',
+    'RF Technical Monitor est déjà ouvert sur ce PC (regarde dans la barre des tâches).': 'RF Technical Monitor is already open on this PC (look in the taskbar).',
+    'RF Technical Monitor était déjà ouvert : le voici.': 'RF Technical Monitor was already open: here it is.',
+    'RFTechnicalMonitor-': 'RFTechnicalMonitor-',
     'Utiliser ce son pour…': 'Use this sound for…',
     'une seule instance (PySide6.QtNetwork)': 'single instance (PySide6.QtNetwork)',
     "À quoi ça sert ? Écouter un son de test ici, ou l'affecter (en bas) : à un micro de ta liste (il l'émet dans les modes démo tinySA et SDR), à un son d'alarme, ou à l'émission avec un HackRF.": 'What is it for? Listen to a test sound here, or assign it (below): to a mic of your list (it transmits it in the tinySA and SDR demo modes), to an alarm sound, or to transmission with a HackRF.',
@@ -1746,3 +1746,8 @@ EXACT.update({
     "🔔 Son d'alarme info": '🔔 Info alarm sound',
     "🔔 Son d'alarme normale": '🔔 Normal alarm sound',
 })
+
+# 8.1 : anciens noms (migration des dossiers) et notes de migration.txt : pas du texte d'interface
+EXACT.update({"TinySA Monitor": "TinySA Monitor", "TinySAMonitor": "TinySAMonitor"})
+SAME_TEMPLATES += ["dossier {} renommé en {}", "dossier {} gardé tel quel ({})", "config : copie impossible ({})",
+                   "config copiée de {}"]
