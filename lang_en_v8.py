@@ -1769,3 +1769,7 @@ EXACT.update({
     "🗑 Supprimer la sélection  (Suppr)": "🗑 Delete the selection  (Del)",
     "📋 Coller une liste": "📋 Paste a list",
 })
+# 8.1 : feuilles de style (pas du texte)
+EXACT.update({"QFrame#carte{border:%s; border-radius:10px; background:%s}":
+              "QFrame#carte{border:%s; border-radius:10px; background:%s}"})
+SAME_TEMPLATES += ["2px solid {}", "1px solid {}", "rgba({},{},{},{})"]

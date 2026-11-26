@@ -27594,18 +27594,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def show_about(self):
         fw = self.info_lbl.text().strip() or "pas encore connecté"
         fw2 = f"<br>2ᵉ tinySA : {getattr(self, 'dev2_info', '') or '—'}" if self.dev2.get("on") else ""
-        box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle(f"À propos de {APP_NAME}")
-        box.setText(f"<b>{APP_NAME}</b> version <b>{APP_VER}</b><br>"
-                    f"<i>{TR('Anciennement « TinySA Monitor » (jusqu’à la 8.0).')}</i><br>"
-                    f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()}<br><br>"
-                    f"tinySA : {fw}{fw2}<br><br>"
-                    f"Config : {CFG_PATH}<br>Journaux : {self.log_dir}<br><br>"
-                    f"<small>{COORD_NOTE}<br>{TRADEMARKS}</small>")
-        ico = self.windowIcon()
-        if not ico.isNull():
-            box.setIconPixmap(ico.pixmap(72, 72))           # 8.1 : le logo de RF Technical Monitor
-        box.exec()
+        QtWidgets.QMessageBox.information(
+            self, f"À propos de {APP_NAME}",
+            f"<b>{APP_NAME}</b> version <b>{APP_VER}</b><br>"
+            f"<i>{TR('Anciennement « TinySA Monitor » (jusqu’à la 8.0).')}</i><br>"
+            f"Python {sys.version.split()[0]} · Qt {QtCore.qVersion()}<br><br>"
+            f"tinySA : {fw}{fw2}<br><br>"
+            f"Config : {CFG_PATH}<br>Journaux : {self.log_dir}<br><br>"
+            f"<small>{COORD_NOTE}<br>{TRADEMARKS}</small>")
 
     def set_watch_freq(self, w, v):
         """Change la fréquence d'une ligne (mesures remises à zéro, liste retriée)."""
