@@ -9,6 +9,9 @@ import math
 import re
 import unicodedata
 from collections import deque
+import os as _os
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):   # 8.1 : calculs de numpy sur un seul fil
+    _os.environ.setdefault(_v, "1")                                          # (voir tinysa_monitor.py)
 
 import numpy as np
 
@@ -6770,8 +6773,11 @@ class FirDecim:
         if m <= 0:
             self.buf = b
             return b[:0]
-        win = np.lib.stride_tricks.sliding_window_view(b, n)[::self.D][:m]
-        y = win @ self.h
+        if self.D == 1:                              # 8.1 : convolution directe (bien moins chère que la matrice)
+            y = np.convolve(b, self.h[::-1], "valid")[:m]
+        else:
+            win = np.lib.stride_tricks.sliding_window_view(b, n)[::self.D][:m]
+            y = win @ self.h
         self.buf = b[m * self.D:]
         return y
 
@@ -6987,6 +6993,30 @@ class ChannelDemod:
         if self.rs is not None:              # étape 7 : débit qui ne tombe pas juste -> 48 kHz exacts
             a = self.rs(a)
         return a, self.level
+
+
+def compress2(a, st, block=240, ref=0.25, attack=0.3, release=0.05, ratio=2.0, detector="rms"):
+    """8.1 : l'inverse d'expand2 (ce que fait l'ÉMETTEUR) : gain = (enveloppe / ref)^(1/taux − 1). Un son compressé
+    ici puis étendu par expand2 (même ref, même détecteur) revient à son niveau : −18 dBFS au générateur = −18 dBFS à
+    l'écoute. st = dict (garde « env »). Utilisé par le SDR démo pour « encoder » le compander du micro."""
+    a = np.asarray(a, dtype=np.float32)
+    if not len(a) or ratio <= 1.0:
+        return a
+    nb = max(1, len(a) // block)
+    seg = a[:nb * block].reshape(nb, -1) if len(a) >= block else a[None, :]
+    if detector == "avg":
+        lv = np.mean(np.abs(seg), axis=1) * (math.pi / (2 * math.sqrt(2)))
+    else:
+        lv = np.sqrt(np.mean(seg ** 2, axis=1))
+    # le détecteur de l'expanseur voit le son COMPRESSÉ : enveloppe de sortie = ref·(e/ref)^(1/taux)
+    g = np.empty(len(lv), dtype=np.float32)
+    e = float(st.get("env", 0.0))
+    for k, r in enumerate(lv):
+        e += (attack if r > e else release) * (r - e)
+        g[k] = min(30.0, max(0.03, (max(e, 1e-6) / ref) ** (1.0 / ratio - 1.0)))
+    st["env"] = e
+    gi = np.interp(np.arange(len(a)), (np.arange(len(g)) + 0.5) * (len(a) / len(g)), g).astype(np.float32)
+    return a * gi
 
 
 def expand2(a, st, block=240, ref=0.25, attack=0.3, release=0.05, ratio=2.0, detector="rms", knee=None, low=0.0,
@@ -9670,8 +9700,13 @@ class SigGen:
                 dev = float(s.get("dev") or (30000.0 if kind == "fm" else 2500.0))
                 if ta is None:
                     ta = (n0 + np.arange(0, n, step, dtype=np.float64)) / fs
-                a = np.repeat(demo_audio(s.get("audio", "voice"), ta, int(s.get("k", 0))), step)[:n]
                 st = self.st.setdefault(s.get("key"), dict(acc=0.0))
+                a = demo_audio(s.get("audio", "voice"), ta, int(s.get("k", 0)))
+                cp = COMPANDERS.get(s.get("comp") or "")
+                if cp is not None and cp["ratio"] > 1.0:   # 8.1 : l'émetteur démo comprime comme un vrai pack
+                    a = compress2(a, st.setdefault("cp", {}), ratio=cp["ratio"], attack=cp["attack"],
+                                  release=cp["release"], detector=cp["det"])
+                a = np.repeat(a, step)[:n]
                 ph = np.cumsum(a.astype(np.float32) * np.float32(2 * np.pi * dev / fs))    # simple précision : assez
                 ph += np.float32(st["acc"])
                 st["acc"] = float(ph[-1]) % (2 * np.pi) if n else st["acc"]
@@ -9743,7 +9778,7 @@ def demo_sdr_plan(mics):
             continue
         h = sum(ord(c) for c in str(m.get("name", ""))) % 12
         s = dict(key="mic" + key, kind="fm", f=f, lvl=-6.0 - h,      # 8.1 : 0 dBFS = déviation nominale du micro
-                 dev=float(m.get("dev") or (25000.0 + 1500.0 * (h % 8))),
+                 dev=float(m.get("dev") or (25000.0 + 1500.0 * (h % 8))), comp=m.get("comp") or "",
                  audio=audio_spec_norm(m["snd"]) if m.get("snd") else DEMO_SOUNDS[k % len(DEMO_SOUNDS)][0], k=k,
                  pilot=DEMO_PILOT)
         if kind == "intermittent":

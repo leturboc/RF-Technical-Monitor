@@ -1713,15 +1713,20 @@ _f2 = _wav_peak(_p2) if _p2 and os.path.exists(_p2) else None
 check("8.0.2 : générateur : la fréquence choisie est bien celle jouée (nouveau fichier à chaque fois)",
       _f1 is not None and abs(_f1 - 440) < 3 and _f2 is not None and abs(_f2 - 5000) < 3 and _p1 != _p2,
       f"{_f1} Hz · {_f2} Hz · {_p1} -> {_p2} · {_ag.msg.text()}")
+_ag.meter.m = None
+wait(200)
+check("8.1 : « Écouter ici » : le vu-mètre suit le son en direct", _ag._live is not None and _ag._live_t.isActive()
+      and _ag.meter.m is not None and np.isfinite(_ag.meter.m["rms"]), str(_ag.meter.m))
 _ag.play_btn.setChecked(False)
+check("8.1 : arrêt : le vu-mètre revient à la mesure du son entier", _ag._live is None and not _ag._live_t.isActive())
 _ag.lvl_chk.setChecked(True)
 _ag.lvl.setValue(m.dbfs_to_unit(-18, win.audio_ref, _ag.lvl_unit))
 wait(200)
 check("8.1 : générateur : niveau visé −18 dBFS mesuré, crête, True Peak et déviation affichés",
       _ag.spec()["lvl"] is not None and abs(_ag.spec()["lvl"] + 18) < 0.05 and "kHz" in _ag.meter_txt.text()
       and _ag.meter.m is not None and abs(_ag.meter.m["rms"] + 18) < 0.3, _ag.meter_txt.text())
-_rxm = win.dock_widget(win.dock_sdr_rx)
-_rxm = getattr(_rxm, "a_meter", None) or _rxm.widget().a_meter
+_rxm = win.dock_widget(win.sdr_docks["rx"])
+_rxm = _rxm.a_meter if hasattr(_rxm, "a_meter") else _rxm.widget().a_meter
 win.set_meter_style("bar")
 check("8.1 : vu-mètre RF en barre (linéaire), choix gardé", _rxm.style == "bar" and win.sdr_cfg.get("meter_style") == "bar"
       and win._collect_config().get("sdr", {}).get("meter_style") == "bar", _rxm.style)

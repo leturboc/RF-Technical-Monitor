@@ -1953,3 +1953,6 @@ EXACT.update({                                      # 8.1 : vu-mètres gradués,
         "mark = the strongest recently. Values are right if the SDR is calibrated (with a tinySA).\n"
         "Click = change the display (needle / bar).",
 })
+EXACT["Volume de l'écoute sur ton PC (100 % = 0 dB). N'influence PAS le vu-mètre du son : il mesure le niveau reçu, avant le volume."] = \
+    "Listening volume on your PC (100 % = 0 dB). Does NOT affect the sound meter: it measures the received level, before the volume."
+SAME_TEMPLATES += ["{} % · {} dB"]

@@ -73,6 +73,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta
 from pathlib import Path
 
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):   # 8.1 : AVANT numpy. Ses petits calculs
+    os.environ.setdefault(_v, "1")   # (filtres du SDR) étaient lancés sur tous les cœurs, qui tournaient à vide : ×4 de
+#                                      processeur pour rien, pris au son et à l'affichage -> saccades (« morse »)
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.exporters  # noqa: F401  (capture PNG)
@@ -236,67 +239,67 @@ from tsm_core import (  # noqa: F401
     block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan, build_report_html,
     bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset, calib_repeat, capacity_view,
     caps_text, chan_power, chron_group, classify_signal, clean_colors, compare_receivers, compare_spectra,
-    compare_text, config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice, coord_why_text,
-    copy_name, count_overruns, country_bands, country_from_locale, country_uhf, coverage_state, coverage_text,
-    covered, data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio,
-    demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow, density_lut, density_raster,
-    describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps, devx_norm, diag_short,
-    diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz,
-    ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id, ezrf_map_norm, ezrf_planning,
-    ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm, feature_match, festival_cfg_norm,
-    festival_due, festival_text, find_free, find_header, flap_count, floor_curve, floor_track, fm_deviation,
-    fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan, freq_digits, freq_list_text,
-    freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan, gen_commands, geo_km,
-    glossary_find, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color, heat_field, heat_for,
-    heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba, heat_scale, heat_stops,
-    hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level, hunt_request, hunt_tone,
-    im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan, im_verdict, incident_duration,
-    incident_prune, incident_report_html, incident_slug, input_plan, interp_measured, iq_ci8, iq_decode,
-    iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch, journal_csv_rows, json_dumps_compact, keep_text,
-    key_dec, key_enc, label_words, layers_recolor, lc_feed, lc_hints, lc_new, lc_summary, lc_text, level_at,
-    level_at_many, level_block, level_everywhere, level_everywhere_text, level_words, listen_center, listen_cmd,
-    listen_request, listen_windows, log_kind, log_kinds_norm, lora_overlap, lowpass_taps, make_label,
-    make_stylesheet, map_auto_place, map_bg_embed, map_bg_extract, map_cfg_norm, map_key, map_scene_monitor,
-    map_snap, marker_visible, merge_scans, meter_ticks, mic_health, missing_bands, mk_default, mk_filtered,
-    mk_layer_key, morning_html, morning_summary, multi_site, name_candidates, name_match, name_rank, net_host_port,
-    net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number, next_mic, next_state,
-    noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request, number_run, obw_khz,
-    occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid, parse_dpa_acp, parse_ezrf3,
-    parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4, parse_plan_file, parse_plan_text,
-    parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text, parse_sdb3, parse_sdr_addr,
-    parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show, patrol_items, patrol_next, pcm_mono16k,
-    pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots, pf_issue_text, pf_orders, pf_suggest,
-    phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict, place_parse, plain_btn_text,
-    plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines, planning_norm, planning_paused,
-    post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html, preset_changes, preset_match,
-    preset_value_text, presets_all, privacy_norm, probe_rate, probe_report, probe_seen, problem_card, problem_key,
-    quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge, rbw_tag, rbw_text, read_rows, read_show,
-    read_user, ready_checks, ready_summary, rec_mb_per_hour, rec_size_text, receiver_addrs, receiver_addrs_text,
-    receiver_alerts, reconnect_delay, recurring_events, recurring_text, reg_allowed_pred, reg_detail, reg_issues,
-    reg_known, reg_status, reg_summary, reg_tag, rehearsal_check, rehearsal_norm, resample_max, resolution_pairs,
-    resource_view, retention_pick, rf_audio_diag, rf_diag_summary, rf_diagnose, rf_linear_text, rf_mode_norm,
-    rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band, rx_custom_dump, rx_custom_norm, rx_from_library,
-    rx_help_html, rx_library_find, rx_profile, rx_set_custom, s_meter, safe_filename, sat_level, scales_help_html,
-    scan_changes, scan_check, scan_crop, scan_csv, scan_gaps, scan_peaks, scan_segments, scan_step_khz,
-    scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on, scope_match, screen_plan_fit,
-    screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm, sdr_bin_hz, sdr_carrier,
-    sdr_cfg_extra, sdr_cmd, sdr_floor_dbfs, sdr_gains_for, sdr_in_range, sdr_iq_rate, sdr_level, sdr_model,
-    sdr_model_of, sdr_model_text, sdr_models_for, sdr_post_clash, sdr_posts_norm, sdr_ranges, sdr_rate,
-    sdr_span_mhz, sdr_tsa_offset, sdr_zones, segment_plan, session_cfg_norm, session_journal_rows, session_name,
-    show_apply, show_doc, show_filename, show_summary, show_template, shure_addrs, shure_apply, shure_init,
-    shure_parse, shure_split, sigmf_annot, sigmf_info, sigmf_meta, signal_key, signal_report, signal_view,
-    single_band_view, site_doc_scene, site_move, site_rename, site_replace, site_report_html, site_scan_doc,
-    site_scan_info, site_scans_norm, site_set_hidden, site_visible, sites_for_scope, snapshot_name,
-    sniff_delimiter, snooze_left, snr_view, soft_style, sound_cfg_norm, spectrum_info, spectrum_status,
-    spectrum_text, speed_table, split_band, split_freq_rows, ssc_apply, ssc_flatten, ssc_init, state_off,
-    states_norm, station_norm, store_occupancy, strong_peaks, suggest_labels, suggest_own_thr, sweep_line,
-    tech_request, telegram_chats, telegram_request, terrain_request, theme_pal, tinysa_refusal, tnt_apply_manual,
-    tnt_cfg_norm, tnt_channel_list, tnt_measure, tnt_near_text, tnt_sites_near, tnt_summary, to_stereo, to_unit,
-    tone_pcm, trace_at, tv_channels, tx_cmd, tx_plan, uhf_band_needed, ui_word, unit_hint, unit_to_dbfs,
-    unknown_bursts, user_apply, user_doc, user_filename, user_presets_merge, user_presets_norm, vfo_center,
-    vfo_inside, vrx_auto, wall_grid, wall_visible, watch_diff, watch_rows, web_link, web_page_lang, web_spectrum,
-    web_state, web_views_norm, what_is, what_is_text, wizard_status, wr_pick_ddc, wr_snapshot_spectrum,
-    wsm_to_wwb_text, wwb_scan_text, zoom_points,
+    compare_text, compress2, config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice,
+    coord_why_text, copy_name, count_overruns, country_bands, country_from_locale, country_uhf, coverage_state,
+    coverage_text, covered, data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text,
+    default_view_band, demo_audio, demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow,
+    density_lut, density_raster, describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps,
+    devx_norm, diag_short, diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor,
+    expected_obw_khz, ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id,
+    ezrf_map_norm, ezrf_planning, ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm,
+    feature_match, festival_cfg_norm, festival_due, festival_text, find_free, find_header, flap_count, floor_curve,
+    floor_track, fm_deviation, fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan,
+    freq_digits, freq_list_text, freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan,
+    gen_commands, geo_km, glossary_find, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color,
+    heat_field, heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba,
+    heat_scale, heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level,
+    hunt_request, hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan,
+    im_verdict, incident_duration, incident_prune, incident_report_html, incident_slug, input_plan,
+    interp_measured, iq_ci8, iq_decode, iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch,
+    journal_csv_rows, json_dumps_compact, keep_text, key_dec, key_enc, label_words, layers_recolor, lc_feed,
+    lc_hints, lc_new, lc_summary, lc_text, level_at, level_at_many, level_block, level_everywhere,
+    level_everywhere_text, level_words, listen_center, listen_cmd, listen_request, listen_windows, log_kind,
+    log_kinds_norm, lora_overlap, lowpass_taps, make_label, make_stylesheet, map_auto_place, map_bg_embed,
+    map_bg_extract, map_cfg_norm, map_key, map_scene_monitor, map_snap, marker_visible, merge_scans, meter_ticks,
+    mic_health, missing_bands, mk_default, mk_filtered, mk_layer_key, morning_html, morning_summary, multi_site,
+    name_candidates, name_match, name_rank, net_host_port, net_profile_name, net_profiles_merge, net_profiles_norm,
+    net_text, next_free_number, next_mic, next_state, noise_floor, noisy_zones, norm_freq, notify_text,
+    notify_wanted, ntfy_request, number_run, obw_khz, occupied_width, only_here, palette_color, parse_device_addr,
+    parse_deviceid, parse_dpa_acp, parse_ezrf3, parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4,
+    parse_plan_file, parse_plan_text, parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text,
+    parse_sdb3, parse_sdr_addr, parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show,
+    patrol_items, patrol_next, pcm_mono16k, pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots,
+    pf_issue_text, pf_orders, pf_suggest, phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict,
+    place_parse, plain_btn_text, plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines,
+    planning_norm, planning_paused, post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html,
+    preset_changes, preset_match, preset_value_text, presets_all, privacy_norm, probe_rate, probe_report,
+    probe_seen, problem_card, problem_key, quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge,
+    rbw_tag, rbw_text, read_rows, read_show, read_user, ready_checks, ready_summary, rec_mb_per_hour,
+    rec_size_text, receiver_addrs, receiver_addrs_text, receiver_alerts, reconnect_delay, recurring_events,
+    recurring_text, reg_allowed_pred, reg_detail, reg_issues, reg_known, reg_status, reg_summary, reg_tag,
+    rehearsal_check, rehearsal_norm, resample_max, resolution_pairs, resource_view, retention_pick, rf_audio_diag,
+    rf_diag_summary, rf_diagnose, rf_linear_text, rf_mode_norm, rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all,
+    rx_band, rx_custom_dump, rx_custom_norm, rx_from_library, rx_help_html, rx_library_find, rx_profile,
+    rx_set_custom, s_meter, safe_filename, sat_level, scales_help_html, scan_changes, scan_check, scan_crop,
+    scan_csv, scan_gaps, scan_peaks, scan_segments, scan_step_khz, scan_uniform, scan_unit_scale, scan_write,
+    scene_timeline, sched_on, scope_match, screen_plan_fit, screen_preset, screen_rf_mode, screens_norm,
+    screens_used, sdr_auto_norm, sdr_bin_hz, sdr_carrier, sdr_cfg_extra, sdr_cmd, sdr_floor_dbfs, sdr_gains_for,
+    sdr_in_range, sdr_iq_rate, sdr_level, sdr_model, sdr_model_of, sdr_model_text, sdr_models_for, sdr_post_clash,
+    sdr_posts_norm, sdr_ranges, sdr_rate, sdr_span_mhz, sdr_tsa_offset, sdr_zones, segment_plan, session_cfg_norm,
+    session_journal_rows, session_name, show_apply, show_doc, show_filename, show_summary, show_template,
+    shure_addrs, shure_apply, shure_init, shure_parse, shure_split, sigmf_annot, sigmf_info, sigmf_meta,
+    signal_key, signal_report, signal_view, single_band_view, site_doc_scene, site_move, site_rename, site_replace,
+    site_report_html, site_scan_doc, site_scan_info, site_scans_norm, site_set_hidden, site_visible,
+    sites_for_scope, snapshot_name, sniff_delimiter, snooze_left, snr_view, soft_style, sound_cfg_norm,
+    spectrum_info, spectrum_status, spectrum_text, speed_table, split_band, split_freq_rows, ssc_apply,
+    ssc_flatten, ssc_init, state_off, states_norm, station_norm, store_occupancy, strong_peaks, suggest_labels,
+    suggest_own_thr, sweep_line, tech_request, telegram_chats, telegram_request, terrain_request, theme_pal,
+    tinysa_refusal, tnt_apply_manual, tnt_cfg_norm, tnt_channel_list, tnt_measure, tnt_near_text, tnt_sites_near,
+    tnt_summary, to_stereo, to_unit, tone_pcm, trace_at, tv_channels, tx_cmd, tx_plan, uhf_band_needed, ui_word,
+    unit_hint, unit_to_dbfs, unknown_bursts, user_apply, user_doc, user_filename, user_presets_merge,
+    user_presets_norm, vfo_center, vfo_inside, vrx_auto, wall_grid, wall_visible, watch_diff, watch_rows, web_link,
+    web_page_lang, web_spectrum, web_state, web_views_norm, what_is, what_is_text, wizard_status, wr_pick_ddc,
+    wr_snapshot_spectrum, wsm_to_wwb_text, wwb_scan_text, zoom_points,
 )
 
 
@@ -9458,9 +9461,15 @@ class SdrReceiverPanel(SdrPanelBase):
         self.vol.setMaximumWidth(120)
         self.vol.setToolTip("Volume.")
         self.vol.valueChanged.connect(lambda v: None if self.mute.isChecked() else e.set_opts(vol=v / 100.0))
+        self.vol_lbl = QtWidgets.QLabel("")              # 8.1 : la valeur du volume (le vu-mètre, lui, ne la compte pas)
+        self.vol_lbl.setMinimumWidth(78)
+        self.vol_lbl.setToolTip(TR("Volume de l'écoute sur ton PC (100 % = 0 dB). N'influence PAS le vu-mètre du son : "
+                                   "il mesure le niveau reçu, avant le volume."))
+        self.vol.valueChanged.connect(self._vol_txt)
+        self._vol_txt(self.vol.value())
         self.dev_lbl = QtWidgets.QLabel("")
         self.dev_lbl.setToolTip(TR(DEVICE_HELP["sdr"]) + "\n\n" + TR("Ton SDR : 📡 Réglages SDR pour le changer."))
-        lay.addLayout(self._wrap(self.go_btn, self.mute, self.vol, o._elastic(self.dev_lbl)))
+        lay.addLayout(self._wrap(self.go_btn, self.mute, self.vol, self.vol_lbl, o._elastic(self.dev_lbl)))
         self.a_disp = FreqDisplay(self, 24, acc)
         self.a_disp.changed.connect(lambda v: e.set_a(v))
         self.a_meter = SMeterGauge(self, owner=o)
@@ -9726,6 +9735,11 @@ class SdrReceiverPanel(SdrPanelBase):
         a2.triggered.connect(lambda *_, a=a2: e.set_auto(pilot_alarm=a.isChecked()))
         m.exec(QtGui.QCursor.pos())
 
+    def _vol_txt(self, v):
+        v = int(v)
+        db = "−∞" if v <= 0 else f"{20 * math.log10(v / 100.0):+.1f}".replace(".", ",").replace("-", "−")
+        self.vol_lbl.setText(f"{v} % · {db} dB")
+
     def _af_meter(self, fr):
         """8.1 : vu-mètre du son de A (derniers ~0,3 s) et déviation mesurée par rapport à la nominale (5 fois / s)."""
         now = time.monotonic()
@@ -9734,13 +9748,19 @@ class SdrReceiverPanel(SdrPanelBase):
         self._t_afm = now
         e, o = self.eng, self.owner
         try:
-            bs = list(e.af)[-3:]
-            x = np.frombuffer(b"".join(bs), dtype="<i2").astype(np.float32) / 32768.0 if bs else np.zeros(0)
-            self.af_meter.set_meter(audio_meter(x[0::2] if len(x) else x), o.audio_ref["target"])
+            raw = getattr(e.worker, "a_raw", None) if e.worker is not None else None
+            if raw is not None:            # 8.1 : le son de A AVANT ton volume et le mélange avec B (sinon le curseur
+                bs = list(raw)[-6:]        # de volume à 200 % ajoutait 6 dB à la mesure)
+                x = np.concatenate(bs) if bs else np.zeros(0, dtype=np.float32)
+            else:
+                bs = list(e.af)[-3:]
+                x = np.frombuffer(b"".join(bs), dtype="<i2").astype(np.float32) / 32768.0 if bs else np.zeros(0)
+                x = x[0::2] if len(x) else x
+            self.af_meter.set_meter(audio_meter(x), o.audio_ref["target"])
         except Exception:  # noqa: BLE001
             pass
         h = fr.get("health") or {}
-        nom = float(e.demod.get("dev") or 0) / 1000.0
+        nom = float(e.demod.get("dev") or (LISTEN_MODES.get(e.demod.get("mode", ""), {}).get("dev")) or 0) / 1000.0
         if h.get("dev") and nom > 0 and e.demod.get("mode", "") in ("wfm", "wfm_st", "nfm"):
             ddb = deviation_db(h["dev"], nom)
             self.dev_txt.setText(TR("déviation {} kHz · {} dB / nominale {} kHz").format(
@@ -10575,6 +10595,7 @@ class RealtimeWorker(QtCore.QThread):
         self.listen_b = None             # V8 étape 16 (poste SDR) : 2ᵉ récepteur B, mêmes clés (+ sq : squelch dBFS)
         self.split = False               # A à gauche, B à droite (sinon mélangés)
         self.audio = deque(maxlen=200)
+        self.a_raw = deque(maxlen=12)    # 8.1 : son de A tel qu'il sort du démodulateur (vu-mètre : sans volume ni B)
         self.proc = None
         self.err = deque(maxlen=20)
         self.det = BurstDetector(gap=3)
@@ -10713,7 +10734,7 @@ class RealtimeWorker(QtCore.QThread):
                         self.rec["ann"] += [sigmf_annot(ev, self.rec["t0"], self.rate) for ev in done
                                             if ev["t0"] >= self.rec["t0"]]
                 L, LB = self.listen, self.listen_b
-                lv_a = lv_b = None
+                lv_a = lv_b = a_same = None
                 outs = []
                 for slot, Lx in (("a", L), ("b", LB)):          # étape 16 : récepteurs A et B en même temps
                     if Lx is None or not (fh is None or self.speed == 1):
@@ -10723,6 +10744,13 @@ class RealtimeWorker(QtCore.QThread):
                             dem_b = dem_b_key = None
                         continue
                     key = tuple(sorted((k_, v_) for k_, v_ in Lx.items() if k_ not in ("volume", "sq")))
+                    if slot == "b" and key == dem_key and a_same is not None:    # 8.1 : B = A (même fréquence,
+                        a_, lv_b = a_same                                         # mêmes réglages) : pas 2 calculs
+                        if Lx.get("sq") is not None and lv_b is not None and lv_b < Lx["sq"]:
+                            a_ = a_ * 0.0
+                        if len(a_):
+                            outs.append((slot, to_stereo(a_) * float(Lx.get("volume", 1.0))))
+                        continue
                     cur, cur_key = (dem, dem_key) if slot == "a" else (dem_b, dem_b_key)
                     if key != cur_key:
                         cur = ChannelDemod(self.rate, Lx["f"] * 1e6 - self.center, Lx["mode"], Lx["deemph"], None,
@@ -10735,7 +10763,9 @@ class RealtimeWorker(QtCore.QThread):
                     a_, lv_ = cur.process(iq)
                     lv_ = None if lv_ is None else float(np.max(lv_) if np.ndim(lv_) else lv_)
                     if slot == "a":
-                        lv_a = lv_
+                        lv_a, a_same = lv_, (a_, lv_)
+                        if len(a_):
+                            self.a_raw.append(np.asarray(a_[:, 0] if np.ndim(a_) == 2 else a_, dtype=np.float32))
                     else:
                         lv_b = lv_
                     if len(a_):
@@ -32957,6 +32987,10 @@ class AudioPickDialog(QtWidgets.QDialog):
                 self.play_btn.blockSignals(True)
                 self.play_btn.setChecked(False)
                 self.play_btn.blockSignals(False)
+            if getattr(self, "_live_t", None) is not None:
+                self._live_t.stop()
+                self._live = None
+                self._measure()                              # retour à la mesure du son entier
             return
         import tempfile
         import wave
@@ -32982,10 +33016,34 @@ class AudioPickDialog(QtWidgets.QDialog):
             fx.setVolume(self.vol.value() / 100.0)
             fx.play()
             self.fx = fx
+            self._live = (a.astype(np.float32), time.monotonic(), sp.get("lvl"))   # 8.1 : vu-mètre en direct
+            self._live_pk = -math.inf
+            if getattr(self, "_live_t", None) is None:
+                self._live_t = QtCore.QTimer(self)
+                self._live_t.timeout.connect(self._live_tick)
+            self._live_t.start(50)
             self.msg.setText(TR("▶ {} (en boucle)").format(audio_text(sp, TR)))
         except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son
             self.msg.setText(TR("⚠ Son impossible ici : {}").format(e))
             self.play(False)
+
+
+    def _live_tick(self):
+        """8.1 : pendant « Écouter ici », le vu-mètre suit ce qui sort (50 ms autour de la position de lecture,
+        crête tenue qui redescend) : un WAV, une voix ou un balayage font bouger la barre en direct."""
+        lv = getattr(self, "_live", None)
+        if not lv or self.fx is None:
+            return
+        a, t0, tgt = lv
+        n = len(a)
+        if not n:
+            return
+        i = int((time.monotonic() - t0) * 48000) % n
+        seg = a[i:i + 2400] if i + 2400 <= n else np.concatenate([a[i:], a[:i + 2400 - n]])
+        m = audio_meter(seg)
+        self._live_pk = max(m["peak"], self._live_pk - 0.6) if math.isfinite(m["peak"]) else self._live_pk - 0.6
+        m = dict(m, peak=self._live_pk)
+        self.meter.set_meter(m, tgt)
 
 
 def audio_button(owner, spec, on_change=None):
@@ -33289,6 +33347,13 @@ class SdrTxDialog(QtWidgets.QDialog):
 def _v8_demo_mics(self):
     """Micros que « reçoit » le SDR démo : ta liste (sauf les 💤 éteints et ceux hors de l'état 📸 actif)."""
     out = []
+    tuned = {}                     # 8.1 : micro écouté sur A -> le « pack » démo est réglé comme ton écoute (même
+    for e_ in (getattr(self, "sdr_engs", None) or {}).values():       # déviation nominale, même compander) : un
+        cm = getattr(e_, "cur_mic", None)                             # −18 dBFS envoyé se lit −18 dBFS à l'écoute
+        if cm is not None and isinstance(getattr(e_, "demod", None), dict):
+            d_ = e_.demod
+            tuned[id(cm)] = (float(d_.get("dev") or LISTEN_MODES.get(d_.get("mode", ""), {}).get("dev") or 0) or None,
+                             d_.get("compander") or "")
     for w in self.watch:
         if w.get("muted") or w.get("off"):
             continue
@@ -33299,7 +33364,10 @@ def _v8_demo_mics(self):
                         free=self.is_keep_free(w.get("status")),
                         digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd,
                         dev=float((demod_preset(self.mic_demod(w)[0]) or {}).get("dev") or 0) or None,
+                        comp=(demod_preset(self.mic_demod(w)[0]) or {}).get("comp") or "",
                         kind=(self.sdr_cfg.get("demo_kind") or {}).get(str(int(round(w["freq"] * 1000)))) or "auto"))
+        if id(w) in tuned:
+            out[-1]["dev"], out[-1]["comp"] = tuned[id(w)]
     return out
 
 

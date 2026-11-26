@@ -1000,5 +1000,21 @@ ok("style du vu-mètre RF gardé (aiguille / barre), valeur bancale ignorée",
    ns["sdr_cfg_extra"](dict(meter_style="bar")).get("meter_style") == "bar"
    and "meter_style" not in ns["sdr_cfg_extra"](dict(meter_style="x")))
 
+for _cp_, _key_ in (("shure", "shure_ana"), ("evo", "senn_ana")):     # 8.1 : le pack démo comprime, l'écoute étend
+    _d_ = ns["demod_preset"](_key_)
+    _g_ = ns["SigGen"](2.4e6, 470.27e6, [dict(key="m", kind="fm", f=470.75, lvl=-6.0, dev=_d_["dev"], comp=_cp_, k=0,
+                                            audio=ns["audio_spec_norm"](dict(src="tone", f=1000, lvl=-18)))])
+    _dm_ = ns["ChannelDemod"](2.4e6, 0.48e6, _d_["mode"], _d_["deemph"], None, _cp_, _d_["dev"], _d_.get("cut"),
+                              _d_.get("audio"))
+    _o_ = [_dm_.process(_g_.block(120000))[0] for _i in range(50)][20:]
+    _r_ = ns["audio_meter"](np.concatenate(_o_))["rms"]
+    ok(f"démo : −18 dBFS au générateur = −18 dBFS à l'écoute avec le compander {_cp_}", abs(_r_ + 18) < 1.2, f"{_r_:.2f}")
+_hh = ns["lowpass_taps"](800, 240e3, 129)
+_xx = np.random.default_rng(3).standard_normal(4000).astype(np.float32)
+_ff = ns["FirDecim"](_hh, 1)
+_yy = np.concatenate([_ff(_xx[:1500]), _ff(_xx[1500:])])
+ok("filtre sans décimation (convolution) = calcul d'avant", np.allclose(
+    _yy, np.lib.stride_tricks.sliding_window_view(_xx, 129)[:len(_yy)] @ _hh[::-1], atol=1e-5))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

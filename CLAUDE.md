@@ -1728,6 +1728,20 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   tous les 5 dB, `style` aiguille ou barre (`_paint_analog` / `_paint_bar`), clic = bascule, clic droit = menu ;
   `MainWindow.set_meter_style` (tous les vu-mètres RF suivent). `AudioMeterBar` : fond en zones, graduations fines, repère
   d'alignement de `audio_ref` en ambre. Manuel : chapitre sdr-poste.
+  **Saccades « morse » + −18 → −25 (captures de Clément : charge 276 %, « calcul 225 % »)** : numpy lançait ses petits
+  calculs de filtre (`FirDecim` : matrice `sliding_window_view @ h`) sur TOUS les cœurs via OpenBLAS, qui tournaient à
+  vide : FM stéréo 18,6 ms de processeur par morceau de 50 ms ici (4 cœurs), 4,2 ms après. Corrigé : `OPENBLAS_NUM_THREADS`
+  / `OMP_NUM_THREADS` / `MKL_NUM_THREADS` = 1 AVANT `import numpy` (tinysa_monitor.py et tsm_core.py), `FirDecim` sans
+  décimation = `np.convolve` ; récepteur B sur la même fréquence et les mêmes réglages que A = le son de A réutilisé
+  (`a_same`). Niveau : le SDR démo n'encodait pas le compander (−18 au générateur = −27,8 à l'écoute avec un compander
+  Shure / Sennheiser) -> PURE `compress2` (inverse exact d'`expand2` en régime établi), clé `comp` du plan démo
+  (`demo_mics` -> compander du réglage d'écoute du micro) : −18,8 maintenant (désaccentuation −0,4). Générateur : vu-mètre
+  EN DIRECT pendant « Écouter ici » (`_live`, `_live_tick` 50 ms, crête tenue), retour à la mesure du son entier à l'arrêt.
+  **Pas mesuré sur le PC de Clément.**
+  Vu-mètre du son du Récepteur : il mesurait le son APRÈS le volume (curseur 0-200 % : jusqu'à +6 dB) et le mélange A + B
+  (+1,9 dB) -> `RealtimeWorker.a_raw` (son de A sorti du démodulateur) lu par `_af_meter`. Déviation affichée aussi en
+  réglages à la main (nominale = celle du mode). SDR démo : le micro écouté sur A prend la déviation et le compander de
+  l'écoute (`_v8_demo_mics` -> `tuned`) : −18 envoyé = −18 lu, quel que soit le réglage.
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
