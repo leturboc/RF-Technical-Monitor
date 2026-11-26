@@ -13910,6 +13910,13 @@ class SettingsDialog(QtWidgets.QDialog):
             self.sess_lbl.setText(d)
 
 
+def qss_rgba(hexcol, alpha):
+    """Couleur + transparence pour une feuille de style Qt. ⚠ Qt lit « #rrggbbaa » comme #AARRGGBB (8.1 : le contour
+    des cartes de l'accueil sortait jaune) : toujours passer par rgba()."""
+    c = QtGui.QColor(hexcol)
+    return f"rgba({c.red()},{c.green()},{c.blue()},{int(round(max(0.0, min(1.0, alpha)) * 255))})"
+
+
 class HomeBar(QtWidgets.QWidget):
     """🏠 Accueil (7.43, Clément : « l'écran de base est assez imbuvable, penser hyper user friendly pour des gens qui
     ne connaissent ni la HF ni le tinySA ») : 3 grosses cartes ① tinySA ② Mes micros ③ Surveiller, la prochaine étape
@@ -14038,8 +14045,9 @@ class HomeBar(QtWidgets.QWidget):
         nxt = home_next(info)
         acc = th.get("ui_accent", "#3b82f6")
         for k, (fr, _i, _h) in self.cards.items():
-            fr.setStyleSheet("QFrame#carte{border:%s; border-radius:8px; background:%s}"
-                             % (f"3px solid {acc}" if k == nxt else f"1px solid {th['plot_fg']}55", th["ui_base"]))
+            fr.setStyleSheet("QFrame#carte{border:%s; border-radius:10px; background:%s}"     # 8.1 : cartes discrètes
+                             % (f"2px solid {acc}" if k == nxt else f"1px solid {qss_rgba(th['ui_text'], 0.12)}",
+                                th["ui_base"]))
         pi = self.cards["port"][1]
         if info.get("demo"):
             pi.setText("🎭 Mode démo : signaux simulés")
@@ -21166,6 +21174,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.band_lbl = QtWidgets.QLabel("Survole le spectre ou les bandeaux pour voir le canal TV et "
                                          "l'attribution de la fréquence.")
         self._elastic(self.band_lbl)                 # une seule ligne, coupée si besoin : le spectre garde la place
+        self.band_lbl.setStyleSheet("color: #8e8e93;")   # 8.1 : indication discrète (le texte devient l'info au survol)
         self.readout = QtWidgets.QLabel("")
         self.readout.setMinimumWidth(210)
         self.readout.setStyleSheet("font-family:Consolas,monospace;")
@@ -21374,7 +21383,8 @@ class MainWindow(QtWidgets.QMainWindow):
         layer_tip.setToolTip(layer_tip.text())
         layer_tip.setText("ⓘ Clic = surveiller ce groupe · Ctrl+clic = plusieurs · clic droit = menu (survole pour l'aide)")
         layer_tip.setWordWrap(True)
-        lv2.addWidget(layer_tip)
+        lbox.setToolTip(lbox.toolTip() + "\n\n" + layer_tip.toolTip())      # 8.1 : l'aide en bulle, pas en ligne fixe
+        layer_tip.hide()
         # un QSplitter ignore la hauteur réelle des textes repliés : on la réserve (sinon chevauchements)
         lh = self.fontMetrics().lineSpacing()
         for lab, n in ((self.layer_lbl, 1), (layer_tip, 2)):
@@ -21409,11 +21419,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ("＋ Ajouter", "Ajoute des micros : tape ou colle « HF1 558.2, HF2 574… » (dans la couche active).", self.add_watch_dialog, r1),
                 ("📥 Importer", "Importe une liste de fréquences (EazyRF, WWB, WSM, Excel…). Tu peux aussi glisser\n"
                                "le fichier sur la fenêtre.", self.import_watch, r1),
-                ("📋 Coller", "Colle une liste copiée (Excel, mail…) : nom et fréquence par ligne.", self.paste_watch, r1),
-                ("📤 Exporter", "Exporte ta liste de fréquences (CSV).", self.export_watch, r2),
-                ("🗑 Supprimer", "Supprime la ou les lignes sélectionnées.", self.del_watch, r2),
-                ("↔ Bandes", "Bandes depuis la liste : remplace les bandes par des zones qui couvrent juste tes\n"
-                             "fréquences (scan plus rapide).", self.bands_from_list, r2)]:
+                ]:
             b = QtWidgets.QPushButton(txt)
             b.setToolTip(tip)
             b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, b.sizePolicy().verticalPolicy())
@@ -21431,8 +21437,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.state_btn.setMenu(self.state_menu)
         r1.addWidget(self.state_btn)
         self._update_state_btn()
+        self.list_more = QtWidgets.QToolButton()            # 8.1 (DA épurée) : une seule rangée, le reste ici
+        self.list_more.setText("⋯")
+        self.list_more.setToolTip("Plus d'actions sur la liste : coller, exporter, supprimer, bandes, astuces.")
+        self.list_more.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        lm = QtWidgets.QMenu(self.list_more)
+        lm.setToolTipsVisible(True)
+        for txt, tip, fn in (("📋 Coller une liste", "Colle une liste copiée (Excel, mail…) : nom et fréquence par ligne.",
+                              self.paste_watch),
+                             ("📤 Exporter la liste", "Exporte ta liste de fréquences (CSV).", self.export_watch),
+                             ("🗑 Supprimer la sélection  (Suppr)", "Supprime la ou les lignes sélectionnées.", self.del_watch),
+                             ("↔ Bandes d'après la liste", "Remplace les bandes par des zones qui couvrent juste tes\n"
+                              "fréquences (scan plus rapide).", self.bands_from_list),
+                             ("❓ Astuces de la liste", "Raccourcis et doubles-clics de la liste.", self.list_tips)):
+            a_ = lm.addAction(txt)
+            a_.setToolTip(tip)
+            a_.triggered.connect(lambda *_, fn=fn: fn())
+        self.list_more.setMenu(lm)
+        r1.addWidget(self.list_more)
         fl.addLayout(r1)
-        fl.addLayout(r2)
         self.watch_table = QtWidgets.QTableWidget(0, len(WATCH_HEADERS))
         self.watch_table.setHorizontalHeaderLabels(WATCH_HEADERS)
         for c, tip in ((C_THR, "Seuil propre à cette fréquence (dBm). Double-clic pour le modifier ; "
@@ -21492,8 +21515,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tip.setText("ⓘ Double-clic Statut / Niveau / Seuil · clic droit = menu · Ctrl+E = en service · Ctrl+D numérote "
                     "(survole pour l'aide)")
         tip.setWordWrap(True)
-        tip.setMinimumHeight(self.fontMetrics().lineSpacing() * 2 + 4)
-        fl.addWidget(tip)
+        self._list_tips = tip.toolTip()                     # 8.1 : ⋯ › Astuces de la liste (plus de ligne fixe)
+        tip.hide()
 
         ltab = QtWidgets.QWidget()
         lg = QtWidgets.QVBoxLayout(ltab)
@@ -24187,6 +24210,24 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_scope(valid or None)
         else:
             self.update_scope_ui()
+        self._layer_compact()
+
+    def list_tips(self):
+        QtWidgets.QMessageBox.information(self, TR("Astuces de la liste"), getattr(self, "_list_tips", ""))
+
+    def _layer_compact(self):
+        """8.1 (DA épurée) : sans scène, le cadre « Classer par scène › groupe » se réduit à sa rangée de boutons
+        (pas d'arbre vide, pas de ligne « Couche active » qui répète le compteur de la liste)."""
+        has = bool(self.scenes)
+        for w_ in (self.layer_tree, self.focus_chk, self.layer_lbl):
+            w_.setVisible(has)
+        try:
+            sp = self.freq_split
+            row = self.layer_box.sizeHint().height() if not has else 230
+            tot = sum(sp.sizes()) or 830
+            sp.setSizes([min(row, tot // 2), max(200, tot - min(row, tot // 2))])
+        except Exception:  # noqa: BLE001
+            pass
 
     def update_tree_counts(self):
         cnt = self._tree_counts()
@@ -26766,7 +26807,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_waterfall(self, bid, f, l):
         lr = decimate_max(l, WF_MAX_COLS)
         if self.wf_hist is None or self.wf_id != bid or self.wf_hist.shape[0] != len(lr):
-            self.wf_hist = np.full((len(lr), WF_ROWS), -120.0, dtype=np.float32)
+            self.wf_hist = np.full((len(lr), WF_ROWS), np.nan, dtype=np.float32)   # 8.1 : vide = transparent
             self.wf_id = bid
         self.wf_hist = np.roll(self.wf_hist, 1, axis=1)
         self.wf_hist[:, 0] = lr
@@ -29314,12 +29355,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._middle_sizes()
 
     def _middle_sizes(self):
-        """Colonne du milieu : spectre ~70 %, waterfall ~30 %, alarmes en bandeau (~170 px)."""
+        """Colonne du milieu : spectre ~76 %, waterfall ~24 %, alarmes en bandeau (~170 px)."""
         H = max(self.height(), 600) - 80
         docks, sizes = [self.dock_spec], [0]
         if self.dock_wf.isVisible() and not self.dock_wf.isFloating():
             docks.append(self.dock_wf)
-            sizes.append(int(H * 0.28))
+            sizes.append(int(H * 0.22))
         if self.dock_alarm.isVisible() and not self.dock_alarm.isFloating():
             docks.append(self.dock_alarm)
             sizes.append(170)

@@ -70,6 +70,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   internes GARDÉS (`.tsashow`, `.tsauser`, « tinysa-show », service Pi `tinysa-relais`, `tinysa_relais.py`). Icône
   maison `assets/make_icon.py` (Pillow) : carré graphite, trace menthe #4fd1c5, marqueur ambre #ffb300, seuil corail ;
   `APP_ICON_PNG64` (favicon + logo de la page de connexion). Couverture du manuel « tinySA Ultra et SDR ».
+  **DA épurée (Clément : « DA professionnelle, comme on avait mais épuré, intuitif, rapide »)** : logo en tête de
+  `cmd_bar` (`brand_btn`, clic = À propos avec le logo et « Anciennement TinySA Monitor ») ; cadre des scènes compact
+  sans scène (`_layer_compact` à la fin de `rebuild_tree` : arbre, « Couche active », scanner la sélection cachés ;
+  aide en bulle) ; liste : UNE rangée (Ajouter, Importer, État, `list_more` « ⋯ » = Coller, Exporter, Supprimer,
+  Bandes, Astuces → `list_tips`) ; plus de ligne d'aide fixe sous la liste ; waterfall vide = transparent (NaN), 22 %
+  de la hauteur ; cartes de l'accueil discrètes (contour neutre `qss_rgba`, accent seulement sur l'étape à faire) ;
+  indication du spectre en gris. ⚠ Feuille de style Qt : « #rrggbbaa » est lu #AARRGGBB -> toujours `qss_rgba()`.
 - **Nouveau nom à la 8.1 (Clément, 26/11/2026) : « RF Technical Monitor »** (sigle RFTM : le clin d'œil à « RTFM » est
   voulu, Clément : « je kiffe »). Raisons : depuis la V8 le logiciel n'est plus que tinySA, et « tinySA » est le nom du
   produit d'Erik Kaashoek (pas d'affiliation à laisser croire). « FreqWatch » écarté (logiciel RTL-SDR existant).

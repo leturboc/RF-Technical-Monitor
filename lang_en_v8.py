@@ -1757,3 +1757,15 @@ TEMPLATES.update({
         "<b>{}</b> version <b>{}</b><br><i>{}</i><br>Python {} · Qt {}<br><br>tinySA: {}{}<br><br>Config: {}<br>Logs: {}<br><br><small>{}<br>{}</small>",
 })
 EXACT.update({"À propos, version, où sont tes fichiers": "About, version, where your files are"})
+# 8.1 : liste épurée
+EXACT.update({
+    "Astuces de la liste": "List tips",
+    "Plus d'actions sur la liste : coller, exporter, supprimer, bandes, astuces.": "More list actions: paste, export, delete, bands, tips.",
+    "Raccourcis et doubles-clics de la liste.": "List shortcuts and double-clicks.",
+    "Remplace les bandes par des zones qui couvrent juste tes\nfréquences (scan plus rapide).": "Replaces the bands with zones that just cover your\nfrequencies (faster scan).",
+    "↔ Bandes d'après la liste": "↔ Bands from the list",
+    "❓ Astuces de la liste": "❓ List tips",
+    "📤 Exporter la liste": "📤 Export the list",
+    "🗑 Supprimer la sélection  (Suppr)": "🗑 Delete the selection  (Del)",
+    "📋 Coller une liste": "📋 Paste a list",
+})
