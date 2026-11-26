@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.3** (branche `refonte-8.1` : **8.1.0 « RF Technical Monitor »**, pas encore publiée).
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.1.0 « RF Technical Monitor »** (publiée le 26/11/2026 sur main à la demande de Clément, release v8.1.0).
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
