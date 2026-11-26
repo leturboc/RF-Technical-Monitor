@@ -960,5 +960,12 @@ _at = lambda f: float(np.nanmax(_lv[np.abs(_fr - f) < 0.02])) if np.any(~np.isna
 ok("démo tinySA : niveaux sur les micros, rien sur l'éteint", _at(620.0) is not None and _at(620.0) > -70
    and _at(610.0) is None and _at(630.0) is not None, f"{_at(620.0)} {_at(610.0)} {_at(630.0)}")
 
+# 8.1 : bruit continu d'un morceau à l'autre (plus de « burst » au rythme de l'affichage)
+for _k in ("pink", "white"):
+    _sp = ns["audio_spec_norm"](dict(src=_k))
+    _full = ns["demo_audio"](_sp, np.arange(48000) / 48000.0, 0)
+    _parts = np.concatenate([ns["demo_audio"](_sp, (np.arange(2400) + i * 2400) / 48000.0, 0) for i in range(20)])
+    ok(f"bruit {_k} : en morceaux = d'un seul tenant", np.allclose(_full, _parts) and 0.1 < float(np.std(_full)) < 0.4)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

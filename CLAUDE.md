@@ -83,6 +83,9 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   demandé 500 ms. Poste SDR : la carte son est nourrie par son propre fil (`AudioPump`, QThread + minuteur 5 ms) et non
   plus par l'interface ; affichage SDR limité à 12 images / s (`_frame_in` / `_fr_last`) : 87 -> 71 % d'un cœur en démo.
   Simulation (tampon 1,2 morceau, 35 % de passages en retard) : 23 trous -> 3. **Pas entendu par Claude.**
+  Bruit blanc / rose du générateur refait à CHAQUE morceau (mise en forme et niveau par morceau) = « burst » au rythme de
+  l'affichage (Clément) -> boucle de 8 s fabriquée une fois (`_noise_loop`, `NOISE_RATE`), lue au fil du temps
+  (test « en morceaux = d'un seul tenant »).
 - **Nouveau nom à la 8.1 (Clément, 26/11/2026) : « RF Technical Monitor »** (sigle RFTM : le clin d'œil à « RTFM » est
   voulu, Clément : « je kiffe »). Raisons : depuis la V8 le logiciel n'est plus que tinySA, et « tinySA » est le nom du
   produit d'Erik Kaashoek (pas d'affiliation à laisser croire). « FreqWatch » écarté (logiciel RTL-SDR existant).

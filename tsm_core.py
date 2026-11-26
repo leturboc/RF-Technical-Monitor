@@ -9471,6 +9471,27 @@ def _seq_audio(seq, t, gap=0.8):
     return (0.8 * env * (hz > 0) * np.sin(2 * np.pi * hz * t)).astype(np.float32)
 
 
+NOISE_RATE = 48000
+_NOISE = {}
+
+
+def _noise_loop(kind, secs=8.0):
+    """Bruit blanc / rose de `secs` secondes à 48 kHz, fabriqué une fois (graine fixe), dont la fin se raccorde au
+    début (mise en forme par FFT sur toute la boucle : périodique, donc pas de couture)."""
+    if kind not in _NOISE:
+        n = int(secs * NOISE_RATE)
+        w = np.random.default_rng(12345 if kind == "pink" else 54321).standard_normal(n)
+        if kind == "pink":
+            X = np.fft.rfft(w)
+            fr = np.arange(len(X), dtype=np.float64)
+            X[1:] = X[1:] / np.sqrt(fr[1:])
+            X[0] = 0.0
+            w = np.fft.irfft(X, n)
+        w = w / (np.std(w) + 1e-12)
+        _NOISE[kind] = (0.25 * np.clip(w, -3.5, 3.5)).astype(np.float32)
+    return _NOISE[kind]
+
+
 def demo_audio(kind, t, k=0):
     """Son de démo (float32, −1…1) aux instants t (s). k = n° du micro : chacun a sa hauteur, on les reconnaît.
     kind = nom (voice, melody, beep, tone…) ou source complète (dict d'audio_spec_norm : générateur, balayage,
@@ -9494,16 +9515,11 @@ def demo_audio(kind, t, k=0):
             ph = 2 * np.pi * (f1 * tau + (f2 - f1) * tau * tau / (2.0 * T))
         return (0.8 * np.sin(ph)).astype(np.float32)
     if kind in ("white", "pink"):
-        rng = np.random.default_rng(int(t[0] * 1000) % (2 ** 31) if len(t) else 0)
-        w = rng.standard_normal(len(t))
-        if kind == "pink" and len(t) > 8:
-            X = np.fft.rfft(w)
-            fr = np.arange(len(X), dtype=np.float64)
-            X[1:] = X[1:] / np.sqrt(fr[1:])
-            X[0] = 0.0
-            w = np.fft.irfft(X, len(t))
-            w = w / (np.std(w) + 1e-12)
-        return (0.25 * np.clip(w, -3.5, 3.5)).astype(np.float32)
+        loop = _noise_loop(kind)                  # 8.1 : boucle de 8 s lue au fil du temps (avant : un bruit refait à
+        if not len(t):                            # chaque morceau = « burst » au rythme de l'affichage du SDR démo)
+            return np.zeros(0, dtype=np.float32)
+        i = np.round(np.asarray(t, dtype=np.float64) * NOISE_RATE).astype(np.int64) % len(loop)
+        return loop[i]
     if kind == "app":
         return _seq_audio(app_sound_seq(spec["app"] if spec else "alarm2"), t)
     if kind == "wav":
