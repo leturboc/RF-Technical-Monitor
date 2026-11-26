@@ -42041,7 +42041,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel_attach_all()
         for d in self.docks:
             d.setFloating(False)
-            d.show()
+            if not d.objectName().startswith("dock_sdr"):   # 8.0 : les panneaux SDR suivent le mode (montés ici, le
+                d.show()                                    # Récepteur agrandissait la fenêtre : 1 028 -> 1 491 px)
         self.addDockWidget(R, self.dock_freq)
         self.addDockWidget(R, self.dock_log)
         self.addDockWidget(B, self.dock_spec)
@@ -44517,9 +44518,12 @@ _v7_layout_standard = MainWindow.layout_standard
 
 def _v8_layout_standard(self):
     """Disposition de base : celle de l'appli, puis celle du mode (tinySA / SDR / combiné)."""
+    sz, big = self.size(), self.isMaximized() or self.isFullScreen()
     _v7_layout_standard(self)
     for d in self.all_sdr_docks():
         d.hide()
+    if getattr(self, "rf_mode", "tiny") == "tiny" and not big and self.size() != sz:
+        self.resize(sz)          # 8.0 (CI Windows) : les panneaux SDR, montés un instant, agrandissaient la fenêtre
     if getattr(self, "rf_mode", "tiny") != "tiny":
         self._sdr_arrange(self.rf_mode, "listen", base=False)
 

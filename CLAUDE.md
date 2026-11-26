@@ -1447,6 +1447,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   {tiny, sdr, both} (bulles du bouton de mode, de chaque mode du menu, de la carte ① de l'accueil, du nom du SDR dans le
   Récepteur ; spectre SDR « ce n'est pas le balayage du tinySA »), lexique + « tinySA », « SDR », « Démoduler » ; manuel :
   tableau « tinySA ou SDR : quelle différence ? » dans le chapitre Le matériel, SDR dans « En option ».
+  1re CI de la 8.0 sous vrai Windows (12 min) : 5 échecs absents sous Linux. Vrai défaut corrigé : `layout_standard`
+  montrait AUSSI les panneaux SDR (dans `self.docks`) -> le Récepteur (553 px mini) agrandissait la fenêtre (1 028 ->
+  1 491 px ; sur un écran de 1 024 le spectre était écrasé à 422 px) : les docks `dock_sdr*` ne sont plus montrés par
+  la disposition de base (+ `_v8_layout_standard` remet la taille en mode tinySA). Tests rendus robustes aux machines
+  lentes : « SDR trouvé » (le faux SDR Python ne tient pas 4,8 MS/s sur la CI), « Revenir » (comparé à `_back`),
+  « bilan » (5 premières lignes du journal) ; « tech » et « bilan » disent dans leur message les postes SDR en marche
+  et la durée du calcul (5,5 s ici, > 120 s sur la CI Windows : cause pas trouvée).
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
