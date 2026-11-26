@@ -34036,6 +34036,18 @@ def _v8_sdr_follow_key(self):
 
 def _v8_late_layout_f(self, *a, **k):
     r = _v8_late_layout_s(self, *a, **k)
+    try:                                        # 8.1 : le logo de RF Technical Monitor en tête de la barre (clic = À propos)
+        if getattr(self, "brand_btn", None) is None and not self.windowIcon().isNull():
+            b = self.brand_btn = QtWidgets.QToolButton()
+            b.setIcon(self.windowIcon())
+            b.setIconSize(QtCore.QSize(22, 22))
+            b.setAutoRaise(True)
+            b.setToolTip(f"{APP_NAME} {APP_VER} — " + TR("À propos, version, où sont tes fichiers"))
+            b.clicked.connect(lambda *_: self.show_about())
+            acts = self.cmd_bar.actions()
+            self.cmd_bar.insertWidget(acts[0], b) if acts else self.cmd_bar.addWidget(b)
+    except Exception:  # noqa: BLE001
+        pass
     try:                                        # 8.1 : démarrage avec Windows réglé sous l'ancien nom -> nouveau nom / exe
         if sys.platform == "win32" and self.windows_startup_on():
             self.set_windows_startup(True)

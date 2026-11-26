@@ -1756,3 +1756,4 @@ TEMPLATES.update({
     "<b>{}</b> version <b>{}</b><br><i>{}</i><br>Python {} · Qt {}<br><br>tinySA : {}{}<br><br>Config : {}<br>Journaux : {}<br><br><small>{}<br>{}</small>":
         "<b>{}</b> version <b>{}</b><br><i>{}</i><br>Python {} · Qt {}<br><br>tinySA: {}{}<br><br>Config: {}<br>Logs: {}<br><br><small>{}<br>{}</small>",
 })
+EXACT.update({"À propos, version, où sont tes fichiers": "About, version, where your files are"})
