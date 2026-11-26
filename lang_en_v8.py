@@ -1751,3 +1751,8 @@ EXACT.update({
 EXACT.update({"TinySA Monitor": "TinySA Monitor", "TinySAMonitor": "TinySAMonitor"})
 SAME_TEMPLATES += ["dossier {} renommé en {}", "dossier {} gardé tel quel ({})", "config : copie impossible ({})",
                    "config copiée de {}"]
+EXACT.update({"Anciennement « TinySA Monitor » (jusqu’à la 8.0).": "Formerly “TinySA Monitor” (up to 8.0)."})
+TEMPLATES.update({
+    "<b>{}</b> version <b>{}</b><br><i>{}</i><br>Python {} · Qt {}<br><br>tinySA : {}{}<br><br>Config : {}<br>Journaux : {}<br><br><small>{}<br>{}</small>":
+        "<b>{}</b> version <b>{}</b><br><i>{}</i><br>Python {} · Qt {}<br><br>tinySA: {}{}<br><br>Config: {}<br>Logs: {}<br><br><small>{}<br>{}</small>",
+})
