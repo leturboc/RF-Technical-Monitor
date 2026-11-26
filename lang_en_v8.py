@@ -1402,3 +1402,16 @@ EXACT.update({
 })
 SAME_TEMPLATES += ["tsm_gen_{}.wav"]
 EXACT["color: #8e8e93;"] = "color: #8e8e93;"
+EXACT.update({
+    "(générateur, sons, ton WAV…)": "(generator, sounds, your WAV…)",
+    "Le son joué pour : {}. Clic = choisir (générateur, bruit, autre son, ton WAV…).":
+        "The sound played for: {}. Click = choose (generator, noise, another sound, your WAV…).",
+    "Revenir au son d'origine.": "Back to the original sound.",
+    "Réglages (sons des alarmes)": "Settings (alarm sounds)",
+    "Sons des alarmes": "Alarm sounds",
+    "Écouter ce son.": "Listen to this sound.",
+    "🎵 Son : {}": "🎵 Sound: {}",
+    "🎵 Son d'origine": "🎵 Original sound",
+    "🎵 {}": "🎵 {}",
+    "{} :": "{}:",
+})

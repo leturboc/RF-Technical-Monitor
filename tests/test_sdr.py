@@ -870,6 +870,13 @@ ok("son de l'appli (alarme) et WAV inconnu = silence", float(np.max(np.abs(ns["d
 ns["WAV_PCM"]["essai"] = np.linspace(-0.5, 0.5, 4800).astype(np.float32)
 ok("WAV : joué en boucle", abs(float(ns["demo_audio"](dict(src="wav", path="essai"), np.array([0.0, 0.1, 0.2]))[1]) -
    float(ns["WAV_PCM"]["essai"][0])) < 1e-6)
+asn2_ = ns["alarm_sounds_norm"]
+ok("sons des alarmes : clés connues seulement", set(asn2_(dict(alarm2=dict(src="tone", f=800), zzz="x", ok="beep"))) ==
+   {"alarm2", "ok"} and asn2_(None) == {})
+_ap = ns["alarm_pcm"](dict(src="sweep", f1=200, f2=2000, dur=30))
+ok("son d'alarme coupé à 4 s, fondu (pas de clic)", len(_ap) == int(48000 * ns["ALARM_SND_MAX_S"]) and abs(float(_ap[0])) < 1e-3
+   and abs(float(_ap[-1])) < 1e-3)
+ok("son d'alarme d'origine ré-utilisable", 0.2 < len(ns["alarm_pcm"](dict(src="app", app="alarm2"))) / 48000.0 < 1.0)
 ok("texte d'une source", ns["audio_text"](dict(src="sweep", f1=20, f2=20000, dur=10)).startswith("Balayage 20 → 20000"))
 
 print("\nÉCHECS:", fails)

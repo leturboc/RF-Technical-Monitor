@@ -9486,6 +9486,40 @@ def audio_text(d, tr=None):
     return tr(dict(AUDIO_SRCS)[src])
 
 
+ALARM_SND_MAX_S = 4.0         # un son d'alarme personnalisé est coupé à 4 s (il ne recouvre pas l'alarme suivante)
+
+
+def alarm_sounds_norm(d):
+    """Sons des alarmes choisis (config « alarm_sounds ») -> {clé d'APP_SOUNDS: source} ; absent = son d'origine."""
+    d = d if isinstance(d, dict) else {}
+    keys = [k for k, _n in APP_SOUNDS]
+    return {k: audio_spec_norm(v) for k, v in d.items() if k in keys and isinstance(v, (dict, str))}
+
+
+def alarm_pcm(spec, max_s=ALARM_SND_MAX_S):
+    """Source sonore -> son court d'alarme (float32, 48 kHz) : durée selon la source, fondu de 10 ms au début / à la fin."""
+    sp = audio_spec_norm(spec)
+    src = sp["src"]
+    if src == "sweep":
+        secs = sp["dur"]
+    elif src == "wav":
+        secs = len(WAV_PCM.get(sp["path"], ())) / 48000.0 or 0.1
+    elif src == "app":
+        secs = sum(ms for _h, ms in app_sound_seq(sp["app"])) / 1000.0
+    elif src in ("voice", "melody"):
+        secs = 2.2 if src == "voice" else 2.4
+    else:
+        secs = 1.0
+    n = int(48000 * max(0.05, min(float(max_s), secs)))
+    a = demo_audio(sp, np.arange(n) / 48000.0, 0).astype(np.float32)
+    f = min(len(a) // 2, 480)
+    if f:
+        ramp = np.linspace(0.0, 1.0, f, dtype=np.float32)
+        a[:f] *= ramp
+        a[-f:] *= ramp[::-1]
+    return a
+
+
 def _seq_audio(seq, t, gap=0.8):
     """Suite de notes [(Hz, ms)] jouée en boucle (avec un blanc de `gap` s) aux instants t."""
     ends = np.cumsum([ms / 1000.0 for _hz, ms in seq])
@@ -44438,6 +44472,7 @@ def _v8_collect_config(self, *a, **k):
                     d_["demod"] = w["demod"]
                 if isinstance(w.get("pilot"), (int, float)):       # étape 20 : pilote appris
                     d_["pilot"] = float(w["pilot"])
+        data["alarm_sounds"] = alarm_sounds_norm(getattr(self.sound, "custom", None))   # étape 21
     except Exception:  # noqa: BLE001
         pass
     return data
@@ -44448,6 +44483,14 @@ _v7_apply_config2 = MainWindow._apply_config
 
 def _v8_apply_config2(self, data, startup=False):
     r = _v7_apply_config2(self, data, startup)
+    try:                                         # étape 21 : sons des alarmes au choix
+        if isinstance(data, dict) and "alarm_sounds" in data:
+            self.sound.custom = alarm_sounds_norm(data.get("alarm_sounds"))
+            for sp in self.sound.custom.values():
+                if sp["src"] == "wav":
+                    wav_load(sp["path"])
+    except Exception:  # noqa: BLE001
+        pass
     try:
         src = data.get("watch") if isinstance(data, dict) else None
         if isinstance(src, list) and len(src) == len(self.watch):
@@ -44986,6 +45029,112 @@ def _v8_pick_demo_sound(self, w):
 
 
 MainWindow.open_audio_gen = _v8_open_audio_gen
+# ---- étape 21 (Clément : « on peut même choisir les sons d'alarmes » -> « garde ça en V8 ») : sons des alarmes au choix
+_v7_sound_play = SoundOut.play
+
+
+def _v8_sound_play(self, seq):
+    """Un son d'alarme / d'appel personnalisé (self.custom {clé: source}) remplace les notes d'origine ; sinon V7."""
+    key = {id(ALARM_TONES[2]): "alarm2", id(ALARM_TONES[1]): "alarm1", id(ALARM_TONES[0]): "alarm0",
+           id(TONE_OK): "ok"}.get(id(seq))
+    sp = (getattr(self, "custom", None) or {}).get(key) if key else None
+    if sp is None or not self.cfg.get("volume") or self.cfg.get("style", "tones") != "tones":
+        return _v7_sound_play(self, seq)
+    mm = self._mm()
+    if mm is None:
+        return _v7_sound_play(self, seq)
+    try:
+        if audio_spec_norm(sp)["src"] == "wav":
+            wav_load(audio_spec_norm(sp)["path"])
+        a = alarm_pcm(sp)
+        dev = self._device(mm)
+        if dev is None or dev.isNull():
+            raise RuntimeError("aucune sortie audio")
+        fmt = mm.QAudioFormat()
+        fmt.setSampleRate(48000)
+        fmt.setChannelCount(1)
+        fmt.setSampleFormat(mm.QAudioFormat.SampleFormat.Int16)
+        if self.sink is not None:
+            self.sink.stop()
+        self.sink = mm.QAudioSink(dev, fmt)
+        self.sink.setVolume(self.cfg.get("volume", 70) / 100.0)
+        self.buf = QtCore.QBuffer()
+        self.buf.setData(QtCore.QByteArray((np.clip(a, -1, 1) * 32767).astype("<i2").tobytes()))
+        self.buf.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
+        self.sink.start(self.buf)
+        self.error = ""
+        self.last_custom = key
+    except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son : on joue le son d'origine
+        self.error = str(e)
+        return _v7_sound_play(self, seq)
+
+
+SoundOut.play = _v8_sound_play
+USER_KEYS = USER_KEYS + ("alarm_sounds",)          # les sons des alarmes suivent le profil utilisateur
+
+
+def _v8_set_alarm_sound(self, key, spec):
+    d = alarm_sounds_norm(getattr(self.sound, "custom", None))
+    if spec is None:
+        d.pop(key, None)
+    else:
+        d[key] = audio_spec_norm(spec)
+        if d[key]["src"] == "wav":
+            wav_load(d[key]["path"])
+    self.sound.custom = d
+
+
+def _v8_test_alarm_sound(self, key):
+    self.sound.play({"alarm2": ALARM_TONES[2], "alarm1": ALARM_TONES[1], "alarm0": ALARM_TONES[0],
+                     "ok": TONE_OK}.get(key, ALARM_TONES[2]))
+
+
+MainWindow.set_alarm_sound = _v8_set_alarm_sound
+MainWindow.test_alarm_sound = _v8_test_alarm_sound
+_v7_settings_init = SettingsDialog.__init__
+
+
+def _v8_settings_init(self, owner, *a, **k):
+    _v7_settings_init(self, owner, *a, **k)
+    try:                                           # rubrique « Son » : un choix par son d'alarme
+        page = self.tabs.widget(self.keys.index("sound"))
+        f = page.layout()
+        f.addRow(QtWidgets.QLabel(TR("<b>Sons des alarmes</b> (générateur, sons, ton WAV…)")))
+        self.alarm_snd_btns = {}
+        for key, name in APP_SOUNDS:
+            cur = (getattr(owner.sound, "custom", None) or {}).get(key)
+            b = QtWidgets.QPushButton()
+            b.setToolTip(TR("Le son joué pour : {}. Clic = choisir (générateur, bruit, autre son, ton WAV…).").format(TR(name)))
+
+            def upd(b=b, key=key):
+                sp = (getattr(owner.sound, "custom", None) or {}).get(key)
+                b.setText(TR("🎵 {}").format(audio_text(sp, TR)) if sp else TR("🎵 Son d'origine"))
+
+            def pick(*_, key=key, upd=upd, name=name):
+                d = AudioPickDialog(owner, (getattr(owner.sound, "custom", None) or {}).get(key) or dict(src="app", app=key),
+                                    title=TR("🎵 Son : {}").format(TR(name)))
+                if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+                    owner.set_alarm_sound(key, d.spec())
+                    upd()
+            b.clicked.connect(pick)
+            t_ = QtWidgets.QToolButton()
+            t_.setText("▶")
+            t_.setToolTip(TR("Écouter ce son."))
+            t_.clicked.connect(lambda *_, key=key: (self._apply_sound(), owner.test_alarm_sound(key)))
+            r_ = QtWidgets.QToolButton()
+            r_.setText("↺")
+            r_.setToolTip(TR("Revenir au son d'origine."))
+            r_.clicked.connect(lambda *_, key=key, upd=upd: (owner.set_alarm_sound(key, None), upd()))
+            upd()
+            self.alarm_snd_btns[key] = b
+            f.addRow(TR(name) + " :", owner._row(b, t_, r_))
+    except Exception as ex:  # noqa: BLE001 — la fenêtre des réglages s'ouvre quoi qu'il arrive
+        log_crash("Réglages (sons des alarmes)", repr(ex))
+
+
+SettingsDialog.__init__ = _v8_settings_init
+
+
 MainWindow.demo_sound = _v8_demo_sound
 MainWindow.pick_demo_sound = _v8_pick_demo_sound
 

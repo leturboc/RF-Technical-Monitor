@@ -2021,6 +2021,13 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   du SDR (`open_audio_gen`). Testé : test_sdr (fréquence du générateur, milieu du balayage log, rose, alarme, WAV), script
   (WAV d'essai 1,5 kHz réentendu à 1 500 Hz après démodulation du SDR démo). **Son du générateur jamais entendu par
   Claude** (conteneur sans carte son : « format non supporté ») ; aigus coupés vers 15 kHz dans l'écoute FM (voulu).
+  **Sons des alarmes au choix (Clément : « on peut même choisir les sons d'alarmes » -> « garde ça en V8 »)** : PURE
+  `ALARM_SND_MAX_S` 4 s, `alarm_sounds_norm` ({alarm2 | alarm1 | alarm0 | ok: source}), `alarm_pcm` (durée selon la source,
+  fondu 10 ms). `SoundOut.play` ENVELOPPÉ (`_v8_sound_play`) : la suite de notes reconnue par identité (`ALARM_TONES[n]`,
+  `TONE_OK`) -> son choisi `self.sound.custom` en QAudioSink 48 kHz, sinon / en cas d'erreur le son d'origine V7.
+  `SettingsDialog.__init__` ENVELOPPÉ : rubrique Son + « Sons des alarmes » (bouton par son, ▶ `test_alarm_sound`, ↺),
+  `set_alarm_sound`. Config « alarm_sounds » (enveloppes collect / apply), `USER_KEYS` + « alarm_sounds » (profil
+  utilisateur, pas les shows). **Jamais entendu par Claude** (pas de carte son ici : repli sur le son d'origine testé).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
