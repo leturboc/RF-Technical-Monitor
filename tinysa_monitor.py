@@ -6450,6 +6450,12 @@ class AudioOut:
         self.sink = self.io = None
 
 
+def pump_move(src, dst):
+    """Passe le son produit (file du fil SDR) dans la file de la carte son (AudioPump)."""
+    while src:
+        dst.append(src.popleft())
+
+
 class AudioPump(QtCore.QThread):
     """8.1 (Clément : « l'audio saccade sur un micro du SDR, pas en Écouter ici ») : la carte son est nourrie par SON
     fil, indépendant de l'interface. Avant, un spectre / waterfall un peu lent à redessiner retardait l'envoi et la
@@ -6483,6 +6489,7 @@ class ListenDialog(QtWidgets.QDialog):
 
     def __init__(self, owner, rows=None, freqs=None):
         super().__init__(owner)
+        self._aq = deque(maxlen=200)                      # 8.1 : file de la carte son (AudioPump)
         self.owner = owner
         self.setWindowTitle("🎧 Écouter avec le SDR")
         self.wav = self.wav_path = None                 # étape 6 : ⏺ son enregistré
@@ -6713,9 +6720,8 @@ class ListenDialog(QtWidgets.QDialog):
         if hopping and self.audio is not None:      # balayage : on garde la sortie son
             QtCore.QTimer.singleShot(0, self.worker.start)
             return
-        self.audio = AudioOut(self)
-        if self.audio.error:
-            self.st_lbl.setText(f"⚠ {self.audio.error} : les niveaux s'affichent quand même.")
+        self.audio = AudioPump(self._aq)                # 8.1 : son nourri par son propre fil
+        self.audio.start()
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)   # le temps de libérer le SDR
         self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         self.go_btn.setText("■ Arrêter")
@@ -6746,7 +6752,7 @@ class ListenDialog(QtWidgets.QDialog):
             if self.pc_mute.isChecked():
                 w.audio.clear()
             else:
-                self.audio.feed(w.audio)
+                pump_move(w.audio, self._aq)
         now = time.time()
         if self._auto is not None and now >= self._auto["until"]:
             self._auto_end()
@@ -7218,6 +7224,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
 
     def __init__(self, owner):
         super().__init__(owner)
+        self._aq = deque(maxlen=200)                      # 8.1 : file de la carte son (AudioPump)
         self.owner = o = owner
         self.setWindowTitle("Moniteur multicanal SDR")
         self.setModal(False)
@@ -7558,7 +7565,8 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker.keep_iq = self.iq_chk.isChecked()
         self.trk = {c["key"]: AnomalyTracker(not c.get("keep_free")) for c in self.chans}   # libre : signal = anomalie
         self._seen_al = {a.get("key") for a in o.alarms.active.values()}
-        self.audio = AudioOut(self)
+        self.audio = AudioPump(self._aq)                       # 8.1 : son nourri par son propre fil
+        self.audio.start()
         if o.sdr_cfg.get("shure") and not getattr(o, "_shure", None):       # étape 11 : récepteurs pour comparer
             o.receivers_start(o.sdr_cfg["shure"])
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)
@@ -7576,7 +7584,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
             self._freshen()
         w.alarm_keys = {a["key"][1] for a in o.alarms.active.values() if a.get("key") and a["key"][0] in ("CONFLIT", "BREF", "ABSENT")}
         if self.audio is not None:
-            self.audio.feed(w.audio)
+            pump_move(w.audio, self._aq)
         if self.mode_combo.currentData() == "learn" and int(time.time()) % 5 == 0:
             self._mode_changed()
         if self.chans:                                            # étape 10 : nouvelles alarmes sur un de mes micros
@@ -10628,6 +10636,7 @@ class RealtimeDialog(QtWidgets.QDialog):
 
     def __init__(self, owner, center_mhz=None):
         super().__init__(owner)
+        self._aq = deque(maxlen=200)                      # 8.1 : file de la carte son (AudioPump)
         self.owner = owner
         self.setWindowTitle("⏱ Temps réel (SDR)")
         self.resize(1240, 800)
@@ -11196,13 +11205,12 @@ class RealtimeDialog(QtWidgets.QDialog):
         if self.worker is not None:
             self.worker.listen = dict(f=f, volume=self.vol.value() / 100.0, **self.dp.params())
             if self.audio is None:
-                self.audio = AudioOut(self)
-                if self.audio.error:
-                    self.st_lbl.setText(f"⚠ {self.audio.error}")
+                self.audio = AudioPump(self._aq)        # 8.1 : son nourri par son propre fil
+                self.audio.start()
 
     def _feed(self):
         if self.worker is not None and self.audio is not None:
-            self.audio.feed(self.worker.audio)
+            pump_move(self.worker.audio, self._aq)
 
     def _stopped(self, why):
         if why:
