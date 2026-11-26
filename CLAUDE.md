@@ -1477,6 +1477,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (`_late_layout`), `open_screens` (menu du mode + 🪟 Fenêtres). Disposition de base, changement de mode, fermeture : tout
   revient. Testé : test_sdr (PURE), gui_reel (2ᵉ écran simulé = même écran 2 fois), script de session avec 2 écrans
   virtuels (`offscreen:configfile=` 2 × 1920 × 1040 : fenêtre sur S2, config relue). **Jamais vu sur un vrai double écran.**
+  Aussi en 8.0.2 (Clément : « ajouter rapidement les micros à suivre depuis Mes fréquences à mes micros SDR ») : PURE
+  `post_mics_norm` / `post_mics_set`, clé `mics` des postes (`sdr_posts_norm`), `post_watch(watch, scenes, mics)` : micros
+  CHOISIS (kHz) s'il y en a, sinon ceux des scènes. MainWindow `watch_selected`, `sdr_follow(ws, on, pid)`,
+  `sdr_follow_clear`, `_sdr_follow_menu` (clic droit de Mes fréquences, un sous-menu par SDR s'il y en a plusieurs),
+  `sdr_follow_key` (Ctrl+Maj+F sur la liste : ajoute, ou retire si déjà tous suivis). `SdrMicsPanel` : « ＋ Ajouter ma
+  sélection », Retirer (Suppr), ↺ Tous, `mode_lbl` ; micros choisis hors fenêtre listés grisés (clic = y aller) ; la
+  patrouille « tous » = les suivis. Retirer le dernier = le SDR suit de nouveau tous les micros.
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

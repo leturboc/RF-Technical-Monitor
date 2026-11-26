@@ -9215,14 +9215,42 @@ def sdr_posts_norm(d):
         m = str(x.get("model") or "")
         out.append(dict(id=pid, name=" ".join(str(x.get("name") or f"SDR {pid}").split())[:40] or f"SDR {pid}",
                         model=m if sdr_model(m) else "", serial=re.sub(r"[^\w:.\-]", "", str(x.get("serial") or ""))[:40],
-                        scenes=[str(s)[:60] for s in (x.get("scenes") or []) if str(s).strip()][:20]))
+                        scenes=[str(s)[:60] for s in (x.get("scenes") or []) if str(s).strip()][:20],
+                        mics=post_mics_norm(x.get("mics"))))
     if 1 not in seen:
-        out.append(dict(id=1, name="SDR 1", model="", serial="", scenes=[]))
+        out.append(dict(id=1, name="SDR 1", model="", serial="", scenes=[], mics=[]))
     return sorted(out, key=lambda p: p["id"])
 
 
-def post_watch(watch, scenes):
-    """Micros suivis par un poste : ceux de ses scènes (toutes si aucune scène n'est choisie)."""
+POST_MICS_MAX = 300
+
+
+def post_mics_norm(v):
+    """8.0.2 : micros CHOISIS pour un poste SDR (kHz, sans doublon, triés) ; vide = ceux de ses scènes."""
+    out = set()
+    for x in (v if isinstance(v, (list, tuple, set)) else []):
+        try:
+            k = int(round(float(x)))
+        except (TypeError, ValueError):
+            continue
+        if 1000 <= k <= 7_000_000:
+            out.add(k)
+    return sorted(out)[:POST_MICS_MAX]
+
+
+def post_mics_set(mics, keys, on):
+    """Ajoute (on) ou retire des micros (kHz) de la liste choisie d'un poste."""
+    cur = set(post_mics_norm(mics))
+    keys = set(post_mics_norm(keys))
+    return post_mics_norm(sorted(cur | keys if on else cur - keys))
+
+
+def post_watch(watch, scenes, mics=None):
+    """Micros suivis par un poste : ceux CHOISIS (8.0.2, depuis Mes fréquences) s'il y en a, sinon ceux de ses scènes
+    (toutes si aucune scène n'est choisie)."""
+    keys = set(post_mics_norm(mics))
+    if keys:
+        return [w for w in watch if int(round(w["freq"] * 1000)) in keys]
     sc = set(scenes or [])
     return [w for w in watch if not sc or w.get("scene") in sc]
 
@@ -9296,7 +9324,7 @@ def demod_guess(*texts):
 # ce signal »). Seuils = choix de Claude, pas mesurés sur de vrais micros.
 SDR_AUTO_DEFAULT = dict(tune=True, rec=False, dwell=8, src="favs", pilot_alarm=True)
 PATROL_DWELLS = (3, 5, 8, 12, 20, 30)          # secondes par micro
-PATROL_SRCS = (("favs", "Mes favoris ⭐ (pavé numérique)"), ("all", "Tous les micros de ce SDR"))
+PATROL_SRCS = (("favs", "Mes favoris ⭐ (pavé numérique)"), ("all", "Tous les micros suivis par ce SDR"))
 ALARM_TUNE_KINDS = ("CONFLIT", "INTERMOD", "ABSENT", "TROP FORT", "PILOTE")
 ALARM_REC_PRE_S = 10.0       # son gardé AVANT l'alarme (seulement si A était déjà sur ce micro)
 ALARM_REC_POST_S = 20.0      # son enregistré APRÈS l'alarme
@@ -21701,14 +21729,15 @@ class SdrEngine(QtCore.QObject):
 
     def post(self):
         return next((p for p in sdr_posts_norm(self.owner.sdr_cfg.get("posts")) if p["id"] == self.pid),
-                    dict(id=self.pid, name=f"SDR {self.pid}", model="", serial="", scenes=[]))
+                    dict(id=self.pid, name=f"SDR {self.pid}", model="", serial="", scenes=[], mics=[]))
 
     def name(self):
         return self.post()["name"]
 
     def ws(self):
-        """Micros suivis par ce poste (ceux de ses scènes, sinon tous)."""
-        return post_watch(self.owner.watch, self.post()["scenes"])
+        """Micros suivis par ce poste (choisis, sinon ceux de ses scènes, sinon tous)."""
+        p = self.post()
+        return post_watch(self.owner.watch, p["scenes"], p.get("mics"))
 
     def bid(self):
         """« Bande » de ses mesures dans la surveillance (une par poste)."""
@@ -23217,7 +23246,7 @@ class SdrMicsPanel(SdrPanelBase):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         hh = self.table.horizontalHeader()
         for c in range(3):
             hh.setSectionResizeMode(c, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
@@ -23227,6 +23256,23 @@ class SdrMicsPanel(SdrPanelBase):
         self.table.cellClicked.connect(lambda r, c: self._pick(r, "a"))
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(lambda p: self._menu(self.table.rowAt(p.y())))
+        self.add_btn = QtWidgets.QPushButton(TR("＋ Ajouter ma sélection"))           # 8.0.2 : micros choisis
+        self.add_btn.setToolTip(TR("Ajoute les lignes choisies dans « Mes fréquences » aux micros suivis par ce SDR "
+                                   "(aussi : clic droit dans Mes fréquences › 📡, ou Ctrl+Maj+F)."))
+        self.add_btn.clicked.connect(lambda *_: self.owner.sdr_follow(self.owner.watch_selected(), True, self.eng.pid))
+        self.del_btn = QtWidgets.QPushButton(TR("Retirer"))
+        self.del_btn.setToolTip(TR("Retire les micros choisis ici de ceux que suit ce SDR (Suppr)."))
+        self.del_btn.clicked.connect(lambda *_: self._remove())
+        self.all_btn = QtWidgets.QPushButton(TR("↺ Tous"))
+        self.all_btn.setToolTip(TR("Le SDR suit de nouveau tous les micros (de ses scènes)."))
+        self.all_btn.clicked.connect(lambda *_: self.owner.sdr_follow_clear(self.eng.pid))
+        self.mode_lbl = QtWidgets.QLabel("")
+        self.mode_lbl.setToolTip(TR("Ce que suit ce SDR : les micros que tu as choisis, ou tous ceux de ses scènes."))
+        lay.addLayout(self._wrap(self.mode_lbl, self.add_btn, self.del_btn, self.all_btn))
+        try:
+            del_key(self.table, self._remove)
+        except Exception:  # noqa: BLE001
+            pass
         lay.addWidget(self.table, 1)
         self.note = QtWidgets.QLabel("")
         self.note.setWordWrap(True)
@@ -23257,6 +23303,12 @@ class SdrMicsPanel(SdrPanelBase):
             m.addAction(TR("🎵 Son de ce micro dans le SDR démo…")).triggered.connect(lambda *_: o.pick_demo_sound(w))
         m.exec(QtGui.QCursor.pos())
 
+    def _remove(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes()})
+        ws = [self.ws[r] for r in rows if 0 <= r < len(self.ws)]
+        if ws:
+            self.owner.sdr_follow(ws, False, self.eng.pid)
+
     def _pick(self, r, slot):
         if not 0 <= r < len(self.ws):
             return
@@ -23272,11 +23324,19 @@ class SdrMicsPanel(SdrPanelBase):
         o, e = self.owner, self.eng
         m = e.model()
         allw = [w for w in e.ws() if not m or sdr_in_range(m, w["freq"])]       # les micros de SES scènes
+        chosen = bool(e.post().get("mics"))
         if e.center is not None:
-            self.ws = [w for w in allw if vfo_inside(e.center, e.span(), w["freq"], 0.0)]
+            inside = [w for w in allw if vfo_inside(e.center, e.span(), w["freq"], 0.0)]
         else:
-            self.ws = list(allw)
-        n_out = len(allw) - len(self.ws)
+            inside = list(allw)
+        n_out = len(allw) - len(inside)
+        out_ws = [w for w in allw if w not in inside] if chosen else []     # choisis : tous listés (hors fenêtre grisés)
+        self.ws = inside + out_ws
+        n_mine = len(e.post().get("mics") or [])
+        self.mode_lbl.setText(TR("📡 Suit {} micro(s) choisi(s)").format(n_mine) if chosen
+                              else TR("📡 Suit tous les micros") + (" " + TR("de ses scènes") if e.post()["scenes"] else ""))
+        self.del_btn.setEnabled(chosen)
+        self.all_btn.setEnabled(chosen)
         if self.table.rowCount() != len(self.ws):
             self.table.setRowCount(len(self.ws))
         for r, w in enumerate(self.ws):
@@ -23284,6 +23344,9 @@ class SdrMicsPanel(SdrPanelBase):
             txt, tone, col = o.sig_view(w)
             here = (" 🎧A" if e.a is not None and abs(e.a - w["freq"]) < 1e-4 else "") + \
                    (" 🎧B" if e.b_on and e.b is not None and abs(e.b - w["freq"]) < 1e-4 else "")
+            outside = w in out_ws
+            if outside:
+                lv, txt, col = None, TR("↪ hors de la fenêtre (clic = y aller)"), "#8e8e93"
             for c, v in enumerate((w["name"] + here, f"{w['freq']:.3f}", "—" if lv is None else f"{lv:.0f} dBm", txt)):
                 it = self.table.item(r, c)
                 if it is None:
@@ -23292,8 +23355,13 @@ class SdrMicsPanel(SdrPanelBase):
                 elif it.text() != v:
                     it.setText(v)
             self.table.item(r, 3).setForeground(QtGui.QColor(col))
-        self.note.setText("" if not n_out else TR("{} autre(s) fréquence(s) hors de la fenêtre du SDR : clique un micro "
-                                                    "ou tape sa fréquence en A pour y aller.").format(n_out))
+        if chosen:
+            self.note.setText("" if self.ws else TR("Aucun de tes micros choisis n'est dans la plage de ce SDR."))
+        else:
+            self.note.setText(TR("Pour n'en suivre que quelques-uns : choisis-les dans « Mes fréquences » puis « ＋ Ajouter "
+                                 "ma sélection » (ou clic droit › 📡).") + ("" if not n_out else "\n" + TR(
+                "{} autre(s) fréquence(s) hors de la fenêtre du SDR : clique un micro ou tape sa fréquence en A pour y "
+                "aller.").format(n_out)))
 
 
 class SdrPostsDialog(QtWidgets.QDialog):
@@ -38194,6 +38262,8 @@ class MainWindow(QtWidgets.QMainWindow):
         a_zoom = m.addAction("🔍 Zoom live sur cette fréquence")
         a_lis = m.addAction("🎧 Écouter avec le SDR…")
         a_rt = m.addAction("⏱ Temps réel autour de cette fréquence…")
+        if getattr(self, "sdr_engs", None):
+            self._sdr_follow_menu(m, [self.watch[r] for r in rows])     # 8.0.2 : suivre avec le SDR
         a_ren = m.addAction("Renommer…")
         a_qn = m.addAction("✏ Nommer la sélection (HF 1, HF 2…)…")
         a_fd = m.addAction("⇣ Numéroter vers le bas depuis la 1ʳᵉ ligne")
@@ -47014,6 +47084,107 @@ def _v8_build_mode_menu_s(self):
         m.addAction(a_)
 
 
+def _v8_watch_selected(self):
+    """Lignes choisies dans « Mes fréquences »."""
+    try:
+        return [self.watch[r] for r in self._sel_rows() if 0 <= r < len(self.watch)]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _v8_sdr_follow(self, ws, on, pid=1):
+    """8.0.2 : ajoute (on) / retire des micros de ceux que suit le poste SDR pid."""
+    ws = [w for w in (ws or []) if w]
+    if not ws:
+        self.set_status(TR("Choisis d'abord une ou plusieurs lignes dans « Mes fréquences »."))
+        return False
+    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+    p = next((x for x in posts if x["id"] == pid), None)
+    if p is None:
+        return False
+    keys = [int(round(w["freq"] * 1000)) for w in ws]
+    before = set(p["mics"])
+    if not on and not before:                     # « tous » : retirer = garder tous les autres
+        before = {int(round(w["freq"] * 1000)) for w in self.sdr_engs[pid].ws()} if pid in self.sdr_engs else set()
+    p["mics"] = post_mics_set(sorted(before), keys, on)
+    if not on and not p["mics"] and before:
+        p["mics"] = []                            # plus aucun : il suit de nouveau tous les micros
+    self.sdr_cfg["posts"] = posts
+    nm = self.sdr_engs[pid].name() if pid in self.sdr_engs else f"SDR {pid}"
+    n = len(set(keys) - before) if on else len(set(keys) & before)
+    self.set_status((TR("📡 {} : {} micro(s) ajouté(s), {} suivi(s) en tout.") if on else
+                     TR("📡 {} : {} micro(s) retiré(s), {} suivi(s) en tout.")).format(nm, n, len(p["mics"]))
+                    if p["mics"] else TR("📡 {} suit de nouveau tous les micros.").format(nm))
+    self._sdr_follow_refresh()
+    return True
+
+
+def _v8_sdr_follow_clear(self, pid=1):
+    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+    for x in posts:
+        if x["id"] == pid:
+            x["mics"] = []
+    self.sdr_cfg["posts"] = posts
+    self.set_status(TR("📡 Le SDR suit de nouveau tous les micros."))
+    self._sdr_follow_refresh()
+
+
+def _v8_sdr_follow_refresh(self):
+    for d in self.all_sdr_docks():
+        pw = self.dock_widget(d)
+        if isinstance(pw, SdrMicsPanel):
+            pw.ws = []
+            pw.refresh()
+
+
+def _v8_sdr_follow_menu(self, m, ws):
+    """Clic droit dans Mes fréquences : 📡 suivre / ne plus suivre avec le SDR (un sous-menu par SDR s'il y en a
+    plusieurs)."""
+    keys = {int(round(w["freq"] * 1000)) for w in ws}
+    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+    for p in posts:
+        mine = set(p["mics"])
+        tgt = m.addMenu(TR("📡 Suivre avec {}").format(p["name"])) if len(posts) > 1 else m
+        if not keys <= mine:
+            tgt.addAction(TR("📡 Suivre avec le SDR ({} micro(s))  Ctrl+Maj+F").format(len(keys)) if len(posts) == 1
+                          else TR("Suivre ({} micro(s))").format(len(keys))).triggered.connect(
+                lambda *_, pid=p["id"]: self.sdr_follow(ws, True, pid))
+        if keys & mine:
+            tgt.addAction(TR("📡 Ne plus suivre avec le SDR") if len(posts) == 1 else TR("Ne plus suivre")).triggered.connect(
+                lambda *_, pid=p["id"]: self.sdr_follow(ws, False, pid))
+        if mine:
+            tgt.addAction(TR("📡 Le SDR suit de nouveau tous les micros") if len(posts) == 1
+                          else TR("Suivre de nouveau tous les micros")).triggered.connect(
+                lambda *_, pid=p["id"]: self.sdr_follow_clear(pid))
+
+
+def _v8_sdr_follow_key(self):
+    """Ctrl+Maj+F dans Mes fréquences : la sélection rejoint (ou quitte, si elle y est déjà) les micros du SDR 1."""
+    ws = self.watch_selected()
+    if not ws:
+        return
+    mine = set(sdr_posts_norm(self.sdr_cfg.get("posts"))[0]["mics"])
+    keys = {int(round(w["freq"] * 1000)) for w in ws}
+    self.sdr_follow(ws, not (keys <= mine), 1)
+
+
+def _v8_late_layout_f(self, *a, **k):
+    r = _v8_late_layout_s(self, *a, **k)
+    try:
+        sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Shift+F"), self.watch_table)
+        sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        sc.activated.connect(self.sdr_follow_key)
+    except Exception:  # noqa: BLE001
+        pass
+    return r
+
+
+MainWindow.watch_selected = _v8_watch_selected
+MainWindow.sdr_follow = _v8_sdr_follow
+MainWindow.sdr_follow_clear = _v8_sdr_follow_clear
+MainWindow._sdr_follow_refresh = _v8_sdr_follow_refresh
+MainWindow._sdr_follow_menu = _v8_sdr_follow_menu
+MainWindow.sdr_follow_key = _v8_sdr_follow_key
 MainWindow.screen_hosts = {}
 MainWindow.screens_cfg = screens_norm(None)
 MainWindow.dock_widget = _v8_dock_widget
@@ -47034,6 +47205,7 @@ MainWindow._collect_config = _v8_collect_config_s
 MainWindow._apply_config = _v8_apply_config_s
 MainWindow._late_layout = _v8_late_layout_s
 MainWindow._build_mode_menu = _v8_build_mode_menu_s
+MainWindow._late_layout = _v8_late_layout_f
 
 
 def self_test(path):

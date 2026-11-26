@@ -1447,6 +1447,27 @@ wait(800)
 check("8.0.2 : changer de mode ramène les panneaux", not win.screen_hosts and win.sdr_docks["spec"].isVisible())
 _sd2.close()
 del win.screen_list
+# 8.0.2 : micros suivis par le SDR, choisis depuis Mes fréquences
+win.rebuild_watch_table()
+win.watch_table.clearSelection()
+win.watch_table.selectRow(0)
+_fw = win.watch_selected()
+win.sdr_follow_key()                       # = Ctrl+Maj+F dans Mes fréquences
+wait(600)
+_mp = win.dock_widget(win.sdr_docks["mics"])
+_mp.refresh()
+check("8.0.2 : Ctrl+Maj+F = le SDR ne suit que les micros choisis (panneau + patrouille)",
+      _fw and win.sdr_cfg["posts"][0]["mics"] == [int(round(_fw[0]["freq"] * 1000))]
+      and [w_["name"] for w_ in win.sdr_eng.ws()] == [_fw[0]["name"]] and "1" in _mp.mode_lbl.text()
+      and win.sdr_eng._patrol_items() in ([], [int(round(_fw[0]["freq"] * 1000))]),
+      f"{win.sdr_cfg.get('posts')} · {_mp.mode_lbl.text()}")
+_m8 = QtWidgets.QMenu()
+win._sdr_follow_menu(_m8, _fw)
+check("8.0.2 : clic droit dans Mes fréquences › 📡 (ne plus suivre / tous)", any("📡" in a_.text() for a_ in _m8.actions()),
+      str([a_.text() for a_ in _m8.actions()]))
+win.sdr_follow_clear(1)
+check("8.0.2 : ↺ Tous = le SDR suit de nouveau tous les micros", win.sdr_cfg["posts"][0]["mics"] == []
+      and len(win.sdr_eng.ws()) == len(win.watch))
 _mic16 = win.sdr_docks["mics"].widget()
 _mic16.refresh()
 check("16 : mes micros dans la fenêtre du SDR, avec le niveau mesuré", _mic16.table.rowCount() >= 1

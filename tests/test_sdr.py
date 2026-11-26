@@ -934,5 +934,15 @@ _sn = ns["screens_norm"]({"on": True, "plan": {"dock_freq": 1, "x": 3, "dock_wf"
 ok("écrans : config nettoyée", _sn["on"] and _sn["plan"] == {"dock_freq": 1} and _sn["hosts"] == {"1": {"geo": "abc"}}
    and not ns["screens_norm"]({"on": True})["on"], str(_sn))
 
+# 8.0.2 : micros choisis pour un poste SDR
+ok("micros choisis : nettoyés", ns["post_mics_norm"]([600100, "640000", 600100, None, 5, {1}]) == [600100, 640000])
+ok("micros choisis : ajouter / retirer", ns["post_mics_set"]([600100], [640000, 600100], True) == [600100, 640000]
+   and ns["post_mics_set"]([600100, 640000], [600100], False) == [640000])
+_ww = [dict(name="A", freq=600.1, scene="S1"), dict(name="B", freq=640.0, scene="S2"), dict(name="C", freq=470.3, scene="S1")]
+ok("micros choisis : remplacent les scènes", [w["name"] for w in ns["post_watch"](_ww, ["S1"], [640000])] == ["B"]
+   and [w["name"] for w in ns["post_watch"](_ww, ["S1"], [])] == ["A", "C"])
+ok("postes : micros gardés", ns["sdr_posts_norm"]([{"id": 2, "mics": [470300]}])[1]["mics"] == [470300]
+   and ns["sdr_posts_norm"]([])[0]["mics"] == [])
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
