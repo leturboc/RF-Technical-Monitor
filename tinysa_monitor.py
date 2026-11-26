@@ -233,20 +233,20 @@ from tsm_core import (  # noqa: F401
     _scan_float, _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio, _split_free_line, _svg_hours,
     _svg_iq_spectrum, _svg_multi, _svg_series, _svg_spectrum, _valid, _xml_root, _zone, adjacent_db, age_text,
     alarm_explain, alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick,
-    anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align,
-    audio_int16, audio_meter, audio_ref_norm, audio_source_level, audio_spec_norm, audio_text, auto_gain_pick,
-    auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic, blend,
-    block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan, build_report_html,
-    bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset, calib_repeat, capacity_view,
-    caps_text, chan_power, chron_group, classify_signal, clean_colors, compare_receivers, compare_spectra,
-    compare_text, compress2, config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice,
-    coord_why_text, copy_name, count_overruns, country_bands, country_from_locale, country_uhf, coverage_state,
-    coverage_text, covered, data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text,
-    default_view_band, demo_audio, demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow,
-    density_lut, density_raster, describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps,
-    devx_norm, diag_short, diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor,
-    expected_obw_khz, ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id,
-    ezrf_map_norm, ezrf_planning, ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm,
+    anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_gain,
+    audio_int16, audio_meter, audio_ref_norm, audio_source_level, audio_source_stats, audio_spec_norm, audio_text,
+    auto_gain_pick, auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic,
+    blend, block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan,
+    build_report_html, bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset,
+    calib_repeat, capacity_view, caps_text, chan_power, chron_group, classify_signal, clean_colors,
+    compare_receivers, compare_spectra, compare_text, compress2, config_public, contrast_text, coord_blockers,
+    coord_docs, coord_why_advice, coord_why_text, copy_name, count_overruns, country_bands, country_from_locale,
+    country_uhf, coverage_state, coverage_text, covered, data_status, datetime_utc_iso, dbfs_to_unit, decimate_max,
+    decode_text, default_view_band, demo_audio, demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset,
+    density_glow, density_lut, density_raster, describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db,
+    device_caps, devx_norm, diag_short, diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2,
+    expected_floor, expected_obw_khz, ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label,
+    ezrf_id, ezrf_map_norm, ezrf_planning, ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm,
     feature_match, festival_cfg_norm, festival_due, festival_text, find_free, find_header, flap_count, floor_curve,
     floor_track, fm_deviation, fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan,
     freq_digits, freq_list_text, freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan,
@@ -9919,6 +9919,12 @@ class SdrReceiverPanel(SdrPanelBase):
                                      "« Calcul » = le temps que le traitement prend vraiment ; « attente » = le temps où il "
                                      "attend le processeur\n(l'affichage ou un autre programme l'occupe). Beaucoup "
                                      "d'attente : ferme des panneaux SDR,\nbaisse la FFT, ou passe en mode Simple."))
+        pr = fr.get("prof") or {}
+        if pr and fr.get("load", 0) > 0.6:              # 8.1 : détail du calcul (ms pour 50 ms de signal)
+            self.stats.setText(self.stats.text() + " · " + TR("spectre {} · démod {} · reste {} ms/50").format(
+                f"{pr.get('fft', 0):.0f}", f"{pr.get('dem', 0):.0f}", f"{pr.get('rest', 0):.0f}"))
+        if fr.get("fft_frac", 1.0) < 1.0:
+            self.stats.setText(self.stats.text() + " · " + TR("spectre allégé (PC à la peine), son prioritaire"))
         self.stats.setStyleSheet(f"color: {self.owner.tone_color('bad')};" if fr.get("ovf", 0) > 0.001 or
                                  fr.get("load", 0) > 1.0 else "")
         if not self.row_zoom.isVisible() or e.a is None:
@@ -10611,6 +10617,8 @@ class RealtimeWorker(QtCore.QThread):
         self.split = False               # A à gauche, B à droite (sinon mélangés)
         self.audio = deque(maxlen=200)
         self.a_raw = deque(maxlen=12)    # 8.1 : son de A tel qu'il sort du démodulateur (vu-mètre : sans volume ni B)
+        self.prof = dict(fft=0.0, dem=0.0, rest=0.0)   # 8.1 : temps de calcul (ms par morceau de 50 ms) par étape
+        self.fft_frac = 1.0              # 8.1 : part des échantillons mise dans le spectre (allégé si le PC ne suit pas)
         self.proc = None
         self.err = deque(maxlen=20)
         self.det = BurstDetector(gap=3)
@@ -10739,7 +10747,11 @@ class RealtimeWorker(QtCore.QThread):
                 c_work = time.thread_time()
                 iq, buf = iq_decode(self.dtype, buf), b""
                 pos += len(iq)
-                avg, mx = rt_frames(iq, self.nfft)
+                t_s0 = time.perf_counter()
+                if self.fft_frac < 1.0:          # 8.1 : PC à la peine -> spectre sur une partie du morceau, le son reste
+                    avg, mx = rt_frames(iq[:max(self.nfft, int(len(iq) * self.fft_frac))], self.nfft)
+                else:
+                    avg, mx = rt_frames(iq, self.nfft)
                 if avg is None:
                     continue
                 done = self.det.feed(t_c, Fb, mx, self.thr)
@@ -10748,6 +10760,7 @@ class RealtimeWorker(QtCore.QThread):
                     if self.rec is not None:
                         self.rec["ann"] += [sigmf_annot(ev, self.rec["t0"], self.rate) for ev in done
                                             if ev["t0"] >= self.rec["t0"]]
+                t_s1 = time.perf_counter()
                 L, LB = self.listen, self.listen_b
                 lv_a = lv_b = a_same = None
                 outs = []
@@ -10795,9 +10808,17 @@ class RealtimeWorker(QtCore.QThread):
                     else:
                         mix = sum(x[1][:n_] for x in outs) / (1.0 if len(outs) == 1 else 1.6)
                     self.audio.append(audio_int16(mix, 1.0))
+                t_s2 = time.perf_counter()
                 ovf = float(np.mean(np.abs(iq.real) > 0.98))         # échantillons à pleine échelle : saturation
                 self.load = 0.8 * self.load + 0.2 * (time.time() - t_work) / 0.05
                 self.load_cpu = 0.8 * self.load_cpu + 0.2 * (time.thread_time() - c_work) / 0.05
+                t_s3 = time.perf_counter()
+                for k_, v_ in (("fft", t_s1 - t_s0), ("dem", t_s2 - t_s1), ("rest", t_s3 - t_s2)):
+                    self.prof[k_] = 0.9 * self.prof[k_] + 0.1 * v_ * 1000.0
+                if self.load > 0.9 and self.fft_frac > 0.25:
+                    self.fft_frac /= 2.0
+                elif self.load < 0.4 and self.fft_frac < 1.0:
+                    self.fft_frac = min(1.0, self.fft_frac * 2.0)
                 if self.rec is not None and time.time() - t_disk > 1.0:
                     t_disk = time.time()
                     try:
@@ -10812,6 +10833,7 @@ class RealtimeWorker(QtCore.QThread):
                 self.frame.emit(dict(F=decimate_max(Fb, self.DISPLAY) if len(Fb) > self.DISPLAY else Fb,
                                      avg=decimate_max(avg, self.DISPLAY), mx=decimate_max(mx, self.DISPLAY),
                                      t=t_c, ovf=ovf, load=self.load, load_cpu=self.load_cpu, pos=pos / self.rate,
+                                     prof=dict(self.prof), fft_frac=self.fft_frac,
                                      dur=total / self.rate if fh is not None else 0.0,
                                      pilot=None if dem is None else dem.pilot, lv_a=lv_a, lv_b=lv_b,
                                      health=None if dem is None else dem.health,
@@ -32813,6 +32835,18 @@ class AudioPickDialog(QtWidgets.QDialog):
         helpb.setToolTip("Échelles et niveaux : unité, alignement, et la fiche qui explique dBFS, dBu, dBV…")
         helpb.clicked.connect(lambda *_: owner.open_scales())
         f.addRow(owner._row(self.lvl_chk, self.lvl, tgt, helpb, None))
+        self.gain = QtWidgets.QDoubleSpinBox()              # 8.1 : gain à la main (ou celui calculé, affiché)
+        self.gain.setRange(-60.0, 40.0)
+        self.gain.setDecimals(1)
+        self.gain.setSingleStep(1.0)
+        self.gain.setSuffix(" dB")
+        self.gain.setValue(float(sp.get("gain") or 0.0))
+        self.gain.setToolTip("Gain appliqué au son. « Régler le niveau » décoché : c'est toi qui le règles.\n"
+                             "Coché : il est calculé pour atteindre le niveau visé (sur tout le fichier), sans jamais "
+                             "écrêter.")
+        self.gain_lbl = QtWidgets.QLabel("")
+        f.addRow("Gain :", owner._row(self.gain, self.gain_lbl, None))
+        self.gain.valueChanged.connect(lambda *_: None if self.lvl_chk.isChecked() else self._changed())
         self.meter = AudioMeterBar(owner, self)
         f.addRow("Niveau :", self.meter)
         self.meter_txt = QtWidgets.QLabel("")
@@ -32939,7 +32973,7 @@ class AudioPickDialog(QtWidgets.QDialog):
         lvl = unit_to_dbfs(self.lvl.value(), self.owner.audio_ref, self.lvl_unit) if self.lvl_chk.isChecked() else None
         return audio_spec_norm(dict(src=self.src.currentData(), f=self.f.value(), f1=self.f1.value(), f2=self.f2.value(),
                                     dur=self.dur.value(), log=self.log.isChecked(), app=self.app.currentData(),
-                                    path=self.path, lvl=lvl))
+                                    path=self.path, lvl=lvl, gain=0.0 if lvl is not None else self.gain.value()))
 
     def _measure(self):
         """8.1 : vu-mètre et déviation du son choisi (mesurés sur 1 à 3 s du son réel)."""
@@ -32948,8 +32982,21 @@ class AudioPickDialog(QtWidgets.QDialog):
             if sp["src"] == "wav" and sp["path"]:
                 wav_load(sp["path"])
             secs = min(3.0, sp["dur"]) if sp["src"] == "sweep" else 1.5
-            m = audio_meter(demo_audio(sp, np.arange(int(secs * 48000)) / 48000.0, 0))
             ref = self.owner.audio_ref
+            g_, lim_ = audio_gain(sp, 0)
+            if sp["src"] == "wav" and len(WAV_PCM.get(sp["path"], [])):   # 8.1 : un WAV est mesuré EN ENTIER
+                x_ = np.clip(np.asarray(WAV_PCM[sp["path"]], dtype=np.float32) * 10.0 ** (g_ / 20.0), -1.0, 1.0)
+                m = audio_meter(x_)
+            else:
+                m = audio_meter(demo_audio(sp, np.arange(int(secs * 48000)) / 48000.0, 0))
+            self.gain.setEnabled(sp.get("lvl") is None)
+            if sp.get("lvl") is not None:
+                self.gain.blockSignals(True)
+                self.gain.setValue(g_)
+                self.gain.blockSignals(False)
+            self.gain_lbl.setText(TR("⚠ limité par la crête : niveau visé pas atteint (le son écrêterait)") if lim_
+                                  else (TR("calculé pour le niveau visé") if sp.get("lvl") is not None else ""))
+            self.gain_lbl.setStyleSheet("color: #ff9f0a;" if lim_ else "color: #8e8e93;")
             self.meter.set_meter(m, sp["lvl"] if sp.get("lvl") is not None else None)
             nom = 48.0
             t_ = self._tgt() if hasattr(self, "target") else ("", None)

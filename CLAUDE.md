@@ -1742,6 +1742,16 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   (+1,9 dB) -> `RealtimeWorker.a_raw` (son de A sorti du démodulateur) lu par `_af_meter`. Déviation affichée aussi en
   réglages à la main (nominale = celle du mode). SDR démo : le micro écouté sur A prend la déviation et le compander de
   l'écoute (`_v8_demo_mics` -> `tuned`) : −18 envoyé = −18 lu, quel que soit le réglage.
+  **WAV écrêté (vidéo de Clément : musique à −18, barre rouge pleine, déviation collée à 75 kHz)** : le niveau d'origine
+  d'une source était mesuré sur ses 4 PREMIÈRES secondes -> intro calme = gain énorme = tout le morceau écrêté. PURE
+  `audio_source_stats` (rms, crête ; WAV mesuré EN ENTIER), `audio_gain(spec)` -> (gain, limité ?) : niveau visé = gain
+  vers le niveau MOYEN mais jamais d'écrêtage (`gain_to_target`, crête ≤ −0,3 dBFS), sinon `spec["gain"]` (gain à la
+  main, −60…+40 dB, nouvelle clé d'`audio_spec_norm`). Générateur : champ « Gain » (à la main quand « Régler le niveau »
+  est décoché, sinon le gain calculé, grisé) + « ⚠ limité par la crête » ; vu-mètre d'un WAV = fichier entier.
+  « calcul 127 % » chez Clément après les optimisations (13-18 % ici, même réglage) : cause PAS trouvée ->
+  `RealtimeWorker.prof` (ms par morceau de 50 ms : spectre / démod / reste, affiché au-delà de 60 % de charge) et
+  `fft_frac` (charge > 0,9 : spectre calculé sur 1/2 puis 1/4 du morceau, retour sous 0,4 ; « spectre allégé ») :
+  le son passe d'abord. **Demander à Clément sa ligne « spectre · démod · reste ».**
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.

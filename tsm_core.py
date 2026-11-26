@@ -9458,6 +9458,11 @@ def audio_spec_norm(d):
             out["lvl"] = float(min(0.0, max(-60.0, float(d["lvl"]))))
     except (TypeError, ValueError):
         pass
+    out["gain"] = 0.0                                  # 8.1 : gain à la main (dB), utilisé quand lvl est None
+    try:
+        out["gain"] = float(min(40.0, max(-60.0, float(d.get("gain") or 0.0))))
+    except (TypeError, ValueError):
+        pass
     return out
 
 
@@ -9467,6 +9472,8 @@ def audio_text(d, tr=None):
     d = audio_spec_norm(d)
     if d.get("lvl") is not None:
         return _audio_text(dict(d, lvl=None), tr) + f" · {d['lvl']:+.1f} dBFS".replace(".", ",")
+    if d.get("gain"):
+        return _audio_text(d, tr) + f" · {d['gain']:+.1f} dB".replace(".", ",")
     return _audio_text(d, tr)
 
 
@@ -9556,14 +9563,38 @@ def _noise_loop(kind, secs=8.0):
 _SRC_LEVEL = {}
 
 
-def audio_source_level(spec, k=0):
-    """Niveau d'origine (dBFS, convention AES17) d'une source : mesuré une fois sur 4 s (ou la durée d'un balayage)."""
-    sp = dict(audio_spec_norm(spec), lvl=None)
+def audio_source_stats(spec, k=0):
+    """8.1 : (niveau moyen RMS, crête) d'origine d'une source, en dBFS (AES17), mesurés une fois : sur TOUT le fichier
+    pour un WAV (avant : ses 4 premières secondes -> une intro calme donnait un gain énorme et le reste du morceau
+    écrêté), sur la durée d'un balayage, sinon sur 4 s."""
+    sp = dict(audio_spec_norm(spec), lvl=None, gain=0.0)
     key = (tuple(sorted((a, str(b)) for a, b in sp.items())), int(k))
     if key not in _SRC_LEVEL:
-        n = int(min(12.0, max(4.0, sp["dur"] if sp["src"] == "sweep" else 4.0)) * 48000)
-        _SRC_LEVEL[key] = audio_meter(demo_audio(sp, np.arange(n) / 48000.0, k), 48000)["rms"]
+        if sp["src"] == "wav" and len(WAV_PCM.get(sp["path"], [])):
+            x = np.asarray(WAV_PCM[sp["path"]], dtype=np.float32)
+        else:
+            n = int(min(12.0, max(4.0, sp["dur"] if sp["src"] == "sweep" else 4.0)) * 48000)
+            x = demo_audio(sp, np.arange(n) / 48000.0, k)
+        m = audio_meter(x, 48000)
+        _SRC_LEVEL[key] = (m["rms"], m["peak"])
     return _SRC_LEVEL[key]
+
+
+def audio_source_level(spec, k=0):
+    """Niveau moyen d'origine (dBFS) d'une source (voir audio_source_stats)."""
+    return audio_source_stats(spec, k)[0]
+
+
+def audio_gain(spec, k=0):
+    """8.1 : gain appliqué à une source (dB) -> (gain, limité par la crête ?). Niveau visé : gain pour y amener le
+    niveau MOYEN, mais jamais au point d'écrêter (crête ≤ −0,3 dBFS) ; sinon le gain réglé à la main."""
+    sp = audio_spec_norm(spec)
+    if sp.get("lvl") is None:
+        return float(sp.get("gain") or 0.0), False
+    rms, pk = audio_source_stats(sp, k)
+    if not math.isfinite(rms):
+        return 0.0, False
+    return gain_to_target(rms, sp["lvl"], pk)
 
 
 def demo_audio(kind, t, k=0):
@@ -9572,12 +9603,10 @@ def demo_audio(kind, t, k=0):
     bruit, son de l'appli, fichier WAV). 8.1 : niveau visé (lvl, dBFS) -> gain constant (mesuré sur la source)."""
     t = np.asarray(t, dtype=np.float64)
     spec = audio_spec_norm(kind) if isinstance(kind, dict) else None
-    if spec is not None and spec.get("lvl") is not None:
-        lv0 = audio_source_level(spec, k)
-        x = demo_audio(dict(spec, lvl=None), t, k)
-        if not math.isfinite(lv0):
-            return x
-        return np.clip(x * 10.0 ** ((spec["lvl"] - lv0) / 20.0), -1.0, 1.0).astype(np.float32)
+    if spec is not None and (spec.get("lvl") is not None or spec.get("gain")):
+        g, _lim = audio_gain(spec, k)
+        x = demo_audio(dict(spec, lvl=None, gain=0.0), t, k)
+        return np.clip(x * 10.0 ** (g / 20.0), -1.0, 1.0).astype(np.float32)
     if spec is not None:
         kind = spec["src"]
     if kind == "silence":

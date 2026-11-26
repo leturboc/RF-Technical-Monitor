@@ -1017,5 +1017,19 @@ _yy = np.concatenate([_ff(_xx[:1500]), _ff(_xx[1500:])])
 ok("filtre sans décimation (convolution) = calcul d'avant", np.allclose(
     _yy, np.lib.stride_tricks.sliding_window_view(_xx, 129)[:len(_yy)] @ _hh[::-1], atol=1e-5))
 
+_mus = np.concatenate([0.01 * np.sin(np.arange(5 * 48000) * 0.13), 0.7 * np.sin(np.arange(30 * 48000) * 0.13)])
+ns["WAV_PCM"]["/essai/morceau.wav"] = _mus.astype(np.float32)     # intro calme de 5 s puis morceau fort
+_sw = ns["audio_spec_norm"](dict(src="wav", path="/essai/morceau.wav", lvl=-18))
+_g, _lim = ns["audio_gain"](_sw)
+_xw = ns["demo_audio"](_sw, np.arange(len(_mus)) / 48000.0, 0)
+ok("WAV : niveau mesuré sur TOUT le fichier (une intro calme ne fait plus écrêter le morceau)",
+   abs(ns["audio_meter"](_xw)["rms"] + 18) < 1.0 and ns["audio_meter"](_xw)["peak"] < -0.2, f"gain {_g:.1f}")
+_sg = ns["audio_spec_norm"](dict(src="tone", f=1000, gain=-6))
+ok("gain à la main : −6 dB", abs(ns["audio_meter"](ns["demo_audio"](_sg, np.arange(48000) / 48000.0))["rms"] + 1.94 + 6) < 0.1
+   and ns["audio_gain"](_sg) == (-6.0, False))
+_sp = ns["audio_spec_norm"](dict(src="tone", f=1000, lvl=0))
+ok("niveau visé trop haut : gain limité par la crête, jamais d'écrêtage", ns["audio_gain"](_sp)[1]
+   and ns["audio_meter"](ns["demo_audio"](_sp, np.arange(48000) / 48000.0))["peak"] < -0.2)
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

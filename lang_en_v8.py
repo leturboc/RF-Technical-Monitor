@@ -1959,3 +1959,13 @@ SAME_TEMPLATES += ["{} % · {} dB"]
 EXACT.update({"PRÉ": "PRE", "POST": "POST",
     "PRÉ : le vu-mètre mesure le son reçu, avant ton volume (pour caler un récepteur).\nPOST : il mesure ce que tu entends, après le volume et le mélange A + B.":
         "PRE: the meter measures the received sound, before your volume (to align a receiver).\nPOST: it measures what you hear, after the volume and the A + B mix."})
+EXACT.update({                                      # 8.1 : gain du générateur
+    "Gain appliqué au son. « Régler le niveau » décoché : c'est toi qui le règles.\nCoché : il est calculé pour atteindre le niveau visé (sur tout le fichier), sans jamais écrêter.":
+        "Gain applied to the sound. “Set the level” unticked: you set it yourself.\nTicked: it is calculated to reach the target level (over the whole file), without ever clipping.",
+    "calculé pour le niveau visé": "calculated for the target level",
+    "⚠ limité par la crête : niveau visé pas atteint (le son écrêterait)": "⚠ limited by the peak: target level not reached (the sound would clip)",
+    "color: #ff9f0a;": "color: #ff9f0a;",
+    "Gain :": "Gain:",
+})
+EXACT["spectre {} · démod {} · reste {} ms/50"] = "spectrum {} · demod {} · other {} ms/50"
+EXACT["spectre allégé (PC à la peine), son prioritaire"] = "lighter spectrum (PC struggling), sound first"
