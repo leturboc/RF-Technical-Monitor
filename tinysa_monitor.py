@@ -22373,15 +22373,19 @@ class SdrScroll(QtWidgets.QScrollArea):
 
     def __init__(self, panel):
         super().__init__()
+        self.panel = panel
         self.setWidgetResizable(True)
         self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setWidget(panel)
-        self.panel = panel
 
     def __getattr__(self, name):
-        if name == "panel":
+        p = self.__dict__.get("panel")
+        if p is None:
+            up = getattr(super(), "__getattr__", None)
+            if up is not None:
+                return up(name)
             raise AttributeError(name)
-        return getattr(self.panel, name)
+        return getattr(p, name)
 
     def sizeHint(self):
         h = self.panel.sizeHint()
@@ -22877,8 +22881,8 @@ class SdrSpectrumPanel(SdrPanelBase):
         self.hint = QtWidgets.QLabel("Clic = écouter (A) · clic droit = B")
         self.hint.setToolTip("Tu peux aussi faire glisser les bandes A et B.")
         self.bar = QtWidgets.QWidget()
-        bl = o._row(self.prev_btn, self.next_btn, self.zin, self.zout, self.zall, self.mh_chk, self.span_lbl, None,
-                    self.hint)
+        bl = self._wrap(self.prev_btn, self.next_btn, self.zin, self.zout, self.zall, self.mh_chk, self.span_lbl,
+                        self.hint)
         bl.setContentsMargins(0, 0, 0, 0)
         self.bar.setLayout(bl)
         lay.addWidget(self.bar)
@@ -44622,6 +44626,9 @@ _v7_set_level = MainWindow.set_level
 
 def _v8_set_level(self, level):
     r = _v7_set_level(self, level)
+    if getattr(self, "rf_mode", "tiny") == "sdr":           # 8.0.1 : le niveau réaffichait le waterfall du tinySA
+        self.dock_spec.hide()                               # à côté du spectre SDR (3ᵉ colonne, fenêtre trop large)
+        self.dock_wf.hide()
     for d in self.all_sdr_docks():                          # Simple / Plus / Expert des panneaux SDR
         try:
             d.widget().apply_level()
