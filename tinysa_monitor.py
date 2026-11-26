@@ -20342,7 +20342,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def status_help(self):
         QtWidgets.QMessageBox.information(self, APP_NAME, STATUS_HELP)
 
-    def set_level(self, level):
+    def _set_level_base(self, level):
         """Ultra simple : spectre + liste + alarmes, rien d'autre. Simple : + réglages essentiels, journal,
         classement par scène / groupe. Expert : tous les réglages."""
         level = level if level in dict(UI_LEVELS) else "simple"
@@ -20365,6 +20365,26 @@ class MainWindow(QtWidgets.QMainWindow):
         for k_, a_ in getattr(self, "level_acts", {}).items():
             a_.setChecked(k_ == level)
         self._home_layout()
+
+    def set_level(self, level):
+        """Niveau d'affichage : la partie V7, puis les panneaux SDR (Simple / Plus / Expert)."""
+        r = self._set_level_base(level)
+        if getattr(self, "rf_mode", "tiny") == "sdr":       # 8.0.1 : le niveau réaffichait le waterfall du tinySA
+            self.dock_spec.hide()                           # à côté du spectre SDR (3ᵉ colonne, fenêtre trop large)
+            self.dock_wf.hide()
+        for d in self.all_sdr_docks():
+            try:
+                self.dock_widget(d).apply_level()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            rx = self.sdr_docks["rx"]
+            if rx.isVisible() and not rx.isFloating():
+                QtCore.QTimer.singleShot(0, lambda: self.resizeDocks(
+                    [rx], [rx.widget().sizeHint().height() + 36], Qt.Orientation.Vertical))
+        except Exception:  # noqa: BLE001
+            pass
+        return r
 
     def _apply_words(self, expert):
         """Mots simples hors expert (« Pics gardés » au lieu de « Max hold ») ; le terme technique reste dans la bulle."""
@@ -28438,7 +28458,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.set_status(f"👤 Profil « {doc['name']} » enregistré ({p_.name}).")
         return p_
 
-    def user_profile_load(self, path):
+    def _user_profile_load_base(self, path):
         """Charge un profil : ses préférences remplacent les tiennes, le show ne bouge pas."""
         try:
             doc = read_user(Path(path).read_text(encoding="utf-8"))
@@ -28452,6 +28472,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.user_name = doc["name"]
         self.set_status(f"👤 Profil « {doc['name']} » chargé : affichage, disposition des fenêtres, seuils, alarmes et préréglages perso appliqués.")
         return True
+
+    def user_profile_load(self, path):
+        """Profil utilisateur : la partie V7, puis le poste SDR relu (mode, réglages) et relancé / arrêté."""
+        ok = self._user_profile_load_base(path)
+        if ok:
+            self._sdr_reload()
+            for e_ in self.sdr_engs.values():
+                if self.rf_mode == "tiny":
+                    e_.stop()
+                elif not e_.running():
+                    e_.start()
+        return ok
 
     def user_apply_layout(self, lay):
         """7.57.1 : disposition des fenêtres d'un profil (taille de la fenêtre, panneaux, vraies fenêtres)."""
@@ -29065,7 +29097,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addDockWidget(area, d)
         return d
 
-    def _build_docks(self, ftab, ltab, wf_box, center):
+    def _build_docks_base(self, ftab, ltab, wf_box, center):
         R, B = Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.BottomDockWidgetArea
         self.dock_freq = self._make_dock("Mes fréquences", "dock_freq", ftab, R)
         self.dock_log = self._make_dock("Journal", "dock_journal", ltab, R)
@@ -29104,6 +29136,16 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda *_: self.wall_window_other_screen())
         self.win_menu.addAction("🧱 Mur en plein écran sur l'autre écran").triggered.connect(self.wall_other_screen)
 
+    def _build_docks(self, *a, **k):
+        """Panneaux de l'appli, puis (V8) ceux du poste SDR 1 : créés AVEC les autres, la disposition enregistrée
+        (restoreState) les replace ; ils sont dans 🪟 Fenêtres et se déplacent comme les autres."""
+        r = self._build_docks_base(*a, **k)
+        self.rf_mode = "tiny"
+        self.sdr_engs, self.post_docks = {}, {}
+        self._make_post(1)
+        self.sdr_eng, self.sdr_docks = self.sdr_engs[1], self.post_docks[1]
+        return r
+
     def _dock_sizes(self):
         """Disposition de base : le spectre a la place (≈ la moitié de la largeur, ~70 % de la hauteur de sa
         colonne), liste à droite, waterfall et alarmes en bandeaux sous le spectre (réglages : ⚙)."""
@@ -29126,7 +29168,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if len(docks) > 1:
             self.resizeDocks(docks, sizes, Qt.Orientation.Vertical)
 
-    def layout_standard(self):
+    def _layout_base(self):
         R, B = Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.BottomDockWidgetArea
         self.panel_attach_all()
         for d in self.docks:
@@ -29147,6 +29189,23 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.view_id == -1 and self._zoom is None:
             self.dock_wf.hide()      # rien à afficher en vue « toutes les bandes »
         self._dock_sizes()
+
+    def layout_standard(self):
+        """Disposition de base : tout revient des autres écrans (8.0.2), puis celle du mode."""
+        self.screens_off(relayout=False)
+        self._layout_mode()
+
+    def _layout_mode(self):
+        """Disposition de base de l'appli, puis celle du mode (tinySA / SDR / combiné)."""
+        sz, big = self.size(), self.isMaximized() or self.isFullScreen()
+        self._layout_base()
+        for d in self.all_sdr_docks():
+            d.hide()
+        if getattr(self, "rf_mode", "tiny") == "tiny" and not big and self.size() != sz:
+            self.resize(sz)      # 8.0 (CI Windows) : les panneaux SDR, montés un instant, agrandissaient la fenêtre
+        if getattr(self, "rf_mode", "tiny") != "tiny":
+            self._sdr_arrange(self.rf_mode, "listen", base=False)
+        QtCore.QTimer.singleShot(0, self._fit_screen)
 
     def layout_analyzer(self):
         self.layout_standard()
@@ -29179,9 +29238,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         "y envoyer d'autres panneaux (spectre, waterfall, alarmes…).")
 
     # ------------------------------------------------------- vraies fenêtres (double écran)
-    def panel_docks(self):
+    def _panel_docks_base(self):
         """Panneaux qu'on peut sortir en vraie fenêtre (le mur a son propre mécanisme)."""
         return [self.dock_spec, self.dock_wf, self.dock_freq, self.dock_log, self.dock_alarm]
+
+    def panel_docks(self):
+        """Panneaux qu'on peut sortir en vraie fenêtre : ceux de l'appli + du SDR, sauf ceux prêtés à un autre écran."""
+        hosted = {n for h in (getattr(self, "screen_hosts", None) or {}).values() for n in h.items}
+        return [d for d in self._panel_docks_base() + self.all_sdr_docks() if d.objectName() not in hosted]
 
     def panel_window(self, d, on, screen=None, mode=None):
         """Sort le panneau d dans une vraie fenêtre (on) ou le raccroche (off). screen : écran où la placer
@@ -31467,18 +31531,6 @@ SDR_DOCKS = (("rx", "📡 SDR · Récepteur", "dock_sdr_rx", "SdrReceiverPanel")
              ("spec", "📡 SDR · Spectre", "dock_sdr_spec", "SdrSpectrumPanel"),
              ("wf", "📡 SDR · Waterfall", "dock_sdr_wf", "SdrWaterfallPanel"),
              ("mics", "📡 SDR · Mes micros", "dock_sdr_mics", "SdrMicsPanel"))
-_v7_build_docks = MainWindow._build_docks
-
-
-def _v8_build_docks(self, *a, **k):
-    """Les panneaux SDR sont créés AVEC ceux de l'appli : la disposition enregistrée (restoreState) les replace, ils
-    sont dans 🪟 Fenêtres, dans « Vraies fenêtres / double écran », et on les déplace comme les autres."""
-    r = _v7_build_docks(self, *a, **k)
-    self.rf_mode = "tiny"
-    self.sdr_engs, self.post_docks = {}, {}
-    self._make_post(1)
-    self.sdr_eng, self.sdr_docks = self.sdr_engs[1], self.post_docks[1]
-    return r
 
 
 def _v8_make_post(self, pid):
@@ -31564,34 +31616,11 @@ def _v8_all_sdr_docks(self):
 
 
 
-MainWindow._build_docks = _v8_build_docks
 MainWindow._make_post = _v8_make_post
 MainWindow._post_title = _v8_post_title
 MainWindow._sdr_posts_sync = _v8_sdr_posts_sync
 MainWindow._post_show = _v8_post_show
 MainWindow.all_sdr_docks = _v8_all_sdr_docks
-_v7_panel_docks = MainWindow.panel_docks
-
-
-def _v8_panel_docks(self):
-    return _v7_panel_docks(self) + self.all_sdr_docks()
-
-
-MainWindow.panel_docks = _v8_panel_docks
-_v7_layout_standard = MainWindow.layout_standard
-
-
-def _v8_layout_standard(self):
-    """Disposition de base : celle de l'appli, puis celle du mode (tinySA / SDR / combiné)."""
-    sz, big = self.size(), self.isMaximized() or self.isFullScreen()
-    _v7_layout_standard(self)
-    for d in self.all_sdr_docks():
-        d.hide()
-    if getattr(self, "rf_mode", "tiny") == "tiny" and not big and self.size() != sz:
-        self.resize(sz)          # 8.0 (CI Windows) : les panneaux SDR, montés un instant, agrandissaient la fenêtre
-    if getattr(self, "rf_mode", "tiny") != "tiny":
-        self._sdr_arrange(self.rf_mode, "listen", base=False)
-    QtCore.QTimer.singleShot(0, self._fit_screen)
 
 
 def _v8_fit_screen(self):
@@ -31617,31 +31646,6 @@ def _v8_fit_screen(self):
 
 
 MainWindow._fit_screen = _v8_fit_screen
-MainWindow.layout_standard = _v8_layout_standard
-_v7_set_level = MainWindow.set_level
-
-
-def _v8_set_level(self, level):
-    r = _v7_set_level(self, level)
-    if getattr(self, "rf_mode", "tiny") == "sdr":           # 8.0.1 : le niveau réaffichait le waterfall du tinySA
-        self.dock_spec.hide()                               # à côté du spectre SDR (3ᵉ colonne, fenêtre trop large)
-        self.dock_wf.hide()
-    for d in self.all_sdr_docks():                          # Simple / Plus / Expert des panneaux SDR
-        try:
-            self.dock_widget(d).apply_level()
-        except Exception:  # noqa: BLE001
-            pass
-    try:
-        rx = self.sdr_docks["rx"]
-        if rx.isVisible() and not rx.isFloating():
-            QtCore.QTimer.singleShot(0, lambda: self.resizeDocks(
-                [rx], [rx.widget().sizeHint().height() + 36], Qt.Orientation.Vertical))
-    except Exception:  # noqa: BLE001
-        pass
-    return r
-
-
-MainWindow.set_level = _v8_set_level
 
 
 def _v8_sdr_arrange(self, mode, layout="listen", base=True):
@@ -31649,7 +31653,7 @@ def _v8_sdr_arrange(self, mode, layout="listen", base=True):
     mode : sdr (le spectre SDR remplace celui du tinySA) | both (les deux spectres côte à côte) ;
     layout : listen | watch | analyze | dual (spectre SDR sur l'autre écran)."""
     if base:
-        _v7_layout_standard(self)
+        self._layout_base()
     R, B = Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.BottomDockWidgetArea
     sd = self.sdr_docks
     for d in sd.values():
@@ -31716,7 +31720,7 @@ def _v8_set_rf_mode(self, mode, layout=None):
     if mode == "tiny":
         for e_ in self.sdr_engs.values():
             e_.stop()
-        _v8_layout_standard(self)
+        self._layout_mode()
     else:
         self._sdr_arrange(mode, layout or "listen")
         for pid in sorted(self.sdr_engs):               # étape 17 : tous les postes SDR
@@ -31925,23 +31929,9 @@ def _v8_sdr_reload(self):
             pw_.refresh()
 
 
-_v7_user_profile_load = MainWindow.user_profile_load
-
-
-def _v8_user_profile_load(self, path):
-    ok = _v7_user_profile_load(self, path)
-    if ok:
-        self._sdr_reload()
-        for e_ in self.sdr_engs.values():
-            if self.rf_mode == "tiny":
-                e_.stop()
-            elif not e_.running():
-                e_.start()
-    return ok
 
 
 MainWindow._sdr_reload = _v8_sdr_reload
-MainWindow.user_profile_load = _v8_user_profile_load
 
 
 def _v8_receivers_start(self, text):
@@ -33746,7 +33736,7 @@ def _v8_screens_apply(self, plan, full=False, quiet=False):
         elif "sdr" in here:
             self._sdr_arrange("sdr", "listen")
         else:
-            _v7_layout_standard(self)
+            self._layout_base()
             for d in self.all_sdr_docks():
                 d.hide()
     except Exception:  # noqa: BLE001
@@ -33820,7 +33810,7 @@ def _v8_screens_off(self, relayout=True):
     self.screen_hosts = {}
     self.screens_cfg["on"] = False
     if relayout:
-        _v8_layout_standard(self)
+        self._layout_mode()
         self.set_status(TR("📌 Tous les panneaux sont revenus dans la fenêtre principale."))
     return True
 
@@ -33878,12 +33868,6 @@ def _v8_open_screens(self):
     return dlg
 
 
-_v8_layout_standard_0 = _v8_layout_standard
-
-
-def _v8_layout_standard_s(self):
-    self.screens_off(relayout=False)              # 8.0.2 : la disposition de base ramène tout
-    _v8_layout_standard_0(self)
 
 
 _v8_set_rf_mode_0 = _v8_set_rf_mode
@@ -33894,9 +33878,6 @@ def _v8_set_rf_mode_s(self, mode, layout=None):
     return _v8_set_rf_mode_0(self, mode, layout)
 
 
-def _v8_panel_docks_s(self):
-    hosted = {n for h in (getattr(self, "screen_hosts", None) or {}).values() for n in h.items}
-    return [d for d in _v8_panel_docks(self) if d.objectName() not in hosted]
 
 
 
@@ -34029,9 +34010,7 @@ MainWindow.screens_state = _v8_screens_state
 MainWindow.screens_restore = _v8_screens_restore
 MainWindow.identify_screens = _v8_identify_screens
 MainWindow.open_screens = _v8_open_screens
-MainWindow.layout_standard = _v8_layout_standard_s
 MainWindow.set_rf_mode = _v8_set_rf_mode_s
-MainWindow.panel_docks = _v8_panel_docks_s
 MainWindow._build_mode_menu = _v8_build_mode_menu_s
 
 
