@@ -1398,6 +1398,16 @@ check("16 : mode SDR = panneaux SDR à la place du spectre tinySA", all(d.isVisi
       if k_ != "mics") and not win.dock_spec.isVisible() and win.sdr_eng.running(),
       str({k_: d.isVisible() for k_, d in win.sdr_docks.items()}))
 check("16 : S-mètre de A", "dBm" in _rx16.a_meter.format(), _rx16.a_meter.format())
+_av16 = win.screen().availableGeometry()
+check("8.0.1 : mode SDR = la fenêtre ne dépasse pas l'écran, Récepteur compressible (il défile)",
+      win.minimumSizeHint().height() <= max(_av16.height(), 760) and win.minimumSizeHint().width() <= 1280
+      and win.sdr_docks["rx"].minimumSizeHint().height() <= 200,
+      f"min fenêtre {win.minimumSizeHint().width()}x{win.minimumSizeHint().height()} · écran {_av16.width()}x"
+      f"{_av16.height()} · min Récepteur {win.sdr_docks['rx'].minimumSizeHint().height()}")
+check("8.0.1 : mode SDR = Mes fréquences et Journal en onglets, dans la fenêtre",
+      win.dock_log in win.tabifiedDockWidgets(win.dock_freq)
+      and win.dock_freq.geometry().bottom() <= win.height() and win.dock_freq.geometry().top() >= 0,
+      f"{win.dock_freq.geometry()} / {win.height()} · onglets {[d.objectName() for d in win.tabifiedDockWidgets(win.dock_freq)]}")
 _mic16 = win.sdr_docks["mics"].widget()
 _mic16.refresh()
 check("16 : mes micros dans la fenêtre du SDR, avec le niveau mesuré", _mic16.table.rowCount() >= 1

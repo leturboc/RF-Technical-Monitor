@@ -1,7 +1,7 @@
 # TinySA Monitor — contexte pour Claude Code
 
 Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
-monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.0**.
+monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.0.1**.
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
 
@@ -1454,6 +1454,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   lentes : « SDR trouvé » (le faux SDR Python ne tient pas 4,8 MS/s sur la CI), « Revenir » (comparé à `_back`),
   « bilan » (5 premières lignes du journal) ; « tech » et « bilan » disent dans leur message les postes SDR en marche
   et la durée du calcul (5,5 s ici, > 120 s sur la CI Windows : cause pas trouvée).
+- **8.0.1 (captures de Clément, écran 1920 × 1040 : « bug d'affichage en passant tinySA ↔ SDR, il faut ré-appuyer sur plein
+  écran ; je n'ai plus accès à mes fréquences »)** : reproduit hors écran (`offscreen:configfile=` avec un écran 1920 × 1040) :
+  en mode SDR la fenêtre agrandie passait à 2 115 × 1 534 px (Récepteur : 925 × 483 px mini, Journal sorti de son onglet
+  au-dessus du Récepteur) -> bords coupés, panneaux superposés, « Mes fréquences » sous l'écran. Corrigé : rangées du
+  Récepteur qui se replient (`SdrPanelBase._wrap`, FlowLayout) ; Récepteur dans `SdrScroll` (QScrollArea qui renvoie au
+  panneau les attributs inconnus : `.widget().go_btn` etc. marchent toujours ; mini 220 × 140) ; `_sdr_arrange` remet le
+  Journal en onglet avec Mes fréquences ; `_fit_screen` (après chaque mode / disposition et au démarrage) recale une
+  fenêtre agrandie plus grande que l'écran ; `idle_sdr_view` : SDR pas démarré = axes de la fenêtre qu'il recevra (avant :
+  0-1 dBFS et waterfall 0-600 MHz). Mesuré hors écran : 1920 × 1040 dans les 3 modes, mini 914 × 850 (SDR), 1 270 × 850
+  (combiné). **Pas revu sur le vrai écran de Clément.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

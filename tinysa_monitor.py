@@ -86,7 +86,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal
 
 APP_NAME = "TinySA Monitor"
-APP_VER = "8.0.0"
+APP_VER = "8.0.1"
 MIN_PTS = 51                 # minimum accepté par la commande scan
 POINTS_CHOICES = [101, 145, 290, 500, 1000, 3000, 5000, 10000, 30000]
 SEG_CHOICES = [None, 145, 290, 450]     # points max par commande scan (None = auto)
@@ -22333,6 +22333,63 @@ class SdrPanelBase(QtWidgets.QWidget):
     def apply_level(self):
         pass
 
+    @staticmethod
+    def _wrap(*ws):
+        """Rangée qui se replie (8.0.1) : un texte reste collé au contrôle qui le suit ; None (ressort) ignoré.
+        Avant : rangées fixes -> le Récepteur imposait 925 px de large et agrandissait la fenêtre."""
+        fl, i, ws = FlowLayout(), 0, [w for w in ws if w is not None]
+        while i < len(ws):
+            w = ws[i]
+            if isinstance(w, str):
+                box = QtWidgets.QWidget()
+                h = QtWidgets.QHBoxLayout(box)
+                h.setContentsMargins(0, 0, 0, 0)
+                h.addWidget(QtWidgets.QLabel(w))
+                if i + 1 < len(ws) and not isinstance(ws[i + 1], str):
+                    h.addWidget(ws[i + 1])
+                    i += 1
+                fl.addWidget(box)
+            else:
+                fl.addWidget(w)
+            i += 1
+        return fl
+
+
+def idle_sdr_view(plot, e, yr):
+    """8.0.1 : SDR pas encore démarré -> on montre déjà la fenêtre qu'il recevra (avant : axes 0-1 et 0-600 MHz)."""
+    try:
+        a = e.a if e.a is not None else 600.0
+        sp = max(0.2, float(e.span() or 2.0))
+        c = vfo_center(a, sp) / 1e6
+        plot.setXRange(c - sp / 2.0, c + sp / 2.0, padding=0.0)
+        plot.setYRange(*yr, padding=0.0)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+class SdrScroll(QtWidgets.QScrollArea):
+    """Panneau SDR qui défile quand on le rétrécit (8.0.1). Le reste du programme parle au panneau à travers lui :
+    les attributs inconnus (apply_level, refresh, go_btn…) sont ceux du panneau."""
+
+    def __init__(self, panel):
+        super().__init__()
+        self.setWidgetResizable(True)
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.setWidget(panel)
+        self.panel = panel
+
+    def __getattr__(self, name):
+        if name == "panel":
+            raise AttributeError(name)
+        return getattr(self.panel, name)
+
+    def sizeHint(self):
+        h = self.panel.sizeHint()
+        return QtCore.QSize(h.width() + 18, h.height() + 4)
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(220, 140)
+
 
 class SdrReceiverPanel(SdrPanelBase):
     """📡 SDR · Récepteur (façon poste SDR) : ▶ / ■, son, grande fréquence A réglable chiffre par chiffre, S-mètre à
@@ -22363,7 +22420,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.vol.valueChanged.connect(lambda v: None if self.mute.isChecked() else e.set_opts(vol=v / 100.0))
         self.dev_lbl = QtWidgets.QLabel("")
         self.dev_lbl.setToolTip(TR(DEVICE_HELP["sdr"]) + "\n\n" + TR("Ton SDR : 📡 Réglages SDR pour le changer."))
-        lay.addLayout(o._row(self.go_btn, self.mute, self.vol, None, self.dev_lbl))
+        lay.addLayout(self._wrap(self.go_btn, self.mute, self.vol, o._elastic(self.dev_lbl)))
         self.a_disp = FreqDisplay(self, 24, acc)
         self.a_disp.changed.connect(lambda v: e.set_a(v))
         self.a_meter = SMeterGauge(self)
@@ -22430,7 +22487,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.rew_btn = QtWidgets.QPushButton("⏪ Remonter le temps")
         self.rew_btn.setToolTip("Les dernières minutes de ce poste : waterfall, réécouter un passage, le garder.")
         self.rew_btn.clicked.connect(lambda *_: o.open_rewind(e))
-        ra = o._row(self.pat_btn, self.dwell, self.psrc, self.al_chk, self.alrec_chk, self.back_btn, self.pat_lbl, None,
+        ra = self._wrap(self.pat_btn, self.dwell, self.psrc, self.al_chk, self.alrec_chk, self.back_btn, self.pat_lbl, None,
                     self.rew_btn)
         ra.setContentsMargins(0, 0, 0, 0)
         self.row_auto.setLayout(ra)
@@ -22456,7 +22513,7 @@ class SdrReceiverPanel(SdrPanelBase):
                                   "par le SDR pendant ce temps ; « ↩ Revenir » pour revenir).")
         self.go_al_btn.clicked.connect(lambda *_: e.go_alarm())
         self.row_pil = QtWidgets.QWidget()
-        rp = o._row(self.pil_ask, self.pil_yes, self.pil_no, self.go_al_btn, None)
+        rp = self._wrap(self.pil_ask, self.pil_yes, self.pil_no, self.go_al_btn, None)
         rp.setContentsMargins(0, 0, 0, 0)
         self.row_pil.setLayout(rp)
         lay.addWidget(self.row_pil)
@@ -22482,12 +22539,12 @@ class SdrReceiverPanel(SdrPanelBase):
         self.dem_lbl = QtWidgets.QLabel("")
         self.dem_lbl.setToolTip("« auto » : réglage déduit du micro (son appareil dans le plan importé, son groupe, son nom).\n"
                                 "Change-le ici : il est retenu pour CE micro (liste et shows).")
-        rl = o._row("🎧 Écoute :", self.dp.pre, "Compander :", self.dp.comp, self.dem_lbl, None)
+        rl = self._wrap("🎧 Écoute :", self.dp.pre, "Compander :", self.dp.comp, self.dem_lbl, None)
         rl.setContentsMargins(0, 0, 0, 0)
         self.row_listen.setLayout(rl)
         lay.addWidget(self.row_listen)
         self.row_dem = QtWidgets.QWidget()
-        rd = o._row("Mode :", self.dp.mode, self.dp.de, "Pas :", self.step, "Squelch :", self.sq, None)
+        rd = self._wrap("Mode :", self.dp.mode, self.dp.de, "Pas :", self.step, "Squelch :", self.sq, None)
         rd.setContentsMargins(0, 0, 0, 0)
         self.row_dem.setLayout(rd)
         lay.addWidget(self.row_dem)
@@ -22887,6 +22944,8 @@ class SdrSpectrumPanel(SdrPanelBase):
                 r_.blockSignals(False)
                 lab.setValue(f)
                 lab.label.setFormat(f"{nm} · {f:.4f}")
+        if self._range is None:
+            idle_sdr_view(self.plot, e, (-120.0, 0.0))
         self._marks()
 
     def _dragged(self, nm, reg):
@@ -23038,6 +23097,8 @@ class SdrWaterfallPanel(SdrPanelBase):
 
     def _vfo(self):
         e = self.eng
+        if self._rng is None:
+            idle_sdr_view(self.plot, e, (0.0, float(self.ROWS)))
         self.la.setVisible(e.a is not None)
         self.lb.setVisible(bool(e.b_on and e.b is not None))
         if e.a is not None:
@@ -44417,7 +44478,10 @@ def _v8_make_post(self, pid):
     sep = next((x for x in acts if x.isSeparator()), None)
     for key, title, name, cls in SDR_DOCKS:
         nm = name if pid == 1 else name.replace("dock_sdr_", f"dock_sdr{pid}_")
-        d = self._make_dock(self._post_title(pid, title), nm, globals()[cls](self, eng), B)
+        pw = globals()[cls](self, eng)
+        if key == "rx":
+            pw = SdrScroll(pw)          # 8.0.1 : le Récepteur défile au lieu d'imposer sa taille (fenêtre trop grande,
+        d = self._make_dock(self._post_title(pid, title), nm, pw, B)   # « Mes fréquences » sous le bord de l'écran)
         d.hide()
         docks[key] = d
         self.docks.append(d)
@@ -44526,8 +44590,32 @@ def _v8_layout_standard(self):
         self.resize(sz)          # 8.0 (CI Windows) : les panneaux SDR, montés un instant, agrandissaient la fenêtre
     if getattr(self, "rf_mode", "tiny") != "tiny":
         self._sdr_arrange(self.rf_mode, "listen", base=False)
+    QtCore.QTimer.singleShot(0, self._fit_screen)
 
 
+def _v8_fit_screen(self):
+    """8.0.1 (captures de Clément) : après un changement de mode, une fenêtre agrandie pouvait rester plus grande
+    que l'écran (bords coupés, il fallait ré-agrandir) : on la recale sur l'écran."""
+    try:
+        if self.isMinimized():
+            return
+        av = self.screen().availableGeometry()
+        if self.width() <= av.width() + 16 and self.height() <= av.height() + 16:
+            return
+        if self.isFullScreen():
+            self.showNormal()
+            self.showFullScreen()
+        elif self.isMaximized():
+            self.showNormal()
+            self.showMaximized()
+        else:
+            self.resize(min(self.width(), av.width()), min(self.height(), av.height()))
+            self.move(max(av.x(), min(self.x(), av.right() - self.width())), max(av.y(), self.y()))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+MainWindow._fit_screen = _v8_fit_screen
 MainWindow.layout_standard = _v8_layout_standard
 _v7_set_level = MainWindow.set_level
 
@@ -44578,6 +44666,8 @@ def _v8_sdr_arrange(self, mode, layout="listen", base=True):
         sd["wf"].hide()
     self.addDockWidget(R, sd["rx"])
     self.splitDockWidget(sd["rx"], self.dock_freq, Qt.Orientation.Vertical)
+    self.dock_log.setFloating(False)
+    self.tabifyDockWidget(self.dock_freq, self.dock_log)     # 8.0.1 : le Journal restait seul au-dessus du Récepteur
     self.tabifyDockWidget(self.dock_freq, sd["mics"])
     if layout == "watch":
         sd["mics"].raise_()
@@ -44590,12 +44680,14 @@ def _v8_sdr_arrange(self, mode, layout="listen", base=True):
         self.dock_freq.raise_()
     try:
         self.set_level(self.ui_level)                    # ce que le niveau d'affichage cache reste caché
-        self.resizeDocks([sd["rx"]], [sd["rx"].widget().sizeHint().height() + 36], Qt.Orientation.Vertical)
+        self.resizeDocks([sd["rx"]], [min(sd["rx"].widget().sizeHint().height() + 36, int(self.height() * 0.55))],
+                         Qt.Orientation.Vertical)
         if mode == "both":                               # les deux spectres à parts égales
             w_ = max(400, self.dock_spec.width() + sd["spec"].width())
             self.resizeDocks([self.dock_spec, sd["spec"]], [w_ // 2, w_ // 2], Qt.Orientation.Horizontal)
     except Exception:  # noqa: BLE001
         pass
+    QtCore.QTimer.singleShot(0, self._fit_screen)
     if layout == "dual":
         scr = self._other_screen()
         if scr is None:
@@ -44693,6 +44785,7 @@ def _v8_mode_setup(self):
         self.fav_keys.append(sc_)
     if self.rf_mode != "tiny" and any(d.isVisible() for d in self.all_sdr_docks()):
         QtCore.QTimer.singleShot(1500, lambda: [e_.start() for e_ in self.sdr_engs.values()])   # rouverte en mode SDR
+    QtCore.QTimer.singleShot(400, self._fit_screen)     # 8.0.1 : disposition rouverte plus grande que l'écran
 
 
 def _v8_engine_for(self, w):
