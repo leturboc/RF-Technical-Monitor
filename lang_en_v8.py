@@ -1710,3 +1710,5 @@ EXACT.update({
     '📡 {} suit de nouveau tous les micros.': '📡 {} follows all mics again.',
     'Retirer': 'Remove',
 })
+
+SAME_TEMPLATES += ["tsm_{}_{}_{}.wav", "tsm_{}_{}_"]   # 8.0.2 : noms de fichiers temporaires
