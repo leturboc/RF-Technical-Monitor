@@ -19797,6 +19797,46 @@ class MainWindow(QtWidgets.QMainWindow):
             if self._wf_bid() is None:
                 self.dock_wf.hide()      # pas de waterfall en vue « tout le spectre » : le spectre prend la place
             self._dock_sizes()
+        self._late_layout_v8()
+
+    def _late_layout_v8(self):
+        """V8 (repliée en 8.1) : ménage des enregistrements SDR, bouton de mode, plusieurs écrans, logo, démarrage avec
+        Windows sous le nouveau nom, Ctrl+Maj+F (micros suivis par le SDR)."""
+        for fn in (self.sdr_timer, self.mode_setup):     # audit V8 (5.) ; étape 16 : bouton 📟 / 📡 / combiné
+            try:
+                fn()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            self.win_menu.addSeparator()
+            self.win_menu.addAction(TR("🖥 Plusieurs écrans (tinySA, SDR, listes)…")).triggered.connect(
+                lambda *_: self.open_screens())
+        except Exception:  # noqa: BLE001
+            pass
+        QtCore.QTimer.singleShot(900, self.screens_restore)
+        try:                                        # 8.1 : le logo de RF Technical Monitor en tête de la barre (clic = À propos)
+            if getattr(self, "brand_btn", None) is None and not self.windowIcon().isNull():
+                b = self.brand_btn = QtWidgets.QToolButton()
+                b.setIcon(self.windowIcon())
+                b.setIconSize(QtCore.QSize(22, 22))
+                b.setAutoRaise(True)
+                b.setToolTip(f"{APP_NAME} {APP_VER} — " + TR("À propos, version, où sont tes fichiers"))
+                b.clicked.connect(lambda *_: self.show_about())
+                acts = self.cmd_bar.actions()
+                self.cmd_bar.insertWidget(acts[0], b) if acts else self.cmd_bar.addWidget(b)
+        except Exception:  # noqa: BLE001
+            pass
+        try:                                        # 8.1 : démarrage avec Windows réglé sous l'ancien nom -> nouveau nom
+            if sys.platform == "win32" and self.windows_startup_on():
+                self.set_windows_startup(True)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Shift+F"), self.watch_table)
+            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc.activated.connect(self.sdr_follow_key)
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---------------------------------------------------------------- UI
     @staticmethod
@@ -21560,7 +21600,7 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
 
-    def _apply_config(self, data, startup=False):
+    def _apply_config_base(self, data, startup=False):
         """Applique un dictionnaire de réglages (config au démarrage, ou profil d'événement)."""
         if "rx_custom" in data:                  # profils d'appareil perso (avant la liste : w["rx"] y renvoie)
             rx_set_custom(data.get("rx_custom"))
@@ -21892,6 +21932,38 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._after_apply()
 
+    def _apply_config(self, data, startup=False):
+        """Config -> fenêtre : la partie V7 (_apply_config_base), puis la V8 (repliée en 8.1 : postes SDR, sons des
+        alarmes, réglage d'écoute et pilote par micro, plusieurs écrans)."""
+        r = self._apply_config_base(data, startup)
+        try:
+            self._sdr_posts_sync()           # avant restoreState au démarrage : les panneaux des postes y sont replacés
+        except Exception:  # noqa: BLE001
+            pass
+        try:                                 # étape 21 : sons des alarmes au choix
+            if isinstance(data, dict) and "alarm_sounds" in data:
+                self.sound.custom = alarm_sounds_norm(data.get("alarm_sounds"))
+                for sp in self.sound.custom.values():
+                    if sp["src"] == "wav":
+                        wav_load(sp["path"])
+        except Exception:  # noqa: BLE001
+            pass
+        try:                                 # étapes 19 / 20 : réglage d'écoute choisi à la main, pilote appris
+            src = data.get("watch") if isinstance(data, dict) else None
+            if isinstance(src, list) and len(src) == len(self.watch):
+                for d_, w in zip(src, self.watch):
+                    k_ = d_.get("demod") if isinstance(d_, dict) else None
+                    if k_ and (demod_preset(k_) is not None or k_ == DEMOD_DIGITAL):
+                        w["demod"] = k_
+                    pl = d_.get("pilot") if isinstance(d_, dict) else None
+                    if isinstance(pl, (int, float)) and 5000.0 <= float(pl) <= 120000.0:
+                        w["pilot"] = float(pl)
+        except Exception:  # noqa: BLE001
+            pass
+        if isinstance(data, dict) and "screens" in data:          # 8.0.2 : plusieurs écrans
+            self.screens_cfg = screens_norm(data.get("screens"))
+        return r
+
     def _after_apply(self):
         self._fit_x = True
         self._sync_cfg()
@@ -21903,7 +21975,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_ref_curve()
         self.set_status("Profil chargé.")
 
-    def _collect_config(self, full=True):
+    def _collect_config_base(self, full=True):
         c = self._cfg
         data = dict(
             bands=[{k: v for k, v in b.items() if k != "id"} for b in self.bands],
@@ -21984,6 +22056,25 @@ class MainWindow(QtWidgets.QMainWindow):
             data["tour_done"] = bool(self.tour_done)
             data["log_kinds"] = dict(self.log_kinds)
             data["lang"] = self.lang
+        return data
+
+    def _collect_config(self, *a, **k):
+        """Fenêtre -> config : la partie V7 (_collect_config_base), puis la V8 (repliée en 8.1)."""
+        data = self._collect_config_base(*a, **k)
+        try:                                 # étapes 19 / 20 : réglage d'écoute choisi à la main, pilote appris
+            if isinstance(data.get("watch"), list) and len(data["watch"]) == len(self.watch):
+                for d_, w in zip(data["watch"], self.watch):
+                    if w.get("demod"):
+                        d_["demod"] = w["demod"]
+                    if isinstance(w.get("pilot"), (int, float)):
+                        d_["pilot"] = float(w["pilot"])
+            data["alarm_sounds"] = alarm_sounds_norm(getattr(self.sound, "custom", None))   # étape 21
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            data["screens"] = self.screens_state()                 # 8.0.2 : plusieurs écrans
+        except Exception:  # noqa: BLE001
+            pass
         return data
 
     def _save_config(self):
@@ -30533,7 +30624,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.logdir_lbl.setText(str(self.log_dir))
 
     # ---------------------------------------------------------------- close
-    def closeEvent(self, e):
+    def _close_base(self, e):
         self._closing = True                       # fermé exprès : pas de reprise automatique au prochain lancement
         self._keep_awake(False)
         alive = list(self.workers) + list(getattr(self, "_zombies", []))
@@ -30570,6 +30661,34 @@ class MainWindow(QtWidgets.QMainWindow):
             win.closing = True
             win.close()
         e.accept()
+
+    def closeEvent(self, ev):
+        """Fermeture : la partie V7 (_close_base), puis, si elle est acceptée, la V8 (repliée en 8.1) : fenêtres SDR,
+        récepteurs, émission, outils SDR restés vivants, fenêtres des autres écrans."""
+        self._close_base(ev)
+        if not getattr(ev, "isAccepted", lambda: True)():
+            return
+        for d in [getattr(self, nm, None) for nm in ("_multimon", "_listen", "_rt")] + \
+                list((getattr(self, "sdr_engs", None) or {}).values()):
+            try:
+                if d is not None and hasattr(d, "stop"):
+                    d.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        for c in list((getattr(self, "_shure", None) or {}).values()):
+            c.stop()
+        tx = getattr(self, "_sdrtx", None)               # étape 21 : l'émission s'arrête avec l'appli
+        if tx is not None:
+            try:
+                tx.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        sdr_kill_all()
+        for host in (getattr(self, "screen_hosts", None) or {}).values():
+            host.closing = True
+            host.close()
+        for lb in getattr(self, "_ident_lbls", []):
+            lb.close()
 
 
 def log_crash(kind, text, path=None):
@@ -31340,54 +31459,7 @@ def _v8_open_sdr_posts(self):
 
 MainWindow.open_sdr_posts = _v8_open_sdr_posts
 
-_v7_close_event = MainWindow.closeEvent
 
-
-def _v8_close_event(self, ev):
-    """Étape 14 (7.) : à la fermeture, on arrête les fenêtres SDR et les récepteurs, puis on tue tout outil SDR resté
-    vivant (après la fermeture V7 : si elle est annulée, on ne touche à rien)."""
-    _v7_close_event(self, ev)
-    if not getattr(ev, "isAccepted", lambda: True)():
-        return
-    for d in [getattr(self, nm, None) for nm in ("_multimon", "_listen", "_rt")] + \
-            list((getattr(self, "sdr_engs", None) or {}).values()):
-        try:
-            if d is not None and hasattr(d, "stop"):
-                d.stop()
-        except Exception:  # noqa: BLE001
-            pass
-    for c in list((getattr(self, "_shure", None) or {}).values()):
-        c.stop()
-    tx = getattr(self, "_sdrtx", None)                  # étape 21 : l'émission s'arrête avec l'appli
-    if tx is not None:
-        try:
-            tx.stop()
-        except Exception:  # noqa: BLE001
-            pass
-    sdr_kill_all()
-
-
-MainWindow.closeEvent = _v8_close_event
-
-_v7_late_layout = MainWindow._late_layout
-
-
-def _v8_late_layout(self, *a, **k):
-    """Audit V8 (5.) : le ménage des enregistrements (son, IQ, incidents) démarre avec l'appli, pas seulement quand on
-    ouvre l'écoute ou le moniteur."""
-    r = _v7_late_layout(self, *a, **k)
-    try:
-        self.sdr_timer()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        self.mode_setup()                        # étape 16 : bouton 📟 / 📡 / combiné, poste SDR relu de la config
-    except Exception:  # noqa: BLE001
-        pass
-    return r
-
-
-MainWindow._late_layout = _v8_late_layout
 
 
 # ---------------------------------------------------------------- V8 étape 16 : le SDR au cœur (panneaux, modes)
@@ -31490,16 +31562,6 @@ def _v8_all_sdr_docks(self):
     return [d for ds in (getattr(self, "post_docks", None) or {}).values() for d in ds.values()]
 
 
-_v7_apply_config = MainWindow._apply_config
-
-
-def _v8_apply_config(self, data, startup=False):
-    r = _v7_apply_config(self, data, startup)
-    try:
-        self._sdr_posts_sync()               # avant restoreState au démarrage : les panneaux des postes y sont replacés
-    except Exception:  # noqa: BLE001
-        pass
-    return r
 
 
 MainWindow._build_docks = _v8_build_docks
@@ -31508,7 +31570,6 @@ MainWindow._post_title = _v8_post_title
 MainWindow._sdr_posts_sync = _v8_sdr_posts_sync
 MainWindow._post_show = _v8_post_show
 MainWindow.all_sdr_docks = _v8_all_sdr_docks
-MainWindow._apply_config = _v8_apply_config
 _v7_panel_docks = MainWindow.panel_docks
 
 
@@ -31817,50 +31878,8 @@ def _v8_mic_demod_set(self, w, key):
         w["demod"] = key
 
 
-_v7_collect_config = MainWindow._collect_config
 
 
-def _v8_collect_config(self, *a, **k):
-    data = _v7_collect_config(self, *a, **k)
-    try:                                         # étape 19 : réglage d'écoute choisi à la main (liste + shows)
-        if isinstance(data.get("watch"), list) and len(data["watch"]) == len(self.watch):
-            for d_, w in zip(data["watch"], self.watch):
-                if w.get("demod"):
-                    d_["demod"] = w["demod"]
-                if isinstance(w.get("pilot"), (int, float)):       # étape 20 : pilote appris
-                    d_["pilot"] = float(w["pilot"])
-        data["alarm_sounds"] = alarm_sounds_norm(getattr(self.sound, "custom", None))   # étape 21
-    except Exception:  # noqa: BLE001
-        pass
-    return data
-
-
-_v7_apply_config2 = MainWindow._apply_config
-
-
-def _v8_apply_config2(self, data, startup=False):
-    r = _v7_apply_config2(self, data, startup)
-    try:                                         # étape 21 : sons des alarmes au choix
-        if isinstance(data, dict) and "alarm_sounds" in data:
-            self.sound.custom = alarm_sounds_norm(data.get("alarm_sounds"))
-            for sp in self.sound.custom.values():
-                if sp["src"] == "wav":
-                    wav_load(sp["path"])
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        src = data.get("watch") if isinstance(data, dict) else None
-        if isinstance(src, list) and len(src) == len(self.watch):
-            for d_, w in zip(src, self.watch):
-                k_ = d_.get("demod") if isinstance(d_, dict) else None
-                if k_ and (demod_preset(k_) is not None or k_ == DEMOD_DIGITAL):
-                    w["demod"] = k_
-                pl = d_.get("pilot") if isinstance(d_, dict) else None
-                if isinstance(pl, (int, float)) and 5000.0 <= float(pl) <= 120000.0:
-                    w["pilot"] = float(pl)
-    except Exception:  # noqa: BLE001
-        pass
-    return r
 
 
 MainWindow.mic_demod = _v8_mic_demod
@@ -31870,8 +31889,6 @@ ALARM_HELP["PILOTE"] = (                         # étape 20 : porteuse là, mai
     "Écoute (le SDR y est calé) ; éteins ton pack : si la porteuse reste, c'est un brouilleur (chasse, fréquence de "
     "secours). Pilote changé exprès : clic droit sur la ligne d'info du Récepteur › Oublier le pilote.")
 MainWindow.mic_demod_set = _v8_mic_demod_set
-MainWindow._collect_config = _v8_collect_config
-MainWindow._apply_config = _v8_apply_config2
 MainWindow._engine_for = _v8_engine_for
 MainWindow.sdr_tune_mic = _v8_sdr_tune_mic
 MainWindow.sdr_fav = _v8_sdr_fav
@@ -33882,54 +33899,12 @@ def _v8_panel_docks_s(self):
     return [d for d in _v8_panel_docks(self) if d.objectName() not in hosted]
 
 
-_v8_close_event_0 = MainWindow.closeEvent
 
 
-def _v8_close_event_s(self, ev):
-    _v8_close_event_0(self, ev)
-    if getattr(ev, "isAccepted", lambda: True)():
-        for host in (getattr(self, "screen_hosts", None) or {}).values():
-            host.closing = True
-            host.close()
-        for lb in getattr(self, "_ident_lbls", []):
-            lb.close()
 
 
-_v8_collect_config_s0 = MainWindow._collect_config
 
 
-def _v8_collect_config_s(self, *a, **k):
-    data = _v8_collect_config_s0(self, *a, **k)
-    try:
-        data["screens"] = self.screens_state()
-    except Exception:  # noqa: BLE001
-        pass
-    return data
-
-
-_v8_apply_config_s0 = MainWindow._apply_config
-
-
-def _v8_apply_config_s(self, data, startup=False):
-    r = _v8_apply_config_s0(self, data, startup)
-    if isinstance(data, dict) and "screens" in data:
-        self.screens_cfg = screens_norm(data.get("screens"))
-    return r
-
-
-_v8_late_layout_s0 = MainWindow._late_layout
-
-
-def _v8_late_layout_s(self, *a, **k):
-    r = _v8_late_layout_s0(self, *a, **k)
-    try:
-        self.win_menu.addSeparator()
-        self.win_menu.addAction(TR("🖥 Plusieurs écrans (tinySA, SDR, listes)…")).triggered.connect(
-            lambda *_: self.open_screens())
-    except Exception:  # noqa: BLE001
-        pass
-    QtCore.QTimer.singleShot(900, self.screens_restore)
-    return r
 
 
 _v8_build_mode_menu_0 = _v8_build_mode_menu
@@ -34034,32 +34009,6 @@ def _v8_sdr_follow_key(self):
     self.sdr_follow(ws, not (keys <= mine), 1)
 
 
-def _v8_late_layout_f(self, *a, **k):
-    r = _v8_late_layout_s(self, *a, **k)
-    try:                                        # 8.1 : le logo de RF Technical Monitor en tête de la barre (clic = À propos)
-        if getattr(self, "brand_btn", None) is None and not self.windowIcon().isNull():
-            b = self.brand_btn = QtWidgets.QToolButton()
-            b.setIcon(self.windowIcon())
-            b.setIconSize(QtCore.QSize(22, 22))
-            b.setAutoRaise(True)
-            b.setToolTip(f"{APP_NAME} {APP_VER} — " + TR("À propos, version, où sont tes fichiers"))
-            b.clicked.connect(lambda *_: self.show_about())
-            acts = self.cmd_bar.actions()
-            self.cmd_bar.insertWidget(acts[0], b) if acts else self.cmd_bar.addWidget(b)
-    except Exception:  # noqa: BLE001
-        pass
-    try:                                        # 8.1 : démarrage avec Windows réglé sous l'ancien nom -> nouveau nom / exe
-        if sys.platform == "win32" and self.windows_startup_on():
-            self.set_windows_startup(True)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Shift+F"), self.watch_table)
-        sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        sc.activated.connect(self.sdr_follow_key)
-    except Exception:  # noqa: BLE001
-        pass
-    return r
 
 
 MainWindow.watch_selected = _v8_watch_selected
@@ -34083,12 +34032,7 @@ MainWindow.open_screens = _v8_open_screens
 MainWindow.layout_standard = _v8_layout_standard_s
 MainWindow.set_rf_mode = _v8_set_rf_mode_s
 MainWindow.panel_docks = _v8_panel_docks_s
-MainWindow.closeEvent = _v8_close_event_s
-MainWindow._collect_config = _v8_collect_config_s
-MainWindow._apply_config = _v8_apply_config_s
-MainWindow._late_layout = _v8_late_layout_s
 MainWindow._build_mode_menu = _v8_build_mode_menu_s
-MainWindow._late_layout = _v8_late_layout_f
 
 
 def self_test(path):
