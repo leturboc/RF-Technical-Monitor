@@ -7586,6 +7586,8 @@ def sdr_cfg_extra(sd):
         out["favs"] = favs_norm(sd.get("favs"))
     if "audio_dev" in sd:                              # 8.1 : sortie de l'écoute SDR ("" = celle des sons de l'appli)
         out["audio_dev"] = str(sd.get("audio_dev") or "")[:200]
+    if "af_post" in sd:                                # 8.1 : vu-mètre du son avant / après le volume
+        out["af_post"] = bool(sd.get("af_post"))
     if sd.get("meter_style") in dict(METER_STYLES):     # 8.1 : vu-mètre RF en aiguille ou en barre
         out["meter_style"] = sd["meter_style"]
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)

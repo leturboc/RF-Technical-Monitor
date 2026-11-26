@@ -999,6 +999,7 @@ ok("vu-mètre étroit : graduations moins serrées", ns["meter_ticks"](-120, -20
 ok("style du vu-mètre RF gardé (aiguille / barre), valeur bancale ignorée",
    ns["sdr_cfg_extra"](dict(meter_style="bar")).get("meter_style") == "bar"
    and "meter_style" not in ns["sdr_cfg_extra"](dict(meter_style="x")))
+ok("vu-mètre du son pré / post volume gardé", ns["sdr_cfg_extra"](dict(af_post=True)).get("af_post") is True)
 
 for _cp_, _key_ in (("shure", "shure_ana"), ("evo", "senn_ana")):     # 8.1 : le pack démo comprime, l'écoute étend
     _d_ = ns["demod_preset"](_key_)

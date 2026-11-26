@@ -1733,6 +1733,14 @@ check("8.1 : vu-mètre RF en barre (linéaire), choix gardé", _rxm.style == "ba
 shot(_rxm, "vumetre_barre")
 win.set_meter_style("analog")
 check("8.1 : vu-mètre RF en aiguille", _rxm.style == "analog")
+_rxp = win.dock_widget(win.sdr_docks["rx"])
+_rxp = _rxp if hasattr(_rxp, "af_post") else _rxp.widget()
+_rxp.af_post.setChecked(True)
+check("8.1 : vu-mètre du son POST volume, choix gardé", win.sdr_cfg.get("af_post") is True and _rxp.af_post.text() == "POST"
+      and win._collect_config().get("sdr", {}).get("af_post") is True, _rxp.af_post.text())
+_rxp.af_post.setChecked(False)
+check("8.1 : vu-mètre du son PRÉ volume", win.sdr_cfg.get("af_post") is False and _rxp.af_post.text() == "PRÉ")
+check("8.1 : volume affiché en % et dB", "%" in _rxp.vol_lbl.text() and "dB" in _rxp.vol_lbl.text(), _rxp.vol_lbl.text())
 _scd = win.open_scales()
 _scd.unit.setCurrentIndex(_scd.unit.findData("dbu"))
 check("8.1 : 📏 échelles : −18 dBFS = 0 dBu (EBU), unité retenue", win.audio_ref["unit"] == "dbu"

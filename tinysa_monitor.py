@@ -9458,7 +9458,10 @@ class SdrReceiverPanel(SdrPanelBase):
         self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
         self.vol.setRange(0, 200)
         self.vol.setValue(int((e.vol or 0.8) * 100))
-        self.vol.setMaximumWidth(120)
+        self.vol.setMaximumWidth(140)
+        self.vol.setTickPosition(QtWidgets.QSlider.TickPosition.TicksBelow)   # 8.1 : graduations (0, 50, 100, 150, 200 %)
+        self.vol.setTickInterval(50)
+        self.vol.setPageStep(10)
         self.vol.setToolTip("Volume.")
         self.vol.valueChanged.connect(lambda v: None if self.mute.isChecked() else e.set_opts(vol=v / 100.0))
         self.vol_lbl = QtWidgets.QLabel("")              # 8.1 : la valeur du volume (le vu-mètre, lui, ne la compte pas)
@@ -9491,6 +9494,14 @@ class SdrReceiverPanel(SdrPanelBase):
         lab_s.setToolTip(TR("Niveau du son que tu entends (A démodulé)."))
         ra_.addWidget(lab_s)
         ra_.addWidget(self.af_meter, 1)
+        self.af_post = QtWidgets.QToolButton()            # 8.1 : vu-mètre AVANT (pré) ou APRÈS (post) le volume
+        self.af_post.setCheckable(True)
+        self.af_post.setChecked(bool(o.sdr_cfg.get("af_post")))
+        self.af_post.setToolTip(TR("PRÉ : le vu-mètre mesure le son reçu, avant ton volume (pour caler un récepteur).\n"
+                                   "POST : il mesure ce que tu entends, après le volume et le mélange A + B."))
+        self.af_post.toggled.connect(self._af_post_set)
+        self._af_post_set(self.af_post.isChecked())
+        ra_.addWidget(self.af_post)
         ra_.addWidget(o._elastic(self.dev_txt), 1)
         lay.addWidget(self.row_af)
         self.favs = []                                   # étape 18 : favoris du pavé numérique (1…9)
@@ -9735,6 +9746,10 @@ class SdrReceiverPanel(SdrPanelBase):
         a2.triggered.connect(lambda *_, a=a2: e.set_auto(pilot_alarm=a.isChecked()))
         m.exec(QtGui.QCursor.pos())
 
+    def _af_post_set(self, on):
+        self.af_post.setText("POST" if on else "PRÉ")
+        self.owner.sdr_cfg["af_post"] = bool(on)
+
     def _vol_txt(self, v):
         v = int(v)
         db = "−∞" if v <= 0 else f"{20 * math.log10(v / 100.0):+.1f}".replace(".", ",").replace("-", "−")
@@ -9749,7 +9764,7 @@ class SdrReceiverPanel(SdrPanelBase):
         e, o = self.eng, self.owner
         try:
             raw = getattr(e.worker, "a_raw", None) if e.worker is not None else None
-            if raw is not None:            # 8.1 : le son de A AVANT ton volume et le mélange avec B (sinon le curseur
+            if raw is not None and not self.af_post.isChecked():            # 8.1 : le son de A AVANT ton volume et le mélange avec B (sinon le curseur
                 bs = list(raw)[-6:]        # de volume à 200 % ajoutait 6 dB à la mesure)
                 x = np.concatenate(bs) if bs else np.zeros(0, dtype=np.float32)
             else:

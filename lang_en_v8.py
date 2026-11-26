@@ -1956,3 +1956,6 @@ EXACT.update({                                      # 8.1 : vu-mètres gradués,
 EXACT["Volume de l'écoute sur ton PC (100 % = 0 dB). N'influence PAS le vu-mètre du son : il mesure le niveau reçu, avant le volume."] = \
     "Listening volume on your PC (100 % = 0 dB). Does NOT affect the sound meter: it measures the received level, before the volume."
 SAME_TEMPLATES += ["{} % · {} dB"]
+EXACT.update({"PRÉ": "PRE", "POST": "POST",
+    "PRÉ : le vu-mètre mesure le son reçu, avant ton volume (pour caler un récepteur).\nPOST : il mesure ce que tu entends, après le volume et le mélange A + B.":
+        "PRE: the meter measures the received sound, before your volume (to align a receiver).\nPOST: it measures what you hear, after the volume and the A + B mix."})
