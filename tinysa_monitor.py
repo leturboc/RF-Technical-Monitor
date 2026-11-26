@@ -11656,7 +11656,7 @@ class SoundOut:
                     return d
         return mm.QMediaDevices.defaultAudioOutput()
 
-    def play(self, seq):
+    def _play_base(self, seq):
         if not self.cfg.get("volume"):
             return
         style = self.cfg.get("style", "tones")
@@ -11687,6 +11687,41 @@ class SoundOut:
         except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son
             self.error = str(e)
             QtWidgets.QApplication.beep()
+
+    def play(self, seq):
+        """Un son d'alarme / d'appel personnalisé (self.custom {clé: source}) remplace les notes d'origine ; sinon V7."""
+        key = {id(ALARM_TONES[2]): "alarm2", id(ALARM_TONES[1]): "alarm1", id(ALARM_TONES[0]): "alarm0",
+               id(TONE_OK): "ok"}.get(id(seq))
+        sp = (getattr(self, "custom", None) or {}).get(key) if key else None
+        if sp is None or not self.cfg.get("volume") or self.cfg.get("style", "tones") != "tones":
+            return self._play_base(seq)
+        mm = self._mm()
+        if mm is None:
+            return self._play_base(seq)
+        try:
+            if audio_spec_norm(sp)["src"] == "wav":
+                wav_load(audio_spec_norm(sp)["path"])
+            a = alarm_pcm(sp)
+            dev = self._device(mm)
+            if dev is None or dev.isNull():
+                raise RuntimeError("aucune sortie audio")
+            fmt = mm.QAudioFormat()
+            fmt.setSampleRate(48000)
+            fmt.setChannelCount(1)
+            fmt.setSampleFormat(mm.QAudioFormat.SampleFormat.Int16)
+            if self.sink is not None:
+                self.sink.stop()
+            self.sink = mm.QAudioSink(dev, fmt)
+            self.sink.setVolume(self.cfg.get("volume", 70) / 100.0)
+            self.buf = QtCore.QBuffer()
+            self.buf.setData(QtCore.QByteArray((np.clip(a, -1, 1) * 32767).astype("<i2").tobytes()))
+            self.buf.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
+            self.sink.start(self.buf)
+            self.error = ""
+            self.last_custom = key
+        except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son : on joue le son d'origine
+            self.error = str(e)
+            return self._play_base(seq)
 
     def alarm(self, prio):
         self.play(ALARM_TONES.get(int(prio), ALARM_TONES[0]))
@@ -13604,7 +13639,7 @@ class SettingsDialog(QtWidgets.QDialog):
     """⚙ Réglages : ce qu'on règle une fois (langue, affichage, son, dossiers, connexions), rangé au même endroit.
     Tout s'applique tout de suite."""
 
-    def __init__(self, owner):
+    def _init_base(self, owner):
         super().__init__(owner)
         self.owner = o = owner
         self.setWindowTitle("Réglages")
@@ -13808,6 +13843,43 @@ class SettingsDialog(QtWidgets.QDialog):
         bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
+
+    def __init__(self, owner, *a, **k):
+        self._init_base(owner, *a, **k)
+        try:                                           # rubrique « Son » : un choix par son d'alarme
+            page = self.tabs.widget(self.keys.index("sound"))
+            f = page.layout()
+            f.addRow(QtWidgets.QLabel(TR("<b>Sons des alarmes</b> (générateur, sons, ton WAV…)")))
+            self.alarm_snd_btns = {}
+            for key, name in APP_SOUNDS:
+                cur = (getattr(owner.sound, "custom", None) or {}).get(key)
+                b = QtWidgets.QPushButton()
+                b.setToolTip(TR("Le son joué pour : {}. Clic = choisir (générateur, bruit, autre son, ton WAV…).").format(TR(name)))
+
+                def upd(b=b, key=key):
+                    sp = (getattr(owner.sound, "custom", None) or {}).get(key)
+                    b.setText(TR("🎵 {}").format(audio_text(sp, TR)) if sp else TR("🎵 Son d'origine"))
+
+                def pick(*_, key=key, upd=upd, name=name):
+                    d = AudioPickDialog(owner, (getattr(owner.sound, "custom", None) or {}).get(key) or dict(src="app", app=key),
+                                        title=TR("🎵 Son : {}").format(TR(name)))
+                    if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+                        owner.set_alarm_sound(key, d.spec())
+                        upd()
+                b.clicked.connect(pick)
+                t_ = QtWidgets.QToolButton()
+                t_.setText("▶")
+                t_.setToolTip(TR("Écouter ce son."))
+                t_.clicked.connect(lambda *_, key=key: (self._apply_sound(), owner.test_alarm_sound(key)))
+                r_ = QtWidgets.QToolButton()
+                r_.setText("↺")
+                r_.setToolTip(TR("Revenir au son d'origine."))
+                r_.clicked.connect(lambda *_, key=key, upd=upd: (owner.set_alarm_sound(key, None), upd()))
+                upd()
+                self.alarm_snd_btns[key] = b
+                f.addRow(TR(name) + " :", owner._row(b, t_, r_))
+        except Exception as ex:  # noqa: BLE001 — la fenêtre des réglages s'ouvre quoi qu'il arrive
+            log_crash("Réglages (sons des alarmes)", repr(ex))
 
     def show_page(self, key):
         """Ouvre la rubrique key (detect, bands, measure, dev2, country, general, sound, files, links) ou un n°."""
@@ -16435,14 +16507,26 @@ class MapScene(QtWidgets.QGraphicsScene):
         self.setSceneRect(-2000, -2000, 6000, 4000)
 
     # --- contenu
-    def keys_all(self):
+    def _keys_all_base(self):
         o = self.owner
         return [map_key("scene", sc["name"]) for sc in o.scenes] + [map_key("dev", d) for d in o.dev_list()]
 
-    def label(self, key):
+    def keys_all(self):
+        if rf_mode_norm(getattr(self.owner, "rf_mode", "tiny")) == "tiny":      # mode tinySA seul : pas de SDR sur la carte
+            return self._keys_all_base()
+        return self._keys_all_base() + [map_key("sdr", p["id"]) for p in sdr_posts_norm(self.owner.sdr_cfg.get("posts"))]
+
+    def _label_base(self, key):
         kind, name = key.split(":", 1)
         o = self.owner
         return name if kind == "scene" else f"{dev_ord(int(name))} tinySA · {o.dev_name(int(name))}"
+
+    def label(self, key):
+        kind, name = key.split(":", 1)
+        if kind != "sdr":
+            return self._label_base(key)
+        e = (getattr(self.owner, "sdr_engs", None) or {}).get(int(name))
+        return f"📡 {e.name() if e else 'SDR ' + name}"
 
     def sync(self):
         """Ajoute / retire les cartes selon les scènes / tinySA et les positions enregistrées."""
@@ -16481,7 +16565,7 @@ class MapScene(QtWidgets.QGraphicsScene):
         self.sync()
 
     # --- état en direct
-    def scene_state(self, name):
+    def _scene_state_base(self, name):
         o = self.owner
         ws = [w for w in o.watch if w.get("scene") == name and not w.get("off")]
         tones = [o.sig_view(w)[1] for w in ws]
@@ -16515,6 +16599,21 @@ class MapScene(QtWidgets.QGraphicsScene):
             dots = [o.theme["st_none"] if w.get("state") is None else c_ for w, c_ in zip(ws, dots)]
         return tone, sub, pill, dots
 
+    def scene_state(self, name):
+        """Une scène surveillée par un SDR en marche n'est pas « Arrêtée », même si les tinySA ne tournent pas."""
+        o = self.owner
+        live = [e for e in (getattr(o, "sdr_engs", None) or {}).values()
+                if _v8_post_live(e) and (not e.post()["scenes"] or name in e.post()["scenes"])]
+        if o.is_running() or not live:
+            return self._scene_state_base(name)
+        ws = [w for w in o.watch if w.get("scene") == name and not w.get("off")]
+        tones = [o.sig_view(w)[1] for w in ws]
+        al = sum(1 for a in o.alarms.active.values() if any(abs((a.get("freq") or -1) - w["freq"]) < 0.0015 for w in ws))
+        tone = "bad" if (al or "bad" in tones) else ("warn" if "warn" in tones else "ok")
+        pill = (TR("{} alarme(s)").format(al) if al else TR("À surveiller") if tone in ("bad", "warn") else TR("OK"))
+        sub = TR("{} micro(s)").format(len(ws)) + " · 📡 " + ", ".join(e.name() for e in live)
+        return tone, sub, pill, [o.tone_color(t) for t in tones]
+
     def scene_devs(self, name):
         """[(n° du tinySA, en ligne ?)] qui surveillent cette scène : ceux qui lui sont rattachés, sinon tous."""
         o = self.owner
@@ -16522,7 +16621,7 @@ class MapScene(QtWidgets.QGraphicsScene):
         att = [d for d in devs if name in o.dev_scenes.get(d, [])]
         return [(d, d < len(o.dev_live) and bool(o.dev_live[d])) for d in (att or devs)]
 
-    def refresh(self):
+    def _refresh_base(self):
         o = self.owner
         th = o.theme
         for k, n in self.nodes.items():
@@ -16546,7 +16645,26 @@ class MapScene(QtWidgets.QGraphicsScene):
             n.update()
         self.update_links()
 
-    def update_links(self):
+    def refresh(self):
+        self._refresh_base()
+        o, th = self.owner, self.owner.theme
+        for k, n in self.nodes.items():
+            if n.kind != "sdr":
+                continue
+            e = (getattr(o, "sdr_engs", None) or {}).get(int(n.name))
+            live = _v8_post_live(e)
+            n.title = f"📡 {e.name()}" if e else n.name
+            n.col = th["st_free"] if live else (th["st_occ"] if e is not None and e.running() else th["st_none"])
+            n.pill = TR("En ligne") if live else (TR("Pas de flux") if e is not None and e.running() else TR("Arrêté"))
+            m = e.model() if e else None
+            n.sub = (m["name"] if m else "SDR") + (f" · A {e.a:.3f}" if e is not None and e.a is not None else "")
+            scs = e.post()["scenes"] if e else []
+            n.extra = TR("Surveille : {}").format(", ".join(scs) if scs else TR("tout le site"))
+            n.stripe = "#64d2ff"
+            n.update()
+        self._v8_sdr_links()
+
+    def _update_links_base(self):
         for it in self.links:
             self.removeItem(it)
         self.links = []
@@ -16578,6 +16696,10 @@ class MapScene(QtWidgets.QGraphicsScene):
                                           QtGui.QBrush(QtGui.QColor(o.theme["ui_accent"])))
                     dot.setZValue(12)
                     self.links.append(dot)
+
+    def update_links(self):
+        self._update_links_base()
+        self._v8_sdr_links()
 
     # --- plan de fond (facultatif)
     def sync_bg(self):
@@ -16762,7 +16884,7 @@ class MapScene(QtWidgets.QGraphicsScene):
                 self.heat_items.append(it)
 
     # --- glisser-déposer
-    def node_dropped(self, n):
+    def _node_dropped_base(self, n):
         o = self.owner
         p = map_snap(n.pos().x(), n.pos().y())
         n.setPos(QtCore.QPointF(*p))
@@ -16780,13 +16902,50 @@ class MapScene(QtWidgets.QGraphicsScene):
                     break
         self.refresh()
 
-    def node_open(self, n):
+    def node_dropped(self, n):
+        if n.kind != "sdr":
+            return self._node_dropped_base(n)
+        o = self.owner
+        p = map_snap(n.pos().x(), n.pos().y())
+        n.setPos(QtCore.QPointF(*p))
+        o.map_cfg["pos"][n.key] = p
+        for _k, m in self.nodes.items():                   # SDR posé SUR une scène = il la surveille
+            if m.kind == "scene" and m.sceneBoundingRect().intersects(n.sceneBoundingRect()):
+                ps = sdr_posts_norm(o.sdr_cfg.get("posts"))
+                for pp in ps:
+                    if pp["id"] == int(n.name) and m.name not in pp["scenes"]:
+                        pp["scenes"].append(m.name)
+                        o.sdr_cfg["posts"] = ps
+                        o._sdr_posts_sync()
+                        o.set_status(TR("📡 {} surveille maintenant « {} » (glissé sur la carte).").format(
+                            self.label(n.key), m.name))
+                n.setPos(QtCore.QPointF(p[0], m.pos().y() + m.h + MAP_STEP))
+                o.map_cfg["pos"][n.key] = [n.pos().x(), n.pos().y()]
+                break
+        self.refresh()
+
+    def _node_open_base(self, n):
         o = self.owner
         if n.kind == "scene":
             o.set_scope([(n.name, None)])
             o.set_status(TR("🗺 Vue sur « {} » (liste et spectre).").format(n.name))
         else:
             o.open_devices()
+
+    def node_open(self, n):
+        if n.kind != "sdr":
+            return self._node_open_base(n)
+        o = self.owner
+        pid = int(n.name)
+        if o.rf_mode == "tiny":
+            o.set_rf_mode("sdr")
+        for d in o.post_docks.get(pid, {}).values():
+            if d.isHidden() and d is not o.post_docks[pid].get("wf"):
+                d.show()
+            d.raise_()
+        e = o.sdr_engs.get(pid)
+        if e is not None and not e.running():
+            e.start()
 
     def mark(self, x, y, who=""):
         """📍 Point de chaleur à (x, y) avec le niveau actuel de la chasse. -> point, ou None (pas de chasse en cours)."""
@@ -31367,52 +31526,18 @@ MainWindow.open_incidents = _v8_open_incidents
 
 
 # Étape 17 : les SDR sur la carte, comme les tinySA (tuile « 📡 », glisser sur une scène = la surveiller, liens, état)
-_v7_map_keys, _v7_map_label = MapScene.keys_all, MapScene.label
-_v7_map_refresh, _v7_map_links = MapScene.refresh, MapScene.update_links
-_v7_map_dropped, _v7_map_open = MapScene.node_dropped, MapScene.node_open
 
 
-def _v8_map_keys(self):
-    if rf_mode_norm(getattr(self.owner, "rf_mode", "tiny")) == "tiny":      # mode tinySA seul : pas de SDR sur la carte
-        return _v7_map_keys(self)
-    return _v7_map_keys(self) + [map_key("sdr", p["id"]) for p in sdr_posts_norm(self.owner.sdr_cfg.get("posts"))]
 
 
-def _v8_map_label(self, key):
-    kind, name = key.split(":", 1)
-    if kind != "sdr":
-        return _v7_map_label(self, key)
-    e = (getattr(self.owner, "sdr_engs", None) or {}).get(int(name))
-    return f"📡 {e.name() if e else 'SDR ' + name}"
 
 
 def _v8_post_live(e):
     return e is not None and e.running() and e.last is not None and time.time() - float(e.last.get("t") or 0) < 5
 
 
-def _v8_map_refresh(self):
-    _v7_map_refresh(self)
-    o, th = self.owner, self.owner.theme
-    for k, n in self.nodes.items():
-        if n.kind != "sdr":
-            continue
-        e = (getattr(o, "sdr_engs", None) or {}).get(int(n.name))
-        live = _v8_post_live(e)
-        n.title = f"📡 {e.name()}" if e else n.name
-        n.col = th["st_free"] if live else (th["st_occ"] if e is not None and e.running() else th["st_none"])
-        n.pill = TR("En ligne") if live else (TR("Pas de flux") if e is not None and e.running() else TR("Arrêté"))
-        m = e.model() if e else None
-        n.sub = (m["name"] if m else "SDR") + (f" · A {e.a:.3f}" if e is not None and e.a is not None else "")
-        scs = e.post()["scenes"] if e else []
-        n.extra = TR("Surveille : {}").format(", ".join(scs) if scs else TR("tout le site"))
-        n.stripe = "#64d2ff"
-        n.update()
-    self._v8_sdr_links()
 
 
-def _v8_map_links(self):
-    _v7_map_links(self)
-    self._v8_sdr_links()
 
 
 def _v8_sdr_links(self):
@@ -31442,72 +31567,15 @@ def _v8_sdr_links(self):
             self.sdr_links.append(it)
 
 
-def _v8_map_dropped(self, n):
-    if n.kind != "sdr":
-        return _v7_map_dropped(self, n)
-    o = self.owner
-    p = map_snap(n.pos().x(), n.pos().y())
-    n.setPos(QtCore.QPointF(*p))
-    o.map_cfg["pos"][n.key] = p
-    for _k, m in self.nodes.items():                   # SDR posé SUR une scène = il la surveille
-        if m.kind == "scene" and m.sceneBoundingRect().intersects(n.sceneBoundingRect()):
-            ps = sdr_posts_norm(o.sdr_cfg.get("posts"))
-            for pp in ps:
-                if pp["id"] == int(n.name) and m.name not in pp["scenes"]:
-                    pp["scenes"].append(m.name)
-                    o.sdr_cfg["posts"] = ps
-                    o._sdr_posts_sync()
-                    o.set_status(TR("📡 {} surveille maintenant « {} » (glissé sur la carte).").format(
-                        self.label(n.key), m.name))
-            n.setPos(QtCore.QPointF(p[0], m.pos().y() + m.h + MAP_STEP))
-            o.map_cfg["pos"][n.key] = [n.pos().x(), n.pos().y()]
-            break
-    self.refresh()
 
 
-def _v8_map_open(self, n):
-    if n.kind != "sdr":
-        return _v7_map_open(self, n)
-    o = self.owner
-    pid = int(n.name)
-    if o.rf_mode == "tiny":
-        o.set_rf_mode("sdr")
-    for d in o.post_docks.get(pid, {}).values():
-        if d.isHidden() and d is not o.post_docks[pid].get("wf"):
-            d.show()
-        d.raise_()
-    e = o.sdr_engs.get(pid)
-    if e is not None and not e.running():
-        e.start()
 
 
-_v7_scene_state = MapScene.scene_state
 
 
-def _v8_scene_state(self, name):
-    """Une scène surveillée par un SDR en marche n'est pas « Arrêtée », même si les tinySA ne tournent pas."""
-    o = self.owner
-    live = [e for e in (getattr(o, "sdr_engs", None) or {}).values()
-            if _v8_post_live(e) and (not e.post()["scenes"] or name in e.post()["scenes"])]
-    if o.is_running() or not live:
-        return _v7_scene_state(self, name)
-    ws = [w for w in o.watch if w.get("scene") == name and not w.get("off")]
-    tones = [o.sig_view(w)[1] for w in ws]
-    al = sum(1 for a in o.alarms.active.values() if any(abs((a.get("freq") or -1) - w["freq"]) < 0.0015 for w in ws))
-    tone = "bad" if (al or "bad" in tones) else ("warn" if "warn" in tones else "ok")
-    pill = (TR("{} alarme(s)").format(al) if al else TR("À surveiller") if tone in ("bad", "warn") else TR("OK"))
-    sub = TR("{} micro(s)").format(len(ws)) + " · 📡 " + ", ".join(e.name() for e in live)
-    return tone, sub, pill, [o.tone_color(t) for t in tones]
 
 
-MapScene.scene_state = _v8_scene_state
-MapScene.keys_all = _v8_map_keys
-MapScene.label = _v8_map_label
-MapScene.refresh = _v8_map_refresh
-MapScene.update_links = _v8_map_links
 MapScene._v8_sdr_links = _v8_sdr_links
-MapScene.node_dropped = _v8_map_dropped
-MapScene.node_open = _v8_map_open
 
 
 def _v8_open_sdr_posts(self):
@@ -32489,46 +32557,10 @@ def _v8_pick_demo_sound(self, w):
 
 MainWindow.open_audio_gen = _v8_open_audio_gen
 # ---- étape 21 (Clément : « on peut même choisir les sons d'alarmes » -> « garde ça en V8 ») : sons des alarmes au choix
-_v7_sound_play = SoundOut.play
 
 
-def _v8_sound_play(self, seq):
-    """Un son d'alarme / d'appel personnalisé (self.custom {clé: source}) remplace les notes d'origine ; sinon V7."""
-    key = {id(ALARM_TONES[2]): "alarm2", id(ALARM_TONES[1]): "alarm1", id(ALARM_TONES[0]): "alarm0",
-           id(TONE_OK): "ok"}.get(id(seq))
-    sp = (getattr(self, "custom", None) or {}).get(key) if key else None
-    if sp is None or not self.cfg.get("volume") or self.cfg.get("style", "tones") != "tones":
-        return _v7_sound_play(self, seq)
-    mm = self._mm()
-    if mm is None:
-        return _v7_sound_play(self, seq)
-    try:
-        if audio_spec_norm(sp)["src"] == "wav":
-            wav_load(audio_spec_norm(sp)["path"])
-        a = alarm_pcm(sp)
-        dev = self._device(mm)
-        if dev is None or dev.isNull():
-            raise RuntimeError("aucune sortie audio")
-        fmt = mm.QAudioFormat()
-        fmt.setSampleRate(48000)
-        fmt.setChannelCount(1)
-        fmt.setSampleFormat(mm.QAudioFormat.SampleFormat.Int16)
-        if self.sink is not None:
-            self.sink.stop()
-        self.sink = mm.QAudioSink(dev, fmt)
-        self.sink.setVolume(self.cfg.get("volume", 70) / 100.0)
-        self.buf = QtCore.QBuffer()
-        self.buf.setData(QtCore.QByteArray((np.clip(a, -1, 1) * 32767).astype("<i2").tobytes()))
-        self.buf.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
-        self.sink.start(self.buf)
-        self.error = ""
-        self.last_custom = key
-    except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son : on joue le son d'origine
-        self.error = str(e)
-        return _v7_sound_play(self, seq)
 
 
-SoundOut.play = _v8_sound_play
 
 
 def _v8_set_alarm_sound(self, key, spec):
@@ -32549,48 +32581,10 @@ def _v8_test_alarm_sound(self, key):
 
 MainWindow.set_alarm_sound = _v8_set_alarm_sound
 MainWindow.test_alarm_sound = _v8_test_alarm_sound
-_v7_settings_init = SettingsDialog.__init__
 
 
-def _v8_settings_init(self, owner, *a, **k):
-    _v7_settings_init(self, owner, *a, **k)
-    try:                                           # rubrique « Son » : un choix par son d'alarme
-        page = self.tabs.widget(self.keys.index("sound"))
-        f = page.layout()
-        f.addRow(QtWidgets.QLabel(TR("<b>Sons des alarmes</b> (générateur, sons, ton WAV…)")))
-        self.alarm_snd_btns = {}
-        for key, name in APP_SOUNDS:
-            cur = (getattr(owner.sound, "custom", None) or {}).get(key)
-            b = QtWidgets.QPushButton()
-            b.setToolTip(TR("Le son joué pour : {}. Clic = choisir (générateur, bruit, autre son, ton WAV…).").format(TR(name)))
-
-            def upd(b=b, key=key):
-                sp = (getattr(owner.sound, "custom", None) or {}).get(key)
-                b.setText(TR("🎵 {}").format(audio_text(sp, TR)) if sp else TR("🎵 Son d'origine"))
-
-            def pick(*_, key=key, upd=upd, name=name):
-                d = AudioPickDialog(owner, (getattr(owner.sound, "custom", None) or {}).get(key) or dict(src="app", app=key),
-                                    title=TR("🎵 Son : {}").format(TR(name)))
-                if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-                    owner.set_alarm_sound(key, d.spec())
-                    upd()
-            b.clicked.connect(pick)
-            t_ = QtWidgets.QToolButton()
-            t_.setText("▶")
-            t_.setToolTip(TR("Écouter ce son."))
-            t_.clicked.connect(lambda *_, key=key: (self._apply_sound(), owner.test_alarm_sound(key)))
-            r_ = QtWidgets.QToolButton()
-            r_.setText("↺")
-            r_.setToolTip(TR("Revenir au son d'origine."))
-            r_.clicked.connect(lambda *_, key=key, upd=upd: (owner.set_alarm_sound(key, None), upd()))
-            upd()
-            self.alarm_snd_btns[key] = b
-            f.addRow(TR(name) + " :", owner._row(b, t_, r_))
-    except Exception as ex:  # noqa: BLE001 — la fenêtre des réglages s'ouvre quoi qu'il arrive
-        log_crash("Réglages (sons des alarmes)", repr(ex))
 
 
-SettingsDialog.__init__ = _v8_settings_init
 
 
 MainWindow.demo_sound = _v8_demo_sound

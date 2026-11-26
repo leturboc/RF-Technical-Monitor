@@ -51,9 +51,16 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Avant : la V8 rebranchait après coup des noms PURE (`USER_KEYS`, `user_doc`, `user_apply`, `WEB_VIEWS_HIDDEN`) —
   repliés dans tsm_core (un rebranchement dans tinysa_monitor ne serait plus vu par les fonctions du cœur : ne JAMAIS
   réaffecter un nom du cœur depuis l'interface, seulement modifier en place). Les tests lisent le code par
-  `tests/_src.py` (`source()` = tinysa_monitor.py puis tsm_core.py). Étapes suivantes prévues : replier les enveloppes
-  `_v7_… / _v8_…` dans les vraies méthodes, découper l'interface (appareils, dialogues, SDR, fenêtre) en modules,
-  tests plus rapides.
+  `tests/_src.py` (`source()` = tinysa_monitor.py puis tsm_core.py).
+  Étape 2 faite : PLUS AUCUNE enveloppe `_v7_…` / `_v8_…_s0`. Chaque méthode enveloppée est devenue, dans sa classe,
+  `<méthode>_base` (le code V7) + `<méthode>` (appelle la base puis la partie V8, dans le même ordre qu'avant) :
+  MainWindow `_apply_config_base`, `_collect_config_base`, `_close_base`, `_build_docks_base`, `_panel_docks_base`,
+  `_set_level_base`, `_user_profile_load_base`, `_layout_base` (+ `_layout_mode` = disposition du mode, `layout_standard`
+  = ramène les écrans puis `_layout_mode`), `_late_layout` -> `_late_layout_v8` ; MapScene `_scene_state_base`,
+  `_keys_all_base`, `_label_base`, `_refresh_base`, `_update_links_base`, `_node_dropped_base`, `_node_open_base` ;
+  `SoundOut._play_base` ; `SettingsDialog._init_base`. `set_rf_mode` et le menu du mode intègrent les écrans.
+  Reste (étape 3) : ~64 fonctions V8 posées sur MainWindow par `MainWindow.x = _v8_x` (à regrouper en vraie classe /
+  module SDR), découpage de l'interface en modules, tests plus rapides.
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du
