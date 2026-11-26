@@ -31713,7 +31713,9 @@ def _v8_sdr_arrange(self, mode, layout="listen", base=True):
 
 
 def _v8_set_rf_mode(self, mode, layout=None):
-    """📟 tinySA / 📡 SDR / 📟+📡 Combiné : quels panneaux de base, et le SDR lancé ou arrêté."""
+    """📟 tinySA / 📡 SDR / 📟+📡 Combiné : quels panneaux de base, et le SDR lancé ou arrêté. Les panneaux prêtés à
+    d'autres écrans reviennent d'abord (8.0.2)."""
+    self.screens_off(relayout=False)
     mode = rf_mode_norm(mode)
     self.rf_mode = mode
     self.sdr_cfg["rf_mode"] = mode
@@ -31771,6 +31773,16 @@ def _v8_build_mode_menu(self):
     m.addAction(TR("📖 Manuel SDR")).triggered.connect(lambda *_: self.open_sdr_manual())
     m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
     m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
+    acts = m.actions()                                   # 8.0.2 : plusieurs écrans, avant la 1re séparation
+    a_ = QtGui.QAction(TR("🖥 Plusieurs écrans (tinySA sur l'un, SDR sur l'autre…)"), m)
+    a_.setToolTip(TR("Choisis quel panneau va sur quel écran : tinySA complet sur l'un, SDR complet sur l'autre, ou "
+                     "ton mélange."))
+    a_.triggered.connect(lambda *_: self.open_screens())
+    sec = next((x for x in acts if x.isSeparator()), None)
+    if sec is not None:
+        m.insertAction(sec, a_)
+    else:
+        m.addAction(a_)
 
 
 def _v8_mode_setup(self):
@@ -33870,12 +33882,6 @@ def _v8_open_screens(self):
 
 
 
-_v8_set_rf_mode_0 = _v8_set_rf_mode
-
-
-def _v8_set_rf_mode_s(self, mode, layout=None):
-    self.screens_off(relayout=False)              # 8.0.2 : changer de mode ramène tout (puis dispose le mode)
-    return _v8_set_rf_mode_0(self, mode, layout)
 
 
 
@@ -33888,22 +33894,6 @@ def _v8_set_rf_mode_s(self, mode, layout=None):
 
 
 
-_v8_build_mode_menu_0 = _v8_build_mode_menu
-
-
-def _v8_build_mode_menu_s(self):
-    _v8_build_mode_menu_0(self)
-    m = self.mode_btn.menu()
-    acts = m.actions()
-    a_ = QtGui.QAction(TR("🖥 Plusieurs écrans (tinySA sur l'un, SDR sur l'autre…)"), m)
-    a_.setToolTip(TR("Choisis quel panneau va sur quel écran : tinySA complet sur l'un, SDR complet sur l'autre, ou "
-                     "ton mélange."))
-    a_.triggered.connect(lambda *_: self.open_screens())
-    sec = next((x for x in acts if x.isSeparator()), None)
-    if sec is not None:
-        m.insertAction(sec, a_)
-    else:
-        m.addAction(a_)
 
 
 def _v8_watch_selected(self):
@@ -34010,8 +34000,6 @@ MainWindow.screens_state = _v8_screens_state
 MainWindow.screens_restore = _v8_screens_restore
 MainWindow.identify_screens = _v8_identify_screens
 MainWindow.open_screens = _v8_open_screens
-MainWindow.set_rf_mode = _v8_set_rf_mode_s
-MainWindow._build_mode_menu = _v8_build_mode_menu_s
 
 
 def self_test(path):
