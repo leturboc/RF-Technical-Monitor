@@ -6775,9 +6775,14 @@ class FirDecim:
             return b[:0]
         if self.D == 1:                              # 8.1 : convolution directe (bien moins chère que la matrice)
             y = np.convolve(b, self.h[::-1], "valid")[:m]
-        else:
-            win = np.lib.stride_tricks.sliding_window_view(b, n)[::self.D][:m]
-            y = win @ self.h
+        else:                                        # 8.1 : polyphase (D petites convolutions), SANS produit de
+            y = None                                 # matrices : sous Windows, la multiplication passait par OpenBLAS
+            for p in range(self.D):                  # et la démodulation prenait 58 ms pour 50 ms de son (Clément)
+                hp = self.h[p::self.D]
+                if not len(hp):
+                    continue
+                c = np.convolve(b[p::self.D], hp[::-1], "valid")[:m]
+                y = c if y is None else y + c
         self.buf = b[m * self.D:]
         return y
 
@@ -6912,9 +6917,22 @@ class ChannelDemod:
         self.agc = pk if pk > self.agc else 0.995 * self.agc + 0.005 * pk
         return (a * (target / max(self.agc, 1e-4))).astype(np.float32)
 
+    def _tp(self, k, t0):
+        """8.1 : temps (ms, moyenne glissante) passé dans chaque étape -> self.prof (diagnostic de lenteur)."""
+        import time as _t
+        t1 = _t.perf_counter()
+        if not hasattr(self, "prof"):
+            self.prof = {}
+        self.prof[k] = 0.9 * self.prof.get(k, 0.0) + 0.1 * (t1 - t0) * 1000.0
+        return t1
+
     def process(self, iq):
+        import time as _t
+        t0 = _t.perf_counter()
         x = self._nco(iq, self.f_off, self.fs, "ph")
+        t0 = self._tp("mix", t0)
         y = self.f1(x)
+        t0 = self._tp("filtre", t0)
         if not len(y):
             return np.zeros(0, dtype=np.float32), self.level
         pw = float(np.mean(np.abs(y) ** 2))
@@ -6924,6 +6942,7 @@ class ChannelDemod:
             z = np.concatenate([[self.prev], y])
             d = np.angle(z[1:] * np.conj(z[:-1])).astype(np.float32) * (self.fs1 / (2.0 * math.pi * self.dev))
             self.prev = y[-1]
+            t0 = self._tp("FM", t0)
             if m == "wfm_st":
                 p = self.fp(d).astype(np.float32)
                 amp = float(np.sqrt(2.0 * np.mean(p ** 2))) if len(p) else 0.0
@@ -6949,8 +6968,10 @@ class ChannelDemod:
                 a = np.stack([mono[:nn] + diff[:nn], mono[:nn] - diff[:nn]], axis=1)
             else:
                 a = self._deemph(self.f2(d).astype(np.float32), 0)
+            t0 = self._tp("audio", t0)
             self._watch_pilot(d)
             self._watch_health(d)
+            t0 = self._tp("pilote+santé", t0)
         elif m == "am":
             d = np.abs(y).astype(np.float32)
             self.dc = 0.99 * self.dc + 0.01 * float(d.mean()) if self.dc else float(d.mean())
@@ -6988,6 +7009,7 @@ class ChannelDemod:
                     side = np.concatenate([side, np.zeros(len(mono_) - len(side), dtype=np.float32)])
             a = expand2(a, self, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"],
                         knee=cp["knee"], low=cp["low"], side=side)
+            t0 = self._tp("compander", t0)
         if self.squelch is not None and self.level < self.squelch:
             a = np.zeros_like(a)
         if self.rs is not None:              # étape 7 : débit qui ne tombe pas juste -> 48 kHz exacts

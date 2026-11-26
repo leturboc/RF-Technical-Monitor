@@ -9923,6 +9923,10 @@ class SdrReceiverPanel(SdrPanelBase):
         if pr and fr.get("load", 0) > 0.6:              # 8.1 : détail du calcul (ms pour 50 ms de signal)
             self.stats.setText(self.stats.text() + " · " + TR("spectre {} · démod {} · reste {} ms/50").format(
                 f"{pr.get('fft', 0):.0f}", f"{pr.get('dem', 0):.0f}", f"{pr.get('rest', 0):.0f}"))
+            dp = fr.get("dprof") or {}
+            if dp:                                      # étapes de la démodulation, pour le diagnostic
+                self.stats.setText(self.stats.text() + " (" + " · ".join(
+                    f"{TR(k)} {v:.0f}" for k, v in dp.items()) + ")")
         if fr.get("fft_frac", 1.0) < 1.0:
             self.stats.setText(self.stats.text() + " · " + TR("spectre allégé (PC à la peine), son prioritaire"))
         self.stats.setStyleSheet(f"color: {self.owner.tone_color('bad')};" if fr.get("ovf", 0) > 0.001 or
@@ -10834,6 +10838,7 @@ class RealtimeWorker(QtCore.QThread):
                                      avg=decimate_max(avg, self.DISPLAY), mx=decimate_max(mx, self.DISPLAY),
                                      t=t_c, ovf=ovf, load=self.load, load_cpu=self.load_cpu, pos=pos / self.rate,
                                      prof=dict(self.prof), fft_frac=self.fft_frac,
+                                     dprof=dict(getattr(dem, "prof", None) or {}),
                                      dur=total / self.rate if fh is not None else 0.0,
                                      pilot=None if dem is None else dem.pilot, lv_a=lv_a, lv_b=lv_b,
                                      health=None if dem is None else dem.health,

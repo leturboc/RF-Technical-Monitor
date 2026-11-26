@@ -1752,6 +1752,10 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `RealtimeWorker.prof` (ms par morceau de 50 ms : spectre / démod / reste, affiché au-delà de 60 % de charge) et
   `fft_frac` (charge > 0,9 : spectre calculé sur 1/2 puis 1/4 du morceau, retour sous 0,4 ; « spectre allégé ») :
   le son passe d'abord. **Demander à Clément sa ligne « spectre · démod · reste ».**
+  Sa ligne (26/11, 20:31) : « spectre 3 · démod 58 · reste 0 ms/50 » (ici ~3 ms pour la même démod) -> `FirDecim` avec
+  décimation réécrit en POLYPHASE (D `np.convolve`, résultat identique au 1e-6 près) : plus AUCUN produit de matrices
+  (OpenBLAS) dans la chaîne du SDR ; `ChannelDemod.prof` (ms par étape : mix, filtre, FM, audio, pilote+santé,
+  compander, via `_tp`) envoyé dans la trame (`dprof`) et écrit entre parenthèses après « reste ». **Pas vérifié chez lui.**
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
