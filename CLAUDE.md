@@ -1707,6 +1707,15 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   puis `python -m py_compile tinysa_monitor.py`, les tests, et ne jamais committer `__pycache__`.
 
 ## Reste à faire / idées
+- **À FAIRE après la 8.1 (Clément, 26/11/2026 : « absolument une échelle en dB pour caler des récepteurs à −18 dBFS,
+  choisir la réf en dBu / dBV…, réexpliquer les échelles, un vu-mètre et un niveau à atteindre, dans le générateur et
+  un peu partout »)** : vu-mètre crête + RMS (dBFS, repères −18 / −20 / 0) dans le générateur (sinus, sweep, bruit,
+  WAV), l'émission HackRF, le SDR démo, la sortie de l'écoute SDR ; NIVEAU CIBLE (gain calculé ; WAV mesuré puis
+  normalisé) ; unités dBFS / dBu / dBV / V RMS / dB VU avec ALIGNEMENT au choix (EBU R68 −18 dBFS = 0 dBu, SMPTE RP155
+  −20 dBFS = +4 dBu, perso) ; côté RF : déviation FM correspondante (« −18 dBFS -> X kHz ») ; fiche ❓ « Échelles et
+  niveaux » + manuel + lexique avec SON tableau (0 dBu = 0,775 V ; 0 dBV = 1 V = +2,21 dBu ; +4 dBu = 1,228 V = +1,78 dBV
+  = 0 VU ; −10 dBV = 0,316 V = −7,78 dBu ; dB SPL réf 20 µPa ; dBFS 0 = pleine échelle). Préciser : dBm audio = 1 mW
+  sur 600 Ω, mais dBm RF (appli, tinySA) = 1 mW sur 50 Ω ; dBW = 1 W (pas d'impédance).
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
