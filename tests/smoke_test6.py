@@ -276,5 +276,42 @@ check("8.1 : config copiée (l'ancienne reste), dossier Documents renommé, chem
    and _cfg["log_dir"] == os.path.join(_nd, "Journaux"), str(_cfg))
 check("8.1 : nom de l'appli", m.APP_NAME == "RF Technical Monitor")
 
+# 8.1 (audit) : l'ancien ET le nouveau dossier Documents existent déjà : fusion sans rien écraser
+_mt2 = tempfile.mkdtemp()
+_oc2, _od2 = os.path.join(_mt2, "TinySAMonitor"), os.path.join(_mt2, "Docs", "TinySA Monitor")
+_nc2, _nd2 = os.path.join(_mt2, "RFTechnicalMonitor"), os.path.join(_mt2, "Docs", "RF Technical Monitor")
+for _d in (os.path.join(_od2, "Shows"), os.path.join(_od2, "Journaux", "2026"), os.path.join(_od2, "Profils"),
+           os.path.join(_nd2, "Shows"), _oc2):
+    os.makedirs(_d, exist_ok=True)
+open(os.path.join(_od2, "Shows", "festival.tsashow"), "w").write("ANCIEN")
+open(os.path.join(_od2, "Shows", "vieux.tsashow"), "w").write("V")
+open(os.path.join(_od2, "Journaux", "2026", "journal_20261101.csv"), "w").write("J")
+open(os.path.join(_od2, "Profils", "moi.tsauser"), "w").write("P")
+open(os.path.join(_nd2, "Shows", "festival.tsashow"), "w").write("NOUVEAU")
+open(os.path.join(_oc2, "config.json"), "w").write("{}")
+del m.MIGRATION_INFO[:]
+_r2 = m.migrate_legacy(_nc2, _nd2, _oc2, _od2)
+check("8.1 : 2 dossiers Documents : les fichiers absents sont déplacés dans le nouveau",
+      str(_r2) == _nd2 and os.path.exists(os.path.join(_nd2, "Shows", "vieux.tsashow"))
+      and os.path.exists(os.path.join(_nd2, "Journaux", "2026", "journal_20261101.csv"))
+      and os.path.exists(os.path.join(_nd2, "Profils", "moi.tsauser")))
+check("8.1 : 2 dossiers : rien n'est écrasé, le doublon reste dans l'ancien avec un LISEZMOI",
+      open(os.path.join(_nd2, "Shows", "festival.tsashow")).read() == "NOUVEAU"
+      and open(os.path.join(_od2, "Shows", "festival.tsashow")).read() == "ANCIEN"
+      and "festival.tsashow" in open(os.path.join(_od2, "LISEZMOI_migration.txt"), encoding="utf-8").read())
+check("8.1 : 2 dossiers : l'utilisateur est prévenu (une fois)", len(m.MIGRATION_INFO) == 1
+      and m.MIGRATION_INFO[0][2] == 1, str(m.MIGRATION_INFO))
+del m.MIGRATION_INFO[:]
+m.migrate_legacy(_nc2, _nd2, _oc2, _od2)
+check("8.1 : 2 dossiers : la fusion n'est pas refaite au lancement suivant", not m.MIGRATION_INFO
+      and not os.path.exists(os.path.join(_nd2, "LISEZMOI_migration.txt")))
+_od3, _nd3 = os.path.join(_mt2, "D3", "TinySA Monitor"), os.path.join(_mt2, "D3", "RF Technical Monitor")
+os.makedirs(os.path.join(_od3, "Shows"))
+os.makedirs(_nd3)
+open(os.path.join(_od3, "Shows", "x.tsashow"), "w").write("X")
+m.migrate_legacy(os.path.join(_mt2, "C3"), _nd3, os.path.join(_mt2, "C3old"), _od3)
+check("8.1 : 2 dossiers sans doublon : tout passe dans le nouveau, l'ancien vide est retiré",
+      os.path.exists(os.path.join(_nd3, "Shows", "x.tsashow")) and not os.path.exists(_od3))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

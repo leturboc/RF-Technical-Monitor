@@ -1045,5 +1045,45 @@ ok("goniomètre : mono = corrélation +1, inversé = −1", abs(ns["gonio_points
 ok("vues des petites fenêtres gardées", ns["sdr_cfg_extra"](dict(rx_views=dict(iff="const", af="x")))["rx_views"]
    == dict(iff="const", af="spec"))
 
+# 8.1 (audit de la démo SDR) : compandeurs en flux, indépendants de la taille des morceaux
+_t8 = np.arange(48000) / 48000.0
+_x8 = (0.3 * np.sin(2 * np.pi * 440 * _t8) * (_t8 > 0.3) * (_t8 < 0.7)          # silence -> son -> silence
+       + 0.002 * np.random.default_rng(8).standard_normal(48000)).astype(np.float32)
+for _fn in ("compress2", "expand2"):
+    for _det in ("rms", "avg"):
+        _ref = ns[_fn](_x8, {}, detector=_det)
+        _bad = []
+        for _cs in (17, 137, 240, 1001, 4097):
+            _st, _o = {}, []
+            for _i in range(0, len(_x8), _cs):
+                _o.append(ns[_fn](_x8[_i:_i + _cs], _st, detector=_det))
+            _y = np.concatenate(_o)
+            if len(_y) != len(_x8) or float(np.max(np.abs(_y - _ref))) > 1e-6:
+                _bad.append(_cs)
+        ok(f"{_fn} ({_det}) : même son en un bloc ou en morceaux de 17 / 137 / 240 / 1001 / 4097", not _bad, str(_bad))
+_xs8 = np.stack([_x8, 0.5 * _x8], axis=1)
+_st8 = {}
+_ys8 = np.concatenate([ns["expand2"](_xs8[_i:_i + 333], _st8) for _i in range(0, len(_xs8), 333)])
+ok("expanseur stéréo : morceaux = un bloc", np.allclose(_ys8, ns["expand2"](_xs8, {}), atol=1e-6))
+_g8 = ns["SigGen"](96000.0, 600e6, [dict(key="m", kind="fm", f=600.01, lvl=0.0, dev=5000.0, audio="tone", k=0,
+                                         comp="shure")], noise=0.0)
+_g8.block(4000)
+_acc8 = _g8.st["m"]["acc"]
+_g8.set_sigs([dict(key="m", kind="fm", f=600.01, lvl=0.0, dev=5000.0, audio="beep", k=0, comp="evo")])
+_g8.block(4000)
+ok("démo : autre son / autre compander = état audio refait, la phase (même clé) continue",
+   "cp" in _g8.st["m"] and _g8.st["m"]["sig"][1] == "evo" and _g8.st["m"]["acc"] != _acc8)
+_g9 = ns["SigGen"](48000.0, 600e6, [dict(key="c", kind="cw", f=600.0, lvl=0.0, on=(1.0, 0.5, 0.0))], noise=0.0)
+_b9 = np.concatenate([_g9.block(n_) for n_ in (7000, 13001, 4000, 23999)])        # 1 s en blocs irréguliers
+_on9 = np.abs(_b9) > 1e-6
+ok("démo : un programme marche / arrêt bascule à l'échantillon près, quelle que soit la taille des blocs",
+   _on9[:24000].all() and not _on9[24000:].any(), f"{_on9[:24000].mean():.3f} / {_on9[24000:].mean():.3f}")
+ns["WAV_PCM"]["/essai/remplace.wav"] = (0.5 * np.sin(np.arange(48000) * 0.05)).astype(np.float32)
+_sw9 = ns["audio_spec_norm"](dict(src="wav", path="/essai/remplace.wav", lvl=-18))
+_ga = ns["audio_gain"](_sw9)[0]
+ns["WAV_PCM"]["/essai/remplace.wav"] = (0.05 * np.sin(np.arange(48000) * 0.05)).astype(np.float32)
+_gb = ns["audio_gain"](_sw9)[0]
+ok("WAV remplacé sous le même nom : niveau re-mesuré (gain +20 dB)", abs((_gb - _ga) - 20.0) < 0.1, f"{_ga:.1f} -> {_gb:.1f}")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

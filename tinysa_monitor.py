@@ -125,6 +125,37 @@ def _swap_paths(v, old, new):
     return v
 
 
+MIGRATION_INFO = []           # 8.1 : ce que l'utilisateur doit savoir de la migration (affiché une fois au démarrage)
+
+
+def _merge_dir(src, dst):
+    """8.1 : fusionne src dans dst SANS RIEN ÉCRASER : chaque fichier absent de dst y est déplacé ; un fichier qui existe
+    déjà des deux côtés reste dans src. Les dossiers vidés sont retirés. -> (déplacés, restés : [chemins relatifs])."""
+    moved, kept = 0, []
+    for root, dirs, files in os.walk(src, topdown=False):
+        rel = os.path.relpath(root, src)
+        for f in files:
+            if f in ("instance.lock",):
+                continue
+            a = os.path.join(root, f)
+            b = os.path.normpath(os.path.join(dst, rel, f))
+            if os.path.exists(b):
+                kept.append(os.path.normpath(os.path.join(rel, f)))
+                continue
+            try:
+                os.makedirs(os.path.dirname(b), exist_ok=True)
+                shutil.move(a, b)
+                moved += 1
+            except OSError:
+                kept.append(os.path.normpath(os.path.join(rel, f)))
+        try:
+            if root != str(src) and not os.listdir(root):
+                os.rmdir(root)
+        except OSError:
+            pass
+    return moved, kept
+
+
 def migrate_legacy(cfg_dir, docs, old_cfg=None, old_docs=None):
     """8.1 (TinySA Monitor -> RF Technical Monitor) : rien ne se perd. La 1re fois, la config est COPIÉE (l'ancienne reste
     pour revenir à une 8.0) et le dossier Documents est RENOMMÉ (journaux, shows, profils : pas de copie de plusieurs Go) ;
@@ -147,6 +178,30 @@ def migrate_legacy(cfg_dir, docs, old_cfg=None, old_docs=None):
         except OSError as e:
             use_docs = old_docs
             notes.append(f"dossier {old_docs} gardé tel quel ({e})")
+    elif (docs.is_dir() and old_docs.is_dir() and old_docs != docs and any(old_docs.iterdir())
+          and not (old_docs / "LISEZMOI_migration.txt").exists()):      # déjà fusionné une fois : on n'y revient pas
+        # 8.1 (audit) : les DEUX dossiers existent : fusion sans rien écraser ; les doublons restent dans l'ancien
+        try:
+            moved, kept = _merge_dir(str(old_docs), str(docs))
+        except OSError as e:
+            moved, kept = 0, [f"({e})"]
+        if moved or kept:
+            notes.append(f"dossier {old_docs} fusionné dans {docs} : {moved} fichier(s) déplacé(s), "
+                         f"{len(kept)} laissé(s) (déjà présents)")
+        if kept:
+            try:
+                with open(old_docs / "LISEZMOI_migration.txt", "w", encoding="utf-8") as fh:
+                    fh.write(f"RF Technical Monitor 8.1 utilise maintenant {docs}.\n"
+                             "Ces fichiers existaient déjà là-bas avec le même nom : ils sont restés ici, rien n'a été "
+                             "écrasé. Compare-les et garde ceux que tu veux :\n" + "\n".join(kept[:500]) + "\n")
+            except OSError:
+                pass
+            MIGRATION_INFO.append((str(old_docs), str(docs), len(kept)))
+        else:
+            try:
+                old_docs.rmdir()
+            except OSError:
+                pass
     if notes and cfg_dir.is_dir():
         for f in ("config.json", "config.json.bak"):
             p = cfg_dir / f
@@ -20391,6 +20446,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self._dock_sizes()
         self._late_layout_v8()
 
+    def _migration_notice(self):
+        """8.1 : l'ancien dossier « TinySA Monitor » et le nouveau existaient tous les deux : les fichiers en double sont
+        restés dans l'ancien (rien n'a été écrasé). On le dit une fois, avec les deux chemins."""
+        for old_, new_, n_ in MIGRATION_INFO:
+            m = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Information, TR("Changement de nom : tes fichiers"),
+                                      TR("RF Technical Monitor range maintenant tes shows, journaux et profils dans :\n{}"
+                                         "\n\nL'ancien dossier existait encore : tout ce qui manquait a été déplacé. "
+                                         "{} fichier(s) existaient des deux côtés avec le même nom : ils sont RESTÉS "
+                                         "dans\n{}\n(rien n'a été écrasé ; la liste est dans LISEZMOI_migration.txt)."
+                                         ).format(new_, n_, old_), QtWidgets.QMessageBox.StandardButton.Ok, self)
+            m.setModal(False)
+            m.show()
+            self._mig_box = m
+        MIGRATION_INFO.clear()
+
     def _late_layout_v8(self):
         """V8 (repliée en 8.1) : ménage des enregistrements SDR, bouton de mode, plusieurs écrans, logo, démarrage avec
         Windows sous le nouveau nom, Ctrl+Maj+F (micros suivis par le SDR)."""
@@ -20406,6 +20476,8 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:  # noqa: BLE001
             pass
         QtCore.QTimer.singleShot(900, self.screens_restore)
+        if MIGRATION_INFO:                          # 8.1 (audit) : fusion partielle des dossiers -> le dire, une fois
+            QtCore.QTimer.singleShot(1500, self._migration_notice)
         try:                                        # 8.1 : le logo de RF Technical Monitor en tête de la barre (clic = À propos)
             if getattr(self, "brand_btn", None) is None and not self.windowIcon().isNull():
                 b = self.brand_btn = QtWidgets.QToolButton()

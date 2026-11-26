@@ -1769,6 +1769,23 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   `bb_views(bb, fs)`, `gonio_points(L, R)` ; `ChannelDemod.last_bb` (2 048 échantillons du canal à ~240 kHz) envoyé dans la
   trame (`bb`, `bb_fs`) ; panneau : combos `if_view` / `af_view`, `_views()` (axes, tracés, sdr_cfg « rx_views »),
   `if_scat` / `af_scat` / `af_curve2`. Manuel : chapitre sdr-poste.
+- **Audit du collègue de Clément (26/11/2026, sur la 8.1.0)** : renommage jugé cohérent. Corrigé : **collision de dossiers
+  à la migration** (ancien `Documents/TinySA Monitor` ET nouveau déjà présents : avant, rien n'était fait, les anciens
+  shows / journaux restaient invisibles) -> `_merge_dir` (déplace chaque fichier absent du nouveau, ne remplace JAMAIS, les
+  doublons restent dans l'ancien, dossiers vidés retirés) + `LISEZMOI_migration.txt` dans l'ancien (liste des doublons ;
+  sa présence = fusion déjà faite, pas refaite) + `MIGRATION_INFO` -> `_migration_notice` (message NON modal une fois au
+  démarrage). Tests smoke_test6 (5 cas). `test_instance.py` : si l'appli ne démarre même pas (dépendance absente chez
+  l'auditeur : pyqtgraph), « SAUTÉ » + erreur tout de suite (code 2) au lieu d'attendre ~2 min ; stderr dans un FICHIER.
+  Les autres tests « bloqués » de l'audit = paquets absents chez lui (pyserial, pyqtgraph, Playwright), pas des échecs.
+- **Audit de la démo SDR (même collègue, 26/11/2026)** : 1 défaut confirmé, corrigé : `compress2` / `expand2` dépendaient de
+  la taille des morceaux (détecteur recalé au début de chaque appel, reliquat jeté ; écart 0,78 / 0,12 mesuré par lui) ->
+  `_gain_stream` (grille de blocs STABLE sur le flux : reliquat gardé `S["buf"]`, enveloppe et dernier gain gardés, gain en
+  rampe d'un bloc au suivant, sortie RETARDÉE d'un bloc = 5 ms, même longueur), état dans `_cp_state(st)` (dict, ou
+  attribut `_cps` de ChannelDemod, qui part de son `env`). Écart en morceaux de 17 / 137 / 240 / 1001 / 4097 = 0,0.
+  `SigGen` : état audio refait si le son / compander / n° change (`st["sig"]`), la PHASE (`acc`) gardée ; programmes
+  marche / arrêt (`on`, `pilot_on`) évalués À L'ÉCHANTILLON (`_mask`, avant : au début du bloc). `audio_source_stats` :
+  un WAV remplacé sous le même nom est re-mesuré (clé = longueur + somme d'un échantillon sur 997). Commentaire de
+  `demo_sdr_plan` (7 signaux, pas 6). Tests test_sdr (+ 9). Pas fait : rien d'autre de confirmé dans cet audit.
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.

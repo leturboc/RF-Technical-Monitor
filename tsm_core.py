@@ -7019,59 +7019,106 @@ class ChannelDemod:
         return a, self.level
 
 
+def _cp_state(st):
+    """État d'un compandeur en flux (dict de l'appelant, ou attribut « _cps » d'un objet comme ChannelDemod)."""
+    if isinstance(st, dict):
+        return st.setdefault("_cps", {})
+    S = getattr(st, "_cps", None)
+    if S is None:
+        S = {"env": float(getattr(st, "env", 0.0) or 0.0)}   # ChannelDemod part de son enveloppe de départ
+        try:
+            st._cps = S
+        except AttributeError:
+            pass
+    return S
+
+
+def _gain_stream(a, side, S, block, level, gain):
+    """8.1 (audit de la démo SDR) : gain par blocs de `block` échantillons sur une grille STABLE du flux, quelle que soit
+    la taille des morceaux reçus : le reliquat d'un appel attend le suivant (S["buf"]), l'enveloppe et le dernier gain
+    sont gardés, et le gain passe en rampe d'un bloc à l'autre (pas de marche). Sortie retardée d'UN bloc (5 ms à 48 kHz)
+    et de même longueur que l'entrée : traiter un son d'un seul tenant ou en morceaux de n'importe quelle taille donne
+    le même résultat. level(seg) -> niveau du détecteur d'un bloc ; gain(niveau) -> gain (met à jour l'enveloppe)."""
+    a = np.asarray(a, dtype=np.float32)
+    n = len(a)
+    det = side if side is not None and len(side) == n else (a.mean(axis=1) if a.ndim == 2 else a)
+    det = np.asarray(det, dtype=np.float32)
+    if S.get("shape") != a.shape[1:]:                   # 1er appel (ou mono <-> stéréo) : flux remis à zéro
+        S["shape"] = a.shape[1:]                        # (l'enveloppe « env », elle, est gardée)
+        S["buf"] = np.zeros((0,) + a.shape[1:], dtype=np.float32)
+        S["sbuf"] = np.zeros(0, dtype=np.float32)
+        S["out"] = np.zeros((block,) + a.shape[1:], dtype=np.float32)
+        S["g"] = None
+    x = np.concatenate([S["buf"], a]) if len(S["buf"]) else a
+    d = np.concatenate([S["sbuf"], det]) if len(S["sbuf"]) else det
+    nb = len(x) // block
+    if nb:
+        G = np.empty(nb, dtype=np.float64)
+        for k in range(nb):
+            G[k] = gain(level(d[k * block:(k + 1) * block]))
+        g0 = G[0] if S["g"] is None else S["g"]
+        P = np.concatenate([[g0], G[:-1]])
+        ramp = (P[:, None] + (G - P)[:, None] * (np.arange(1, block + 1) / float(block))[None, :]).astype(np.float32)
+        ramp = ramp.reshape(-1)
+        y = x[:nb * block] * (ramp[:, None] if x.ndim == 2 else ramp)
+        S["g"] = float(G[-1])
+        produced = np.concatenate([S["out"], y])
+    else:
+        produced = S["out"]
+    S["buf"], S["sbuf"] = x[nb * block:].copy(), d[nb * block:].copy()
+    S["out"] = produced[n:].copy()
+    return produced[:n]
+
+
+def _level_fn(detector):
+    if detector == "avg":
+        k = math.pi / (2 * math.sqrt(2))                # redressement moyen ramené à l'échelle efficace d'un sinus
+        return lambda seg: float(np.mean(np.abs(seg))) * k
+    return lambda seg: float(np.sqrt(np.mean(seg.astype(np.float64) ** 2)))
+
+
 def compress2(a, st, block=240, ref=0.25, attack=0.3, release=0.05, ratio=2.0, detector="rms"):
     """8.1 : l'inverse d'expand2 (ce que fait l'ÉMETTEUR) : gain = (enveloppe / ref)^(1/taux − 1). Un son compressé
     ici puis étendu par expand2 (même ref, même détecteur) revient à son niveau : −18 dBFS au générateur = −18 dBFS à
-    l'écoute. st = dict (garde « env »). Utilisé par le SDR démo pour « encoder » le compander du micro."""
+    l'écoute. st = dict (état gardé). En flux (voir _gain_stream) : indépendant de la taille des morceaux."""
     a = np.asarray(a, dtype=np.float32)
     if not len(a) or ratio <= 1.0:
         return a
-    nb = max(1, len(a) // block)
-    seg = a[:nb * block].reshape(nb, -1) if len(a) >= block else a[None, :]
-    if detector == "avg":
-        lv = np.mean(np.abs(seg), axis=1) * (math.pi / (2 * math.sqrt(2)))
-    else:
-        lv = np.sqrt(np.mean(seg ** 2, axis=1))
-    # le détecteur de l'expanseur voit le son COMPRESSÉ : enveloppe de sortie = ref·(e/ref)^(1/taux)
-    g = np.empty(len(lv), dtype=np.float32)
-    e = float(st.get("env", 0.0))
-    for k, r in enumerate(lv):
+    S = _cp_state(st)
+    lev = _level_fn(detector)
+
+    def gain(r):
+        e = S.get("env", 0.0)
         e += (attack if r > e else release) * (r - e)
-        g[k] = min(30.0, max(0.03, (max(e, 1e-6) / ref) ** (1.0 / ratio - 1.0)))
-    st["env"] = e
-    gi = np.interp(np.arange(len(a)), (np.arange(len(g)) + 0.5) * (len(a) / len(g)), g).astype(np.float32)
-    return a * gi
+        S["env"] = e
+        return min(30.0, max(0.03, (max(e, 1e-6) / ref) ** (1.0 / ratio - 1.0)))
+    return _gain_stream(a, None, S, block, lev, gain)
 
 
 def expand2(a, st, block=240, ref=0.25, attack=0.3, release=0.05, ratio=2.0, detector="rms", knee=None, low=0.0,
             side=None):
     """Expanseur (approximation d'un compander de micro HF) : gain = (enveloppe / ref)^(taux − 1) par blocs de
-    5 ms (taux 2 = 2:1 : 10 dB en entrée → 20 dB en sortie), lissé (montée rapide, descente lente), interpolé par
-    échantillon. st.env garde l'enveloppe entre appels. detector : « rms » (efficace) ou « avg » (redressement
-    moyen, comme le SA572 ; ramené à l'échelle efficace d'un sinus). Stéréo (n, 2) : même gain sur les 2 voies.
-    knee (dB sous ref) + low : sous ce niveau, le taux monte de `low` (réduction de bruit plus forte, ENR).
-    side : signal vu par le détecteur à la place de l'audio (ex. sans les aigus extrêmes)."""
+    5 ms (taux 2 = 2:1 : 10 dB en entrée → 20 dB en sortie), lissé (montée rapide, descente lente), en rampe d'un bloc
+    à l'autre. detector : « rms » (efficace) ou « avg » (redressement moyen, comme le SA572 ; ramené à l'échelle
+    efficace d'un sinus). Stéréo (n, 2) : même gain sur les 2 voies. knee (dB sous ref) + low : sous ce niveau, le taux
+    monte de `low` (réduction de bruit plus forte, ENR). side : signal vu par le détecteur à la place de l'audio (ex. sans
+    les aigus extrêmes). 8.1 : en flux (voir _gain_stream), indépendant de la taille des morceaux reçus."""
     a = np.asarray(a, dtype=np.float32)
-    mono = side if side is not None and len(side) == len(a) else (a.mean(axis=1) if a.ndim == 2 else a)
-    nb = max(1, len(mono) // block)
-    if detector == "avg":
-        rms = (np.mean(np.abs(mono[:nb * block]).reshape(nb, -1), axis=1) * (math.pi / (2 * math.sqrt(2)))
-               if len(mono) >= block else np.array([float(np.mean(np.abs(mono)))]))
-    else:
-        rms = np.sqrt(np.mean(mono[:nb * block].reshape(nb, -1) ** 2, axis=1)) if len(mono) >= block else \
-            np.array([float(np.sqrt(np.mean(mono ** 2)))])
-    g = np.empty(len(rms), dtype=np.float32)
-    e = st.env
-    for k, r in enumerate(rms):
+    if not len(a):
+        return a
+    S = _cp_state(st)
+    lev = _level_fn(detector)
+
+    def gain(r):
+        e = S.get("env", 0.0)
         e += (attack if r > e else release) * (r - e)
+        S["env"] = e
         r_ = max(e, 1e-6) / ref
         rt = ratio
         if knee is not None and low and 20.0 * math.log10(r_) < knee:
             rt = ratio + low                              # sous le genou : on « ferme » plus le souffle
-        g[k] = min(4.0, max(0.001, r_ ** (rt - 1.0)))
-    st.env = e
-    gi = np.interp(np.arange(len(a)), (np.arange(len(g)) + 0.5) * (len(a) / len(g)), g).astype(np.float32)
-    return a * (gi[:, None] if a.ndim == 2 else gi)
+        return min(4.0, max(0.001, r_ ** (rt - 1.0)))
+    return _gain_stream(a, side, S, block, lev, gain)
 
 
 def to_stereo(a):
@@ -9597,6 +9644,9 @@ def audio_source_stats(spec, k=0):
     écrêté), sur la durée d'un balayage, sinon sur 4 s."""
     sp = dict(audio_spec_norm(spec), lvl=None, gain=0.0)
     key = (tuple(sorted((a, str(b)) for a, b in sp.items())), int(k))
+    if sp["src"] == "wav":                               # 8.1 (audit) : un WAV remplacé sous le même nom est re-mesuré
+        w_ = WAV_PCM.get(sp["path"])
+        key += ((len(w_), float(np.sum(np.abs(w_[::997], dtype=np.float64)))) if w_ is not None and len(w_) else None,)
     if key not in _SRC_LEVEL:
         if sp["src"] == "wav" and len(WAV_PCM.get(sp["path"], [])):
             x = np.asarray(WAV_PCM[sp["path"]], dtype=np.float32)
@@ -9742,15 +9792,28 @@ class SigGen:
         step = max(1, int(round(fs / 48000.0)))
         ta = None
         buf = np.empty(n, dtype=np.complex64)
+        tt = None
+
+        def _mask(prog):
+            """8.1 (audit) : programme évalué À L'ÉCHANTILLON (avant : au début du bloc seulement, une coupure pouvait
+            attendre le bloc suivant) -> None = allumé tout le bloc, False = éteint tout le bloc, sinon un masque 0 / 1."""
+            nonlocal tt
+            if not prog:
+                return None
+            if tt is None:
+                tt = (n0 + np.arange(n, dtype=np.float64)) / fs
+            m_ = sched_on(prog, tt)
+            return None if m_.all() else (False if not m_.any() else m_.astype(np.float32))
         for s in self.sigs:
-            if not sched_on(s.get("on"), t0):
+            kind = s.get("kind", "fm")
+            msk = _mask(s.get("on")) if kind != "noise" else (None if sched_on(s.get("on"), t0) else False)
+            if msk is False:
                 continue
             off = float(s["f"]) * 1e6 - self.center
             bw = float(s.get("bw") or 0.0) * 1e6
             if abs(off) - bw / 2.0 > 0.5 * fs:
                 continue                                   # hors de la fenêtre
             amp = 0.3 * 10.0 ** (float(s.get("lvl", 0.0)) / 20.0)
-            kind = s.get("kind", "fm")
             if kind == "noise":
                 noise_sigs.append((round(off), round(bw), round(amp, 6)))
                 continue
@@ -9760,6 +9823,10 @@ class SigGen:
                 if ta is None:
                     ta = (n0 + np.arange(0, n, step, dtype=np.float64)) / fs
                 st = self.st.setdefault(s.get("key"), dict(acc=0.0))
+                sig_ = (repr(s.get("audio")), s.get("comp") or "", int(s.get("k", 0)))
+                if st.get("sig") != sig_:                  # 8.1 (audit) : autre son / autre compander -> l'état du
+                    st["sig"] = sig_                       # traitement audio repart de zéro ; la PHASE (acc) est gardée
+                    st.pop("cp", None)
                 a = demo_audio(s.get("audio", "voice"), ta, int(s.get("k", 0)))
                 cp = COMPANDERS.get(s.get("comp") or "")
                 if cp is not None and cp["ratio"] > 1.0:   # 8.1 : l'émetteur démo comprime comme un vrai pack
@@ -9770,15 +9837,17 @@ class SigGen:
                 ph += np.float32(st["acc"])
                 st["acc"] = float(ph[-1]) % (2 * np.pi) if n else st["acc"]
                 p = float(s.get("pilot") or 0.0)
-                if p and sched_on(s.get("pilot_on"), t0):
+                pm = _mask(s.get("pilot_on")) if p else False
+                if p and pm is not False:
                     pr = self._rot(p, n)                   # sin(2π p t) = Im(rotation de départ × table)
                     e0 = np.exp(2j * np.pi * ((p * n0 / fs) % 1.0))
-                    ph += np.float32(4000.0 / p) * (np.float32(e0.real) * pr.imag + np.float32(e0.imag) * pr.real)
+                    pil = np.float32(4000.0 / p) * (np.float32(e0.real) * pr.imag + np.float32(e0.imag) * pr.real)
+                    ph += pil if pm is None else pil * pm
                 buf.real = np.cos(ph)                        # exp(jφ) en complex64 (13× plus rapide que np.exp)
                 buf.imag = np.sin(ph)
-                x += car * buf
+                x += car * buf if msk is None else car * buf * msk
             else:
-                x += car
+                x += car if msk is None else car * msk
         if noise_sigs:                                  # blocs larges (TNT, numérique) : bruit mis en forme UNE fois
             key = (tuple(sorted(noise_sigs)), n)
             tex = getattr(self, "_tex", None)
@@ -9801,7 +9870,7 @@ def demo_sdr_plan(mics):
     """Signaux du SDR démo d'après tes micros. mics = [dict(f MHz, name, bw MHz, free (doit rester libre), digital)].
     Le 1er micro s'éteint 15 s toutes les 2 min (alarme ABSENT), le 2ᵉ perd son pilote 10 s toutes les 90 s (alarme
     PILOTE), un brouilleur passe 8 s par minute sur la 1re « doit rester libre », + deux canaux TNT. Sans micros :
-    6 micros d'exemple autour de 606 MHz."""
+    7 signaux d'exemple autour de 606 MHz (5 micros HF, une réserve « doit rester libre », un micro numérique)."""
     mics = list(mics or [])
     if not mics:
         mics = [dict(f=f, name=f"HF {i + 1}", bw=0.0, free=False, digital=False)

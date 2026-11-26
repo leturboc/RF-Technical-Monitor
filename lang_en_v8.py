@@ -1983,3 +1983,12 @@ EXACT.update({                                      # 8.1 : vues de phase du Ré
     "ms (vert = G, orange = D)": "ms (green = L, orange = R)",
     "ms · phase (degrés)": "ms · phase (degrees)", "ms · kHz (écart de fréquence)": "ms · kHz (frequency offset)",
 })
+EXACT.update({                                      # 8.1 (audit) : fusion des dossiers à la migration
+    "Changement de nom : tes fichiers": "Name change: your files",
+    "RF Technical Monitor range maintenant tes shows, journaux et profils dans :\n{}\n\nL'ancien dossier existait encore : tout ce qui manquait a été déplacé. {} fichier(s) existaient des deux côtés avec le même nom : ils sont RESTÉS dans\n{}\n(rien n'a été écrasé ; la liste est dans LISEZMOI_migration.txt).":
+        "RF Technical Monitor now keeps your shows, logs and profiles in:\n{}\n\nThe old folder still existed: everything missing was moved. {} file(s) existed on both sides with the same name: they STAYED in\n{}\n(nothing was overwritten; the list is in LISEZMOI_migration.txt).",
+})
+EXACT["LISEZMOI_migration.txt"] = "LISEZMOI_migration.txt"
+SAME_TEMPLATES += [   # 8.1 : notes de migration (fichiers de l'utilisateur, en français)
+    "RF Technical Monitor 8.1 utilise maintenant {}.\nCes fichiers existaient déjà là-bas avec le même nom : ils sont restés ici, rien n'a été écrasé. Compare-les et garde ceux que tu veux :\n",
+    "dossier {} fusionné dans {} : {} fichier(s) déplacé(s), {} laissé(s) (déjà présents)"]

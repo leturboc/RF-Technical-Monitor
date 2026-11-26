@@ -26,10 +26,16 @@ def find_lock():
     return None
 
 
-a = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+_errf = open(os.path.join(tmp, "a_stderr.txt"), "w+b")      # fichier, pas un tube (un tube plein bloquerait l'appli)
+a = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=_errf)
 t0 = time.time()
-while time.time() - t0 < 60 and find_lock() is None:
+while time.time() - t0 < 60 and find_lock() is None and a.poll() is None:
     time.sleep(0.5)
+if a.poll() is not None:            # l'appli n'a même pas démarré (ex. pyqtgraph / PySide6 absents) : le dire tout de suite
+    _errf.seek(0)
+    err = (_errf.read() or b"").decode("utf-8", "replace").strip().splitlines()[-6:]
+    print("SAUTÉ : l'appli ne démarre pas dans cet environnement (dépendance manquante ?) :\n  " + "\n  ".join(err))
+    sys.exit(2)
 time.sleep(3)
 ok("1re copie ouverte (verrou posé)", find_lock() is not None and a.poll() is None)
 t1 = time.time()
