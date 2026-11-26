@@ -1942,3 +1942,14 @@ EXACT.update({
     'Déviation FM': 'FM deviation',
     "De combien la fréquence d'un émetteur FM bouge avec le son (en kHz). Chaque appareil a une déviation nominale : trop de déviation = son qui sature au récepteur, trop peu = souffle. L'écoute SDR la mesure et la compare à la nominale.": "How much an FM transmitter's frequency moves with the sound (in kHz). Each device has a nominal deviation: too much = sound that distorts at the receiver, too little = hiss. SDR listening measures it and compares it to the nominal.",
 })
+EXACT.update({                                      # 8.1 : vu-mètres gradués, aiguille ou barre
+    "🕐 Aiguille (vu-mètre analogique)": "🕐 Needle (analogue meter)",
+    "▬ Barre (vu-mètre linéaire)": "▬ Bar (linear meter)",
+    "Force du signal reçu dans le canal écouté (dBm) :\nrouge à gauche = très faible (risque de décrochage), orange = "
+    "faible, vert = bon,\nrouge à droite = trop fort (le SDR sature : baisse la sensibilité).\nLe petit trait orange = le "
+    "plus fort récemment. Valeurs justes si le SDR est calé (avec un tinySA).\nClic = changer d'affichage (aiguille / barre).":
+        "Strength of the signal received in the listened channel (dBm):\nred on the left = very weak (dropout risk), orange "
+        "= weak, green = good,\nred on the right = too strong (the SDR saturates: lower the sensitivity).\nThe small orange "
+        "mark = the strongest recently. Values are right if the SDR is calibrated (with a tinySA).\n"
+        "Click = change the display (needle / bar).",
+})

@@ -7556,6 +7556,8 @@ def sdr_cfg_extra(sd):
         out["favs"] = favs_norm(sd.get("favs"))
     if "audio_dev" in sd:                              # 8.1 : sortie de l'écoute SDR ("" = celle des sons de l'appli)
         out["audio_dev"] = str(sd.get("audio_dev") or "")[:200]
+    if sd.get("meter_style") in dict(METER_STYLES):     # 8.1 : vu-mètre RF en aiguille ou en barre
+        out["meter_style"] = sd["meter_style"]
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
         out["demo"] = bool(sd.get("demo"))
     if sd.get("rewind_min") in REWIND_MINUTES:          # étape 22 : ⏪ minutes gardées
@@ -13711,6 +13713,27 @@ def fmt_audio(dbfs, ref, unit=None, nd=1):
         return (f"{v * 1000:.0f} mV" if v < 0.1 else f"{v:.3f} V").replace(".", ",")
     sfx = dict(AUDIO_UNITS).get(unit, "dBFS")
     return f"{v:+.{nd}f} {sfx}".replace(".", ",")
+
+
+METER_STYLES = (("analog", "🕐 Aiguille (vu-mètre analogique)"), ("bar", "▬ Barre (vu-mètre linéaire)"))
+
+
+def meter_ticks(lo, hi, px, label_px=34, minor_px=4):
+    """8.1 : graduations d'un vu-mètre de lo à hi (dB) sur px pixels : pas des petits traits (1, 2, 5 ou 10 dB, au moins
+    minor_px pixels entre deux), pas des moyens (5 / 10 / 20 dB) et valeurs écrites (assez de place pour le texte).
+    -> (petits, moyens, écrits) : listes de dB, du plus bas au plus haut, sans doublon entre elles."""
+    span = float(hi - lo)
+    if span <= 0 or px <= 0:
+        return [], [], []
+    ppd = px / span
+    minor = next((s for s in (1, 2, 5, 10, 20) if s * ppd >= minor_px), 20)
+    mid = next((s for s in (5, 10, 20, 50) if s > minor and s * ppd >= 2 * minor_px), 50)
+    lab = next((s for s in (5, 10, 20, 40, 50, 100) if s >= mid and s % mid == 0 and s * ppd >= label_px), 100)
+    grid = lambda st: [v for v in range(int(math.ceil(lo / st)) * st, int(math.floor(hi / st)) * st + 1, st)]  # noqa: E731
+    labs = grid(lab)
+    mids = [v for v in grid(mid) if v not in labs]
+    mins = [v for v in grid(minor) if v not in labs and v not in mids]
+    return mins, mids, labs
 
 
 def audio_meter(x, rate=48000):

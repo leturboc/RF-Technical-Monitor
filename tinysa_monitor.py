@@ -201,44 +201,44 @@ from tsm_core import (  # noqa: F401
     INC_MAX_MB, INC_POST_S, IQ_BYTES, IQ_RING_BUDGET, IQ_RING_S, KEEP_DAYS, LANGS, LAYOUT_PARTS, LC_TEXT,
     LEGEND_ITEMS, LEVEL_UNITS, LEVEL_WORDS, LIBRE_COLOR, LISTEN_COMPANDERS, LISTEN_HOP_DWELL, LISTEN_IF,
     LISTEN_MODES, LISTEN_RATE, LISTEN_WEB_KEEP, LISTEN_WEB_RATE, LOG_KINDS, LORA_COUNTRY, LORA_PLANS,
-    MAP_BG_MAX_B64, MAP_COORD_MAX, MAP_DEFAULT, MAP_STEP, MIN_PTS, MK_STATES, MS_BAD, MS_CSS, MS_FLAP, MS_WARN,
-    MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES, OLD_DEFAULT_THEME, OccWindow,
-    PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S, PILOT_TOL_HZ, PLANNING_DEFAULT,
-    PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX, PREP_CSS, PRESET_LABELS,
-    PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT, PROBLEM_IMPACT_DEFAULT,
-    PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS, RECUR_KINDS, RECUR_LABELS,
-    REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT, REPORT_PRO_CSS, REWIND_BINS,
-    REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_ALIASES, RX_BRANDS, RX_CUSTOM, RX_LIBRARY,
-    RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD, SAT_LNA_SHIFT,
-    SAT_WARN, SCALES, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE, SCREEN_PANELS,
-    SCREEN_PRESETS, SDR_ALIASES, SDR_AUTO_DEFAULT, SDR_DEMO_KIND, SDR_DEMO_MODEL, SDR_DTYPE, SDR_KINDS,
-    SDR_LAYOUTS, SDR_MODELS, SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT, SDR_POSTS_MAX, SDR_PROBE, SDR_STEPS_KHZ,
-    SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS, SHOW_META, SHURE_PORT,
-    SIGNAL_DEFAULTS, SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES, SITE_COLORS, SLOW_CYCLE_S, SNR_GOOD,
-    SNR_LOW, SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STATE_TXT, STATION_DEFAULT, STATUS_AUTO_COLORS, STATUS_HELP,
-    STEPS, STEP_ALIAS, STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen, SweepAccum, SweepStore, TECH_ACTIONS,
-    TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL, TNT_MARGIN_DB,
-    TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS, TX_RATES, Translator,
-    UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack, VRX_BUDGET, VRX_MAX,
-    WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN, WEB_VIEW_KEYS, WF_MAPS,
-    WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _EZ, _EZ_DEV_RE, _FREQ_WORDS, _G, _GROUP_WORDS,
-    _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS, _QE_NUM,
-    _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE, _TOL_NONE,
-    _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist, _clean_grid, _cp,
-    _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens, _noise_loop,
-    _norm_hdr, _num, _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _rx_num, _sat_status, _scan_float,
-    _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio, _split_free_line, _svg_hours, _svg_iq_spectrum,
-    _svg_multi, _svg_series, _svg_spectrum, _valid, _xml_root, _zone, adjacent_db, age_text, alarm_explain,
-    alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick, anfr_text,
-    anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_int16,
-    audio_meter, audio_ref_norm, audio_source_level, audio_spec_norm, audio_text, auto_gain_pick, auto_rbw,
-    auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic, blend, block_choices,
-    block_overlaps, block_points, build_entries, build_entries_ex, build_plan, build_report_html, bundle_pick,
-    busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset, calib_repeat, capacity_view, caps_text,
-    chan_power, chron_group, classify_signal, clean_colors, compare_receivers, compare_spectra, compare_text,
-    config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice, coord_why_text, copy_name,
-    count_overruns, country_bands, country_from_locale, country_uhf, coverage_state, coverage_text, covered,
-    data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio,
+    MAP_BG_MAX_B64, MAP_COORD_MAX, MAP_DEFAULT, MAP_STEP, METER_STYLES, MIN_PTS, MK_STATES, MS_BAD, MS_CSS,
+    MS_FLAP, MS_WARN, MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES,
+    OLD_DEFAULT_THEME, OccWindow, PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S,
+    PILOT_TOL_HZ, PLANNING_DEFAULT, PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX,
+    PREP_CSS, PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT,
+    PROBLEM_IMPACT_DEFAULT, PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS, RECUR_KINDS,
+    RECUR_LABELS, REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT, REPORT_PRO_CSS,
+    REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_ALIASES, RX_BRANDS, RX_CUSTOM,
+    RX_LIBRARY, RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD,
+    SAT_LNA_SHIFT, SAT_WARN, SCALES, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE,
+    SCREEN_PANELS, SCREEN_PRESETS, SDR_ALIASES, SDR_AUTO_DEFAULT, SDR_DEMO_KIND, SDR_DEMO_MODEL, SDR_DTYPE,
+    SDR_KINDS, SDR_LAYOUTS, SDR_MODELS, SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT, SDR_POSTS_MAX, SDR_PROBE,
+    SDR_STEPS_KHZ, SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS, SHOW_META,
+    SHURE_PORT, SIGNAL_DEFAULTS, SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES, SITE_COLORS, SLOW_CYCLE_S,
+    SNR_GOOD, SNR_LOW, SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STATE_TXT, STATION_DEFAULT, STATUS_AUTO_COLORS,
+    STATUS_HELP, STEPS, STEP_ALIAS, STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen, SweepAccum, SweepStore,
+    TECH_ACTIONS, TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL,
+    TNT_MARGIN_DB, TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS,
+    TX_RATES, Translator, UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack,
+    VRX_BUDGET, VRX_MAX, WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN,
+    WEB_VIEW_KEYS, WF_MAPS, WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _EZ, _EZ_DEV_RE,
+    _FREQ_WORDS, _G, _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR,
+    _PROBLEM_KEYS, _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM,
+    _TOL_LARGE, _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist,
+    _clean_grid, _cp, _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens,
+    _noise_loop, _norm_hdr, _num, _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _rx_num, _sat_status,
+    _scan_float, _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio, _split_free_line, _svg_hours,
+    _svg_iq_spectrum, _svg_multi, _svg_series, _svg_spectrum, _valid, _xml_root, _zone, adjacent_db, age_text,
+    alarm_explain, alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick,
+    anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align,
+    audio_int16, audio_meter, audio_ref_norm, audio_source_level, audio_spec_norm, audio_text, auto_gain_pick,
+    auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic, blend,
+    block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan, build_report_html,
+    bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset, calib_repeat, capacity_view,
+    caps_text, chan_power, chron_group, classify_signal, clean_colors, compare_receivers, compare_spectra,
+    compare_text, config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice, coord_why_text,
+    copy_name, count_overruns, country_bands, country_from_locale, country_uhf, coverage_state, coverage_text,
+    covered, data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio,
     demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow, density_lut, density_raster,
     describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps, devx_norm, diag_short,
     diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz,
@@ -257,8 +257,8 @@ from tsm_core import (  # noqa: F401
     level_at_many, level_block, level_everywhere, level_everywhere_text, level_words, listen_center, listen_cmd,
     listen_request, listen_windows, log_kind, log_kinds_norm, lora_overlap, lowpass_taps, make_label,
     make_stylesheet, map_auto_place, map_bg_embed, map_bg_extract, map_cfg_norm, map_key, map_scene_monitor,
-    map_snap, marker_visible, merge_scans, mic_health, missing_bands, mk_default, mk_filtered, mk_layer_key,
-    morning_html, morning_summary, multi_site, name_candidates, name_match, name_rank, net_host_port,
+    map_snap, marker_visible, merge_scans, meter_ticks, mic_health, missing_bands, mk_default, mk_filtered,
+    mk_layer_key, morning_html, morning_summary, multi_site, name_candidates, name_match, name_rank, net_host_port,
     net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number, next_mic, next_state,
     noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request, number_run, obw_khz,
     occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid, parse_dpa_acp, parse_ezrf3,
@@ -8436,20 +8436,58 @@ class FreqDisplay(QtWidgets.QWidget):
 
 
 class SMeterGauge(QtWidgets.QWidget):
-    """Vu-mètre du signal reçu, en mots simples : aiguille sur une échelle en dBm (−120 → −20), zones en couleur
-    (très faible · faible · bon · fort · trop fort) et « −62 dBm · bon » ; la crête redescend doucement."""
-    TICKS = (-120, -100, -80, -60, -40, -20)
+    """Vu-mètre du signal reçu, en mots simples : échelle en dBm (−120 → −20) graduée tous les 5 dB (valeurs écrites
+    tous les 10 / 20 dB), zones en couleur (très faible · faible · bon · fort · trop fort) et « −62 dBm · bon » ; la
+    crête redescend doucement. 8.1 : deux affichages au choix (clic ou clic droit) : aiguille (analogique) ou barre
+    (linéaire, comme le vu-mètre du générateur) ; choix gardé dans les réglages SDR (« meter_style »)."""
     LO, HI = -125.0, -15.0
     ZONES = ((-125.0, -95.0, "#ff453a"), (-95.0, -80.0, "#ff9f0a"), (-80.0, -30.0, "#30d158"), (-30.0, -15.0, "#ff453a"))
+    S_LO, S_HI = -120, -20                              # échelle graduée
 
-    def __init__(self, parent=None, small=False):
+    def __init__(self, parent=None, small=False, owner=None):
         super().__init__(parent)
         self.dbm, self.peak, self.small = None, None, small
-        self.setMinimumSize(130 if small else 190, 70 if small else 100)
-        self.setToolTip("Force du signal reçu dans le canal écouté (dBm) :\n"
-                        "rouge à gauche = très faible (risque de décrochage), orange = faible, vert = bon,\n"
-                        "rouge à droite = trop fort (le SDR sature : baisse la sensibilité).\n"
-                        "Le petit trait orange = le plus fort récemment. Valeurs justes si le SDR est calé (avec un tinySA).")
+        self.owner = owner or getattr(parent, "owner", None)
+        st = (getattr(self.owner, "sdr_cfg", None) or {}).get("meter_style")
+        self.style = st if st in dict(METER_STYLES) else "analog"
+        self._sizes()
+        self.setToolTip(TR("Force du signal reçu dans le canal écouté (dBm) :\n"
+                           "rouge à gauche = très faible (risque de décrochage), orange = faible, vert = bon,\n"
+                           "rouge à droite = trop fort (le SDR sature : baisse la sensibilité).\n"
+                           "Le petit trait orange = le plus fort récemment. Valeurs justes si le SDR est calé (avec un tinySA).\n"
+                           "Clic = changer d'affichage (aiguille / barre)."))
+
+    def _sizes(self):
+        if self.style == "bar":
+            self.setMinimumSize(150 if self.small else 230, 46 if self.small else 56)
+        else:
+            self.setMinimumSize(130 if self.small else 190, 70 if self.small else 100)
+        self.updateGeometry()
+
+    def set_style(self, style):
+        if style in dict(METER_STYLES) and style != self.style:
+            self.style = style
+            self._sizes()
+            self.update()
+
+    def _choose(self, style):
+        o = self.owner
+        if o is not None and hasattr(o, "set_meter_style"):
+            o.set_meter_style(style)
+        else:
+            self.set_style(style)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.RightButton:
+            m = QtWidgets.QMenu(self)
+            for k, t in METER_STYLES:
+                a = m.addAction(TR(t))
+                a.setCheckable(True)
+                a.setChecked(k == self.style)
+                a.triggered.connect(lambda *_, k=k: self._choose(k))
+            m.exec(e.globalPosition().toPoint())
+        else:
+            self._choose("bar" if self.style == "analog" else "analog")
 
     def set_dbm(self, dbm):
         self.dbm = dbm
@@ -8466,41 +8504,12 @@ class SMeterGauge(QtWidgets.QWidget):
         f = (min(self.HI, max(self.LO, v)) - self.LO) / (self.HI - self.LO)
         return math.radians(150.0 - 120.0 * f)
 
-    def paintEvent(self, _ev):
-        p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        W, H = self.width(), self.height()
+    def _frame(self, p, W, H):
         p.setBrush(QtGui.QColor(10, 14, 20))
         p.setPen(QtGui.QPen(QtGui.QColor("#2c3440"), 1.2))
         p.drawRoundedRect(QtCore.QRectF(1, 1, W - 2, H - 2), 8, 8)
-        txt_h = 14 if self.small else 18
-        R = min((W - 16) / (2 * math.cos(math.radians(30))), (H - txt_h - 10) / (1 - math.sin(math.radians(30)) + 0.12))
-        R = max(20.0, R * 0.98)
-        cx, cy = W / 2.0, 6 + R
-        for v0, v1, col in self.ZONES:
-            p.setPen(QtGui.QPen(QtGui.QColor(col), 4))
-            a0, a1 = math.degrees(self._ang(v0)), math.degrees(self._ang(v1))
-            p.drawArc(QtCore.QRectF(cx - R, cy - R, 2 * R, 2 * R), int(a1 * 16), int((a0 - a1) * 16))
-        f = QtGui.QFont()
-        f.setPointSize(7)
-        p.setFont(f)
-        for v in self.TICKS:
-            a = self._ang(v)
-            p.setPen(QtGui.QPen(QtGui.QColor("#c7c7cc"), 1.2))
-            p.drawLine(QtCore.QPointF(cx + (R - 6) * math.cos(a), cy - (R - 6) * math.sin(a)),
-                       QtCore.QPointF(cx + R * math.cos(a), cy - R * math.sin(a)))
-            if not self.small or v in (-120, -80, -40):
-                xt, yt = cx + (R - 16) * math.cos(a), cy - (R - 16) * math.sin(a)
-                p.drawText(QtCore.QRectF(xt - 14, yt - 6, 28, 12), Qt.AlignmentFlag.AlignCenter, str(v))
-        if self.peak is not None:
-            a = self._ang(self.peak)
-            p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 2))
-            p.drawLine(QtCore.QPointF(cx + (R - 9) * math.cos(a), cy - (R - 9) * math.sin(a)),
-                       QtCore.QPointF(cx + (R + 1) * math.cos(a), cy - (R + 1) * math.sin(a)))
-        a = self._ang(self.dbm if self.dbm is not None else self.LO)
-        p.setPen(QtGui.QPen(QtGui.QColor("#ffffff" if self.dbm is not None else "#555555"), 2))
-        p.drawLine(QtCore.QPointF(cx + 0.45 * R * math.cos(a), cy - 0.45 * R * math.sin(a)),
-                   QtCore.QPointF(cx + (R - 4) * math.cos(a), cy - (R - 4) * math.sin(a)))
+
+    def _text(self, p, f, W, y, h):
         f.setPointSize(8 if self.small else 10)
         f.setBold(True)
         p.setFont(f)
@@ -8509,8 +8518,90 @@ class SMeterGauge(QtWidgets.QWidget):
         p.setPen(QtGui.QColor(col if self.dbm is not None else "#8e8e93"))
         txt = self.format() if not self.small or self.dbm is None else f"{self.dbm:.0f} dBm"
         txt = QtGui.QFontMetrics(f).elidedText(txt, Qt.TextElideMode.ElideRight, W - 8)
-        p.drawText(QtCore.QRectF(0, H - txt_h - 5, W, txt_h), Qt.AlignmentFlag.AlignCenter, txt)
+        p.drawText(QtCore.QRectF(0, y, W, h), Qt.AlignmentFlag.AlignCenter, txt)
+
+    def paintEvent(self, _ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+        self._frame(p, W, H)
+        if self.style == "bar":
+            self._paint_bar(p, W, H)
+        else:
+            self._paint_analog(p, W, H)
         p.end()
+
+    def _paint_analog(self, p, W, H):
+        txt_h = 14 if self.small else 18
+        R = min((W - 16) / (2 * math.cos(math.radians(30))), (H - txt_h - 10) / (1 - math.sin(math.radians(30)) + 0.12))
+        R = max(20.0, R * 0.98)
+        cx, cy = W / 2.0, 6 + R
+        for v0, v1, col in self.ZONES:
+            p.setPen(QtGui.QPen(QtGui.QColor(col), 4))
+            a0, a1 = math.degrees(self._ang(v0)), math.degrees(self._ang(v1))
+            p.drawArc(QtCore.QRectF(cx - R, cy - R, 2 * R, 2 * R), int(a1 * 16), int((a0 - a1) * 16))
+        arc_px = R * math.radians(120.0) * (self.S_HI - self.S_LO) / (self.HI - self.LO)
+        mins, mids, labs = meter_ticks(self.S_LO, self.S_HI, arc_px, label_px=30 if self.small else 26)
+        f = QtGui.QFont()
+        f.setPointSize(7)
+        p.setFont(f)
+        pt = lambda r, a: QtCore.QPointF(cx + r * math.cos(a), cy - r * math.sin(a))  # noqa: E731
+        p.setPen(QtGui.QPen(QtGui.QColor(199, 199, 204, 120), 1.0))
+        for v in mins:
+            a = self._ang(v)
+            p.drawLine(pt(R - 3, a), pt(R, a))
+        p.setPen(QtGui.QPen(QtGui.QColor(199, 199, 204, 190), 1.1))
+        for v in mids:
+            a = self._ang(v)
+            p.drawLine(pt(R - 5, a), pt(R, a))
+        for v in labs:
+            a = self._ang(v)
+            p.setPen(QtGui.QPen(QtGui.QColor("#c7c7cc"), 1.3))
+            p.drawLine(pt(R - 7, a), pt(R, a))
+            q = pt(R - 16, a)
+            p.drawText(QtCore.QRectF(q.x() - 14, q.y() - 6, 28, 12), Qt.AlignmentFlag.AlignCenter, str(v))
+        if self.peak is not None:
+            a = self._ang(self.peak)
+            p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 2))
+            p.drawLine(pt(R - 9, a), pt(R + 1, a))
+        a = self._ang(self.dbm if self.dbm is not None else self.LO)
+        p.setPen(QtGui.QPen(QtGui.QColor("#ffffff" if self.dbm is not None else "#555555"), 2))
+        p.drawLine(pt(0.45 * R, a), pt(R - 4, a))
+        self._text(p, f, W, H - txt_h - 5, txt_h)
+
+    def _paint_bar(self, p, W, H):
+        x0, x1 = 8.0, W - 8.0
+        txt_h = 14 if self.small else 16
+        y0, bh = 6.0, (7.0 if self.small else 9.0)
+        pos = lambda v: x0 + (x1 - x0) * (min(self.HI, max(self.LO, v)) - self.LO) / (self.HI - self.LO)  # noqa: E731
+        for v0, v1, col in self.ZONES:                  # bandeau des zones sous la barre
+            c = QtGui.QColor(col)
+            c.setAlpha(60)
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(c)
+            p.drawRect(QtCore.QRectF(pos(v0), y0, pos(v1) - pos(v0), bh))
+        if self.dbm is not None:
+            word, tone = level_words(self.dbm, TR)
+            p.setBrush(QtGui.QColor({"bad": "#ff453a", "warn": "#ff9f0a", "ok": "#30d158"}.get(tone, "#c7c7cc")))
+            p.drawRoundedRect(QtCore.QRectF(x0, y0, max(0.0, pos(self.dbm) - x0), bh), 2, 2)
+        if self.peak is not None:
+            p.setPen(QtGui.QPen(QtGui.QColor("#ff9f0a"), 2))
+            p.drawLine(QtCore.QPointF(pos(self.peak), y0 - 2), QtCore.QPointF(pos(self.peak), y0 + bh + 2))
+        px = pos(self.S_HI) - pos(self.S_LO)
+        mins, mids, labs = meter_ticks(self.S_LO, self.S_HI, px, label_px=30 if self.small else 28)
+        f = QtGui.QFont()
+        f.setPointSize(7)
+        p.setFont(f)
+        yt = y0 + bh + 1
+        for vs, ln, col in ((mins, 2.5, QtGui.QColor(199, 199, 204, 110)), (mids, 4.0, QtGui.QColor(199, 199, 204, 180)),
+                            (labs, 5.5, QtGui.QColor("#c7c7cc"))):
+            p.setPen(QtGui.QPen(col, 1.0))
+            for v in vs:
+                p.drawLine(QtCore.QPointF(pos(v), yt), QtCore.QPointF(pos(v), yt + ln))
+        p.setPen(QtGui.QColor("#c7c7cc"))
+        for v in labs:
+            p.drawText(QtCore.QRectF(pos(v) - 15, yt + 5, 30, 11), Qt.AlignmentFlag.AlignCenter, str(v))
+        self._text(p, f, W, H - txt_h - 3, txt_h)
 
 
 class SdrEngine(QtCore.QObject):
@@ -9372,7 +9463,7 @@ class SdrReceiverPanel(SdrPanelBase):
         lay.addLayout(self._wrap(self.go_btn, self.mute, self.vol, o._elastic(self.dev_lbl)))
         self.a_disp = FreqDisplay(self, 24, acc)
         self.a_disp.changed.connect(lambda v: e.set_a(v))
-        self.a_meter = SMeterGauge(self)
+        self.a_meter = SMeterGauge(self, owner=o)
         top = QtWidgets.QHBoxLayout()
         lab_a = QtWidgets.QLabel("A")
         lab_a.setStyleSheet(f"color: {acc}; font-weight: bold; font-size: 18px;")
@@ -9518,7 +9609,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.b_disp = FreqDisplay(self, 13, "#ff9f0a")
         self.b_disp.setToolTip("Fréquence du récepteur B (clic droit sur le spectre ou un micro pour y aller).")
         self.b_disp.changed.connect(lambda v: e.set_b(f=v))
-        self.b_meter = SMeterGauge(self, small=True)
+        self.b_meter = SMeterGauge(self, small=True, owner=o)
         self.split_chk = QtWidgets.QCheckBox("A gauche / B droite")
         self.split_chk.setToolTip("Au casque : A dans l'oreille gauche, B dans la droite (sinon mélangés).")
         self.split_chk.setChecked(e.split)
@@ -32444,12 +32535,14 @@ def temp_wav_path(kind, old=None):
 
 class AudioMeterBar(QtWidgets.QWidget):
     """8.1 : vu-mètre audio horizontal (−60 … 0 dBFS) : barre = niveau RMS (convention AES17 : sinus plein = 0 dBFS),
-    trait = crête, losange ambre = niveau visé, repères −20 / −18 / 0 ; le texte suit l'unité choisie (dBFS, dBu…)."""
+    trait = crête, losange ambre = niveau visé ; fond en zones (vert / jaune dès −9 / rouge dès −1), gradué tous les
+    1 à 5 dB selon la largeur, valeurs écrites tous les 5 / 10 dB, repère d'alignement (−18 EBU / −20 SMPTE) en ambre."""
+    LO, HI = -60.0, 0.0
 
     def __init__(self, owner, parent=None):
         super().__init__(parent)
         self.owner, self.m, self.target = owner, None, None
-        self.setMinimumSize(160, 26)
+        self.setMinimumSize(160, 30)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setToolTip(TR("Vu-mètre : barre = niveau moyen (RMS), trait = crête, losange = niveau visé.\n"
                            "Repères −18 et −20 dBFS = niveaux d'alignement EBU / SMPTE. Clic = fiche des échelles."))
@@ -32466,35 +32559,50 @@ class AudioMeterBar(QtWidgets.QWidget):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
         bh = 10
-        x0, x1 = 4, W - 4
-        pos = lambda db: x0 + (x1 - x0) * (min(0.0, max(-60.0, db)) + 60.0) / 60.0  # noqa: E731
+        x0, x1 = 6.0, W - 6.0
+        pos = lambda db: x0 + (x1 - x0) * (min(self.HI, max(self.LO, db)) - self.LO) / (self.HI - self.LO)  # noqa: E731
         p.setPen(QtCore.Qt.PenStyle.NoPen)
-        p.setBrush(QtGui.QColor(128, 128, 128, 50))
-        p.drawRoundedRect(QtCore.QRectF(x0, 2, x1 - x0, bh), 3, 3)
+        for a_, b_, col in ((-60, -9, "#4fd1c5"), (-9, -1, "#ffb300"), (-1, 0, "#ff6b6b")):   # zones en fond
+            c = QtGui.QColor(col)
+            c.setAlpha(45)
+            p.setBrush(c)
+            p.drawRect(QtCore.QRectF(pos(a_), 2, pos(b_) - pos(a_), bh))
         m = self.m or {}
         rms, pk = m.get("rms", -math.inf), m.get("peak", -math.inf)
         if math.isfinite(rms):
             col = "#ff6b6b" if rms > -1 else ("#ffb300" if rms > -9 else "#4fd1c5")
             p.setBrush(QtGui.QColor(col))
-            p.drawRoundedRect(QtCore.QRectF(x0, 2, pos(rms) - x0, bh), 3, 3)
+            p.drawRoundedRect(QtCore.QRectF(x0, 2, pos(rms) - x0, bh), 2, 2)
         if math.isfinite(pk):
             p.setPen(QtGui.QPen(QtGui.QColor("#ff6b6b" if m.get("clip") else "#f5f5f7"), 2))
             p.drawLine(QtCore.QPointF(pos(pk), 1), QtCore.QPointF(pos(pk), bh + 3))
+        try:
+            align = audio_align(getattr(self.owner, "audio_ref", None))[0]
+        except Exception:
+            align = -18.0
+        f = p.font()
+        f.setPointSizeF(max(6.5, f.pointSizeF() - 2))
+        p.setFont(f)
+        mins, mids, labs = meter_ticks(int(self.LO), int(self.HI), x1 - x0,
+                                       label_px=QtGui.QFontMetrics(f).horizontalAdvance("−60") + 8)
+        yt = bh + 2
+        for vs, ln, col in ((mins, 2.5, QtGui.QColor(160, 160, 170, 110)), (mids, 4.0, QtGui.QColor(160, 160, 170, 190)),
+                            (labs, 5.0, QtGui.QColor(170, 170, 180))):
+            p.setPen(QtGui.QPen(col, 1.0))
+            for db in vs:
+                p.drawLine(QtCore.QPointF(pos(db), yt), QtCore.QPointF(pos(db), yt + ln))
+        if self.LO <= align <= self.HI:                  # repère d'alignement (−18 dBFS = 0 dBu en EBU…)
+            p.setPen(QtGui.QPen(QtGui.QColor("#ffb300"), 1.4))
+            p.drawLine(QtCore.QPointF(pos(align), 1), QtCore.QPointF(pos(align), yt + 5))
         if self.target is not None:
             p.setPen(QtCore.Qt.PenStyle.NoPen)
             p.setBrush(QtGui.QColor("#ffb300"))
             xt = pos(self.target)
             p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(xt, bh + 2), QtCore.QPointF(xt - 4, bh + 7),
                                            QtCore.QPointF(xt + 4, bh + 7)]))
-        f = p.font()
-        f.setPointSizeF(max(6.5, f.pointSizeF() - 2))
-        p.setFont(f)
         p.setPen(QtGui.QColor(160, 160, 170))
-        for db in (-40, -20, -18, -10, 0):
-            xx = pos(db)
-            p.drawLine(QtCore.QPointF(xx, bh + 2), QtCore.QPointF(xx, bh + 5))
-            if db != -18:
-                p.drawText(QtCore.QRectF(xx - 14, bh + 4, 28, 12), Qt.AlignmentFlag.AlignCenter, str(db))
+        for db in labs:
+            p.drawText(QtCore.QRectF(pos(db) - 15, yt + 4, 30, 12), Qt.AlignmentFlag.AlignCenter, str(db))
         p.end()
 
 
@@ -34391,6 +34499,19 @@ def _v8_set_sdr_audio(self, key):
 
 
 MainWindow.set_sdr_audio = _v8_set_sdr_audio
+
+
+def _v8_set_meter_style(self, style):
+    """8.1 : vu-mètre RF en aiguille (« analog ») ou en barre (« bar ») : tous les vu-mètres du SDR suivent, choix gardé."""
+    if style not in dict(METER_STYLES):
+        return
+    self.sdr_cfg["meter_style"] = style
+    for w in QtWidgets.QApplication.allWidgets():
+        if isinstance(w, SMeterGauge):
+            w.set_style(style)
+
+
+MainWindow.set_meter_style = _v8_set_meter_style
 MainWindow.screen_hosts = {}
 MainWindow.screens_cfg = screens_norm(None)
 MainWindow.dock_widget = _v8_dock_widget

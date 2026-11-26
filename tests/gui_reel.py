@@ -1720,6 +1720,14 @@ wait(200)
 check("8.1 : générateur : niveau visé −18 dBFS mesuré, crête, True Peak et déviation affichés",
       _ag.spec()["lvl"] is not None and abs(_ag.spec()["lvl"] + 18) < 0.05 and "kHz" in _ag.meter_txt.text()
       and _ag.meter.m is not None and abs(_ag.meter.m["rms"] + 18) < 0.3, _ag.meter_txt.text())
+_rxm = win.dock_widget(win.dock_sdr_rx)
+_rxm = getattr(_rxm, "a_meter", None) or _rxm.widget().a_meter
+win.set_meter_style("bar")
+check("8.1 : vu-mètre RF en barre (linéaire), choix gardé", _rxm.style == "bar" and win.sdr_cfg.get("meter_style") == "bar"
+      and win._collect_config().get("sdr", {}).get("meter_style") == "bar", _rxm.style)
+shot(_rxm, "vumetre_barre")
+win.set_meter_style("analog")
+check("8.1 : vu-mètre RF en aiguille", _rxm.style == "analog")
 _scd = win.open_scales()
 _scd.unit.setCurrentIndex(_scd.unit.findData("dbu"))
 check("8.1 : 📏 échelles : −18 dBFS = 0 dBu (EBU), unité retenue", win.audio_ref["unit"] == "dbu"

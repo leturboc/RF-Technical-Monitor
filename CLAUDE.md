@@ -1722,6 +1722,12 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   audio (`_watch_health` : moyenne glissante ~30 kHz ; avant 9,7 kHz mesurés pour 6) ; SDR démo : 0 dBFS = déviation
   nominale du micro (`demo_mics` « dev ») ; survol du spectre : µV / pW en bulle. Manuel : chapitre `echelles` (partie B)
   + 5 mots du lexique. **Pas vérifié avec un vrai récepteur / pack.**
+  **Vu-mètres gradués (Clément : « plus gradué, et le vu-mètre SDR audio aussi, pouvoir le choisir en linéaire et pas
+  forcément la vue analo »)** : PURE `meter_ticks(lo, hi, px)` (petits traits 1 / 2 / 5 dB, moyens, valeurs écrites selon la
+  place), `METER_STYLES` (analog | bar), `sdr_cfg["meter_style"]` (gardé par `sdr_cfg_extra`). `SMeterGauge` : graduations
+  tous les 5 dB, `style` aiguille ou barre (`_paint_analog` / `_paint_bar`), clic = bascule, clic droit = menu ;
+  `MainWindow.set_meter_style` (tous les vu-mètres RF suivent). `AudioMeterBar` : fond en zones, graduations fines, repère
+  d'alignement de `audio_ref` en ambre. Manuel : chapitre sdr-poste.
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.

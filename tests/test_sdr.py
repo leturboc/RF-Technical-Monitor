@@ -992,5 +992,13 @@ ok("unités RF : dBW / dBµW", ns["to_unit"](17, "dbw") == -13 and ns["to_unit"]
 ok("RF en µV / pW", "µV" in ns["rf_linear_text"](-90) and "pW" in ns["rf_linear_text"](-90))
 ok("fiche des échelles : essentiel et options", "dBFS" in ns["scales_help_html"]() and "option" in ns["scales_help_html"]())
 
+_mi, _md, _lb = ns["meter_ticks"](-60, 0, 300)
+ok("vu-mètre gradué : 1 dB, valeurs tous les 10 dB sur 300 px", _mi[:2] == [-59, -58] and _lb == list(range(-60, 1, 10))
+   and not set(_mi) & set(_md) and not set(_md) & set(_lb))
+ok("vu-mètre étroit : graduations moins serrées", ns["meter_ticks"](-120, -20, 120)[2] == [-120, -80, -40])
+ok("style du vu-mètre RF gardé (aiguille / barre), valeur bancale ignorée",
+   ns["sdr_cfg_extra"](dict(meter_style="bar")).get("meter_style") == "bar"
+   and "meter_style" not in ns["sdr_cfg_extra"](dict(meter_style="x")))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)
