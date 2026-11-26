@@ -12459,9 +12459,28 @@ def auto_thr_help_html(tr=lambda t: t):
     return "".join(f"<p><b>{tr(t)}</b><br>{tr(x)}</p>" for t, x in AUTO_THR_HELP)
 
 
+DEVICE_HELP = {   # 8.0 (Clément : « bien réexpliquer ce qu'est un tinySA et ce qu'est le SDR ») : bulles + lexique + manuel
+    "tiny": "📟 tinySA = un petit analyseur de spectre. Il BALAYE toute une bande (par exemple 470–694 MHz), fréquence "
+            "après fréquence, et mesure la puissance de chacune en dBm. Parfait pour SURVEILLER tous tes micros d'un coup "
+            "et voir ce qui occupe le site. Il ne fait pas entendre le son.",
+    "sdr": "📡 SDR = une radio logicielle (HackRF, SDRplay, RTL-SDR…). Elle reçoit d'un coup une FENÊTRE de quelques MHz, "
+           "sans trou, et peut DÉMODULER : tu ENTENDS le son d'un micro analogique. Elle voit moins large d'un coup que "
+           "le balayage du tinySA, et ses niveaux sont en vrais dBm une fois calés sur un tinySA. (Fonctions SDR en "
+           "bêta.)",
+    "both": "📟+📡 Les deux ensemble : le tinySA surveille tout le site, le SDR écoute et regarde de près un micro ou une "
+            "zone.",
+}
 GLOSSARY = [
     ("HF", "Ici : tout ce qui passe par les ondes radio (micros sans fil, ears, talkies). Dans le métier on dit "
      "« la HF » pour l'ensemble des liaisons sans fil d'un spectacle."),
+    ("tinySA", "Un petit analyseur de spectre : il balaye toute une bande, fréquence après fréquence, et mesure la "
+     "puissance de chacune en dBm. C'est l'appareil de base de l'appli pour SURVEILLER tous tes micros. Il ne fait pas "
+     "entendre le son."),
+    ("SDR", "Radio logicielle (HackRF, SDRplay, RTL-SDR…) : elle reçoit d'un coup une fenêtre de quelques MHz, sans "
+     "trou, et peut démoduler : tu entends un micro analogique. Moins large d'un coup que le tinySA ; ses niveaux sont "
+     "justes une fois calés sur un tinySA. (Bêta.)"),
+    ("Démoduler", "Retrouver le son transporté par une onde radio (ce que fait un récepteur de micro). Le SDR sait le "
+     "faire, le tinySA non. Les micros numériques ne se démodulent pas : leur son est codé, souvent chiffré."),
     ("Fréquence (MHz)", "La « place » où émet un appareil, en mégahertz. Deux micros sur la même fréquence se "
      "brouillent. Exemple : 606,500 MHz. Les micros de spectacle sont surtout entre 470 et 694 MHz (UHF)."),
     ("Spectre", "Le graphique de l'appli : de gauche à droite les fréquences, de bas en haut la puissance reçue. Un "
@@ -22343,7 +22362,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.vol.setToolTip("Volume.")
         self.vol.valueChanged.connect(lambda v: None if self.mute.isChecked() else e.set_opts(vol=v / 100.0))
         self.dev_lbl = QtWidgets.QLabel("")
-        self.dev_lbl.setToolTip("Ton SDR (📡 Réglages SDR pour le changer).")
+        self.dev_lbl.setToolTip(TR(DEVICE_HELP["sdr"]) + "\n\n" + TR("Ton SDR : 📡 Réglages SDR pour le changer."))
         lay.addLayout(o._row(self.go_btn, self.mute, self.vol, None, self.dev_lbl))
         self.a_disp = FreqDisplay(self, 24, acc)
         self.a_disp.changed.connect(lambda v: e.set_a(v))
@@ -22810,6 +22829,9 @@ class SdrSpectrumPanel(SdrPanelBase):
         self.plot.setLabel("left", "dBFS")
         self.plot.showGrid(x=True, y=True, alpha=0.22)
         sdr_light_axes(self.plot)
+        self.plot.setToolTip(TR("Le spectre du SDR : la fenêtre de quelques MHz qu'il reçoit en entier, sans trou (ce n'est "
+                                "pas le balayage du tinySA, qui couvre toute la bande).") + "\n" +
+                             TR("Clic = écouter (A) · clic droit = B · molette = zoom."))
         acc = o.theme.get("accent", "#64d2ff")
         self.curve = self.plot.plot(pen=pg.mkPen(o.theme.get("curve", acc), width=1.2))
         self.mh = self.plot.plot(pen=pg.mkPen(o.theme.get("maxhold", "#ff9f0a"), width=1))
@@ -26861,6 +26883,8 @@ class HomeBar(QtWidgets.QWidget):
             top.setSpacing(8)
             t = QtWidgets.QLabel(title)
             t.setStyleSheet("font-weight:bold; font-size:14px")
+            if key == "port":                            # 8.0 : c'est quoi un tinySA
+                t.setToolTip(TR(DEVICE_HELP["tiny"]))
             info = QtWidgets.QLabel("")
             info.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
             top.addWidget(t)
@@ -44610,8 +44634,10 @@ def _v8_build_mode_menu(self):
     m = self.mode_btn.menu()
     m.clear()
     m.addSection(TR("Mode"))
+    m.setToolTipsVisible(True)
     for k, t in RF_MODES:
         a_ = m.addAction(TR(t))
+        a_.setToolTip(TR(DEVICE_HELP[k]))                   # 8.0 : c'est quoi un tinySA / un SDR
         a_.setCheckable(True)
         a_.setChecked(k == self.rf_mode)
         a_.triggered.connect(lambda *_, k=k: self.set_rf_mode(k))
@@ -44644,8 +44670,9 @@ def _v8_mode_setup(self):
     b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
     b.setMenu(QtWidgets.QMenu(b))
     b.menu().aboutToShow.connect(self._build_mode_menu)
-    b.setToolTip("Ce que tu utilises : 📟 tinySA, 📡 SDR, ou les deux (combiné). Chaque mode a sa disposition de base\n"
-                 "et des pré-affichages ; ensuite tu bouges les panneaux comme tu veux (ta disposition est retenue).")
+    b.setToolTip(TR("Ce que tu utilises :") + "\n\n" + "\n\n".join(TR(DEVICE_HELP[k]) for k in ("tiny", "sdr", "both"))
+                 + "\n\n" + TR("Chaque mode a sa disposition de base et des pré-affichages ; ensuite tu bouges les "
+                                 "panneaux comme tu veux (ta disposition est retenue)."))
     try:
         self.cmd_bar.insertWidget(self._more_act, b)
     except Exception:  # noqa: BLE001

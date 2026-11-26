@@ -36,8 +36,28 @@ The <b>📚 Glossary</b> (☰ More › Help) explains every word.</div>
     tinySA, change the cable first.</li>
   <li><b>A Windows PC</b> (10 or 11). No need for a racing machine; a screen of at least 1280 × 720.</li>
 </ul>
+<h3>tinySA or SDR: what's the difference?</h3>
+<p>The app works with two kinds of devices, which don't do the same job:</p>
+<table>
+  <tr><th></th><th>📟 tinySA</th><th>📡 SDR (beta)</th></tr>
+  <tr><td><b>What it is</b></td><td>A small <b>spectrum analyser</b>.</td><td>A <b>software-defined radio</b> (HackRF,
+    SDRplay, RTL-SDR…): the PC does all the radio work.</td></tr>
+  <tr><td><b>How it looks</b></td><td>It <b>sweeps</b> a whole band (for example 470–694 MHz), frequency after
+    frequency: it sees everything, but each frequency in turn.</td><td>It receives a <b>window</b> of a few MHz at once,
+    without gaps: it misses nothing in that window, even a very short signal.</td></tr>
+  <tr><td><b>Sound</b></td><td>No: it only measures power.</td><td>Yes: it <b>demodulates</b>, you hear an analog mic
+    (not digital mics, which are coded).</td></tr>
+  <tr><td><b>Levels</b></td><td>In dBm, directly.</td><td>Relative (dBFS); in real dBm once calibrated on a
+    tinySA.</td></tr>
+  <tr><td><b>What for</b></td><td><b>Monitoring</b> all your mics and the whole site, scanning a venue,
+    coordinating.</td><td><b>Listening</b> to a mic, looking closely, catching a short interferer, testing a
+    receiver.</td></tr>
+</table>
+<p>The tinySA is enough for all the monitoring work. The SDR is a complement: in <b>📟+📡 combined</b> mode, the tinySA
+monitors and the SDR listens (part “The SDR (beta)”).</p>
 <h3>Optional</h3>
 <ul>
+  <li><b>An SDR</b> (beta): to listen to your mics and look closely at an area (part “The SDR (beta)”).</li>
   <li><b>A 2nd tinySA</b>: twice as fast (they share the bands), or one per stage (chapter « Two tinySAs, network
     relay »).</li>
   <li><b>A Raspberry Pi</b> (Pi 4 recommended) + a USB power bank: the « roaming tinySA » kit to scan each stage or

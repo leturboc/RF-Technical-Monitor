@@ -37,8 +37,28 @@ montre la partie de l'écran concernée et explique <b>c'est quoi / pourquoi / c
     charge. Si le PC ne voit pas le tinySA, change de câble en premier.</li>
   <li><b>Un PC Windows</b> (10 ou 11). Pas besoin d'une bête de course ; un écran de 1280 × 720 minimum.</li>
 </ul>
+<h3>tinySA ou SDR : quelle différence ?</h3>
+<p>L'appli marche avec deux sortes d'appareils, qui ne font pas le même travail :</p>
+<table>
+  <tr><th></th><th>📟 tinySA</th><th>📡 SDR (bêta)</th></tr>
+  <tr><td><b>C'est quoi</b></td><td>Un petit <b>analyseur de spectre</b>.</td><td>Une <b>radio logicielle</b> (HackRF,
+    SDRplay, RTL-SDR…) : le PC fait tout le travail de la radio.</td></tr>
+  <tr><td><b>Comment il regarde</b></td><td>Il <b>balaye</b> une bande entière (par exemple 470–694 MHz), fréquence
+    après fréquence : il voit tout, mais chaque fréquence à son tour.</td><td>Il reçoit d'un coup une <b>fenêtre</b> de
+    quelques MHz, sans trou : il ne rate rien dans cette fenêtre, même un signal très bref.</td></tr>
+  <tr><td><b>Le son</b></td><td>Non : il mesure seulement la puissance.</td><td>Oui : il <b>démodule</b>, tu entends
+    un micro analogique (pas les micros numériques, codés).</td></tr>
+  <tr><td><b>Les niveaux</b></td><td>En dBm, directement.</td><td>Relatifs (dBFS) ; en vrais dBm une fois calés sur un
+    tinySA.</td></tr>
+  <tr><td><b>Pour quoi faire</b></td><td><b>Surveiller</b> tous tes micros et tout le site, scanner un lieu,
+    coordonner.</td><td><b>Écouter</b> un micro, regarder de près, attraper un brouilleur bref, tester un
+    récepteur.</td></tr>
+</table>
+<p>Le tinySA suffit pour tout le travail de surveillance. Le SDR est un complément : en mode <b>📟+📡 combiné</b>, le
+tinySA surveille et le SDR écoute (partie « Le SDR (bêta) »).</p>
 <h3>En option</h3>
 <ul>
+  <li><b>Un SDR</b> (bêta) : pour écouter tes micros et regarder une zone de près (partie « Le SDR (bêta) »).</li>
   <li><b>Un 2ᵉ tinySA</b> : deux fois plus vite (ils se partagent les bandes), ou un par scène (chapitre
     « Deux tinySA, relais réseau »).</li>
   <li><b>Un Raspberry Pi</b> (Pi 4 conseillé) + une batterie USB : le kit « tinySA volant » pour scanner chaque

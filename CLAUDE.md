@@ -1443,6 +1443,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   (chapitres `sdr-*` lus dans `docs/src/sdr_fr.html` / `sdr_en.html`, préfixe car « surveiller » existait), Aide = F ;
   `manual_sdr.py`, `make_manual_sdr.py`, `docs/manuel_sdr.*` supprimés, `open_sdr_manual` = `open_manual("sdr-poste")`.
   `sync-v8.yml` supprimé, `kit-sdr.yml` sur `ui-validation`. Les notes « V8 étape N » plus bas restent l'historique du SDR.
+  Clément : « bien réexpliquer ce qu'est un tinySA et ce qu'est le SDR, dans le manuel et au survol » : PURE `DEVICE_HELP`
+  {tiny, sdr, both} (bulles du bouton de mode, de chaque mode du menu, de la carte ① de l'accueil, du nom du SDR dans le
+  Récepteur ; spectre SDR « ce n'est pas le balayage du tinySA »), lexique + « tinySA », « SDR », « Démoduler » ; manuel :
+  tableau « tinySA ou SDR : quelle différence ? » dans le chapitre Le matériel, SDR dans « En option ».
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),

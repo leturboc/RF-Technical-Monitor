@@ -1582,3 +1582,45 @@ EXACT.update({
 EXACT.update({"📡 SDR (bêta)": "📡 SDR (beta)", "📟+📡 Combiné (bêta)": "📟+📡 Combined (beta)",
               "📡 SDR (bêta : écoute et moniteur)": "📡 SDR (beta: listening and monitor)",
               "SDR (bêta)": "SDR (beta)", "Combiné (bêta)": "Combined (beta)"})
+
+# ---------------------------------------------------------------- 8.0 : c'est quoi un tinySA, un SDR
+EXACT.update({
+    "📟 tinySA = un petit analyseur de spectre. Il BALAYE toute une bande (par exemple 470–694 MHz), fréquence après "
+    "fréquence, et mesure la puissance de chacune en dBm. Parfait pour SURVEILLER tous tes micros d'un coup et voir ce "
+    "qui occupe le site. Il ne fait pas entendre le son.":
+        "📟 tinySA = a small spectrum analyser. It SWEEPS a whole band (for example 470–694 MHz), frequency after "
+        "frequency, and measures the power of each in dBm. Perfect to MONITOR all your mics at once and see what "
+        "occupies the site. It doesn't let you hear the sound.",
+    "📡 SDR = une radio logicielle (HackRF, SDRplay, RTL-SDR…). Elle reçoit d'un coup une FENÊTRE de quelques MHz, sans "
+    "trou, et peut DÉMODULER : tu ENTENDS le son d'un micro analogique. Elle voit moins large d'un coup que le balayage "
+    "du tinySA, et ses niveaux sont en vrais dBm une fois calés sur un tinySA. (Fonctions SDR en bêta.)":
+        "📡 SDR = a software-defined radio (HackRF, SDRplay, RTL-SDR…). It receives a WINDOW of a few MHz at once, "
+        "without gaps, and can DEMODULATE: you HEAR the sound of an analog mic. It sees less wide at once than the "
+        "tinySA's sweep, and its levels are in real dBm once calibrated on a tinySA. (SDR features in beta.)",
+    "📟+📡 Les deux ensemble : le tinySA surveille tout le site, le SDR écoute et regarde de près un micro ou une zone.":
+        "📟+📡 Both together: the tinySA monitors the whole site, the SDR listens and looks closely at a mic or an area.",
+    "tinySA": "tinySA", "SDR": "SDR", "Démoduler": "Demodulate",
+    "Un petit analyseur de spectre : il balaye toute une bande, fréquence après fréquence, et mesure la puissance de "
+    "chacune en dBm. C'est l'appareil de base de l'appli pour SURVEILLER tous tes micros. Il ne fait pas entendre le son.":
+        "A small spectrum analyser: it sweeps a whole band, frequency after frequency, and measures the power of each in "
+        "dBm. It's the app's basic device to MONITOR all your mics. It doesn't let you hear the sound.",
+    "Radio logicielle (HackRF, SDRplay, RTL-SDR…) : elle reçoit d'un coup une fenêtre de quelques MHz, sans trou, et "
+    "peut démoduler : tu entends un micro analogique. Moins large d'un coup que le tinySA ; ses niveaux sont justes une "
+    "fois calés sur un tinySA. (Bêta.)": "Software-defined radio (HackRF, SDRplay, RTL-SDR…): it receives a window of a "
+                                         "few MHz at once, without gaps, and can demodulate: you hear an analog mic. "
+                                         "Less wide at once than the tinySA; its levels are right once calibrated on a "
+                                         "tinySA. (Beta.)",
+    "Retrouver le son transporté par une onde radio (ce que fait un récepteur de micro). Le SDR sait le faire, le tinySA "
+    "non. Les micros numériques ne se démodulent pas : leur son est codé, souvent chiffré.":
+        "Recovering the sound carried by a radio wave (what a mic receiver does). The SDR can do it, the tinySA can't. "
+        "Digital mics can't be demodulated: their sound is coded, often encrypted.",
+    "Ce que tu utilises :": "What you use:",
+    "Chaque mode a sa disposition de base et des pré-affichages ; ensuite tu bouges les panneaux comme tu veux (ta "
+    "disposition est retenue).": "Each mode has its base layout and preset views; then you move the panels as you like "
+                                 "(your layout is remembered).",
+    "Ton SDR : 📡 Réglages SDR pour le changer.": "Your SDR: 📡 SDR settings to change it.",
+    "Le spectre du SDR : la fenêtre de quelques MHz qu'il reçoit en entier, sans trou (ce n'est pas le balayage du "
+    "tinySA, qui couvre toute la bande).": "The SDR spectrum: the window of a few MHz it receives in full, without gaps "
+                                          "(it's not the tinySA's sweep, which covers the whole band).",
+    "Clic = écouter (A) · clic droit = B · molette = zoom.": "Click = listen (A) · right-click = B · wheel = zoom.",
+})
