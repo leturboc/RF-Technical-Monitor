@@ -969,5 +969,28 @@ for _k in ("pink", "white"):
 
 ok("8.1 : sortie de l'écoute SDR gardée", ns["sdr_cfg_extra"](dict(audio_dev="__win__")).get("audio_dev") == "__win__")
 
+# 8.1 : échelles de niveau
+_ref = ns["audio_ref_norm"]({})
+ok("échelles : EBU −18 dBFS = 0 dBu = 0,775 V ; +4 dBu = 0 VU", abs(ns["dbfs_to_unit"](-18, _ref, "dbu")) < 1e-9
+   and abs(ns["dbfs_to_unit"](-18, _ref, "vrms") - 0.7746) < 1e-3 and abs(ns["dbfs_to_unit"](-14, _ref, "vu")) < 1e-9)
+ok("échelles : SMPTE −20 dBFS = +4 dBu ; dBV = dBu − 2,21", abs(ns["dbfs_to_unit"](-20, dict(align="smpte"), "dbu") - 4) < 1e-9
+   and abs(ns["dbfs_to_unit"](-18, _ref, "dbv") + 2.2185) < 1e-6)
+ok("échelles : aller-retour", all(abs(ns["unit_to_dbfs"](ns["dbfs_to_unit"](-12.5, _ref, u), _ref, u) + 12.5) < 1e-6
+                                  for u, _t in ns["AUDIO_UNITS"]))
+_t = np.arange(48000) / 48000.0
+_m = ns["audio_meter"](0.5 * np.sin(2 * np.pi * 1000 * _t))
+ok("vu-mètre : sinus 0,5 = −6,02 dBFS (RMS AES17 et crête)", abs(_m["rms"] + 6.02) < 0.01 and abs(_m["peak"] + 6.02) < 0.01)
+ok("gain vers la cible, limité par la crête", ns["gain_to_target"](-24, -18, -10) == (6.0, False)
+   and ns["gain_to_target"](-24, -18, -2)[1])
+ok("déviation : −18 dBFS sur 48 kHz max ≈ 6 kHz ; écart à la nominale", abs(ns["fm_deviation"](-18, 48) - 6.04) < 0.01
+   and abs(ns["deviation_db"](24, 48) + 6.02) < 0.01)
+for _k in ("tone", "sweep", "pink"):
+    _x = ns["demo_audio"](ns["audio_spec_norm"](dict(src=_k, lvl=-18)), np.arange(96000) / 48000.0, 0)
+    ok(f"niveau visé −18 dBFS : {_k}", abs(ns["audio_meter"](_x)["rms"] + 18) < 0.6, str(ns["audio_meter"](_x)["rms"]))
+ok("unités RF : dBW / dBµW", ns["to_unit"](17, "dbw") == -13 and ns["to_unit"](-70, "dbuw") == -40
+   and ns["from_unit"](-13, "dbw") == 17)
+ok("RF en µV / pW", "µV" in ns["rf_linear_text"](-90) and "pW" in ns["rf_linear_text"](-90))
+ok("fiche des échelles : essentiel et options", "dBFS" in ns["scales_help_html"]() and "option" in ns["scales_help_html"]())
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

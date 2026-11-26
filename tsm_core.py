@@ -2268,8 +2268,9 @@ def signal_view(state, keep_free=False, keep_on=False, absent=False, intermod=Fa
     return txt, tone
 
 
-LEVEL_UNITS = (("dbm", "dBm"), ("dbuv", "dBµV (50 Ω)"), ("pct", "% (comme WSM)"))
-UNIT_SUFFIX = {"dbm": "dBm", "dbuv": "dBµV", "pct": "%"}
+LEVEL_UNITS = (("dbm", "dBm"), ("dbuv", "dBµV (50 Ω)"), ("pct", "% (comme WSM)"),
+               ("dbw", "dBW"), ("dbuw", "dBµW"))                      # 8.1 : dBW, dBµW
+UNIT_SUFFIX = {"dbm": "dBm", "dbuv": "dBµV", "pct": "%", "dbw": "dBW", "dbuw": "dBµW"}
 
 
 def to_unit(dbm, unit):
@@ -2280,6 +2281,10 @@ def to_unit(dbm, unit):
         return dbm + 107.0
     if unit == "pct":
         return min(100.0, max(0.0, (dbm + 120.0) * 100.0 / 120.0))
+    if unit == "dbw":
+        return dbm - 30.0
+    if unit == "dbuw":
+        return dbm + 30.0
     return dbm
 
 
@@ -2291,6 +2296,10 @@ def from_unit(v, unit):
         return v - 107.0
     if unit == "pct":
         return v * 120.0 / 100.0 - 120.0
+    if unit == "dbw":
+        return v + 30.0
+    if unit == "dbuw":
+        return v - 30.0
     return v
 
 
@@ -9406,6 +9415,12 @@ def audio_spec_norm(d):
     if d.get("app") in [a for a, _n in APP_SOUNDS]:
         out["app"] = d["app"]
     out["path"] = str(d.get("path") or "")[:500]
+    out["lvl"] = None                                  # 8.1 : niveau visé (dBFS, sinus crête = 0) ; None = d'origine
+    try:
+        if d.get("lvl") is not None:
+            out["lvl"] = float(min(0.0, max(-60.0, float(d["lvl"]))))
+    except (TypeError, ValueError):
+        pass
     return out
 
 
@@ -9494,12 +9509,31 @@ def _noise_loop(kind, secs=8.0):
     return _NOISE[kind]
 
 
+_SRC_LEVEL = {}
+
+
+def audio_source_level(spec, k=0):
+    """Niveau d'origine (dBFS, convention AES17) d'une source : mesuré une fois sur 4 s (ou la durée d'un balayage)."""
+    sp = dict(audio_spec_norm(spec), lvl=None)
+    key = (tuple(sorted((a, str(b)) for a, b in sp.items())), int(k))
+    if key not in _SRC_LEVEL:
+        n = int(min(12.0, max(4.0, sp["dur"] if sp["src"] == "sweep" else 4.0)) * 48000)
+        _SRC_LEVEL[key] = audio_meter(demo_audio(sp, np.arange(n) / 48000.0, k), 48000)["rms"]
+    return _SRC_LEVEL[key]
+
+
 def demo_audio(kind, t, k=0):
     """Son de démo (float32, −1…1) aux instants t (s). k = n° du micro : chacun a sa hauteur, on les reconnaît.
     kind = nom (voice, melody, beep, tone…) ou source complète (dict d'audio_spec_norm : générateur, balayage,
-    bruit, son de l'appli, fichier WAV)."""
+    bruit, son de l'appli, fichier WAV). 8.1 : niveau visé (lvl, dBFS) -> gain constant (mesuré sur la source)."""
     t = np.asarray(t, dtype=np.float64)
     spec = audio_spec_norm(kind) if isinstance(kind, dict) else None
+    if spec is not None and spec.get("lvl") is not None:
+        lv0 = audio_source_level(spec, k)
+        x = demo_audio(dict(spec, lvl=None), t, k)
+        if not math.isfinite(lv0):
+            return x
+        return np.clip(x * 10.0 ** ((spec["lvl"] - lv0) / 20.0), -1.0, 1.0).astype(np.float32)
     if spec is not None:
         kind = spec["src"]
     if kind == "silence":
@@ -13583,6 +13617,221 @@ def screen_rf_mode(plan):
 def screen_plan_fit(plan, nscr, main):
     """Écran débranché depuis : ses panneaux reviennent dans la fenêtre principale."""
     return {n: (v if v < nscr else main) for n, v in (plan or {}).items()}
+
+
+# ---------------------------------------------------------------- 8.1 : échelles de niveau (Clément : « absolument une
+# échelle en dB pour caler des récepteurs à −18 dBFS, choisir la réf en dBu / dBV…, un vu-mètre et un niveau à atteindre,
+# en émission ET en réception ; garder dBm, dBW, dBµW, dBµV ; tout réexpliquer dans un tableau »).
+AUDIO_UNITS = (("dbfs", "dBFS"), ("dbu", "dBu"), ("dbv", "dBV"), ("vrms", "V RMS"), ("vu", "dB VU"), ("dbr", "dBr"))
+AUDIO_ALIGNS = (("ebu", "EBU R68 : −18 dBFS = 0 dBu", -18.0, 0.0),
+                ("smpte", "SMPTE RP155 : −20 dBFS = +4 dBu", -20.0, 4.0),
+                ("k14", "Broadcast / streaming : −14 dBFS = +4 dBu", -14.0, 4.0),
+                ("custom", "Personnalisé", -18.0, 0.0))
+AUDIO_REF_DEFAULT = dict(unit="dbfs", align="ebu", dbfs=-18.0, dbu=0.0, dbr=-18.0, target=-18.0)
+DBU_V = 0.7746                       # 0 dBu = 0,775 V RMS (1 mW sur 600 Ω)
+DBV_DBU = 2.2185                     # 0 dBV = 1 V = +2,21 dBu
+
+
+def audio_ref_norm(d):
+    """Préférences d'échelle audio : unité d'affichage, alignement numérique / analogique, référence dBr, niveau visé."""
+    d = d if isinstance(d, dict) else {}
+    out = dict(AUDIO_REF_DEFAULT)
+    if d.get("unit") in dict(AUDIO_UNITS):
+        out["unit"] = d["unit"]
+    if d.get("align") in [a[0] for a in AUDIO_ALIGNS]:
+        out["align"] = d["align"]
+    for k, lo, hi in (("dbfs", -60.0, 0.0), ("dbu", -40.0, 30.0), ("dbr", -60.0, 0.0), ("target", -60.0, 0.0)):
+        try:
+            out[k] = min(hi, max(lo, float(d.get(k, out[k]))))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def audio_align(ref):
+    """(dBFS, dBu) qui se correspondent selon l'alignement choisi."""
+    ref = audio_ref_norm(ref)
+    a = next(x for x in AUDIO_ALIGNS if x[0] == ref["align"])
+    return (ref["dbfs"], ref["dbu"]) if a[0] == "custom" else (a[2], a[3])
+
+
+def dbfs_to_unit(dbfs, ref, unit=None):
+    """dBFS (crête d'un sinus = 0 dBFS, convention AES17) -> unité choisie : dBu = dBFS − réf. dBFS + réf. dBu ;
+    dBV = dBu − 2,21 ; V RMS = 0,775 × 10^(dBu/20) ; dB VU = dBu − 4 ; dBr = dBFS − référence dBr."""
+    if dbfs is None:
+        return None
+    ref = audio_ref_norm(ref)
+    unit = unit or ref["unit"]
+    a_fs, a_u = audio_align(ref)
+    dbu = float(dbfs) - a_fs + a_u
+    return {"dbfs": float(dbfs), "dbu": dbu, "dbv": dbu - DBV_DBU, "vrms": DBU_V * 10.0 ** (dbu / 20.0),
+            "vu": dbu - 4.0, "dbr": float(dbfs) - ref["dbr"]}.get(unit, float(dbfs))
+
+
+def unit_to_dbfs(v, ref, unit=None):
+    """Inverse de dbfs_to_unit."""
+    if v is None:
+        return None
+    ref = audio_ref_norm(ref)
+    unit = unit or ref["unit"]
+    a_fs, a_u = audio_align(ref)
+    v = float(v)
+    if unit == "dbfs":
+        return v
+    if unit == "dbr":
+        return v + ref["dbr"]
+    dbu = {"dbu": v, "dbv": v + DBV_DBU, "vu": v + 4.0,
+           "vrms": 20.0 * math.log10(max(v, 1e-9) / DBU_V)}.get(unit, v)
+    return dbu - a_u + a_fs
+
+
+def fmt_audio(dbfs, ref, unit=None, nd=1):
+    """« −18,0 dBFS », « +4,0 dBu », « 1,228 V »… ("—" si inconnu)."""
+    if dbfs is None or not math.isfinite(dbfs):
+        return "—"
+    unit = unit or audio_ref_norm(ref)["unit"]
+    v = dbfs_to_unit(dbfs, ref, unit)
+    if unit == "vrms":
+        return (f"{v * 1000:.0f} mV" if v < 0.1 else f"{v:.3f} V").replace(".", ",")
+    sfx = dict(AUDIO_UNITS).get(unit, "dBFS")
+    return f"{v:+.{nd}f} {sfx}".replace(".", ",")
+
+
+def audio_meter(x, rate=48000):
+    """Vu-mètre d'un morceau de son (float −1…1, mono ou entrelacé) : niveau RMS (dBFS, sinus plein = 0 : RMS × √2),
+    crête échantillon, True Peak (sur-échantillonné ×4, dBTP), coupé (≥ 0 dBFS). -> dict ; silence = −inf."""
+    x = np.asarray(x, dtype=np.float64).ravel()
+    if not len(x):
+        return dict(rms=-math.inf, peak=-math.inf, tp=-math.inf, clip=False)
+    rms = float(np.sqrt(np.mean(x * x)))
+    pk = float(np.max(np.abs(x)))
+    tp = pk
+    if len(x) >= 16:
+        n = len(x)
+        X = np.fft.rfft(x)
+        y = np.fft.irfft(X, 4 * n) * 4.0
+        tp = max(pk, float(np.max(np.abs(y))))
+    db = lambda v: 20.0 * math.log10(v) if v > 1e-9 else -math.inf  # noqa: E731
+    return dict(rms=db(rms * math.sqrt(2.0)), peak=db(pk), tp=db(tp), clip=pk >= 0.999)
+
+
+def gain_to_target(level_dbfs, target_dbfs, peak_dbfs=None, headroom=0.3):
+    """Gain (dB) pour amener un son mesuré au niveau visé, sans dépasser 0 dBFS en crête (−0,3 dB de marge).
+    -> (gain dB, limité par la crête ?)."""
+    if level_dbfs is None or not math.isfinite(level_dbfs):
+        return 0.0, False
+    g = float(target_dbfs) - float(level_dbfs)
+    if peak_dbfs is not None and math.isfinite(peak_dbfs) and peak_dbfs + g > -headroom:
+        return -headroom - float(peak_dbfs), True
+    return g, False
+
+
+def fm_deviation(level_dbfs, dev_full_khz):
+    """Déviation FM crête (kHz) d'un son au niveau donné quand 0 dBFS (crête d'un sinus) = dev_full_khz."""
+    if level_dbfs is None or not math.isfinite(level_dbfs):
+        return 0.0
+    return float(dev_full_khz) * 10.0 ** (float(level_dbfs) / 20.0)
+
+
+def deviation_db(dev_khz, nominal_khz):
+    """Déviation mesurée par rapport à la nominale de l'appareil, en dB (0 = pile la nominale, + = trop chaud)."""
+    if not dev_khz or not nominal_khz or dev_khz <= 0 or nominal_khz <= 0:
+        return None
+    return 20.0 * math.log10(float(dev_khz) / float(nominal_khz))
+
+
+def rf_linear_text(dbm):
+    """Niveau RF en valeurs « directes » sur 50 Ω : tension (µV / mV) et puissance (pW / nW / µW / mW)."""
+    if dbm is None or not math.isfinite(dbm):
+        return "—"
+    uv = 10.0 ** ((float(dbm) + 107.0) / 20.0)
+    w = 10.0 ** (float(dbm) / 10.0) / 1000.0
+    v_txt = f"{uv:.2f} µV" if uv < 1000 else f"{uv / 1000:.2f} mV"
+    for f_, u_ in ((1e-3, "mW"), (1e-6, "µW"), (1e-9, "nW"), (1e-12, "pW"), (1e-15, "fW")):
+        if w >= f_:
+            p_txt = f"{w / f_:.2f} {u_}"
+            break
+    else:
+        p_txt = f"{w * 1e18:.2f} aW"
+    return f"{v_txt} · {p_txt}".replace(".", ",")
+
+
+# Tableau de référence (fiche ❓ « Échelles et niveaux », manuel) : (domaine, unité, 0 dB =, où ça sert, comment
+# l'utiliser ici, essentiel ?). Domaines : rf (50 Ω), audio (électrique / numérique), salle, hf (liaisons sans fil).
+SCALES = (
+    ("rf", "dBm", "1 mW sur 50 Ω", "Spectre, seuils, niveaux mesurés (tinySA, SDR)",
+     "L'unité de base de l'appli. −100 dBm = bruit de fond typique, −30 dBm = signal très fort.", True),
+    ("rf", "dBµV", "1 µV sur 50 Ω (= dBm + 107)", "Fiches de récepteurs, Wisycom Manager, normes",
+     "« Sensibilité 10 dBµV » = −97 dBm. ⚙ › Unité des niveaux.", True),
+    ("rf", "dBW", "1 W (= dBm − 30)", "Puissance d'émetteurs, réglementation",
+     "Un émetteur de 50 mW = 17 dBm = −13 dBW.", False),
+    ("rf", "dBµW", "1 µW (= dBm + 30)", "Fiches techniques, très petits niveaux",
+     "−70 dBm = −40 dBµW.", False),
+    ("rf", "µV / pW", "valeurs directes sur 50 Ω", "Lecture « physique » d'un niveau",
+     "Affichées au survol du spectre à côté du dBm.", False),
+    ("rf", "%", "échelle WSM : 0 % = −120 dBm, 100 % = 0 dBm", "Sennheiser WSM",
+     "Pour comparer avec un scan WSM.", False),
+    ("audio", "dBFS", "pleine échelle numérique (sinus crête = 0)", "Son numérique : générateur, écoute SDR, WAV",
+     "Le niveau des vu-mètres de l'appli. Jamais au-dessus de 0 : ça coupe.", True),
+    ("audio", "dBu", "0,775 V RMS", "Niveau analogique pro (consoles, sorties de récepteurs)",
+     "+4 dBu = niveau ligne pro. Avec l'alignement EBU, −18 dBFS = 0 dBu.", True),
+    ("audio", "dBV", "1 V RMS (= dBu − 2,21)", "Matériel grand public, certaines fiches",
+     "−10 dBV = niveau ligne grand public (0,316 V).", True),
+    ("audio", "V RMS", "tension efficace", "Multimètre, fiches d'entrées / sorties",
+     "+4 dBu = 1,228 V ; 0 dBu = 0,775 V ; 0 dBV = 1 V.", True),
+    ("audio", "dB VU", "+4 dBu (1,228 V)", "Vu-mètres analogiques à aiguille",
+     "0 VU = +4 dBu. Le VU est lent (300 ms) : il montre la moyenne, pas les crêtes.", False),
+    ("audio", "dBr", "une référence que TU choisis", "Comparer à un niveau de base (« ce pack = 0 »)",
+     "Règle la référence dBr dans l'échelle des vu-mètres.", True),
+    ("audio", "dBTP", "pleine échelle, crêtes entre échantillons comprises", "Diffusion, mastering",
+     "Une crête à 0 dBFS peut dépasser après conversion : on vise ≤ −1 dBTP.", True),
+    ("audio", "Alignement", "EBU R68 : −18 dBFS = 0 dBu · SMPTE RP155 : −20 dBFS = +4 dBu",
+     "Faire correspondre numérique et analogique", "Le ton de référence 1 kHz à −18 dBFS (EBU) ou −20 dBFS (SMPTE).", True),
+    ("audio", "LUFS / LU", "sonie perçue (EBU R128)", "Diffusion, streaming",
+     "Cibles : −23 LUFS (EBU R128), −24 LKFS (USA), ~−14 LUFS en streaming. LU = écart à la cible.", False),
+    ("audio", "PPM / K-System", "crête-mètres de consoles ; K-20 / K-14 / K-12 = 0 à −20 / −14 / −12 dBFS",
+     "Habitudes de studio et de diffusion", "Pour lire une console ; l'appli reste en dBFS.", False),
+    ("hf", "Déviation FM", "déviation crête (kHz) ; « 0 dB » = la nominale de l'appareil",
+     "Calibrer une liaison émetteur / récepteur", "Le générateur affiche la déviation d'un niveau ; l'écoute SDR mesure "
+     "celle d'un pack et dit de combien de dB il est au-dessus / au-dessous de la nominale.", True),
+    ("hf", "Sensibilité micro", "mV/Pa ou dBV/Pa (1 Pa = 94 dB SPL)", "Régler le gain d'entrée d'un pack",
+     "Un micro de 10 mV/Pa sort −40 dBV à 94 dB SPL.", True),
+    ("hf", "S/B et THD+N", "rapport signal / bruit (dB), distorsion + bruit (%)", "Qualité de la sortie d'un récepteur",
+     "Avec un sinus de test, l'écoute SDR montre le souffle (niveau sans modulation) ; la distorsion n'est pas encore "
+     "mesurée par l'appli.", False),
+    ("salle", "dB SPL", "20 µPa (seuil d'audition)", "Niveau sonore dans la salle",
+     "94 dB SPL = 1 Pa. Pas mesuré par l'appli (il faut un sonomètre).", False),
+    ("salle", "dB(A) / dB(C) / LAeq", "pondérations de l'oreille / des graves ; moyenne sur 10–15 min",
+     "Réglementation des concerts (102 dB(A) en France)", "Pour la fiche : pas mesuré par l'appli.", False),
+    ("audio", "dBm (audio)", "1 mW sur 600 Ω (≈ dBu)", "Vieille référence téléphonique",
+     "⚠ Ne pas confondre avec le dBm RF (50 Ω) de l'appli.", False),
+)
+
+
+def scales_help_html(tr=lambda s: s):
+    """Fiche « Échelles et niveaux » : un tableau par domaine, l'essentiel d'abord, le reste « en option »."""
+    e = lambda t: (str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))  # noqa: E731
+    doms = (("rf", tr("RF (antenne, 50 Ω)")), ("audio", tr("Audio (son électrique et numérique)")),
+            ("hf", tr("Liaisons sans fil (calibration)")), ("salle", tr("Son dans la salle")))
+    out = [f"<p>{e(tr('Deux mondes à ne pas mélanger : la RF (ce que reçoit l’antenne, en dBm sur 50 Ω) et l’audio (le son, en dBFS / dBu / dBV). Le tableau dit où chaque unité sert et comment l’utiliser ici. En gras : l’essentiel ; « option » : utile seulement dans certains cas.'))}</p>"]
+    for k, title in doms:
+        rows = [x for x in SCALES if x[0] == k]
+        rows = [x for x in rows if x[5]] + [x for x in rows if not x[5]]
+        out.append(f"<h3>{e(title)}</h3><table border='1' cellspacing='0' cellpadding='4'>"
+                   f"<tr><th>{e(tr('Unité'))}</th><th>{e(tr('0 dB ='))}</th><th>{e(tr('Où ça sert'))}</th>"
+                   f"<th>{e(tr('Comment l’utiliser ici'))}</th></tr>")
+        for _d, u, ref, where, how, ess in rows:
+            uu = f"<b>{e(u)}</b>" if ess else f"{e(u)} <i>({e(tr('option'))})</i>"
+            out.append(f"<tr><td>{uu}</td><td>{e(tr(ref))}</td><td>{e(tr(where))}</td><td>{e(tr(how))}</td></tr>")
+        out.append("</table>")
+    out.append(f"<h3>{e(tr('Repères audio'))}</h3><table border='1' cellspacing='0' cellpadding='4'>"
+               f"<tr><th>{e(tr('Situation'))}</th><th>dBu</th><th>dBV</th><th>V RMS</th></tr>")
+    for sit, dbu in ((tr("Référence dBu"), 0.0), (tr("Référence dBV"), DBV_DBU), (tr("Niveau pro nominal (0 VU)"), 4.0),
+                     (tr("Niveau grand public"), -10.0 + DBV_DBU), (tr("Niveau micro typique"), -50.0)):
+        out.append(f"<tr><td>{e(sit)}</td><td>{dbu:+.2f}</td><td>{dbu - DBV_DBU:+.2f}</td>"
+                   f"<td>{DBU_V * 10 ** (dbu / 20):.3f}</td></tr>".replace(".", ","))
+    out.append("</table>")
+    return "".join(out)
 
 
 # ===== PURE-END

@@ -182,34 +182,35 @@ from tsm_core import (  # noqa: F401
     ADJ_RISE_DB, ADJ_WARN_DB, ALARM_HELP, ALARM_ORDER, ALARM_PRIO, ALARM_REC_POST_S, ALARM_REC_PRE_S,
     ALARM_REPEATS, ALARM_SND_MAX_S, ALARM_TONES, ALARM_TONES_CLASSIC, ALARM_TUNE_COOLDOWN_S, ALARM_TUNE_KINDS,
     ALARM_USER_HOLD_S, ANFR_DATASET, ANFR_TNT_SYSTEM, ANOM_APPEAR_DB, ANOM_DROP_DB, ANOM_FLAPS, ANOM_FLAP_S,
-    ANOM_LABELS, ANOM_NOISE_DB, APP_ICON_PNG64, APP_SOUNDS, AUDIO_CHOPS, AUDIO_CLIP, AUDIO_DYN_DB, AUDIO_NOISY_DB,
-    AUDIO_PRESENT_DB, AUDIO_SILENCE_DB, AUDIO_SRCS, AUTO_BUDGET, AUTO_FALL_S, AUTO_POINTS, AUTO_RISE_S,
-    AUTO_STEPS_KHZ, AUTO_THR_DEFAULT, AUTO_THR_HELP, AcqClock, AlarmBook, AnomalyTracker, AudioMeter, BAND_PRESETS,
-    BUSY_MARGIN, BUSY_MODES, BurstDetector, CAL_HALF_MHZ, CAL_MIN_SIGNALS, CAL_SNR_DB, CATEGORIES, CHANGE_LABELS,
-    CHANNEL_KHZ, CHRON_GROUP_S, COMPANDERS, COORD_METHODS, COORD_ORDERS, COORD_RBW_MAX, COORD_RBW_TIP, COORD_STEPS,
-    COORD_TOURS, COORD_TRIES, COUNTRIES, COUNTRY_ALLOWED, COUNTRY_DOUBTS, COUNTRY_NOTES, COUNTRY_REFS,
-    COUNTRY_SOURCES, COUNTRY_UHF, COUNTRY_UHF_DEFAULT, COVERAGE, ChannelDemod, ClientBook, DEFAULT_SCENE,
-    DEFAULT_STATUSES, DEFAULT_THEME, DELIMS, DEMOD_CUSTOM, DEMOD_DIGITAL, DEMOD_PRESETS, DEMOD_RULES, DEMO_DBM,
-    DEMO_PILOT, DEMO_RATE, DEMO_SIG_KINDS, DEMO_SOUNDS, DEVICE_HELP, DIAG_EDGE_DB, DIAG_FLAPS, DIAG_FLAP_MIN,
-    DIAG_ICONS, DIAG_NOISE_HIGH, DIAG_TV_MARGIN, DIAG_ZONE_DB, DIAG_ZONE_MHZ, DiversityAB, EZRF_GROUP_MODES,
-    EZRF_NAMINGS, EZRF_PREFIX, EZRF_TIMES, FAV_KEYS, FESTIVAL_DEFAULT, FREQ_FORMATS, FRESH_S, FROZEN_S, FirDecim,
-    GAIN_HEADROOM_DB, GAIN_OVF_MAX, GEN_MODS, GLOSSARY, GROUP_COLORS, GROUP_COLORS_DEF, GROUP_WORDS, GUARD_BEAT_S,
-    GUARD_GRACE_S, GUARD_HANG_S, HEAT_DIR_COLORS, HEAT_DOT_SIZES, HEAT_MAX, HEAT_PALETTES, HEAT_PAL_DEFAULT,
-    HEAT_REACH, HEAT_REACHES, HEAT_TRAIL_WIDTHS, HINT_EMPTY_S, HINT_TNT_S, HIST_MAX, HIST_WHAT, HOP_OPEN_DB, HYST,
-    HopState, IM_CHUNK, IM_MAX_PAIRS, IM_NAMES, IM_SEV_TEXT, IM_TOL_CUSTOM, IM_TOL_PRESETS, INC_AUTO_KINDS,
-    INC_COOLDOWN_S, INC_GAP_S, INC_MAX_MB, INC_POST_S, IQ_BYTES, IQ_RING_BUDGET, IQ_RING_S, KEEP_DAYS, LANGS,
-    LAYOUT_PARTS, LC_TEXT, LEGEND_ITEMS, LEVEL_UNITS, LEVEL_WORDS, LIBRE_COLOR, LISTEN_COMPANDERS,
-    LISTEN_HOP_DWELL, LISTEN_IF, LISTEN_MODES, LISTEN_RATE, LISTEN_WEB_KEEP, LISTEN_WEB_RATE, LOG_KINDS,
-    LORA_COUNTRY, LORA_PLANS, MAP_BG_MAX_B64, MAP_COORD_MAX, MAP_DEFAULT, MAP_STEP, MIN_PTS, MK_STATES, MS_BAD,
-    MS_CSS, MS_FLAP, MS_WARN, MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOTIFY_MODES, OLD_CRT_THEMES,
-    OLD_DEFAULT_THEME, OccWindow, PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S,
-    PILOT_TOL_HZ, PLANNING_DEFAULT, PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX,
-    PREP_CSS, PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT,
-    PROBLEM_IMPACT_DEFAULT, PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS, RECUR_KINDS,
-    RECUR_LABELS, REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT, REPORT_PRO_CSS,
-    REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_ALIASES, RX_BRANDS, RX_CUSTOM,
-    RX_LIBRARY, RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD,
-    SAT_LNA_SHIFT, SAT_WARN, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE, SCREEN_PANELS,
+    ANOM_LABELS, ANOM_NOISE_DB, APP_ICON_PNG64, APP_SOUNDS, AUDIO_ALIGNS, AUDIO_CHOPS, AUDIO_CLIP, AUDIO_DYN_DB,
+    AUDIO_NOISY_DB, AUDIO_PRESENT_DB, AUDIO_REF_DEFAULT, AUDIO_SILENCE_DB, AUDIO_SRCS, AUDIO_UNITS, AUTO_BUDGET,
+    AUTO_FALL_S, AUTO_POINTS, AUTO_RISE_S, AUTO_STEPS_KHZ, AUTO_THR_DEFAULT, AUTO_THR_HELP, AcqClock, AlarmBook,
+    AnomalyTracker, AudioMeter, BAND_PRESETS, BUSY_MARGIN, BUSY_MODES, BurstDetector, CAL_HALF_MHZ,
+    CAL_MIN_SIGNALS, CAL_SNR_DB, CATEGORIES, CHANGE_LABELS, CHANNEL_KHZ, CHRON_GROUP_S, COMPANDERS, COORD_METHODS,
+    COORD_ORDERS, COORD_RBW_MAX, COORD_RBW_TIP, COORD_STEPS, COORD_TOURS, COORD_TRIES, COUNTRIES, COUNTRY_ALLOWED,
+    COUNTRY_DOUBTS, COUNTRY_NOTES, COUNTRY_REFS, COUNTRY_SOURCES, COUNTRY_UHF, COUNTRY_UHF_DEFAULT, COVERAGE,
+    ChannelDemod, ClientBook, DBU_V, DBV_DBU, DEFAULT_SCENE, DEFAULT_STATUSES, DEFAULT_THEME, DELIMS, DEMOD_CUSTOM,
+    DEMOD_DIGITAL, DEMOD_PRESETS, DEMOD_RULES, DEMO_DBM, DEMO_PILOT, DEMO_RATE, DEMO_SIG_KINDS, DEMO_SOUNDS,
+    DEVICE_HELP, DIAG_EDGE_DB, DIAG_FLAPS, DIAG_FLAP_MIN, DIAG_ICONS, DIAG_NOISE_HIGH, DIAG_TV_MARGIN,
+    DIAG_ZONE_DB, DIAG_ZONE_MHZ, DiversityAB, EZRF_GROUP_MODES, EZRF_NAMINGS, EZRF_PREFIX, EZRF_TIMES, FAV_KEYS,
+    FESTIVAL_DEFAULT, FREQ_FORMATS, FRESH_S, FROZEN_S, FirDecim, GAIN_HEADROOM_DB, GAIN_OVF_MAX, GEN_MODS,
+    GLOSSARY, GROUP_COLORS, GROUP_COLORS_DEF, GROUP_WORDS, GUARD_BEAT_S, GUARD_GRACE_S, GUARD_HANG_S,
+    HEAT_DIR_COLORS, HEAT_DOT_SIZES, HEAT_MAX, HEAT_PALETTES, HEAT_PAL_DEFAULT, HEAT_REACH, HEAT_REACHES,
+    HEAT_TRAIL_WIDTHS, HINT_EMPTY_S, HINT_TNT_S, HIST_MAX, HIST_WHAT, HOP_OPEN_DB, HYST, HopState, IM_CHUNK,
+    IM_MAX_PAIRS, IM_NAMES, IM_SEV_TEXT, IM_TOL_CUSTOM, IM_TOL_PRESETS, INC_AUTO_KINDS, INC_COOLDOWN_S, INC_GAP_S,
+    INC_MAX_MB, INC_POST_S, IQ_BYTES, IQ_RING_BUDGET, IQ_RING_S, KEEP_DAYS, LANGS, LAYOUT_PARTS, LC_TEXT,
+    LEGEND_ITEMS, LEVEL_UNITS, LEVEL_WORDS, LIBRE_COLOR, LISTEN_COMPANDERS, LISTEN_HOP_DWELL, LISTEN_IF,
+    LISTEN_MODES, LISTEN_RATE, LISTEN_WEB_KEEP, LISTEN_WEB_RATE, LOG_KINDS, LORA_COUNTRY, LORA_PLANS,
+    MAP_BG_MAX_B64, MAP_COORD_MAX, MAP_DEFAULT, MAP_STEP, MIN_PTS, MK_STATES, MS_BAD, MS_CSS, MS_FLAP, MS_WARN,
+    MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES, OLD_DEFAULT_THEME, OccWindow,
+    PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S, PILOT_TOL_HZ, PLANNING_DEFAULT,
+    PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX, PREP_CSS, PRESET_LABELS,
+    PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT, PROBLEM_IMPACT_DEFAULT,
+    PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS, RECUR_KINDS, RECUR_LABELS,
+    REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT, REPORT_PRO_CSS, REWIND_BINS,
+    REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_ALIASES, RX_BRANDS, RX_CUSTOM, RX_LIBRARY,
+    RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD, SAT_LNA_SHIFT,
+    SAT_WARN, SCALES, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE, SCREEN_PANELS,
     SCREEN_PRESETS, SDR_ALIASES, SDR_AUTO_DEFAULT, SDR_DEMO_KIND, SDR_DEMO_MODEL, SDR_DTYPE, SDR_KINDS,
     SDR_LAYOUTS, SDR_MODELS, SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT, SDR_POSTS_MAX, SDR_PROBE, SDR_STEPS_KHZ,
     SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS, SHOW_META, SHURE_PORT,
@@ -221,64 +222,66 @@ from tsm_core import (  # noqa: F401
     UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack, VRX_BUDGET, VRX_MAX,
     WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN, WEB_VIEW_KEYS, WF_MAPS,
     WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _EZ, _EZ_DEV_RE, _FREQ_WORDS, _G, _GROUP_WORDS,
-    _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS, _QE_NUM, _SCENE_WORDS,
-    _SRC_CEPT, _SRC_ITU, _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE, _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS,
-    _abbrev, _anfr_dms, _chime_pcm, _circ_dist, _clean_grid, _cp, _ez_dev_params, _ez_num, _fill_score, _fin,
-    _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens, _norm_hdr, _num, _number_dups, _pf_pick, _pf_tols, _pf_vec,
-    _plan_doc, _rx_num, _sat_status, _scan_float, _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio,
-    _split_free_line, _svg_hours, _svg_iq_spectrum, _svg_multi, _svg_series, _svg_spectrum, _valid, _xml_root,
-    _zone, adjacent_db, age_text, alarm_explain, alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats,
-    alarms_in_window, analyze_csv, anfr_pick, anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq,
-    apply_overrides, assign_bands, audio_int16, audio_spec_norm, audio_text, auto_gain_pick, auto_rbw,
+    _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS, _QE_NUM,
+    _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE, _TOL_NONE,
+    _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _chime_pcm, _circ_dist, _clean_grid, _cp, _ez_dev_params,
+    _ez_num, _fill_score, _fin, _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens, _noise_loop, _norm_hdr, _num,
+    _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _rx_num, _sat_status, _scan_float, _scan_step,
+    _scan_tokens, _scan_unit_hint, _seq_audio, _split_free_line, _svg_hours, _svg_iq_spectrum, _svg_multi,
+    _svg_series, _svg_spectrum, _valid, _xml_root, _zone, adjacent_db, age_text, alarm_explain, alarm_pcm,
+    alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick, anfr_text,
+    anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_int16,
+    audio_meter, audio_ref_norm, audio_source_level, audio_spec_norm, audio_text, auto_gain_pick, auto_rbw,
     auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic, blend, block_choices,
     block_overlaps, block_points, build_entries, build_entries_ex, build_plan, build_report_html, bundle_pick,
     busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset, calib_repeat, capacity_view, caps_text,
     chan_power, chron_group, classify_signal, clean_colors, compare_receivers, compare_spectra, compare_text,
     config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice, coord_why_text, copy_name,
     count_overruns, country_bands, country_from_locale, country_uhf, coverage_state, coverage_text, covered,
-    data_status, datetime_utc_iso, decimate_max, decode_text, default_view_band, demo_audio, demo_plan_levels,
-    demo_sdr_plan, demod_guess, demod_preset, density_glow, density_lut, density_raster, describe_freq,
-    detect_brand, dev_ord, dev_scenes_norm, device_caps, devx_norm, diag_short, diff_spectra, diversity_merge,
-    diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz, ezrf_auto_map, ezrf_dev_key,
-    ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id, ezrf_map_norm, ezrf_planning, ezrf_profile_names,
-    ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm, feature_match, festival_cfg_norm, festival_due,
-    festival_text, find_free, find_header, flap_count, floor_curve, floor_track, fmt_comma, fmt_duration,
-    fmt_freq_mhz, fmt_level, focus_plan, freq_digits, freq_list_text, freshness, from_unit, g4_apply, g4_init,
-    gain_steps, gap_nan, gen_commands, geo_km, glossary_find, guard_action, guard_delay, header_kind, heat_arrow,
-    heat_dir_color, heat_field, heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb,
-    heat_rgba, heat_scale, heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc,
-    hunt_level, hunt_request, hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text,
-    im_scan, im_verdict, incident_duration, incident_prune, incident_report_html, incident_slug, input_plan,
-    interp_measured, iq_ci8, iq_decode, iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch,
-    journal_csv_rows, json_dumps_compact, keep_text, key_dec, key_enc, label_words, layers_recolor, lc_feed,
-    lc_hints, lc_new, lc_summary, lc_text, level_at, level_at_many, level_block, level_everywhere,
-    level_everywhere_text, level_words, listen_center, listen_cmd, listen_request, listen_windows, log_kind,
-    log_kinds_norm, lora_overlap, lowpass_taps, make_label, make_stylesheet, map_auto_place, map_bg_embed,
-    map_bg_extract, map_cfg_norm, map_key, map_scene_monitor, map_snap, marker_visible, merge_scans, mic_health,
-    missing_bands, mk_default, mk_filtered, mk_layer_key, morning_html, morning_summary, multi_site,
-    name_candidates, name_match, name_rank, net_host_port, net_profile_name, net_profiles_merge, net_profiles_norm,
-    net_text, next_free_number, next_mic, next_state, noise_floor, noisy_zones, norm_freq, notify_text,
-    notify_wanted, ntfy_request, number_run, obw_khz, occupied_width, only_here, palette_color, parse_device_addr,
-    parse_deviceid, parse_dpa_acp, parse_ezrf3, parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4,
-    parse_plan_file, parse_plan_text, parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text,
-    parse_sdb3, parse_sdr_addr, parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show,
-    patrol_items, patrol_next, pcm_mono16k, pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots,
-    pf_issue_text, pf_orders, pf_suggest, phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict,
-    place_parse, plain_btn_text, plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines,
-    planning_norm, planning_paused, post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html,
-    preset_changes, preset_match, preset_value_text, presets_all, privacy_norm, probe_rate, probe_report,
-    probe_seen, problem_card, problem_key, quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge,
-    rbw_tag, rbw_text, read_rows, read_show, read_user, ready_checks, ready_summary, rec_mb_per_hour,
-    rec_size_text, receiver_addrs, receiver_addrs_text, receiver_alerts, reconnect_delay, recurring_events,
-    recurring_text, reg_allowed_pred, reg_detail, reg_issues, reg_known, reg_status, reg_summary, reg_tag,
-    rehearsal_check, rehearsal_norm, resample_max, resolution_pairs, resource_view, retention_pick, rf_audio_diag,
-    rf_diag_summary, rf_diagnose, rf_mode_norm, rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band,
-    rx_custom_dump, rx_custom_norm, rx_from_library, rx_help_html, rx_library_find, rx_profile, rx_set_custom,
-    s_meter, safe_filename, sat_level, scan_changes, scan_check, scan_crop, scan_csv, scan_gaps, scan_peaks,
-    scan_segments, scan_step_khz, scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on, scope_match,
-    screen_plan_fit, screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm, sdr_bin_hz,
-    sdr_carrier, sdr_cfg_extra, sdr_cmd, sdr_floor_dbfs, sdr_gains_for, sdr_in_range, sdr_iq_rate, sdr_level,
-    sdr_model, sdr_model_of, sdr_model_text, sdr_models_for, sdr_post_clash, sdr_posts_norm, sdr_ranges, sdr_rate,
+    data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio,
+    demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow, density_lut, density_raster,
+    describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps, devx_norm, diag_short,
+    diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz,
+    ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id, ezrf_map_norm, ezrf_planning,
+    ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm, feature_match, festival_cfg_norm,
+    festival_due, festival_text, find_free, find_header, flap_count, floor_curve, floor_track, fm_deviation,
+    fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan, freq_digits, freq_list_text,
+    freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan, gen_commands, geo_km,
+    glossary_find, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color, heat_field, heat_for,
+    heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba, heat_scale, heat_stops,
+    hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level, hunt_request, hunt_tone,
+    im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan, im_verdict, incident_duration,
+    incident_prune, incident_report_html, incident_slug, input_plan, interp_measured, iq_ci8, iq_decode,
+    iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch, journal_csv_rows, json_dumps_compact, keep_text,
+    key_dec, key_enc, label_words, layers_recolor, lc_feed, lc_hints, lc_new, lc_summary, lc_text, level_at,
+    level_at_many, level_block, level_everywhere, level_everywhere_text, level_words, listen_center, listen_cmd,
+    listen_request, listen_windows, log_kind, log_kinds_norm, lora_overlap, lowpass_taps, make_label,
+    make_stylesheet, map_auto_place, map_bg_embed, map_bg_extract, map_cfg_norm, map_key, map_scene_monitor,
+    map_snap, marker_visible, merge_scans, mic_health, missing_bands, mk_default, mk_filtered, mk_layer_key,
+    morning_html, morning_summary, multi_site, name_candidates, name_match, name_rank, net_host_port,
+    net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number, next_mic, next_state,
+    noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request, number_run, obw_khz,
+    occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid, parse_dpa_acp, parse_ezrf3,
+    parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4, parse_plan_file, parse_plan_text,
+    parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text, parse_sdb3, parse_sdr_addr,
+    parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show, patrol_items, patrol_next, pcm_mono16k,
+    pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots, pf_issue_text, pf_orders, pf_suggest,
+    phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict, place_parse, plain_btn_text,
+    plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines, planning_norm, planning_paused,
+    post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html, preset_changes, preset_match,
+    preset_value_text, presets_all, privacy_norm, probe_rate, probe_report, probe_seen, problem_card, problem_key,
+    quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge, rbw_tag, rbw_text, read_rows, read_show,
+    read_user, ready_checks, ready_summary, rec_mb_per_hour, rec_size_text, receiver_addrs, receiver_addrs_text,
+    receiver_alerts, reconnect_delay, recurring_events, recurring_text, reg_allowed_pred, reg_detail, reg_issues,
+    reg_known, reg_status, reg_summary, reg_tag, rehearsal_check, rehearsal_norm, resample_max, resolution_pairs,
+    resource_view, retention_pick, rf_audio_diag, rf_diag_summary, rf_diagnose, rf_linear_text, rf_mode_norm,
+    rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band, rx_custom_dump, rx_custom_norm, rx_from_library,
+    rx_help_html, rx_library_find, rx_profile, rx_set_custom, s_meter, safe_filename, sat_level, scales_help_html,
+    scan_changes, scan_check, scan_crop, scan_csv, scan_gaps, scan_peaks, scan_segments, scan_step_khz,
+    scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on, scope_match, screen_plan_fit,
+    screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm, sdr_bin_hz, sdr_carrier,
+    sdr_cfg_extra, sdr_cmd, sdr_floor_dbfs, sdr_gains_for, sdr_in_range, sdr_iq_rate, sdr_level, sdr_model,
+    sdr_model_of, sdr_model_text, sdr_models_for, sdr_post_clash, sdr_posts_norm, sdr_ranges, sdr_rate,
     sdr_span_mhz, sdr_tsa_offset, sdr_zones, segment_plan, session_cfg_norm, session_journal_rows, session_name,
     show_apply, show_doc, show_filename, show_summary, show_template, shure_addrs, shure_apply, shure_init,
     shure_parse, shure_split, sigmf_annot, sigmf_info, sigmf_meta, signal_key, signal_report, signal_view,
@@ -289,11 +292,11 @@ from tsm_core import (  # noqa: F401
     states_norm, station_norm, store_occupancy, strong_peaks, suggest_labels, suggest_own_thr, sweep_line,
     tech_request, telegram_chats, telegram_request, terrain_request, theme_pal, tinysa_refusal, tnt_apply_manual,
     tnt_cfg_norm, tnt_channel_list, tnt_measure, tnt_near_text, tnt_sites_near, tnt_summary, to_stereo, to_unit,
-    tone_pcm, trace_at, tv_channels, tx_cmd, tx_plan, uhf_band_needed, ui_word, unit_hint, unknown_bursts,
-    user_apply, user_doc, user_filename, user_presets_merge, user_presets_norm, vfo_center, vfo_inside, vrx_auto,
-    wall_grid, wall_visible, watch_diff, watch_rows, web_link, web_page_lang, web_spectrum, web_state,
-    web_views_norm, what_is, what_is_text, wizard_status, wr_pick_ddc, wr_snapshot_spectrum, wsm_to_wwb_text,
-    wwb_scan_text, zoom_points,
+    tone_pcm, trace_at, tv_channels, tx_cmd, tx_plan, uhf_band_needed, ui_word, unit_hint, unit_to_dbfs,
+    unknown_bursts, user_apply, user_doc, user_filename, user_presets_merge, user_presets_norm, vfo_center,
+    vfo_inside, vrx_auto, wall_grid, wall_visible, watch_diff, watch_rows, web_link, web_page_lang, web_spectrum,
+    web_state, web_views_norm, what_is, what_is_text, wizard_status, wr_pick_ddc, wr_snapshot_spectrum,
+    wsm_to_wwb_text, wwb_scan_text, zoom_points,
 )
 
 
@@ -9747,10 +9750,20 @@ class SdrReceiverPanel(SdrPanelBase):
         self.b_meter.set_dbm(e.dbm(fr.get("lv_b")))
         self.stats.setText(TR("charge {} % · saturation {} %").format(f"{100 * fr.get('load', 0):.0f}",
                                                                       f"{100 * fr.get('ovf', 0):.1f}"))
+        if fr.get("load", 0) > 1.0:                     # 8.1 : le PC ne suit pas -> calcul ou attente ?
+            self.stats.setText(self.stats.text() + " · " + TR("calcul {} %, attente {} %").format(
+                f"{100 * fr.get('load_cpu', 0):.0f}", f"{100 * max(0.0, fr.get('load', 0) - fr.get('load_cpu', 0)):.0f}"))
+            self.stats.setToolTip(TR("Le PC ne suit pas le débit du SDR : le son aura des trous.\n"
+                                     "« Calcul » = le temps que le traitement prend vraiment ; « attente » = le temps où il "
+                                     "attend le processeur\n(l'affichage ou un autre programme l'occupe). Beaucoup "
+                                     "d'attente : ferme des panneaux SDR,\nbaisse la FFT, ou passe en mode Simple."))
         self.stats.setStyleSheet(f"color: {self.owner.tone_color('bad')};" if fr.get("ovf", 0) > 0.001 or
                                  fr.get("load", 0) > 1.0 else "")
         if not self.row_zoom.isVisible() or e.a is None:
             return
+        if time.monotonic() - getattr(self, "_t_zoom", 0.0) < 0.16:   # 8.1 : zoom du canal et spectre du son à 6 / s
+            return
+        self._t_zoom = time.monotonic()
         F, L = np.asarray(fr["F"]), np.asarray(fr["avg"])
         bw = max(0.012, expected_obw_khz(e.demod.get("mode", "wfm")) / 1000.0)
         sel = np.abs(F - e.a) <= 1.5 * bw
@@ -10057,11 +10070,18 @@ class SdrWaterfallPanel(SdrPanelBase):
         if self.q is None or self.q.shape[1] != len(avg) or self._rng != (float(F[0]), float(F[-1])):
             self.q = np.full((self.ROWS, len(avg)), np.nan, dtype=np.float32)
             self._rng = (float(F[0]), float(F[-1]))
-        self.q = np.roll(self.q, 1, axis=0)
-        self.q[0] = avg
-        v = np.nan_to_num(self.q, nan=float(np.nanmin(self.q)))
-        lo, hi = float(np.percentile(v, 5)), float(np.max(v))
-        self.img.setImage(v[::-1].T, autoLevels=False, levels=(lo, max(lo + 10.0, hi)))
+        self.q[:-1] = self.q[1:]                         # 8.1 : décalage sur place (pas de copie complète)
+        self.q[-1] = avg
+        now = time.monotonic()
+        if now - getattr(self, "_t_lv", 0.0) > 1.0 or getattr(self, "_lv", None) is None:
+            fin = self.q[np.isfinite(self.q)]                # niveaux recalculés une fois par seconde seulement
+            if fin.size:
+                lo = float(np.percentile(fin[:: max(1, fin.size // 20000)], 5))
+                self._lv, self._t_lv = (lo, max(lo + 10.0, float(fin.max()))), now
+        if now - getattr(self, "_t_img", 0.0) < 0.12 or getattr(self, "_lv", None) is None:
+            return                                       # 8 images / s au plus
+        self._t_img = now
+        self.img.setImage(self.q.T, autoLevels=False, levels=self._lv)   # vide (NaN) = transparent
         self.img.setRect(QtCore.QRectF(self._rng[0], 0.0, self._rng[1] - self._rng[0], float(self.ROWS)))
 
 
@@ -10432,6 +10452,7 @@ class RealtimeWorker(QtCore.QThread):
         self.err = deque(maxlen=20)
         self.det = BurstDetector(gap=3)
         self.load = 0.0                  # part du temps passée à calculer (1 = le PC ne suit plus)
+        self.load_cpu = 0.0              # 8.1 : la part VRAIMENT calculée par ce fil (le reste = attente du processeur)
         self.speed, self.playing, self.seek_to = 1, True, None      # relecture
         self.rec_req, self.rec = None, None                          # enregistrement : demande / en cours
         self.rec_max = 20e9              # octets ; et arrêt si moins de 2 Go libres
@@ -10552,6 +10573,7 @@ class RealtimeWorker(QtCore.QThread):
                         self._rec_close(f"erreur d'écriture ({e})")
                 t_c = (t_base + pos / self.rate) if fh is not None else time.time()
                 t_work = time.time()
+                c_work = time.thread_time()
                 iq, buf = iq_decode(self.dtype, buf), b""
                 pos += len(iq)
                 avg, mx = rt_frames(iq, self.nfft)
@@ -10603,6 +10625,7 @@ class RealtimeWorker(QtCore.QThread):
                     self.audio.append(audio_int16(mix, 1.0))
                 ovf = float(np.mean(np.abs(iq.real) > 0.98))         # échantillons à pleine échelle : saturation
                 self.load = 0.8 * self.load + 0.2 * (time.time() - t_work) / 0.05
+                self.load_cpu = 0.8 * self.load_cpu + 0.2 * (time.thread_time() - c_work) / 0.05
                 if self.rec is not None and time.time() - t_disk > 1.0:
                     t_disk = time.time()
                     try:
@@ -10616,7 +10639,7 @@ class RealtimeWorker(QtCore.QThread):
                         self._rec_meta()
                 self.frame.emit(dict(F=decimate_max(Fb, self.DISPLAY) if len(Fb) > self.DISPLAY else Fb,
                                      avg=decimate_max(avg, self.DISPLAY), mx=decimate_max(mx, self.DISPLAY),
-                                     t=t_c, ovf=ovf, load=self.load, pos=pos / self.rate,
+                                     t=t_c, ovf=ovf, load=self.load, load_cpu=self.load_cpu, pos=pos / self.rate,
                                      dur=total / self.rate if fh is not None else 0.0,
                                      pilot=None if dem is None else dem.pilot, lv_a=lv_a, lv_b=lv_b,
                                      rec=None if self.rec is None else (self.rec["n"], time.time() - self.rec["t0"])))
