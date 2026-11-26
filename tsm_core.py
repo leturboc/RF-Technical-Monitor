@@ -9564,15 +9564,31 @@ class SigGen:
         keep = {s.get("key") for s in self.sigs}
         self.st = {k: v for k, v in self.st.items() if k in keep}
 
+    def _rot(self, f, n):
+        """exp(j·2π·f·k/fs), k = 0…n-1, en complex64, gardé (même porteuse / pilote, même taille de bloc d'un appel à
+        l'autre) : 8.0.3, le SDR démo calculait tout en double précision -> 1 s de calcul pour 1 s d'IQ (saccades)."""
+        key = (round(float(f), 3), int(n))
+        c = self._rots.get(key)
+        if c is None:
+            if len(self._rots) > 64:
+                self._rots.clear()
+            c = self._rots[key] = np.exp(2j * np.pi * float(f) / self.rate * np.arange(n)).astype(np.complex64)
+        return c
+
     def block(self, n):
         n = int(n)
         fs = self.rate
-        idx = self.n0 + np.arange(n, dtype=np.float64)
-        t = idx / fs
-        t0 = float(t[0]) if n else 0.0
-        x = self.noise * (self.rng.standard_normal(n) + 1j * self.rng.standard_normal(n)) / math.sqrt(2.0)
-        spec = None
+        if not hasattr(self, "_rots"):
+            self._rots = {}
+        n0 = self.n0
+        t0 = n0 / fs
+        x = (self.noise / math.sqrt(2.0)) * (self.rng.standard_normal(n, dtype=np.float32)
+                                             + 1j * self.rng.standard_normal(n, dtype=np.float32))
+        x = x.astype(np.complex64)
+        noise_sigs = []
         step = max(1, int(round(fs / 48000.0)))
+        ta = None
+        buf = np.empty(n, dtype=np.complex64)
         for s in self.sigs:
             if not sched_on(s.get("on"), t0):
                 continue
@@ -9583,27 +9599,42 @@ class SigGen:
             amp = 0.3 * 10.0 ** (float(s.get("lvl", 0.0)) / 20.0)
             kind = s.get("kind", "fm")
             if kind == "noise":
-                if spec is None:
-                    spec = np.zeros(n)
-                fr = np.fft.fftfreq(n, 1.0 / fs)
-                spec = spec + amp * ((fr >= off - bw / 2.0) & (fr <= off + bw / 2.0))
+                noise_sigs.append((round(off), round(bw), round(amp, 6)))
                 continue
-            ph = 2 * np.pi * ((off * idx / fs) % 1.0)
+            car = self._rot(off, n) * np.complex64(amp * np.exp(2j * np.pi * ((off * n0 / fs) % 1.0)))
             if kind in ("fm", "nfm"):
                 dev = float(s.get("dev") or (30000.0 if kind == "fm" else 2500.0))
-                ta = t[::step]
+                if ta is None:
+                    ta = (n0 + np.arange(0, n, step, dtype=np.float64)) / fs
                 a = np.repeat(demo_audio(s.get("audio", "voice"), ta, int(s.get("k", 0))), step)[:n]
                 st = self.st.setdefault(s.get("key"), dict(acc=0.0))
-                cum = st["acc"] + 2 * np.pi * dev / fs * np.cumsum(a, dtype=np.float64)
-                st["acc"] = float(cum[-1] % (2 * np.pi)) if n else st["acc"]
-                ph = ph + cum
+                ph = np.cumsum(a.astype(np.float32) * np.float32(2 * np.pi * dev / fs))    # simple précision : assez
+                ph += np.float32(st["acc"])
+                st["acc"] = float(ph[-1]) % (2 * np.pi) if n else st["acc"]
                 p = float(s.get("pilot") or 0.0)
                 if p and sched_on(s.get("pilot_on"), t0):
-                    ph = ph + (4000.0 / p) * np.sin(2 * np.pi * p * t)
-            x = x + amp * np.exp(1j * ph)
-        if spec is not None:
-            w = self.rng.standard_normal(n) + 1j * self.rng.standard_normal(n)
-            x = x + np.fft.ifft(np.fft.fft(w) * spec) * 1.0
+                    pr = self._rot(p, n)                   # sin(2π p t) = Im(rotation de départ × table)
+                    e0 = np.exp(2j * np.pi * ((p * n0 / fs) % 1.0))
+                    ph += np.float32(4000.0 / p) * (np.float32(e0.real) * pr.imag + np.float32(e0.imag) * pr.real)
+                buf.real = np.cos(ph)                        # exp(jφ) en complex64 (13× plus rapide que np.exp)
+                buf.imag = np.sin(ph)
+                x += car * buf
+            else:
+                x += car
+        if noise_sigs:                                  # blocs larges (TNT, numérique) : bruit mis en forme UNE fois
+            key = (tuple(sorted(noise_sigs)), n)
+            tex = getattr(self, "_tex", None)
+            if tex is None or tex[0] != key:
+                L = 8 * n
+                fr = np.fft.fftfreq(L, 1.0 / fs)
+                sp = np.zeros(L)
+                for off_, bw_, amp_ in noise_sigs:
+                    sp += amp_ * ((fr >= off_ - bw_ / 2.0) & (fr <= off_ + bw_ / 2.0))
+                w = self.rng.standard_normal(L) + 1j * self.rng.standard_normal(L)
+                tex = self._tex = (key, np.fft.ifft(np.fft.fft(w) * sp).astype(np.complex64), 0)
+            k0 = (tex[2] + n) % (8 * n)
+            x += tex[1][k0:k0 + n] if k0 + n <= 8 * n else np.concatenate((tex[1][k0:], tex[1][:k0 + n - 8 * n]))
+            self._tex = (tex[0], tex[1], k0)
         self.n0 += n
         return x.astype(np.complex64)
 
