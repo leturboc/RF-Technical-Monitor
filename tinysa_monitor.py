@@ -224,12 +224,12 @@ from tsm_core import (  # noqa: F401
     WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _EZ, _EZ_DEV_RE, _FREQ_WORDS, _G, _GROUP_WORDS,
     _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS, _QE_NUM,
     _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE, _TOL_NONE,
-    _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _chime_pcm, _circ_dist, _clean_grid, _cp, _ez_dev_params,
-    _ez_num, _fill_score, _fin, _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens, _noise_loop, _norm_hdr, _num,
-    _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _rx_num, _sat_status, _scan_float, _scan_step,
-    _scan_tokens, _scan_unit_hint, _seq_audio, _split_free_line, _svg_hours, _svg_iq_spectrum, _svg_multi,
-    _svg_series, _svg_spectrum, _valid, _xml_root, _zone, adjacent_db, age_text, alarm_explain, alarm_pcm,
-    alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick, anfr_text,
+    _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist, _clean_grid, _cp,
+    _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens, _noise_loop,
+    _norm_hdr, _num, _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _rx_num, _sat_status, _scan_float,
+    _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio, _split_free_line, _svg_hours, _svg_iq_spectrum,
+    _svg_multi, _svg_series, _svg_spectrum, _valid, _xml_root, _zone, adjacent_db, age_text, alarm_explain,
+    alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick, anfr_text,
     anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_int16,
     audio_meter, audio_ref_norm, audio_source_level, audio_spec_norm, audio_text, auto_gain_pick, auto_rbw,
     auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic, blend, block_choices,
@@ -9380,6 +9380,19 @@ class SdrReceiverPanel(SdrPanelBase):
         top.addWidget(self.a_disp, 1)
         top.addWidget(self.a_meter)
         lay.addLayout(top)
+        self.af_meter = AudioMeterBar(o, self)           # 8.1 : niveau du son démodulé (+ déviation mesurée)
+        self.dev_txt = QtWidgets.QLabel("")
+        self.dev_txt.setToolTip(TR("Déviation FM mesurée sur A (crête), comparée à la déviation max du réglage d'écoute :\n"
+                                   "0 dB = pile la nominale ; au-dessus = pack trop chaud (gain à baisser)."))
+        self.row_af = QtWidgets.QWidget()
+        ra_ = QtWidgets.QHBoxLayout(self.row_af)
+        ra_.setContentsMargins(0, 0, 0, 0)
+        lab_s = QtWidgets.QLabel("🔊")
+        lab_s.setToolTip(TR("Niveau du son que tu entends (A démodulé)."))
+        ra_.addWidget(lab_s)
+        ra_.addWidget(self.af_meter, 1)
+        ra_.addWidget(o._elastic(self.dev_txt), 1)
+        lay.addWidget(self.row_af)
         self.favs = []                                   # étape 18 : favoris du pavé numérique (1…9)
         fr_ = QtWidgets.QHBoxLayout()
         fr_.setSpacing(3)
@@ -9622,6 +9635,28 @@ class SdrReceiverPanel(SdrPanelBase):
         a2.triggered.connect(lambda *_, a=a2: e.set_auto(pilot_alarm=a.isChecked()))
         m.exec(QtGui.QCursor.pos())
 
+    def _af_meter(self, fr):
+        """8.1 : vu-mètre du son de A (derniers ~0,3 s) et déviation mesurée par rapport à la nominale (5 fois / s)."""
+        now = time.monotonic()
+        if now - getattr(self, "_t_afm", 0.0) < 0.2:
+            return
+        self._t_afm = now
+        e, o = self.eng, self.owner
+        try:
+            bs = list(e.af)[-3:]
+            x = np.frombuffer(b"".join(bs), dtype="<i2").astype(np.float32) / 32768.0 if bs else np.zeros(0)
+            self.af_meter.set_meter(audio_meter(x[0::2] if len(x) else x), o.audio_ref["target"])
+        except Exception:  # noqa: BLE001
+            pass
+        h = fr.get("health") or {}
+        nom = float(e.demod.get("dev") or 0) / 1000.0
+        if h.get("dev") and nom > 0 and e.demod.get("mode", "") in ("wfm", "wfm_st", "nfm"):
+            ddb = deviation_db(h["dev"], nom)
+            self.dev_txt.setText(TR("déviation {} kHz · {} dB / nominale {} kHz").format(
+                f"{h['dev']:.1f}".replace(".", ","), f"{ddb:+.1f}".replace(".", ","), f"{nom:g}"))
+        else:
+            self.dev_txt.setText("")
+
     def _auto_refresh(self):
         e = self.eng
         self._set_chk(self.pat_btn, e.patrol is not None)
@@ -9748,6 +9783,7 @@ class SdrReceiverPanel(SdrPanelBase):
             self._auto_refresh()
         self.a_meter.set_dbm(e.dbm(fr.get("lv_a")))
         self.b_meter.set_dbm(e.dbm(fr.get("lv_b")))
+        self._af_meter(fr)
         self.stats.setText(TR("charge {} % · saturation {} %").format(f"{100 * fr.get('load', 0):.0f}",
                                                                       f"{100 * fr.get('ovf', 0):.1f}"))
         if fr.get("load", 0) > 1.0:                     # 8.1 : le PC ne suit pas -> calcul ou attente ?
@@ -10642,6 +10678,7 @@ class RealtimeWorker(QtCore.QThread):
                                      t=t_c, ovf=ovf, load=self.load, load_cpu=self.load_cpu, pos=pos / self.rate,
                                      dur=total / self.rate if fh is not None else 0.0,
                                      pilot=None if dem is None else dem.pilot, lv_a=lv_a, lv_b=lv_b,
+                                     health=None if dem is None else dem.health,
                                      rec=None if self.rec is None else (self.rec["n"], time.time() - self.rec["t0"])))
                 if fh is not None:                               # au rythme réel (× vitesse)
                     t_play += 0.05 / max(1, self.speed)
@@ -13884,6 +13921,11 @@ class SettingsDialog(QtWidgets.QDialog):
                                 "réel). Par ex. l'écoute dans un casque, les alarmes sur les enceintes.")
         self.sdr_out.currentIndexChanged.connect(lambda *_: o.set_sdr_audio(self.sdr_out.currentData()))
         f.addRow("Sortie de l'écoute SDR :", self.sdr_out)
+        sc_btn = QtWidgets.QPushButton("📏 Échelles et niveaux (dBFS, dBu, dBV…)")
+        sc_btn.setToolTip("Unité des vu-mètres, alignement numérique / analogique (EBU, SMPTE), niveau visé, et la\n"
+                          "fiche qui explique toutes les échelles (RF et audio).")
+        sc_btn.clicked.connect(lambda *_: o.open_scales())
+        f.addRow(sc_btn)
         f.addRow("Volume :", self.vol)
         f.addRow(owner._row(t_crit, t_norm, None))
         f.addRow("Rejouer les critiques :", self.rep_combo)
@@ -20871,6 +20913,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mm.addSection("Aide")
         mm.addAction("🎓 Tutos pas à pas (débutants)…").triggered.connect(lambda *_: self.start_tour())
         mm.addAction("📚 Lexique : les mots de la HF expliqués…").triggered.connect(lambda *_: self.open_glossary())
+        mm.addAction("📏 Échelles et niveaux (dBm, dBFS, dBu…)").triggered.connect(lambda *_: self.open_scales())
         mm.addAction("📖 Manuel d'utilisation").triggered.connect(lambda *_: self.open_manual())
         mm.addAction(f"ℹ À propos (version {APP_VER})…").triggered.connect(lambda *_: self.show_about())
         self._spare_btns = [tools_btn, win_btn, wall_btn, colors_btn, status_btn]   # gardés pour leurs menus
@@ -22269,6 +22312,8 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         if isinstance(data, dict) and "screens" in data:          # 8.0.2 : plusieurs écrans
             self.screens_cfg = screens_norm(data.get("screens"))
+        if isinstance(data, dict) and "audio_ref" in data:        # 8.1 : échelles audio
+            self.audio_ref = audio_ref_norm(data.get("audio_ref"))
         return r
 
     def _after_apply(self):
@@ -22382,6 +22427,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data["screens"] = self.screens_state()                 # 8.0.2 : plusieurs écrans
         except Exception:  # noqa: BLE001
             pass
+        data["audio_ref"] = audio_ref_norm(self.audio_ref)         # 8.1 : échelles audio (unité, alignement…)
         return data
 
     def _save_config(self):
@@ -26934,6 +26980,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except ValueError:
             return
         self.readout.setText(f"{x[k]:.3f} MHz   {self.lvl(float(y[k]), suffix=True)}")
+        self.readout.setToolTip(TR("Sur 50 Ω : {}").format(rf_linear_text(float(y[k]))))   # 8.1 : µV, pW…
 
     def capture(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -32395,6 +32442,135 @@ def temp_wav_path(kind, old=None):
     return os.path.join(d, f"tsm_{kind}_{os.getpid()}_{_TEMP_WAV_N[0]}.wav")
 
 
+class AudioMeterBar(QtWidgets.QWidget):
+    """8.1 : vu-mètre audio horizontal (−60 … 0 dBFS) : barre = niveau RMS (convention AES17 : sinus plein = 0 dBFS),
+    trait = crête, losange ambre = niveau visé, repères −20 / −18 / 0 ; le texte suit l'unité choisie (dBFS, dBu…)."""
+
+    def __init__(self, owner, parent=None):
+        super().__init__(parent)
+        self.owner, self.m, self.target = owner, None, None
+        self.setMinimumSize(160, 26)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self.setToolTip(TR("Vu-mètre : barre = niveau moyen (RMS), trait = crête, losange = niveau visé.\n"
+                           "Repères −18 et −20 dBFS = niveaux d'alignement EBU / SMPTE. Clic = fiche des échelles."))
+
+    def set_meter(self, m, target=None):
+        self.m, self.target = m, target
+        self.update()
+
+    def mousePressEvent(self, e):
+        self.owner.open_scales()
+
+    def paintEvent(self, ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+        bh = 10
+        x0, x1 = 4, W - 4
+        pos = lambda db: x0 + (x1 - x0) * (min(0.0, max(-60.0, db)) + 60.0) / 60.0  # noqa: E731
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(QtGui.QColor(128, 128, 128, 50))
+        p.drawRoundedRect(QtCore.QRectF(x0, 2, x1 - x0, bh), 3, 3)
+        m = self.m or {}
+        rms, pk = m.get("rms", -math.inf), m.get("peak", -math.inf)
+        if math.isfinite(rms):
+            col = "#ff6b6b" if rms > -1 else ("#ffb300" if rms > -9 else "#4fd1c5")
+            p.setBrush(QtGui.QColor(col))
+            p.drawRoundedRect(QtCore.QRectF(x0, 2, pos(rms) - x0, bh), 3, 3)
+        if math.isfinite(pk):
+            p.setPen(QtGui.QPen(QtGui.QColor("#ff6b6b" if m.get("clip") else "#f5f5f7"), 2))
+            p.drawLine(QtCore.QPointF(pos(pk), 1), QtCore.QPointF(pos(pk), bh + 3))
+        if self.target is not None:
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor("#ffb300"))
+            xt = pos(self.target)
+            p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(xt, bh + 2), QtCore.QPointF(xt - 4, bh + 7),
+                                           QtCore.QPointF(xt + 4, bh + 7)]))
+        f = p.font()
+        f.setPointSizeF(max(6.5, f.pointSizeF() - 2))
+        p.setFont(f)
+        p.setPen(QtGui.QColor(160, 160, 170))
+        for db in (-40, -20, -18, -10, 0):
+            xx = pos(db)
+            p.drawLine(QtCore.QPointF(xx, bh + 2), QtCore.QPointF(xx, bh + 5))
+            if db != -18:
+                p.drawText(QtCore.QRectF(xx - 14, bh + 4, 28, 12), Qt.AlignmentFlag.AlignCenter, str(db))
+        p.end()
+
+
+class ScalesDialog(QtWidgets.QDialog):
+    """8.1 : 📏 Échelles et niveaux : unité des vu-mètres, alignement numérique / analogique, référence dBr, niveau visé,
+    et la fiche (tableau : où chaque unité sert et comment l'utiliser ici)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle(TR("📏 Échelles et niveaux"))
+        lay = QtWidgets.QVBoxLayout(self)
+        ref = owner.audio_ref
+        f = QtWidgets.QFormLayout()
+        self.unit = QtWidgets.QComboBox()
+        for k, t in AUDIO_UNITS:
+            self.unit.addItem(TR(t), k)
+        self.unit.setCurrentIndex(max(0, self.unit.findData(ref["unit"])))
+        self.unit.setToolTip(TR("Unité des vu-mètres audio de l'appli (générateur, écoute SDR)."))
+        self.align = QtWidgets.QComboBox()
+        for k, t, _a, _b in AUDIO_ALIGNS:
+            self.align.addItem(TR(t), k)
+        self.align.setCurrentIndex(max(0, self.align.findData(ref["align"])))
+        self.align.setToolTip(TR("Quel niveau numérique (dBFS) correspond à quel niveau analogique (dBu) chez toi :\n"
+                                 "EBU (Europe) −18 dBFS = 0 dBu ; SMPTE (USA) −20 dBFS = +4 dBu ; ou le tien."))
+        self.c_fs, self.c_u, self.dbr, self.tgt = (QtWidgets.QDoubleSpinBox() for _ in range(4))
+        for sp_, lo, hi, v, sfx, tip in ((self.c_fs, -60, 0, ref["dbfs"], " dBFS", "Alignement perso : ce niveau numérique…"),
+                                         (self.c_u, -40, 30, ref["dbu"], " dBu", "… correspond à ce niveau analogique."),
+                                         (self.dbr, -60, 0, ref["dbr"], " dBFS", "Niveau qui vaut 0 dBr (ta référence)."),
+                                         (self.tgt, -60, 0, ref["target"], " dBFS",
+                                          "Niveau visé par défaut (générateur, réglage d'un pack).")):
+            sp_.setRange(lo, hi)
+            sp_.setDecimals(1)
+            sp_.setSingleStep(0.5)
+            sp_.setValue(v)
+            sp_.setSuffix(sfx)
+            sp_.setToolTip(TR(tip))
+        f.addRow(TR("Unité des vu-mètres :"), self.unit)
+        f.addRow(TR("Alignement :"), self.align)
+        f.addRow(TR("Perso :"), self.owner._row(self.c_fs, "=", self.c_u, None))
+        f.addRow(TR("Référence dBr :"), self.dbr)
+        f.addRow(TR("Niveau visé :"), self.tgt)
+        lay.addLayout(f)
+        self.conv = QtWidgets.QLabel("")
+        self.conv.setWordWrap(True)
+        lay.addWidget(self.conv)
+        tb = QtWidgets.QTextBrowser()
+        tb.setHtml(scales_help_html(TR))
+        tb.setMinimumHeight(260)
+        lay.addWidget(tb, 1)
+        close = QtWidgets.QPushButton(TR("Fermer"))
+        close.setToolTip(TR("Ferme cette fenêtre (les réglages sont gardés)."))
+        close.clicked.connect(lambda *_: self.close())
+        lay.addLayout(owner._row(None, close))
+        for w_ in (self.unit, self.align):
+            w_.currentIndexChanged.connect(lambda *_: self.apply())
+        for w_ in (self.c_fs, self.c_u, self.dbr, self.tgt):
+            w_.valueChanged.connect(lambda *_: self.apply())
+        self.resize(820, 640)
+        fit_dialog(self, 820, 640)
+        self.apply()
+
+    def apply(self):
+        o = self.owner
+        o.audio_ref = audio_ref_norm(dict(unit=self.unit.currentData(), align=self.align.currentData(),
+                                          dbfs=self.c_fs.value(), dbu=self.c_u.value(), dbr=self.dbr.value(),
+                                          target=self.tgt.value()))
+        cust = o.audio_ref["align"] == "custom"
+        self.c_fs.setEnabled(cust)
+        self.c_u.setEnabled(cust)
+        r = o.audio_ref
+        self.conv.setText(TR("Avec ces réglages : {} = {} = {} = {} · niveau visé {} = {}").format(
+            fmt_audio(-18, r, "dbfs"), fmt_audio(-18, r, "dbu"), fmt_audio(-18, r, "dbv"), fmt_audio(-18, r, "vrms"),
+            fmt_audio(r["target"], r, "dbfs"), fmt_audio(r["target"], r, "dbu")))
+
+
 class AudioPickDialog(QtWidgets.QDialog):
     """🎵 Choisir un son (étape 21) : générateur 20 Hz – 20 kHz (une fréquence ou un balayage), bruits, voix / mélodie /
     bips de démo, sons de l'appli, ton fichier WAV ; ▶ pour l'écouter sur le PC. Seul (standalone) = 🎵 Générateur
@@ -32461,6 +32637,38 @@ class AudioPickDialog(QtWidgets.QDialog):
         rl.addWidget(self.wav_lbl, 1)
         f.addRow("Fichier :", rw)
         self.rows["wav"] = rw
+        ref = owner.audio_ref                                 # 8.1 : niveau visé, vu-mètre, déviation
+        self.lvl_chk = QtWidgets.QCheckBox("Régler le niveau à")
+        self.lvl_chk.setChecked(sp.get("lvl") is not None)
+        self.lvl_chk.setToolTip("Coché : le son est amené à ce niveau (moyen, RMS). Décoché : son niveau d'origine.\n"
+                                "Repère d'alignement courant : −18 dBFS (EBU) ou −20 dBFS (SMPTE).")
+        self.lvl = QtWidgets.QDoubleSpinBox()
+        self.lvl.setDecimals(1)
+        self.lvl.setSingleStep(0.5)
+        self.lvl_unit = ref["unit"] if ref["unit"] != "vrms" else "dbu"
+        lo_, hi_ = (dbfs_to_unit(-60, ref, self.lvl_unit), dbfs_to_unit(0, ref, self.lvl_unit))
+        self.lvl.setRange(min(lo_, hi_), max(lo_, hi_))
+        self.lvl.setSuffix(" " + dict(AUDIO_UNITS).get(self.lvl_unit, "dBFS"))
+        self.lvl.setValue(dbfs_to_unit(sp["lvl"] if sp.get("lvl") is not None else ref["target"], ref, self.lvl_unit))
+        self.lvl.setToolTip("Niveau visé, dans l'unité choisie dans 📏 Échelles et niveaux.")
+        tgt = QtWidgets.QPushButton("🎯")
+        tgt.setToolTip("Mettre le niveau visé du réglage (📏 Échelles et niveaux).")
+        tgt.clicked.connect(lambda *_: (self.lvl_chk.setChecked(True),
+                                        self.lvl.setValue(dbfs_to_unit(owner.audio_ref["target"], owner.audio_ref,
+                                                                       self.lvl_unit))))
+        helpb = QtWidgets.QPushButton("📏")
+        helpb.setToolTip("Échelles et niveaux : unité, alignement, et la fiche qui explique dBFS, dBu, dBV…")
+        helpb.clicked.connect(lambda *_: owner.open_scales())
+        f.addRow(owner._row(self.lvl_chk, self.lvl, tgt, helpb, None))
+        self.meter = AudioMeterBar(owner, self)
+        f.addRow("Niveau :", self.meter)
+        self.meter_txt = QtWidgets.QLabel("")
+        self.meter_txt.setWordWrap(True)
+        self.meter_txt.setToolTip("Mesuré sur le son qui sera joué : moyen (RMS), crête, True Peak, et la déviation FM\n"
+                                  "que ce niveau donne sur un micro (0 dBFS = déviation max du réglage d'écoute).")
+        f.addRow(self.meter_txt)
+        self.lvl_chk.toggled.connect(lambda *_: self._changed())
+        self.lvl.valueChanged.connect(lambda *_: self._changed())
         lay.addLayout(f)
         note = QtWidgets.QLabel("Dans l'écoute d'un micro HF (FM), les aigus au-delà de ~15 kHz sont coupés : c'est la "
                                 "bande audio d'un micro, pas un défaut.")
@@ -32538,6 +32746,8 @@ class AudioPickDialog(QtWidgets.QDialog):
         return k, (int(v) if k == "mic" and v.isdigit() else v)
 
     def _target_changed(self):
+        if hasattr(self, "meter"):
+            QtCore.QTimer.singleShot(0, self._measure)      # la déviation dépend du micro visé
         t = self._tgt()
         self.sig.setEnabled(t[0] == "mic")
         if t[0] == "mic":
@@ -32573,9 +32783,33 @@ class AudioPickDialog(QtWidgets.QDialog):
                 self.msg.setText(TR("✔ Ligne ajoutée à l'émission HackRF : règle sa fréquence."))
 
     def spec(self):
+        lvl = unit_to_dbfs(self.lvl.value(), self.owner.audio_ref, self.lvl_unit) if self.lvl_chk.isChecked() else None
         return audio_spec_norm(dict(src=self.src.currentData(), f=self.f.value(), f1=self.f1.value(), f2=self.f2.value(),
                                     dur=self.dur.value(), log=self.log.isChecked(), app=self.app.currentData(),
-                                    path=self.path))
+                                    path=self.path, lvl=lvl))
+
+    def _measure(self):
+        """8.1 : vu-mètre et déviation du son choisi (mesurés sur 1 à 3 s du son réel)."""
+        try:
+            sp = self.spec()
+            if sp["src"] == "wav" and sp["path"]:
+                wav_load(sp["path"])
+            secs = min(3.0, sp["dur"]) if sp["src"] == "sweep" else 1.5
+            m = audio_meter(demo_audio(sp, np.arange(int(secs * 48000)) / 48000.0, 0))
+            ref = self.owner.audio_ref
+            self.meter.set_meter(m, sp["lvl"] if sp.get("lvl") is not None else None)
+            nom = 48.0
+            t_ = self._tgt() if hasattr(self, "target") else ("", None)
+            if t_[0] == "mic":
+                w = self.owner.watch_by_key(t_[1])
+                p_ = demod_preset(self.owner.mic_demod(w)[0]) if w else None
+                nom = float((p_ or {}).get("dev") or 48000) / 1000.0
+            self.meter_txt.setText(TR("moyen {} · crête {} · True Peak {} · en FM : déviation crête {} kHz (0 dBFS = {} kHz)")
+                                   .format(fmt_audio(m["rms"], ref), fmt_audio(m["peak"], ref, "dbfs"),
+                                           fmt_audio(m["tp"], ref, "dbfs").replace("dBFS", "dBTP"),
+                                           f"{fm_deviation(m['peak'], nom):.1f}".replace(".", ","), f"{nom:g}"))
+        except Exception as e:  # noqa: BLE001
+            self.meter_txt.setText(str(e))
 
     def _changed(self):
         src = self.src.currentData()
@@ -32587,6 +32821,8 @@ class AudioPickDialog(QtWidgets.QDialog):
             except Exception:  # noqa: BLE001
                 w.setVisible(k in show)
         self.wav_lbl.setText(audio_text(self.spec(), TR) if self.path else TR("(aucun fichier)"))
+        if hasattr(self, "meter"):
+            self._measure()
         if self.play_btn.isChecked():                       # on change le son en l'écoutant : on relance
             self.play(True)                                 # (8.0.2 : play(False) décochait ▶ -> plus de relance)
 
@@ -32954,6 +33190,7 @@ def _v8_demo_mics(self):
         out.append(dict(f=w["freq"], name=w.get("name", ""), bw=float(w.get("bw") or 0.0),
                         free=self.is_keep_free(w.get("status")),
                         digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd,
+                        dev=float((demod_preset(self.mic_demod(w)[0]) or {}).get("dev") or 0) or None,
                         kind=(self.sdr_cfg.get("demo_kind") or {}).get(str(int(round(w["freq"] * 1000)))) or "auto"))
     return out
 
@@ -34124,6 +34361,21 @@ MainWindow.sdr_follow_clear = _v8_sdr_follow_clear
 MainWindow._sdr_follow_refresh = _v8_sdr_follow_refresh
 MainWindow._sdr_follow_menu = _v8_sdr_follow_menu
 MainWindow.sdr_follow_key = _v8_sdr_follow_key
+def _v8_open_scales(self):
+    """📏 Échelles et niveaux : réglages des vu-mètres audio + la fiche (8.1)."""
+    d = getattr(self, "_scales", None)
+    if d is None:
+        d = self._scales = ScalesDialog(self)
+    d.show()
+    d.raise_()
+    d.activateWindow()
+    return d
+
+
+MainWindow.open_scales = _v8_open_scales
+MainWindow.audio_ref = audio_ref_norm(None)
+
+
 def _v8_set_sdr_audio(self, key):
     """Sortie de l'écoute SDR choisie (⚙ › Son) : enregistrée, et le son en cours repart tout de suite dessus."""
     self.sdr_cfg["audio_dev"] = str(key or "")

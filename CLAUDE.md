@@ -1707,22 +1707,21 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   puis `python -m py_compile tinysa_monitor.py`, les tests, et ne jamais committer `__pycache__`.
 
 ## Reste à faire / idées
-- **À FAIRE après la 8.1 (Clément, 26/11/2026 : « absolument une échelle en dB pour caler des récepteurs à −18 dBFS,
-  choisir la réf en dBu / dBV…, réexpliquer les échelles, un vu-mètre et un niveau à atteindre, dans le générateur et
-  un peu partout »)** : vu-mètre crête + RMS (dBFS, repères −18 / −20 / 0) dans le générateur (sinus, sweep, bruit,
-  WAV), l'émission HackRF, le SDR démo, la sortie de l'écoute SDR ; NIVEAU CIBLE (gain calculé ; WAV mesuré puis
-  normalisé) ; unités dBFS / dBu / dBV / V RMS / dB VU avec ALIGNEMENT au choix (EBU R68 −18 dBFS = 0 dBu, SMPTE RP155
-  −20 dBFS = +4 dBu, perso) ; côté RF : déviation FM correspondante (« −18 dBFS -> X kHz ») ; fiche ❓ « Échelles et
-  niveaux » + manuel + lexique avec SON tableau (0 dBu = 0,775 V ; 0 dBV = 1 V = +2,21 dBu ; +4 dBu = 1,228 V = +1,78 dBV
-  = 0 VU ; −10 dBV = 0,316 V = −7,78 dBu ; dB SPL réf 20 µPa ; dBFS 0 = pleine échelle). Préciser : dBm audio = 1 mW
-  sur 600 Ω, mais dBm RF (appli, tinySA) = 1 mW sur 50 Ω ; dBW = 1 W (pas d'impédance).
-  **Aussi en RÉCEPTION** (Clément : « et why not en réception ») : son démodulé des micros écoutés au SDR (poste,
-  🎧 Écouter, moniteur) avec vu-mètre crête + RMS dans l'unité choisie, déviation FM MESURÉE (déjà dans `mic_health`)
-  comparée à la nominale de l'appareil (« 18 kHz sur 48 kHz -> −8,5 dB »), repère de niveau cible : régler le gain d'un
-  pack sans aller au récepteur.
-  **Unités RF à ajouter** (Clément : « garder dBm, dBW, dBµW, dBµV pour la réception ») : `to_unit` / `from_unit` /
-  `fmt_level` (+ `LevelSpin`, `LevelAxis`) : dBW (= dBm − 30), dBµW (= dBm + 30), µW / mW / pW linéaires, dBµV et µV
-  sur 50 Ω (dBµV = dBm + 107) en plus de dbm / dbuv / pct ; fiche : séparer RF (50 Ω) et audio (dBFS, dBu, dBV, VU).
+- **FAIT (8.1) : échelles de niveau** (Clément : « une échelle en dB pour caler des récepteurs à −18 dBFS, choisir la réf
+  en dBu / dBV, un vu-mètre et un niveau à atteindre, en émission ET en réception ; garder dBm, dBW, dBµW, dBµV ; tout
+  réexpliquer dans un tableau, le moins important en option »). Cœur : `AUDIO_UNITS` (dbfs, dbu, dbv, vrms, vu, dbr),
+  `AUDIO_ALIGNS` (EBU −18 = 0 dBu, SMPTE −20 = +4 dBu, −14, perso), `audio_ref_norm` (config « audio_ref » :
+  unit, align, dbfs, dbu, dbr, target), `dbfs_to_unit` / `unit_to_dbfs` / `fmt_audio`, `audio_meter` (RMS AES17 : sinus
+  plein = 0 dBFS, crête, True Peak ×4), `gain_to_target`, `fm_deviation`, `deviation_db`, `rf_linear_text` (µV, pW),
+  `LEVEL_UNITS` + dbw / dbuw, `SCALES` (domaine, unité, 0 dB =, où, comment, essentiel) + `scales_help_html`, source
+  au niveau visé : `audio_spec_norm` « lvl » + `audio_source_level` (mesuré une fois) dans `demo_audio`. Interface :
+  `AudioMeterBar` (barre RMS, trait crête, losange = visé, repères −20 / −18 / 0, clic = fiche), `ScalesDialog`
+  (`open_scales` : ☰ Plus › Aide, ⚙ › Son, clic sur un vu-mètre) ; générateur : « Régler le niveau à » + 🎯 + vu-mètre +
+  texte moyen / crête / True Peak / déviation (0 dBFS = déviation du réglage d'écoute du micro visé) ; Récepteur SDR :
+  vu-mètre du son de A + déviation mesurée vs nominale (`_af_meter`, trame « health ») ; déviation mesurée en bande
+  audio (`_watch_health` : moyenne glissante ~30 kHz ; avant 9,7 kHz mesurés pour 6) ; SDR démo : 0 dBFS = déviation
+  nominale du micro (`demo_mics` « dev ») ; survol du spectre : µV / pW en bulle. Manuel : chapitre `echelles` (partie B)
+  + 5 mots du lexique. **Pas vérifié avec un vrai récepteur / pack.**
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.

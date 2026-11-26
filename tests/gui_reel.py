@@ -1714,6 +1714,20 @@ check("8.0.2 : générateur : la fréquence choisie est bien celle jouée (nouve
       _f1 is not None and abs(_f1 - 440) < 3 and _f2 is not None and abs(_f2 - 5000) < 3 and _p1 != _p2,
       f"{_f1} Hz · {_f2} Hz · {_p1} -> {_p2} · {_ag.msg.text()}")
 _ag.play_btn.setChecked(False)
+_ag.lvl_chk.setChecked(True)
+_ag.lvl.setValue(m.dbfs_to_unit(-18, win.audio_ref, _ag.lvl_unit))
+wait(200)
+check("8.1 : générateur : niveau visé −18 dBFS mesuré, crête, True Peak et déviation affichés",
+      _ag.spec()["lvl"] is not None and abs(_ag.spec()["lvl"] + 18) < 0.05 and "kHz" in _ag.meter_txt.text()
+      and _ag.meter.m is not None and abs(_ag.meter.m["rms"] + 18) < 0.3, _ag.meter_txt.text())
+_scd = win.open_scales()
+_scd.unit.setCurrentIndex(_scd.unit.findData("dbu"))
+check("8.1 : 📏 échelles : −18 dBFS = 0 dBu (EBU), unité retenue", win.audio_ref["unit"] == "dbu"
+      and "0,775 V" in _scd.conv.text(), _scd.conv.text())
+shot(_scd, "echelles_niveaux")
+_scd.unit.setCurrentIndex(_scd.unit.findData("dbfs"))
+_scd.close()
+_ag.lvl_chk.setChecked(False)
 _wg = win.watch[0]
 _kg = int(round(_wg["freq"] * 1000))
 _ag.fill_targets()

@@ -6873,6 +6873,9 @@ class ChannelDemod:
             return
         x = np.concatenate(self._hbuf) * self.dev
         self._hbuf = []
+        k = max(1, int(round(self.fs1 / 30000.0)))        # 8.1 : bande audio seulement (le bruit large bande gonflait
+        if k > 1 and len(x) > 4 * k:                       # les petites déviations : 9,7 kHz mesurés pour 6)
+            x = np.convolve(x, np.ones(k) / k, mode="valid")
         mu = float(np.mean(x))
         self.health = dict(dev=float(np.percentile(np.abs(x - mu), 99.5)) / 1000.0, drift=mu / 1000.0)
 
@@ -9425,9 +9428,16 @@ def audio_spec_norm(d):
 
 
 def audio_text(d, tr=None):
-    """Source sonore en quelques mots (bouton, journal)."""
+    """Source sonore en quelques mots (bouton, journal) ; 8.1 : « · −18 dBFS » si un niveau est réglé."""
     tr = tr or (lambda x: x)
     d = audio_spec_norm(d)
+    if d.get("lvl") is not None:
+        return _audio_text(dict(d, lvl=None), tr) + f" · {d['lvl']:+.1f} dBFS".replace(".", ",")
+    return _audio_text(d, tr)
+
+
+def _audio_text(d, tr):
+    """Texte d'une source sans le niveau."""
     src = d["src"]
     if src == "tone":
         return tr("Tonalité {} Hz").format(f"{d['f']:g}")
@@ -9730,7 +9740,8 @@ def demo_sdr_plan(mics):
             out.append(dict(key="num" + key, kind="noise", f=f, bw=0.2, lvl=-14.0))
             continue
         h = sum(ord(c) for c in str(m.get("name", ""))) % 12
-        s = dict(key="mic" + key, kind="fm", f=f, lvl=-6.0 - h, dev=25000.0 + 1500.0 * (h % 8),
+        s = dict(key="mic" + key, kind="fm", f=f, lvl=-6.0 - h,      # 8.1 : 0 dBFS = déviation nominale du micro
+                 dev=float(m.get("dev") or (25000.0 + 1500.0 * (h % 8))),
                  audio=audio_spec_norm(m["snd"]) if m.get("snd") else DEMO_SOUNDS[k % len(DEMO_SOUNDS)][0], k=k,
                  pilot=DEMO_PILOT)
         if kind == "intermittent":
@@ -12593,6 +12604,11 @@ GLOSSARY = [
     ("dBm", "L'unité de puissance reçue. Plus le nombre est grand (proche de 0), plus c'est fort : −40 dBm est très "
      "fort, −90 dBm est faible, −110 dBm c'est le bruit. +10 dB = 10 fois plus de puissance."),
     ("dBµV", "Autre unité de niveau, utilisée par certains logiciels (Wisycom…). dBµV = dBm + 107."),
+    ('dBFS', "Niveau d'un son NUMÉRIQUE par rapport au maximum possible (0 dBFS). Toujours négatif : au-dessus de 0, le son coupe. Les vu-mètres de l'appli (générateur, écoute SDR) sont en dBFS ; on cale souvent un récepteur avec un ton à −18 dBFS."),
+    ('dBu / dBV', "Niveaux d'un son ANALOGIQUE (une tension). 0 dBu = 0,775 V, 0 dBV = 1 V (= +2,2 dBu). Niveau ligne pro : +4 dBu ; grand public : −10 dBV. Rien à voir avec le dBm de la RF."),
+    ('Alignement (EBU, SMPTE)', 'La correspondance entre numérique et analogique de ton installation : EBU (Europe) −18 dBFS = 0 dBu ; SMPTE (USA) −20 dBFS = +4 dBu. Se règle dans 📏 Échelles et niveaux.'),
+    ('True Peak (dBTP)', "La vraie crête d'un son numérique, y compris entre deux échantillons : elle peut dépasser 0 dBFS après conversion. On vise ≤ −1 dBTP."),
+    ('Déviation FM', "De combien la fréquence d'un émetteur FM bouge avec le son (en kHz). Chaque appareil a une déviation nominale : trop de déviation = son qui sature au récepteur, trop peu = souffle. L'écoute SDR la mesure et la compare à la nominale."),
     ("Bruit de fond (tapis)", "Le niveau minimum que le tinySA voit même sans émetteur : son propre bruit plus celui "
      "du lieu (écrans LED, éclairage…). Tout ce qui dépasse franchement le tapis est un signal."),
     ("Balayage (sweep)", "Le tinySA mesure une fréquence après l'autre, de gauche à droite : un passage complet "
