@@ -1720,6 +1720,9 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   🎧 Écouter, moniteur) avec vu-mètre crête + RMS dans l'unité choisie, déviation FM MESURÉE (déjà dans `mic_health`)
   comparée à la nominale de l'appareil (« 18 kHz sur 48 kHz -> −8,5 dB »), repère de niveau cible : régler le gain d'un
   pack sans aller au récepteur.
+  **Unités RF à ajouter** (Clément : « garder dBm, dBW, dBµW, dBµV pour la réception ») : `to_unit` / `from_unit` /
+  `fmt_level` (+ `LevelSpin`, `LevelAxis`) : dBW (= dBm − 30), dBµW (= dBm + 30), µW / mW / pW linéaires, dBµV et µV
+  sur 50 Ω (dBµV = dBm + 107) en plus de dbm / dbuv / pct ; fiche : séparer RF (50 Ω) et audio (dBFS, dBu, dBV, VU).
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
