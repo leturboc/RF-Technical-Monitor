@@ -6114,7 +6114,7 @@ border-radius:12px;padding:12px;margin-bottom:8px}.alist .row.ack{border-left-co
  <button class="btn pri" type="submit" id="lgo">Entrer</button><button class="btn hidden" type="button" id="lcancel" style="width:100%;margin-top:8px">Annuler</button>
  <div class="err" id="le"></div></form></div>
 <div id="app" class="hidden">
- <header class="top"><div class="bar"><div class="logo">📡</div>
+ <header class="top"><div class="bar"><div class="logo"><img src="data:image/png;base64,__ICON__" alt="" width="38" height="38" style="border-radius:10px;display:block"></div>
   <div class="ttl"><b id="t">RF Technical Monitor</b><span id="meta" class="mut"></span></div>
   <span id="pill" class="pill"></span><span id="clock" class="clock"></span><button id="me" class="chip" title="Changer de nom"></button><a id="lng" class="chip" href="?lang=en" title="English" style="text-decoration:none;color:inherit">EN</a></div>
   <nav id="nav"></nav></header>
