@@ -21590,6 +21590,7 @@ class SdrEngine(QtCore.QObject):
         self._seen_al, self._al_key_t, self._al_until = set(), {}, 0.0
         self._pil_hist, self._pil_miss, self._pil_bad, self.pil_v = None, None, None, None
         self.what, self._t_what = None, 0.0
+        self.pil_pending, self._al_offer, self._pil_ok_t, self._pil_key = None, None, None, None   # audit
         rm = owner.sdr_cfg.get("rewind_min", 3)
         self.rew = RewindBuffer(int(rm) if rm in REWIND_MINUTES else 3, LISTEN_RATE * 4)        # étape 22 : ⏪
         self.tick = QtCore.QTimer(self)
