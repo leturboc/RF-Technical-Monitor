@@ -2751,6 +2751,12 @@ def _set_act(d):
           and d.dev_combo.itemData(0) == "", str([d.dev_combo.itemText(i) for i in range(d.dev_combo.count())]))
     d.vol.setValue(35)
     check("⚙ son : volume appliqué tout de suite", win.sound.cfg["volume"] == 35, str(win.sound.cfg))
+    d.sdr_out.setCurrentIndex(d.sdr_out.findData("__win__"))
+    check("8.1 : ⚙ son : sortie de l'écoute SDR choisie à part (casque / enceintes)",
+          win.sdr_cfg.get("audio_dev") == "__win__" and m.sdr_audio_device(win) == "", str(win.sdr_cfg.get("audio_dev")))
+    d.sdr_out.setCurrentIndex(0)
+    check("8.1 : ⚙ son : par défaut, l'écoute SDR suit la sortie des sons de l'appli",
+          win.sdr_cfg.get("audio_dev") == "" and m.sdr_audio_device(win) == (win.sound.cfg.get("device") or ""))
     for _b in d.findChildren(W.QPushButton):
         if _b.text().startswith("▶ Alarme"):
             _b.click()

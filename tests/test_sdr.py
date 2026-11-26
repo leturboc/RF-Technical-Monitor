@@ -967,5 +967,7 @@ for _k in ("pink", "white"):
     _parts = np.concatenate([ns["demo_audio"](_sp, (np.arange(2400) + i * 2400) / 48000.0, 0) for i in range(20)])
     ok(f"bruit {_k} : en morceaux = d'un seul tenant", np.allclose(_full, _parts) and 0.1 < float(np.std(_full)) < 0.4)
 
+ok("8.1 : sortie de l'écoute SDR gardée", ns["sdr_cfg_extra"](dict(audio_dev="__win__")).get("audio_dev") == "__win__")
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

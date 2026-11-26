@@ -7542,6 +7542,8 @@ def sdr_cfg_extra(sd):
         out["station"] = station_norm(sd.get("station"))
     if "favs" in sd:                                   # étape 18 : raccourcis du pavé numérique
         out["favs"] = favs_norm(sd.get("favs"))
+    if "audio_dev" in sd:                              # 8.1 : sortie de l'écoute SDR ("" = celle des sons de l'appli)
+        out["audio_dev"] = str(sd.get("audio_dev") or "")[:200]
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
         out["demo"] = bool(sd.get("demo"))
     if sd.get("rewind_min") in REWIND_MINUTES:          # étape 22 : ⏪ minutes gardées

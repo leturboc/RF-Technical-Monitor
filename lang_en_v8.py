@@ -1773,3 +1773,9 @@ EXACT.update({
 EXACT.update({"QFrame#carte{border:%s; border-radius:10px; background:%s}":
               "QFrame#carte{border:%s; border-radius:10px; background:%s}"})
 SAME_TEMPLATES += ["2px solid {}", "1px solid {}", "rgba({},{},{},{})"]
+EXACT.update({
+    "Même sortie que les sons de l'appli": "Same output as the app sounds",
+    "Où sort le son des micros écoutés avec le SDR (poste SDR, 🎧 Écouter, moniteur, temps\nréel). Par ex. l'écoute dans un casque, les alarmes sur les enceintes.":
+        "Where the sound of the mics heard with the SDR comes out (SDR station, 🎧 Listen, monitor, real\ntime). E.g. listening in headphones, alarms on the speakers.",
+    "Sortie de l'écoute SDR :": "SDR listening output:",
+})

@@ -6397,7 +6397,7 @@ class ListenWorker(QtCore.QThread):
 class AudioOut:
     """Sortie son 48 kHz stéréo 16 bits (QtMultimedia), nourrie depuis une file d'octets par un minuteur."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, device=""):
         self.sink = self.io = None
         self.error = ""
         try:
@@ -6407,6 +6407,10 @@ class AudioOut:
             fmt.setChannelCount(2)                                 # stéréo (FM stéréo, ears) ; mono = 2 voies égales
             fmt.setSampleFormat(QtMultimedia.QAudioFormat.SampleFormat.Int16)
             dev = QtMultimedia.QMediaDevices.defaultAudioOutput()
+            for d in (QtMultimedia.QMediaDevices.audioOutputs() if device else ()):   # 8.1 : sortie choisie
+                if bytes(d.id()).hex() == device or d.description() == device:
+                    dev = d
+                    break
             if dev.isNull():
                 self.error = "aucune sortie son trouvée"
                 return
@@ -6450,6 +6454,19 @@ class AudioOut:
         self.sink = self.io = None
 
 
+def sdr_audio_device(owner):
+    """8.1 (Clément : « l'audio du SDR sort sur la sortie de Windows, pas celle choisie dans Réglages ») : sortie de
+    l'écoute SDR. sdr_cfg « audio_dev » : "" = la même que les sons de l'appli (⚙ › Son), « __win__ » = celle de
+    Windows, sinon une sortie précise (casque pour l'écoute, enceintes pour les alarmes…)."""
+    k = str((getattr(owner, "sdr_cfg", None) or {}).get("audio_dev") or "")
+    if k == "__win__":
+        return ""
+    if not k:
+        snd = getattr(owner, "sound", None)
+        return str(((getattr(snd, "cfg", None) or {}).get("device")) or "")
+    return k
+
+
 def pump_move(src, dst):
     """Passe le son produit (file du fil SDR) dans la file de la carte son (AudioPump)."""
     while src:
@@ -6461,12 +6478,12 @@ class AudioPump(QtCore.QThread):
     fil, indépendant de l'interface. Avant, un spectre / waterfall un peu lent à redessiner retardait l'envoi et la
     carte tombait à sec. La file `q` (deque) est remplie par l'interface, vidée ici (opérations de deque atomiques)."""
 
-    def __init__(self, q):
+    def __init__(self, q, device=""):
         super().__init__()
-        self.q, self.out, self.error = q, None, ""
+        self.q, self.out, self.error, self.device = q, None, "", device
 
     def run(self):
-        self.out = AudioOut(None)
+        self.out = AudioOut(None, self.device)
         self.error = self.out.error
         tm = QtCore.QTimer()
         tm.timeout.connect(lambda: self.out.feed(self.q))
@@ -6720,7 +6737,7 @@ class ListenDialog(QtWidgets.QDialog):
         if hopping and self.audio is not None:      # balayage : on garde la sortie son
             QtCore.QTimer.singleShot(0, self.worker.start)
             return
-        self.audio = AudioPump(self._aq)                # 8.1 : son nourri par son propre fil
+        self.audio = AudioPump(self._aq, sdr_audio_device(self.owner))                # 8.1 : son nourri par son propre fil
         self.audio.start()
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)   # le temps de libérer le SDR
         self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
@@ -7565,7 +7582,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         self.worker.keep_iq = self.iq_chk.isChecked()
         self.trk = {c["key"]: AnomalyTracker(not c.get("keep_free")) for c in self.chans}   # libre : signal = anomalie
         self._seen_al = {a.get("key") for a in o.alarms.active.values()}
-        self.audio = AudioPump(self._aq)                       # 8.1 : son nourri par son propre fil
+        self.audio = AudioPump(self._aq, sdr_audio_device(self.owner))                       # 8.1 : son nourri par son propre fil
         self.audio.start()
         if o.sdr_cfg.get("shure") and not getattr(o, "_shure", None):       # étape 11 : récepteurs pour comparer
             o.receivers_start(o.sdr_cfg["shure"])
@@ -8621,7 +8638,7 @@ class SdrEngine(QtCore.QObject):
         w.stopped.connect(lambda why, w_=w: self._stopped(why) if w_ is self.worker else None)
         w.status.connect(lambda t, w_=w: self._say(t) if w_ is self.worker else None)
         if self.audio is None:
-            self.audio = AudioPump(self.q)              # 8.1 : son nourri par son propre fil
+            self.audio = AudioPump(self.q, sdr_audio_device(self.owner))   # 8.1 : son nourri par son propre fil
             self.audio.start()
         self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         if kind == "demo":                              # étape 21 : le SDR démo connaît tout de suite tes micros
@@ -11205,7 +11222,7 @@ class RealtimeDialog(QtWidgets.QDialog):
         if self.worker is not None:
             self.worker.listen = dict(f=f, volume=self.vol.value() / 100.0, **self.dp.params())
             if self.audio is None:
-                self.audio = AudioPump(self._aq)        # 8.1 : son nourri par son propre fil
+                self.audio = AudioPump(self._aq, sdr_audio_device(self.owner))        # 8.1 : son nourri par son propre fil
                 self.audio.start()
 
     def _feed(self):
@@ -13807,6 +13824,8 @@ class SettingsDialog(QtWidgets.QDialog):
         t_norm.clicked.connect(lambda *_: (self._apply_sound(), o.sound.alarm(1)))
         for w_ in (self.style_combo, self.dev_combo):
             w_.currentIndexChanged.connect(lambda *_: self._apply_sound())
+        self.dev_combo.currentIndexChanged.connect(          # 8.1 : l'écoute SDR « même sortie » suit
+            lambda *_: QtCore.QTimer.singleShot(0, lambda: o.set_sdr_audio(o.sdr_cfg.get("audio_dev", ""))))
         self.vol.valueChanged.connect(lambda *_: self._apply_sound())
         self.rep_combo = QtWidgets.QComboBox()
         for v_, t_ in ALARM_REPEATS:
@@ -13831,6 +13850,17 @@ class SettingsDialog(QtWidgets.QDialog):
         f.addRow(self.alert_chk)
         f.addRow("Sons :", self.style_combo)
         f.addRow("Sortie audio :", self.dev_combo)
+        self.sdr_out = QtWidgets.QComboBox()                  # 8.1 : sortie de l'écoute SDR (casque, enceinte…)
+        self.sdr_out.addItem("Même sortie que les sons de l'appli", "")
+        self.sdr_out.addItem("Sortie par défaut de Windows", "__win__")
+        for k, t in SoundOut.devices():
+            self.sdr_out.addItem(t, k)
+        i_ = self.sdr_out.findData(str(o.sdr_cfg.get("audio_dev") or ""))
+        self.sdr_out.setCurrentIndex(i_ if i_ >= 0 else 0)
+        self.sdr_out.setToolTip("Où sort le son des micros écoutés avec le SDR (poste SDR, 🎧 Écouter, moniteur, temps\n"
+                                "réel). Par ex. l'écoute dans un casque, les alarmes sur les enceintes.")
+        self.sdr_out.currentIndexChanged.connect(lambda *_: o.set_sdr_audio(self.sdr_out.currentData()))
+        f.addRow("Sortie de l'écoute SDR :", self.sdr_out)
         f.addRow("Volume :", self.vol)
         f.addRow(owner._row(t_crit, t_norm, None))
         f.addRow("Rejouer les critiques :", self.rep_combo)
@@ -34071,6 +34101,21 @@ MainWindow.sdr_follow_clear = _v8_sdr_follow_clear
 MainWindow._sdr_follow_refresh = _v8_sdr_follow_refresh
 MainWindow._sdr_follow_menu = _v8_sdr_follow_menu
 MainWindow.sdr_follow_key = _v8_sdr_follow_key
+def _v8_set_sdr_audio(self, key):
+    """Sortie de l'écoute SDR choisie (⚙ › Son) : enregistrée, et le son en cours repart tout de suite dessus."""
+    self.sdr_cfg["audio_dev"] = str(key or "")
+    holders = list((getattr(self, "sdr_engs", None) or {}).values()) + \
+        [getattr(self, nm, None) for nm in ("_listen", "_multimon", "_rt")]
+    for h in holders:
+        a = getattr(h, "audio", None) if h is not None else None
+        if isinstance(a, AudioPump):
+            q = a.q
+            a.close()
+            h.audio = AudioPump(q, sdr_audio_device(self))
+            h.audio.start()
+
+
+MainWindow.set_sdr_audio = _v8_set_sdr_audio
 MainWindow.screen_hosts = {}
 MainWindow.screens_cfg = screens_norm(None)
 MainWindow.dock_widget = _v8_dock_widget

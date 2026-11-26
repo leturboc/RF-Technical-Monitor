@@ -86,6 +86,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   Bruit blanc / rose du générateur refait à CHAQUE morceau (mise en forme et niveau par morceau) = « burst » au rythme de
   l'affichage (Clément) -> boucle de 8 s fabriquée une fois (`_noise_loop`, `NOISE_RATE`), lue au fil du temps
   (test « en morceaux = d'un seul tenant »).
+  **Sortie de l'écoute SDR** (Clément : « je choisis ma sortie dans Réglages mais le SDR sort sur celle de Windows ») :
+  `AudioOut(parent, device)` ; `sdr_audio_device(owner)` lit sdr_cfg « audio_dev » ("" = la sortie des sons de l'appli,
+  « __win__ » = celle de Windows, sinon une sortie précise) ; ⚙ › Son « Sortie de l'écoute SDR » (`SettingsDialog.sdr_out`)
+  -> `MainWindow.set_sdr_audio` (le son en cours repart tout de suite sur la nouvelle sortie) ; changer la sortie des sons
+  de l'appli fait suivre l'écoute réglée sur « la même ».
 - **Nouveau nom à la 8.1 (Clément, 26/11/2026) : « RF Technical Monitor »** (sigle RFTM : le clin d'œil à « RTFM » est
   voulu, Clément : « je kiffe »). Raisons : depuis la V8 le logiciel n'est plus que tinySA, et « tinySA » est le nom du
   produit d'Erik Kaashoek (pas d'affiliation à laisser croire). « FreqWatch » écarté (logiciel RTL-SDR existant).
