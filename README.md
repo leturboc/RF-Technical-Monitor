@@ -1,7 +1,9 @@
 # TinySA Monitor
 
 Application Windows (Python / PySide6) pour **analyser le spectre** et **surveiller en continu 100+ fréquences**
-avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisation et événementiel.
+avec un **tinySA Ultra** — et, depuis la **version 8**, avec un **SDR** (HackRF, SDRplay, RTL-SDR, Airspy, WiNRADiO…)
+pour **écouter** les micros analogiques en plus de les surveiller (fonctions SDR en **bêta**). Pensée pour la
+coordination HF en festival, sonorisation et événementiel.
 
 > Les attributions de bandes (police, aéro, 4G/5G, TNT, micros HF…) sont **indicatives** : vérifie toujours la
 > réglementation locale avant d'émettre.
@@ -10,6 +12,25 @@ avec un **tinySA Ultra** : pensée pour la coordination HF en festival, sonorisa
 
 🌐 **English** : the whole app is available in English (☰ Plus › 🌐 Langue / Language, or automatically on an
 English Windows). User manual: [`docs/manual_en.pdf`](docs/manual_en.pdf) (PDF) · [`docs/manual_en.html`](docs/manual_en.html).
+
+## Nouveau en version 8
+
+- **📡 SDR (bêta)** : un tinySA mesure seulement la puissance ; un SDR reçoit le signal lui-même et le **démodule** :
+  tu **entends** un micro analogique (FM, compander deviné d'après l'appareil du plan, modifiable), tu vois son
+  spectre fin et son waterfall. Mode **📟 tinySA**, **📡 SDR** ou **combiné** (bouton en haut). Favoris au **pavé
+  numérique**, **patrouille**, **calage tout seul sur une alarme** (avec enregistrement), **pilote** retenu par micro,
+  **⏪ remonter le temps** (réécouter les dernières minutes), assistant de premier branchement, calage des niveaux sur
+  le tinySA, plusieurs SDR (un par scène), récepteurs Shure / Sennheiser en réseau.
+- **🧪 SDR démo** (sans matériel, avec du son) et **mode démo du tinySA** : ils fabriquent **toutes tes fréquences**
+  (plus un brouilleur, des coupures, la TNT) pour voir et écouter ta liste avant le show. **🎵 Générateur audio**
+  (tonalité, balayage 20 Hz – 20 kHz, bruit, WAV) : à écouter, ou à **affecter** à un micro des démos, à un son
+  d'alarme ou à l'émission.
+- **📡 Émission avec un HackRF** (en câble, pour tester un récepteur) : faux micros FM avec son et pilote.
+- **📡 Micros suivis par le SDR** : choisis-les dans « Mes fréquences » (Ctrl+Maj+F, ou clic droit › 📡).
+- **🖥 Plusieurs écrans** : tinySA complet sur un écran, SDR complet sur l'autre, ou ton mélange panneau par
+  panneau ; la répartition revient au lancement suivant.
+- **Sons d'alarme** en carillons doux (les anciens bips restent au choix), sons personnalisables ; l'appli ne s'ouvre
+  plus deux fois (la relancer ramène la fenêtre déjà ouverte).
 
 ## Ce que ça fait
 
@@ -40,8 +61,8 @@ English Windows). User manual: [`docs/manual_en.pdf`](docs/manual_en.pdf) (PDF) 
 - **Scans WSM / WWB** : import d'un scan comme référence, conversion WSM → WWB, export du scan au format WWB
 - **Export des fréquences** par scène / par groupe
 - **Fenêtres libres** : panneaux déplaçables / détachables (double écran), mur de fréquences plein écran
-- **Deux tinySA** en parallèle, sur le même PC ou par le réseau (relais intégré), avec bascule automatique,
-  noms de position et calibration
+- **Jusqu'à 8 tinySA** en parallèle, sur le même PC ou par le réseau (relais intégré, kit Raspberry Pi), avec bascule
+  automatique, noms de position, calibration et « diversity » (meilleure mesure des deux)
 - **Alertes sur téléphone** (ntfy / Telegram) et **page web** en lecture seule pour l'équipe
 - Guide des bandes 100 kHz – 5,9 GHz par pays, canaux TV, journal CSV automatique
 - **🎪 Shows** : un show s'enregistre et se rappelle d'une année à l'autre (fréquences, scènes, référence du lieu…)
@@ -160,8 +181,9 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 
 ## Interface : mode simple / expert, panneaux libres
 
-- En haut : **Port**, **▶ Démarrer**, **🎪 Shows**, **🔔 alarmes** et **☰ Plus** (outils, fenêtres et dispositions, mur,
-  couleurs, statuts, mode expert).
+- En haut : **🎪 Shows**, **🔔 alarmes**, les menus du travail **📋 Préparer**, **🎚 Surveiller**, **📊 Analyser**,
+  **🔌 Matériel**, **🔎** chercher une fonction (Ctrl+K), le **mode** (📟 tinySA / 📡 SDR / combiné), **☰ Plus** et
+  **⚙ Réglages**. Dessous, l'**accueil** en 3 cartes : ① le tinySA, ② mes micros, ③ surveiller.
 - **Mode simple** (par défaut) : seuls les réglages utiles pendant le show sont affichés (seuils occupé / faible,
   TX absent, alerte, bandes, 2ᵉ tinySA, pays). **☰ Plus › Mode expert** (ou le bouton en haut des réglages) montre
   aussi RBW, entrée, LNA, atténuateur, offset, segments, fenêtre, seuil sur référence, calibration, relais…
@@ -179,10 +201,14 @@ et de décrochage des récepteurs. Le tinySA lui-même sature vers −10 dBm.
 - **Vraies fenêtres / double écran** (☰ Plus › 🪟 Fenêtres › 🗗) : chaque panneau (spectre, waterfall, liste,
   alarmes…) dans une vraie fenêtre Windows, agrandie ou plein écran sur l'écran choisi, rouverte au même endroit au
   prochain lancement ; fermer la fenêtre la raccroche.
+- **🖥 Plusieurs écrans** (menu du mode, ou 🪟 Fenêtres) : pour chaque panneau, l'écran où il va ; chaque autre écran
+  reçoit une fenêtre complète (panneaux côte à côte ou en onglets). Préréglages « tinySA ici · SDR sur l'autre »,
+  l'inverse, « liste sur l'autre ». 👋 Identifier les écrans.
 
 ## Démarrage rapide
 
-1. Branche le tinySA Ultra en USB, choisis le port (ou coche **Démo** pour essayer sans matériel), **▶ Démarrer**.
+1. Branche le tinySA Ultra en USB, choisis le port (ou coche **Démo** pour essayer sans matériel : il fabrique les
+   signaux de tes fréquences), **▶ Démarrer**. Un SDR ? Bouton du mode en haut › 📡, puis « 🔌 Premier branchement ».
 2. Importe tes fréquences (📥 Importer CSV : plan EazyRF (.ezrf3), WWB, Excel…) ou saisis-les, range-les en
    Scènes › Groupes.
 3. Donne un statut à chaque fréquence : *Libre* (doit rester libre) ou *En service* (doit émettre).
