@@ -9811,9 +9811,9 @@ def chan_power(F, L, f, half=CAL_HALF_MHZ, bin_bw_khz=None, enbw=1.0):
     if m.sum() < 2:
         return None
     p = 10.0 ** (L[m] / 10.0)
-    if bin_bw_khz:
+    if bin_bw_khz:                                 # chaque point = la puissance dans UNE RBW ; il représente un pas :
         step = float(np.median(np.diff(F[m]))) * 1000.0 if m.sum() > 1 else bin_bw_khz
-        p = p * min(1.0, step / float(bin_bw_khz))
+        p = p * (step / float(bin_bw_khz))         # (audit : avant plafonné à 1 -> −9 dB avec pas 75 / RBW 10 kHz)
     return float(10.0 * np.log10(p.sum() / max(1e-9, enbw)))
 
 
@@ -21999,6 +21999,7 @@ class SdrEngine(QtCore.QObject):
                 return self.pid == 1
             eng = o._engine_for(w) if hasattr(o, "_engine_for") else self
             return eng is self
+        self._seen_al &= {a_.get("id") for a_ in o.alarms.active.values()}   # audit : ne grossit plus sans fin
         al = [a for a in o.alarms.active.values() if now - self._al_key_t.get(a.get("key"), -1e9) >= ALARM_TUNE_COOLDOWN_S]
         a = alarm_pick(al, self._seen_al, ok)
         for a_ in o.alarms.active.values():               # les autres restent « vues » : une seule à la fois
@@ -22145,7 +22146,22 @@ class SdrEngine(QtCore.QObject):
         v = self.pil_v
         w = self.cur_mic
         on = self.auto()["pilot_alarm"] and v is not None and v[0] in ("missing", "other") and w is not None
-        self._pilot_alarm(w if on else None, v[1] if on else "")
+        if on:
+            self._pil_ok_t = None
+            self._pilot_alarm(w, v[1])
+            return
+        cur = getattr(self, "_pil_key", None)
+        same_mic = cur is not None and w is not None and cur[1] == int(round(w["freq"] * 1000))
+        if same_mic and self.auto()["pilot_alarm"] and v is not None and v[0] != "off":
+            if v[0] == "same":                         # audit : retombée seulement après 3 s de pilote retrouvé
+                self._pil_ok_t = getattr(self, "_pil_ok_t", None) or now
+                if now - self._pil_ok_t >= 3.0:
+                    self._pilot_alarm(None)
+            else:
+                self._pil_ok_t = None
+            return
+        self._pil_ok_t = None
+        self._pilot_alarm(None)
 
     def _pilot_alarm(self, w, info=""):
         """Alarme « PILOTE » (porteuse là, mais pas le pilote de ton émetteur) : levée / effacée."""
@@ -44968,8 +44984,9 @@ async function ePull(){if(route()!=="ecoute"||!EA)return;
 
 
 # ------------------------------------------------------------------ V8 étape 21 : SDR démo + émission HackRF
-def wav_load(path, max_s=600.0):
-    """Fichier WAV (PCM 8 / 16 / 24 / 32 bits, mono ou stéréo, n'importe quel débit) -> WAV_PCM[path] en mono 48 kHz.
+def wav_load(path, max_s=180.0):
+    """Fichier WAV (PCM 8 / 16 / 24 / 32 bits, mono ou stéréo, n'importe quel débit) -> WAV_PCM[path] en mono 48 kHz,
+    3 min au plus (audit : 10 min = 115 Mo de mémoire par fichier).
     -> (ok, texte)."""
     import wave
     path = str(path or "")
@@ -45503,6 +45520,8 @@ class SdrTxDialog(QtWidgets.QDialog):
             self.run = TxRunner(fc, rate, sigs, until, demo=True)
         else:
             busy = [e for e in (getattr(o, "sdr_engs", None) or {}).values() if e.running() and e.kind() == "hackrf"]
+            busy += [w for w in getattr(o, "workers", []) if w.isRunning() and getattr(w, "sdr", False)
+                     and (parse_sdr_addr(getattr(w, "port", "")) or ("",))[0] == "hackrf"]     # audit : balayage hackrf_sweep
             if busy:
                 self.info.setText(TR("Un poste SDR utilise le HackRF : arrête-le d'abord (un HackRF reçoit OU émet)."))
                 return
@@ -45961,9 +45980,12 @@ class SdrCalibDialog(QtWidgets.QDialog):
                                 "SDR, ou rapproche les antennes.").format(CAL_MIN_SIGNALS))
             return
         cur = o.sdr_offset(self.e.kind())
+        stp = float(np.median(np.diff(Ft))) * 1000.0 if len(Ft) > 2 else 0.0
         self.msg.setText(TR("Correction mesurée : {} dB (± {} dB sur {} signaux) · actuelle : {} dB").format(
             f"{res['offset']:+.1f}", f"{res['spread']:.1f}", res["n"], f"{cur:+.1f}") +
-            (TR(" · ⚠ écarts importants : antennes à des endroits différents ?") if res["spread"] > 6 else ""))
+            (TR(" · ⚠ écarts importants : antennes à des endroits différents ?") if res["spread"] > 6 else "") +
+            (TR(" · ⚠ pas du tinySA ({} kHz) plus grand que sa RBW ({} kHz) : mesure moins sûre (zoome ou affine le "
+                "pas)").format(f"{stp:.0f}", f"{rbw:g}") if stp > 1.5 * rbw else ""))
         self.apply_btn.setEnabled(True)
 
     def apply(self):

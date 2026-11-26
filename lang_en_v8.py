@@ -1550,3 +1550,5 @@ SAME_TEMPLATES += ["TinySA Monitor {} — {} — {}", "  gain {} : {} {} %, {} {
                    "tsm_rewind_{}.wav", "diagnostic_sdr_{}.txt", "  err : {}", "{} : {}", "{} {}", "{}:{}%"]
 EXACT.update({"peu de marge": "little headroom", "{} = {} dB : {}": "{} = {} dB: {}",
               "📏 Caler les niveaux du SDR": "📏 Calibrate the SDR levels"})
+EXACT[" · ⚠ pas du tinySA ({} kHz) plus grand que sa RBW ({} kHz) : mesure moins sûre (zoome ou affine le pas)"] = \
+    " · ⚠ tinySA step ({} kHz) larger than its RBW ({} kHz): less reliable measurement (zoom in or use a finer step)"

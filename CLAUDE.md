@@ -2053,6 +2053,16 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   0,2 dB, mémoire), script + gui_reel (faux SDR : assistant complet, gain, diagnostic, remonter le temps avec son,
   calibration sur données injectées, manuel embarqué). **Jamais avec un vrai SDR** : gain choisi, puissance de canal
   tinySA / SDR (RBW, ENBW) et calibration réelle à vérifier sur le terrain.
+- **Audit V8 (Clément : « un p'tit audit ? », 26/11/2026, sur les étapes 19-22)** — corrigé : `chan_power` (point du
+  tinySA × pas / RBW sans plafond : avant, pas 75 kHz / RBW 10 kHz = micro FM sous-estimé d'environ 9 dB -> calibration
+  fausse ; message ⚠ si le pas > 1,5 × RBW) ; alarme PILOTE gardée jusqu'à 3 s de pilote retrouvé (`_pil_ok_t` : avant,
+  elle retombait et renaissait avec un son à chaque fois) ; `wav_load` 3 min au plus (10 min = 115 Mo) ; `_seen_al`
+  réduit aux alarmes en cours ; émission refusée aussi si un balayage `hackrf_sweep` tient le HackRF. Laissé (à voir
+  avec Clément) : le pilote APPRIS est le 1er entendu (un brouilleur avec pilote pourrait être retenu à la place du
+  bon émetteur -> « Oublier le pilote ») ; une patrouille entre micros éloignés relance l'outil SDR à chaque pas (USB) ;
+  le calage sur alarme déplace la fenêtre (en SDR seul, les autres micros perdent leur mesure le temps de l'alarme) ;
+  ⏪ ≈ 11 Mo / min / poste (5 min × 4 postes ≈ 230 Mo) ; l'assistant arrête les postes SDR sans demander ; test
+  d'interface Windows de la CI au-delà de 8 min depuis l'étape 20 (plus de verdict Windows pour l'interface).
 - **SDR choisi par Clément : SDRplay RSP1B** (14 bits, 1 kHz – 2 GHz, 10 MHz). V8 : genre `sdrplay` dans
   `SDR_KINDS` via rx_tools (`rx_power` = clone rtl_power, `rx_sdr` IQ CS16 → `ci16_le`) au-dessus de SoapySDR +
   SoapySDRPlay3 + API SDRplay ; adresse « sdrplay » / « rsp1b:<série> ». **Jamais testé avec un vrai RSP1B** (gain
