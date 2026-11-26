@@ -21,8 +21,8 @@ en vrai rendu Windows (non bloquant ; résultat OK/FAIL remonté en **annotation
 `TinySA-Monitor` (l'exe) et `captures-interface-windows`. Publication automatique : push sur une branche ≠ main →
 pré-release `test-<branche>` remplacée à chaque push ; push sur main → release `v<APP_VER>` (une fois par version :
 monter `APP_VER` pour publier). Un tag `v*` poussé à la main attache aussi l'exe. Le proxy du conteneur Claude
-interdit de pousser des tags / créer des releases : passer par le workflow. Dépôt **privé** : téléchargement réservé
-aux comptes qui y ont accès.
+interdit de pousser des tags / créer des releases : passer par le workflow. Dépôt **public** (renommé `leturboc/RF-Technical-Monitor` le 26/11/2026,
+GitHub redirige l'ancien nom), **sans licence** par choix de Clément (« rien »).
 **Quota de minutes (épuisé le 10/11/2026 : ~1 660 min de machine en 10 jours, une minute Windows compte double)** :
 `concurrency` (un push annule la compilation en cours de la même branche, jamais sur main) ; `paths-ignore` (CLAUDE.md,
 README, apercu/) ; job `gate` : sur main, aucune compilation si la release `v<APP_VER>` existe, sinon compilation +
@@ -98,8 +98,8 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   titres, exe `RF-Technical-Monitor.exe` (workflow, build.bat, liens du README), page web, rapports, alertes, manuel,
   lang_en ; MIGRER sans perte : `%APPDATA%\TinySAMonitor` et `Documents\TinySA Monitor` (config, shows, journaux,
   profils), clé de démarrage Windows « TinySAMonitor », verrou d'instance, garde ; texte « compatible tinySA Ultra »
-  gardé. Dépôt GitHub : son nom reste à Clément (renommer = redirection automatique de GitHub). Dépôt PRIVÉ : le passer
-  open source (public + licence) est une décision de Clément, pas encore prise.
+  gardé. Dépôt GitHub renommé par Clément en `RF-Technical-Monitor` (le proxy de la session interdit de le faire). Dépôt
+  PUBLIC, sans licence (choix de Clément, 26/11/2026).
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
   sans interface (formats de scan WSM/WWB, `AlarmBook`, `SweepStore`, intermodulation `im_scan`/`im_pairs`,
   occupation, seuils, export de listes, rapport HTML…). Les tests exécutent cette section seule.
