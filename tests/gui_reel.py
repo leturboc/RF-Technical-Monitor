@@ -1691,6 +1691,29 @@ wait(100)
 check("21 : générateur : réglages du balayage seulement", _ag.rows["f1"].isVisible() and not _ag.rows["f"].isVisible()
       and _ag.spec()["src"] == "sweep")
 shot(_ag, "generateur_audio")
+
+
+def _wav_peak(path):
+    import wave as _wv
+    with _wv.open(path, "rb") as _w:
+        _a = np.frombuffer(_w.readframes(_w.getnframes()), dtype="<i2")[0::2][:48000].astype(float)
+    return float(np.argmax(np.abs(np.fft.rfft(_a))) * 48000.0 / len(_a))
+
+
+_ag.src.setCurrentIndex(_ag.src.findData("tone"))
+_ag.f.setValue(440)
+_ag.play_btn.setChecked(True)
+wait(200)
+_p1 = _ag._tmp
+_f1 = _wav_peak(_p1) if _p1 and os.path.exists(_p1) else None
+_ag.f.setValue(5000)                       # changer la fréquence pendant l'écoute : relance avec le nouveau son
+wait(200)
+_p2 = _ag._tmp
+_f2 = _wav_peak(_p2) if _p2 and os.path.exists(_p2) else None
+check("8.0.2 : générateur : la fréquence choisie est bien celle jouée (nouveau fichier à chaque fois)",
+      _f1 is not None and abs(_f1 - 440) < 3 and _f2 is not None and abs(_f2 - 5000) < 3 and _p1 != _p2,
+      f"{_f1} Hz · {_f2} Hz · {_p1} -> {_p2} · {_ag.msg.text()}")
+_ag.play_btn.setChecked(False)
 _ag.close()
 win.set_alarm_sound("alarm2", dict(src="tone", f=880))
 _sd21 = m.SettingsDialog(win)

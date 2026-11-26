@@ -45381,6 +45381,25 @@ def wav_load(path, max_s=180.0):
     return True, TR("{} s de son").format(f"{len(a) / 48000:.1f}")
 
 
+_TEMP_WAV_N = [0]
+
+
+def temp_wav_path(kind, old=None):
+    """8.0.2 (Clément : « le générateur audio n'a qu'un 1 kHz ») : QSoundEffect garde en mémoire le son d'un fichier
+    déjà lu (cache par adresse) -> réécrire le MÊME fichier rejouait le 1er son. Un nom neuf à chaque lecture ; l'ancien
+    est effacé si possible (sous Windows il peut être encore ouvert : il partira au prochain coup)."""
+    import tempfile
+    _TEMP_WAV_N[0] += 1
+    d = tempfile.gettempdir()
+    for p_ in ([old] if old else []) + [os.path.join(d, n_) for n_ in os.listdir(d)
+                                        if n_.startswith(f"tsm_{kind}_{os.getpid()}_")]:
+        try:
+            os.remove(p_)
+        except OSError:
+            pass
+    return os.path.join(d, f"tsm_{kind}_{os.getpid()}_{_TEMP_WAV_N[0]}.wav")
+
+
 class AudioPickDialog(QtWidgets.QDialog):
     """🎵 Choisir un son (étape 21) : générateur 20 Hz – 20 kHz (une fréquence ou un balayage), bruits, voix / mélodie /
     bips de démo, sons de l'appli, ton fichier WAV ; ▶ pour l'écouter sur le PC. Seul (standalone) = 🎵 Générateur
@@ -45491,8 +45510,7 @@ class AudioPickDialog(QtWidgets.QDialog):
                 w.setVisible(k in show)
         self.wav_lbl.setText(audio_text(self.spec(), TR) if self.path else TR("(aucun fichier)"))
         if self.play_btn.isChecked():                       # on change le son en l'écoutant : on relance
-            self.play(False)
-            self.play(True)
+            self.play(True)                                 # (8.0.2 : play(False) décochait ▶ -> plus de relance)
 
     def pick_wav(self):
         p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Fichier WAV", "", "Son WAV (*.wav);;Tous (*)")
@@ -45528,8 +45546,7 @@ class AudioPickDialog(QtWidgets.QDialog):
         t = np.arange(int(max(0.5, secs) * 48000)) / 48000.0
         a = demo_audio(sp, t, 0)
         try:
-            if self._tmp is None:
-                self._tmp = os.path.join(tempfile.gettempdir(), f"tsm_gen_{os.getpid()}.wav")
+            self._tmp = temp_wav_path("gen", self._tmp)  # 8.0.2 : un NOUVEAU fichier à chaque lecture (voir temp_wav_path)
             with wave.open(self._tmp, "wb") as w:        # stéréo 16 bits 48 kHz : le format le plus partout lu
                 w.setnchannels(2)
                 w.setsampwidth(2)
@@ -46498,8 +46515,7 @@ class RewindDialog(QtWidgets.QDialog):
         import tempfile
         import wave
         try:
-            if self._tmp is None:
-                self._tmp = os.path.join(tempfile.gettempdir(), f"tsm_rewind_{os.getpid()}.wav")
+            self._tmp = temp_wav_path("rewind", self._tmp)
             with wave.open(self._tmp, "wb") as w:
                 w.setnchannels(2)
                 w.setsampwidth(2)

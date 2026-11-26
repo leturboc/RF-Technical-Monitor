@@ -1484,6 +1484,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `sdr_follow_key` (Ctrl+Maj+F sur la liste : ajoute, ou retire si déjà tous suivis). `SdrMicsPanel` : « ＋ Ajouter ma
   sélection », Retirer (Suppr), ↺ Tous, `mode_lbl` ; micros choisis hors fenêtre listés grisés (clic = y aller) ; la
   patrouille « tous » = les suivis. Retirer le dernier = le SDR suit de nouveau tous les micros.
+  Et (Clément : « le générateur audio ne fonctionne pas, j'ai qu'un 1 kHz ») : QSoundEffect garde en cache le son d'une
+  adresse de fichier -> réécrire le MÊME fichier temporaire rejouait le 1er son ; et `_changed` faisait `play(False)` qui
+  décochait ▶ -> plus aucune relance ensuite. `temp_wav_path(kind, old)` = nom neuf à chaque lecture (générateur et
+  ⏪ remonter le temps) ; `_changed` -> `play(True)`. gui_reel relit le WAV joué (440 puis 5 000 Hz). **Son toujours
+  jamais entendu par Claude.**
 - Appel des micros : `LineCheckDialog` (non modal, `self._linecheck`, nourri par `on_sweep`, force `detect_unknown`),
   PURE `lc_new` / `lc_feed` / `lc_summary` / `lc_hints` (inconnu à ±3 MHz d'une manquante) / `lc_text` ; Ctrl+L.
 - Page web v2 (« façon Ontime », demande de Clément) : `WEB_PAGE` (r-string, `__VIEWS__` / `__ICON__` remplacés),
