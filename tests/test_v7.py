@@ -2,7 +2,7 @@ import os
 import io, csv, json, math, os, re, sys, unicodedata, itertools, time, random, bisect
 import numpy as np
 
-src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "tinysa_monitor.py"), encoding="utf-8").read()
+src = __import__("_src").source()
 a = src.index("# ===== PURE-BEGIN")
 b = src.index("# ===== PURE-END")
 ns = dict(itertools=itertools, re=re, csv=csv, io=io, math=math, np=np, unicodedata=unicodedata, bisect=bisect,
@@ -1538,7 +1538,7 @@ _cfg = dict(theme=dict(curve="#3ddc84"), unit="dbuv", thr=-88.0, sound=dict(devi
             watch=[dict(name="HF 1", freq=470.2)], bands=[1], user_presets=[dict(name="Jazz", st={})], web=dict(pin="1234"))
 _ud = ns["user_doc"](_cfg, "  Clément  FOH ", "7.57")
 ok("7.57 : profil = préférences seulement (pas le show, pas le web, pas la sortie audio)",
-   _ud["name"] == "Clément FOH" and set(_ud["prefs"]) == {"theme", "unit", "thr", "sound", "user_presets"}
+   _ud["name"] == "Clément FOH" and set(_ud["prefs"]) == {"theme", "unit", "thr", "sound", "user_presets", "sdr_view"}
    and "device" not in _ud["prefs"]["sound"], str(_ud["prefs"].keys()))
 import json as _js
 _rd = ns["read_user"](_js.dumps(_ud))

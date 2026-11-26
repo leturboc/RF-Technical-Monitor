@@ -4,7 +4,7 @@ from collections import deque
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-src = open(os.path.join(HERE, "..", "tinysa_monitor.py"), encoding="utf-8").read()
+src = __import__("_src").source()
 a = src.index("# ===== PURE-BEGIN")
 b = src.index("# ===== PURE-END")
 ns = dict(itertools=itertools, re=re, csv=csv, io=io, math=math, np=np, unicodedata=unicodedata, deque=deque,

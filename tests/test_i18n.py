@@ -19,7 +19,7 @@ try:                                   # V8 : ses textes à elle (SDR), dans leu
 except ImportError:
     pass
 
-src = open(os.path.join(ROOT, "tinysa_monitor.py"), encoding="utf-8").read()
+src = __import__("_src").source()
 pure = src[src.index("# ===== PURE-BEGIN"):src.index("# ===== PURE-END")]
 ns = dict(itertools=itertools, re=re, csv=csv, io=io, math=math, np=np, unicodedata=unicodedata, bisect=bisect,
           deque=deque, MIN_PTS=3, HYST=3.0, RBW_LIST=[])

@@ -45,6 +45,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   cette règle ne s'applique plus.
 
 ## Organisation du fichier
+- **Refonte 8.1 (branche `refonte-8.1`, publiée seulement après un essai de Clément)** — étape 1 faite : la section PURE
+  est dans **`tsm_core.py`** (avec MIN_PTS, RBW_LIST, HYST et ses imports), `tinysa_monitor.py` l'importe nom par nom
+  (`from tsm_core import (...)`, chemin du fichier ajouté à `sys.path` pour les tests qui le chargent par son chemin).
+  Avant : la V8 rebranchait après coup des noms PURE (`USER_KEYS`, `user_doc`, `user_apply`, `WEB_VIEWS_HIDDEN`) —
+  repliés dans tsm_core (un rebranchement dans tinysa_monitor ne serait plus vu par les fonctions du cœur : ne JAMAIS
+  réaffecter un nom du cœur depuis l'interface, seulement modifier en place). Les tests lisent le code par
+  `tests/_src.py` (`source()` = tinysa_monitor.py puis tsm_core.py). Étapes suivantes prévues : replier les enveloppes
+  `_v7_… / _v8_…` dans les vraies méthodes, découper l'interface (appareils, dialogues, SDR, fenêtre) en modules,
+  tests plus rapides.
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
   sans interface (formats de scan WSM/WWB, `AlarmBook`, `SweepStore`, intermodulation `im_scan`/`im_pairs`,
   occupation, seuils, export de listes, rapport HTML…). Les tests exécutent cette section seule.

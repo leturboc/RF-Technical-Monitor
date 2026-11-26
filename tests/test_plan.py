@@ -1,7 +1,7 @@
 import io, csv, json, math, os, re, sys, unicodedata, itertools
 import numpy as np
 
-src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "tinysa_monitor.py"), encoding="utf-8").read()
+src = __import__("_src").source()
 a = src.index("# ===== PURE-BEGIN")
 b = src.index("# ===== PURE-END")
 ns = dict(itertools=itertools, re=re, csv=csv, io=io, math=math, np=np, unicodedata=unicodedata, deque=__import__('collections').deque, MIN_PTS=51, HYST=3.0,

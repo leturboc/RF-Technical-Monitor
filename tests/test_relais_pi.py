@@ -27,7 +27,7 @@ def check(label, cond, extra=""):
     print(("OK  " if cond else "FAIL"), label, "" if cond else extra, flush=True)
 
 
-SRC = open(os.path.join(HERE, "..", "tinysa_monitor.py"), encoding="utf-8").read()
+SRC = __import__("_src").source()
 
 
 def chunk(start, end):

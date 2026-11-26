@@ -26,7 +26,7 @@ def check(label, cond, extra=""):
 
 
 # --- on charge seulement ce qu'il faut du gros fichier (pas de Qt) : section PURE + TinySA + SerialRelay
-SRC = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tinysa_monitor.py"), encoding="utf-8").read()
+SRC = __import__("_src").source()
 
 
 def chunk(start, end):

@@ -1,6 +1,6 @@
 import ast, builtins, sys
 
-src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "tinysa_monitor.py"), encoding="utf-8").read()
+src = __import__("_src").source()
 tree = ast.parse(src)
 
 # ---- 1. noms globaux non définis (approximation)
@@ -47,7 +47,7 @@ for cls in [c for c in tree.body if isinstance(c, ast.ClassDef)]:
 # voit pas (cas réel : `subprocess` absent dans _kill_tree -> la garde ne fermait jamais l'appli figée sous Windows).
 try:
     import subprocess as _sp, sys as _sys
-    _out = _sp.run([_sys.executable, "-m", "pyflakes", __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "tinysa_monitor.py")], capture_output=True, text=True).stdout
+    _out = _sp.run([_sys.executable, "-m", "pyflakes"] + [__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", f) for f in ("tsm_core.py", "tinysa_monitor.py")], capture_output=True, text=True).stdout
     _bad = [l for l in _out.splitlines() if "undefined name" in l]
     print("noms indéfinis (pyflakes) :", _bad or "aucun")
     if _bad:
