@@ -54,6 +54,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   `tests/_src.py` (`source()` = tinysa_monitor.py puis tsm_core.py). Étapes suivantes prévues : replier les enveloppes
   `_v7_… / _v8_…` dans les vraies méthodes, découper l'interface (appareils, dialogues, SDR, fenêtre) en modules,
   tests plus rapides.
+- **Nouveau nom à la 8.1 (Clément, 26/11/2026) : « RF Technical Monitor »** (sigle RFTM : le clin d'œil à « RTFM » est
+  voulu, Clément : « je kiffe »). Raisons : depuis la V8 le logiciel n'est plus que tinySA, et « tinySA » est le nom du
+  produit d'Erik Kaashoek (pas d'affiliation à laisser croire). « FreqWatch » écarté (logiciel RTL-SDR existant).
+  Recherche web rapide : pas de logiciel de ce nom (PAS une vérification de marque). À faire avec la 8.1 : APP_NAME,
+  titres, exe `RF-Technical-Monitor.exe` (workflow, build.bat, liens du README), page web, rapports, alertes, manuel,
+  lang_en ; MIGRER sans perte : `%APPDATA%\TinySAMonitor` et `Documents\TinySA Monitor` (config, shows, journaux,
+  profils), clé de démarrage Windows « TinySAMonitor », verrou d'instance, garde ; texte « compatible tinySA Ultra »
+  gardé. Dépôt GitHub : son nom reste à Clément (renommer = redirection automatique de GitHub). Dépôt PRIVÉ : le passer
+  open source (public + licence) est une décision de Clément, pas encore prise.
 - En-tête + constantes, puis la section **PURE** entre `# ===== PURE-BEGIN` et `# ===== PURE-END` : tout le code
   sans interface (formats de scan WSM/WWB, `AlarmBook`, `SweepStore`, intermodulation `im_scan`/`im_pairs`,
   occupation, seuils, export de listes, rapport HTML…). Les tests exécutent cette section seule.
