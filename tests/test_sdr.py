@@ -1031,5 +1031,19 @@ _sp = ns["audio_spec_norm"](dict(src="tone", f=1000, lvl=0))
 ok("niveau visé trop haut : gain limité par la crête, jamais d'écrêtage", ns["audio_gain"](_sp)[1]
    and ns["audio_meter"](ns["demo_audio"](_sp, np.arange(48000) / 48000.0))["peak"] < -0.2)
 
+_fs = 240000.0
+_tt = np.arange(2048) / _fs
+_bb = np.exp(1j * (2 * np.pi * 5000.0 * _tt + 3.0 * np.sin(2 * np.pi * 1000.0 * _tt))).astype(np.complex64)
+_v = ns["bb_views"](_bb, _fs)
+ok("constellation : un FM est un cercle (module 1)", abs(float(np.mean(np.hypot(_v["I"], _v["Q"]))) - 1.0) < 0.01)
+ok("fréquence instantanée : 5 kHz d'écart ± la modulation (3 kHz crête)",
+   abs(float(np.mean(_v["finst"])) - 5.0) < 0.3 and abs(float(np.max(_v["finst"])) - 8.0) < 0.3, str(np.max(_v["finst"])))
+ok("phase : repliée entre −180° et +180°", float(np.max(np.abs(_v["phase"]))) <= 180.0 and len(_v["tp"]) == len(_v["phase"]))
+_s = np.sin(2 * np.pi * 440 * np.arange(4800) / 48000.0)
+ok("goniomètre : mono = corrélation +1, inversé = −1", abs(ns["gonio_points"](_s, _s)["corr"] - 1) < 1e-6
+   and abs(ns["gonio_points"](_s, -_s)["corr"] + 1) < 1e-6)
+ok("vues des petites fenêtres gardées", ns["sdr_cfg_extra"](dict(rx_views=dict(iff="const", af="x")))["rx_views"]
+   == dict(iff="const", af="spec"))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

@@ -211,22 +211,22 @@ from tsm_core import (  # noqa: F401
     PREP_CSS, PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT,
     PROBLEM_IMPACT_DEFAULT, PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS, RECUR_KINDS,
     RECUR_LABELS, REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT, REPORT_PRO_CSS,
-    REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_ALIASES, RX_BRANDS, RX_CUSTOM,
-    RX_LIBRARY, RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD,
-    SAT_LNA_SHIFT, SAT_WARN, SCALES, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE,
-    SCREEN_PANELS, SCREEN_PRESETS, SDR_ALIASES, SDR_AUTO_DEFAULT, SDR_DEMO_KIND, SDR_DEMO_MODEL, SDR_DTYPE,
-    SDR_KINDS, SDR_LAYOUTS, SDR_MODELS, SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT, SDR_POSTS_MAX, SDR_PROBE,
-    SDR_STEPS_KHZ, SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS, SHOW_META,
-    SHURE_PORT, SIGNAL_DEFAULTS, SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES, SITE_COLORS, SLOW_CYCLE_S,
-    SNR_GOOD, SNR_LOW, SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STATE_TXT, STATION_DEFAULT, STATUS_AUTO_COLORS,
-    STATUS_HELP, STEPS, STEP_ALIAS, STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen, SweepAccum, SweepStore,
-    TECH_ACTIONS, TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL,
-    TNT_MARGIN_DB, TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS,
-    TX_RATES, Translator, UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack,
-    VRX_BUDGET, VRX_MAX, WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN,
-    WEB_VIEW_KEYS, WF_MAPS, WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _EZ, _EZ_DEV_RE,
-    _FREQ_WORDS, _G, _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR,
-    _PROBLEM_KEYS, _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM,
+    REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_AF_VIEWS, RX_ALIASES, RX_BRANDS,
+    RX_CUSTOM, RX_IF_VIEWS, RX_LIBRARY, RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler,
+    RewindBuffer, S9_DBM, SAT_BAD, SAT_LNA_SHIFT, SAT_WARN, SCALES, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS,
+    SCENE_WORDS, SCREEN_HIDE, SCREEN_PANELS, SCREEN_PRESETS, SDR_ALIASES, SDR_AUTO_DEFAULT, SDR_DEMO_KIND,
+    SDR_DEMO_MODEL, SDR_DTYPE, SDR_KINDS, SDR_LAYOUTS, SDR_MODELS, SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT,
+    SDR_POSTS_MAX, SDR_PROBE, SDR_STEPS_KHZ, SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT,
+    SHOW_KEYS, SHOW_META, SHURE_PORT, SIGNAL_DEFAULTS, SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES,
+    SITE_COLORS, SLOW_CYCLE_S, SNR_GOOD, SNR_LOW, SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STATE_TXT, STATION_DEFAULT,
+    STATUS_AUTO_COLORS, STATUS_HELP, STEPS, STEP_ALIAS, STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen,
+    SweepAccum, SweepStore, TECH_ACTIONS, TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS,
+    TNT_DEFAULT, TNT_FILL, TNT_MARGIN_DB, TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES,
+    TX_DURATIONS, TX_MAX_SIGS, TX_RATES, Translator, UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH,
+    USER_KEYS, UndoStack, VRX_BUDGET, VRX_MAX, WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS,
+    WEB_VIEWS_HIDDEN, WEB_VIEW_KEYS, WF_MAPS, WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _EZ,
+    _EZ_DEV_RE, _FREQ_WORDS, _G, _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC,
+    _OVR, _PROBLEM_KEYS, _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM,
     _TOL_LARGE, _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist,
     _clean_grid, _cp, _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _hdr_safe, _hm, _khz, _name_tokens,
     _noise_loop, _norm_hdr, _num, _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _rx_num, _sat_status,
@@ -235,8 +235,8 @@ from tsm_core import (  # noqa: F401
     alarm_explain, alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick,
     anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_gain,
     audio_int16, audio_meter, audio_ref_norm, audio_source_level, audio_source_stats, audio_spec_norm, audio_text,
-    auto_gain_pick, auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bits_dynamic,
-    blend, block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan,
+    auto_gain_pick, auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bb_views,
+    bits_dynamic, blend, block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan,
     build_report_html, bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset,
     calib_repeat, capacity_view, caps_text, chan_power, chron_group, classify_signal, clean_colors,
     compare_receivers, compare_spectra, compare_text, compress2, config_public, contrast_text, coord_blockers,
@@ -250,11 +250,11 @@ from tsm_core import (  # noqa: F401
     feature_match, festival_cfg_norm, festival_due, festival_text, find_free, find_header, flap_count, floor_curve,
     floor_track, fm_deviation, fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan,
     freq_digits, freq_list_text, freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan,
-    gen_commands, geo_km, glossary_find, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color,
-    heat_field, heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba,
-    heat_scale, heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level,
-    hunt_request, hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan,
-    im_verdict, incident_duration, incident_prune, incident_report_html, incident_slug, input_plan,
+    gen_commands, geo_km, glossary_find, gonio_points, guard_action, guard_delay, header_kind, heat_arrow,
+    heat_dir_color, heat_field, heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb,
+    heat_rgba, heat_scale, heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc,
+    hunt_level, hunt_request, hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text,
+    im_scan, im_verdict, incident_duration, incident_prune, incident_report_html, incident_slug, input_plan,
     interp_measured, iq_ci8, iq_decode, iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch,
     journal_csv_rows, json_dumps_compact, keep_text, key_dec, key_enc, label_words, layers_recolor, lc_feed,
     lc_hints, lc_new, lc_summary, lc_text, level_at, level_at_many, level_block, level_everywhere,
@@ -9666,12 +9666,44 @@ class SdrReceiverPanel(SdrPanelBase):
         sdr_light_axes(self.af_plot)
         self.af_plot.setYRange(-100, 0)
         self.af_curve = self.af_plot.plot(pen=pg.mkPen("#30d158", width=1.2))
+        # 8.1 : chaque petite fenêtre peut montrer autre chose que le spectre (phase, constellation, oscilloscope…)
+        self.if_scat = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(QtGui.QColor(acc).red(),
+                                                                             QtGui.QColor(acc).green(),
+                                                                             QtGui.QColor(acc).blue(), 140))
+        self.if_plot.addItem(self.if_scat)
+        self.af_scat = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(48, 209, 88, 140))
+        self.af_plot.addItem(self.af_scat)
+        self.af_curve2 = self.af_plot.plot(pen=pg.mkPen("#ff9f0a", width=1.0))
+        rvw = (o.sdr_cfg.get("rx_views") or {})
+        self.if_view = QtWidgets.QComboBox()
+        for k_, t_ in RX_IF_VIEWS:
+            self.if_view.addItem(TR(t_), k_)
+        self.if_view.setToolTip(TR("Ce que montre la fenêtre du canal écouté (A) :\n"
+                                   "spectre = la porteuse et ses voisins ; constellation = le signal I/Q (un FM fait un "
+                                   "cercle) ;\nphase = comment la phase bouge dans le temps ; fréquence instantanée = "
+                                   "ce que le démodulateur FM entend (la modulation)."))
+        self.af_view = QtWidgets.QComboBox()
+        for k_, t_ in RX_AF_VIEWS:
+            self.af_view.addItem(TR(t_), k_)
+        self.af_view.setToolTip(TR("Ce que montre la fenêtre du son :\n"
+                                   "spectre = les fréquences du son ; oscilloscope = la forme d'onde (G en vert, D en "
+                                   "orange) ;\ngoniomètre = la phase entre gauche et droite (trait vertical = mono, "
+                                   "horizontal = hors phase)."))
+        self.if_view.setCurrentIndex(max(0, self.if_view.findData(rvw.get("iff", "spec"))))
+        self.af_view.setCurrentIndex(max(0, self.af_view.findData(rvw.get("af", "spec"))))
+        self.if_view.currentIndexChanged.connect(lambda *_: self._views())
+        self.af_view.currentIndexChanged.connect(lambda *_: self._views())
         self.row_zoom = QtWidgets.QWidget()
         rz = QtWidgets.QHBoxLayout(self.row_zoom)
         rz.setContentsMargins(0, 0, 0, 0)
-        rz.addWidget(self.if_plot, 1)
-        rz.addWidget(self.af_plot, 1)
+        for cb_, pl_ in ((self.if_view, self.if_plot), (self.af_view, self.af_plot)):
+            col_ = QtWidgets.QVBoxLayout()
+            col_.setSpacing(2)
+            col_.addWidget(cb_)
+            col_.addWidget(pl_)
+            rz.addLayout(col_, 1)
         lay.addWidget(self.row_zoom)
+        self._views()
         # ---- outils
         self.rec_btn = QtWidgets.QPushButton("⏺ Son")
         self.rec_btn.setCheckable(True)
@@ -9748,6 +9780,50 @@ class SdrReceiverPanel(SdrPanelBase):
         a2.setChecked(e.auto()["pilot_alarm"])
         a2.triggered.connect(lambda *_, a=a2: e.set_auto(pilot_alarm=a.isChecked()))
         m.exec(QtGui.QCursor.pos())
+
+    def _views(self):
+        """8.1 : met en place les axes et les tracés de la vue choisie dans chaque petite fenêtre, et la retient."""
+        iv, av = self.if_view.currentData(), self.af_view.currentData()
+        self.owner.sdr_cfg["rx_views"] = dict(iff=iv, af=av)
+        pi, pa = self.if_plot.getPlotItem(), self.af_plot.getPlotItem()
+        self.if_curve.setData([], [])
+        self.if_scat.setData([], [])
+        self.if_band.setVisible(iv == "spec")
+        self.if_scat.setVisible(iv in ("const", "phase"))
+        self.if_curve.setVisible(iv not in ("const", "phase"))
+        self.if_curve.setFillLevel(None if iv != "spec" else 0.0)
+        pi.setAspectLocked(iv == "const")
+        pi.enableAutoRange(axis="y", enable=True)
+        pi.enableAutoRange(axis="x", enable=True)
+        if iv == "const":
+            pi.setXRange(-2, 2, padding=0)
+            pi.setYRange(-2, 2, padding=0)
+            pi.disableAutoRange()
+        elif iv == "phase":
+            pi.setYRange(-180, 180, padding=0.02)
+            pi.enableAutoRange(axis="y", enable=False)
+        self.if_plot.setLabel("bottom", TR({"spec": "kHz autour de A", "const": "I / Q (normalisés)",
+                                            "phase": "ms · phase (degrés)", "finst": "ms · kHz (écart de fréquence)"}[iv]))
+        self.af_curve.setData([], [])
+        self.af_curve2.setData([], [])
+        self.af_scat.setData([], [])
+        self.af_scat.setVisible(av == "gonio")
+        self.af_curve.setVisible(av != "gonio")
+        self.af_curve2.setVisible(av == "scope")
+        pa.setAspectLocked(av == "gonio")
+        if av == "spec":
+            pa.enableAutoRange(axis="x", enable=True)
+            pa.setYRange(-100, 0)
+            self.af_plot.setLabel("bottom", TR("kHz (son)"))
+        elif av == "scope":
+            pa.enableAutoRange(axis="x", enable=True)
+            pa.setYRange(-1, 1)
+            self.af_plot.setLabel("bottom", TR("ms (vert = G, orange = D)"))
+        else:
+            pa.setXRange(-1, 1, padding=0)
+            pa.setYRange(-1, 1, padding=0)
+            pa.disableAutoRange()
+            self.af_plot.setLabel("bottom", TR("goniomètre G/D"))
 
     def _af_post_set(self, on):
         self.af_post.setText("POST" if on else "PRÉ")
@@ -9949,13 +10025,40 @@ class SdrReceiverPanel(SdrPanelBase):
         F, L = np.asarray(fr["F"]), np.asarray(fr["avg"])
         bw = max(0.012, expected_obw_khz(e.demod.get("mode", "wfm")) / 1000.0)
         sel = np.abs(F - e.a) <= 1.5 * bw
+        iv, av = self.if_view.currentData(), self.af_view.currentData()
+        if iv != "spec":                                   # 8.1 : vues de phase du canal
+            v = bb_views(fr.get("bb") if fr.get("bb") is not None else [], fr.get("bb_fs") or 0)
+            if v is not None:
+                if iv == "const":
+                    self.if_scat.setData(v["I"], v["Q"])
+                elif iv == "phase":
+                    self.if_scat.setData(v["tp"], v["phase"])
+                else:
+                    self.if_curve.setData(v["tf"], v["finst"])
+            sel = np.zeros(0, dtype=bool)
         if sel.sum() > 3:
             x = (F[sel] - e.a) * 1000.0
             self.if_curve.setFillLevel(float(np.min(L[sel])))      # remplissage depuis le bruit, pas depuis −160
             self.if_curve.setData(x, L[sel])
             self.if_band.setRegion((-bw * 500.0, bw * 500.0))
         now = time.time()
-        if now - self._t_af >= 0.2 and e.af:                   # spectre du son (dernier ~0,1 s)
+        if now - self._t_af >= 0.2 and e.af and av != "spec":  # 8.1 : oscilloscope / goniomètre du son
+            self._t_af = now
+            a = np.frombuffer(b"".join(list(e.af)[-3:]), dtype="<i2").astype(np.float32) / 32768.0
+            if len(a) >= 2048:
+                st_ = a.reshape(-1, 2)
+                if av == "scope":
+                    seg = st_[-960:]                           # 20 ms
+                    tt = np.arange(len(seg)) / LISTEN_RATE * 1000.0
+                    self.af_curve.setData(tt, seg[:, 0])
+                    self.af_curve2.setData(tt, seg[:, 1])
+                else:
+                    g = gonio_points(st_[-4800:, 0], st_[-4800:, 1])
+                    if g is not None:
+                        self.af_scat.setData(g["x"], g["y"])
+                        self.af_plot.setLabel("bottom", TR("corrélation G/D {}").format(
+                            f"{g['corr']:+.2f}".replace(".", ",")))
+        elif now - self._t_af >= 0.2 and e.af:                 # spectre du son (dernier ~0,1 s)
             self._t_af = now
             a = np.frombuffer(b"".join(list(e.af)[-3:]), dtype="<i2").astype(np.float32)
             if len(a) >= 1024:
@@ -10851,6 +10954,8 @@ class RealtimeWorker(QtCore.QThread):
                                      dprof=dict(getattr(dem, "prof", None) or {}),
                                      dur=total / self.rate if fh is not None else 0.0,
                                      pilot=None if dem is None else dem.pilot, lv_a=lv_a, lv_b=lv_b,
+                                     bb=None if dem is None or getattr(dem, "last_bb", None) is None
+                                     else dem.last_bb.copy(), bb_fs=None if dem is None else dem.fs1,
                                      health=None if dem is None else dem.health,
                                      rec=None if self.rec is None else (self.rec["n"], time.time() - self.rec["t0"])))
                 if fh is not None:                               # au rythme réel (× vitesse)

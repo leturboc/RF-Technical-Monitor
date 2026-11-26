@@ -6933,6 +6933,8 @@ class ChannelDemod:
         t0 = self._tp("mix", t0)
         y = self.f1(x)
         t0 = self._tp("filtre", t0)
+        if len(y):
+            self.last_bb = y[-2048:]                 # 8.1 : le canal en bande de base (constellation, phase)
         if not len(y):
             return np.zeros(0, dtype=np.float32), self.level
         pw = float(np.mean(np.abs(y) ** 2))
@@ -7610,6 +7612,10 @@ def sdr_cfg_extra(sd):
         out["audio_dev"] = str(sd.get("audio_dev") or "")[:200]
     if "af_post" in sd:                                # 8.1 : vu-mètre du son avant / après le volume
         out["af_post"] = bool(sd.get("af_post"))
+    if isinstance(sd.get("rx_views"), dict):            # 8.1 : vues des 2 petites fenêtres du Récepteur
+        rv = sd["rx_views"]
+        out["rx_views"] = dict(iff=rv.get("iff") if rv.get("iff") in dict(RX_IF_VIEWS) else "spec",
+                               af=rv.get("af") if rv.get("af") in dict(RX_AF_VIEWS) else "spec")
     if sd.get("meter_style") in dict(METER_STYLES):     # 8.1 : vu-mètre RF en aiguille ou en barre
         out["meter_style"] = sd["meter_style"]
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
@@ -13801,6 +13807,47 @@ def fmt_audio(dbfs, ref, unit=None, nd=1):
         return (f"{v * 1000:.0f} mV" if v < 0.1 else f"{v:.3f} V").replace(".", ",")
     sfx = dict(AUDIO_UNITS).get(unit, "dBFS")
     return f"{v:+.{nd}f} {sfx}".replace(".", ",")
+
+
+RX_IF_VIEWS = (("spec", "Spectre du canal"), ("const", "Constellation I/Q"), ("phase", "Phase dans le temps"),
+               ("finst", "Fréquence instantanée (FM)"))
+RX_AF_VIEWS = (("spec", "Spectre du son"), ("scope", "Oscilloscope"), ("gonio", "Goniomètre (phase G/D)"))
+
+
+def bb_views(bb, fs):
+    """8.1 : vues « phase » du canal en bande de base (complexe, fs Hz) -> dict : const (I, Q normalisés, ≤ 800
+    points), phase (ms, degrés : phase déroulée moins sa pente = l'écart de fréquence retiré), finst (ms, kHz :
+    fréquence instantanée = ce que le démodulateur FM entend)."""
+    bb = np.asarray(bb, dtype=np.complex64)
+    if len(bb) < 8 or fs <= 0:
+        return None
+    a = float(np.sqrt(np.mean(np.abs(bb) ** 2))) or 1.0
+    k = max(1, len(bb) // 800)
+    z = bb[::k] / a
+    t = np.arange(len(bb)) / float(fs) * 1000.0
+    ph = np.unwrap(np.angle(bb).astype(np.float64))
+    if len(ph) > 2:
+        ph = ph - np.polyval(np.polyfit(t, ph, 1), t)
+    ph = (ph + math.pi) % (2 * math.pi) - math.pi    # repliée entre −180° et +180° (lisible même pour un FM large)
+    fi = np.diff(np.unwrap(np.angle(bb).astype(np.float64))) * float(fs) / (2 * math.pi) / 1000.0
+    k2 = max(1, len(t) // 1500)
+    return dict(I=z.real.astype(np.float32), Q=z.imag.astype(np.float32), t=t.astype(np.float32),
+                tp=t[::k2].astype(np.float32), phase=np.degrees(ph[::k2]).astype(np.float32), tf=t[1:].astype(np.float32), finst=fi.astype(np.float32))
+
+
+def gonio_points(L, R):
+    """8.1 : goniomètre (vectorscope) d'un son stéréo : x = (G − D)/√2, y = (G + D)/√2 (mono = trait vertical, hors
+    phase = trait horizontal), et corrélation G/D (+1 = mono, 0 = large, −1 = inversé)."""
+    L = np.asarray(L, dtype=np.float32)
+    R = np.asarray(R, dtype=np.float32)
+    n = min(len(L), len(R))
+    if n < 8:
+        return None
+    L, R = L[:n], R[:n]
+    den = float(np.sqrt(np.sum(L * L) * np.sum(R * R)))
+    corr = float(np.sum(L * R) / den) if den > 0 else 0.0
+    k = max(1, n // 1200)
+    return dict(x=((L - R) / math.sqrt(2.0))[::k], y=((L + R) / math.sqrt(2.0))[::k], corr=corr)
 
 
 METER_STYLES = (("analog", "🕐 Aiguille (vu-mètre analogique)"), ("bar", "▬ Barre (vu-mètre linéaire)"))

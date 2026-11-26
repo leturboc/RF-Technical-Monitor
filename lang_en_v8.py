@@ -1971,3 +1971,15 @@ EXACT["spectre {} · démod {} · reste {} ms/50"] = "spectrum {} · demod {} ·
 EXACT["spectre allégé (PC à la peine), son prioritaire"] = "lighter spectrum (PC struggling), sound first"
 EXACT.update({"FM": "FM", "pilote+santé": "pilot+health", "mix": "mix", "filtre": "filter", "compander": "compander"})
 EXACT["Volume. Double-clic = 100 % (0 dB)."] = "Volume. Double-click = 100 % (0 dB)."
+EXACT.update({                                      # 8.1 : vues de phase du Récepteur
+    "Ce que montre la fenêtre du canal écouté (A) :\nspectre = la porteuse et ses voisins ; constellation = le signal I/Q (un FM fait un cercle) ;\nphase = comment la phase bouge dans le temps ; fréquence instantanée = ce que le démodulateur FM entend (la modulation).":
+        "What the listened channel window (A) shows:\nspectrum = the carrier and its neighbours; constellation = the I/Q signal (FM draws a circle);\nphase = how the phase moves over time; instantaneous frequency = what the FM demodulator hears (the modulation).",
+    "Ce que montre la fenêtre du son :\nspectre = les fréquences du son ; oscilloscope = la forme d'onde (G en vert, D en orange) ;\ngoniomètre = la phase entre gauche et droite (trait vertical = mono, horizontal = hors phase).":
+        "What the sound window shows:\nspectrum = the frequencies of the sound; oscilloscope = the waveform (L in green, R in orange);\ngoniometer = the phase between left and right (vertical line = mono, horizontal = out of phase).",
+    "Constellation I/Q": "I/Q constellation", "Fréquence instantanée (FM)": "Instantaneous frequency (FM)",
+    "Goniomètre (phase G/D)": "Goniometer (L/R phase)", "I / Q (normalisés)": "I / Q (normalised)",
+    "Oscilloscope": "Oscilloscope", "Phase dans le temps": "Phase over time", "Spectre du canal": "Channel spectrum",
+    "Spectre du son": "Sound spectrum", "corrélation G/D {}": "L/R correlation {}", "goniomètre G/D": "L/R goniometer",
+    "ms (vert = G, orange = D)": "ms (green = L, orange = R)",
+    "ms · phase (degrés)": "ms · phase (degrees)", "ms · kHz (écart de fréquence)": "ms · kHz (frequency offset)",
+})

@@ -1756,6 +1756,15 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   décimation réécrit en POLYPHASE (D `np.convolve`, résultat identique au 1e-6 près) : plus AUCUN produit de matrices
   (OpenBLAS) dans la chaîne du SDR ; `ChannelDemod.prof` (ms par étape : mix, filtre, FM, audio, pilote+santé,
   compander, via `_tp`) envoyé dans la trame (`dprof`) et écrit entre parenthèses après « reste ». **Pas vérifié chez lui.**
+  **Résultat chez Clément (21:19) : charge 30 %, l'appli à 27 % du processeur (49 % avant)** : c'était bien OpenBLAS.
+  Ensuite : vu-mètre du son PRÉ / POST (`af_post`, sdr_cfg « af_post »), volume gradué + valeur « 140 % · +2,9 dB »
+  (`vol_lbl`, double-clic = 100 %, `eventFilter`), générateur : champ « Gain » (à la main ou calculé).
+  **Petites fenêtres du Récepteur au choix** (Clément : « voir la phase ») : PURE `RX_IF_VIEWS` (spec, const = constellation
+  I/Q normalisée, phase = phase repliée ±180° après retrait de l'écart de fréquence, finst = fréquence instantanée kHz),
+  `RX_AF_VIEWS` (spec, scope = oscilloscope G/D 20 ms, gonio = goniomètre (G−D)/√2, (G+D)/√2 + corrélation),
+  `bb_views(bb, fs)`, `gonio_points(L, R)` ; `ChannelDemod.last_bb` (2 048 échantillons du canal à ~240 kHz) envoyé dans la
+  trame (`bb`, `bb_fs`) ; panneau : combos `if_view` / `af_view`, `_views()` (axes, tracés, sdr_cfg « rx_views »),
+  `if_scat` / `af_scat` / `af_curve2`. Manuel : chapitre sdr-poste.
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.
