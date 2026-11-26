@@ -6411,21 +6411,35 @@ class AudioOut:
                 self.error = "aucune sortie son trouvée"
                 return
             self.sink = QtMultimedia.QAudioSink(dev, fmt, parent)
-            self.sink.setBufferSize(LISTEN_RATE * 4 // 4)        # 250 ms (stéréo 16 bits)
+            self.sink.setBufferSize(LISTEN_RATE * 4 // 2)        # 500 ms demandés (Windows peut en donner moins)
             self.io = self.sink.start()
         except Exception as e:  # noqa: BLE001
             self.error = f"sortie son indisponible ({e})"
             self.sink = self.io = None
 
+    MAX_LAG = LISTEN_RATE * 4 * 6 // 10                          # 0,6 s d'avance au plus (octets, stéréo 16 bits)
+
     def feed(self, q):
-        """Écrit ce qui tient dans le tampon ; jette le retard au-delà de ~0,5 s (pas d'écho qui s'accumule)."""
-        while len(q) > 25:
-            q.popleft()
+        """Remplit TOUT l'espace libre de la carte son, quitte à couper un morceau (8.1, Clément : « toujours saccadé ») :
+        avant, un morceau n'était écrit que s'il tenait en entier -> sous Windows (tampon à peine plus grand qu'un
+        morceau) la carte tombait à sec à chaque fois. Le retard au-delà de 0,6 s est jeté (pas d'écho qui grandit)."""
         if self.io is None:
             q.clear()
             return
-        while q and self.sink.bytesFree() >= len(q[0]):
-            self.io.write(q.popleft())
+        queued = sum(map(len, list(q)))                           # instantané : l'interface ajoute en même temps
+        while q and queued > self.MAX_LAG:
+            queued -= len(q.popleft())
+        free = self.sink.bytesFree()
+        free -= free % 4                                          # trames entières (2 voies × 16 bits)
+        while q and free > 0:
+            b = q[0]
+            n = min(len(b), free)
+            self.io.write(bytes(b[:n]))
+            free -= n
+            if n < len(b):
+                q[0] = b[n:]
+            else:
+                q.popleft()
 
     def close(self):
         if self.sink is not None:
@@ -6434,6 +6448,33 @@ class AudioOut:
             except Exception:  # noqa: BLE001
                 pass
         self.sink = self.io = None
+
+
+class AudioPump(QtCore.QThread):
+    """8.1 (Clément : « l'audio saccade sur un micro du SDR, pas en Écouter ici ») : la carte son est nourrie par SON
+    fil, indépendant de l'interface. Avant, un spectre / waterfall un peu lent à redessiner retardait l'envoi et la
+    carte tombait à sec. La file `q` (deque) est remplie par l'interface, vidée ici (opérations de deque atomiques)."""
+
+    def __init__(self, q):
+        super().__init__()
+        self.q, self.out, self.error = q, None, ""
+
+    def run(self):
+        self.out = AudioOut(None)
+        self.error = self.out.error
+        tm = QtCore.QTimer()
+        tm.timeout.connect(lambda: self.out.feed(self.q))
+        tm.start(5)
+        self.exec()
+        tm.stop()
+        self.out.close()
+
+    def feed(self, q):
+        pass                                             # c'est le fil qui nourrit la carte
+
+    def close(self):
+        self.quit()
+        self.wait(2000)
 
 
 class ListenDialog(QtWidgets.QDialog):
@@ -6676,7 +6717,7 @@ class ListenDialog(QtWidgets.QDialog):
         if self.audio.error:
             self.st_lbl.setText(f"⚠ {self.audio.error} : les niveaux s'affichent quand même.")
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)   # le temps de libérer le SDR
-        self.timer.start(20)
+        self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         self.go_btn.setText("■ Arrêter")
         for wd in (self.dev_combo, self.pre_combo, self.mode_combo, self.comp_combo, self.de_combo, self.sq_spin,
                    self.table):
@@ -7521,7 +7562,7 @@ class MultiMonitorDialog(QtWidgets.QDialog):
         if o.sdr_cfg.get("shure") and not getattr(o, "_shure", None):       # étape 11 : récepteurs pour comparer
             o.receivers_start(o.sdr_cfg["shure"])
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)
-        self.timer.start(20)
+        self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         self.go_btn.setText("■ Arrêter")
         self.dev_combo.setEnabled(False)
 
@@ -8572,8 +8613,9 @@ class SdrEngine(QtCore.QObject):
         w.stopped.connect(lambda why, w_=w: self._stopped(why) if w_ is self.worker else None)
         w.status.connect(lambda t, w_=w: self._say(t) if w_ is self.worker else None)
         if self.audio is None:
-            self.audio = AudioOut(self.owner)
-        self.timer.start(20)
+            self.audio = AudioPump(self.q)              # 8.1 : son nourri par son propre fil
+            self.audio.start()
+        self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         if kind == "demo":                              # étape 21 : le SDR démo connaît tout de suite tes micros
             self._t_demo = time.time()
             sdr_demo_set(plan=demo_sdr_plan(o.demo_mics()))
@@ -8724,11 +8766,13 @@ class SdrEngine(QtCore.QObject):
                 pass
         self._fr_pend = fr
         if not getattr(self, "_fr_sched", False):
-            self._fr_sched = True
-            QtCore.QTimer.singleShot(0, self._frame_go)
+            self._fr_sched = True                       # 8.1 : 12 images / s au plus (l'œil ne voit pas plus, et le
+            wait = max(0.0, 0.083 - (time.monotonic() - getattr(self, "_fr_last", 0.0)))   # PC garde de la marge)
+            QtCore.QTimer.singleShot(int(wait * 1000), self._frame_go)
 
     def _frame_go(self):
         self._fr_sched = False
+        self._fr_last = time.monotonic()
         fr, self._fr_pend = getattr(self, "_fr_pend", None), None
         if fr is not None and self.worker is not None:
             self._frame(fr)
@@ -10861,7 +10905,7 @@ class RealtimeDialog(QtWidgets.QDialog):
         self.plot.getPlotItem().setXRange(lo, hi, padding=0)
         self._marks(lo, hi)
         QtCore.QTimer.singleShot(300 if self.paused else 0, self.worker.start)
-        self.timer.start(20)
+        self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         self.go_btn.setText("■ Arrêter")
         for wd in (self.dev_combo, self.center_spin, self.rate_combo, self.nfft_combo, self.open_btn):
             wd.setEnabled(False)
