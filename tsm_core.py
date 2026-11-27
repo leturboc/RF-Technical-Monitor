@@ -13718,6 +13718,7 @@ SCREEN_PANELS = (
     ("dock_sdr_spec", "sdr", "📡 SDR · Spectre"),
     ("dock_sdr_wf", "sdr", "📡 SDR · Waterfall"),
     ("dock_sdr_mics", "sdr", "📡 SDR · Mes micros"),
+    ("dock_sdr_diag", "sdr", "📡 SDR · Diagnostic"),
     ("dock_lab_chain", "lab", "🧪 Labo · Chaîne complète"),        # 8.2 : labo SDR en panneaux
     ("dock_lab_cmp", "lab", "🧪 Labo · Compandeurs"),
     ("dock_lab_live", "lab", "🧪 Labo · En direct (SDR)"),
@@ -13870,8 +13871,8 @@ def fmt_audio(dbfs, ref, unit=None, nd=1):
     return f"{v:+.{nd}f} {sfx}".replace(".", ",")
 
 
-RX_IF_VIEWS = (("spec", "Spectre du canal"), ("const", "Constellation I/Q"), ("phase", "Phase dans le temps"),
-               ("finst", "Fréquence instantanée (FM)"))
+RX_IF_VIEWS = (("spec", "Spectre du canal"), ("const", "Constellation I/Q"), ("iq", "I et Q dans le temps"),
+               ("phase", "Phase dans le temps"), ("finst", "Fréquence instantanée (FM)"))
 RX_AF_VIEWS = (("spec", "Spectre du son"), ("scope", "Oscilloscope"), ("gonio", "Goniomètre (phase G/D)"))
 
 
@@ -13892,7 +13893,7 @@ def bb_views(bb, fs):
     ph = (ph + math.pi) % (2 * math.pi) - math.pi    # repliée entre −180° et +180° (lisible même pour un FM large)
     fi = np.diff(np.unwrap(np.angle(bb).astype(np.float64))) * float(fs) / (2 * math.pi) / 1000.0
     k2 = max(1, len(t) // 1500)
-    return dict(I=z.real.astype(np.float32), Q=z.imag.astype(np.float32), t=t.astype(np.float32),
+    return dict(I=z.real.astype(np.float32), Q=z.imag.astype(np.float32), t=t.astype(np.float32), ti=t[::k][:len(z)].astype(np.float32),
                 tp=t[::k2].astype(np.float32), phase=np.degrees(ph[::k2]).astype(np.float32), tf=t[1:].astype(np.float32), finst=fi.astype(np.float32))
 
 
@@ -14328,7 +14329,8 @@ def lab_modulations(audio="melody", k=0):
 # Pannes à injecter dans le SDR démo en DIRECT (DemoIQ) : ce que l'appli doit détecter
 DEMO_FAULTS = (("drop", "Blocs perdus (USB qui sature)"), ("stall", "Flux figé 3 s"), ("sat", "Saturation"),
                ("unplug", "SDR débranché"), ("jam", "Brouilleur sur un micro"), ("pilot", "Pilotes coupés"),
-               ("noise", "Bruit fort (antenne loin)"))
+               ("noise", "Bruit fort (antenne loin)"), ("nosrc", "Source audio indisponible"),
+               ("badts", "Horodatages incohérents"))
 DEMO_FAULT_HELP = {
     "drop": "Le SDR démo perd 20 % de ses échantillons : la ligne « Flux » du poste passe en orange (échantillons perdus).",
     "stall": "Le flux s'arrête 3 s : « Flux » signale une coupure, le moniteur grise ses mesures.",
@@ -14337,6 +14339,10 @@ DEMO_FAULT_HELP = {
     "jam": "Un brouilleur se pose sur le 1er micro : alarme CONFLIT / son qui grésille.",
     "pilot": "Tous les pilotes s'arrêtent : alarme PILOTE sur les micros dont le pilote est appris.",
     "noise": "Le bruit monte de 20 dB : marges qui fondent, micros « faibles ».",
+    "nosrc": "Le son qui module les micros démo disparaît (fichier introuvable) : porteuse là, mais plus rien à "
+             "entendre ; le poste le signale (« porteuse sans son ») et l'historique le note.",
+    "badts": "L'heure des données saute en arrière de temps en temps : « Flux » compte les horodatages incohérents "
+             "(sur un vrai PC : horloge recalée, mise en veille).",
 }
 
 
@@ -14353,6 +14359,12 @@ def stream_quality(q, ovf=0.0, tr=None):
     if q.get("gaps"):
         parts.append(tr("{} coupure(s) du flux").format(q["gaps"]))
         tone = "bad"
+    if q.get("invalid"):
+        parts.append(tr("{} échantillons invalides").format(q["invalid"]))
+        tone = "bad"
+    if q.get("badts"):
+        parts.append(tr("{} horodatage(s) incohérent(s)").format(q["badts"]))
+        tone = "bad" if tone == "bad" else "warn"
     if ovf and ovf > 0.001:
         parts.append(tr("saturation {} %").format(f"{100 * ovf:.1f}"))
         tone = "bad" if ovf > 0.01 else ("warn" if tone == "ok" else tone)
@@ -14370,12 +14382,31 @@ class StreamStats:
         self.t0 = self.tl = None
         self.got = deque()
         self.gaps = deque()
+        self.invalid = 0                # échantillons non finis (NaN / inf) depuis le départ
+        self.badts = 0                  # horodatages qui reculent (horloge incohérente)
+        self.total = 0
 
-    def feed(self, t, n):
+    def feed(self, t, n, invalid=0):
+        self.invalid += int(invalid)
+        self.total += int(n)
         if self.t0 is None:
             self.t0 = self.tl = t
             self.got.append((t, n))
             return
+        if t < self.tl - 0.05:          # l'heure recule : comptée UNE fois ; les échantillons restent comptés, sans
+            if not getattr(self, "_back", 0):    # croire cette heure (sinon fausses pertes / fausse coupure)
+                self.badts += 1
+            self._back = getattr(self, "_back", 0) + 1
+            if self._back < 3:
+                tl, n0 = self.got[-1]
+                self.got[-1] = (tl, n0 + n)
+                return
+            self.got.clear()            # l'horloge a vraiment changé (recalage du PC) : on repart d'elle
+            self.tl = t
+            self.got.append((t, n))
+            self._back = 0
+            return
+        self._back = 0
         if t - self.tl > self.gap_s:
             self.gaps.append(t)
         self.tl = t
@@ -14386,14 +14417,17 @@ class StreamStats:
             self.gaps.popleft()
 
     def view(self):
+        base = dict(lost=None, gaps=len(self.gaps), invalid=self.invalid, badts=self.badts, rate=None,
+                    total=self.total)
         if len(self.got) < 3:
-            return dict(lost=None, gaps=len(self.gaps))
+            return base
         t0, t1 = self.got[0][0], self.got[-1][0]
         if t1 - t0 < 1.0:
-            return dict(lost=None, gaps=len(self.gaps))
+            return base
         got = sum(n for _t, n in list(self.got)[1:])
         exp = self.rate * (t1 - t0)
-        return dict(lost=max(0.0, 100.0 * (1.0 - got / exp)) if exp > 0 else None, gaps=len(self.gaps))
+        base.update(lost=max(0.0, 100.0 * (1.0 - got / exp)) if exp > 0 else None, rate=got / (t1 - t0))
+        return base
 
 
 def sdr_compat_rows():
@@ -14835,6 +14869,210 @@ def comp_report_html(res, tr=None, title="RF Compander Lab — rapport comparati
             "Pente mesurée entre −40 et 0 dBFS ; sous −40 dBFS, le genou (ENR) et les butées changent le comportement.",
             "Temps de montée / descente : à 1 dB près du niveau posé, après un saut de 20 dB à 1 kHz.")) + "</ul>")
     return "\n".join(h)
+
+
+
+
+# ----- 8.2 : poste SDR réel — historique des événements, porteuse sans son, sessions, référence, scénarios du labo
+SDR_EVENTS = {   # type -> (libellé, gravité ok|info|warn|bad)
+    "start": ("Poste démarré", "info"), "stop": ("Poste arrêté", "info"), "lost": ("SDR perdu", "bad"),
+    "retry": ("Reconnexion", "warn"), "back": ("SDR revenu", "ok"),
+    "drop_on": ("Échantillons perdus", "warn"), "drop_off": ("Plus de pertes", "ok"),
+    "gap": ("Coupure du flux", "bad"), "sat_on": ("Saturation de l'entrée", "bad"), "sat_off": ("Saturation finie", "ok"),
+    "invalid": ("Échantillons invalides", "bad"), "badts": ("Horodatage incohérent", "warn"),
+    "mute_on": ("Porteuse sans son", "warn"), "mute_off": ("Le son revient", "ok"),
+    "tune": ("Réglage de A", "info"), "fault": ("Panne simulée", "info"),
+}
+SDR_HIST_MAX = 2000
+MUTE_HOLD_S = 3.0               # porteuse là mais plus de son depuis 3 s -> « porteuse sans son »
+MUTE_AUDIO_DB = -55.0           # son plus bas que ça = rien à entendre
+MUTE_CARRIER_DB = 15.0          # porteuse = canal ≥ 15 dB au-dessus du bruit de la fenêtre
+
+
+def sdr_quality_events(st, q, ovf, now):
+    """Transitions de la qualité du flux -> événements. st = dict (gardé par l'appelant), q = StreamStats.view(),
+    ovf = part d'échantillons à pleine échelle. -> [(type, texte)]."""
+    q = q or {}
+    ev = []
+    lost = q.get("lost")
+    if lost is not None:
+        on = lost >= 0.5
+        if on != st.get("drop", False):
+            st["drop"] = on
+            ev.append(("drop_on", f"{lost:.1f} %") if on else ("drop_off", ""))
+    for k_, typ in (("gaps", "gap"), ("invalid", "invalid"), ("badts", "badts")):
+        v = int(q.get(k_) or 0)
+        if k_ == "gaps":                          # coupures : compte glissant, on note chaque nouvelle
+            if v > st.get("gaps_seen", 0):
+                ev.append((typ, ""))
+            st["gaps_seen"] = v
+        elif v > st.get(k_, 0):
+            ev.append((typ, str(v - st.get(k_, 0))))
+            st[k_] = v
+    son = bool(ovf and ovf > 0.001)
+    if son != st.get("sat", False):
+        st["sat"] = son
+        ev.append(("sat_on", f"{100 * ovf:.1f} %") if son else ("sat_off", ""))
+    return ev
+
+
+def mute_check(st, carrier_db, audio_db, now):
+    """Porteuse sans son : le canal de A dépasse le bruit de `carrier_db` dB mais le son reste sous MUTE_AUDIO_DB
+    pendant MUTE_HOLD_S. -> "on" | "off" | None (pas de changement). Sert en vrai (pack en mute, micro débranché du
+    pack) et dans la démo (panne « source audio indisponible »)."""
+    silent = carrier_db is not None and carrier_db >= MUTE_CARRIER_DB and audio_db is not None and audio_db < MUTE_AUDIO_DB
+    if silent:
+        st.setdefault("t0", now)
+        if not st.get("on") and now - st["t0"] >= MUTE_HOLD_S:
+            st["on"] = True
+            return "on"
+        return None
+    st.pop("t0", None)
+    if st.get("on") and audio_db is not None and audio_db >= MUTE_AUDIO_DB:
+        st["on"] = False
+        return "off"
+    if st.get("on") and (carrier_db is None or carrier_db < MUTE_CARRIER_DB):
+        st["on"] = False                          # plus de porteuse : ce n'est plus « sans son »
+        return "off"
+    return None
+
+
+def sdr_event(kind, text="", t=None, ctx=None, sim=False):
+    lab, sev = SDR_EVENTS.get(kind, (kind, "info"))
+    return dict(t=t, kind=kind, label=lab, sev=sev, text=text, ctx=dict(ctx or {}), sim=bool(sim))
+
+
+SDR_SESSION_HEAD = ("heure", "A (MHz)", "niveau A (dBFS)", "pertes (%)", "coupures", "saturation (%)", "charge (%)",
+                    "simulé")
+SDR_EVENTS_HEAD = ("heure", "type", "détail", "A (MHz)", "niveau A (dBFS)", "simulé")
+
+
+def sdr_session_row(t, a, lv, q, ovf, load, sim):
+    q = q or {}
+    return [_fmt_ts(t, '%H:%M:%S'), "" if a is None else f"{a:.4f}", "" if lv is None else f"{lv:.1f}",
+            "" if q.get("lost") is None else f"{q['lost']:.2f}", str(q.get("gaps") or 0),
+            f"{100 * (ovf or 0):.2f}", f"{100 * (load or 0):.0f}", "oui" if sim else "non"]
+
+
+def sdr_event_row(e):
+    c = e.get("ctx") or {}
+    return [_fmt_ts(e["t"], '%H:%M:%S'), e["label"], e.get("text", ""), "" if c.get("a") is None else f"{c['a']:.4f}",
+            "" if c.get("lv") is None else f"{c['lv']:.1f}", "oui" if e.get("sim") else "non"]
+
+
+def sdr_session_html(meta, rows, events, tr=None):
+    """Rapport d'une session du poste SDR : conditions, provenance (simulé / observé), courbes (niveau de A, pertes,
+    charge), tableau des événements. rows = [[t, a, lv, lost, gaps, ovf%, load%]] (nombres), events = sdr_event."""
+    tr = tr or (lambda s: s)
+    from html import escape as e
+    sim = bool(meta.get("sim"))
+    t_m = rows[-1][0] if rows else 0.0
+    ser = [(tr("niveau A (dBFS)"), "#0a84ff", [(r[0], r[2]) for r in rows]),
+           (tr("pertes (%)"), "#ff9f0a", [(r[0], r[3]) for r in rows]),
+           (tr("charge (%)"), "#8e8e93", [(r[0], r[6]) for r in rows])]
+    css = ("body{font-family:-apple-system,Segoe UI,Arial,Helvetica;max-width:1000px;margin:24px auto;color:#1c1c1e;"
+           "padding:0 16px}h1{font-size:22px}h2{font-size:17px;margin-top:24px}table{border-collapse:collapse;"
+           "width:100%;font-size:13px}td,th{border:1px solid #d1d1d6;padding:4px 7px;text-align:left}th{background:"
+           "#f2f2f7}.prov{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5f1ff;font-size:12px}"
+           ".bad{color:#d70015}.warn{color:#c93400}.ok{color:#248a3d}")
+    h = [f"<!doctype html><meta charset='utf-8'><title>{e(tr('Session du poste SDR'))}</title><style>{css}</style>",
+         f"<h1>{e(tr('Session du poste SDR'))} — {e(str(meta.get('name', '')))}</h1>",
+         f"<p><span class='prov'>{e(tr(PROVENANCE['sim' if sim else 'obs']))}</span> · {e(str(meta.get('model', '')))} · "
+         f"{e(_fmt_ts(meta.get('t0') or 0, '%d/%m/%Y %H:%M:%S'))} → {e(_fmt_ts(meta.get('t1') or 0, '%H:%M:%S'))}</p>"]
+    if sim:
+        h.append("<p class='warn'>" + e(tr("Données SIMULÉES (SDR démo) : rien de tout ça n'a été mesuré sur un vrai "
+                                           "récepteur.")) + "</p>")
+    n_ev = {}
+    for ev in events:
+        n_ev[ev["kind"]] = n_ev.get(ev["kind"], 0) + 1
+    h.append(f"<h2>{e(tr('Résumé'))}</h2><ul>")
+    h.append("".join(f"<li>{e(tr(SDR_EVENTS.get(k, (k,))[0]))} : {v}</li>" for k, v in sorted(n_ev.items())) or
+             f"<li>{e(tr('Aucun événement'))}</li>")
+    h.append("</ul>")
+    if rows:
+        h.append(f"<h2>{e(tr('Dans le temps'))}</h2>" + _svg_series(ser, t_m, unit=""))
+    h.append(f"<h2>{e(tr('Événements'))}</h2><table><tr>" + "".join(f"<th>{e(tr(x))}</th>" for x in SDR_EVENTS_HEAD)
+             + "</tr>")
+    for ev in events[-500:]:
+        r = sdr_event_row(ev)
+        h.append(f"<tr class='{ev['sev']}'>" + "".join(f"<td>{e(tr(str(x)))}</td>" for x in r) + "</tr>")
+    h.append("</table>")
+    h.append("<p style='color:#8e8e93;font-size:12px'>" + e(tr("« Pertes » = échantillons que le SDR n'a pas livrés "
+             "(USB, PC qui ne suit pas). « Saturation » = échantillons à pleine échelle (entrée trop forte). Un "
+             "événement n'est pas forcément une panne : à recouper avec ce que tu entendais.")) + "</p>")
+    return "\n".join(h)
+
+
+class RefCompare:
+    """Comparaison à une référence SANS confondre différence et anomalie : on apprend la variation normale du spectre
+    (écart-type glissant par case) ; un écart n'est « notable » que s'il dépasse max(6 dB, 3 σ)."""
+
+    def __init__(self, alpha=0.1):
+        self.alpha, self.mu, self.var = alpha, None, None
+
+    def feed(self, L):
+        L = np.asarray(L, dtype=float)
+        if self.mu is None or len(self.mu) != len(L):
+            self.mu, self.var = L.copy(), np.full(len(L), 4.0)
+            return
+        d = L - self.mu
+        self.mu = self.mu + self.alpha * d
+        self.var = (1 - self.alpha) * (self.var + self.alpha * d * d)
+
+    def judge(self, F, L, rF, rL):
+        """-> dict(f, d (écart dB), sigma, notable) au plus gros écart, ou None."""
+        F, L = np.asarray(F, dtype=float), np.asarray(L, dtype=float)
+        d = L - np.interp(F, np.asarray(rF, dtype=float), np.asarray(rL, dtype=float), left=np.nan, right=np.nan)
+        if not np.isfinite(d).any():
+            return None
+        sig = np.sqrt(self.var) if self.var is not None and len(self.var) == len(d) else np.full(len(d), 2.0)
+        lim = np.maximum(6.0, 3.0 * sig)
+        sc = np.where(np.isfinite(d), np.abs(d) - lim, -np.inf)
+        i = int(np.argmax(sc)) if np.isfinite(sc).any() and sc.max() > 0 else int(np.nanargmax(np.abs(d)))
+        return dict(f=float(F[i]), d=float(d[i]), sigma=float(sig[i]), notable=bool(abs(d[i]) > lim[i]))
+
+
+# Scénarios du labo : on règle la chaîne, on pose (éventuellement) une panne dans le SDR démo en direct, et on dit quoi
+# regarder et pourquoi.
+LAB_SCENARIOS = (
+    dict(key="clean", name="① Tout va bien (référence)", chain=dict(tx_comp="evo", rx_comp="evo", snr=40.0, fault="none"),
+         live=None, watch="Sortie au niveau de l'entrée, constellation en cercle propre, fréquence instantanée qui suit "
+                          "le son. Garde ces images en tête : c'est la référence.",
+         why="Même compandeur à l'émission et à la réception, signal fort : la chaîne rend le son tel quel."),
+    dict(key="forgot", name="② Compandeur oublié au récepteur", chain=dict(tx_comp="evo", rx_comp="", snr=40.0,
+                                                                        fault="none"),
+         live=None, watch="Niveau 2 : la sortie (orange) ne suit plus l'entrée, les silences remontent ; le labo dit "
+                          "« dynamique faussée ».",
+         why="L'émetteur a compressé (moitié de la dynamique en dB), personne ne ré-étend : son plat, souffle remonté."),
+    dict(key="wrong", name="③ Mauvais compandeur (HDX contre Shure)", chain=dict(tx_comp="evo", rx_comp="shure", snr=40.0,
+                                                                            fault="none"),
+         live=None, watch="Peu de différence de niveau moyen, mais des transitoires et un pompage différents : écoute "
+                          "l'entrée puis la sortie.",
+         why="Deux compandeurs 2:1 proches mais pas identiques : le récepteur « corrige » mal les attaques."),
+    dict(key="weak", name="④ Micro loin (signal faible)", chain=dict(tx_comp="evo", rx_comp="evo", snr=8.0, fault="noise"),
+         live="noise", watch="Constellation qui s'épaissit, fréquence instantanée pleine de pics (clics FM), souffle à "
+                            "l'écoute ; en direct, marges qui fondent.",
+         why="Près du seuil FM, le bruit fait tourner la phase d'un coup : ce sont les « clics » typiques d'un micro HF "
+             "loin des antennes."),
+    dict(key="jam", name="⑤ Brouilleur juste à côté", chain=dict(tx_comp="evo", rx_comp="evo", snr=40.0, fault="jam"),
+         live="jam", watch="Spectre : une 2ᵉ porteuse à +70 kHz ; constellation déformée ; en direct, alarme sur le 1er "
+                          "micro démo.",
+         why="Un émetteur trop proche entre dans le filtre du récepteur : il s'ajoute au micro."),
+    dict(key="usb", name="⑥ USB qui sature (blocs perdus)", chain=dict(tx_comp="evo", rx_comp="evo", snr=40.0,
+                                                                     fault="drop"),
+         live="drop", watch="Trous / clics dans le son ; en direct, la ligne « Flux » passe à l'orange et l'historique "
+                            "du poste note « Échantillons perdus ».",
+         why="Le PC ou le câble ne suit pas le débit du SDR : des paquets d'échantillons manquent."),
+    dict(key="hot", name="⑦ Entrée trop forte (saturation)", chain=dict(tx_comp="evo", rx_comp="evo", snr=40.0,
+                                                                      fault="sat"),
+         live="sat", watch="Constellation carrée, raies parasites dans le spectre ; en direct, « saturation » dans Flux.",
+         why="Le convertisseur du SDR écrête : baisse le gain ou mets un atténuateur."),
+    dict(key="mute", name="⑧ Pack en mute (porteuse sans son)", chain=dict(tx_comp="evo", rx_comp="evo", snr=40.0,
+                                                                         fault="none"),
+         live="nosrc", watch="En direct : le niveau RF reste bon mais le son disparaît ; après 3 s, l'historique du poste "
+                             "note « Porteuse sans son ».",
+         why="Un émetteur peut émettre sans moduler (mute, micro débranché du pack) : la RF seule ne le voit pas."),
+)
 
 
 # ===== PURE-END

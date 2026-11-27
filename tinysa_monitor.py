@@ -258,94 +258,96 @@ from tsm_core import (  # noqa: F401
     HEAT_TRAIL_WIDTHS, HINT_EMPTY_S, HINT_TNT_S, HIST_MAX, HIST_WHAT, HOP_OPEN_DB, HYST, HopState, IM_CHUNK,
     IM_MAX_PAIRS, IM_NAMES, IM_SEV_TEXT, IM_TOL_CUSTOM, IM_TOL_PRESETS, INC_AUTO_KINDS, INC_COOLDOWN_S, INC_GAP_S,
     INC_MAX_MB, INC_POST_S, IQ_BYTES, IQ_RING_BUDGET, IQ_RING_S, KEEP_DAYS, LAB_EXPECT, LAB_FAULTS, LAB_FAULT_HELP,
-    LAB_MODES, LAB_RATE, LAB_SECONDS, LANGS, LAYOUT_PARTS, LC_TEXT, LEGEND_ITEMS, LEVEL_UNITS, LEVEL_WORDS,
-    LIBRE_COLOR, LISTEN_COMPANDERS, LISTEN_HOP_DWELL, LISTEN_IF, LISTEN_MODES, LISTEN_RATE, LISTEN_WEB_KEEP,
-    LISTEN_WEB_RATE, LOG_KINDS, LORA_COUNTRY, LORA_PLANS, MAP_BG_MAX_B64, MAP_COORD_MAX, MAP_DEFAULT, MAP_STEP,
-    METER_STYLES, MIN_PTS, MK_STATES, MS_BAD, MS_CSS, MS_FLAP, MS_WARN, MicHistory, NAME_WORDS, NOISE_DBM_HZ,
-    NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES, OLD_DEFAULT_THEME, OccWindow, PATROL_DWELLS, PATROL_SRCS, PF_SEP,
-    PHASES, PILOT_LEARN_S, PILOT_MISS_S, PILOT_TOL_HZ, PLANNING_DEFAULT, PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES,
-    PLAN_US, PLAN_US_LOW, POST_MICS_MAX, PREP_CSS, PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS,
-    PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT, PROBLEM_IMPACT_DEFAULT, PROVENANCE, PcmRing, Persist, PinGuard,
-    PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS, RECUR_KINDS, RECUR_LABELS, REG_CHECKED, REH_AUDIO_DB, REH_MIN_N,
-    REH_NOISE_DB, REH_SNR_DB, RELAY_PORT, REPORT_PRO_CSS, REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES,
-    RT_FFT, RT_RATES, RX_AF_VIEWS, RX_ALIASES, RX_BRANDS, RX_CUSTOM, RX_IF_VIEWS, RX_LIBRARY, RX_PROFILES,
-    RX_SRC_TXT, RX_STALE_S, RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD, SAT_LNA_SHIFT, SAT_WARN,
-    SCALES, SCAN_FREQ_UNITS, SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE, SCREEN_PANELS, SCREEN_PRESETS,
-    SDR_ALIASES, SDR_AUTO_DEFAULT, SDR_DEMO_KIND, SDR_DEMO_MODEL, SDR_DTYPE, SDR_KINDS, SDR_LAYOUTS, SDR_MODELS,
-    SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT, SDR_POSTS_MAX, SDR_PROBE, SDR_STEPS_KHZ, SECRET_WEB, SEP,
-    SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS, SHOW_META, SHURE_PORT, SIGNAL_DEFAULTS,
-    SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES, SIM_MARK, SITE_COLORS, SLOW_CYCLE_S, SNR_GOOD, SNR_LOW,
-    SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STAIR_GAP_S, STAIR_LEVELS, STAIR_PERIOD, STAIR_STEP_S, STATE_TXT,
-    STATION_DEFAULT, STATUS_AUTO_COLORS, STATUS_HELP, STEPS, STEP_ALIAS, STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH,
-    SigGen, StreamStats, SweepAccum, SweepStore, TECH_ACTIONS, TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES,
-    TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL, TNT_MARGIN_DB, TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR,
-    TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS, TX_RATES, Translator, UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX,
-    UNKNOWN_HEALTH, USER_KEYS, UndoStack, VRX_BUDGET, VRX_MAX, WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT,
-    WEB_VIEWS, WEB_VIEWS_HIDDEN, WEB_VIEW_KEYS, WF_MAPS, WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE,
-    _BRANDS, _CARD_APPROX, _EZ, _EZ_DEV_RE, _FREQ_WORDS, _G, _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY,
-    _NOISE, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS, _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL,
-    _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE, _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms,
-    _audio_text, _chime_pcm, _circ_dist, _clean_grid, _cp, _cp_state, _deemph_taps, _ez_dev_params, _ez_num,
-    _fill_score, _fin, _fmt_ts, _gain_stream, _hdr_safe, _hm, _khz, _lab_comp, _lab_db, _lab_env, _level_fn,
-    _name_tokens, _noise_loop, _norm_hdr, _num, _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _run_chunks,
-    _rx_num, _sat_status, _scan_float, _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio, _sine,
-    _split_free_line, _svg_hours, _svg_iq_spectrum, _svg_multi, _svg_series, _svg_spectrum, _valid, _xml_root,
-    _zone, adjacent_db, age_text, alarm_explain, alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats,
-    alarms_in_window, analyze_csv, anfr_pick, anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq,
-    apply_overrides, assign_bands, audio_align, audio_gain, audio_int16, audio_meter, audio_ref_norm,
-    audio_source_level, audio_source_stats, audio_spec_norm, audio_text, auto_gain_pick, auto_rbw, auto_scan_step,
-    auto_thr_help_html, axis_panels, band_clip, band_issue, bb_views, bits_dynamic, blend, block_choices,
-    block_overlaps, block_points, build_entries, build_entries_ex, build_plan, build_report_html, bundle_pick,
-    busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset, calib_repeat, capacity_view, caps_text,
-    chan_power, chron_group, classify_signal, clean_colors, comp_compare, comp_curve, comp_report_html,
-    compander_card, compare_receivers, compare_spectra, compare_text, compress2, config_public, contrast_text,
-    coord_blockers, coord_docs, coord_why_advice, coord_why_text, copy_name, count_overruns, country_bands,
-    country_from_locale, country_uhf, coverage_state, coverage_text, covered, data_status, datetime_utc_iso,
-    dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio, demo_plan_levels, demo_sdr_plan,
-    demod_guess, demod_preset, density_glow, density_lut, density_raster, describe_freq, detect_brand, dev_ord,
-    dev_scenes_norm, deviation_db, device_caps, devx_norm, diag_short, diff_spectra, diversity_merge,
-    diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz, ezrf_auto_map, ezrf_dev_key,
-    ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id, ezrf_map_norm, ezrf_planning, ezrf_profile_names,
-    ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm, feature_match, festival_cfg_norm, festival_due,
-    festival_text, find_free, find_header, flap_count, floor_curve, floor_track, fm_deviation, fmt_audio,
-    fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan, freq_digits, freq_list_text, freshness,
-    from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan, gen_commands, geo_km, glossary_find,
-    gonio_points, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color, heat_field, heat_for,
-    heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba, heat_scale, heat_stops,
-    hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level, hunt_request, hunt_tone,
-    im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan, im_verdict, incident_duration,
-    incident_prune, incident_report_html, incident_slug, input_plan, interp_measured, iq_ci8, iq_decode,
-    iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch, journal_csv_rows, json_dumps_compact, keep_text,
-    key_dec, key_enc, lab_align, lab_chain, lab_findings, lab_modulations, label_words, layers_recolor, lc_feed,
-    lc_hints, lc_new, lc_summary, lc_text, level_at, level_at_many, level_block, level_everywhere,
+    LAB_MODES, LAB_RATE, LAB_SCENARIOS, LAB_SECONDS, LANGS, LAYOUT_PARTS, LC_TEXT, LEGEND_ITEMS, LEVEL_UNITS,
+    LEVEL_WORDS, LIBRE_COLOR, LISTEN_COMPANDERS, LISTEN_HOP_DWELL, LISTEN_IF, LISTEN_MODES, LISTEN_RATE,
+    LISTEN_WEB_KEEP, LISTEN_WEB_RATE, LOG_KINDS, LORA_COUNTRY, LORA_PLANS, MAP_BG_MAX_B64, MAP_COORD_MAX,
+    MAP_DEFAULT, MAP_STEP, METER_STYLES, MIN_PTS, MK_STATES, MS_BAD, MS_CSS, MS_FLAP, MS_WARN, MUTE_AUDIO_DB,
+    MUTE_CARRIER_DB, MUTE_HOLD_S, MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES,
+    OLD_DEFAULT_THEME, OccWindow, PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S,
+    PILOT_TOL_HZ, PLANNING_DEFAULT, PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX,
+    PREP_CSS, PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT,
+    PROBLEM_IMPACT_DEFAULT, PROVENANCE, PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS,
+    RECUR_KINDS, RECUR_LABELS, REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT,
+    REPORT_PRO_CSS, REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_AF_VIEWS,
+    RX_ALIASES, RX_BRANDS, RX_CUSTOM, RX_IF_VIEWS, RX_LIBRARY, RX_PROFILES, RX_SRC_TXT, RX_STALE_S, RefCompare,
+    RehearsalProfile, Resampler, RewindBuffer, S9_DBM, SAT_BAD, SAT_LNA_SHIFT, SAT_WARN, SCALES, SCAN_FREQ_UNITS,
+    SCAN_LEVEL_UNITS, SCAN_SEPS, SCENE_WORDS, SCREEN_HIDE, SCREEN_PANELS, SCREEN_PRESETS, SDR_ALIASES,
+    SDR_AUTO_DEFAULT, SDR_DEMO_KIND, SDR_DEMO_MODEL, SDR_DTYPE, SDR_EVENTS, SDR_EVENTS_HEAD, SDR_HIST_MAX,
+    SDR_KINDS, SDR_LAYOUTS, SDR_MODELS, SDR_MODEL_DEFAULT, SDR_MODES, SDR_NFFT, SDR_POSTS_MAX, SDR_PROBE,
+    SDR_SESSION_HEAD, SDR_STEPS_KHZ, SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS,
+    SHOW_META, SHURE_PORT, SIGNAL_DEFAULTS, SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES, SIM_MARK,
+    SITE_COLORS, SLOW_CYCLE_S, SNR_GOOD, SNR_LOW, SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STAIR_GAP_S, STAIR_LEVELS,
+    STAIR_PERIOD, STAIR_STEP_S, STATE_TXT, STATION_DEFAULT, STATUS_AUTO_COLORS, STATUS_HELP, STEPS, STEP_ALIAS,
+    STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen, StreamStats, SweepAccum, SweepStore, TECH_ACTIONS,
+    TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL, TNT_MARGIN_DB,
+    TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS, TX_RATES, Translator,
+    UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack, VRX_BUDGET, VRX_MAX,
+    WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN, WEB_VIEW_KEYS, WF_MAPS,
+    WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _CARD_APPROX, _EZ, _EZ_DEV_RE, _FREQ_WORDS, _G,
+    _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS,
+    _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE,
+    _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist, _clean_grid,
+    _cp, _cp_state, _deemph_taps, _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _gain_stream, _hdr_safe,
+    _hm, _khz, _lab_comp, _lab_db, _lab_env, _level_fn, _name_tokens, _noise_loop, _norm_hdr, _num, _number_dups,
+    _pf_pick, _pf_tols, _pf_vec, _plan_doc, _run_chunks, _rx_num, _sat_status, _scan_float, _scan_step,
+    _scan_tokens, _scan_unit_hint, _seq_audio, _sine, _split_free_line, _svg_hours, _svg_iq_spectrum, _svg_multi,
+    _svg_series, _svg_spectrum, _tone_env, _valid, _xml_root, _zone, adjacent_db, age_text, alarm_explain,
+    alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick, anfr_text,
+    anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_gain,
+    audio_int16, audio_meter, audio_ref_norm, audio_source_level, audio_source_stats, audio_spec_norm, audio_text,
+    auto_gain_pick, auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bb_views,
+    bits_dynamic, blend, block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan,
+    build_report_html, bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset,
+    calib_repeat, capacity_view, caps_text, chan_power, chron_group, classify_signal, clean_colors, comp_compare,
+    comp_curve, comp_report_html, compander_card, compare_receivers, compare_spectra, compare_text, compress2,
+    config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice, coord_why_text, copy_name,
+    count_overruns, country_bands, country_from_locale, country_uhf, coverage_state, coverage_text, covered,
+    data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio,
+    demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow, density_lut, density_raster,
+    describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps, devx_norm, diag_short,
+    diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz,
+    ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id, ezrf_map_norm, ezrf_planning,
+    ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm, feature_match, festival_cfg_norm,
+    festival_due, festival_text, find_free, find_header, flap_count, floor_curve, floor_track, fm_deviation,
+    fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan, freq_digits, freq_list_text,
+    freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan, gen_commands, geo_km,
+    glossary_find, gonio_points, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color, heat_field,
+    heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba, heat_scale,
+    heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level, hunt_request,
+    hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan, im_verdict,
+    incident_duration, incident_prune, incident_report_html, incident_slug, input_plan, interp_measured, iq_ci8,
+    iq_decode, iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch, journal_csv_rows, json_dumps_compact,
+    keep_text, key_dec, key_enc, lab_align, lab_chain, lab_findings, lab_modulations, label_words, layers_recolor,
+    lc_feed, lc_hints, lc_new, lc_summary, lc_text, level_at, level_at_many, level_block, level_everywhere,
     level_everywhere_text, level_words, listen_center, listen_cmd, listen_request, listen_windows, log_kind,
     log_kinds_norm, lora_overlap, lowpass_taps, make_label, make_stylesheet, map_auto_place, map_bg_embed,
     map_bg_extract, map_cfg_norm, map_key, map_scene_monitor, map_snap, marker_visible, measure_freq,
     measure_transfer, measure_transient, merge_scans, meter_ticks, mic_health, missing_bands, mk_default,
-    mk_filtered, mk_layer_key, morning_html, morning_summary, multi_site, name_candidates, name_match, name_rank,
-    net_host_port, net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number, next_mic,
-    next_state, noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request, number_run, obw_khz,
-    occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid, parse_dpa_acp, parse_ezrf3,
-    parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4, parse_plan_file, parse_plan_text,
-    parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text, parse_sdb3, parse_sdr_addr,
-    parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show, patrol_items, patrol_next, pcm_mono16k,
-    pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots, pf_issue_text, pf_orders, pf_suggest,
-    phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict, place_parse, plain_btn_text,
-    plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines, planning_norm, planning_paused,
-    post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html, preset_changes, preset_match,
-    preset_value_text, presets_all, privacy_norm, probe_rate, probe_report, probe_seen, problem_card, problem_key,
-    quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge, rbw_tag, rbw_text, read_rows, read_show,
-    read_user, ready_checks, ready_summary, rec_mb_per_hour, rec_size_text, receiver_addrs, receiver_addrs_text,
-    receiver_alerts, reconnect_delay, recurring_events, recurring_text, reg_allowed_pred, reg_detail, reg_issues,
-    reg_known, reg_status, reg_summary, reg_tag, rehearsal_check, rehearsal_norm, resample_max, resolution_pairs,
-    resource_view, retention_pick, rf_audio_diag, rf_diag_summary, rf_diagnose, rf_linear_text, rf_mode_norm,
-    rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band, rx_custom_dump, rx_custom_norm, rx_from_library,
-    rx_help_html, rx_library_find, rx_profile, rx_set_custom, s_meter, safe_filename, sat_level, scales_help_html,
-    scan_changes, scan_check, scan_crop, scan_csv, scan_gaps, scan_peaks, scan_segments, scan_step_khz,
-    scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on, scope_match, screen_plan_fit,
-    screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm, sdr_bin_hz, sdr_carrier,
-    sdr_cfg_extra, sdr_cmd, sdr_compat_rows, sdr_floor_dbfs, sdr_gains_for, sdr_in_range, sdr_iq_rate, sdr_level,
-    sdr_model, sdr_model_of, sdr_model_text, sdr_models_for, sdr_post_clash, sdr_posts_norm, sdr_ranges, sdr_rate,
+    mk_filtered, mk_layer_key, morning_html, morning_summary, multi_site, mute_check, name_candidates, name_match,
+    name_rank, net_host_port, net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number,
+    next_mic, next_state, noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request,
+    number_run, obw_khz, occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid,
+    parse_dpa_acp, parse_ezrf3, parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4, parse_plan_file,
+    parse_plan_text, parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text, parse_sdb3,
+    parse_sdr_addr, parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show, patrol_items,
+    patrol_next, pcm_mono16k, pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots, pf_issue_text,
+    pf_orders, pf_suggest, phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict, place_parse,
+    plain_btn_text, plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines, planning_norm,
+    planning_paused, post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html, preset_changes,
+    preset_match, preset_value_text, presets_all, privacy_norm, probe_rate, probe_report, probe_seen, problem_card,
+    problem_key, quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge, rbw_tag, rbw_text, read_rows,
+    read_show, read_user, ready_checks, ready_summary, rec_mb_per_hour, rec_size_text, receiver_addrs,
+    receiver_addrs_text, receiver_alerts, reconnect_delay, recurring_events, recurring_text, reg_allowed_pred,
+    reg_detail, reg_issues, reg_known, reg_status, reg_summary, reg_tag, rehearsal_check, rehearsal_norm,
+    resample_max, resolution_pairs, resource_view, retention_pick, rf_audio_diag, rf_diag_summary, rf_diagnose,
+    rf_linear_text, rf_mode_norm, rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band, rx_custom_dump,
+    rx_custom_norm, rx_from_library, rx_help_html, rx_library_find, rx_profile, rx_set_custom, s_meter,
+    safe_filename, sat_level, scales_help_html, scan_changes, scan_check, scan_crop, scan_csv, scan_gaps,
+    scan_peaks, scan_segments, scan_step_khz, scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on,
+    scope_match, screen_plan_fit, screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm,
+    sdr_bin_hz, sdr_carrier, sdr_cfg_extra, sdr_cmd, sdr_compat_rows, sdr_event, sdr_event_row, sdr_floor_dbfs,
+    sdr_gains_for, sdr_in_range, sdr_iq_rate, sdr_level, sdr_model, sdr_model_of, sdr_model_text, sdr_models_for,
+    sdr_post_clash, sdr_posts_norm, sdr_quality_events, sdr_ranges, sdr_rate, sdr_session_html, sdr_session_row,
     sdr_span_mhz, sdr_tsa_offset, sdr_zones, segment_plan, session_cfg_norm, session_journal_rows, session_name,
     show_apply, show_doc, show_filename, show_summary, show_template, shure_addrs, shure_apply, shure_init,
     shure_parse, shure_split, sigmf_annot, sigmf_info, sigmf_meta, signal_key, signal_report, signal_view,
@@ -5771,6 +5773,9 @@ class DemoIQ:
             sigs = list(st["plan"]) + list(st["tx"])
             if fk == "pilot":                            # 8.2 : pannes simulées qui changent les signaux
                 sigs = [dict(s_, pilot=0.0) for s_ in sigs]
+            elif fk == "nosrc":                          # son introuvable : porteuses là, plus rien à entendre
+                sigs = [dict(s_, audio=dict(src="wav", path="<introuvable>")) if s_.get("kind") in ("fm", "nfm") else s_
+                        for s_ in sigs]
             elif fk == "jam":
                 mic = next((s_ for s_ in sigs if s_.get("kind") == "fm"), None)
                 if mic is not None:
@@ -5795,6 +5800,8 @@ class DemoIQ:
         self.n += nn
         if nn > n:
             x = x[nn - n:]                           # 20 % des échantillons perdus (comme un USB qui sature)
+        self._nread = getattr(self, "_nread", 0) + 1
+        self.ts_off = -2.0 if (fk == "badts" and self._nread % 40 == 0) else 0.0   # 8.2 : l'heure recule (simulé)
         if fk == "sat":
             g = 8.0
             x = (np.clip(x.real * g, -1, 1) + 1j * np.clip(x.imag * g, -1, 1)).astype(np.complex64)
@@ -8860,14 +8867,25 @@ class SdrEngine(QtCore.QObject):
             self._seen_al = {a.get("id") for a in o.alarms.active.values()}
             self.tick.start(500)
         QtCore.QTimer.singleShot(300 if self.paused else 0, w.start)
+        self._qst, self._mst = {}, {}
+        if getattr(self, "_fails", 0) or getattr(self, "_recovering", False):
+            self._recovering = True                      # reconnexion : « SDR revenu » à la 1re trame
+            self._ev("retry", TR("essai n° {}").format(getattr(self, "recon", 0)), journal=False)
+        else:
+            self._sess_open()
+            self._ev("start", (m or {}).get("name", ""))
         self.changed.emit()
         return True
 
-    def stop(self, keep_paused=False):
+    def stop(self, keep_paused=False, user=True):
         self.timer.stop()
         self.retune.stop()
-        if getattr(self, "_retry", None) is not None and not keep_paused:
+        if getattr(self, "_retry", None) is not None and not keep_paused and user:
             self._retry.stop()
+        if self.worker is not None and not keep_paused and user:
+            self._recovering = False
+            self._ev("stop", "", journal=False)
+            self._sess_close()
         w, self.worker = self.worker, None
         if w is not None:
             w.requestInterruption()
@@ -8894,10 +8912,12 @@ class SdrEngine(QtCore.QObject):
         self.start()
 
     def _stopped(self, why):
-        self.stop()
+        self.stop(user=not why)
         if why:
             hint = TR(" Pas de SDR sous la main ? Essaie 🧪 SDR démo (menu du mode).") if "introuvable" in why else ""
+            self._ev("lost", why)
             if not hint:                                 # 8.2 : SDR décroché -> nouvel essai tout seul (3, 10, 30 s)
+                self._recovering = True
                 self._fails = getattr(self, "_fails", 0) + 1
                 self.recon = getattr(self, "recon", 0) + 1
                 d = reconnect_delay(self._fails)
@@ -8912,6 +8932,124 @@ class SdrEngine(QtCore.QObject):
             t.setSingleShot(True)
             t.timeout.connect(lambda: self.start() if self.worker is None else None)
         return t
+
+    # ---- 8.2 : historique des événements du poste, session enregistrée
+    def _ev(self, kind, text="", journal=None):
+        o = self.owner
+        lv = None
+        fr = self.last
+        if fr is not None and self.worker is not None:
+            lv = fr.get("lv_a")
+        ev = sdr_event(kind, text, time.time(), dict(a=self.a, lv=lv), sim=self.kind() == "demo")
+        if not hasattr(self, "hist"):
+            self.hist = deque(maxlen=SDR_HIST_MAX)
+        self.hist.append(ev)
+        if journal is None:
+            journal = ev["sev"] in ("warn", "bad")
+        if journal:
+            try:
+                o.log_event(dict(name=self.name(), freq=float(self.a or 0.0),
+                                 note=TR(ev["label"]) + (f" · {text}" if text else "")), float(lv or 0.0), "SDR FLUX")
+            except Exception:  # noqa: BLE001
+                pass
+        f = getattr(self, "_sess", None)
+        if f is not None:
+            try:
+                f["ev"].writerow(sdr_event_row(ev))
+                f["evf"].flush()
+            except Exception:  # noqa: BLE001
+                pass
+        self.changed.emit()
+        return ev
+
+    def _sess_open(self):
+        """Session du poste (8.2) : une ligne toutes les 2 s + les événements, en CSV dans
+        <journaux>/sessions_sdr/<date>/ (désactivable : Diagnostic › Session)."""
+        self._sess_close()
+        self.sess_rows = deque(maxlen=43200)
+        self.sess_t0 = time.time()
+        if not self.owner.sdr_cfg.get("sdr_session", True):
+            return
+        try:
+            d = Path(self.owner.log_dir) / "sessions_sdr" / datetime.now().strftime("%Y-%m-%d")
+            d.mkdir(parents=True, exist_ok=True)
+            base = d / f"sdr{self.pid}_{datetime.now():%H%M%S}"
+            rf = open(str(base) + "_mesures.csv", "w", newline="", encoding="utf-8-sig")
+            ef = open(str(base) + "_evenements.csv", "w", newline="", encoding="utf-8-sig")
+            rw, ew = csv.writer(rf, delimiter=";"), csv.writer(ef, delimiter=";")
+            rw.writerow(SDR_SESSION_HEAD)
+            ew.writerow(SDR_EVENTS_HEAD)
+            self._sess = dict(rf=rf, evf=ef, rows=rw, ev=ew, base=str(base))
+        except OSError as ex:
+            self._sess = None
+            log_crash("Session SDR", repr(ex))
+
+    def _sess_close(self):
+        f, self._sess = getattr(self, "_sess", None), None
+        if f:
+            for k in ("rf", "evf"):
+                try:
+                    f[k].close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _diag_tick(self, now):
+        """1 fois par seconde : transitions de la qualité du flux, porteuse sans son, ligne de session."""
+        fr = self.last
+        if self.worker is None or fr is None or now - getattr(self, "_t_dg", 0.0) < 1.0:
+            return
+        self._t_dg = now
+        if not hasattr(self, "_qst"):
+            self._qst = {}
+        for kind, txt in sdr_quality_events(self._qst, fr.get("q"), fr.get("ovf") or 0.0, now):
+            self._ev(kind, txt)
+        car = None
+        try:
+            if fr.get("lv_a") is not None and len(fr.get("avg", ())):
+                car = float(fr["lv_a"]) - float(np.median(fr["avg"]))
+            raw = list(getattr(self.worker, "a_raw", ()))[-6:]
+            adb = audio_meter(np.concatenate(raw))["rms"] if raw else None
+        except Exception:  # noqa: BLE001
+            adb = None
+        if self.demod.get("mode") in ("wfm", "nfm", "wfm_st", "am"):
+            ch = mute_check(self.__dict__.setdefault("_mst", {}), car, adb, now)
+            if ch == "on":
+                self._ev("mute_on", f"{self.a:.4f} MHz" if self.a is not None else "")
+            elif ch == "off":
+                self._ev("mute_off", "")
+        if now - getattr(self, "_t_row", 0.0) >= 2.0:
+            self._t_row = now
+            q = fr.get("q") or {}
+            row = [now, self.a, fr.get("lv_a"), q.get("lost"), q.get("gaps") or 0, 100.0 * (fr.get("ovf") or 0.0),
+                   100.0 * (fr.get("load") or 0.0)]
+            if not hasattr(self, "sess_rows"):
+                self.sess_rows = deque(maxlen=43200)
+            self.sess_rows.append(row)
+            f = getattr(self, "_sess", None)
+            if f is not None:
+                try:
+                    f["rows"].writerow(sdr_session_row(now, self.a, fr.get("lv_a"), q, fr.get("ovf"), fr.get("load"),
+                                                       self.kind() == "demo"))
+                    f["rf"].flush()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def session_report(self, path):
+        """Rapport de la session (HTML, ou PDF si le chemin finit par .pdf) -> chemin."""
+        m = self.model() or {}
+        rows = list(getattr(self, "sess_rows", []))
+        meta = dict(name=self.name(), model=m.get("name", ""), sim=self.kind() == "demo",
+                    t0=getattr(self, "sess_t0", rows[0][0] if rows else time.time()), t1=time.time())
+        html = sdr_session_html(meta, rows, list(getattr(self, "hist", [])), TR)
+        if str(path).lower().endswith(".pdf"):
+            doc = QtGui.QTextDocument()
+            doc.setHtml(re.sub(r"<svg.*?</svg>", "", html, flags=re.S))
+            w = QtGui.QPdfWriter(str(path))
+            w.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
+            doc.print_(w)
+        else:
+            write_atomic(path, html)
+        return path
 
     def quality(self):
         """8.2 : qualité du flux (dernière trame) -> (texte, ton) ; None si le SDR ne tourne pas."""
@@ -9043,6 +9181,9 @@ class SdrEngine(QtCore.QObject):
     def _frame(self, fr):
         self.last = fr
         self._fails = 0                                  # 8.2 : des données arrivent : le compte des échecs repart
+        if getattr(self, "_recovering", False):
+            self._recovering = False
+            self._ev("back", TR("après {} reconnexion(s)").format(getattr(self, "recon", 0)))
         now = time.time()
         if now - self._t_feed >= 0.5 and len(fr["F"]) == len(fr["avg"]):
             self._t_feed = now                          # la fenêtre du SDR surveille aussi tes fréquences
@@ -9117,7 +9258,7 @@ class SdrEngine(QtCore.QObject):
                 sdr_demo_set(plan=demo_sdr_plan(self.owner.demo_mics()))
             except Exception as ex:  # noqa: BLE001
                 log_crash("SDR démo", repr(ex))
-        for fn in (self._patrol_tick, self._alarm_watch, self._pilot_tick):
+        for fn in (self._patrol_tick, self._alarm_watch, self._pilot_tick, self._diag_tick):
             try:
                 fn(now)
             except Exception as ex:  # noqa: BLE001
@@ -9816,6 +9957,7 @@ class SdrReceiverPanel(SdrPanelBase):
         self.af_scat = pg.ScatterPlotItem(size=2, pen=None, brush=pg.mkBrush(48, 209, 88, 140))
         self.af_plot.addItem(self.af_scat)
         self.af_curve2 = self.af_plot.plot(pen=pg.mkPen("#ff9f0a", width=1.0))
+        self.if_curve2 = self.if_plot.plot(pen=pg.mkPen("#bf5af2", width=1.0))        # 8.2 : Q (vue « I et Q »)
         rvw = (o.sdr_cfg.get("rx_views") or {})
         self.if_view = QtWidgets.QComboBox()
         for k_, t_ in RX_IF_VIEWS:
@@ -9935,6 +10077,8 @@ class SdrReceiverPanel(SdrPanelBase):
         self.owner.sdr_cfg["rx_views"] = dict(iff=iv, af=av)
         pi, pa = self.if_plot.getPlotItem(), self.af_plot.getPlotItem()
         self.if_curve.setData([], [])
+        self.if_curve2.setData([], [])
+        self.if_curve2.setVisible(iv == "iq")
         self.if_scat.setData([], [])
         self.if_band.setVisible(iv == "spec")
         self.if_scat.setVisible(iv in ("const", "phase"))
@@ -9950,7 +10094,11 @@ class SdrReceiverPanel(SdrPanelBase):
         elif iv == "phase":
             pi.setYRange(-180, 180, padding=0.02)
             pi.enableAutoRange(axis="y", enable=False)
+        elif iv == "iq":
+            pi.setYRange(-2, 2, padding=0)
+            pi.enableAutoRange(axis="y", enable=False)
         self.if_plot.setLabel("bottom", TR({"spec": "kHz autour de A", "const": "I / Q (normalisés)",
+                                            "iq": "ms (bleu = I, violet = Q)",
                                             "phase": "ms · phase (degrés)", "finst": "ms · kHz (écart de fréquence)"}[iv]))
         self.af_curve.setData([], [])
         self.af_curve2.setData([], [])
@@ -10188,6 +10336,10 @@ class SdrReceiverPanel(SdrPanelBase):
                     self.if_scat.setData(v["I"], v["Q"])
                 elif iv == "phase":
                     self.if_scat.setData(v["tp"], v["phase"])
+                elif iv == "iq":                           # 8.2 : I et Q dans le temps (les 2 ms les plus récentes)
+                    k_ = max(1, int(len(v["ti"]) * 0.25))
+                    self.if_curve.setData(v["ti"][-k_:], v["I"][-k_:])
+                    self.if_curve2.setData(v["ti"][-k_:], v["Q"][-k_:])
                 else:
                     self.if_curve.setData(v["tf"], v["finst"])
             sel = np.zeros(0, dtype=bool)
@@ -10286,7 +10438,9 @@ class SdrSpectrumPanel(SdrPanelBase):
                                 "« avant / après », antenne A contre antenne B… Re-clic = l'effacer.")
         self.ref_btn.toggled.connect(self._ref_toggle)
         self.ref_lbl = QtWidgets.QLabel("")
-        self.ref_lbl.setToolTip("Écart entre maintenant et la référence, à la fréquence de A et au plus fort changement.")
+        self.ref_lbl.setToolTip("Écart entre maintenant et la référence, à la fréquence de A et au plus fort changement.\n"
+                                "« Notable » seulement s'il dépasse la variation normale du spectre (6 dB ou 3 écarts-types) :\n"
+                                "une différence n'est pas forcément une anomalie.")
         self.bar = QtWidgets.QWidget()
         bl = self._wrap(self.prev_btn, self.next_btn, self.zin, self.zout, self.zall, self.mh_chk, self.pers_chk,
                         self.ref_btn, self.ref_lbl, self.span_lbl, self.hint)
@@ -10448,6 +10602,7 @@ class SdrSpectrumPanel(SdrPanelBase):
 
     def _ref_toggle(self, on):
         fr = self.eng.last
+        self._refc = None
         if on and fr is not None:
             F = np.asarray(fr["F"], dtype=float)
             L = np.asarray(self._mh if self._mh is not None and self.mh_chk.isChecked() else fr["avg"], dtype=float)
@@ -10478,9 +10633,18 @@ class SdrSpectrumPanel(SdrPanelBase):
             m = np.abs(F - a) <= 0.05
             if m.any():
                 txt += " · " + TR("A : {} dB").format(f"{float(np.nanmax(d[m])):+.1f}")
-        if np.isfinite(d).any():
-            i = int(np.nanargmax(np.abs(d)))
-            txt += " · " + TR("plus gros écart {} dB à {} MHz").format(f"{d[i]:+.1f}", f"{F[i]:.3f}")
+        rc = getattr(self, "_refc", None)               # 8.2 : écart jugé par rapport à la variation NORMALE
+        if rc is None:
+            rc = self._refc = RefCompare()
+        rc.feed(avg)
+        j = rc.judge(F, avg, rF, rL)
+        if j is not None:
+            if j["notable"]:
+                txt += " · " + TR("⚠ écart notable {} dB à {} MHz").format(f"{j['d']:+.1f}", f"{j['f']:.3f}")
+                self.ref_lbl.setStyleSheet(f"color: {self.owner.tone_color('warn')};")
+            else:
+                txt += " · " + TR("dans la variation normale (± {} dB)").format(f"{max(6.0, 3 * j['sigma']):.0f}")
+                self.ref_lbl.setStyleSheet("")
         self.ref_lbl.setText(txt)
 
     def _frame(self, fr):
@@ -10612,6 +10776,242 @@ class SdrWaterfallPanel(SdrPanelBase):
         self._t_img = now
         self.img.setImage(self.q.T, autoLevels=False, levels=self._lv)   # vide (NaN) = transparent
         self.img.setRect(QtCore.QRectF(self._rng[0], 0.0, self._rng[1] - self._rng[0], float(self.ROWS)))
+
+
+def proc_usage():
+    """8.2 : mémoire du processus (Mo) et temps de calcul cumulé (s) de l'appli, sans dépendance de plus."""
+    mem = None
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            class _PMC(ctypes.Structure):
+                _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                            ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                            ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+            c = _PMC()
+            c.cb = ctypes.sizeof(c)
+            if ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c),
+                                                        c.cb):
+                mem = c.WorkingSetSize / 1e6
+        else:
+            with open("/proc/self/statm") as f:
+                mem = int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 1e6
+    except Exception:  # noqa: BLE001
+        mem = None
+    return mem, time.process_time()
+
+
+class SdrDiagPanel(SdrPanelBase):
+    """📡 SDR · Diagnostic (8.2, propositions « SDR réel » : historique, qualité, fiche appareil, système, sessions) :
+    ce qui s'est passé sur le poste (horodaté, avec le contexte), l'état du matériel, la santé du PC, et la session
+    enregistrée (CSV, rapport HTML / PDF). Données du SDR démo marquées 🧪 simulé."""
+
+    def __init__(self, owner, eng=None):
+        super().__init__(owner, eng)
+        e, o = self.eng, owner
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        self.head = QtWidgets.QLabel("")
+        self.head.setWordWrap(True)
+        self.head.setToolTip("D'où viennent ces données (SDR réel ou simulé) et la qualité du flux en ce moment.")
+        lay.addWidget(self.head)
+        self.tabs = QtWidgets.QTabWidget()
+        lay.addWidget(self.tabs, 1)
+        # événements
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        self.filt = QtWidgets.QComboBox()
+        self.filt.addItem(TR("Tout"), "all")
+        self.filt.addItem(TR("Problèmes seulement"), "bad")
+        self.filt.setToolTip("Tout l'historique, ou seulement ce qui demande de l'attention (orange / rouge).")
+        self.filt.currentIndexChanged.connect(lambda *_: self._fill(force=True))
+        self.csv_btn = QtWidgets.QPushButton("💾 CSV…")
+        self.csv_btn.setToolTip("Enregistre l'historique des événements en CSV (tableur).")
+        self.csv_btn.clicked.connect(lambda *_: self.export_csv())
+        self.rep_btn = QtWidgets.QPushButton("📄 Rapport…")
+        self.rep_btn.setToolTip("Rapport de la session : courbes (niveau de A, pertes, charge) et événements, en HTML ou PDF.")
+        self.rep_btn.clicked.connect(lambda *_: self.export_report())
+        self.clr_btn = QtWidgets.QPushButton("Effacer")
+        self.clr_btn.setToolTip("Vide l'historique affiché (la session enregistrée sur le disque reste).")
+        self.clr_btn.clicked.connect(lambda *_: self.clear())
+        v.addLayout(o._row(self.filt, None, self.csv_btn, self.rep_btn, self.clr_btn))
+        self.tbl = QtWidgets.QTableWidget(0, 5)
+        self.tbl.setHorizontalHeaderLabels([TR(x) for x in ("Heure", "Événement", "Détail", "A (MHz)", "Niveau A")])
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.setToolTip("Ce qui s'est passé sur ce poste SDR, le plus récent en haut. Une ligne n'est pas forcément "
+                            "une panne :\nà recouper avec ce que tu entendais.")
+        v.addWidget(self.tbl, 1)
+        self.tabs.addTab(w, TR("Événements"))
+        # appareil
+        self.dev = QtWidgets.QLabel("")
+        self.dev.setWordWrap(True)
+        self.dev.setTextFormat(Qt.TextFormat.RichText)
+        self.dev.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.dev.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        sa = QtWidgets.QScrollArea()
+        sa.setWidgetResizable(True)
+        sa.setWidget(self.dev)
+        self.tabs.addTab(sa, TR("Appareil"))
+        # système
+        self.sys = QtWidgets.QLabel("")
+        self.sys.setWordWrap(True)
+        self.sys.setTextFormat(Qt.TextFormat.RichText)
+        self.sys.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.tabs.addTab(self.sys, TR("Système"))
+        # session
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        self.sess_chk = QtWidgets.QCheckBox("Enregistrer chaque session (CSV : mesures toutes les 2 s + événements)")
+        self.sess_chk.setChecked(bool(o.sdr_cfg.get("sdr_session", True)))
+        self.sess_chk.setToolTip("À chaque ▶ du poste, deux fichiers CSV dans <journaux>/sessions_sdr/<date>/ : rien du son, "
+                                 "seulement des niveaux et des événements (quelques Ko par heure).")
+        self.sess_chk.toggled.connect(lambda on: o.sdr_cfg.__setitem__("sdr_session", bool(on)))
+        v.addWidget(self.sess_chk)
+        self.sess_lbl = QtWidgets.QLabel("")
+        self.sess_lbl.setWordWrap(True)
+        self.sess_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        v.addWidget(self.sess_lbl)
+        b = QtWidgets.QPushButton("📁 Ouvrir le dossier des sessions")
+        b.setToolTip("Les sessions SDR enregistrées (un dossier par jour).")
+        b.clicked.connect(lambda *_: self._open_dir())
+        v.addWidget(b)
+        v.addStretch(1)
+        self.tabs.addTab(w, TR("Session"))
+        self._n_shown, self._cpu = -1, None
+        self.tm = QtCore.QTimer(self)
+        self.tm.timeout.connect(self.refresh)
+        self.tm.start(1000)
+        self.refresh()
+
+    def _sev_color(self, sev):
+        return self.owner.tone_color(sev) if sev in ("warn", "bad") else (
+            self.owner.tone_color("ok") if sev == "ok" else "")
+
+    def _fill(self, force=False):
+        h = list(getattr(self.eng, "hist", []))
+        key = (len(h), h[-1]["t"] if h else 0, self.filt.currentData())
+        if not force and key == getattr(self, "_fkey", None):
+            return
+        self._fkey = key
+        if self.filt.currentData() == "bad":
+            h = [x for x in h if x["sev"] in ("warn", "bad")]
+        h = h[-400:][::-1]
+        t = self.tbl
+        t.setRowCount(len(h))
+        for i, ev in enumerate(h):
+            r = sdr_event_row(ev)
+            vals = [r[0], ("🧪 " if ev.get("sim") else "") + TR(r[1]), TR(r[2]) if r[2] else "", r[3], r[4]]
+            col = self._sev_color(ev["sev"])
+            for j, x in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(x)
+                if col and j == 1:
+                    it.setForeground(QtGui.QColor(col))
+                t.setItem(i, j, it)
+
+    def refresh(self):
+        if not self.isVisible():
+            return
+        e, o = self.eng, self.owner
+        demo = e.kind() == "demo"
+        prov = TR(PROVENANCE["sim" if demo else "obs"])
+        q = e.quality()
+        self.head.setText(f"<b>{_hesc(e.name())}</b> · {_hesc(prov)} · " +
+                          (_hesc(TR("Flux : {}").format(q[0])) if q else _hesc(TR("poste arrêté"))))
+        self._fill()
+        m = e.model() or {}
+        w = e.worker
+        fr = e.last if w is not None else None
+        rows = [(TR("Appareil"), m.get("name", "—")), (TR("Genre"), e.kind()),
+                (TR("N° de série"), e.post().get("serial") or "—"),
+                (TR("État"), TR("en marche") if w is not None else (
+                    TR("reconnexion en cours") if getattr(e, "_recovering", False) else TR("arrêté"))),
+                (TR("Capacités"), caps_text(device_caps(e.kind(), m), TR)),
+                (TR("Débit réglé"), f"{(e.rate or 0) / 1e6:g} MS/s" if e.rate else "—")]
+        if fr is not None:
+            qd = fr.get("q") or {}
+            rows.append((TR("Dernière communication"), TR("il y a {} s").format(f"{max(0.0, time.time() - fr.get('t', time.time())):.1f}")))
+            if qd.get("rate"):
+                rows.append((TR("Débit reçu"), f"{qd['rate'] / 1e6:.3f} MS/s ({100 * qd['rate'] / (e.rate or 1):.1f} %)"))
+            rows.append((TR("Échantillons reçus"), f"{qd.get('total', 0):,}".replace(",", " ")))
+        rows.append((TR("Reconnexions"), str(getattr(e, "recon", 0))))
+        errs = list(getattr(w, "err", []) if w is not None else [])[-5:]
+        rows.append((TR("Dernières erreurs de l'outil"), " | ".join(errs) if errs else "—"))
+        if demo:
+            rows.append((TR("Note"), TR("SDR démo : appareil simulé par l'appli, aucune mesure réelle.")))
+        self.dev.setText("<table>" + "".join(f"<tr><td style='color:#8e8e93;padding-right:10px'>{_hesc(a)}</td>"
+                                             f"<td>{_hesc(str(b))}</td></tr>"
+                                             for a, b in rows) + "</table>")
+        mem, cpu_t = proc_usage()
+        now = time.monotonic()
+        cpu = None
+        if self._cpu is not None and now - self._cpu[0] > 0.2:
+            cpu = 100.0 * (cpu_t - self._cpu[1]) / (now - self._cpu[0])
+        self._cpu = (now, cpu_t)
+        srows = [(TR("Processeur (toute l'appli)"), "—" if cpu is None else f"{cpu:.0f} % " + TR("d'un cœur")),
+                 (TR("Mémoire (toute l'appli)"), "—" if mem is None else f"{mem:.0f} Mo")]
+        if fr is not None:
+            srows += [(TR("Charge du poste"), f"{100 * fr.get('load', 0):.0f} %"),
+                      (TR("dont calcul"), f"{100 * fr.get('load_cpu', 0):.0f} %"),
+                      (TR("Débit traité"), f"{(e.rate or 0) * (1 - ((fr.get('q') or {}).get('lost') or 0) / 100) / 1e6:.2f} MS/s"),
+                      (TR("Spectre calculé sur"), f"{100 * fr.get('fft_frac', 1.0):.0f} %")]
+            pr = fr.get("prof") or {}
+            if pr:
+                srows.append((TR("Temps par morceau de 50 ms"), TR("spectre {} · démod {} · reste {} ms").format(
+                    f"{pr.get('fft', 0):.1f}", f"{pr.get('dem', 0):.1f}", f"{pr.get('rest', 0):.1f}")))
+            srows.append((TR("Son en attente"), f"{len(e.q)}"))
+        self.sys.setText("<table>" + "".join(f"<tr><td style='color:#8e8e93;padding-right:10px'>{_hesc(a)}</td>"
+                                             f"<td>{_hesc(b)}</td></tr>" for a, b in srows) + "</table>")
+        f = getattr(e, "_sess", None)
+        self.sess_lbl.setText(TR("Session en cours : {}").format(f["base"] + "_*.csv") if f else
+                              TR("Pas de session en cours (poste arrêté, ou enregistrement coupé)."))
+
+    def _dir(self):
+        return Path(self.owner.log_dir) / "sessions_sdr"
+
+    def _open_dir(self):
+        d = self._dir()
+        d.mkdir(parents=True, exist_ok=True)
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(d)))
+
+    def export_csv(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(self, TR("Historique du poste SDR"),
+                                                            str(self._dir() / f"evenements_{datetime.now():%Y%m%d_%H%M%S}.csv"),
+                                                            "CSV (*.csv)")
+            if not path:
+                return None
+        with open(path, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(SDR_EVENTS_HEAD)
+            for ev in getattr(self.eng, "hist", []):
+                w.writerow(sdr_event_row(ev))
+        return path
+
+    def export_report(self, path=None):
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, TR("Rapport de la session SDR"), str(Path(self.owner.log_dir) / "rapports" /
+                                                          f"session_sdr_{datetime.now():%Y%m%d_%H%M%S}.html"),
+                "HTML (*.html);;PDF (*.pdf)")
+            if not path:
+                return None
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.eng.session_report(path)
+        if not os.environ.get("TSM_NO_BROWSER") and path.lower().endswith(".html"):
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
+        return path
+
+    def clear(self):
+        if hasattr(self.eng, "hist"):
+            self.eng.hist.clear()
+        self._fill(force=True)
 
 
 class SdrMicsPanel(SdrPanelBase):
@@ -11089,8 +11489,8 @@ class RealtimeWorker(QtCore.QThread):
                     elif req[0] == "stop":
                         self._rec_close()
                 data = read(chunk - len(buf))
-                if fh is None and data:
-                    sst.feed(time.time(), len(data) // nb)       # 8.2 : ce que le SDR livre vraiment
+                if fh is None and data:                          # 8.2 : ce que le SDR livre vraiment
+                    sst.feed(time.time() + float(getattr(self.isrc, "ts_off", 0.0) or 0.0), len(data) // nb)
                 if not data:
                     if fh is not None:
                         why = ""
@@ -11112,6 +11512,10 @@ class RealtimeWorker(QtCore.QThread):
                 t_work = time.time()
                 c_work = time.thread_time()
                 iq, buf = iq_decode(self.dtype, buf), b""
+                bad_ = ~np.isfinite(iq)                          # 8.2 : échantillons invalides (NaN / inf) comptés,
+                if bad_.any():                                   # remplacés par 0 (ils casseraient FFT et son)
+                    sst.invalid += int(np.count_nonzero(bad_))
+                    iq = np.where(bad_, 0, iq).astype(iq.dtype)
                 pos += len(iq)
                 t_s0 = time.perf_counter()
                 if self.fft_frac < 1.0:          # 8.1 : PC à la peine -> spectre sur une partie du morceau, le son reste
@@ -32363,7 +32767,8 @@ MainWindow.open_sdr_posts = _v8_open_sdr_posts
 SDR_DOCKS = (("rx", "📡 SDR · Récepteur", "dock_sdr_rx", "SdrReceiverPanel"),
              ("spec", "📡 SDR · Spectre", "dock_sdr_spec", "SdrSpectrumPanel"),
              ("wf", "📡 SDR · Waterfall", "dock_sdr_wf", "SdrWaterfallPanel"),
-             ("mics", "📡 SDR · Mes micros", "dock_sdr_mics", "SdrMicsPanel"))
+             ("mics", "📡 SDR · Mes micros", "dock_sdr_mics", "SdrMicsPanel"),
+             ("diag", "📡 SDR · Diagnostic", "dock_sdr_diag", "SdrDiagPanel"))
 
 
 def _v8_make_post(self, pid):
@@ -32430,7 +32835,7 @@ def _v8_sdr_posts_sync(self):
 def _v8_post_show(self, pid):
     """Panneaux d'un poste 2…4 : en onglets à côté de ceux du poste 1 (l'utilisateur les place ensuite)."""
     base, mine = self.post_docks[1], self.post_docks[pid]
-    for key in ("rx", "spec", "wf", "mics"):
+    for key in ("rx", "spec", "wf", "mics", "diag"):
         d = mine[key]
         if d.objectName() in self.panel_wins:
             continue
@@ -32510,6 +32915,7 @@ def _v8_sdr_arrange(self, mode, layout="listen", base=True):
     self.dock_log.setFloating(False)
     self.tabifyDockWidget(self.dock_freq, self.dock_log)     # 8.0.1 : le Journal restait seul au-dessus du Récepteur
     self.tabifyDockWidget(self.dock_freq, sd["mics"])
+    self.tabifyDockWidget(self.dock_freq, sd["diag"])      # 8.2 : historique, appareil, système, session
     if layout == "watch":
         sd["mics"].raise_()
         sd["wf"].hide()
@@ -34581,7 +34987,7 @@ class ScreenWindow(QtWidgets.QMainWindow):
             else:
                 self.addDockWidget(B, it["dock_alarmes"])
         side = R if center else B
-        tabs = [n for n in ("dock_freq", "dock_journal", "dock_sdr_mics") if n in it]
+        tabs = [n for n in ("dock_freq", "dock_journal", "dock_sdr_mics", "dock_sdr_diag") if n in it]
         if "dock_sdr_rx" in it:
             self.addDockWidget(side, it["dock_sdr_rx"])
             if tabs:
@@ -35281,6 +35687,13 @@ class SdrLab(QtCore.QObject):
         v.addWidget(self.ch_help)
         self.ch_fault.currentIndexChanged.connect(lambda *_: self._fault_help())
         self._fault_help()
+        flow = QtWidgets.QLabel(TR("Le trajet du signal :  🎵 son  →  compresseur (émetteur)  →  modulation FM = I et Q (3, 4) "
+                                   " →  l'air : bruit, panne (5)  →  démodulation (6)  →  expanseur (récepteur)  →  🔊 son "
+                                   "(1, 2)"))
+        flow.setWordWrap(True)
+        flow.setStyleSheet("color: #8e8e93;")
+        flow.setToolTip(TR("Chaque graphe montre une étape : les numéros renvoient aux titres des graphes."))
+        v.addWidget(flow)
         grid = QtWidgets.QGridLayout()
         self.p_wave = _lab_plot("1. Son : entrée et sortie (100 ms)", "ms", "amplitude")
         self.p_env = _lab_plot("2. Niveau dans le temps", "s", "dBFS")
@@ -35786,6 +36199,21 @@ class SdrLab(QtCore.QObject):
     def _tab_fault(self):
         w = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(w)
+        sb = QtWidgets.QGroupBox(TR("🎬 Scénarios guidés"))          # 8.2 : un clic = chaîne réglée + panne + quoi regarder
+        sl = QtWidgets.QVBoxLayout(sb)
+        self.sc_combo = QtWidgets.QComboBox()
+        for sc in LAB_SCENARIOS:
+            self.sc_combo.addItem(TR(sc["name"]), sc["key"])
+        self.sc_combo.setToolTip(TR("Un scénario règle la chaîne complète (et pose une panne dans le SDR démo s'il est "
+                                    "allumé), puis dit quoi regarder et pourquoi."))
+        self.sc_go = QtWidgets.QPushButton(TR("▶ Lancer le scénario"))
+        self.sc_go.clicked.connect(lambda *_: self.scenario(self.sc_combo.currentData()))
+        sl.addLayout(self.owner._row(self.sc_combo, self.sc_go, None))
+        self.sc_txt = QtWidgets.QLabel(TR("Choisis un scénario : le labo le joue, tu regardes ce qui change."))
+        self.sc_txt.setWordWrap(True)
+        self.sc_txt.setTextFormat(Qt.TextFormat.RichText)
+        sl.addWidget(self.sc_txt)
+        v.addWidget(sb)
         t = QtWidgets.QLabel(TR("Injecte une panne dans le 🧪 SDR démo, en direct, pour voir comment l'appli la détecte "
                                 "(ligne « Flux » du Récepteur, alarmes, journal). Tout est marqué SIMULÉ. Rien ne touche un "
                                 "vrai SDR."))
@@ -35819,6 +36247,32 @@ class SdrLab(QtCore.QObject):
         v.addStretch(1)
         return w
 
+    def scenario(self, key, wait=False):
+        """Joue un scénario : chaîne complète réglée et calculée, panne posée dans le SDR démo (s'il tourne), texte."""
+        sc = next((x for x in LAB_SCENARIOS if x["key"] == key), None)
+        if sc is None:
+            return None
+        c = sc["chain"]
+        for combo, val in ((self.ch_tx, c.get("tx_comp", "")), (self.ch_rx, c.get("rx_comp", "")),
+                           (self.ch_fault, c.get("fault", "none")), (self.ch_mode, c.get("mode", "wfm"))):
+            combo.setCurrentIndex(max(0, combo.findData(val)))
+        self.ch_snr.setValue(int(c.get("snr", 40)))
+        self.chain_run(wait=wait)
+        live = ""
+        if sc["live"]:
+            if self.owner.sdr_cfg.get("demo") and self._eng() is not None:
+                self.fault(sc["live"])
+                live = TR("Panne posée dans le SDR démo en direct ({} s).").format(self.ft_dur.value())
+            else:
+                live = TR("Allume le 🧪 SDR démo et ▶ le poste pour voir aussi l'effet en direct.")
+        self.sc_txt.setText(f"<b>{_hesc(TR(sc['name']))}</b><br>{_hesc(TR('À regarder :'))} {_hesc(TR(sc['watch']))}"
+                            f"<br>{_hesc(TR('Pourquoi :'))} {_hesc(TR(sc['why']))}" + (f"<br><i>{_hesc(live)}</i>" if live else ""))
+        try:
+            self.owner.open_sdr_lab("chain")
+        except Exception:  # noqa: BLE001
+            pass
+        return sc
+
     def fault(self, k):
         o = self.owner
         if k and not o.sdr_cfg.get("demo"):
@@ -35826,6 +36280,9 @@ class SdrLab(QtCore.QObject):
                                    "le Récepteur."))
             return False
         sdr_demo_fault(k, self.ft_dur.value())
+        for e_ in (getattr(o, "sdr_engs", None) or {}).values():      # 8.2 : notée dans l'historique du poste
+            if e_.running() and e_.kind() == "demo":
+                e_._ev("fault", TR(dict(DEMO_FAULTS)[k]) if k else TR("fin"), journal=False)
         o.log_event(dict(name=TR("Labo SDR"), freq=0.0, note=("🧪 " + TR(dict(DEMO_FAULTS)[k])) if k else TR("fin")),
                     0.0, "PANNE SIMULÉE")
         self._fault_refresh()

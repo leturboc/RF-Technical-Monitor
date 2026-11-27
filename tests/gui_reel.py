@@ -1182,7 +1182,10 @@ if _mm is not None:
     check("📡 multicanal : largeur occupée et canaux voisins", _r0.get("obw") and _r0.get("adj_margin") is not None,
           str({k_: _r0.get(k_) for k_ in ("obw", "adj_margin")}))
     _mm.table.selectRow(0)
-    wait(1500)
+    _t0 = time.time()                           # machine chargée : l'historique peut mettre quelques secondes
+    while time.time() - _t0 < 8 and not (_mm.sel is not None and _mm.wf.get(_mm.sel) is not None
+                                         and len(_mm.hist[_mm.sel].pts) >= 2):
+        wait(300)
     check("📡 multicanal : waterfall et historique du micro choisi", _mm.sel is not None and _mm.wf.get(_mm.sel) is not None
           and len(_mm.hist[_mm.sel].pts) >= 2, str(_mm.sel))
     check("📡 multicanal : performances affichées", "pertes" in _mm.perf_lbl.text() or "loss" in _mm.perf_lbl.text(),
@@ -1747,6 +1750,59 @@ wait(12000)
 check("8.2 : SDR « débranché » : arrêt puis reconnexion toute seule", _down and _e21.running()
       and getattr(_e21, "recon", 0) >= 1, f"down={_down} run={_e21.running()} recon={getattr(_e21, 'recon', 0)}")
 _lab.fault(None)
+# 8.2 : poste SDR réel — panneau Diagnostic (historique, appareil, système, session), porteuse sans son, scénarios
+_kinds = [ev_["kind"] for ev_ in getattr(_e21, "hist", [])]
+check("8.2 : historique du poste : pertes, coupure, saturation, SDR perdu puis revenu",
+      all(k_ in _kinds for k_ in ("drop_on", "lost", "back")) and any(k_ in _kinds for k_ in ("sat_on",)),
+      str(sorted(set(_kinds))))
+check("8.2 : événements de la démo marqués simulés", all(ev_.get("sim") for ev_ in _e21.hist))
+_lab.ft_dur.setValue(10)
+_lab.fault("nosrc")
+_t0 = time.time()
+while time.time() - _t0 < 12 and "mute_on" not in [ev_["kind"] for ev_ in _e21.hist]:
+    wait(400)
+check("8.2 : « source audio indisponible » -> porteuse sans son détectée", "mute_on" in [ev_["kind"] for ev_ in _e21.hist],
+      str([ev_["kind"] for ev_ in list(_e21.hist)[-6:]]))
+_lab.fault("badts")
+wait(4500)
+_q = _e21.quality()
+check("8.2 : horodatages incohérents comptés (ligne Flux)", _q is not None and "horodatage" in _q[0], str(_q))
+_lab.fault(None)
+_dg = win.dock_widget(win.sdr_docks["diag"])
+_dg = _dg if hasattr(_dg, "tbl") else _dg.widget()
+win.sdr_docks["diag"].show()
+win.sdr_docks["diag"].raise_()
+wait(1500)
+check("8.2 : panneau Diagnostic : événements, provenance simulée", _dg.tbl.rowCount() > 3 and "simulé" in _dg.head.text(),
+      _dg.head.text())
+_dg.tabs.setCurrentIndex(1)
+wait(1200)
+check("8.2 : Diagnostic › Appareil : état, débit reçu, reconnexions", "Débit reçu" in _dg.dev.text()
+      and "Reconnexions" in _dg.dev.text(), _dg.dev.text()[:200])
+_dg.tabs.setCurrentIndex(2)
+wait(1200)
+check("8.2 : Diagnostic › Système : processeur, mémoire, charge", "Mémoire" in _dg.sys.text() and "Charge" in _dg.sys.text())
+shot(_dg, "sdr_diagnostic")
+_dg.tabs.setCurrentIndex(0)
+_pcsv = _dg.export_csv(os.path.join(tmp, "evenements.csv"))
+_phtml = _dg.export_report(os.path.join(tmp, "session.html"))
+_ppdf = _dg.export_report(os.path.join(tmp, "session.pdf"))
+check("8.2 : session : CSV, rapport HTML et PDF", os.path.getsize(_pcsv) > 100 and "Événements" in
+      open(_phtml, encoding="utf-8").read() and open(_ppdf, "rb").read(5) == b"%PDF-")
+_sess = getattr(_e21, "_sess", None)
+check("8.2 : session enregistrée sur le disque (mesures + événements)", _sess is not None
+      and os.path.getsize(_sess["base"] + "_evenements.csv") > 50, str(_sess and _sess["base"]))
+_sc = _lab.scenario("weak", wait=True)
+check("8.2 : scénario guidé : chaîne réglée, quoi regarder, panne en direct", _sc is not None
+      and _lab.ch_snr.value() == 8 and "À regarder" in _lab.sc_txt.text() and m.sdr_demo_fault_now() is not None,
+      _lab.sc_txt.text()[:120])
+_lab.fault(None)
+_rxp.if_view.setCurrentIndex(_rxp.if_view.findData("iq"))
+wait(1200)
+check("8.2 : Récepteur : vue « I et Q dans le temps »", _rxp.if_curve2.isVisible() and _rxp.if_curve2.getData()[0] is not None
+      and len(_rxp.if_curve2.getData()[0]) > 10)
+shot(_rxp.row_zoom, "recepteur_iq")
+_rxp.if_view.setCurrentIndex(0)
 shot(_lab.panels["fault"], "labo_pannes")
 check("8.2 : labo en panneaux, dans 🪟 Fenêtres et les écrans", all(d_ in win.docks and d_ in win.panel_docks()
       for d_ in win.lab_docks.values()) and all(n_ in win.screens_docks() for _k, _t, n_ in m.LAB_DOCKS))
@@ -1785,8 +1841,9 @@ wait(1500)
 check("8.2 : spectre SDR : rémanence", _spp._pers_img is not None and _spp._pers_img.isVisible())
 _spp.ref_btn.setChecked(True)
 wait(800)
-check("8.2 : spectre SDR : référence figée et comparée", _spp._ref is not None and _spp.ref_lbl.text().startswith("Réf."),
-      _spp.ref_lbl.text())
+check("8.2 : spectre SDR : référence figée et comparée (variation normale / écart notable)", _spp._ref is not None
+      and _spp.ref_lbl.text().startswith("Réf.") and ("variation normale" in _spp.ref_lbl.text()
+                                                       or "notable" in _spp.ref_lbl.text()), _spp.ref_lbl.text())
 shot(_spp, "sdr_spectre_ref")
 _spp.ref_btn.setChecked(False)
 _spp.pers_chk.setChecked(False)

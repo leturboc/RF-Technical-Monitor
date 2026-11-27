@@ -1164,5 +1164,48 @@ ok("flux : texte et ton", ns["stream_quality"](dict(lost=20.0, gaps=1), 0.0)[1] 
 ok("tableau des SDR : une ligne par modèle, rien d'« essayé en vrai »", len(ns["sdr_compat_rows"]()) == len(ns["SDR_MODELS"])
    and not any(r["tested"] for r in ns["sdr_compat_rows"]()))
 
+# ---- 8.2 : poste SDR réel (historique, qualité, porteuse sans son, sessions, référence) et scénarios du labo
+st_ = {}
+ev_ = ns["sdr_quality_events"](st_, dict(lost=3.0, gaps=0), 0.0, 0)
+ok("historique : pertes d'échantillons notées au début", ev_ == [("drop_on", "3.0 %")])
+ev_ = ns["sdr_quality_events"](st_, dict(lost=0.1, gaps=1, invalid=5, badts=1), 0.02, 1)
+ok("historique : fin des pertes, coupure, invalides, horodatage, saturation", [k for k, _ in ev_] ==
+   ["drop_off", "gap", "invalid", "badts", "sat_on"], str(ev_))
+ok("historique : rien de neuf = rien de noté", [k for k, _ in ns["sdr_quality_events"](st_, dict(lost=0.1, gaps=1,
+   invalid=5, badts=1), 0.02, 2)] == [])
+m_ = {}
+seq_ = [ns["mute_check"](m_, 30.0, -70.0, t) for t in (0, 1, 2, 3, 4)]
+ok("porteuse sans son : signalée après 3 s, une seule fois", seq_ == [None, None, None, "on", None], str(seq_))
+ok("… et le son qui revient", ns["mute_check"](m_, 30.0, -20.0, 5) == "off")
+ok("pas de porteuse = pas « sans son »", ns["mute_check"]({}, 3.0, -80.0, 0) is None and
+   ns["mute_check"]({"t0": 0}, 3.0, -80.0, 10) is None)
+ss_ = ns["StreamStats"](1000.0)
+ss_.feed(0.0, 100)
+ss_.feed(1.0, 100, invalid=3)
+ss_.feed(0.5, 100)
+v_ = ss_.view()
+ok("flux : échantillons invalides et horodatage qui recule comptés", v_["invalid"] == 3 and v_["badts"] == 1, str(v_))
+ok("flux : texte avec invalides / horodatages", "invalides" in ns["stream_quality"](v_, 0.0)[0]
+   and "horodatage" in ns["stream_quality"](v_, 0.0)[0])
+rc_ = ns["RefCompare"]()
+F_ = np.arange(100.0)
+for i in range(30):
+    rc_.feed(np.random.default_rng(i).normal(-90, 2, 100))
+L_ = np.random.default_rng(99).normal(-90, 2, 100)
+ok("référence : une fluctuation normale n'est pas « notable »", not rc_.judge(F_, L_, F_, np.full(100, -90.0))["notable"])
+L_[40] = -70.0
+j_ = rc_.judge(F_, L_, F_, np.full(100, -90.0))
+ok("référence : un vrai changement (+20 dB) est « notable », au bon endroit", j_["notable"] and j_["f"] == 40.0, str(j_))
+h_ = ns["sdr_session_html"](dict(name="SDR 1", sim=True, t0=1e9, t1=1e9 + 10), [[1e9, 600.0, -50.0, 0.0, 0, 0.0, 30.0],
+     [1e9 + 5, 600.0, -52.0, 1.0, 0, 0.0, 30.0]], [ns["sdr_event"]("gap", "", 1e9 + 1, {"a": 600.0}, sim=True)])
+ok("rapport de session : provenance SIMULÉE dite, événements, courbe", "SIMULÉES" in h_ and "Coupure du flux" in h_
+   and "<svg" in h_)
+ok("ligne de session CSV", ns["sdr_session_row"](1e9, 600.0, -50.0, {"lost": 1.0}, 0.01, 0.3, True)[-1] == "oui")
+ok("scénarios du labo : chacun a sa chaîne, quoi regarder et pourquoi", all(sc["watch"] and sc["why"] and
+   sc["chain"].get("fault", "none") in dict(ns["LAB_FAULTS"]) and (sc["live"] is None or sc["live"] in
+   dict(ns["DEMO_FAULTS"])) for sc in ns["LAB_SCENARIOS"]))
+bv_ = ns["bb_views"](np.exp(1j * np.linspace(0, 20, 2048)).astype(np.complex64), 240000.0)
+ok("vue « I et Q dans le temps » : temps et I / Q de même longueur", len(bv_["ti"]) == len(bv_["I"]) == len(bv_["Q"]))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

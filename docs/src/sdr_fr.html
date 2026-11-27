@@ -111,6 +111,28 @@ brouilleur peut aussi avoir un pilote). Ensuite : « ✔ c'est bien ton émetteu
 fréquence. Un pack sans pilote affiche simplement « pas de pilote vu ». Clic droit sur la ligne d'info = oublier le
 pilote (si tu as changé de pack).</p>
 
+<!--CH diag|Diagnostic du poste SDR-->
+<p>Le panneau <b>📡 SDR · Diagnostic</b> (un par poste, en onglet à côté de « Mes fréquences ») dit ce qui se passe
+VRAIMENT avec ton SDR. En tête : d'où viennent les données (<b>📡 observé</b> = vrai SDR, <b>🧪 simulé</b> = SDR démo)
+et la qualité du flux. Quatre onglets :</p>
+<ul>
+  <li><b>Événements</b> : l'historique horodaté du poste, avec la fréquence de A et son niveau à ce moment-là : démarrage,
+    arrêt, SDR perdu puis revenu, reconnexions, échantillons perdus, coupures du flux, saturation de l'entrée,
+    échantillons invalides, horodatages incohérents, <b>porteuse sans son</b> (un émetteur qui émet sans moduler : pack
+    en mute, micro débranché du pack). Les problèmes vont aussi au journal (« SDR FLUX »). « Problèmes seulement » filtre,
+    <b>💾 CSV…</b> et <b>📄 Rapport…</b> (HTML ou PDF) exportent.</li>
+  <li><b>Appareil</b> : modèle, n° de série, état (en marche, reconnexion…), capacités, débit réglé et <b>débit
+    vraiment reçu</b>, dernière communication, reconnexions, dernières erreurs de l'outil.</li>
+  <li><b>Système</b> : processeur et mémoire de l'appli, charge du poste (et la part de vrai calcul), débit traité, temps
+    de chaque étape.</li>
+  <li><b>Session</b> : à chaque ▶, deux fichiers CSV (une ligne de mesures toutes les 2 s + les événements) dans
+    <code>journaux/sessions_sdr/&lt;date&gt;/</code>. Pas de son : quelques Ko par heure. Désactivable.</li>
+</ul>
+<p>Un événement n'est pas forcément une panne : recoupe avec ce que tu entendais. Sur le spectre du SDR, <b>📌
+Référence</b> compare maintenant à la variation normale : « dans la variation normale (± x dB) » ou « ⚠ écart
+notable », pour ne pas prendre une simple fluctuation pour une anomalie. Petites fenêtres du Récepteur : nouvelle vue
+<b>« I et Q dans le temps »</b> (bleu = I, violet = Q).</p>
+
 <!--CH plusieurs|Plusieurs SDR et la carte-->
 <p><b>📡 Mes SDR</b> ajoute des postes (jusqu'à 4) : chacun a son nom, son modèle, son numéro de série (pour savoir
 lequel est lequel) et <b>ses scènes</b>. Un SDR rattaché à une scène ne s'occupe que des micros de cette scène, et
@@ -184,6 +206,12 @@ ou <b>🧮 calculé</b> (formule). Cinq <b>panneaux</b>, comme ceux du SDR : en 
     ligne <b>Flux</b> du Récepteur, les alarmes et le journal réagir. Tout est marqué SIMULÉ ; rien ne touche un vrai
     SDR.</li>
 </ul>
+<h3>Scénarios guidés et pannes</h3>
+<p>Panneau <b>Pannes simulées</b> › <b>🎬 Scénarios guidés</b> : un clic règle la chaîne complète, la calcule, pose la
+panne dans le SDR démo s'il tourne, et dit <b>quoi regarder</b> et <b>pourquoi</b> : tout va bien (la référence),
+compandeur oublié au récepteur, mauvais compandeur, micro loin, brouilleur à côté, USB qui sature, entrée trop forte,
+pack en mute (porteuse sans son). Pannes en direct en plus : <b>source audio indisponible</b> et <b>horodatages
+incohérents</b> ; chacune est notée dans l'historique du poste (panneau Diagnostic).</p>
 <h3>Mesurer ton vrai émetteur</h3>
 <p>C'est la seule façon d'avoir une <b>vraie référence</b>. Dans le <b>🎵 Générateur audio</b>, choisis
 <b>« Signal de test : escalier de niveaux »</b> (un silence repère puis 9 marches de 1 kHz, de −40 à 0 dBFS) et

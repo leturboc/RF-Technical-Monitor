@@ -107,6 +107,28 @@ too). Then: “✔ it really is your transmitter”. If a carrier is there <b>wi
 <b>PILOT</b> alarm is raised: maybe another transmitter on your frequency. A pack without a pilot simply shows “no
 pilot seen”. Right-click the info line = forget the pilot (if you changed pack).</p>
 
+<!--CH diag|SDR station diagnostics-->
+<p>The <b>📡 SDR · Diagnostics</b> panel (one per station, tabbed next to “My frequencies”) tells what is REALLY going on
+with your SDR. At the top: where the data comes from (<b>📡 observed</b> = real SDR, <b>🧪 simulated</b> = SDR demo) and
+the stream quality. Four tabs:</p>
+<ul>
+  <li><b>Events</b>: the station's timestamped history, with A's frequency and level at that moment: start, stop, SDR
+    lost then back, reconnections, lost samples, stream dropouts, input saturation, invalid samples, inconsistent
+    timestamps, <b>carrier without audio</b> (a transmitter transmitting without modulating: pack on mute, mic unplugged
+    from the pack). Problems also go to the log (“SDR STREAM”). “Problems only” filters, <b>💾 CSV…</b> and
+    <b>📄 Report…</b> (HTML or PDF) export.</li>
+  <li><b>Device</b>: model, serial number, state (running, reconnecting…), capabilities, set rate and <b>rate actually
+    received</b>, last communication, reconnections, last tool errors.</li>
+  <li><b>System</b>: CPU and memory of the app, station load (and the share of real computing), processed rate, time of
+    each step.</li>
+  <li><b>Session</b>: at each ▶, two CSV files (a line of readings every 2 s + the events) in
+    <code>logs/sessions_sdr/&lt;date&gt;/</code>. No audio: a few KB per hour. Can be turned off.</li>
+</ul>
+<p>An event is not necessarily a fault: cross-check with what you were hearing. On the SDR spectrum, <b>📌 Reference</b>
+now compares with the normal variation: “within normal variation (± x dB)” or “⚠ notable difference”, so a simple
+fluctuation is not taken for an anomaly. Receiver small windows: new view <b>“I and Q over time”</b> (blue = I, purple =
+Q).</p>
+
 <!--CH plusieurs|Several SDRs and the map-->
 <p><b>📡 My SDRs</b> adds stations (up to 4): each has its name, model, serial number (to tell them apart) and <b>its
 scenes</b>. An SDR attached to a scene only handles that scene's mics, and it answers the keypad and the alarms of
@@ -177,6 +199,12 @@ all models, and each result says where it comes from: <b>🧪 simulated</b>, <b>
     saturation, SDR unplugged, interferer on a mic, pilots cut, strong noise) for 5 s to 5 min, to watch the Receiver's
     <b>Stream</b> line, the alarms and the log react. Everything is marked SIMULATED; nothing touches a real SDR.</li>
 </ul>
+<h3>Guided scenarios and faults</h3>
+<p><b>Simulated faults</b> panel › <b>🎬 Guided scenarios</b>: one click sets the full chain, computes it, places the
+fault in the SDR demo if it is running, and says <b>what to look at</b> and <b>why</b>: all is well (the reference),
+compander forgotten at the receiver, wrong compander, mic far away, interferer next door, USB overloaded, input too
+strong, pack on mute (carrier without audio). Extra live faults: <b>audio source unavailable</b> and <b>inconsistent
+timestamps</b>; each is noted in the station history (Diagnostics panel).</p>
 <h3>Measuring your real transmitter</h3>
 <p>This is the only way to get a <b>real reference</b>. In the <b>🎵 Audio generator</b>, choose <b>“Test signal: level
 staircase”</b> (a marker silence then 9 steps of 1 kHz, from −40 to 0 dBFS) and feed it by cable into the pack's audio

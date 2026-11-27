@@ -29,7 +29,7 @@ PARTS = [
      ["show", "seuils", "surveiller", "signal", "mur", "fenetres", "coordination", "filtre", "linecheck", "spectera",
       "deux", "alertes", "sessions", "journal", "apparence"]),
     ("E", "Le SDR (bêta)", "The SDR (beta)",
-     ["sdr-poste", "sdr-branchement", "sdr-ecoute", "sdr-favoris", "sdr-surveiller", "sdr-plusieurs", "sdr-caler",
+     ["sdr-poste", "sdr-branchement", "sdr-ecoute", "sdr-favoris", "sdr-surveiller", "sdr-diag", "sdr-plusieurs", "sdr-caler",
       "sdr-remonter", "sdr-demo", "sdr-labo", "sdr-emettre", "sdr-sons", "sdr-avance", "sdr-savoir"]),
     ("F", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees"]),
 ]

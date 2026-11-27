@@ -1837,6 +1837,33 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   - Manuel : chapitre `sdr-labo` (docs/src/sdr_*.html, PARTS de make_manual). Tests : test_sdr (+31), gui_reel (labo,
     escalier reçu par le SDR démo -> taux 2:1 retrouvé, pannes, reconnexion, rémanence, référence, tableau), gui_en (labo +
     rapport en anglais).
+  - **Propositions « SDR réel / démo » du collègue (Clément : « tu continues ce qu'on avait dit, en intégrant le labo,
+    pas au pied de la lettre »)** — déjà faits avant : persistance, référence, compatibilité, chaîne, compandeurs,
+    modulations, pannes, analyseur audio, mode sans matériel, simulé marqué. Ajoutés :
+    - **📡 SDR · Diagnostic** (`SdrDiagPanel`, 5ᵉ dock de chaque poste : `SDR_DOCKS` « diag », `dock_sdr_diag`, en onglet
+      avec Mes fréquences dans `_sdr_arrange`, `SCREEN_PANELS`, `ScreenWindow.arrange`) : en-tête provenance + Flux ;
+      onglets Événements (`SdrEngine.hist`, filtre problèmes, 💾 CSV `export_csv`, 📄 `export_report` HTML / PDF),
+      Appareil (état, capacités, débit réglé / REÇU, dernière communication, reconnexions, erreurs de l'outil), Système
+      (`proc_usage` : mémoire par /proc ou psapi, processeur = process_time ; charge, débit traité, `prof`), Session
+      (case `sdr_cfg["sdr_session"]`, défaut oui).
+    - PURE `SDR_EVENTS` (type -> libellé, gravité), `sdr_event`, `sdr_quality_events` (transitions pertes / coupure /
+      invalides / horodatages / saturation), `mute_check` (porteuse ≥ 15 dB au-dessus de la médiane de la fenêtre et son
+      < −55 dBFS pendant 3 s = « porteuse sans son », vrai SDR ET démo), `SDR_SESSION_HEAD` / `SDR_EVENTS_HEAD`,
+      `sdr_session_row`, `sdr_event_row`, `sdr_session_html`, `RefCompare` (écart-type glissant par case : « notable »
+      seulement au-delà de max(6 dB, 3 σ)). `StreamStats` : `invalid` (NaN / inf, remplacés par 0 dans le worker),
+      `badts` (heure qui recule : comptée une fois, échantillons gardés ; 3 de suite = vrai recalage de l'horloge),
+      `rate` reçu, `total`.
+    - `SdrEngine._ev(kind, text, journal)` (journal « SDR FLUX » pour warn / bad), `_diag_tick` (1 s, dans `_tick`),
+      `_sess_open` / `_sess_close` (CSV `<journaux>/sessions_sdr/<date>/sdr<n>_HHMMSS_mesures.csv` + `_evenements.csv`),
+      `session_report(path)` (.pdf = QTextDocument sans le SVG), `_recovering` (« SDR revenu » à la 1re trame),
+      `stop(user=)` (arrêt sur erreur ≠ arrêt voulu : la reconnexion continue).
+    - Pannes démo « nosrc » (son des micros = WAV introuvable) et « badts » (`DemoIQ.ts_off` −2 s une lecture sur 40,
+      lu par le worker via `isrc.ts_off`) ; pannes notées dans l'historique du poste.
+    - Labo : `LAB_SCENARIOS` (8 : chaîne, panne en direct, quoi regarder, pourquoi) -> `SdrLab.scenario(key)`, encadré
+      « 🎬 Scénarios guidés » du panneau Pannes ; ligne « Le trajet du signal » au-dessus des 6 graphes de la chaîne.
+    - Récepteur : vue `RX_IF_VIEWS` « iq » (I et Q dans le temps, `if_curve2`, `bb_views` -> `ti`).
+    - Manuel : chapitre `sdr-diag`, scénarios dans `sdr-labo`. gui_reel : flaky « multicanal waterfall » -> attente
+      jusqu'à 8 s.
   - **Rien n'est vérifié sur du vrai matériel** : modèles des marques = approximations (fiches le disent) ; mesure de
     l'émetteur par escalier jamais faite avec un vrai pack ; qualité du flux jamais vue avec un vrai SDR qui perd des
     échantillons ; seuils (cohérence 0,6, coupure 0,5 s, « autre signal » +25 dB) = choix de Claude.
