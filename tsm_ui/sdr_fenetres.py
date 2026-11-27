@@ -1500,11 +1500,14 @@ class SdrDemoMixin:
         """🧪 Tout simuler en un clic (Clément 27/11 : « j'arrive pas à simuler, je trouve pas le bouton ») : tinySA démo +
         SDR démo, mode combiné, surveillance lancée. off = tout couper (le vrai matériel reprend au prochain ▶)."""
         if on:
+            lab_how = self.sdr_cfg.get("lab_view", "tabs") if self.lab_view_on else None
             if not self.demo_chk.isChecked():
                 self.switch_source(True)
             self.set_sdr_demo(True)
             if self.rf_mode != "both":
                 self.set_rf_mode("both")
+            if lab_how is not None and not self.lab_view_on:     # changer de mode quitte l'affichage Labo : on y revient
+                self.lab_view(True, lab_how)
             for e in (getattr(self, "sdr_engs", None) or {}).values():
                 if not e.running():
                     e.start()

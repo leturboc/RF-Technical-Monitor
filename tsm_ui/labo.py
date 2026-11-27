@@ -18,6 +18,9 @@ def _lab_plot(title, xl, yl):
     p.showGrid(x=True, y=True, alpha=0.2)
     sdr_light_axes(p)
     p.addLegend(offset=(6, 6), labelTextSize="8pt")
+    for ax in ("left", "bottom"):                 # 8.1 : rien ne bouge d'une image à l'autre en direct (Clément : « l'affichage
+        p.getAxis(ax).enableAutoSIPrefix(False)   # bouge, c'est bizarre ») : pas de « (x0.001) » qui va et vient,
+    p.getAxis("left").setWidth(54)                # axe des niveaux de largeur fixe
     p.setMinimumHeight(110)
     p.setMinimumWidth(120)                       # rétrécit avec le panneau au lieu d'être coupé à droite
     p.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
@@ -124,6 +127,7 @@ class SdrLab(QtCore.QObject):
         self.panels["chain"].layout().insertLayout(0, top)
         self._plot_setup()
         self._badges_setup()
+        self._hidden_ui()
         self.tm = QtCore.QTimer(self)
         self.tm.timeout.connect(self._tick)
         self.tm.start(250)
@@ -169,7 +173,31 @@ class SdrLab(QtCore.QObject):
         """Graphes masqués d'après la config (appelé à l'ouverture du labo : la config est lue APRÈS sa création)."""
         hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
         for p in self._plots():
+            if p is getattr(self, "md_aplot", None) and not getattr(self, "_a_shown", False):
+                continue                                  # « Signal de A » : caché tant qu'on ne l'a pas demandé
             p.setVisible(self._plot_key(p) not in hidden)
+        self._hidden_ui()
+
+    def _hidden_ui(self):
+        """Bouton « ↺ N graphe(s) masqué(s) » dans chaque panneau qui en a (Clément : « j'ai masqué un graphe et je ne
+        sais pas comment le remettre ») + parts de la grille recalculées."""
+        hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
+        for key, w in self.panels.items():
+            n = sum(1 for p in w.findChildren(pg.PlotWidget) if self._plot_key(p) in hidden and p.isHidden())
+            b = getattr(self, "restore_btns", {}).get(key)
+            if b is not None:
+                b.setText(TR("↺ {} graphe(s) masqué(s) : les remettre").format(n))
+                b.setVisible(n > 0)
+            self._grid_stretch(w)
+
+    def panel_restore(self, key):
+        hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
+        for p in self.panels[key].findChildren(pg.PlotWidget):
+            if self._plot_key(p) in hidden:
+                hidden.discard(self._plot_key(p))
+                p.show()
+        self.owner.sdr_cfg["lab_hidden"] = sorted(hidden)
+        self._hidden_ui()
 
     def plot_hide(self, p):
         if p in self._detached:
@@ -178,7 +206,8 @@ class SdrLab(QtCore.QObject):
         h = set(self.owner.sdr_cfg.get("lab_hidden") or [])
         h.add(self._plot_key(p))
         self.owner.sdr_cfg["lab_hidden"] = sorted(h)
-        self.owner.set_status(TR("Graphe masqué : clic droit sur un autre graphe › « ↺ Remettre tous les graphes »."))
+        self._hidden_ui()
+        self.owner.set_status(TR("Graphe masqué : bouton « ↺ … graphe(s) masqué(s) » en haut du panneau pour le remettre."))
 
     def plot_detach(self, p):
         """Le graphe part dans sa propre fenêtre (à mettre sur l'écran qu'on veut) ; une étiquette garde sa place."""
@@ -241,8 +270,11 @@ class SdrLab(QtCore.QObject):
         for p in list(self._detached):
             self.plot_attach(p)
         for p in self._plots():
+            if p is getattr(self, "md_aplot", None) and not getattr(self, "_a_shown", False):
+                continue
             p.show()
         self.owner.sdr_cfg["lab_hidden"] = []
+        self._hidden_ui()
 
     def _shown(self, key):
         """Panneau vraiment à l'écran (un onglet caché derrière un autre reste « visible » pour Qt : sa zone est vide)."""
@@ -1046,13 +1078,25 @@ class SdrLab(QtCore.QObject):
                             "une mesure."))
             self.badges[key] = b
             w = self.panels[key]
+            rb = QtWidgets.QPushButton("")
+            rb.setToolTip(TR("Remet dans ce panneau les graphes que tu as masqués (clic droit sur un graphe › ✕ Masquer)."))
+            rb.setStyleSheet("QPushButton { color: #ffb300; font-weight: 600; }")
+            rb.clicked.connect(lambda *_, k=key: self.panel_restore(k))
+            rb.hide()
+            if not hasattr(self, "restore_btns"):
+                self.restore_btns = {}
+            self.restore_btns[key] = rb
             try:
                 if key == "chain":
                     self._top.insertWidget(0, b)
+                    self._top.insertWidget(1, rb)
                 elif key in ("cmp", "live"):
-                    w.findChild(QtWidgets.QSplitter).widget(0).layout().insertWidget(0, b)
+                    lay_ = w.findChild(QtWidgets.QSplitter).widget(0).layout()
+                    lay_.insertWidget(0, b)
+                    lay_.insertWidget(1, rb)
                 else:
                     w.layout().insertWidget(0, b)
+                    w.layout().insertWidget(1, rb)
             except Exception:  # noqa: BLE001
                 pass
             self.set_prov(key, "sim")
@@ -1106,6 +1150,22 @@ class SdrLab(QtCore.QObject):
             except Exception:  # noqa: BLE001
                 pass
 
+    def _grid_stretch(self, panel):
+        """Parts égales pour les lignes / colonnes qui ont un graphe visible, 0 pour les autres : un focus agrandit le
+        graphe, et au retour chacun reprend la même place (Clément : « quand on focus et revient, ça reste plus gros »)."""
+        for g in panel.findChildren(QtWidgets.QGridLayout):
+            rows, cols = set(), set()
+            for i in range(g.count()):
+                w = g.itemAt(i).widget()
+                if w is not None and not w.isHidden():
+                    r, c, rs, cs = g.getItemPosition(i)
+                    rows.update(range(r, r + rs))
+                    cols.update(range(c, c + cs))
+            for r in range(g.rowCount()):
+                g.setRowStretch(r, 1 if r in rows else 0)
+            for c in range(g.columnCount()):
+                g.setColumnStretch(c, 1 if c in cols else 0)
+
     def plot_focus(self, p):
         """Double-clic (ou menu) : ce graphe prend toute la place de son panneau ; encore une fois = tout revient."""
         panel = next((w for w in self.panels.values() if w.isAncestorOf(p)), None)
@@ -1116,6 +1176,7 @@ class SdrLab(QtCore.QObject):
             for q in cur[1]:
                 q.show()
             self._focus.pop(id(panel), None)
+            self._grid_stretch(panel)
             if cur[0] is p:
                 self.owner.set_status(TR("Tous les graphes du panneau sont revenus."))
                 return False
@@ -1123,6 +1184,7 @@ class SdrLab(QtCore.QObject):
         for q in hidden:
             q.hide()
         self._focus[id(panel)] = (p, hidden)
+        self._grid_stretch(panel)
         self.owner.set_status(TR("Focus : double-clic sur le graphe (ou clic droit) pour revoir les autres."))
         return True
 
@@ -1540,6 +1602,7 @@ class SdrLab(QtCore.QObject):
         self._clive_grab, self._clive_job, self._clive_tuned = None, False, False
         if not on:
             tm.stop()
+            self.ch_res.setMinimumHeight(0)
             self.ch_res.setText(TR("En direct arrêté : les graphes gardent la dernière image."))
             return False
         if self._eng() is None:
@@ -1650,6 +1713,9 @@ class SdrLab(QtCore.QObject):
             f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
         if live:
             self.live_frames = getattr(self, "live_frames", 0) + 1
+            h_ = self.ch_res.sizeHint().height()            # le texte ne rétrécit pas d'une image à l'autre : les
+            if h_ > self.ch_res.minimumHeight():            # graphes au-dessus ne sautent pas
+                self.ch_res.setMinimumHeight(h_)
             return r
         mm = {k: (None if v_ is None or not np.isfinite(v_) else round(float(v_), 3)) for k, v_ in m.items()}
         self.session_save("chain", prov, dict(source=getattr(self, "_real_src", ""), mode=r["mode"], dev=r["dev"]), mm)
@@ -1791,6 +1857,7 @@ class SdrLab(QtCore.QObject):
         p = self.md_aplot
         p.clear()
         p.show()
+        self._a_shown = True
         prov = "sim" if e.kind() == "demo" else "obs"
         p.setTitle(TR("📡 Signal de A ({} MHz) · {}").format(f"{e.a:.4f}", TR(PROVENANCE[prov])), size="9pt")
         p.plot((F[msk] - e.a) * 1000.0, L[msk], pen=pg.mkPen(LAB_COLORS[1], width=1.2))

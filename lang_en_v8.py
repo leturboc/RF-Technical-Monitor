@@ -2731,3 +2731,10 @@ EXACT.update({                                      # 8.1 : chaîne complète en
         "⏳ Live: waiting for the SDR station (▶ in the Receiver, A on a mic)…",
 })
 EXACT["⏯ En direct : A n'était sur aucun signal, calé sur {} MHz."] = "⏯ Live: A wasn't on any signal, tuned to {} MHz."
+EXACT.update({                                      # 8.1 : graphes masqués remis d'un clic
+    "↺ {} graphe(s) masqué(s) : les remettre": "↺ {} hidden graph(s): bring them back",
+    "Remet dans ce panneau les graphes que tu as masqués (clic droit sur un graphe › ✕ Masquer).":
+        "Brings back the graphs you hid in this panel (right-click a graph › ✕ Hide).",
+    "Graphe masqué : bouton « ↺ … graphe(s) masqué(s) » en haut du panneau pour le remettre.":
+        "Graph hidden: “↺ … hidden graph(s)” button at the top of the panel to bring it back.",
+})

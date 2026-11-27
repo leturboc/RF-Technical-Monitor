@@ -96,6 +96,13 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `lab_chain_iq` dans `run_heavy`, ~1 image / s ici ; sans poste -> `simulate(True)` ; `_clive_target` cale A sur le micro
     suivi le plus proche / un micro du SDR démo / le pic de la fenêtre si A n'a pas de porteuse ; pas de session enregistrée
     en direct ; zoom du spectre gardé). Test dans test_ecrans.
+    Puis (Clément) : focus -> au retour le graphe restait plus gros (QGridLayout : la taille prise pendant le focus était
+    gardée) -> `_grid_stretch` (parts égales aux lignes / colonnes visibles, recalculées à chaque focus / masquage) ;
+    « l'affichage bouge en simulé » (mesuré : les 6 graphes se décalaient 13 fois sur 20 images : largeur de l'axe et
+    « (x0.001) » qui changent, texte des résultats qui change de hauteur) -> `_lab_plot` : axe gauche 54 px, pas de
+    préfixe SI ; `ch_res` ne rétrécit pas en direct ; « je ne sais pas remettre un graphe masqué » -> bouton orange
+    `restore_btns[panneau]` « ↺ N graphe(s) masqué(s) » (`_hidden_ui`, `panel_restore`) ; 🧪 Simuler quittait
+    l'affichage Labo (changement de mode) -> `simulate` y revient. Tout dans test_ecrans.
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

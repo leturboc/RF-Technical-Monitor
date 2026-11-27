@@ -68,6 +68,28 @@ for seq in (("dual", "mode:tiny"), ("dual", "close"), ("dual", "grid", "mode:sdr
     check("labo sur 2 écrans : " + " → ".join(seq) + " : aucun panneau détruit", not dead() and not errs,
           f"{dead()} {errs[:1]}")
 check("labo : 2ᵉ fenêtre d'écran refermée à la fin", not win.screen_hosts or win.lab_view_on)
+
+# ---- focus, graphe masqué, rien ne bouge en direct (retours de Clément 27/11)
+lab = win.open_sdr_lab("cmp")
+wait(400)
+ps_ = [q for q in lab.panels["cmp"].findChildren(m.pg.PlotWidget) if not q.isHidden()]
+g0_ = [q.size().toTuple() for q in ps_]
+lab.plot_focus(lab.p_eq)
+wait(300)
+big_ = lab.p_eq.size().toTuple()
+lab.plot_focus(lab.p_eq)
+wait(300)
+check("focus : le graphe s'agrandit, puis chacun reprend SA place", big_[0] > g0_[ps_.index(lab.p_eq)][0]
+      and [q.size().toTuple() for q in ps_] == g0_, f"{g0_} {big_} {[q.size().toTuple() for q in ps_]}")
+lab.plot_hide(lab.p_ph)
+wait(200)
+rb_ = lab.restore_btns["cmp"]
+check("graphe masqué : bouton « ↺ 1 graphe(s) masqué(s) » visible dans son panneau", not rb_.isHidden() and "1" in rb_.text(),
+      rb_.text())
+rb_.click()
+wait(300)
+check("… et un clic le remet", not lab.p_ph.isHidden() and rb_.isHidden() and not win.sdr_cfg.get("lab_hidden")
+      and [q.size().toTuple() for q in ps_] == g0_)
 win.screens_off()
 win.lab_view(False)
 win.simulate(True)
@@ -79,8 +101,13 @@ check("🧪 Simuler : tinySA démo + SDR démo, surveillance lancée, mode combi
 check("🧪 Simuler : marqué simulé", win.simulated())
 win.home.refresh(win.home_info())
 check("🧪 Simuler : le bouton de l'accueil suit", win.home.sim_btn.isChecked())
-lab = win.open_sdr_lab(0)
-wait(300)
+win.simulate(False)
+wait(2500)
+win.lab_view(True, "grid")
+wait(500)
+win.simulate(True)
+wait(2500)
+check("🧪 Simuler depuis l'affichage Labo : le labo reste affiché", win.lab_view_on and lab._shown("chain"))
 lab.live_frames = 0
 lab.chain_live(True)
 wait(7000)
@@ -88,6 +115,13 @@ check("labo : chaîne complète EN DIRECT sur le SDR démo (graphes mis à jour 
       lab.live_frames >= 3 and lab.res_chain.get("real") and lab.badges["chain"].property("prov") == "sim"
       and len(lab.p_const.getPlotItem().listDataItems()) > 0, f"images={lab.live_frames} {lab.ch_res.text()[:120]}")
 print("images en direct :", lab.live_frames, "en 7 s", flush=True)
+geo_ = lambda: [q.geometry().getRect() for q in lab.panels["chain"].findChildren(m.pg.PlotWidget)]
+g_, moved_ = geo_(), 0
+for _i in range(8):
+    wait(500)
+    moved_ += geo_() != g_
+    g_ = geo_()
+check("en direct : les graphes ne bougent pas d'une image à l'autre", moved_ == 0, f"{moved_} déplacements sur 8")
 if os.environ.get("CAPTURE"):
     lab.panels["chain"].grab().save(os.environ["CAPTURE"])
 lab.chain_live(False)
