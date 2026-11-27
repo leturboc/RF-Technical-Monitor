@@ -47,6 +47,10 @@ for cls in [c for c in tree.body if isinstance(c, ast.ClassDef)]:
 # voit pas (cas réel : `subprocess` absent dans _kill_tree -> la garde ne fermait jamais l'appli figée sous Windows).
 try:
     import subprocess as _sp, sys as _sys
+    if _sp.run([_sys.executable, "-c", "import pyflakes"], capture_output=True).returncode:
+        print("FAIL pyflakes n'est pas installé (pip install pyflakes) : les noms indéfinis ne sont PAS vérifiés")
+        print("ÉCHECS: 1")
+        _sys.exit(1)
     _out = _sp.run([_sys.executable, "-m", "pyflakes"] + [__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", f) for f in ("tsm_core.py", "tinysa_monitor.py")], capture_output=True, text=True).stdout
     _bad = [l for l in _out.splitlines() if "undefined name" in l]
     print("noms indéfinis (pyflakes) :", _bad or "aucun")

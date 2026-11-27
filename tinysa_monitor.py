@@ -17767,7 +17767,7 @@ class MapScene(QtWidgets.QGraphicsScene):
             n.extra = TR("Surveille : {}").format(", ".join(scs) if scs else TR("tout le site"))
             n.stripe = "#64d2ff"
             n.update()
-        self._v8_sdr_links()
+        self._sdr_links()
 
     def _update_links_base(self):
         for it in self.links:
@@ -17804,7 +17804,7 @@ class MapScene(QtWidgets.QGraphicsScene):
 
     def update_links(self):
         self._update_links_base()
-        self._v8_sdr_links()
+        self._sdr_links()
 
     # --- plan de fond (facultatif)
     def sync_bg(self):
@@ -18065,6 +18065,32 @@ class MapScene(QtWidgets.QGraphicsScene):
         self.heat_f = pt["f"]
         self.sync_heat()
         return pt
+
+    def _sdr_links(self):
+        o = self.owner
+        for it in getattr(self, "sdr_links", []):
+            if it.scene() is self:
+                self.removeItem(it)
+        self.sdr_links = []
+        for pid, e in (getattr(o, "sdr_engs", None) or {}).items():
+            a = self.nodes.get(map_key("sdr", pid))
+            if a is None:
+                continue
+            for scn in e.post()["scenes"]:
+                b = self.nodes.get(map_key("scene", scn))
+                if b is None:
+                    continue
+                pa, pb = a.port(b.pos().y() < a.pos().y()), b.port(b.pos().y() >= a.pos().y())
+                path = QtGui.QPainterPath(pa)
+                dy = max(40.0, abs(pb.y() - pa.y()) / 2) * (1 if pb.y() >= pa.y() else -1)
+                path.cubicTo(QtCore.QPointF(pa.x(), pa.y() + dy), QtCore.QPointF(pb.x(), pb.y() - dy), pb)
+                pen = QtGui.QPen(QtGui.QColor("#64d2ff"), 2.4)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                if not _v8_post_live(e):
+                    pen.setStyle(Qt.PenStyle.DashLine)
+                it = self.addPath(path, pen)
+                it.setZValue(5)
+                self.sdr_links.append(it)
 
 
 class MapView(QtWidgets.QGraphicsView):
@@ -20854,7 +20880,5202 @@ CONFLICT_TEXT = "⚠ CONFLIT"
 ABSENT_TEXT = "⚠ ABSENT"
 
 
-class MainWindow(QtWidgets.QMainWindow):
+def log_crash(kind, text, path=None):
+    """Ajoute une erreur inattendue à crash.log (horodatée, avec la version). -> chemin du fichier."""
+    path = Path(path or CRASH_PATH)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} · {APP_NAME} {APP_VER} · {kind}\n{text}\n")
+    except OSError:
+        pass
+    return path
+
+
+def install_crash_log(app=None):
+    """L'exe n'a pas de console : toute erreur imprévue part dans crash.log, avec un message (au plus 1 / min).
+    Plantage dur (segfault) : faulthandler écrit aussi dans crash.log."""
+    state = {"last": 0.0}
+
+    def hook(t, v, tb):
+        if issubclass(t, KeyboardInterrupt):
+            return
+        path = log_crash("erreur", "".join(traceback.format_exception(t, v, tb)))
+        if app is not None and time.time() - state["last"] > 60:
+            state["last"] = time.time()
+            try:
+                QtWidgets.QMessageBox.warning(
+                    None, APP_NAME, f"Erreur inattendue : {t.__name__}: {v}\n\nLe logiciel continue. Le détail est dans :\n"
+                                    f"{path}\n(envoie ce fichier pour qu'on corrige).")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def thook(args):
+        log_crash(f"erreur dans un fil ({getattr(args.thread, 'name', '?')})",
+                  "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
+
+    sys.excepthook = hook
+    threading.excepthook = thook
+    try:
+        CRASH_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(CRASH_PATH, "a", encoding="utf-8")
+        faulthandler.enable(fh)
+        return fh                                  # à garder ouvert
+    except OSError:
+        return None
+
+
+def _tr_args(tr, args, kw, which="first", lists=(), kws=()):
+    """Traduit des arguments : which = "first" (1re chaîne seulement : le texte, pas la donnée associée),
+    "all" (toutes les chaînes), ou une liste d'indices."""
+    a = list(args)
+    if which == "first":
+        for i, x in enumerate(a):
+            if isinstance(x, str):
+                a[i] = tr(x)
+                break
+    else:
+        for i, x in enumerate(a):
+            if isinstance(x, str) and (which == "all" or i in which):
+                a[i] = tr(x)
+    for i in lists:
+        if i < len(a) and isinstance(a[i], (list, tuple)):
+            a[i] = [tr(x) if isinstance(x, str) else x for x in a[i]]
+    for k in kws:
+        if isinstance(kw.get(k), str):
+            kw[k] = tr(kw[k])
+    return a, kw
+
+
+def _patch(cls, name, which="first", lists=(), kws=(), static=False):
+    orig = getattr(cls, name, None)
+    if orig is None or getattr(orig, "_tsm_tr", False):
+        return
+    tr = TR
+    if static:
+        def f(*args, **kw):
+            a, kw = _tr_args(tr, args, kw, which, lists, kws)
+            return orig(*a, **kw)
+        f._tsm_tr = True
+        setattr(cls, name, staticmethod(f))
+    else:
+        def f(self, *args, **kw):
+            a, kw = _tr_args(tr, args, kw, which, lists, kws)
+            return orig(self, *a, **kw)
+        f._tsm_tr = True
+        setattr(cls, name, f)
+
+
+def install_plain_buttons():
+    """Boutons sans emoji de tête (look « pro » 7.54) : posé sur QAbstractButton.setText et les constructeurs de
+    QPushButton / QToolButton, AVANT install_language (la traduction s'applique au texte complet, puis on retire
+    l'emoji). Les menus et listes gardent leurs emojis."""
+    W = QtWidgets
+    o_set = W.QAbstractButton.setText
+    if getattr(o_set, "_tsm_plain", False):
+        return
+
+    def set_text(self, t, _o=o_set):
+        return _o(self, plain_btn_text(t))
+    set_text._tsm_plain = True
+    W.QAbstractButton.setText = set_text
+    for cls in (W.QPushButton, W.QToolButton):
+        o_init = cls.__init__
+
+        def init(self, *a, _o=o_init, **kw):
+            _o(self, *a, **kw)
+            t = W.QAbstractButton.text(self)
+            if t:
+                o_set(self, plain_btn_text(t))
+        cls.__init__ = init
+
+
+install_plain_buttons()
+
+
+def _load_lang_en():
+    """-> (exact, modèles, morceaux de page web, vocabulaire) anglais (lang_en + lang_en_v8), ou None."""
+    here = str(Path(__file__).resolve().parent)          # à côté du programme, d'où qu'on le lance
+    if here not in sys.path:
+        sys.path.append(here)
+    try:
+        import lang_en                                    # fichier de traductions à côté du programme / dans l'exe
+    except ImportError:
+        return None
+    exact, tpl = dict(lang_en.EXACT), dict(lang_en.TEMPLATES)
+    try:
+        import lang_en_v8                                 # textes propres à la V8 (SDR), dans leur propre fichier
+        exact.update(lang_en_v8.EXACT)
+        tpl.update(lang_en_v8.TEMPLATES)
+        if not getattr(lang_en, "_v8_web", False):        # morceaux de la page web propres à la V8 (vue 🎧 Écoute)
+            lang_en.WEB = list(lang_en.WEB) + list(getattr(lang_en_v8, "WEB", []))
+            lang_en._v8_web = True
+    except ImportError:
+        pass
+    return exact, tpl, lang_en.WEB, lang_en.VOCAB
+
+
+_EN_TR = []
+
+
+def en_translator():
+    """Traducteur anglais, même si l'appli est en français (page web / alertes au choix de chacun)."""
+    if not _EN_TR:
+        if TR:
+            _EN_TR.append(TR)
+        else:
+            d = _load_lang_en()
+            _EN_TR.append(Translator(d[0], d[1]) if d else Translator())
+    return _EN_TR[0]
+
+
+_WEB_PAGES = {}
+
+
+WEB_EXTRA_JS = ""        # 7.68 : JavaScript ajouté par une autre version (V8 : vues EXT) ; vide en V7
+
+
+def web_page_full():
+    """WEB_PAGE + vues et JavaScript ajoutés par une autre version (WEB_VIEWS complétée, WEB_EXTRA_JS)."""
+    base = set(_WEB_BASE_VIEWS)
+    xv = "{" + ",".join(f'"{k}":["{i}","{t}","{d}"]' for k, i, t, d in WEB_VIEWS if k not in base) + "}"
+    return WEB_PAGE.replace("/*__VIEWS_X__*/{}", xv).replace("/*__EXTRA_JS__*/", WEB_EXTRA_JS)
+
+
+def web_page_bytes(lang):
+    """Page web de l'équipe dans la langue de la personne (« fr » : la page d'origine)."""
+    if lang not in _WEB_PAGES:
+        d = _load_lang_en() if lang == "en" else None
+        page = web_page_lang(web_page_full(), d[2], en_translator())[0] if d else web_page_full()
+        _WEB_PAGES[lang] = page.encode("utf-8")
+    return _WEB_PAGES[lang]
+
+
+def install_language(code):
+    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
+    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
+    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
+    -> True si la langue est active."""
+    if code != "en":
+        return False
+    d = _load_lang_en()
+    if d is None:
+        return False
+    exact, tpl, _web, vocab = d
+    TR.__init__(exact, tpl)
+    for lst in (NAME_WORDS, SCENE_WORDS, GROUP_WORDS):    # mots proposés pour les noms : en anglais
+        lst[:] = list(dict.fromkeys(vocab.get(w, w) for w in lst))
+    W = QtWidgets
+    for cls in (W.QLabel, W.QPushButton, W.QCheckBox, W.QRadioButton, W.QToolButton, W.QGroupBox, W.QDockWidget,
+                W.QMenu, W.QListWidgetItem, W.QTableWidgetItem, QtGui.QAction, W.QCommandLinkButton, W.QToolBar):
+        _patch(cls, "__init__")
+    _patch(W.QTreeWidgetItem, "__init__", which=(), lists=(0, 1))
+    for cls, names in ((W.QAbstractButton, ("setText",)), (W.QLabel, ("setText",)), (W.QGroupBox, ("setTitle",)),
+                       (W.QWidget, ("setToolTip", "setStatusTip", "setWhatsThis", "setWindowTitle")),
+                       (W.QMenu, ("setTitle", "addAction", "addMenu", "addSection")),
+                       (W.QToolBar, ("addAction",)),
+                       (QtGui.QAction, ("setText", "setToolTip", "setStatusTip", "setIconText")),
+                       (W.QComboBox, ("setPlaceholderText",)),
+                       (W.QLineEdit, ("setPlaceholderText",)), (W.QTextEdit, ("setPlaceholderText",)),
+                       (W.QPlainTextEdit, ("setPlaceholderText",)),
+                       (W.QAbstractSpinBox, ("setSpecialValueText",)),
+                       (W.QSpinBox, ("setSuffix", "setPrefix")), (W.QDoubleSpinBox, ("setSuffix", "setPrefix")),
+                       (W.QTabWidget, ("addTab", "insertTab", "setTabText", "setTabToolTip")),
+                       (W.QTabBar, ("setTabText", "setTabToolTip")),
+                       (W.QTableWidgetItem, ("setText", "setToolTip", "setStatusTip")),
+                       (W.QListWidgetItem, ("setText", "setToolTip", "setStatusTip")),
+                       (W.QTreeWidgetItem, ("setText", "setToolTip", "setStatusTip")),
+                       (W.QListWidget, ("addItem",)), (W.QFormLayout, ("addRow", "insertRow")),
+                       (W.QStatusBar, ("showMessage",)),
+                       (W.QMessageBox, ("setText", "setInformativeText", "setDetailedText", "addButton")),
+                       (W.QDialogButtonBox, ("addButton",)),
+                       (W.QProgressDialog, ("setLabelText", "setCancelButtonText"))):
+        for n in names:
+            _patch(cls, n)
+    for n, lists in (("addItem", ()), ("insertItem", ()), ("setItemText", ()), ("addItems", (0,))):
+        orig_c = getattr(W.QComboBox, n)                  # liste modifiable (noms de scène, de groupe…) : on n'y
+        if getattr(orig_c, "_tsm_tr", False):              # touche pas, son texte est relu par le programme
+            continue
+
+        def combo(self, *args, _o=orig_c, _l=lists, **kw):
+            if not self.isEditable():
+                args, kw = _tr_args(TR, args, kw, () if _l else "first", _l)
+            return _o(self, *args, **kw)
+        combo._tsm_tr = True
+        setattr(W.QComboBox, n, combo)
+    _patch(W.QListWidget, "addItems", which=(), lists=(0,))
+    for cls in (W.QTableWidget,):
+        _patch(cls, "setHorizontalHeaderLabels", which=(), lists=(0,))
+        _patch(cls, "setVerticalHeaderLabels", which=(), lists=(0,))
+    _patch(W.QTreeWidget, "setHeaderLabels", which=(), lists=(0,))
+    _patch(W.QTreeWidget, "setHeaderLabel")
+    orig_data = W.QComboBox.setItemData                   # bulle d'un choix de liste (rôle ToolTip) seulement
+    if not getattr(orig_data, "_tsm_tr", False):
+        def set_item_data(self, i, value, role=Qt.ItemDataRole.UserRole):
+            if role == Qt.ItemDataRole.ToolTipRole and isinstance(value, str):
+                value = TR(value)
+            return orig_data(self, i, value, role)
+        set_item_data._tsm_tr = True
+        W.QComboBox.setItemData = set_item_data
+    orig_html = W.QTextEdit.setHtml
+    if not getattr(orig_html, "_tsm_tr", False):
+        def set_html(self, h):
+            return orig_html(self, TR.html(h))
+        set_html._tsm_tr = True
+        W.QTextEdit.setHtml = set_html
+    _patch(W.QMessageBox, "__init__", which="all")
+    for n in ("information", "warning", "critical", "question", "about"):
+        _patch(W.QMessageBox, n, which=(1, 2), static=True)
+    for n in ("getText", "getMultiLineText", "getInt", "getDouble"):
+        _patch(W.QInputDialog, n, which=(1, 2), static=True)
+    orig_item = W.QInputDialog.getItem
+    if not getattr(orig_item, "_tsm_tr", False):
+        def get_item(parent, title, label, items, *a, **kw):
+            items = list(items)
+            shown = [TR(x) for x in items]
+            res, ok = orig_item(parent, TR(title), TR(label), shown, *a, **kw)
+            return (items[shown.index(res)] if res in shown else res), ok    # on rend le texte d'origine
+        get_item._tsm_tr = True
+        W.QInputDialog.getItem = staticmethod(get_item)
+    for n in ("getOpenFileName", "getOpenFileNames", "getSaveFileName"):
+        _patch(W.QFileDialog, n, which=(1, 3), kws=("caption", "filter"), static=True)
+    _patch(W.QFileDialog, "getExistingDirectory", which=(1,), kws=("caption",), static=True)
+    _patch(W.QColorDialog, "getColor", which=(2,), kws=("title",), static=True)
+    _patch(pg.PlotItem, "setLabel", which=(1,), kws=("text",))
+    _patch(pg.PlotItem, "setTitle")
+    _patch(pg.LabelItem, "setText")
+    return True
+
+
+def restart_app():
+    """Relance l'appli dans un NOUVEAU processus indépendant. Exe PyInstaller « un seul fichier » : sans précaution,
+    le nouveau processus hérite des variables d'environnement de l'ancien et réutilise son dossier temporaire
+    (_MEI…), que l'ancien efface en se fermant → « No module named numpy._core._multiarray_umath » (bug 7.11.0
+    vu par Clément). PYINSTALLER_RESET_ENVIRONMENT=1 (PyInstaller ≥ 6.9) + variables _PYI_* / _MEIPASS2 retirées
+    = il repart de zéro avec son propre dossier. -> True si le processus a démarré."""
+    frozen = getattr(sys, "frozen", False)
+    args = sys.argv[1:] if frozen else [str(Path(__file__).resolve())] + sys.argv[1:]
+    env = QtCore.QProcessEnvironment.systemEnvironment()
+    for k in list(env.keys()):
+        if k.startswith("_PYI_") or k in ("_MEIPASS2", "_MEIPASS"):
+            env.remove(k)
+    env.insert("PYINSTALLER_RESET_ENVIRONMENT", "1")
+    env.insert("TSM_WAIT_INSTANCE", "1")              # 8.0.3 : attend que l'ancienne fenêtre soit fermée
+    pr = QtCore.QProcess()
+    pr.setProgram(sys.executable)
+    pr.setArguments(args)
+    pr.setProcessEnvironment(env)
+    pr.setWorkingDirectory(str(Path(sys.executable).parent if frozen else Path.cwd()))
+    ok = pr.startDetached()
+    return bool(ok[0] if isinstance(ok, tuple) else ok)
+
+
+GUARD_LOG = CFG_PATH.parent / "garde.log"
+
+
+def _guard_env(beat, restarted):
+    """Environnement de l'appli lancée par la garde (exe PyInstaller : dossier _MEI… à elle, cf. restart_app)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k not in ("_MEIPASS2", "_MEIPASS")}
+    env.update(PYINSTALLER_RESET_ENVIRONMENT="1", TSM_HEARTBEAT=str(beat), TSM_GUARD_RESTART="1" if restarted else "0",
+               TSM_WAIT_INSTANCE="1")
+    return env
+
+
+def _beat_pid(beat):
+    """N° de processus de l'appli écrit dans le battement (7.60.2), ou None."""
+    try:
+        parts = Path(beat).read_text(encoding="utf-8").split()
+        return int(parts[1]) if len(parts) > 1 else None
+    except (OSError, ValueError):
+        return None
+
+
+def _pid_alive(pid):
+    """Le processus pid tourne-t-il encore ?"""
+    if not pid:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            h = k.OpenProcess(0x1000 | 0x00100000, False, int(pid))   # QUERY_LIMITED_INFORMATION | SYNCHRONIZE
+            if not h:
+                return False
+            try:
+                return k.WaitForSingleObject(h, 0) == 0x102           # WAIT_TIMEOUT = encore vivant
+            finally:
+                k.CloseHandle(h)
+        except Exception:  # noqa: BLE001
+            return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _kill_pid(pid):
+    try:
+        if os.name == "nt":
+            subprocess.run("taskkill /F /T /PID".split() + [str(pid)], capture_output=True, timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            import signal
+            os.kill(int(pid), signal.SIGKILL)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _kill_tree(pr):
+    """Ferme de force l'appli ET ses processus enfants. L'exe PyInstaller « un seul fichier » = un lanceur + l'appli
+    Python dans un 2ᵉ processus : tuer le seul lanceur laissait l'appli figée vivante (port COM gardé, puis 2 appli
+    après le dégel ; vu par Clément en 7.52 : « COM4 accès refusé » après la relance)."""
+    try:
+        if os.name == "nt":
+            subprocess.run("taskkill /F /T /PID".split() + [str(pr.pid)], capture_output=True, timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        pr.kill()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        pr.wait(15)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_GRACE_S, poll_s=2.0,
+              max_runs=None, stop=None):
+    """RF-Technical-Monitor.exe --garde : petit processus SANS fenêtre qui lance l'appli et la surveille. Elle plante
+    (code ≠ 0) -> relancée ; elle ne bat plus depuis `hang_s` (figée) -> fermée de force puis relancée ; fermée
+    exprès (code 0) -> la garde s'arrête aussi. Relancée, l'appli reprend la surveillance si elle tournait.
+    -> nombre de relances."""
+    import subprocess
+    frozen = getattr(sys, "frozen", False)
+    if cmd is None:
+        args = [a for a in sys.argv[1:] if a != "--garde"]
+        cmd = [sys.executable] + ([] if frozen else [str(Path(__file__).resolve())]) + args
+    beat = Path(beat or (CFG_PATH.parent / "battement.txt"))
+    log = Path(log or GUARD_LOG)
+
+    def note(msg):
+        try:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
+        except OSError:
+            pass
+
+    starts, runs, restarts = [], 0, 0
+    note(f"garde démarrée ({APP_NAME} {APP_VER})")
+    while True:
+        try:
+            beat.unlink()
+        except OSError:
+            pass
+        t0 = time.time()
+        starts.append(t0)
+        runs += 1
+        try:
+            pr = subprocess.Popen(cmd, env=_guard_env(beat, runs > 1),
+                                  cwd=str(Path(sys.executable).parent if frozen else Path.cwd()))
+        except OSError as e:
+            note(f"lancement impossible : {e}")
+            return restarts
+        last_loop, ref = time.time(), t0
+        why = ""
+        while True:
+            if stop is not None and stop.is_set():
+                _kill_tree(pr)
+                note("garde arrêtée")
+                return restarts
+            time.sleep(poll_s)
+            now = time.time()
+            if now - last_loop > max(30.0, 10 * poll_s):     # le PC dormait : on ne compte pas ce temps
+                ref = now
+            last_loop = now
+            try:
+                hb = max(beat.stat().st_mtime, ref)
+                age = now - hb
+            except OSError:
+                age = None if ref == t0 else now - ref
+            act = guard_action(pr.poll(), age, now - t0, hang_s, grace_s)
+            if act == "wait":
+                continue
+            if act == "stop":
+                note("appli fermée normalement : fin de la garde")
+                return restarts
+            if act == "kill":
+                why = f"figée (plus de signe de vie depuis {int(age if age is not None else now - t0)} s) : fermée de force"
+                app_pid = _beat_pid(beat)
+                _kill_tree(pr)
+                # 7.60.2 (Clément : « l'autre s'est pas arrêtée, le tiny est bloqué ») : on vise AUSSI l'appli par son
+                # propre n° (écrit dans le battement) et on attend qu'elle soit vraiment fermée avant de relancer —
+                # sinon la nouvelle n'a pas le port COM.
+                for _try in range(6):
+                    if not _pid_alive(app_pid):
+                        break
+                    _kill_pid(app_pid)
+                    time.sleep(2.0)
+                if _pid_alive(app_pid):
+                    note(f"⚠ l'appli figée (processus {app_pid}) ne se ferme pas : le port du tinySA peut rester pris")
+                elif app_pid:
+                    note(f"appli figée (processus {app_pid}) bien fermée")
+            else:
+                why = f"arrêtée avec le code {pr.returncode} (plantage)"
+            break
+        restarts += 1
+        if max_runs is not None and runs >= max_runs:
+            note(f"appli {why} ; nombre maximal de lancements atteint")
+            return restarts
+        wait_s = guard_delay(starts, time.time())
+        note(f"appli {why} ; relance dans {int(wait_s)} s")
+        log_crash("garde", f"L'appli s'est {why}. Relancée automatiquement par la garde.")
+        end = time.time() + wait_s
+        while time.time() < end:
+            if stop is not None and stop.is_set():
+                return restarts
+            time.sleep(min(1.0, poll_s))
+
+
+def guard_beat(path=None):
+    """Battement de cœur pour la garde (rien si l'appli n'a pas été lancée par la garde)."""
+    path = path or os.environ.get("TSM_HEARTBEAT")
+    if not path:
+        return False
+    try:
+        Path(path).write_text(f"{time.time()} {os.getpid()}", encoding="utf-8")   # 7.60.2 : + n° du processus
+        return True
+    except OSError:
+        return False
+
+
+def read_language():
+    """Langue choisie (config.json « lang »), sinon celle du système : français si Windows est en français,
+    anglais sinon. TSM_LANG (variable d'environnement) l'impose (tests)."""
+    env = os.environ.get("TSM_LANG")
+    if env in ("fr", "en"):
+        return env
+    for path in (CFG_PATH, CFG_BAK):
+        try:
+            v = json.loads(path.read_text(encoding="utf-8")).get("lang")
+            if v in ("fr", "en"):
+                return v
+            break
+        except Exception:  # noqa: BLE001
+            continue
+    return "fr" if QtCore.QLocale.system().language() == QtCore.QLocale.Language.French else "en"
+
+
+def install_french(app):
+    """Boutons standard de Qt en français (Oui / Non, OK / Annuler, Ouvrir…). Cherche aussi dans l'exe PyInstaller."""
+    dirs = [QtCore.QLibraryInfo.path(QtCore.QLibraryInfo.LibraryPath.TranslationsPath)]
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        dirs += [os.path.join(base, "PySide6", "Qt", "translations"), os.path.join(base, "PySide6", "translations")]
+    ok = False
+    for name in ("qtbase_fr", "qt_fr"):
+        tr = QtCore.QTranslator(app)
+        if any(tr.load(name, d) for d in dirs if d):
+            app.installTranslator(tr)
+            ok = True
+    return ok
+
+
+def install_gc_main_thread(app, interval_ms=500):
+    """Le ramasse-miettes de Python ne tourne plus que dans le fil de l'interface.
+    Sinon (Python 3.12+) il peut se déclencher dans le fil du tinySA et y détruire des objets Qt de l'interface
+    (courbes, lignes de tableau jetées quand on change le nombre de points…) → « access violation » (crash.log de
+    Clément, 7.4.2 : ScanWorker.run, boucle d'attente de reconnexion). Même remède que GarbageCollector de pyqtgraph."""
+    gc.disable()
+    thr = gc.get_threshold()
+
+    def tick():
+        c0, c1, c2 = gc.get_count()
+        if c0 > thr[0]:
+            gc.collect(0)
+            if c1 > thr[1]:
+                gc.collect(1)
+                if c2 > thr[2]:
+                    gc.collect(2)
+
+    t = QtCore.QTimer(app)
+    t.timeout.connect(tick)
+    t.start(interval_ms)
+    return t
+
+
+# Branche V8 : bulles des menus SDR, ajoutées ici (et pas dans MainWindow.TIPS_MENU, partagé avec la V7 : sinon
+# chaque ajout de bulle côté V7 au même endroit provoquait un conflit de fusion).
+
+
+# ---------------------------------------------------------------- V8 étape 6 : branchements sur les prises de la V7
+class V8Bridge(QtCore.QObject):
+    """Passe une commande du fil du serveur web au fil de l'interface (signal en file d'attente)."""
+    req = Signal(object)
+
+
+# Étape 17 : les SDR sur la carte, comme les tinySA (tuile « 📡 », glisser sur une scène = la surveiller, liens, état)
+
+
+def _v8_post_live(e):
+    return e is not None and e.running() and e.last is not None and time.time() - float(e.last.get("t") or 0) < 5
+
+
+# ---------------------------------------------------------------- V8 étape 16 : le SDR au cœur (panneaux, modes)
+SDR_DOCKS = (("rx", "📡 SDR · Récepteur", "dock_sdr_rx", "SdrReceiverPanel"),
+             ("spec", "📡 SDR · Spectre", "dock_sdr_spec", "SdrSpectrumPanel"),
+             ("wf", "📡 SDR · Waterfall", "dock_sdr_wf", "SdrWaterfallPanel"),
+             ("mics", "📡 SDR · Mes micros", "dock_sdr_mics", "SdrMicsPanel"),
+             ("diag", "📡 SDR · Diagnostic", "dock_sdr_diag", "SdrDiagPanel"))
+
+
+class SdrPostsMixin:
+    """Postes SDR : panneaux, carte, page web, incidents. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def web_extra(self):
+        br = getattr(self, "_v8_bridge", None)
+        if br is None:
+            br = self._v8_bridge = V8Bridge()
+            br.req.connect(self.web_listen_do, Qt.ConnectionType.QueuedConnection)
+        return ({"/ecoute.pcm": (("ecoute",), self.web_listen_pcm), "/ecoute.json": (("ecoute",), self.web_listen_json)},
+                {"/ecoute": (listen_request, br.req.emit)})
+
+    def open_incidents(self):
+        """9. 📦 Rejouer un incident SDR : choisir son dossier (journaux/incidents/date/incident_…)."""
+        root = Path(self.log_dir) / "incidents"
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier d'incident à rejouer", str(root if root.is_dir()
+                                                                                               else self.log_dir))
+        if d:
+            open_incident(self, d)
+
+    def open_sdr_posts(self):
+        """📡 Mes SDR (fenêtre gardée)."""
+        d = getattr(self, "_posts_dlg", None)
+        if d is None:
+            d = self._posts_dlg = SdrPostsDialog(self)
+        d.fill()
+        d.show()
+        d.raise_()
+        return d
+
+    def _make_post(self, pid):
+        """Étape 17 : un poste SDR = un moteur + ses 4 panneaux (déplaçables, dans 🪟 Fenêtres et les vraies fenêtres)."""
+        eng = self.sdr_engs[pid] = SdrEngine(self, pid)
+        docks = self.post_docks[pid] = {}
+        B = Qt.DockWidgetArea.BottomDockWidgetArea
+        acts = self.win_menu.actions()
+        sep = next((x for x in acts if x.isSeparator()), None)
+        for key, title, name, cls in SDR_DOCKS:
+            nm = name if pid == 1 else name.replace("dock_sdr_", f"dock_sdr{pid}_")
+            pw = globals()[cls](self, eng)
+            if key == "rx":
+                pw = SdrScroll(pw)          # 8.0.1 : le Récepteur défile au lieu d'imposer sa taille (fenêtre trop grande,
+            d = self._make_dock(self._post_title(pid, title), nm, pw, B)   # « Mes fréquences » sous le bord de l'écran)
+            d.hide()
+            docks[key] = d
+            self.docks.append(d)
+            if sep is not None:
+                self.win_menu.insertAction(sep, d.toggleViewAction())
+            else:
+                self.win_menu.addAction(d.toggleViewAction())
+        return eng
+
+    def _post_title(self, pid, title):
+        if pid == 1:
+            return title
+        p = next((x for x in sdr_posts_norm(self.sdr_cfg.get("posts")) if x["id"] == pid), None)
+        return title.replace("SDR", (p or {}).get("name") or f"SDR {pid}", 1)
+
+    def _sdr_posts_sync(self):
+        """Moteurs et panneaux d'après la liste des postes (config, 📡 Mes SDR) : création, renommage, retrait."""
+        if not hasattr(self, "sdr_engs"):
+            return
+        posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+        ids = {p["id"] for p in posts}
+        for pid in list(self.sdr_engs):
+            if pid not in ids and pid != 1:
+                self.sdr_engs.pop(pid).stop()
+                for d in self.post_docks.pop(pid, {}).values():
+                    self.panel_window(d, False)
+                    self.win_menu.removeAction(d.toggleViewAction())
+                    if d in self.docks:
+                        self.docks.remove(d)
+                    self.removeDockWidget(d)
+                    d.deleteLater()
+        for p in posts:
+            if p["id"] not in self.sdr_engs:
+                self._make_post(p["id"])
+                if getattr(self, "rf_mode", "tiny") != "tiny":
+                    self._post_show(p["id"])
+            for key, title, _n, _c in SDR_DOCKS:
+                d = self.post_docks[p["id"]][key]
+                t = self._post_title(p["id"], title)
+                if d.windowTitle() != t:
+                    d.setWindowTitle(t)
+            for d in self.post_docks[p["id"]].values():
+                if hasattr(self.dock_widget(d), "refresh"):
+                    self.dock_widget(d).refresh()
+
+    def _post_show(self, pid):
+        """Panneaux d'un poste 2…4 : en onglets à côté de ceux du poste 1 (l'utilisateur les place ensuite)."""
+        base, mine = self.post_docks[1], self.post_docks[pid]
+        for key in ("rx", "spec", "wf", "mics", "diag"):
+            d = mine[key]
+            if d.objectName() in self.panel_wins:
+                continue
+            if base[key].isVisible() and not base[key].isFloating():
+                self.tabifyDockWidget(base[key], d)
+            else:
+                self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, d)
+            d.show()
+            if key == "wf" and not base["wf"].isVisible():
+                d.hide()
+
+    def all_sdr_docks(self):
+        return [d for ds in (getattr(self, "post_docks", None) or {}).values() for d in ds.values()]
+
+    def _fit_screen(self):
+        """8.0.1 (captures de Clément) : après un changement de mode, une fenêtre agrandie pouvait rester plus grande
+        que l'écran (bords coupés, il fallait ré-agrandir) : on la recale sur l'écran."""
+        try:
+            if self.isMinimized():
+                return
+            av = self.screen().availableGeometry()
+            if self.width() <= av.width() + 16 and self.height() <= av.height() + 16:
+                return
+            if self.isFullScreen():
+                self.showNormal()
+                self.showFullScreen()
+            elif self.isMaximized():
+                self.showNormal()
+                self.showMaximized()
+            else:
+                self.resize(min(self.width(), av.width()), min(self.height(), av.height()))
+                self.move(max(av.x(), min(self.x(), av.right() - self.width())), max(av.y(), self.y()))
+        except Exception:  # noqa: BLE001
+            pass
+
+
+ALARM_HELP["PILOTE"] = (                         # étape 20 : porteuse là, mais pas le pilote de TON émetteur
+    "Le SDR entend une porteuse sur ce micro, mais pas la tonalité pilote de ton émetteur (retenue la 1re fois) : un "
+    "autre émetteur est peut-être sur ta fréquence, ou ton pack a changé de réglage.",
+    "Écoute (le SDR y est calé) ; éteins ton pack : si la porteuse reste, c'est un brouilleur (chasse, fréquence de "
+    "secours). Pilote changé exprès : clic droit sur la ligne d'info du Récepteur › Oublier le pilote.")
+
+
+# Étape 16 : le mode et le poste SDR suivent le PROFIL UTILISATEUR (8.1 : dans user_doc / user_apply de la partie PURE).
+
+
+class SdrModeMixin:
+    """Mode tinySA / SDR / combiné, micros, favoris, compandeur deviné. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def mic_demod(self, w):
+        """Réglage d'écoute d'un micro -> (préréglage | DEMOD_DIGITAL | None, « manual » | « auto » | None)."""
+        k = w.get("demod")
+        if k and (demod_preset(k) is not None or k == DEMOD_DIGITAL):
+            return k, "manual"
+        g = self.group_row(w.get("scene"), w.get("group")) if hasattr(self, "group_row") else None
+        grx = list(self.group_rxs(g)) if g and hasattr(self, "group_rxs") else []
+        own = [x for x in [w.get("rx") or ""] + grx if x]              # appareil du micro, puis de son groupe
+        names = [n for k_, n, *_r in rx_all() if k_ in own]
+        key = demod_guess(*own, *names, w.get("group"), w.get("name"), w.get("scene"))
+        if not key and hasattr(self, "rx_of"):                        # en dernier : l'appareil par défaut du plan
+            d = self.rx_of(w) or ""
+            key = demod_guess(d, *[n for k_, n, *_r in rx_all() if k_ == d])
+        return (key, "auto") if key else (None, None)
+
+    def mic_demod_set(self, w, key):
+        """Retient le réglage d'écoute choisi à la main pour ce micro (rien si c'est celui qu'on aurait deviné)."""
+        w.pop("demod", None)
+        if key and self.mic_demod(w)[0] != key:
+            w["demod"] = key
+
+    def _engine_for(self, w):
+        """Le SDR qui doit écouter ce micro : celui rattaché à sa scène (et qui couvre sa fréquence), sinon le 1er."""
+        engs = sorted((getattr(self, "sdr_engs", None) or {}).items())
+        for _pid, e in engs:
+            sc = e.post()["scenes"]
+            if sc and w.get("scene") in sc and sdr_in_range(e.model(), w["freq"]):
+                return e
+        return next((e for _pid, e in engs if sdr_in_range(e.model(), w["freq"])), self.sdr_eng)
+
+    def sdr_tune_mic(self, w, slot="a"):
+        """Étape 18 : le SDR se cale sur ce micro (recentré si besoin) et on l'entend ; son panneau Récepteur passe devant."""
+        e = self._engine_for(w)
+        if self.rf_mode == "tiny":
+            self.set_rf_mode("sdr")
+        if slot == "b":
+            e.set_b(f=w["freq"], on=True)
+        else:
+            e.set_a(w["freq"])
+        if not e.running():
+            e.start()
+        d = self.post_docks.get(e.pid, {}).get("rx")
+        if d is not None:
+            if d.isHidden():
+                d.show()
+            d.raise_()
+        self.set_status(TR("🎧 {} ({} MHz) sur {}").format(w["name"] or "—", f"{w['freq']:.3f}", e.name()))
+        return e
+
+    def sdr_fav(self, k):
+        """Touche k du pavé numérique : bascule l'écoute sur le micro rangé là."""
+        favs = favs_norm(self.sdr_cfg.get("favs"))
+        w = self.watch_by_key(favs[k]) if k in favs else None
+        if w is None:
+            self.set_status(TR("⭐ Touche {} libre : clic droit sur un micro (📡 Mes micros) ou sur le bouton {} du Récepteur "
+                               "pour l'y mettre.").format(k, k))
+            return None
+        return self.sdr_tune_mic(w)
+
+    def sdr_set_fav(self, k, w):
+        self.sdr_cfg["favs"] = fav_assign(self.sdr_cfg.get("favs"), k, int(round(w["freq"] * 1000)) if w else None)
+        for d in self.all_sdr_docks():
+            if hasattr(self.dock_widget(d), "_favs_refresh"):
+                self.dock_widget(d)._favs_refresh()
+        if w:
+            self.set_status(TR("⭐ Touche {} du pavé numérique : {}").format(k, w["name"] or f"{w['freq']:.3f}"))
+
+    def _sdr_watch_dbl(self, row, col):
+        """Double-clic sur le nom ou la fréquence d'un micro (mode SDR / combiné) : le SDR se cale dessus."""
+        if col in (C_NAME, C_FREQ) and getattr(self, "rf_mode", "tiny") != "tiny" and 0 <= row < len(self.watch):
+            self.sdr_tune_mic(self.watch[row])
+
+    def _sdr_arrange(self, mode, layout="listen", base=True):
+        """Place les panneaux pour un mode et un pré-affichage (ensuite, l'utilisateur bouge tout comme il veut).
+        mode : sdr (le spectre SDR remplace celui du tinySA) | both (les deux spectres côte à côte) ;
+        layout : listen | watch | analyze | dual (spectre SDR sur l'autre écran)."""
+        if base:
+            self._layout_base()
+        R, B = Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.BottomDockWidgetArea
+        sd = self.sdr_docks
+        for d in sd.values():
+            if d.objectName() in self.panel_wins:
+                continue                                     # déjà en vraie fenêtre : on la laisse où l'utilisateur l'a mise
+            self.removeDockWidget(d)                         # repartir propre (pas d'onglet caché derrière un autre)
+            d.setFloating(False)
+        if mode == "sdr":
+            self.dock_spec.hide()
+            self.dock_wf.hide()
+            self.addDockWidget(B, sd["spec"])
+        else:                                                # combiné : le spectre SDR dans sa colonne, à droite du tinySA
+            self.addDockWidget(B, sd["spec"], Qt.Orientation.Horizontal)
+        self.splitDockWidget(sd["spec"], sd["wf"], Qt.Orientation.Vertical)
+        for d in sd.values():
+            d.show()
+        if mode != "sdr":
+            sd["wf"].hide()
+        self.addDockWidget(R, sd["rx"])
+        self.splitDockWidget(sd["rx"], self.dock_freq, Qt.Orientation.Vertical)
+        self.dock_log.setFloating(False)
+        self.tabifyDockWidget(self.dock_freq, self.dock_log)     # 8.0.1 : le Journal restait seul au-dessus du Récepteur
+        self.tabifyDockWidget(self.dock_freq, sd["mics"])
+        self.tabifyDockWidget(self.dock_freq, sd["diag"])      # 8.2 : historique, appareil, système, session
+        if layout == "watch":
+            sd["mics"].raise_()
+            sd["wf"].hide()
+        elif layout == "analyze":
+            sd["mics"].hide()
+            sd["wf"].show()
+            self.sdr_eng.set_opts(maxhold=True)
+        else:
+            self.dock_freq.raise_()
+        try:
+            self.set_level(self.ui_level)                    # ce que le niveau d'affichage cache reste caché
+            self.resizeDocks([sd["rx"]], [min(sd["rx"].widget().sizeHint().height() + 36, int(self.height() * 0.55))],
+                             Qt.Orientation.Vertical)
+            if mode == "both":                               # les deux spectres à parts égales
+                w_ = max(400, self.dock_spec.width() + sd["spec"].width())
+                self.resizeDocks([self.dock_spec, sd["spec"]], [w_ // 2, w_ // 2], Qt.Orientation.Horizontal)
+        except Exception:  # noqa: BLE001
+            pass
+        try:                                                  # 8.0.1 : petit écran (portable) -> Récepteur en onglet
+            if self.minimumSizeHint().height() > self.screen().availableGeometry().height() - 20 \
+                    and sd["rx"].objectName() not in self.panel_wins:
+                self.tabifyDockWidget(self.dock_freq, sd["rx"])
+                sd["rx"].raise_()
+        except Exception:  # noqa: BLE001
+            pass
+        QtCore.QTimer.singleShot(0, self._fit_screen)
+        if layout == "dual":
+            scr = self._other_screen()
+            if scr is None:
+                self.set_status(TR("Un seul écran : tire le panneau « 📡 SDR · Spectre » par sa barre de titre pour en "
+                                   "faire une fenêtre, ou branche le 2ᵉ écran."))
+            else:
+                self.panel_window(sd["spec"], True, scr, "max")
+
+    def set_rf_mode(self, mode, layout=None):
+        """📟 tinySA / 📡 SDR / 📟+📡 Combiné : quels panneaux de base, et le SDR lancé ou arrêté. Les panneaux prêtés à
+        d'autres écrans reviennent d'abord (8.0.2)."""
+        self.screens_off(relayout=False)
+        if self.lab_view_on:                                 # 8.2 : changer de mode = quitter l'affichage Labo
+            self.lab_view_on = False
+            for d in self.lab_docks.values():
+                if d.objectName() not in self.panel_wins:
+                    d.hide()
+            self._sdrlab.view_btn.setText(TR("⛶ Affichage Labo"))
+        mode = rf_mode_norm(mode)
+        self.rf_mode = mode
+        self.sdr_cfg["rf_mode"] = mode
+        if mode == "tiny":
+            for e_ in self.sdr_engs.values():
+                e_.stop()
+            self._layout_mode()
+        else:
+            self._sdr_arrange(mode, layout or "listen")
+            for pid in sorted(self.sdr_engs):               # étape 17 : tous les postes SDR
+                if pid != 1:
+                    self._post_show(pid)
+                if not self.sdr_engs[pid].running():
+                    self.sdr_engs[pid].start()
+        self._update_mode_btn()
+        self.set_status(dict(tiny=TR("📟 Mode tinySA."), sdr=TR("📡 Mode SDR : tout est déplaçable (barres de titre), "
+                                                                  "ta disposition est retenue."),
+                             both=TR("📟+📡 Mode combiné : tinySA et SDR côte à côte, tout est déplaçable."))[mode])
+        return mode
+
+    def _update_mode_btn(self):
+        b = getattr(self, "mode_btn", None)
+        if b is not None:
+            b.setText(dict(RF_MODES).get(self.rf_mode, "📟 tinySA") + " ▾")
+
+    def _build_mode_menu(self):
+        m = self.mode_btn.menu()
+        m.clear()
+        m.addSection(TR("Mode"))
+        m.setToolTipsVisible(True)
+        for k, t in RF_MODES:
+            a_ = m.addAction(TR(t))
+            a_.setToolTip(TR(DEVICE_HELP[k]))                   # 8.0 : c'est quoi un tinySA / un SDR
+            a_.setCheckable(True)
+            a_.setChecked(k == self.rf_mode)
+            a_.triggered.connect(lambda *_, k=k: self.set_rf_mode(k))
+        m.addSection(TR("Pré-affichages SDR (ensuite, bouge tout comme tu veux)"))
+        for k, t in SDR_LAYOUTS:
+            a_ = m.addAction(TR(t))
+            a_.triggered.connect(lambda *_, k=k: self.set_rf_mode("both" if self.rf_mode == "both" else "sdr", k))
+        m.addSeparator()
+        m.addAction(TR("📡 Mes SDR (plusieurs, scènes, carte)…")).triggered.connect(lambda *_: self.open_sdr_posts())
+        a_ = m.addAction(TR("🧪 SDR démo (sans matériel, avec du son)"))          # étape 21
+        a_.setCheckable(True)
+        a_.setChecked(bool(self.sdr_cfg.get("demo")))
+        a_.triggered.connect(lambda *_, a=a_: self.set_sdr_demo(a.isChecked()))
+        m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
+        m.addAction(TR("🎵 Générateur audio (20 Hz – 20 kHz)…")).triggered.connect(lambda *_: self.open_audio_gen())
+        m.addAction(TR("🧪 Labo SDR (RF Compander Lab)…")).triggered.connect(lambda *_: self.open_sdr_lab())
+        lm = m.addMenu(TR("⛶ Affichage Labo"))
+        lm.setToolTip(TR("La fenêtre ne montre plus que le labo : rangé, en grille ou sur 2 écrans."))
+        for k_, t_ in LAB_VIEWS:
+            lm.addAction(TR(t_)).triggered.connect(lambda *_, k_=k_: self.lab_view(True, k_))
+        if self.lab_view_on:
+            lm.addAction(TR("↩ Quitter l'affichage Labo")).triggered.connect(lambda *_: self.lab_view(False))
+        m.addSeparator()
+        m.addAction(TR("🔌 Premier branchement SDR (assistant)…")).triggered.connect(lambda *_: self.open_sdr_setup())
+        m.addAction(TR("📏 Caler les niveaux du SDR sur le tinySA…")).triggered.connect(lambda *_: self.open_sdr_calib())
+        m.addAction(TR("⏪ Remonter le temps (dernières minutes)…")).triggered.connect(lambda *_: self.open_rewind())
+        m.addAction(TR("📖 Manuel SDR")).triggered.connect(lambda *_: self.open_sdr_manual())
+        m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
+        m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
+        acts = m.actions()                                   # 8.0.2 : plusieurs écrans, avant la 1re séparation
+        a_ = QtGui.QAction(TR("🖥 Plusieurs écrans (tinySA sur l'un, SDR sur l'autre…)"), m)
+        a_.setToolTip(TR("Choisis quel panneau va sur quel écran : tinySA complet sur l'un, SDR complet sur l'autre, ou "
+                         "ton mélange."))
+        a_.triggered.connect(lambda *_: self.open_screens())
+        sec = next((x for x in acts if x.isSeparator()), None)
+        if sec is not None:
+            m.insertAction(sec, a_)
+        else:
+            m.addAction(a_)
+
+    def mode_setup(self):
+        """Bouton de mode dans la barre du haut (créé une fois), réglages du poste relus de la config."""
+        if getattr(self, "mode_btn", None) is not None:
+            return
+        b = self.mode_btn = QtWidgets.QToolButton()
+        b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        b.setMenu(QtWidgets.QMenu(b))
+        b.menu().aboutToShow.connect(self._build_mode_menu)
+        b.setToolTip(TR("Ce que tu utilises :") + "\n\n" + "\n\n".join(TR(DEVICE_HELP[k]) for k in ("tiny", "sdr", "both"))
+                     + "\n\n" + TR("Chaque mode a sa disposition de base et des pré-affichages ; ensuite tu bouges les "
+                                     "panneaux comme tu veux (ta disposition est retenue)."))
+        try:
+            self.cmd_bar.insertWidget(self._more_act, b)
+        except Exception:  # noqa: BLE001
+            self.cmd_bar.addWidget(b)
+        self._sdr_reload()
+        self.watch_table.cellDoubleClicked.connect(self._sdr_watch_dbl)      # étape 18 : double-clic = le SDR s'y cale
+        self.fav_keys = []
+        for k in range(1, FAV_KEYS + 1):                   # touches 1…9 du PAVÉ NUMÉRIQUE = favoris
+            sc_ = QtGui.QShortcut(QtGui.QKeySequence(QtCore.QKeyCombination(Qt.KeyboardModifier.KeypadModifier,
+                                                                            Qt.Key(int(Qt.Key.Key_0.value) + k))), self)
+            sc_.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            sc_.activated.connect(lambda k=k: self.sdr_fav(k))
+            sc_.activatedAmbiguously.connect(lambda k=k: self.sdr_fav(k) if self.isVisible() else None)   # 2 fenêtres
+            self.fav_keys.append(sc_)
+        if self.rf_mode != "tiny" and any(d.isVisible() for d in self.all_sdr_docks()):
+            QtCore.QTimer.singleShot(1500, lambda: [e_.start() for e_ in self.sdr_engs.values()])   # rouverte en mode SDR
+        QtCore.QTimer.singleShot(400, self._fit_screen)     # 8.0.1 : disposition rouverte plus grande que l'écran
+
+    def _sdr_reload(self):
+        """Réglages du poste et mode relus de sdr_cfg (démarrage, profil chargé), sans toucher à la disposition."""
+        self._sdr_posts_sync()
+        for e in self.sdr_engs.values():                 # chaque poste relit SES réglages
+            st = station_norm(e._st_cfg())
+            e.a, e.b, e.b_on, e.step, e.vol, e.sq, e.split, e.nfft, e.maxhold = (st[k] for k in (
+                "a", "b", "b_on", "step", "vol", "sq", "split", "nfft", "maxhold"))
+            if e.running():
+                e._push()
+        self.rf_mode = rf_mode_norm(self.sdr_cfg.get("rf_mode"))
+        self._update_mode_btn()
+        for d in self.all_sdr_docks():
+            pw_ = self.dock_widget(d)
+            if hasattr(pw_, "apply_level"):
+                pw_.apply_level()
+            if hasattr(pw_, "refresh"):
+                pw_.refresh()
+
+
+class SdrReceiversMixin:
+    """Vie privée des enregistrements, récepteurs en réseau (Shure, Sennheiser). (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def privacy(self):
+        """Étape 12 : réglages « son et vie privée » (toujours complets)."""
+        p = self.sdr_cfg.get("privacy")
+        if not isinstance(p, dict) or set(p) != set(PRIVACY_DEFAULT):
+            p = self.sdr_cfg["privacy"] = privacy_norm(p)
+        return p
+
+    def privacy_ok(self, parent=None):
+        """Accord explicite avant le 1er enregistrement de son (ou d'IQ). -> True si on peut enregistrer."""
+        p = self.privacy()
+        if p["ack"]:
+            return True
+        r = QtWidgets.QMessageBox.question(
+            parent or self, TR("Enregistrer du son ?"),
+            TR(PRIVACY_TEXT) + "\n\n" + TR("Conservation : {} (réglable dans 📡 Réglages SDR).").format(
+                keep_text(p["keep_days"], TR)) + "\n\n" + TR("D'accord pour enregistrer ?"))
+        if r != QtWidgets.QMessageBox.StandardButton.Yes:
+            return False
+        p["ack"] = True
+        try:
+            self._save_config()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    def sdr_retention(self, now=None):
+        """Étape 12 : efface le son, l'IQ et les dossiers d'incident plus vieux que la durée choisie. -> nombre effacé."""
+        days = self.privacy()["keep_days"]
+        if not days:
+            return 0
+        now = time.time() if now is None else now
+        ent = []
+        for sub in ("enregistrements_audio", "enregistrements_iq", "incidents"):
+            root = Path(self.log_dir) / sub
+            if not root.is_dir():
+                continue
+            try:
+                for d in root.iterdir():
+                    for p in (d.iterdir() if d.is_dir() else [d]):
+                        ent.append((p, p.stat().st_mtime))
+            except OSError:
+                continue
+        n = 0
+        for p in retention_pick(ent, now, days):
+            try:
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+                n += 1
+            except OSError:
+                pass
+        for sub in ("enregistrements_audio", "enregistrements_iq", "incidents"):
+            root = Path(self.log_dir) / sub
+            try:
+                for d in (root.iterdir() if root.is_dir() else []):
+                    if d.is_dir() and not any(d.iterdir()):
+                        d.rmdir()
+            except OSError:
+                pass
+        return n
+
+    def sdr_timer(self):
+        """Minuteur V8 (créé à l'ouverture d'une fenêtre SDR) : ménage des enregistrements toutes les heures."""
+        if getattr(self, "_v8_tm", None) is None:
+            self._v8_tm = QtCore.QTimer(self)
+            self._v8_tm.timeout.connect(lambda: self.sdr_retention())
+            self._v8_tm.start(3600 * 1000)
+            try:
+                self.sdr_retention()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def receivers_start(self, text):
+        """14. Connecte (ou reconnecte) les récepteurs de la liste (toutes marques : « g4:… », « ssc:… », Shure sans
+        préfixe), retenue dans la config (clé « shure », gardée pour les configs de l'étape 11)."""
+        addrs = receiver_addrs(text)
+        self.sdr_cfg["shure"] = receiver_addrs_text(addrs)
+        cur = getattr(self, "_shure", None) or {}
+        keep = {f"{b}:{h}:{p}" for b, h, p in addrs}
+        for k in list(cur):
+            if k not in keep:
+                cur.pop(k).stop()
+        for b, h, p in addrs:
+            if f"{b}:{h}:{p}" not in cur:
+                c = cur[f"{b}:{h}:{p}"] = ReceiverClient(h, p, b)
+                c.start()
+        self._shure = cur
+
+    def receivers(self):
+        """Tous les canaux des récepteurs Shure connectés : [dict(host, ch, name, freq, rf, ant, audio, batt, div, hist)]."""
+        out = []
+        for c in (getattr(self, "_shure", None) or {}).values():
+            for ch, st in sorted(c.snapshot().items()):
+                age = time.time() - float(st.get("t") or 0.0) if st.get("t") else None
+                out.append(dict(st, host=c.host, ch=ch, brand=c.brand, age=age,
+                                live=bool(c.ok and age is not None and age < RX_STALE_S)))
+        return out
+
+    def receiver_for(self, f, tol=0.025, live_only=True):
+        """Canal de récepteur réglé sur la fréquence f (MHz, ± 25 kHz), ou None. live_only : seulement s'il a donné des
+        nouvelles récentes (étape 14 : une valeur ancienne n'alimente ni le diagnostic ni la comparaison)."""
+        best = None
+        for x in self.receivers():
+            if live_only and not x.get("live"):
+                continue
+            if x.get("freq") is not None and abs(x["freq"] - f) <= tol and (best is None or abs(x["freq"] - f) <
+                                                                             abs(best["freq"] - f)):
+                best = x
+        return best
+
+    def watch_near(self, f, tol=0.025):
+        if f is None:
+            return None
+        return min((w for w in self.watch if abs(w["freq"] - f) <= tol), key=lambda w: abs(w["freq"] - f), default=None)
+
+    def open_receivers(self):
+        """📶 V8 étape 11 : récepteurs Shure en réseau (fenêtre gardée)."""
+        d = getattr(self, "_recvdlg", None)
+        if d is None:
+            d = self._recvdlg = ReceiversDialog(self)
+        if self.sdr_cfg.get("shure") and not getattr(self, "_shure", None):
+            self.receivers_start(self.sdr_cfg["shure"])
+        d.show()
+        d.raise_()
+        d.activateWindow()
+        return d
+
+    def tsa_live(self):
+        """Un tinySA (pas un SDR) balaye en ce moment : ses niveaux peuvent être comparés à ceux du SDR."""
+        return any(w.isRunning() and not getattr(w, "paused", False) and not getattr(w, "sdr", False) for w in self.workers)
+
+WEB_VIEWS.append(("ecoute", "🎧", "Écoute", "Écouter un micro analogique sur le téléphone, avec le SDR du PC"))
+WEB_VIEW_KEYS.append("ecoute")
+# vue 🎧 Écoute : le PC démodule avec son SDR, le son arrive en PCM 16 kHz (1re ligne en code : pas du texte à traduire)
+WEB_EXTRA_JS += r"""
+function e8(){return 8}
+let EA=null,ESEQ=0,ENEXT=0,ETIMER=null,EST=null;
+EXT.ecoute={mount(el){el.innerHTML=`<div class="tools"><button class="btn" id="eon">🔊 Activer le son ici</button><span id="est" class="mut"></span></div><div class="mut" style="margin:6px 0">Le PC écoute avec son SDR (HackRF, RTL-SDR…). Touche 🎧 sur un micro : le son arrive ici, avec un petit retard. Code PIN demandé (celui du PC). Les micros numériques ne s'écoutent pas.</div><div class="tools"><input class="in" id="eq" placeholder="🔎 Nom, fréquence…"><input class="in" id="ef" placeholder="Autre fréquence (MHz)" inputmode="decimal" style="width:11em"><button class="btn" id="ego">🎧 Écouter</button></div><div class="grid" id="eg"></div>`;
+ $("#eon").onclick=()=>eAudio();$("#eq").oninput=()=>update("ecoute");$("#ego").onclick=()=>{const f=parseFloat(($("#ef").value||"").replace(",","."));if(f>0)eCmd("start",f)};eState()},
+ update(st){const q=($("#eq").value||"").toLowerCase(),L=EST||{};
+  $("#est").textContent=L.on?("🎧 "+(L.name||"")+" · "+(L.f?L.f.toFixed(3)+" MHz":"")+(L.rf!=null?" · "+L.rf+" dBFS":"")+(L.rec?" · ⏺":"")+(L.hop?" · 🔁":"")):"Pas d'écoute en cours";
+  $("#eg").innerHTML=st.rows.filter(r=>!q||(r.name+" "+r.freq.toFixed(3)).toLowerCase().includes(q)).map(r=>{const on=L.on&&L.f!=null&&Math.abs(L.f-r.freq)<0.0006;
+   return `<div class="c ${r.tone}"><div class="n">${esc(r.name)}</div><div>${r.freq.toFixed(3)} MHz</div><button class="btn" data-ef="${on?"stop":r.freq}">${on?"■ Arrêter":"🎧 Écouter"}</button></div>`}).join("");
+  eState()}};
+async function eState(){try{const r=await api("ecoute.json");if(r.ok)EST=await r.json()}catch(e){}}
+document.addEventListener("click",e=>{const b=e.target.closest("button[data-ef]");if(!b)return;if(b.dataset.ef==="stop")eCmd("stop");else eCmd("start",+b.dataset.ef)});
+async function eCmd(a,f){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
+ let r;try{r=await post("ecoute",{pin:pin,action:a,f:f})}catch(x){alert("PC injoignable");return}
+ if(r.ok){LS.set("pin",pin);if(a==="start")eAudio();setTimeout(eState,600);return}
+ if(r.status===403){LS.set("pin","");alert("Code PIN incorrect.")}else if(r.status===429)alert("Trop d'essais : attends une minute.");else alert("Refusé ("+r.status+")")}
+function eAudio(){try{if(!EA){const C=window.AudioContext||window.webkitAudioContext;EA=new C()}EA.resume();ESEQ=0;ENEXT=0}catch(e){alert("Son impossible sur ce navigateur");return}
+ if(!ETIMER)ETIMER=setInterval(ePull,250);const b=$("#eon");if(b)b.textContent="🔊 Son actif"}
+async function ePull(){if(route()!=="ecoute"||!EA)return;
+ let r;try{r=await api("ecoute.pcm?s="+ESEQ)}catch(e){return}if(!r.ok)return;const b=await r.arrayBuffer();if(b.byteLength<12)return;
+ const h=new DataView(b);ESEQ=h.getUint32(4,true);const rate=h.getUint32(8,true),n=(b.byteLength-12)>>1;if(!n)return;
+ const buf=EA.createBuffer(1,n,rate),ch=buf.getChannelData(0);for(let i=0;i<n;i++)ch[i]=h.getInt16(12+2*i,true)/32768;
+ const s=EA.createBufferSource();s.buffer=buf;s.connect(EA.destination);const now=EA.currentTime;
+ if(ENEXT<now+0.05||ENEXT>now+1.5)ENEXT=now+0.25;s.start(ENEXT);ENEXT+=n/rate}
+"""
+
+
+# ------------------------------------------------------------------ V8 étape 21 : SDR démo + émission HackRF
+def wav_load(path, max_s=180.0):
+    """Fichier WAV (PCM 8 / 16 / 24 / 32 bits, mono ou stéréo, n'importe quel débit) -> WAV_PCM[path] en mono 48 kHz,
+    3 min au plus (audit : 10 min = 115 Mo de mémoire par fichier).
+    -> (ok, texte)."""
+    import wave
+    path = str(path or "")
+    if path in WAV_PCM:
+        return True, ""
+    try:
+        with wave.open(path, "rb") as w:
+            ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+            raw = w.readframes(min(n, int(max_s * fr)))
+    except (OSError, EOFError, wave.Error) as e:
+        return False, TR("WAV illisible : {}").format(e)
+    if sw == 1:
+        a = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif sw == 2:
+        a = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    elif sw == 3:
+        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+        v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
+        a = (np.where(v >= 1 << 23, v - (1 << 24), v)).astype(np.float32) / float(1 << 23)
+    elif sw == 4:
+        a = np.frombuffer(raw, dtype="<i4").astype(np.float32) / float(1 << 31)
+    else:
+        return False, TR("WAV : format non pris en charge")
+    if ch > 1:
+        a = a[: len(a) // ch * ch].reshape(-1, ch).mean(axis=1)
+    if fr != 48000 and len(a) > 1:
+        x = np.arange(int(len(a) * 48000 / fr)) * (fr / 48000.0)
+        a = np.interp(x, np.arange(len(a)), a).astype(np.float32)
+    if not len(a):
+        return False, TR("WAV vide")
+    pk = float(np.max(np.abs(a)))
+    WAV_PCM[path] = (a / pk * 0.9 if pk > 0.9 else a).astype(np.float32)
+    return True, TR("{} s de son").format(f"{len(a) / 48000:.1f}")
+
+
+_TEMP_WAV_N = [0]
+
+
+def temp_wav_path(kind, old=None):
+    """8.0.2 (Clément : « le générateur audio n'a qu'un 1 kHz ») : QSoundEffect garde en mémoire le son d'un fichier
+    déjà lu (cache par adresse) -> réécrire le MÊME fichier rejouait le 1er son. Un nom neuf à chaque lecture ; l'ancien
+    est effacé si possible (sous Windows il peut être encore ouvert : il partira au prochain coup)."""
+    import tempfile
+    _TEMP_WAV_N[0] += 1
+    d = tempfile.gettempdir()
+    for p_ in ([old] if old else []) + [os.path.join(d, n_) for n_ in os.listdir(d)
+                                        if n_.startswith(f"tsm_{kind}_{os.getpid()}_")]:
+        try:
+            os.remove(p_)
+        except OSError:
+            pass
+    return os.path.join(d, f"tsm_{kind}_{os.getpid()}_{_TEMP_WAV_N[0]}.wav")
+
+
+class AudioMeterBar(QtWidgets.QWidget):
+    """8.1 : vu-mètre audio horizontal (−60 … 0 dBFS) : barre = niveau RMS (convention AES17 : sinus plein = 0 dBFS),
+    trait = crête, losange ambre = niveau visé ; fond en zones (vert / jaune dès −9 / rouge dès −1), gradué tous les
+    1 à 5 dB selon la largeur, valeurs écrites tous les 5 / 10 dB, repère d'alignement (−18 EBU / −20 SMPTE) en ambre."""
+    LO, HI = -60.0, 0.0
+
+    def __init__(self, owner, parent=None):
+        super().__init__(parent)
+        self.owner, self.m, self.target = owner, None, None
+        self.setMinimumSize(160, 30)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self.setToolTip(TR("Vu-mètre : barre = niveau moyen (RMS), trait = crête, losange = niveau visé.\n"
+                           "Repères −18 et −20 dBFS = niveaux d'alignement EBU / SMPTE. Clic = fiche des échelles."))
+
+    def set_meter(self, m, target=None):
+        self.m, self.target = m, target
+        self.update()
+
+    def mousePressEvent(self, e):
+        self.owner.open_scales()
+
+    def paintEvent(self, ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+        bh = 10
+        x0, x1 = 6.0, W - 6.0
+        pos = lambda db: x0 + (x1 - x0) * (min(self.HI, max(self.LO, db)) - self.LO) / (self.HI - self.LO)  # noqa: E731
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        for a_, b_, col in ((-60, -9, "#4fd1c5"), (-9, -1, "#ffb300"), (-1, 0, "#ff6b6b")):   # zones en fond
+            c = QtGui.QColor(col)
+            c.setAlpha(45)
+            p.setBrush(c)
+            p.drawRect(QtCore.QRectF(pos(a_), 2, pos(b_) - pos(a_), bh))
+        m = self.m or {}
+        rms, pk = m.get("rms", -math.inf), m.get("peak", -math.inf)
+        if math.isfinite(rms):
+            col = "#ff6b6b" if rms > -1 else ("#ffb300" if rms > -9 else "#4fd1c5")
+            p.setBrush(QtGui.QColor(col))
+            p.drawRoundedRect(QtCore.QRectF(x0, 2, pos(rms) - x0, bh), 2, 2)
+        if math.isfinite(pk):
+            p.setPen(QtGui.QPen(QtGui.QColor("#ff6b6b" if m.get("clip") else "#f5f5f7"), 2))
+            p.drawLine(QtCore.QPointF(pos(pk), 1), QtCore.QPointF(pos(pk), bh + 3))
+        try:
+            align = audio_align(getattr(self.owner, "audio_ref", None))[0]
+        except Exception:
+            align = -18.0
+        f = p.font()
+        f.setPointSizeF(max(6.5, f.pointSizeF() - 2))
+        p.setFont(f)
+        mins, mids, labs = meter_ticks(int(self.LO), int(self.HI), x1 - x0,
+                                       label_px=QtGui.QFontMetrics(f).horizontalAdvance("−60") + 8)
+        yt = bh + 2
+        for vs, ln, col in ((mins, 2.5, QtGui.QColor(160, 160, 170, 110)), (mids, 4.0, QtGui.QColor(160, 160, 170, 190)),
+                            (labs, 5.0, QtGui.QColor(170, 170, 180))):
+            p.setPen(QtGui.QPen(col, 1.0))
+            for db in vs:
+                p.drawLine(QtCore.QPointF(pos(db), yt), QtCore.QPointF(pos(db), yt + ln))
+        if self.LO <= align <= self.HI:                  # repère d'alignement (−18 dBFS = 0 dBu en EBU…)
+            p.setPen(QtGui.QPen(QtGui.QColor("#ffb300"), 1.4))
+            p.drawLine(QtCore.QPointF(pos(align), 1), QtCore.QPointF(pos(align), yt + 5))
+        if self.target is not None:
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor("#ffb300"))
+            xt = pos(self.target)
+            p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(xt, bh + 2), QtCore.QPointF(xt - 4, bh + 7),
+                                           QtCore.QPointF(xt + 4, bh + 7)]))
+        p.setPen(QtGui.QColor(160, 160, 170))
+        for db in labs:
+            p.drawText(QtCore.QRectF(pos(db) - 15, yt + 4, 30, 12), Qt.AlignmentFlag.AlignCenter, str(db))
+        p.end()
+
+
+class ScalesDialog(QtWidgets.QDialog):
+    """8.1 : 📏 Échelles et niveaux : unité des vu-mètres, alignement numérique / analogique, référence dBr, niveau visé,
+    et la fiche (tableau : où chaque unité sert et comment l'utiliser ici)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle(TR("📏 Échelles et niveaux"))
+        lay = QtWidgets.QVBoxLayout(self)
+        ref = owner.audio_ref
+        f = QtWidgets.QFormLayout()
+        self.unit = QtWidgets.QComboBox()
+        for k, t in AUDIO_UNITS:
+            self.unit.addItem(TR(t), k)
+        self.unit.setCurrentIndex(max(0, self.unit.findData(ref["unit"])))
+        self.unit.setToolTip(TR("Unité des vu-mètres audio de l'appli (générateur, écoute SDR)."))
+        self.align = QtWidgets.QComboBox()
+        for k, t, _a, _b in AUDIO_ALIGNS:
+            self.align.addItem(TR(t), k)
+        self.align.setCurrentIndex(max(0, self.align.findData(ref["align"])))
+        self.align.setToolTip(TR("Quel niveau numérique (dBFS) correspond à quel niveau analogique (dBu) chez toi :\n"
+                                 "EBU (Europe) −18 dBFS = 0 dBu ; SMPTE (USA) −20 dBFS = +4 dBu ; ou le tien."))
+        self.c_fs, self.c_u, self.dbr, self.tgt = (QtWidgets.QDoubleSpinBox() for _ in range(4))
+        for sp_, lo, hi, v, sfx, tip in ((self.c_fs, -60, 0, ref["dbfs"], " dBFS", "Alignement perso : ce niveau numérique…"),
+                                         (self.c_u, -40, 30, ref["dbu"], " dBu", "… correspond à ce niveau analogique."),
+                                         (self.dbr, -60, 0, ref["dbr"], " dBFS", "Niveau qui vaut 0 dBr (ta référence)."),
+                                         (self.tgt, -60, 0, ref["target"], " dBFS",
+                                          "Niveau visé par défaut (générateur, réglage d'un pack).")):
+            sp_.setRange(lo, hi)
+            sp_.setDecimals(1)
+            sp_.setSingleStep(0.5)
+            sp_.setValue(v)
+            sp_.setSuffix(sfx)
+            sp_.setToolTip(TR(tip))
+        f.addRow(TR("Unité des vu-mètres :"), self.unit)
+        f.addRow(TR("Alignement :"), self.align)
+        f.addRow(TR("Perso :"), self.owner._row(self.c_fs, "=", self.c_u, None))
+        f.addRow(TR("Référence dBr :"), self.dbr)
+        f.addRow(TR("Niveau visé :"), self.tgt)
+        lay.addLayout(f)
+        self.conv = QtWidgets.QLabel("")
+        self.conv.setWordWrap(True)
+        lay.addWidget(self.conv)
+        tb = QtWidgets.QTextBrowser()
+        tb.setHtml(scales_help_html(TR))
+        tb.setMinimumHeight(260)
+        lay.addWidget(tb, 1)
+        close = QtWidgets.QPushButton(TR("Fermer"))
+        close.setToolTip(TR("Ferme cette fenêtre (les réglages sont gardés)."))
+        close.clicked.connect(lambda *_: self.close())
+        lay.addLayout(owner._row(None, close))
+        for w_ in (self.unit, self.align):
+            w_.currentIndexChanged.connect(lambda *_: self.apply())
+        for w_ in (self.c_fs, self.c_u, self.dbr, self.tgt):
+            w_.valueChanged.connect(lambda *_: self.apply())
+        self.resize(820, 640)
+        fit_dialog(self, 820, 640)
+        self.apply()
+
+    def apply(self):
+        o = self.owner
+        o.audio_ref = audio_ref_norm(dict(unit=self.unit.currentData(), align=self.align.currentData(),
+                                          dbfs=self.c_fs.value(), dbu=self.c_u.value(), dbr=self.dbr.value(),
+                                          target=self.tgt.value()))
+        cust = o.audio_ref["align"] == "custom"
+        self.c_fs.setEnabled(cust)
+        self.c_u.setEnabled(cust)
+        r = o.audio_ref
+        self.conv.setText(TR("Avec ces réglages : {} = {} = {} = {} · niveau visé {} = {}").format(
+            fmt_audio(-18, r, "dbfs"), fmt_audio(-18, r, "dbu"), fmt_audio(-18, r, "dbv"), fmt_audio(-18, r, "vrms"),
+            fmt_audio(r["target"], r, "dbfs"), fmt_audio(r["target"], r, "dbu")))
+
+
+class AudioPickDialog(QtWidgets.QDialog):
+    """🎵 Choisir un son (étape 21) : générateur 20 Hz – 20 kHz (une fréquence ou un balayage), bruits, voix / mélodie /
+    bips de démo, sons de l'appli, ton fichier WAV ; ▶ pour l'écouter sur le PC. Seul (standalone) = 🎵 Générateur
+    audio qui joue en boucle sur la sortie audio de l'appli."""
+
+    def __init__(self, owner, spec=None, standalone=False, title=None):
+        super().__init__(owner)
+        self.owner, self.standalone, self.fx, self._tmp = owner, standalone, None, None
+        self.setWindowTitle(title or ("🎵 Générateur audio (20 Hz – 20 kHz)" if standalone else "🎵 Choisir un son"))
+        sp = audio_spec_norm(spec or dict(src="tone" if standalone else "voice"))
+        lay = QtWidgets.QVBoxLayout(self)
+        if standalone:
+            why = QtWidgets.QLabel(TR("À quoi ça sert ? Écouter un son de test ici, ou l'affecter (en bas) : à un micro de ta "
+                                      "liste (il l'émet dans les modes démo tinySA et SDR), à un son d'alarme, ou à "
+                                      "l'émission avec un HackRF."))
+            why.setWordWrap(True)
+            lay.addWidget(why)
+        f = QtWidgets.QFormLayout()
+        self.src = QtWidgets.QComboBox()
+        for k_, t_ in AUDIO_SRCS:
+            self.src.addItem(t_, k_)
+        self.src.setCurrentIndex(max(0, self.src.findData(sp["src"])))
+        self.src.setToolTip("D'où vient le son.")
+        f.addRow("Source :", self.src)
+
+        def hz(v, tip):
+            b = QtWidgets.QDoubleSpinBox()
+            b.setRange(20.0, 20000.0)
+            b.setDecimals(0)
+            b.setSuffix(" Hz")
+            b.setValue(v)
+            b.setToolTip(tip)
+            return b
+        self.f = hz(sp["f"], "Fréquence du son (20 Hz – 20 kHz).")
+        self.f1 = hz(sp["f1"], "Fréquence de départ du balayage.")
+        self.f2 = hz(sp["f2"], "Fréquence d'arrivée du balayage.")
+        self.dur = QtWidgets.QDoubleSpinBox()
+        self.dur.setRange(1.0, 120.0)
+        self.dur.setDecimals(0)
+        self.dur.setSuffix(" s")
+        self.dur.setValue(sp["dur"])
+        self.dur.setToolTip("Durée d'un balayage (il recommence ensuite).")
+        self.log = QtWidgets.QCheckBox("Logarithmique (autant de temps par octave)")
+        self.log.setChecked(sp["log"])
+        self.log.setToolTip("Coché : chaque octave dure le même temps (comme à l'oreille). Décoché : linéaire en Hz.")
+        self.app = QtWidgets.QComboBox()
+        for k_, t_ in APP_SOUNDS:
+            self.app.addItem(t_, k_)
+        self.app.setCurrentIndex(max(0, self.app.findData(sp["app"])))
+        self.app.setToolTip("Les sons que joue l'appli (alarmes, appel des micros), répétés.")
+        self.path, self.wav_lbl = sp["path"], QtWidgets.QLabel("")
+        wb = QtWidgets.QPushButton("📂 Choisir un WAV…")
+        wb.setToolTip("Ton fichier WAV (voix, musique, signal de test), joué en boucle.")
+        wb.clicked.connect(lambda *_: self.pick_wav())
+        self.rows = {}
+        for key, lab, w in (("f", "Fréquence :", self.f), ("f1", "De :", self.f1), ("f2", "À :", self.f2),
+                            ("dur", "Durée :", self.dur), ("log", "", self.log), ("app", "Son :", self.app)):
+            f.addRow(lab, w)
+            self.rows[key] = w
+        rw = QtWidgets.QWidget()
+        rl = QtWidgets.QHBoxLayout(rw)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(wb)
+        rl.addWidget(self.wav_lbl, 1)
+        f.addRow("Fichier :", rw)
+        self.rows["wav"] = rw
+        ref = owner.audio_ref                                 # 8.1 : niveau visé, vu-mètre, déviation
+        self.lvl_chk = QtWidgets.QCheckBox("Régler le niveau à")
+        self.lvl_chk.setChecked(sp.get("lvl") is not None)
+        self.lvl_chk.setToolTip("Coché : le son est amené à ce niveau (moyen, RMS). Décoché : son niveau d'origine.\n"
+                                "Repère d'alignement courant : −18 dBFS (EBU) ou −20 dBFS (SMPTE).")
+        self.lvl = QtWidgets.QDoubleSpinBox()
+        self.lvl.setDecimals(1)
+        self.lvl.setSingleStep(0.5)
+        self.lvl_unit = ref["unit"] if ref["unit"] != "vrms" else "dbu"
+        lo_, hi_ = (dbfs_to_unit(-60, ref, self.lvl_unit), dbfs_to_unit(0, ref, self.lvl_unit))
+        self.lvl.setRange(min(lo_, hi_), max(lo_, hi_))
+        self.lvl.setSuffix(" " + dict(AUDIO_UNITS).get(self.lvl_unit, "dBFS"))
+        self.lvl.setValue(dbfs_to_unit(sp["lvl"] if sp.get("lvl") is not None else ref["target"], ref, self.lvl_unit))
+        self.lvl.setToolTip("Niveau visé, dans l'unité choisie dans 📏 Échelles et niveaux.")
+        tgt = QtWidgets.QPushButton("🎯")
+        tgt.setToolTip("Mettre le niveau visé du réglage (📏 Échelles et niveaux).")
+        tgt.clicked.connect(lambda *_: (self.lvl_chk.setChecked(True),
+                                        self.lvl.setValue(dbfs_to_unit(owner.audio_ref["target"], owner.audio_ref,
+                                                                       self.lvl_unit))))
+        helpb = QtWidgets.QPushButton("📏")
+        helpb.setToolTip("Échelles et niveaux : unité, alignement, et la fiche qui explique dBFS, dBu, dBV…")
+        helpb.clicked.connect(lambda *_: owner.open_scales())
+        f.addRow(owner._row(self.lvl_chk, self.lvl, tgt, helpb, None))
+        self.gain = QtWidgets.QDoubleSpinBox()              # 8.1 : gain à la main (ou celui calculé, affiché)
+        self.gain.setRange(-60.0, 40.0)
+        self.gain.setDecimals(1)
+        self.gain.setSingleStep(1.0)
+        self.gain.setSuffix(" dB")
+        self.gain.setValue(float(sp.get("gain") or 0.0))
+        self.gain.setToolTip("Gain appliqué au son. « Régler le niveau » décoché : c'est toi qui le règles.\n"
+                             "Coché : il est calculé pour atteindre le niveau visé (sur tout le fichier), sans jamais "
+                             "écrêter.")
+        self.gain_lbl = QtWidgets.QLabel("")
+        f.addRow("Gain :", owner._row(self.gain, self.gain_lbl, None))
+        self.gain.valueChanged.connect(lambda *_: None if self.lvl_chk.isChecked() else self._changed())
+        self.meter = AudioMeterBar(owner, self)
+        f.addRow("Niveau :", self.meter)
+        self.meter_txt = QtWidgets.QLabel("")
+        self.meter_txt.setWordWrap(True)
+        self.meter_txt.setToolTip("Mesuré sur le son qui sera joué : moyen (RMS), crête, True Peak, et la déviation FM\n"
+                                  "que ce niveau donne sur un micro (0 dBFS = déviation max du réglage d'écoute).")
+        f.addRow(self.meter_txt)
+        self.lvl_chk.toggled.connect(lambda *_: self._changed())
+        self.lvl.valueChanged.connect(lambda *_: self._changed())
+        lay.addLayout(f)
+        note = QtWidgets.QLabel("Dans l'écoute d'un micro HF (FM), les aigus au-delà de ~15 kHz sont coupés : c'est la "
+                                "bande audio d'un micro, pas un défaut.")
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #8e8e93;")
+        lay.addWidget(note)
+        self.play_btn = QtWidgets.QPushButton("▶ Écouter ici")
+        self.play_btn.setCheckable(True)
+        self.play_btn.setToolTip("Joue le son sur la sortie audio de l'appli (⚙ Réglages › Son).")
+        self.play_btn.toggled.connect(lambda on: self.play(on))
+        self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        self.vol.setRange(0, 100)
+        self.vol.setValue(40)
+        self.vol.setMaximumWidth(140)
+        self.vol.setToolTip("Volume (commence bas : un générateur peut être fort).")
+        self.vol.valueChanged.connect(lambda v: self.fx.setVolume(v / 100.0) if self.fx is not None else None)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addLayout(owner._row(self.play_btn, "Volume :", self.vol, None))
+        lay.addWidget(self.msg)
+        if standalone:                                      # 8.0.3 : « le générateur sert à quoi ? » -> l'affecter
+            box = QtWidgets.QGroupBox(TR("Utiliser ce son pour…"))
+            bl = QtWidgets.QFormLayout(box)
+            self.target = QtWidgets.QComboBox()
+            self.target.setToolTip(TR("Où va ce son : un micro de ta liste (il l'émet dans les démos tinySA / SDR), un son "
+                                      "d'alarme, ou l'émission avec un HackRF."))
+            self.sig = QtWidgets.QComboBox()
+            for k_, t_ in DEMO_SIG_KINDS:
+                self.sig.addItem(TR(t_), k_)
+            self.sig.setToolTip(TR("Ce que ce micro émet dans les démos (tinySA et SDR) : micro FM avec ce son, micro "
+                                   "numérique, coupures, brouilleur, rien."))
+            self.assign_btn = QtWidgets.QPushButton(TR("✔ Affecter"))
+            self.assign_btn.setToolTip(TR("Applique ce son (et ce type de signal) à la cible choisie."))
+            self.assign_btn.clicked.connect(lambda *_: self.assign())
+            bl.addRow(TR("Cible :"), self.target)
+            bl.addRow(TR("Signal (démos) :"), self.sig)
+            bl.addRow("", self.assign_btn)
+            self.target.currentIndexChanged.connect(lambda *_: self._target_changed())
+            lay.addWidget(box)
+            self.fill_targets()
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close if standalone else
+                                        QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        for w in (self.src, self.app):
+            w.currentIndexChanged.connect(lambda *_: self._changed())
+        for w in (self.f, self.f1, self.f2, self.dur):
+            w.valueChanged.connect(lambda *_: self._changed())
+        self.log.toggled.connect(lambda *_: self._changed())
+        self.finished.connect(lambda *_: self.play(False))
+        self._changed()
+
+    def fill_targets(self):
+        """Cibles : tes micros (démos), les sons d'alarme, l'émission HackRF."""
+        o = self.owner
+        cur = self.target.currentData()
+        self.target.blockSignals(True)
+        self.target.clear()
+        for w in sorted(o.watch, key=lambda w: w["freq"]):
+            self.target.addItem(TR("🎤 {} · {} MHz (démos tinySA / SDR)").format(w.get("name") or "—", f"{w['freq']:.3f}"),
+                                f"mic:{int(round(w['freq'] * 1000))}")
+        for k_, t_ in (("alarm2", "🔔 Son d'alarme critique"), ("alarm1", "🔔 Son d'alarme normale"),
+                       ("alarm0", "🔔 Son d'alarme info"), ("ok", "✓ Son de l'appel des micros")):
+            self.target.addItem(TR(t_), f"alarm:{k_}")
+        self.target.addItem(TR("📡 Émettre avec un HackRF (nouvelle ligne)"), "tx:")
+        i = self.target.findData(cur) if cur is not None else -1
+        self.target.setCurrentIndex(max(0, i))
+        self.target.blockSignals(False)
+        self._target_changed()
+
+    def _tgt(self):
+        k, _, v = str(self.target.currentData() or ":").partition(":")
+        return k, (int(v) if k == "mic" and v.isdigit() else v)
+
+    def _target_changed(self):
+        if hasattr(self, "meter"):
+            QtCore.QTimer.singleShot(0, self._measure)      # la déviation dépend du micro visé
+        t = self._tgt()
+        self.sig.setEnabled(t[0] == "mic")
+        if t[0] == "mic":
+            k = (self.owner.sdr_cfg.get("demo_kind") or {}).get(str(t[1])) or "auto"
+            self.sig.setCurrentIndex(max(0, self.sig.findData(k)))
+
+    def assign(self):
+        o, sp = self.owner, self.spec()
+        t = self._tgt()
+        if t[0] == "mic":
+            w = o.watch_by_key(t[1])
+            if w is None:
+                return
+            o.demo_sound(w, sp)
+            dk = dict(o.sdr_cfg.get("demo_kind") or {})
+            if self.sig.currentData() == "auto":
+                dk.pop(str(t[1]), None)
+            else:
+                dk[str(t[1])] = self.sig.currentData()
+            o.sdr_cfg["demo_kind"] = dk
+            for e_ in (getattr(o, "sdr_engs", None) or {}).values():
+                e_._t_demo = 0.0                            # le SDR démo prend le nouveau signal tout de suite
+            self.msg.setText(TR("✔ {} : « {} », {} — lance le mode démo (tinySA ou 🧪 SDR démo) pour le voir et "
+                                "l'écouter.").format(w.get("name") or f"{w['freq']:.3f}", audio_text(sp, TR),
+                                                     self.sig.currentText()))
+        elif t[0] == "alarm":
+            o.set_alarm_sound(t[1], sp)
+            self.msg.setText(TR("✔ Son « {} » affecté : {}.").format(self.target.currentText(), audio_text(sp, TR)))
+        elif t[0] == "tx":
+            d = o.open_sdr_tx()
+            if d is not None:
+                d.add_row(dict(f=606.0, kind="fm", audio=sp))
+                self.msg.setText(TR("✔ Ligne ajoutée à l'émission HackRF : règle sa fréquence."))
+
+    def spec(self):
+        lvl = unit_to_dbfs(self.lvl.value(), self.owner.audio_ref, self.lvl_unit) if self.lvl_chk.isChecked() else None
+        return audio_spec_norm(dict(src=self.src.currentData(), f=self.f.value(), f1=self.f1.value(), f2=self.f2.value(),
+                                    dur=self.dur.value(), log=self.log.isChecked(), app=self.app.currentData(),
+                                    path=self.path, lvl=lvl, gain=0.0 if lvl is not None else self.gain.value()))
+
+    def _measure(self):
+        """8.1 : vu-mètre et déviation du son choisi (mesurés sur 1 à 3 s du son réel)."""
+        try:
+            sp = self.spec()
+            if sp["src"] == "wav" and sp["path"]:
+                wav_load(sp["path"])
+            secs = min(3.0, sp["dur"]) if sp["src"] == "sweep" else 1.5
+            ref = self.owner.audio_ref
+            g_, lim_ = audio_gain(sp, 0)
+            if sp["src"] == "wav" and len(WAV_PCM.get(sp["path"], [])):   # 8.1 : un WAV est mesuré EN ENTIER
+                x_ = np.clip(np.asarray(WAV_PCM[sp["path"]], dtype=np.float32) * 10.0 ** (g_ / 20.0), -1.0, 1.0)
+                m = audio_meter(x_)
+            else:
+                m = audio_meter(demo_audio(sp, np.arange(int(secs * 48000)) / 48000.0, 0))
+            self.gain.setEnabled(sp.get("lvl") is None)
+            if sp.get("lvl") is not None:
+                self.gain.blockSignals(True)
+                self.gain.setValue(g_)
+                self.gain.blockSignals(False)
+            self.gain_lbl.setText(TR("⚠ limité par la crête : niveau visé pas atteint (le son écrêterait)") if lim_
+                                  else (TR("calculé pour le niveau visé") if sp.get("lvl") is not None else ""))
+            self.gain_lbl.setStyleSheet("color: #ff9f0a;" if lim_ else "color: #8e8e93;")
+            self.meter.set_meter(m, sp["lvl"] if sp.get("lvl") is not None else None)
+            nom = 48.0
+            t_ = self._tgt() if hasattr(self, "target") else ("", None)
+            if t_[0] == "mic":
+                w = self.owner.watch_by_key(t_[1])
+                p_ = demod_preset(self.owner.mic_demod(w)[0]) if w else None
+                nom = float((p_ or {}).get("dev") or 48000) / 1000.0
+            self.meter_txt.setText(TR("moyen {} · crête {} · True Peak {} · en FM : déviation crête {} kHz (0 dBFS = {} kHz)")
+                                   .format(fmt_audio(m["rms"], ref), fmt_audio(m["peak"], ref, "dbfs"),
+                                           fmt_audio(m["tp"], ref, "dbfs").replace("dBFS", "dBTP"),
+                                           f"{fm_deviation(m['peak'], nom):.1f}".replace(".", ","), f"{nom:g}"))
+        except Exception as e:  # noqa: BLE001
+            self.meter_txt.setText(str(e))
+
+    def _changed(self):
+        src = self.src.currentData()
+        show = {"tone": ("f",), "sweep": ("f1", "f2", "dur", "log"), "app": ("app",), "wav": ("wav",)}.get(src, ())
+        lay = self.layout().itemAt(0).layout()
+        for k, w in self.rows.items():
+            try:
+                lay.setRowVisible(w, k in show)
+            except Exception:  # noqa: BLE001
+                w.setVisible(k in show)
+        self.wav_lbl.setText(audio_text(self.spec(), TR) if self.path else TR("(aucun fichier)"))
+        if hasattr(self, "meter"):
+            self._measure()
+        if self.play_btn.isChecked():                       # on change le son en l'écoutant : on relance
+            self.play(True)                                 # (8.0.2 : play(False) décochait ▶ -> plus de relance)
+
+    def pick_wav(self):
+        p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Fichier WAV", "", "Son WAV (*.wav);;Tous (*)")
+        if not p:
+            return
+        ok, txt = wav_load(p)
+        self.msg.setText(txt)
+        if ok:
+            self.path = p
+            self.src.setCurrentIndex(max(0, self.src.findData("wav")))
+        self._changed()
+
+    def play(self, on):
+        if self.fx is not None:
+            try:
+                self.fx.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.fx = None
+        if not on:
+            if self.play_btn.isChecked():
+                self.play_btn.blockSignals(True)
+                self.play_btn.setChecked(False)
+                self.play_btn.blockSignals(False)
+            if getattr(self, "_live_t", None) is not None:
+                self._live_t.stop()
+                self._live = None
+                self._measure()                              # retour à la mesure du son entier
+            return
+        import tempfile
+        import wave
+        sp = self.spec()
+        if sp["src"] == "wav" and sp["path"]:
+            wav_load(sp["path"])
+        secs = sp["dur"] if sp["src"] == "sweep" else (min(30.0, len(WAV_PCM.get(sp["path"], [])) / 48000.0)
+                                                         if sp["src"] == "wav" else 4.0)
+        t = np.arange(int(max(0.5, secs) * 48000)) / 48000.0
+        a = demo_audio(sp, t, 0)
+        try:
+            self._tmp = temp_wav_path("gen", self._tmp)  # 8.0.2 : un NOUVEAU fichier à chaque lecture (voir temp_wav_path)
+            with wave.open(self._tmp, "wb") as w:        # stéréo 16 bits 48 kHz : le format le plus partout lu
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(48000)
+                w.writeframes(np.repeat((np.clip(a, -1, 1) * 32767).astype("<i2"), 2).tobytes())
+            from PySide6 import QtMultimedia
+            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
+            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
+            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
+            fx.setLoopCount(-2)                              # QSoundEffect.Infinite : en boucle
+            fx.setVolume(self.vol.value() / 100.0)
+            fx.play()
+            self.fx = fx
+            self._live = (a.astype(np.float32), time.monotonic(), sp.get("lvl"))   # 8.1 : vu-mètre en direct
+            self._live_pk = -math.inf
+            if getattr(self, "_live_t", None) is None:
+                self._live_t = QtCore.QTimer(self)
+                self._live_t.timeout.connect(self._live_tick)
+            self._live_t.start(50)
+            self.msg.setText(TR("▶ {} (en boucle)").format(audio_text(sp, TR)))
+        except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son
+            self.msg.setText(TR("⚠ Son impossible ici : {}").format(e))
+            self.play(False)
+
+
+    def _live_tick(self):
+        """8.1 : pendant « Écouter ici », le vu-mètre suit ce qui sort (50 ms autour de la position de lecture,
+        crête tenue qui redescend) : un WAV, une voix ou un balayage font bouger la barre en direct."""
+        lv = getattr(self, "_live", None)
+        if not lv or self.fx is None:
+            return
+        a, t0, tgt = lv
+        n = len(a)
+        if not n:
+            return
+        i = int((time.monotonic() - t0) * 48000) % n
+        seg = a[i:i + 2400] if i + 2400 <= n else np.concatenate([a[i:], a[:i + 2400 - n]])
+        m = audio_meter(seg)
+        self._live_pk = max(m["peak"], self._live_pk - 0.6) if math.isfinite(m["peak"]) else self._live_pk - 0.6
+        m = dict(m, peak=self._live_pk)
+        self.meter.set_meter(m, tgt)
+
+
+def audio_button(owner, spec, on_change=None):
+    """Bouton « 🎵 son » qui ouvre AudioPickDialog ; le choix est dans b.spec."""
+    b = QtWidgets.QPushButton()
+    b.spec = audio_spec_norm(spec)
+    b.setToolTip("Le son qui module ce signal : générateur, balayage, bruit, sons de l'appli, ton WAV…")
+
+    def upd():
+        b.setText("🎵 " + audio_text(b.spec, TR))
+
+    def pick():
+        d = AudioPickDialog(owner, b.spec)
+        if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            b.spec = d.spec()
+            upd()
+            if on_change:
+                on_change(b.spec)
+    b.clicked.connect(lambda *_: pick())
+    upd()
+    return b
+
+
+# ---- étape 21 (Clément : « on peut même choisir les sons d'alarmes » -> « garde ça en V8 ») : sons des alarmes au choix
+
+
+class SdrTxDialog(QtWidgets.QDialog):
+    """📡 Émettre avec un HackRF, EN CÂBLE (étape 21) : faux micros FM (son + pilote), porteuses, talkies, blocs larges,
+    brouilleur intermittent — pour tester un récepteur, l'écoute de l'appli, l'intermod ou s'entraîner à la chasse.
+    En SDR démo, rien n'est émis : le SDR démo « reçoit » l'émission simulée."""
+    COLS = ("MHz", "Type", "Son", "Pilote", "Intermittent", "Niveau")
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner, self.run = owner, None
+        self.setWindowTitle("📡 Émettre avec un HackRF (en câble)")
+        lay = QtWidgets.QVBoxLayout(self)
+        warn = QtWidgets.QLabel("⚠ Émettre à l'antenne sans autorisation est interdit. En CÂBLE seulement, avec un "
+                                "atténuateur (30 dB ou plus) avant l'entrée du récepteur ou du tinySA.")
+        warn.setWordWrap(True)
+        warn.setStyleSheet(f"color: {owner.tone_color('bad')}; font-weight: bold;")
+        lay.addWidget(warn)
+        self.demo_lbl = QtWidgets.QLabel("")
+        self.demo_lbl.setWordWrap(True)
+        lay.addWidget(self.demo_lbl)
+        self.tbl = QtWidgets.QTableWidget(0, len(self.COLS))
+        self.tbl.setHorizontalHeaderLabels(list(self.COLS))
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.setToolTip("Ce que le HackRF émet en même temps (8 au plus, tous dans une même fenêtre de quelques MHz).")
+        lay.addWidget(self.tbl, 1)
+        add = QtWidgets.QPushButton("＋ Ajouter un signal")
+        add.setToolTip("Un faux micro FM de plus (change le type, le son…).")
+        add.clicked.connect(lambda *_: self.add_row())
+        mine = QtWidgets.QPushButton("Depuis ma liste")
+        mine.setToolTip("Ajoute les micros choisis dans « Mes fréquences » (ou les 3 premiers).")
+        mine.clicked.connect(lambda *_: self.from_list())
+        dele = QtWidgets.QPushButton("Retirer")
+        dele.setToolTip("Retire les lignes choisies.")
+        dele.clicked.connect(lambda *_: self.del_rows())
+        lay.addLayout(owner._row(add, mine, dele, None))
+        self.gain = QtWidgets.QSpinBox()
+        self.gain.setRange(0, 47)
+        self.gain.setSuffix(" dB")
+        self.gain.setToolTip("Gain d'émission du HackRF (0 à 47 dB). Commence à 0 : en câble, c'est déjà bien assez.")
+        self.amp = QtWidgets.QCheckBox("Ampli (+ ~11 dB)")
+        self.amp.setToolTip("Ampli de sortie du HackRF. Inutile en câble : laisse-le coupé.")
+        self.dur = QtWidgets.QComboBox()
+        for m_ in TX_DURATIONS:
+            self.dur.addItem(TR("{} min").format(m_), m_)
+        self.dur.setCurrentIndex(1)
+        self.dur.setToolTip("L'émission s'arrête toute seule au bout de ce temps.")
+        lay.addLayout(owner._row("Gain :", self.gain, self.amp, "Durée :", self.dur, None))
+        self.cable = QtWidgets.QCheckBox("Je suis EN CÂBLE avec un atténuateur, aucune antenne branchée")
+        self.cable.setToolTip("Obligatoire pour émettre.")
+        lay.addWidget(self.cable)
+        self.info = QtWidgets.QLabel("")
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        self.go = QtWidgets.QPushButton("📡 Émettre")
+        self.go.setToolTip("Lance / arrête l'émission.")
+        self.go.clicked.connect(lambda *_: self.toggle())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre (l'émission s'arrête).")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(self.go, None, close))
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(500)
+        fit_dialog(self, 760, 520)
+        self.add_row(dict(f=606.0))
+        self.refresh()
+
+    # ---- lignes
+    def add_row(self, r=None):
+        r = dict(dict(f=606.0, kind="fm", audio="voice", pilot=True, burst=False, lvl=0.0), **(r or {}))
+        if self.tbl.rowCount() >= TX_MAX_SIGS:
+            return
+        i = self.tbl.rowCount()
+        self.tbl.insertRow(i)
+        f = QtWidgets.QDoubleSpinBox()
+        f.setRange(1.0, 6000.0)
+        f.setDecimals(3)
+        f.setSingleStep(0.025)
+        f.setValue(float(r["f"]))
+        k = QtWidgets.QComboBox()
+        for k_, t_ in SIG_KINDS:
+            k.addItem(t_, k_)
+        k.setCurrentIndex(max(0, k.findData(r["kind"])))
+        a = audio_button(self.owner, r["audio"])
+        p = QtWidgets.QCheckBox()
+        p.setChecked(bool(r["pilot"]))
+        p.setToolTip("Tonalité pilote inaudible (32,768 kHz) comme beaucoup de micros analogiques.")
+        b = QtWidgets.QCheckBox()
+        b.setChecked(bool(r["burst"]))
+        b.setToolTip("Allumé 1 s toutes les 4 s : un brouilleur qui va et vient (chasse, alarmes).")
+        lv = QtWidgets.QSpinBox()
+        lv.setRange(-40, 0)
+        lv.setSuffix(" dB")
+        lv.setValue(int(r["lvl"]))
+        lv.setToolTip("Niveau par rapport au signal le plus fort (0 dB).")
+        for c, w in enumerate((f, k, a, p, b, lv)):
+            self.tbl.setCellWidget(i, c, w)
+        for w in (f, lv):
+            w.valueChanged.connect(lambda *_: self.refresh())
+        k.currentIndexChanged.connect(lambda *_: self.refresh())
+
+    def rows(self):
+        out = []
+        for i in range(self.tbl.rowCount()):
+            w = [self.tbl.cellWidget(i, c) for c in range(len(self.COLS))]
+            out.append(dict(f=w[0].value(), kind=w[1].currentData(), audio=w[2].spec, pilot=w[3].isChecked(),
+                            burst=w[4].isChecked(), lvl=float(w[5].value())))
+        return out
+
+    def from_list(self):
+        o = self.owner
+        rows = sorted({ix.row() for ix in o.watch_table.selectionModel().selectedRows()}) if hasattr(o, "watch_table") \
+            else []
+        ws = [o.watch[r] for r in rows if 0 <= r < len(o.watch)] or list(o.watch[:3])
+        for w in ws:
+            dig = o.mic_demod(w)[0] == DEMOD_DIGITAL if hasattr(o, "mic_demod") else False
+            self.add_row(dict(f=w["freq"], kind="noise" if dig or (w.get("bw") or 0) > 0 else "fm"))
+        self.refresh()
+
+    def del_rows(self):
+        for r in sorted({ix.row() for ix in self.tbl.selectionModel().selectedIndexes()}, reverse=True):
+            self.tbl.removeRow(r)
+        self.refresh()
+
+    # ---- émission
+    def demo(self):
+        return bool(self.owner.sdr_cfg.get("demo"))
+
+    def plan(self):
+        return tx_plan(self.rows())
+
+    def refresh(self):
+        r = self.run
+        on = r is not None and r.running()
+        if r is not None and not on:
+            self._ended(r)
+        self.demo_lbl.setText(TR("🧪 SDR démo allumé : émission SIMULÉE, rien ne sort. Le SDR démo la « reçoit » : regarde "
+                                 "le spectre et écoute.") if self.demo() else "")
+        if on:
+            left = max(0, int(r.until - time.time()))
+            self.info.setText(TR("📡 Émission en cours · {} min {:02d} s restantes").format(left // 60, left % 60))
+        else:
+            p = self.plan()
+            self.info.setText(p if isinstance(p, str) else TR("Centre {} MHz · débit {} MS/s · {} signal(aux)").format(
+                f"{p[0] / 1e6:.3f}", f"{p[1] / 1e6:g}", len(p[2])))
+        t = "■ Arrêter l'émission" if on else "📡 Émettre"
+        if getattr(self, "_gt", None) != t:
+            self._gt = t
+            self.go.setText(t)
+
+    def toggle(self):
+        if self.run is not None and self.run.running():
+            self.stop()
+            return
+        o = self.owner
+        if not self.cable.isChecked() and not self.demo():
+            self.info.setText(TR("Coche d'abord « en câble avec un atténuateur »."))
+            return
+        p = self.plan()
+        if isinstance(p, str):
+            self.info.setText(p)
+            return
+        fc, rate, sigs = p
+        until = time.time() + 60.0 * int(self.dur.currentData() or 5)
+        if self.demo():
+            self.run = TxRunner(fc, rate, sigs, until, demo=True)
+        else:
+            busy = [e for e in (getattr(o, "sdr_engs", None) or {}).values() if e.running() and e.kind() == "hackrf"]
+            busy += [w for w in getattr(o, "workers", []) if w.isRunning() and getattr(w, "sdr", False)
+                     and (parse_sdr_addr(getattr(w, "port", "")) or ("",))[0] == "hackrf"]     # audit : balayage hackrf_sweep
+            if busy:
+                self.info.setText(TR("Un poste SDR utilise le HackRF : arrête-le d'abord (un HackRF reçoit OU émet)."))
+                return
+            exe = getattr(o, "_tx_tool", None) or find_sdr_tool("hackrf_transfer", o.sdr_cfg.get("dir", ""))
+            if not exe:
+                self.info.setText(TR("hackrf_transfer introuvable (outils HackRF : PothosSDR, ou 📡 Réglages SDR)."))
+                return
+            ser = next((pp["serial"] for pp in sdr_posts_norm(o.sdr_cfg.get("posts"))
+                        if (sdr_model(pp["model"]) or {}).get("kind") == "hackrf" and pp["serial"]), "")
+            try:
+                self.run = TxRunner(fc, rate, sigs, until, exe=exe, gain=self.gain.value(), amp=self.amp.isChecked(),
+                                    serial=ser)
+            except OSError as ex:
+                self.info.setText(TR("⚠ Impossible de lancer hackrf_transfer : {}").format(ex))
+                return
+        o.log_event(dict(name=TR("Émission SDR"), freq=fc / 1e6, note=TR("{} · gain {} dB{} · {}").format(
+            ", ".join(f"{s_['f']:.3f}" for s_ in sigs), self.gain.value(), TR(" · ampli") if self.amp.isChecked() else "",
+            TR("simulée (SDR démo)") if self.demo() else TR("en câble"))), 0.0, "ÉMISSION SDR")
+        self.refresh()
+
+    def _ended(self, r):
+        self.run = None
+        why = r.why or (r.err[-1] if r.err else "")
+        self.owner.log_event(dict(name=TR("Émission SDR"), freq=r.fc / 1e6, note=why or TR("arrêtée")), 0.0,
+                             "FIN D'ÉMISSION SDR")
+        if why:
+            self.owner.set_status(TR("⚠ Émission arrêtée : {}").format(why))
+
+    def stop(self):
+        r = self.run
+        if r is not None:
+            r.stop()
+            self._ended(r)
+        self.refresh()
+
+    def closeEvent(self, ev):
+        self.stop()
+        super().closeEvent(ev)
+
+
+class SdrDemoMixin:
+    """Générateur audio, sons des alarmes, SDR démo et émission. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def open_audio_gen(self):
+        d = getattr(self, "_audiogen", None)
+        if d is None:
+            d = self._audiogen = AudioPickDialog(self, standalone=True)
+        d.fill_targets()
+        d.show()
+        d.raise_()
+        return d
+
+    def set_alarm_sound(self, key, spec):
+        d = alarm_sounds_norm(getattr(self.sound, "custom", None))
+        if spec is None:
+            d.pop(key, None)
+        else:
+            d[key] = audio_spec_norm(spec)
+            if d[key]["src"] == "wav":
+                wav_load(d[key]["path"])
+        self.sound.custom = d
+
+    def test_alarm_sound(self, key):
+        self.sound.play({"alarm2": ALARM_TONES[2], "alarm1": ALARM_TONES[1], "alarm0": ALARM_TONES[0],
+                         "ok": TONE_OK}.get(key, ALARM_TONES[2]))
+
+    def demo_sound(self, w, spec):
+        """🎵 Son d'un micro dans le SDR démo (sdr_cfg « demo_snd » {kHz: source}) ; None = son par défaut."""
+        d = dict(self.sdr_cfg.get("demo_snd") or {})
+        k = str(int(round(w["freq"] * 1000)))
+        if spec is None:
+            d.pop(k, None)
+        else:
+            d[k] = audio_spec_norm(spec)
+            if d[k]["src"] == "wav":
+                wav_load(d[k]["path"])
+        self.sdr_cfg["demo_snd"] = d
+        for e in (getattr(self, "sdr_engs", None) or {}).values():
+            e._t_demo = 0.0                                   # le SDR démo prend le nouveau son tout de suite
+
+    def pick_demo_sound(self, w):
+        cur = (self.sdr_cfg.get("demo_snd") or {}).get(str(int(round(w["freq"] * 1000))))
+        d = AudioPickDialog(self, cur, title=TR("🎵 Son de {} dans le SDR démo").format(w.get("name") or f"{w['freq']:.3f}"))
+        if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self.demo_sound(w, d.spec())
+
+    def demo_mics(self):
+        """Micros que « reçoit » le SDR démo : ta liste (sauf les 💤 éteints et ceux hors de l'état 📸 actif)."""
+        out = []
+        tuned = {}                     # 8.1 : micro écouté sur A -> le « pack » démo est réglé comme ton écoute (même
+        for e_ in (getattr(self, "sdr_engs", None) or {}).values():       # déviation nominale, même compander) : un
+            cm = getattr(e_, "cur_mic", None)                             # −18 dBFS envoyé se lit −18 dBFS à l'écoute
+            if cm is not None and isinstance(getattr(e_, "demod", None), dict):
+                d_ = e_.demod
+                tuned[id(cm)] = (float(d_.get("dev") or LISTEN_MODES.get(d_.get("mode", ""), {}).get("dev") or 0) or None,
+                                 d_.get("compander") or "")
+        for w in self.watch:
+            if w.get("muted") or w.get("off"):
+                continue
+            snd = (self.sdr_cfg.get("demo_snd") or {}).get(str(int(round(w["freq"] * 1000))))
+            if snd and audio_spec_norm(snd)["src"] == "wav" and audio_spec_norm(snd)["path"] not in WAV_PCM:
+                wav_load(audio_spec_norm(snd)["path"])
+            out.append(dict(f=w["freq"], name=w.get("name", ""), bw=float(w.get("bw") or 0.0),
+                            free=self.is_keep_free(w.get("status")),
+                            digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd,
+                            dev=float((demod_preset(self.mic_demod(w)[0]) or {}).get("dev") or 0) or None,
+                            comp=(demod_preset(self.mic_demod(w)[0]) or {}).get("comp") or "",
+                            kind=(self.sdr_cfg.get("demo_kind") or {}).get(str(int(round(w["freq"] * 1000)))) or "auto"))
+            if id(w) in tuned:
+                out[-1]["dev"], out[-1]["comp"] = tuned[id(w)]
+        return out
+
+    def set_sdr_demo(self, on):
+        """🧪 SDR démo allumé / éteint : les postes en marche repartent sur la nouvelle source."""
+        on = bool(on)
+        if bool(self.sdr_cfg.get("demo")) == on:
+            return
+        run = [e for e in (getattr(self, "sdr_engs", None) or {}).values() if e.running()]
+        for e in run:
+            e.stop()
+        self.sdr_cfg["demo"] = on
+        tx = getattr(self, "_sdrtx", None)
+        if tx is not None and tx.run is not None:
+            tx.stop()
+        if on:
+            if self.rf_mode == "tiny":
+                self.set_rf_mode("sdr")
+            for e in run or [self.sdr_eng]:
+                e.start()
+            self.set_status(TR("🧪 SDR démo : tes micros sont « reçus » avec du son et un pilote ; un brouilleur passe de temps "
+                               "en temps, un micro s'éteint, un autre perd son pilote."))
+        else:
+            sdr_demo_set(plan=[], tx=[])
+            self.set_status(TR("SDR démo coupé : le poste SDR reprendra ton vrai SDR au prochain ▶."))
+        for d in self.all_sdr_docks():
+            if hasattr(self.dock_widget(d), "refresh"):
+                self.dock_widget(d).refresh()
+
+    sdr_demo_on = lambda self: self.set_sdr_demo(True)
+
+    sdr_demo_off = lambda self: self.set_sdr_demo(False)
+
+    def open_sdr_tx(self):
+        d = getattr(self, "_sdrtx", None)
+        if d is None:
+            d = self._sdrtx = SdrTxDialog(self)
+        d.show()
+        d.raise_()
+        return d
+
+    toggle_sdr_demo = lambda self: self.set_sdr_demo(not self.sdr_cfg.get("demo"))
+
+
+# ------------------------------------------------------------------ V8 étape 22 : premier branchement, calibration,
+# remonter le temps (8.0 : les chapitres SDR sont dans le manuel principal, partie « Le SDR (bêta) »)
+
+
+def sdr_gain_scan(kind, model, base_gains, tool_dir="", iq_tool=None, center=600e6, key="lna", secs=0.4, cancel=None,
+                  progress=None, wr_lib=None):
+    """🎚 Essaie chaque valeur de l'étage `key` (sans Qt, dans un fil) : saturation (part d'échantillons à pleine
+    échelle), bruit (médiane du spectre) et crête (dBFS de l'échantillon le plus fort). -> [dict(gain, ovf, floor,
+    peak)] ou lève RuntimeError (SDR introuvable…)."""
+    steps = gain_steps(model, key) or [None]
+    rate = sdr_rate(model, kind)
+    rows = []
+    for i, g in enumerate(steps):
+        if cancel is not None and cancel():
+            break
+        gains = dict(base_gains or {})
+        if g is not None:
+            gains[key] = g
+        src = open_iq_source(kind, center, rate, gains, tool=iq_tool, tool_dir=tool_dir, wr_lib=wr_lib)
+        dog = threading.Timer(secs + 6.0, src.close)
+        dog.daemon = True
+        dog.start()
+        try:
+            nb = IQ_BYTES[src.dtype]
+            want = int((secs + 0.15) * src.rate) * nb
+            buf, t0 = bytearray(), time.time()
+            while len(buf) < want and time.time() - t0 < secs + 4.0:
+                d = src.read(min(262144, want - len(buf)))
+                if not d:
+                    break
+                buf += d
+        finally:
+            dog.cancel()
+            src.close()
+        skip = int(0.15 * src.rate) * nb
+        if len(buf) <= skip + 4096 * nb:
+            raise RuntimeError((list(src.err or []) or [TR("aucune donnée reçue")])[-1][:160])
+        iq = iq_decode(src.dtype, bytes(buf[skip: skip + (len(buf) - skip) // nb * nb]))
+        ovf = float(np.mean((np.abs(iq.real) > 0.98) | (np.abs(iq.imag) > 0.98)))
+        avg, _mx = rt_frames(iq, 4096)
+        pk = float(np.max(np.abs(iq))) if len(iq) else 0.0
+        rows.append(dict(gain=g, ovf=round(ovf, 5), floor=round(float(np.median(avg)), 1) if avg is not None else None,
+                         peak=round(20.0 * math.log10(max(pk, 1e-6)), 1)))
+        if progress:
+            progress(i + 1, len(steps))
+    return rows
+
+
+class SdrSetupWizard(QtWidgets.QDialog):
+    """🔌 Premier branchement SDR (étape 22) : choisir son SDR, le trouver, régler le gain tout seul, écouter un micro,
+    caler les niveaux sur le tinySA, et un diagnostic à envoyer. Chaque étape dit ✔ / ✖ et quoi faire."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner, self.res, self.job = owner, {}, None
+        self.setWindowTitle("🔌 Premier branchement SDR")
+        lay = QtWidgets.QVBoxLayout(self)
+        intro = QtWidgets.QLabel("Branche ton SDR, puis fais les étapes dans l'ordre. Si une étape bloque, le 🩺 diagnostic "
+                                 "en bas résume tout pour le support.")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        self.demo_lbl = QtWidgets.QLabel("")
+        self.demo_lbl.setWordWrap(True)
+        self.demo_btn = QtWidgets.QPushButton("Couper le SDR démo")
+        self.demo_btn.setToolTip("Le SDR démo est allumé : coupe-le pour régler ton vrai SDR.")
+        self.demo_btn.clicked.connect(lambda *_: (owner.set_sdr_demo(False), self.refresh()))
+        lay.addLayout(owner._row(self.demo_lbl, self.demo_btn))
+        g = QtWidgets.QGridLayout()
+        self.model = QtWidgets.QComboBox()
+        for m_ in SDR_MODELS:
+            if m_["kind"]:
+                self.model.addItem(m_["name"], m_["key"])
+        cur = owner.sdr_cfg.get("model") or SDR_MODEL_DEFAULT.get("hackrf")
+        self.model.setCurrentIndex(max(0, self.model.findData(cur)))
+        self.model.setToolTip("Le modèle exact de ton SDR (règle ses débits, gains et plage).")
+        self.model.currentIndexChanged.connect(lambda *_: self.set_model())
+        self.st = {}
+        steps = (("model", "1. Mon SDR", self.model),
+                 ("probe", "2. Le trouver", self._btn("🔌 Chercher mon SDR", "Outil trouvé, SDR détecté, signal reçu, débit tenu.", self.probe)),
+                 ("gain", "3. Régler le gain tout seul", self._btn("🎚 Régler le gain", "Essaie chaque gain et garde le plus fort qui ne sature pas.", self.gain)),
+                 ("listen", "4. Écouter un micro", self._btn("🎧 Écouter", "Lance le poste SDR sur un de tes micros : tu dois l'entendre.", self.listen)),
+                 ("calib", "5. Caler les niveaux (facultatif)", self._btn("📏 Caler sur le tinySA", "Compare les mêmes signaux vus par le tinySA et le SDR : niveaux du SDR en vrais dBm.", lambda: owner.open_sdr_calib())),
+                 ("diag", "6. Diagnostic", self._btn("🩺 Diagnostic à envoyer", "Écrit un fichier qui résume tout (à m'envoyer si ça coince).", self.diag)))
+        for r, (k, t, w) in enumerate(steps):
+            g.addWidget(QtWidgets.QLabel(f"<b>{TR(t)}</b>"), r, 0)
+            g.addWidget(w, r, 1)
+            lab = QtWidgets.QLabel("")
+            lab.setWordWrap(True)
+            lab.setMinimumWidth(320)
+            g.addWidget(lab, r, 2)
+            self.st[k] = lab
+        g.setColumnStretch(2, 1)
+        lay.addLayout(g)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setVisible(False)
+        lay.addWidget(self.bar)
+        lay.addStretch(1)
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme l'assistant (ce qui est réglé reste réglé).")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(None, close))
+        fit_dialog(self, 860, 460)
+        self.refresh()
+
+    def _btn(self, text, tip, fn):
+        b = QtWidgets.QPushButton(text)
+        b.setToolTip(tip)
+        b.clicked.connect(lambda *_: fn())
+        return b
+
+    def mdl(self):
+        return sdr_model(self.model.currentData()) or sdr_model(SDR_MODEL_DEFAULT["hackrf"])
+
+    def set_model(self):
+        o, m_ = self.owner, self.mdl()
+        o.sdr_cfg["model"] = m_["key"]
+        o.sdr_cfg.setdefault("models", {})[m_["kind"]] = m_["key"]
+        self.say("model", "✔", TR("{} : {} – {} MHz, fenêtre jusqu'à {} MHz").format(
+            m_["name"], f"{m_['fmin']:g}", f"{m_['fmax']:g}", f"{sdr_span_mhz(m_, sdr_rate(m_)):.1f}"))
+
+    def say(self, key, mark, txt):
+        self.res[key] = (mark, txt)
+        c = {"✔": "ok", "✖": "bad", "⚠": "warn"}.get(mark)
+        self.st[key].setText(f"{mark} {txt}")
+        self.st[key].setStyleSheet(f"color: {self.owner.tone_color(c)};" if c else "")
+
+    def refresh(self):
+        on = bool(self.owner.sdr_cfg.get("demo"))
+        self.demo_lbl.setText(TR("🧪 Le SDR démo est allumé : l'assistant règle ton VRAI SDR, coupe la démo d'abord.")
+                              if on else "")
+        self.demo_btn.setVisible(on)
+        if "model" not in self.res:
+            self.set_model()
+
+    def _busy(self):
+        if self.job is not None and not self.job.get("done"):
+            return True
+        run = [e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()]
+        if run:                                          # audit : on demande avant d'arrêter l'écoute en cours
+            q = QtWidgets.QMessageBox.question(self, TR("Poste SDR en marche"),
+                                               TR("Le poste SDR est en marche : l'arrêter le temps du test ?\n"
+                                                  "(un SDR ne sert qu'à un logiciel à la fois)"))
+            if q != QtWidgets.QMessageBox.StandardButton.Yes:
+                return True
+            for e in run:
+                e.stop()
+        return False
+
+    def probe(self):
+        if self._busy():
+            return
+        o, m_ = self.owner, self.mdl()
+        self.say("probe", "…", TR("recherche…"))
+
+        def done(res, err=None):
+            if err is not None or not isinstance(res, dict):
+                self.say("probe", "✖", str(err or res)[:200])
+                return
+            lines, ok = probe_report(res, TR)
+            self.say("probe", "✔" if ok else "✖", " · ".join(lines) if lines else TR("rien"))
+        self.job = o.run_heavy(lambda: sdr_probe(m_["kind"], m_, o.sdr_gains(m_["kind"]), o.sdr_cfg.get("dir", ""),
+                                                 getattr(o, "_listen_tool", None), 2.0, wr_lib=WINRADIO_LIB),
+                               done, self.st["probe"], what="Test du SDR")
+
+    def gain(self):
+        if self._busy():
+            return
+        o, m_ = self.owner, self.mdl()
+        key = "lna" if gain_steps(m_, "lna") else None
+        if key is None or m_["kind"] == "winradio":
+            self.say("gain", "⚠", TR("ce SDR n'a pas de gain réglable ici : règle-le dans 📡 Réglages SDR"))
+            return
+        self.say("gain", "…", TR("essai des gains…"))
+        self.bar.setVisible(True)
+        self.bar.setRange(0, len(gain_steps(m_, key)))
+        prog = {"v": 0}
+        mics = [w["freq"] for w in o.watch if sdr_in_range(m_, w["freq"])]
+        center = (mics[0] if mics else (600.0 if sdr_in_range(m_, 600.0) else (m_["fmin"] + m_["fmax"]) / 2)) * 1e6
+
+        ref = {}
+
+        def run():
+            return sdr_gain_scan(m_["kind"], m_, o.sdr_gains(m_["kind"]), o.sdr_cfg.get("dir", ""),
+                                 getattr(o, "_listen_tool", None), center, key,
+                                 cancel=lambda: (ref.get("job") or {}).get("cancel"),
+                                 progress=lambda a, b: prog.update(v=a), wr_lib=WINRADIO_LIB)
+
+        def done(rows, err=None):
+            self.bar.setVisible(False)
+            if err is not None or isinstance(rows, Exception) or not rows:
+                self.say("gain", "✖", TR("essai impossible : {}").format(err or rows or TR("rien reçu")))
+                return
+            g_, why = auto_gain_pick(rows)
+            self.gain_rows = rows
+            gs = o.sdr_cfg.setdefault("gains", {}).setdefault(m_["key"], {})
+            gs[key] = int(g_)
+            o.log_event(dict(name=TR("SDR"), freq=center / 1e6, note=TR("gain auto {} : {} dB ({})").format(
+                key.upper(), g_, TR(why))), 0.0, "RÉGLAGE")
+            self.say("gain", "⚠" if ("sature" in why or "peu de marge" in why) else "✔", TR("{} = {} dB : {}").format(key.upper(), g_, TR(why)) +
+                     " · " + " ".join(f"{r_['gain']}:{100 * r_['ovf']:.1f}%" for r_ in rows))
+        self.job = ref["job"] = o.run_heavy(run, done, self.st["gain"], what="Réglage du gain")
+        t = QtCore.QTimer(self)
+        t.timeout.connect(lambda: self.bar.setValue(prog["v"]) if self.bar.isVisible() else t.stop())
+        t.start(300)
+
+    def listen(self):
+        o = self.owner
+        m_ = self.mdl()
+        ws = [w for w in o.watch if sdr_in_range(m_, w["freq"]) and not w.get("muted")]
+        if ws:
+            o.sdr_tune_mic(ws[0])
+            self.say("listen", "✔", TR("poste SDR lancé sur {} : tu dois l'entendre (🔊 volume du Récepteur)").format(
+                ws[0]["name"] or f"{ws[0]['freq']:.3f}"))
+        else:
+            o.set_rf_mode("sdr")
+            o.sdr_eng.start()
+            self.say("listen", "⚠", TR("aucun micro dans la plage du SDR : règle A à la main (fréquence du Récepteur)"))
+
+    def report(self):
+        o, m_ = self.owner, self.mdl()
+        lines = [f"RF Technical Monitor {APP_VER} — {TR('premier branchement SDR')} — {datetime.now():%Y-%m-%d %H:%M:%S}",
+                 f"{TR('Modèle')} : {m_['name']} ({m_['key']}, {m_['kind']})",
+                 f"{TR('Gains')} : {o.sdr_gains(m_['kind'])}",
+                 f"{TR('Correction de niveau')} : {o.sdr_offset(m_['kind']):+.1f} dB",
+                 f"{TR('Dossier des outils')} : {o.sdr_cfg.get('dir', '') or '—'}", ""]
+        for k, (mark, txt) in self.res.items():
+            lines.append(f"[{k}] {mark} {txt}")
+        for r_ in getattr(self, "gain_rows", []) or []:
+            lines.append(f"  gain {r_['gain']} : {TR('saturation')} {100 * r_['ovf']:.2f} %, {TR('bruit')} {r_['floor']} dBFS, "
+                         f"{TR('crête')} {r_['peak']} dBFS")
+        for e in (getattr(o, "sdr_engs", None) or {}).values():
+            lines.append(f"{TR('Poste')} {e.pid} ({e.name()}) : {TR('en marche') if e.running() else TR('arrêté')} · {e.msg}")
+            w = e.worker
+            if w is not None:
+                lines += [f"  err : {x}" for x in list(getattr(w, "err", []) or [])[-10:]]
+        return "\n".join(lines) + "\n"
+
+    def diag(self):
+        d = Path(self.owner.log_dir) / "diagnostic"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            p = d / f"diagnostic_sdr_{datetime.now():%Y%m%d_%H%M%S}.txt"
+            write_atomic(str(p), self.report())
+            self.say("diag", "✔", str(p))
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(d)))
+        except OSError as ex:
+            self.say("diag", "✖", str(ex))
+
+
+class SdrCalibDialog(QtWidgets.QDialog):
+    """📏 Caler les niveaux du SDR sur le tinySA (étape 22) : les mêmes signaux vus par les deux pendant ~15 s
+    (puissance de canal ± 100 kHz), écart médian = correction dBFS -> dBm du modèle de SDR."""
+    SECS = 15.0
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner, self.t0, self.acc = owner, None, None
+        self.setWindowTitle("📏 Caler les niveaux du SDR sur le tinySA")
+        lay = QtWidgets.QVBoxLayout(self)
+        info = QtWidgets.QLabel("Le tinySA mesure en dBm, le SDR en dBFS (relatif à son convertisseur). Avec les DEUX en "
+                                "marche (mode combiné) et des signaux dans la fenêtre du SDR (tes micros allumés), l'appli "
+                                "compare les mêmes signaux pendant 15 s et en déduit la correction du SDR. Mets les deux "
+                                "antennes au même endroit.")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+        self.tbl = QtWidgets.QTableWidget(0, 4)
+        self.tbl.setHorizontalHeaderLabels([TR("MHz"), TR("tinySA (dBm)"), TR("SDR (dBFS)"), TR("Écart (dB)")])
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.setToolTip("Les signaux vus par les deux (puissance sur ± 100 kHz).")
+        lay.addWidget(self.tbl, 1)
+        self.msg = QtWidgets.QLabel("")
+        self.msg.setWordWrap(True)
+        lay.addWidget(self.msg)
+        self.go = QtWidgets.QPushButton("▶ Mesurer (15 s)")
+        self.go.setToolTip("Lance la comparaison.")
+        self.go.clicked.connect(lambda *_: self.start())
+        self.apply_btn = QtWidgets.QPushButton("✔ Appliquer la correction")
+        self.apply_btn.setToolTip("Garde cette correction pour ce modèle de SDR (📡 Réglages SDR › correction de niveau).")
+        self.apply_btn.setEnabled(False)
+        self.apply_btn.clicked.connect(lambda *_: self.apply())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre.")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(self.go, self.apply_btn, None, close))
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.result = None
+        fit_dialog(self, 640, 460)
+
+    def eng(self):
+        return next((e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()), None)
+
+    def start(self):
+        o, e = self.owner, self.eng()
+        if o.sdr_cfg.get("demo"):
+            self.msg.setText(TR("Le SDR démo n'a rien à caler : ses niveaux sont fabriqués. Coupe-le pour caler ton vrai SDR."))
+            return
+        if e is None:
+            self.msg.setText(TR("Lance d'abord le poste SDR (▶ du Récepteur), en mode combiné avec le tinySA."))
+            return
+        if not o.is_running():
+            self.msg.setText(TR("Lance d'abord la surveillance du tinySA (▶ Démarrer)."))
+            return
+        self.e, self.t0, self.acc, self.tsa, self.result = e, time.time(), None, {}, None
+        self.apply_btn.setEnabled(False)
+        self.timer.start(500)
+        self._tick()
+
+    def _tick(self):
+        o, e = self.owner, getattr(self, "e", None)
+        if self.t0 is None or e is None:
+            return
+        fr = e.last
+        if fr is not None and len(fr["F"]) == len(fr["avg"]):
+            F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
+            if self.acc is not None and len(self.acc[0]) == len(F) and abs(self.acc[0][0] - F[0]) < 1e-6:
+                self.acc = (F, np.maximum(self.acc[1], L))
+            else:
+                self.acc = (F, L)
+        for bid, v in list(o.latest.items()):
+            if isinstance(bid, int) and bid >= 0 and v is not None and len(v[0]):
+                F, L = np.asarray(v[0], dtype=float), np.asarray(v[1], dtype=float)
+                old = self.tsa.get(bid)
+                self.tsa[bid] = (F, np.maximum(old[1], L)) if old is not None and len(old[0]) == len(F) else (F, L)
+        left = self.SECS - (time.time() - self.t0)
+        if left > 0:
+            self.msg.setText(TR("Mesure… {} s").format(int(left) + 1))
+            return
+        self.timer.stop()
+        self.t0 = None
+        self.compute()
+
+    def compute(self):
+        o = self.owner
+        if self.acc is None or not self.tsa:
+            self.msg.setText(TR("Rien à comparer : le tinySA balaye-t-il la fenêtre du SDR ?"))
+            return
+        Fs, Ls = self.acc
+        parts = sorted(self.tsa.values(), key=lambda v: float(v[0][0]))
+        Ft = np.concatenate([p[0] for p in parts])
+        Lt = np.concatenate([p[1] for p in parts])
+        rbw = (o.live_rbw()[0] if hasattr(o, "live_rbw") else None) or 100.0
+        cands = calib_candidates(Ft, Lt, Fs, Ls, rbw)
+        self.tbl.setRowCount(len(cands))
+        for r, c in enumerate(cands):
+            for col, v in enumerate((f"{c['f']:.3f}", f"{c['tsa']:.1f}", f"{c['sdr']:.1f}", f"{c['tsa'] - c['sdr']:+.1f}")):
+                self.tbl.setItem(r, col, QtWidgets.QTableWidgetItem(v))
+        res = sdr_tsa_offset(cands)
+        self.result = res
+        if res is None:
+            self.msg.setText(TR("Pas assez de signaux vus par les deux (il en faut {}) : allume des micros dans la fenêtre du "
+                                "SDR, ou rapproche les antennes.").format(CAL_MIN_SIGNALS))
+            return
+        cur = o.sdr_offset(self.e.kind())
+        stp = float(np.median(np.diff(Ft))) * 1000.0 if len(Ft) > 2 else 0.0
+        self.msg.setText(TR("Correction mesurée : {} dB (± {} dB sur {} signaux) · actuelle : {} dB").format(
+            f"{res['offset']:+.1f}", f"{res['spread']:.1f}", res["n"], f"{cur:+.1f}") +
+            (TR(" · ⚠ écarts importants : antennes à des endroits différents ?") if res["spread"] > 6 else "") +
+            (TR(" · ⚠ pas du tinySA ({} kHz) plus grand que sa RBW ({} kHz) : mesure moins sûre (zoome ou affine le "
+                "pas)").format(f"{stp:.0f}", f"{rbw:g}") if stp > 1.5 * rbw else ""))
+        self.apply_btn.setEnabled(True)
+
+    def apply(self):
+        o, res = self.owner, self.result
+        if not res:
+            return
+        m_ = self.e.model()
+        o.sdr_cfg.setdefault("offsets", {})[m_["key"]] = float(res["offset"])
+        o.log_event(dict(name=TR("SDR"), freq=0.0, note=TR("niveaux calés sur le tinySA : {} dB ({})").format(
+            f"{res['offset']:+.1f}", m_["name"])), 0.0, "RÉGLAGE")
+        self.msg.setText(TR("✔ Correction gardée pour {} : {} dB.").format(m_["name"], f"{res['offset']:+.1f}"))
+        self.apply_btn.setEnabled(False)
+
+    def closeEvent(self, ev):
+        self.timer.stop()
+        super().closeEvent(ev)
+
+
+class RewindDialog(QtWidgets.QDialog):
+    """⏪ Remonter le temps (étape 22) : le waterfall des dernières minutes du poste SDR (le plus récent en haut, les
+    alarmes en repères), clic = choisir un instant, ▶ réécouter à partir de là, 💾 garder le passage (son + image).
+    Tout est en mémoire (rien sur le disque tant qu'on ne garde pas)."""
+
+    def __init__(self, owner, eng=None):
+        super().__init__(owner)
+        self.owner, self.eng = owner, eng or owner.sdr_eng
+        self.t_sel, self.fx, self._tmp, self.img_arr = None, None, None, None
+        self.setWindowTitle(TR("⏪ Remonter le temps · {}").format(self.eng.name()))
+        lay = QtWidgets.QVBoxLayout(self)
+        self.dur = QtWidgets.QComboBox()
+        for m_ in REWIND_MINUTES:
+            self.dur.addItem(TR("{} min gardées").format(m_) if m_ else TR("Désactivé (rien gardé)"), m_)
+        rm = owner.sdr_cfg.get("rewind_min", 3)
+        self.dur.setCurrentIndex(max(0, self.dur.findData(rm if rm in REWIND_MINUTES else 3)))
+        self.dur.setToolTip("Combien de temps CHAQUE poste SDR garde en mémoire (son : ~11 Mo par minute et par poste ;\n"
+                            "5 min avec 4 postes ≈ 230 Mo). « Désactivé » : rien n'est gardé.")
+        self.dur.currentIndexChanged.connect(lambda *_: self.set_dur())
+        rf = QtWidgets.QPushButton("↻ Mettre à jour")
+        rf.setToolTip("Recharge les dernières secondes.")
+        rf.clicked.connect(lambda *_: self.draw())
+        self.mem = QtWidgets.QLabel("")
+        lay.addLayout(owner._row(self.dur, rf, None, self.mem))
+        self.plot = pg.PlotWidget()
+        self.plot.setLabel("bottom", "MHz")
+        self.plot.setLabel("left", TR("il y a (s)"))
+        sdr_light_axes(self.plot)
+        self.plot.setToolTip("Le plus récent en haut. Clic = choisir cet instant.")
+        self.img = pg.ImageItem()
+        self.img.setLookupTable(make_lut(owner.theme.get("wf", "Inferno")))
+        self.plot.addItem(self.img)
+        self.sel_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#ffd60a", width=1.5))
+        self.plot.addItem(self.sel_line)
+        self.sel_line.hide()
+        self.plot.scene().sigMouseClicked.connect(self._click)
+        self.marks = []
+        lay.addWidget(self.plot, 1)
+        self.at = QtWidgets.QLabel("Clique sur le waterfall pour choisir un instant.")
+        self.at.setWordWrap(True)
+        lay.addWidget(self.at)
+        self.play_btn = QtWidgets.QPushButton("▶ Réécouter à partir d'ici")
+        self.play_btn.setCheckable(True)
+        self.play_btn.setToolTip("Rejoue ce que le poste SDR faisait entendre à cet instant (60 s au plus).")
+        self.play_btn.toggled.connect(lambda on: self.play(on))
+        self.keep_btn = QtWidgets.QPushButton("💾 Garder ce passage")
+        self.keep_btn.setToolTip("Enregistre le son (WAV, 60 s) et l'image du waterfall. Demande ton accord la 1re fois.")
+        self.keep_btn.clicked.connect(lambda *_: self.keep())
+        close = QtWidgets.QPushButton("Fermer")
+        close.setToolTip("Ferme la fenêtre (la mémoire continue de se remplir).")
+        close.clicked.connect(self.close)
+        lay.addLayout(owner._row(self.play_btn, self.keep_btn, None, close))
+        self.finished.connect(lambda *_: self.play(False))
+        fit_dialog(self, 900, 600)
+        self.draw()
+
+    def set_dur(self):
+        m_ = int(self.dur.currentData() if self.dur.currentData() is not None else 3)
+        self.owner.sdr_cfg["rewind_min"] = m_
+        for e in (getattr(self.owner, "sdr_engs", None) or {}).values():
+            e.rew.set_minutes(m_)
+
+    def draw(self):
+        rb = self.eng.rew
+        fr = list(rb.frames)
+        now = time.time()
+        self.mem.setText(TR("{} Mo en mémoire").format(f"{rb.mem_mb():.0f}"))
+        for it in self.marks:
+            self.plot.removeItem(it)
+        self.marks = []
+        if not fr:
+            self.img.clear()
+            self.at.setText(TR("Désactivé : choisis une durée en haut à gauche.") if not rb.keep else
+                            TR("Rien en mémoire : lance le poste SDR (▶ du Récepteur), puis reviens ici."))
+            return
+        lo = min(float(f[0]) for _t, f, _l in fr)
+        hi = max(float(f[-1]) for _t, f, _l in fr)
+        cols = 800
+        grid = np.linspace(lo, hi, cols)
+        arr = np.full((len(fr), cols), np.nan, dtype=np.float32)
+        for i, (_t, f, l) in enumerate(fr):
+            m = (grid >= f[0]) & (grid <= f[-1])
+            arr[i, m] = np.interp(grid[m], f, l.astype(np.float32))
+        fl = float(np.nanpercentile(arr, 10)) if np.isfinite(arr).any() else -100.0
+        arr = np.nan_to_num(arr, nan=fl)
+        self.img_arr, self.t_rows = arr, np.array([t for t, _f, _l in fr])
+        age_old = now - fr[0][0]
+        self.img.setImage(arr[::-1].T, autoLevels=False, levels=(fl, fl + 50.0))
+        self.img.setRect(QtCore.QRectF(lo, 0.0, max(1e-6, hi - lo), max(0.5, age_old)))
+        self.plot.getViewBox().invertY(True)                 # 0 s (maintenant) en haut
+        self.plot.setXRange(lo, hi, padding=0)
+        self.plot.setYRange(0, max(0.5, age_old), padding=0)
+        o = self.owner
+        for a in list(o.alarms.active.values()) + list(o.alarms.done):
+            if a.get("freq") and lo <= float(a["freq"]) <= hi and fr[0][0] <= a["t0"] <= now:
+                ti = pg.TextItem(f"⚠ {a['kind']}", color=o.tone_color("bad"), anchor=(0.5, 1.0))
+                ti.setPos(float(a["freq"]), now - a["t0"])
+                self.plot.addItem(ti)
+                self.marks.append(ti)
+
+    def _click(self, ev):
+        vb = self.plot.getViewBox()
+        p = vb.mapSceneToView(ev.scenePos())
+        self.select(time.time() - float(p.y()))
+
+    def select(self, t):
+        self.t_sel = float(t)
+        self.sel_line.setValue(time.time() - self.t_sel)
+        self.sel_line.show()
+        tu = self.eng.rew.tune_at(self.t_sel)
+        ago = int(max(0, time.time() - self.t_sel))
+        self.at.setText(TR("Il y a {} min {:02d} s · A = {}").format(ago // 60, ago % 60, (
+            f"{tu[0]:.3f} MHz" + (f" ({tu[1]})" if tu[1] else "")) if tu else "—"))
+        if self.play_btn.isChecked():
+            self.play(False)
+            self.play(True)
+
+    def play(self, on):
+        if self.fx is not None:
+            try:
+                self.fx.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.fx = None
+        if not on:
+            if self.play_btn.isChecked():
+                self.play_btn.blockSignals(True)
+                self.play_btn.setChecked(False)
+                self.play_btn.blockSignals(False)
+            return
+        if self.t_sel is None:
+            self.select((self.eng.rew.span() or (time.time() - 10, time.time()))[0])
+        b = self.eng.rew.audio_from(self.t_sel, 60.0)
+        if not b:
+            self.at.setText(TR("Pas de son gardé à cet instant (poste arrêté, ou trop ancien)."))
+            self.play(False)
+            return
+        import tempfile
+        import wave
+        try:
+            self._tmp = temp_wav_path("rewind", self._tmp)
+            with wave.open(self._tmp, "wb") as w:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(LISTEN_RATE)
+                w.writeframes(b)
+            from PySide6 import QtMultimedia
+            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
+            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
+            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
+            fx.setVolume(0.8)
+            fx.play()
+            self.fx = fx
+        except Exception as ex:  # noqa: BLE001
+            self.at.setText(TR("⚠ Son impossible ici : {}").format(ex))
+            self.play(False)
+
+    def keep(self):
+        import wave
+        o = self.owner
+        if self.t_sel is None:
+            self.at.setText(TR("Choisis d'abord un instant (clic sur le waterfall)."))
+            return
+        if not o.privacy_ok(self):
+            return
+        d = Path(o.log_dir) / "enregistrements_audio" / datetime.now().strftime("%Y-%m-%d")
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            base = d / f"rewind_{datetime.fromtimestamp(self.t_sel):%H%M%S}"
+            with wave.open(str(base) + ".wav", "wb") as w:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(LISTEN_RATE)
+                w.writeframes(self.eng.rew.audio_from(self.t_sel, 60.0))
+            self.plot.grab().save(str(base) + ".png")
+        except OSError as ex:
+            self.at.setText(TR("⚠ Enregistrement impossible : {}").format(ex))
+            return
+        tu = self.eng.rew.tune_at(self.t_sel)
+        o.log_event(dict(name=(tu[1] if tu else "") or TR("SDR"), freq=tu[0] if tu else 0.0,
+                         note=TR("passage gardé : {}").format(str(base) + ".wav")), 0.0, "ENREGISTRÉ (SDR)")
+        self.at.setText(TR("✔ Gardé : {}").format(str(base) + ".wav / .png"))
+
+
+class SdrToolsMixin:
+    """Assistant de branchement, calibration, remonter le temps, manuel SDR. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def open_sdr_setup(self):
+        d = getattr(self, "_sdrsetup", None)
+        if d is None:
+            d = self._sdrsetup = SdrSetupWizard(self)
+        d.refresh()
+        d.show()
+        d.raise_()
+        return d
+
+    def open_sdr_calib(self):
+        d = getattr(self, "_sdrcalib", None)
+        if d is None:
+            d = self._sdrcalib = SdrCalibDialog(self)
+        d.show()
+        d.raise_()
+        return d
+
+    def open_rewind(self, eng=None):
+        d = getattr(self, "_rewind", None)
+        if d is None or (eng is not None and d.eng is not eng):
+            d = self._rewind = RewindDialog(self, eng)
+        d.draw()
+        d.show()
+        d.raise_()
+        return d
+
+    def open_sdr_manual(self):
+        """📖 Manuel SDR : le manuel principal, partie « Le SDR (bêta) » (8.0)."""
+        return self.open_manual("sdr-poste")
+
+
+class ScreenWindow(QtWidgets.QMainWindow):
+    """8.0.2 : une fenêtre COMPLÈTE sur un autre écran, qui réunit plusieurs panneaux (rangeables, en onglets). Les
+    panneaux y sont prêtés : leurs objets restent ceux de la fenêtre principale (tout le programme continue de leur
+    parler). Fermer = tout ramener dans la fenêtre principale."""
+
+    def __init__(self, owner, idx):
+        super().__init__(None)
+        self.owner, self.idx, self.closing, self.items = owner, idx, False, {}
+        self.setWindowTitle(f"{APP_NAME} – " + TR("Écran {}").format(idx + 1))
+        self.setWindowIcon(owner.windowIcon())
+        self.setDockNestingEnabled(True)
+        c = QtWidgets.QWidget()
+        c.setMaximumHeight(0)
+        self.setCentralWidget(c)
+        for cn, ar in ((Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+                       (Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)):
+            self.setCorner(cn, ar)
+        tb = QtWidgets.QToolBar()
+        tb.setObjectName("barre_ecran")
+        tb.setMovable(False)
+        self.addToolBar(tb)
+        lab = QtWidgets.QLabel(" 🖥 " + TR("Écran {}").format(idx + 1) + "  ")
+        lab.setToolTip(TR("Fenêtre de cet écran : ses panneaux se déplacent par leur barre de titre (côte à côte, en "
+                          "onglets). F11 : plein écran."))
+        tb.addWidget(lab)
+        for txt, tip, fn in (("⛶ Plein écran", "Plein écran sur cet écran (F11 ; Échap pour sortir).", self.toggle_full),
+                             ("🖥 Écrans…", "Choisir quel panneau va sur quel écran.", lambda: owner.open_screens()),
+                             ("📌 Tout ramener", "Remet tous les panneaux dans la fenêtre principale.",
+                              lambda: owner.screens_off())):
+            b = QtWidgets.QPushButton(TR(txt))
+            b.setToolTip(TR(tip))
+            b.clicked.connect(lambda *_, fn=fn: fn())
+            tb.addWidget(b)
+        QtGui.QShortcut(QtGui.QKeySequence("F11"), self, activated=self.toggle_full)
+        QtGui.QShortcut(QtGui.QKeySequence("Escape"), self, activated=lambda: self.isFullScreen() and self.toggle_full())
+
+    def put(self, name, title, w):
+        d = QtWidgets.QDockWidget(title, self)
+        d.setObjectName("scr_" + name)
+        d.setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable)
+        d.setWidget(w)
+        w.show()
+        self.items[name] = d
+
+    def arrange(self):
+        """Disposition de départ : spectres en haut, waterfalls dessous, Récepteur + listes (onglets) à droite."""
+        B, R = Qt.DockWidgetArea.BottomDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
+        it = self.items
+        center = [n for n in ("dock_spectre", "dock_sdr_spec", "dock_wf", "dock_sdr_wf", "dock_alarmes") if n in it]
+        tops = [n for n in ("dock_spectre", "dock_sdr_spec") if n in it]
+        prev = None
+        for n in tops:
+            if prev is None:
+                self.addDockWidget(B, it[n])
+            else:
+                self.splitDockWidget(it[prev], it[n], Qt.Orientation.Horizontal)
+            prev = n
+        for wf, sp in (("dock_wf", "dock_spectre"), ("dock_sdr_wf", "dock_sdr_spec")):
+            if wf in it:
+                if sp in it:
+                    self.splitDockWidget(it[sp], it[wf], Qt.Orientation.Vertical)
+                elif prev is None:
+                    self.addDockWidget(B, it[wf])
+                    prev = wf
+                else:
+                    self.splitDockWidget(it[prev], it[wf], Qt.Orientation.Horizontal)
+                    prev = wf
+        if "dock_alarmes" in it:
+            below = next((n for n in ("dock_wf", "dock_spectre", "dock_sdr_wf", "dock_sdr_spec") if n in it), None)
+            if below:
+                self.splitDockWidget(it[below], it["dock_alarmes"], Qt.Orientation.Vertical)
+            else:
+                self.addDockWidget(B, it["dock_alarmes"])
+        side = R if center else B
+        tabs = [n for n in ("dock_freq", "dock_journal", "dock_sdr_mics", "dock_sdr_diag") if n in it]
+        if "dock_sdr_rx" in it:
+            self.addDockWidget(side, it["dock_sdr_rx"])
+            if tabs:
+                self.splitDockWidget(it["dock_sdr_rx"], it[tabs[0]], Qt.Orientation.Vertical)
+        elif tabs:
+            self.addDockWidget(side, it[tabs[0]])
+        for n in tabs[1:]:
+            self.tabifyDockWidget(it[tabs[0]], it[n])
+        if tabs:
+            it[tabs[0]].raise_()
+        labs = [n for n in it if n.startswith("dock_lab")]      # 8.2 : labo SDR, en onglets
+        if labs and len(labs) == len(it):                        # écran du labo seul : vrai affichage Labo (grille)
+            lab_grid(self, {k: it[n] for k, _t, n in LAB_DOCKS if n in it})
+            labs = []
+        if labs:
+            self.addDockWidget(B, it[labs[0]])
+            for n in labs[1:]:
+                self.tabifyDockWidget(it[labs[0]], it[n])
+            it[labs[0]].raise_()
+        for d in it.values():
+            d.show()
+
+    def place(self, screen, full=False):
+        self.setGeometry(screen.availableGeometry().adjusted(30, 30, -30, -30))
+        if full:
+            self.showFullScreen()
+        else:
+            self.showMaximized()
+        QtCore.QTimer.singleShot(120, self._sizes)
+
+    def _sizes(self):
+        try:
+            it, W = self.items, max(self.width(), 800)
+            side = [it[n] for n in ("dock_sdr_rx", "dock_freq") if n in it]
+            if side and any(n in it for n in ("dock_spectre", "dock_sdr_spec", "dock_wf", "dock_sdr_wf")):
+                self.resizeDocks(side[:1], [int(W * 0.32)], Qt.Orientation.Horizontal)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def toggle_full(self):
+        if self.isFullScreen():
+            self.showMaximized()
+        else:
+            self.showFullScreen()
+
+    def take(self):
+        """Rend les panneaux (nom, widget) et vide la fenêtre."""
+        out = []
+        for n, d in list(self.items.items()):
+            w = d.widget()
+            d.setWidget(QtWidgets.QWidget())
+            out.append((n, w))
+        self.items = {}
+        return out
+
+    def state(self):
+        return dict(geo=bytes(self.saveGeometry().toBase64()).decode(),
+                    state=bytes(self.saveState().toBase64()).decode())
+
+    def closeEvent(self, e):
+        if not self.closing:
+            QtCore.QTimer.singleShot(0, lambda: self.owner.screens_off())
+        super().closeEvent(e)
+
+
+class ScreensDialog(QtWidgets.QDialog):
+    """🖥 Plusieurs écrans : quel panneau sur quel écran (ou caché), préréglages, identifier les écrans."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.setWindowTitle(TR("🖥 Plusieurs écrans"))
+        lay = QtWidgets.QVBoxLayout(self)
+        self.info = QtWidgets.QLabel()
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+        ident = QtWidgets.QPushButton(TR("👋 Identifier les écrans"))
+        ident.setToolTip(TR("Affiche un grand numéro sur chaque écran pendant 3 secondes."))
+        ident.clicked.connect(lambda *_: owner.identify_screens())
+        lay.addLayout(owner._row(ident, None))
+        pre = QtWidgets.QGroupBox(TR("Préréglages"))
+        pl = FlowLayout(pre)
+        self.pre_btns = {}
+        for k, t in SCREEN_PRESETS:
+            b = QtWidgets.QPushButton(TR(t))
+            b.setToolTip(TR("Remplit le tableau ci-dessous ; « Appliquer » pour le mettre en place."))
+            b.clicked.connect(lambda *_, k=k: self.preset(k))
+            pl.addWidget(b)
+            self.pre_btns[k] = b
+        lay.addWidget(pre)
+        self.tbl = QtWidgets.QTableWidget(len(SCREEN_PANELS), 2)
+        self.tbl.setHorizontalHeaderLabels([TR("Panneau"), TR("Va sur")])
+        self.tbl.verticalHeader().hide()
+        self.tbl.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tbl.setColumnWidth(1, 250)
+        self.tbl.setToolTip(TR("Pour chaque panneau : l'écran où il va (« fenêtre principale » = celui de la fenêtre "
+                               "avec les menus), ou caché. Les panneaux d'un même autre écran sont réunis dans une "
+                               "fenêtre complète, où tu les ranges comme tu veux."))
+        self.combos = {}
+        for r, (n, _g, t) in enumerate(SCREEN_PANELS):
+            it = QtWidgets.QTableWidgetItem(TR(t))
+            it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl.setItem(r, 0, it)
+            cb = QtWidgets.QComboBox()
+            cb.setToolTip(TR("Écran où va ce panneau, ou « Caché »."))
+            self.tbl.setCellWidget(r, 1, cb)
+            self.combos[n] = cb
+        lay.addWidget(self.tbl, 1)
+        self.full = QtWidgets.QCheckBox(TR("Plein écran sur les autres écrans (sans barre des tâches)"))
+        self.full.setToolTip(TR("Sinon : fenêtre agrandie (la barre des tâches reste visible). F11 pour basculer."))
+        lay.addWidget(self.full)
+        ok = QtWidgets.QPushButton(TR("✔ Appliquer"))
+        ok.setToolTip(TR("Met les panneaux sur les écrans choisis."))
+        ok.clicked.connect(lambda *_: self.apply())
+        back = QtWidgets.QPushButton(TR("📌 Tout ramener"))
+        back.setToolTip(TR("Remet tous les panneaux dans la fenêtre principale (disposition de base du mode)."))
+        back.clicked.connect(lambda *_: (owner.screens_off(), self.fill()))
+        close = QtWidgets.QPushButton(TR("Fermer"))
+        close.setToolTip(TR("Ferme cette fenêtre (la répartition reste en place)."))
+        close.clicked.connect(lambda *_: self.close())
+        lay.addLayout(owner._row(ok, back, None, close))
+        self.resize(640, 580)
+        fit_dialog(self, 640, 580)
+        self.fill()
+
+    def fill(self):
+        o = self.owner
+        scrs, main = o.screen_list()
+        lines = [TR("Écran {} : {} · {}×{}").format(k + 1, sc.name(), sc.size().width(), sc.size().height())
+                 + (" · " + TR("fenêtre principale ici") if k == main else "") for k, sc in enumerate(scrs)]
+        if len(scrs) < 2:
+            lines.append(TR("⚠ Un seul écran détecté : branche le 2ᵉ (Windows : Paramètres › Affichage › « Étendre "
+                            "ces affichages »), puis rouvre cette fenêtre. Tu peux déjà cacher ou montrer des panneaux."))
+        self.info.setText("\n".join(lines))
+        for k, b in self.pre_btns.items():
+            b.setEnabled(len(scrs) > 1 or k == "all_here")
+        plan = o.screens_cfg["plan"] if o.screen_hosts else o.screens_current()
+        for n, cb in self.combos.items():
+            cb.blockSignals(True)
+            cb.clear()
+            for k in range(len(scrs)):
+                cb.addItem(TR("Écran {}").format(k + 1) + (" · " + TR("fenêtre principale") if k == main else ""), k)
+            cb.addItem(TR("Caché"), SCREEN_HIDE)
+            v = plan.get(n, SCREEN_HIDE)
+            i = cb.findData(v if v < len(scrs) else main)
+            cb.setCurrentIndex(max(0, i))
+            cb.blockSignals(False)
+        self.full.setChecked(bool(o.screens_cfg.get("full")))
+
+    def plan(self):
+        return {n: int(cb.currentData()) for n, cb in self.combos.items()}
+
+    def preset(self, key):
+        scrs, main = self.owner.screen_list()
+        other = next((k for k in range(len(scrs)) if k != main), main)
+        pl = screen_preset(key, main, other, sdr=getattr(self.owner, "rf_mode", "tiny") != "tiny"
+                           or key in ("tiny_sdr", "sdr_tiny"))
+        for n, cb in self.combos.items():
+            cb.setCurrentIndex(max(0, cb.findData(pl.get(n, SCREEN_HIDE))))
+
+    def apply(self):
+        self.owner.screens_apply(self.plan(), self.full.isChecked())
+        self.fill()
+
+
+class SdrFollowMixin:
+    """Micros suivis par le SDR, échelles, sortie audio, vu-mètres. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def watch_selected(self):
+        """Lignes choisies dans « Mes fréquences »."""
+        try:
+            return [self.watch[r] for r in self._sel_rows() if 0 <= r < len(self.watch)]
+        except Exception:  # noqa: BLE001
+            return []
+
+    def sdr_follow(self, ws, on, pid=1):
+        """8.0.2 : ajoute (on) / retire des micros de ceux que suit le poste SDR pid."""
+        ws = [w for w in (ws or []) if w]
+        if not ws:
+            self.set_status(TR("Choisis d'abord une ou plusieurs lignes dans « Mes fréquences »."))
+            return False
+        posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+        p = next((x for x in posts if x["id"] == pid), None)
+        if p is None:
+            return False
+        keys = [int(round(w["freq"] * 1000)) for w in ws]
+        before = set(p["mics"])
+        if not on and not before:                     # « tous » : retirer = garder tous les autres
+            before = {int(round(w["freq"] * 1000)) for w in self.sdr_engs[pid].ws()} if pid in self.sdr_engs else set()
+        p["mics"] = post_mics_set(sorted(before), keys, on)
+        if not on and not p["mics"] and before:
+            p["mics"] = []                            # plus aucun : il suit de nouveau tous les micros
+        self.sdr_cfg["posts"] = posts
+        nm = self.sdr_engs[pid].name() if pid in self.sdr_engs else f"SDR {pid}"
+        n = len(set(keys) - before) if on else len(set(keys) & before)
+        self.set_status((TR("📡 {} : {} micro(s) ajouté(s), {} suivi(s) en tout.") if on else
+                         TR("📡 {} : {} micro(s) retiré(s), {} suivi(s) en tout.")).format(nm, n, len(p["mics"]))
+                        if p["mics"] else TR("📡 {} suit de nouveau tous les micros.").format(nm))
+        self._sdr_follow_refresh()
+        return True
+
+    def sdr_follow_clear(self, pid=1):
+        posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+        for x in posts:
+            if x["id"] == pid:
+                x["mics"] = []
+        self.sdr_cfg["posts"] = posts
+        self.set_status(TR("📡 Le SDR suit de nouveau tous les micros."))
+        self._sdr_follow_refresh()
+
+    def _sdr_follow_refresh(self):
+        for d in self.all_sdr_docks():
+            pw = self.dock_widget(d)
+            if isinstance(pw, SdrMicsPanel):
+                pw.ws = []
+                pw.refresh()
+
+    def _sdr_follow_menu(self, m, ws):
+        """Clic droit dans Mes fréquences : 📡 suivre / ne plus suivre avec le SDR (un sous-menu par SDR s'il y en a
+        plusieurs)."""
+        keys = {int(round(w["freq"] * 1000)) for w in ws}
+        posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
+        for p in posts:
+            mine = set(p["mics"])
+            tgt = m.addMenu(TR("📡 Suivre avec {}").format(p["name"])) if len(posts) > 1 else m
+            if not keys <= mine:
+                tgt.addAction(TR("📡 Suivre avec le SDR ({} micro(s))  Ctrl+Maj+F").format(len(keys)) if len(posts) == 1
+                              else TR("Suivre ({} micro(s))").format(len(keys))).triggered.connect(
+                    lambda *_, pid=p["id"]: self.sdr_follow(ws, True, pid))
+            if keys & mine:
+                tgt.addAction(TR("📡 Ne plus suivre avec le SDR") if len(posts) == 1 else TR("Ne plus suivre")).triggered.connect(
+                    lambda *_, pid=p["id"]: self.sdr_follow(ws, False, pid))
+            if mine:
+                tgt.addAction(TR("📡 Le SDR suit de nouveau tous les micros") if len(posts) == 1
+                              else TR("Suivre de nouveau tous les micros")).triggered.connect(
+                    lambda *_, pid=p["id"]: self.sdr_follow_clear(pid))
+
+    def sdr_follow_key(self):
+        """Ctrl+Maj+F dans Mes fréquences : la sélection rejoint (ou quitte, si elle y est déjà) les micros du SDR 1."""
+        ws = self.watch_selected()
+        if not ws:
+            return
+        mine = set(sdr_posts_norm(self.sdr_cfg.get("posts"))[0]["mics"])
+        keys = {int(round(w["freq"] * 1000)) for w in ws}
+        self.sdr_follow(ws, not (keys <= mine), 1)
+
+    def open_scales(self):
+        """📏 Échelles et niveaux : réglages des vu-mètres audio + la fiche (8.1)."""
+        d = getattr(self, "_scales", None)
+        if d is None:
+            d = self._scales = ScalesDialog(self)
+        d.show()
+        d.raise_()
+        d.activateWindow()
+        return d
+
+    audio_ref = audio_ref_norm(None)
+
+    def set_sdr_audio(self, key):
+        """Sortie de l'écoute SDR choisie (⚙ › Son) : enregistrée, et le son en cours repart tout de suite dessus."""
+        self.sdr_cfg["audio_dev"] = str(key or "")
+        holders = list((getattr(self, "sdr_engs", None) or {}).values()) + \
+            [getattr(self, nm, None) for nm in ("_listen", "_multimon", "_rt")]
+        for h in holders:
+            a = getattr(h, "audio", None) if h is not None else None
+            if isinstance(a, AudioPump):
+                q = a.q
+                a.close()
+                h.audio = AudioPump(q, sdr_audio_device(self))
+                h.audio.start()
+
+    def set_meter_style(self, style):
+        """8.1 : vu-mètre RF en aiguille (« analog ») ou en barre (« bar ») : tous les vu-mètres du SDR suivent, choix gardé."""
+        if style not in dict(METER_STYLES):
+            return
+        self.sdr_cfg["meter_style"] = style
+        for w in QtWidgets.QApplication.allWidgets():
+            if isinstance(w, SMeterGauge):
+                w.set_style(style)
+
+
+class ScreensMixin:
+    """Plusieurs écrans : quel panneau sur quel écran. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    screen_hosts = {}
+
+    screens_cfg = screens_norm(None)
+
+    def dock_widget(self, d):
+        """Le vrai panneau d'un dock, où qu'il soit (fenêtre principale, vraie fenêtre, fenêtre d'un autre écran)."""
+        n = d.objectName()
+        for host in (getattr(self, "screen_hosts", None) or {}).values():
+            if n in host.items:
+                return host.items[n].widget()
+        pw = (getattr(self, "panel_wins", None) or {}).get(n)
+        if pw is not None and pw.body.count():
+            return pw.body.itemAt(0).widget()
+        return d.widget()
+
+    def screen_list(self):
+        scrs = QtGui.QGuiApplication.screens()
+        cur = self.screen()
+        main = next((k for k, s_ in enumerate(scrs) if s_ == cur), 0)
+        return scrs, main
+
+    def screens_docks(self):
+        by = {d.objectName(): d for d in list(self.docks) + self.all_sdr_docks()}
+        return {n: by[n] for n, _g, _t in SCREEN_PANELS if n in by}
+
+    def screens_current(self):
+        """Plan qui décrit ce qu'on voit maintenant (tout dans la fenêtre principale)."""
+        _scrs, main = self.screen_list()
+        return {n: (main if d.isVisible() or n in self.panel_wins else SCREEN_HIDE) for n, d in self.screens_docks().items()}
+
+    def screens_apply(self, plan, full=False, quiet=False, keep_mode=False):
+        """Met chaque panneau sur l'écran choisi (plan {panneau: écran | -1}) ; les autres écrans reçoivent une fenêtre
+        complète avec leurs panneaux. Le mode (tinySA / SDR / combiné) suit les panneaux montrés."""
+        self.screens_off(relayout=False)
+        self.panel_attach_all()
+        scrs, main = self.screen_list()
+        docks = self.screens_docks()
+        plan = screen_plan_fit({n: plan.get(n, SCREEN_HIDE) for n in docks}, len(scrs), main)
+        mode = self.rf_mode if keep_mode else screen_rf_mode(plan)    # 8.2 : labo sur 2 écrans -> le mode ne bouge pas
+        self.rf_mode = mode
+        self.sdr_cfg["rf_mode"] = mode
+        groups = {n: g for n, g, _t in SCREEN_PANELS}
+        here = {groups[n] for n, v in plan.items() if v == main}
+        try:
+            if "sdr" in here and "tiny" in here:
+                self._sdr_arrange("both", "listen")
+            elif "sdr" in here:
+                self._sdr_arrange("sdr", "listen")
+            else:
+                self._layout_base()
+                for d in self.all_sdr_docks():
+                    d.hide()
+        except Exception:  # noqa: BLE001
+            pass
+        for n, d in docks.items():
+            v = plan[n]
+            if v == main:
+                d.show()
+            elif v == SCREEN_HIDE:
+                d.hide()
+        self.screen_hosts = {}
+        for idx in screens_used(plan, main):
+            host = ScreenWindow(self, idx)
+            for n, _g, _t in SCREEN_PANELS:
+                if plan.get(n) != idx or n not in docks:
+                    continue
+                d = docks[n]
+                w = d.widget()
+                ph = QtWidgets.QPushButton(TR("🖥 « {} » est sur l'écran {} — cliquer pour tout ramener").format(
+                    d.windowTitle(), idx + 1))
+                ph.setToolTip(TR("Remet tous les panneaux dans la fenêtre principale."))
+                ph.clicked.connect(lambda *_: self.screens_off())
+                d.setWidget(ph)
+                d.hide()
+                host.put(n, d.windowTitle(), w)
+            host.arrange()
+            host.place(scrs[idx], full)
+            self.screen_hosts[idx] = host
+        if keep_mode:
+            pass                                             # 8.2 : labo — le SDR garde son état
+        elif mode != "tiny":
+            for e_ in self.sdr_engs.values():
+                if not e_.running():
+                    e_.start()
+        else:
+            for e_ in self.sdr_engs.values():
+                e_.stop()
+        self._update_mode_btn()
+        self.screens_cfg = dict(self.screens_cfg, on=bool(self.screen_hosts), plan=plan, full=bool(full))
+        for d in self.all_sdr_docks():
+            try:
+                self.dock_widget(d).apply_level()
+            except Exception:  # noqa: BLE001
+                pass
+        QtCore.QTimer.singleShot(0, self._fit_screen)
+        if not quiet:
+            self.set_status(TR("🖥 Panneaux répartis sur {} écran(s) : bouge-les par leur barre de titre ; « 📌 Tout ramener » "
+                               "pour revenir.").format(1 + len(self.screen_hosts)) if self.screen_hosts
+                            else TR("🖥 Tout est dans la fenêtre principale."))
+        return plan
+
+    def screens_off(self, relayout=True):
+        """Ramène les panneaux des autres écrans dans la fenêtre principale."""
+        hosts = getattr(self, "screen_hosts", None) or {}
+        if not hosts:
+            return False
+        docks = self.screens_docks()
+        for host in hosts.values():
+            for n, w in host.take():
+                d = docks.get(n)
+                if d is None:
+                    w.deleteLater()
+                    continue
+                old = d.widget()
+                d.setWidget(w)
+                w.show()
+                if old is not None:
+                    old.deleteLater()
+            host.closing = True
+            host.close()
+            host.deleteLater()
+        self.screen_hosts = {}
+        self.screens_cfg["on"] = False
+        if relayout:
+            self._layout_mode()
+            self.set_status(TR("📌 Tous les panneaux sont revenus dans la fenêtre principale."))
+        return True
+
+    def screens_state(self):
+        st = dict(self.screens_cfg)
+        st["on"] = bool(getattr(self, "screen_hosts", None))
+        st["hosts"] = {str(k): h.state() for k, h in (getattr(self, "screen_hosts", None) or {}).items()}
+        return st
+
+    def screens_restore(self):
+        """Au démarrage : les fenêtres des autres écrans rouvertes comme on les a laissées (écran débranché : ses panneaux
+        reviennent dans la fenêtre principale)."""
+        cfg = self.screens_cfg
+        if not cfg.get("on") or not cfg.get("plan"):
+            return
+        try:
+            self.screens_apply(cfg["plan"], cfg.get("full"), quiet=True)
+            for k, host in self.screen_hosts.items():
+                h = cfg.get("hosts", {}).get(str(k)) or {}
+                if h.get("state"):
+                    host.restoreState(QtCore.QByteArray.fromBase64(h["state"].encode()))
+        except Exception:  # noqa: BLE001
+            self.screens_off()
+
+    def identify_screens(self):
+        """Un grand numéro sur chaque écran (3 s)."""
+        for lb in getattr(self, "_ident_lbls", []):
+            lb.close()
+        self._ident_lbls = []
+        _scrs, main = self.screen_list()
+        for k, sc in enumerate(_scrs):
+            lb = QtWidgets.QLabel(f"{k + 1}" + ("\n" + TR("fenêtre principale") if k == main else ""))
+            lb.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+            lb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lb.setStyleSheet("background: rgba(10,132,255,0.92); color: white; font-size: 96px; font-weight: bold; "
+                             "border-radius: 24px; padding: 20px;")
+            g = sc.availableGeometry()
+            lb.setGeometry(g.center().x() - 220, g.center().y() - 160, 440, 320)
+            lb.show()
+            self._ident_lbls.append(lb)
+        QtCore.QTimer.singleShot(3000, lambda: [lb.close() for lb in getattr(self, "_ident_lbls", [])])
+
+    def open_screens(self):
+        dlg = getattr(self, "_screens_dlg", None)
+        if dlg is None:
+            dlg = self._screens_dlg = ScreensDialog(self)
+        dlg.fill()
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        return dlg
+
+
+# ---- 8.2 : 🧪 Labo SDR / RF Compander Lab (Clément : « j'adoooore l'idée du labo SDR en démo », « comparer les
+# compandeurs des marques en live avec phase, EQ et tout ») — un moteur de mesure commun (tsm_core : CompChain,
+# measure_*, comp_compare, xfer_spectrum, stair_fit), deux usages : simulé (reproductible) et observé (SDR réel).
+LAB_COLORS = ("#64d2ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff453a", "#ffd60a", "#5e5ce6", "#ff375f", "#66d4cf",
+              "#ac8e68")
+
+
+def _lab_plot(title, xl, yl):
+    p = pg.PlotWidget()
+    p.setTitle(TR(title), size="9pt")
+    p.setLabel("bottom", TR(xl))
+    p.setLabel("left", TR(yl))
+    p.showGrid(x=True, y=True, alpha=0.2)
+    sdr_light_axes(p)
+    p.addLegend(offset=(6, 6), labelTextSize="8pt")
+    p.setMinimumHeight(110)
+    p.setMinimumWidth(120)                       # rétrécit avec le panneau au lieu d'être coupé à droite
+    p.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+    return p
+
+
+def _log_hz(p):
+    """Axe des fréquences en log, graduations lisibles (50 Hz … 20 kHz)."""
+    p.setLogMode(x=True, y=False)
+    fs = (50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
+    p.getAxis("bottom").setTicks([[(math.log10(f), f"{f // 1000}k" if f >= 1000 else str(f)) for f in fs], []])
+    p.setXRange(math.log10(50), math.log10(20000), padding=0.0)
+
+
+def _coh_mask(xf, a, lim=0.6):
+    """Valeurs où le son ne permet pas de mesurer (cohérence faible : pas d'énergie à cette fréquence) -> NaN."""
+    a = np.asarray(a, dtype=float).copy()
+    a[np.asarray(xf["coh"]) < lim] = np.nan
+    return a
+
+
+def _comp_combo(cur="", none_label="Aucun (pas de compresseur)"):
+    c = QtWidgets.QComboBox()
+    c.addItem(TR(none_label), "")
+    for k, v in COMPANDERS.items():
+        if k != "none":
+            c.addItem(TR(v["name"]), k)
+    c.setCurrentIndex(max(0, c.findData(cur)))
+    return c
+
+
+def _model_list(checked=()):
+    lw = QtWidgets.QListWidget()
+    for k, v in COMPANDERS.items():
+        it = QtWidgets.QListWidgetItem(TR(v["name"]))
+        it.setData(Qt.ItemDataRole.UserRole, k)
+        it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        it.setCheckState(Qt.CheckState.Checked if k in checked else Qt.CheckState.Unchecked)
+        card = compander_card(k)
+        it.setToolTip(TR(card["maker"]) + " · " + TR(CMP_IMPL[card["impl"]]) + "\n" + TR(card["limits"]))
+        lw.addItem(it)
+    lw.setMaximumWidth(330)
+    return lw
+
+
+def _checked(lw):
+    return [lw.item(i).data(Qt.ItemDataRole.UserRole) for i in range(lw.count())
+            if lw.item(i).checkState() == Qt.CheckState.Checked]
+
+
+LAB_DOCKS = (("chain", "🧪 Labo · Chaîne complète", "dock_lab_chain"),
+             ("cmp", "🧪 Labo · Compandeurs", "dock_lab_cmp"),
+             ("live", "🧪 Labo · En direct (SDR)", "dock_lab_live"),
+             ("mod", "🧪 Labo · Modulations", "dock_lab_mod"),
+             ("fault", "🧪 Labo · Pannes simulées", "dock_lab_fault"))
+LAB_KEYS = [k for k, _t, _n in LAB_DOCKS]
+
+
+class SdrLab(QtCore.QObject):
+    """🧪 Labo SDR (RF Compander Lab), en PANNEAUX comme le SDR (Clément : « en full fenêtrage, choisir sur quel écran,
+    mettre tout ce qu'on veut où on veut ») : 1. la chaîne complète d'un micro HF pas à pas ; 2. comparateur de
+    compandeurs (transfert, transitoires, EQ, phase, rapport) ; 3. en direct (SDR réel = observé, ou SDR démo = simulé) :
+    plusieurs modèles en parallèle sur le son reçu, écoute A/B, mesure d'un vrai émetteur avec l'escalier ;
+    4. modulations ; 5. pannes simulées dans le SDR démo. Chaque partie = un panneau (🪟 Fenêtres, vraie fenêtre, écran)."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self._tmp, self.fx, self._job, self.res_cmp, self.observed = None, None, None, None, None
+        self._focus, self._detail, self._sess_win, self._help_box, self.res_real = {}, None, None, None, None
+        self._grab, self._st_res, self._md_order, self.res_mod = None, None, [], None
+        self.panels = {}
+        for key, build in (("chain", self._tab_chain), ("cmp", self._tab_cmp), ("live", self._tab_live),
+                           ("mod", self._tab_mod), ("fault", self._tab_fault)):
+            self.panels[key] = build()
+        intro = QtWidgets.QLabel(TR("Un banc de mesure : les mêmes signaux et les mêmes mesures pour tous les modèles. "
+                                    "Chaque résultat dit d'où il vient : 🧪 simulé, 📡 observé (SDR réel) ou 🧮 calculé."))
+        intro.setWordWrap(True)
+        man = QtWidgets.QPushButton(TR("❓ Manuel"))
+        man.setToolTip(TR("Le chapitre du manuel sur le labo SDR."))
+        man.clicked.connect(lambda *_: owner.open_manual("sdr-labo"))
+        self.view_btn = QtWidgets.QToolButton()
+        self.view_btn.setText(TR("⛶ Affichage Labo"))
+        self.view_btn.setToolTip(TR("La fenêtre ne montre plus que le labo : rangé en onglets, tout en grille, ou sur 2 écrans. "
+                                    "Clic droit sur un graphe : le détacher en fenêtre ou le masquer."))
+        self.view_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        vm = QtWidgets.QMenu(self.view_btn)
+        vm.aboutToShow.connect(lambda m=vm: self._view_menu(m))
+        self.view_btn.setMenu(vm)
+        self.ses_btn = QtWidgets.QPushButton(TR("🗂 Sessions du labo"))
+        self.ses_btn.setToolTip(TR("Comparaisons et mesures gardées : les retrouver, en comparer deux, les exporter."))
+        self.ses_btn.clicked.connect(lambda *_: self.open_sessions())
+        top = QtWidgets.QHBoxLayout()
+        self._top = top
+        top.addWidget(intro, 1)
+        top.addWidget(self.ses_btn)
+        top.addWidget(self.view_btn)
+        top.addWidget(man)
+        self.panels["chain"].layout().insertLayout(0, top)
+        self._plot_setup()
+        self._badges_setup()
+        self.tm = QtCore.QTimer(self)
+        self.tm.timeout.connect(self._tick)
+        self.tm.start(250)
+
+    def _view_menu(self, m):
+        o = self.owner
+        m.clear()
+        cur = o.sdr_cfg.get("lab_view", "tabs") if o.lab_view_on else None
+        for k, t in LAB_VIEWS:
+            a = m.addAction(TR(t))
+            a.setCheckable(True)
+            a.setChecked(k == cur)
+            a.triggered.connect(lambda *_, k=k: o.lab_view(True, k))
+        m.addSeparator()
+        a = m.addAction(TR("↺ Remettre tous les graphes"))
+        a.triggered.connect(lambda *_: self.plots_restore())
+        if o.lab_view_on:
+            m.addAction(TR("↩ Quitter l'affichage Labo")).triggered.connect(lambda *_: o.lab_view(False))
+
+    # ---- 8.2 : chaque graphe détachable / masquable (clic droit)
+    def _plots(self):
+        return [p for w in self.panels.values() for p in w.findChildren(pg.PlotWidget)] + list(self._detached.keys())
+
+    def _plot_key(self, p):
+        return p.objectName() or ""
+
+    def _plot_setup(self):
+        """Ajoute à chaque graphe du labo (menu du clic droit) : détacher en fenêtre, masquer, tout remettre."""
+        self._detached, self._ph = {}, {}
+        for w in self.panels.values():
+            for i, p in enumerate(w.findChildren(pg.PlotWidget)):
+                t = p.getPlotItem().titleLabel.text or f"g{i}"
+                p.setObjectName("lab:" + re.sub(r"<[^>]+>", "", t)[:60])
+                vb = p.getPlotItem().vb
+                vb.menu.addSeparator()
+                vb.menu.addAction(TR("⧉ Détacher ce graphe (fenêtre)")).triggered.connect(
+                    lambda *_, p=p: self.plot_detach(p))
+                vb.menu.addAction(TR("✕ Masquer ce graphe")).triggered.connect(lambda *_, p=p: self.plot_hide(p))
+                vb.menu.addAction(TR("↺ Remettre tous les graphes")).triggered.connect(lambda *_: self.plots_restore())
+                self._plot_menu(p)
+
+    def apply_hidden(self):
+        """Graphes masqués d'après la config (appelé à l'ouverture du labo : la config est lue APRÈS sa création)."""
+        hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
+        for p in self._plots():
+            p.setVisible(self._plot_key(p) not in hidden)
+
+    def plot_hide(self, p):
+        if p in self._detached:
+            self.plot_attach(p)
+        p.hide()
+        h = set(self.owner.sdr_cfg.get("lab_hidden") or [])
+        h.add(self._plot_key(p))
+        self.owner.sdr_cfg["lab_hidden"] = sorted(h)
+        self.owner.set_status(TR("Graphe masqué : clic droit sur un autre graphe › « ↺ Remettre tous les graphes »."))
+
+    def plot_detach(self, p):
+        """Le graphe part dans sa propre fenêtre (à mettre sur l'écran qu'on veut) ; une étiquette garde sa place."""
+        if p in self._detached:
+            return self._detached[p]
+        par = p.parentWidget()
+        lay = par.layout() if par is not None else None
+        if lay is None:
+            return None
+        ph = QtWidgets.QPushButton(TR("⧉ graphe détaché — cliquer pour le raccrocher"))
+        ph.setToolTip(TR("Ce graphe est dans sa propre fenêtre. Clic : le remettre ici."))
+        ph.clicked.connect(lambda *_, p=p: self.plot_attach(p))
+        lay.replaceWidget(p, ph)
+        self._ph[p] = (ph, lay)
+        win = QtWidgets.QWidget(None, Qt.WindowType.Window)
+        win.setWindowTitle(TR("🧪 Labo · {}").format(p.getPlotItem().titleLabel.text or ""))
+        v = QtWidgets.QVBoxLayout(win)
+        v.setContentsMargins(4, 4, 4, 4)
+        bar = QtWidgets.QHBoxLayout()
+        nxt = QtWidgets.QPushButton(TR("🖥 Écran suivant"))
+        nxt.setToolTip(TR("Envoie cette fenêtre sur l'écran suivant."))
+        nxt.clicked.connect(lambda *_, w=win: self._next_screen(w))
+        back = QtWidgets.QPushButton(TR("📌 Raccrocher"))
+        back.setToolTip(TR("Remet ce graphe dans son panneau du labo."))
+        back.clicked.connect(lambda *_, p=p: self.plot_attach(p))
+        bar.addWidget(nxt)
+        bar.addStretch(1)
+        bar.addWidget(back)
+        v.addLayout(bar)
+        v.addWidget(p, 1)
+        p.show()
+        win.closeEvent = lambda ev, p=p: (self.plot_attach(p), ev.accept())
+        win.resize(720, 460)
+        win.show()
+        self._detached[p] = win
+        return win
+
+    def _next_screen(self, w):
+        scrs = QtGui.QGuiApplication.screens()
+        if len(scrs) < 2:
+            self.owner.set_status(TR("Un seul écran : déplace la fenêtre où tu veux."))
+            return
+        i = (scrs.index(w.screen()) + 1) % len(scrs) if w.screen() in scrs else 0
+        g = scrs[i].availableGeometry()
+        w.move(g.x() + 40, g.y() + 40)
+
+    def plot_attach(self, p):
+        win = self._detached.pop(p, None)
+        ph, lay = self._ph.pop(p, (None, None))
+        if ph is not None:
+            lay.replaceWidget(ph, p)
+            ph.deleteLater()
+            p.show()
+        if win is not None:
+            win.closeEvent = lambda ev: ev.accept()
+            win.close()
+            win.deleteLater()
+
+    def plots_restore(self):
+        for p in list(self._detached):
+            self.plot_attach(p)
+        for p in self._plots():
+            p.show()
+        self.owner.sdr_cfg["lab_hidden"] = []
+
+    def _shown(self, key):
+        """Panneau vraiment à l'écran (un onglet caché derrière un autre reste « visible » pour Qt : sa zone est vide)."""
+        w = self.panels.get(key)
+        return w is not None and w.isVisible() and not w.visibleRegion().isEmpty()
+
+    # ------------------------------------------------------------------ outils
+    def _play(self, a, label=""):
+        import wave
+        try:
+            if self.fx is not None:
+                self.fx.stop()
+            a = np.asarray(a, dtype=np.float32)
+            self._tmp = temp_wav_path("lab", self._tmp)
+            with wave.open(self._tmp, "wb") as w:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(48000)
+                w.writeframes(np.repeat((np.clip(a, -1, 1) * 32767).astype("<i2"), 2).tobytes())
+            from PySide6 import QtMultimedia
+            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
+            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
+            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
+            fx.setVolume(0.8)
+            fx.play()
+            self.fx = fx
+            return TR("▶ {}").format(label)
+        except Exception as e:  # noqa: BLE001
+            return TR("⚠ Son impossible ici : {}").format(e)
+
+    def _busy(self, on, btn, txt):
+        btn.setEnabled(not on)
+        btn.setText(TR("⏳ Calcul…") if on else TR(txt))
+
+    # ------------------------------------------------------------------ ① chaîne complète
+    def _tab_chain(self):
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        self.ch_src = audio_button(self.owner, "voice")
+        self.ch_mode = QtWidgets.QComboBox()
+        for k, t in LAB_MODES:
+            self.ch_mode.addItem(TR(t), k)
+        self.ch_dev = QtWidgets.QSpinBox()
+        self.ch_dev.setRange(1, 75)
+        self.ch_dev.setValue(30)
+        self.ch_dev.setSuffix(" kHz")
+        self.ch_dev.setToolTip(TR("Déviation crête de l'émetteur (= 0 dBFS du son)."))
+        self.ch_tx = _comp_combo("evo")
+        self.ch_tx.setToolTip(TR("Compresseur de l'émetteur (le pack)."))
+        self.ch_rx = _comp_combo("evo", "Aucun (pas d'expanseur)")
+        self.ch_rx.setToolTip(TR("Expanseur du récepteur. Différent de l'émetteur = dynamique faussée (essaie !)."))
+        self.ch_snr = QtWidgets.QSpinBox()
+        self.ch_snr.setRange(0, 80)
+        self.ch_snr.setValue(40)
+        self.ch_snr.setSuffix(" dB")
+        self.ch_snr.setToolTip(TR("Rapport porteuse / bruit dans le canal (C/N)."))
+        self.ch_fault = QtWidgets.QComboBox()
+        for k, t in LAB_FAULTS:
+            self.ch_fault.addItem(TR(t), k)
+        self.ch_go = QtWidgets.QPushButton(TR("▶ Calculer"))
+        self.ch_go.clicked.connect(lambda *_: self.chain_run())
+        self.ch_in = QtWidgets.QPushButton(TR("🔊 Entrée"))
+        self.ch_in.clicked.connect(lambda *_: self._chain_play("src"))
+        self.ch_out = QtWidgets.QPushButton(TR("🔊 Sortie"))
+        self.ch_out.clicked.connect(lambda *_: self._chain_play("out"))
+        g = QtWidgets.QGridLayout()
+        for i, (lab, wid) in enumerate(((TR("Son"), self.ch_src), (TR("Modulation"), self.ch_mode),
+                                        (TR("Déviation"), self.ch_dev), (TR("Émetteur"), self.ch_tx),
+                                        (TR("Récepteur"), self.ch_rx), (TR("C/N"), self.ch_snr),
+                                        (TR("Panne"), self.ch_fault))):
+            g.addWidget(QtWidgets.QLabel(lab), i // 4, 2 * (i % 4))
+            g.addWidget(wid, i // 4, 2 * (i % 4) + 1)
+        self.ch_real = QtWidgets.QPushButton(TR("📡 Signal de A"))
+        self.ch_real.setToolTip(TR("Capture 1 s d'IQ du poste SDR autour du récepteur A et montre la même chaîne sur ce "
+                                   "VRAI signal (sans le son d'origine : pas d'« erreur » mesurable)."))
+        self.ch_real.clicked.connect(lambda *_: self.chain_real())
+        self.ch_file = QtWidgets.QPushButton(TR("📂 IQ enregistré…"))
+        self.ch_file.setToolTip(TR("La même chaîne sur un enregistrement IQ SigMF (⏺ du temps réel, dossier d'incident)."))
+        self.ch_file.clicked.connect(lambda *_: self.chain_file())
+        h = QtWidgets.QHBoxLayout()
+        h.addWidget(self.ch_go)
+        h.addWidget(self.ch_in)
+        h.addWidget(self.ch_out)
+        h.addWidget(self.ch_real)
+        h.addWidget(self.ch_file)
+        h.addStretch(1)
+        g.addLayout(h, 1, 6, 1, 2)
+        v.addLayout(g)
+        self.ch_help = QtWidgets.QLabel("")
+        self.ch_help.setWordWrap(True)
+        v.addWidget(self.ch_help)
+        self.ch_fault.currentIndexChanged.connect(lambda *_: self._fault_help())
+        self._fault_help()
+        flow = QtWidgets.QLabel(TR("Le trajet du signal :  🎵 son  →  compresseur (émetteur)  →  modulation FM = I et Q (3, 4) "
+                                   " →  l'air : bruit, panne (5)  →  démodulation (6)  →  expanseur (récepteur)  →  🔊 son "
+                                   "(1, 2)"))
+        flow.setWordWrap(True)
+        flow.setStyleSheet("color: #8e8e93;")
+        flow.setToolTip(TR("Chaque graphe montre une étape : les numéros renvoient aux titres des graphes."))
+        v.addWidget(flow)
+        grid = QtWidgets.QGridLayout()
+        self.p_wave = _lab_plot("1. Son : entrée et sortie (100 ms)", "ms", "amplitude")
+        self.p_env = _lab_plot("2. Niveau dans le temps", "s", "dBFS")
+        self.p_iq = _lab_plot("3. IQ dans le temps (2 ms) : I et Q", "ms", "")
+        self.p_const = _lab_plot("4. Constellation (canal)", "I", "Q")
+        self.p_const.setAspectLocked(True)
+        self.p_spec = _lab_plot("5. Spectre de l'IQ", "kHz autour de la porteuse", "dBFS")
+        self.p_fi = _lab_plot("6. Fréquence instantanée", "ms", "kHz")
+        for i, p in enumerate((self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi)):
+            grid.addWidget(p, i // 3, i % 3)
+        v.addLayout(grid, 1)
+        self.ch_res = QtWidgets.QLabel(TR("Choisis un son, des compandeurs, une panne, puis ▶ Calculer."))
+        self.ch_res.setWordWrap(True)
+        self.ch_res.setTextFormat(Qt.TextFormat.RichText)
+        v.addWidget(self.ch_res)
+        return w
+
+    def _fault_help(self):
+        a, b = LAB_FAULT_HELP.get(self.ch_fault.currentData(), ("", ""))
+        self.ch_help.setText(TR(a) + (" " + TR("Ce qu'on voit :") + " " + TR(b) if b else ""))
+
+    def chain_args(self):
+        return dict(audio=self.ch_src.spec, mode=self.ch_mode.currentData(), dev=self.ch_dev.value() * 1000.0,
+                    tx_comp=self.ch_tx.currentData(), rx_comp=self.ch_rx.currentData(), snr=float(self.ch_snr.value()),
+                    fault=self.ch_fault.currentData())
+
+    def chain_run(self, wait=False):
+        a = self.chain_args()
+        if a["audio"].get("src") == "wav":
+            wav_load(a["audio"]["path"])
+        if wait:
+            self._chain_done(lab_chain(**a), None)
+            return
+        self._busy(True, self.ch_go, "▶ Calculer")
+        self.owner.run_heavy(lambda: lab_chain(**a), self._chain_done, what="Labo SDR")
+
+    def _chain_done(self, r, err):
+        self._busy(False, self.ch_go, "▶ Calculer")
+        if err is not None or r is None:
+            self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
+            return
+        self.res_chain = r
+        self.set_prov("chain", "sim")
+        for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
+            p.clear()
+        s0 = int(0.5 * 48000)
+        k = slice(s0, s0 + 4800)
+        tm = np.arange(4800) / 48.0
+        self.p_wave.plot(tm, r["src"][k], pen=pg.mkPen(LAB_COLORS[0], width=1.2), name=TR("entrée"))
+        self.p_wave.plot(tm, r["out"][k], pen=pg.mkPen(LAB_COLORS[1], width=1.0), name=TR("sortie"))
+        for key, c, nm in (("env_src", 0, "entrée"), ("env_comp", 2, "après le compresseur"), ("env_out", 1, "sortie")):
+            self.p_env.plot(r["te"], r[key][:len(r["te"])], pen=pg.mkPen(LAB_COLORS[c], width=1.2), name=TR(nm))
+        self.p_env.setYRange(-80, 5)
+        self.p_iq.plot(r["iq_t"], r["I"], pen=pg.mkPen(LAB_COLORS[0], width=1), name="I")
+        self.p_iq.plot(r["iq_t"], r["Q"], pen=pg.mkPen(LAB_COLORS[3], width=1), name="Q")
+        v = r.get("views")
+        if v:
+            self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
+                              symbolBrush=pg.mkBrush(LAB_COLORS[0]))
+            self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
+        if r["L"] is not None:
+            self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
+            self.p_spec.plot(r["F"], r["Lmax"], pen=pg.mkPen(LAB_COLORS[1], width=1), name=TR("max"))
+            self.p_spec.setXRange(-200, 200)
+        m = r["m"]
+        rows = [(TR("Niveau entrée / sortie"), f"{m['src']:.1f} / {m['out']:.1f} dBFS ({m['diff']:+.1f} dB)"),
+                (TR("Crête entrée / sortie"), f"{m['pk_src']:.1f} / {m['pk_out']:.1f} dBFS"),
+                (TR("Erreur résiduelle"), f"{m['err']:.0f} dB"), (TR("Retard"), f"{m['lat']:.1f} ms"),
+                (TR("Pompage"), f"± {m['pump']:.1f} dB")]
+        fl = "".join(f"<li style='color:{self.owner.tone_color(t) if t != 'ok' else 'inherit'}'>{_hesc(x)}</li>"
+                     for x, t in lab_findings(r, TR))
+        self.ch_res.setText(f"<b>{_hesc(TR(PROVENANCE['sim']))}</b> · " + " · ".join(
+            f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
+
+    def _chain_play(self, which):
+        r = getattr(self, "res_chain", None)
+        if r is None:
+            self.ch_res.setText(TR("Calcule d'abord (▶ Calculer)."))
+            return
+        self.ch_help.setText(self._play(r[which], TR("entrée") if which == "src" else TR("sortie")))
+
+    # ------------------------------------------------------------------ ② comparateur
+    def _tab_cmp(self):
+        w = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(w)
+        left = QtWidgets.QVBoxLayout()
+        left.addWidget(QtWidgets.QLabel(TR("Modèles du récepteur à comparer :")))
+        self.cm_list = _model_list(("evo", "x2", "wisy_enr", "wisy_ens"))
+        self.cm_list.currentItemChanged.connect(lambda *_: self._card())
+        left.addWidget(self.cm_list, 1)
+        f = QtWidgets.QFormLayout()
+        self.cm_tx = _comp_combo("evo")
+        self.cm_tx.setToolTip(TR("Compresseur de l'émetteur, le même pour tous (la référence de la comparaison)."))
+        f.addRow(TR("Émetteur"), self.cm_tx)
+        self.cm_src = audio_button(self.owner, "voice")
+        f.addRow(TR("Son"), self.cm_src)
+        self.cm_de = QtWidgets.QComboBox()
+        for us in (50.0, 75.0, 0.0):
+            self.cm_de.addItem(f"{us:g} µs" if us else TR("aucune"), us)
+        self.cm_de.setToolTip(TR("Désaccentuation (et pré-accentuation de l'émetteur) quand le modèle n'impose pas la sienne."))
+        f.addRow(TR("Désaccentuation"), self.cm_de)
+        left.addLayout(f)
+        self.cm_go = QtWidgets.QPushButton(TR("▶ Comparer"))
+        self.cm_go.clicked.connect(lambda *_: self.cmp_run())
+        self.cm_play = QtWidgets.QPushButton(TR("🔊 Écouter le modèle choisi"))
+        self.cm_play.clicked.connect(lambda *_: self._cmp_play())
+        self.cm_rep = QtWidgets.QPushButton(TR("📄 Rapport comparatif"))
+        self.cm_rep.clicked.connect(lambda *_: self.cmp_report())
+        self.cm_det = QtWidgets.QPushButton(TR("🔍 Comparaison détaillée"))
+        self.cm_det.setToolTip(TR("Les 4 graphes en grand dans une fenêtre, modèles à cocher, EQ et phase zoomés ensemble."))
+        self.cm_det.clicked.connect(lambda *_: self.cmp_detail())
+        for b in (self.cm_go, self.cm_det, self.cm_play, self.cm_rep):
+            left.addWidget(b)
+        self.cm_card = QtWidgets.QLabel("")
+        self.cm_card.setWordWrap(True)
+        self.cm_card.setTextFormat(Qt.TextFormat.RichText)
+        self.cm_card.setMaximumWidth(330)
+        left.addWidget(self.cm_card)
+        sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)      # poignée : agrandir les graphes si le panneau est étroit
+        lw_ = QtWidgets.QWidget()
+        lw_.setLayout(left)
+        lw_.setMaximumWidth(330)                                 # les graphes gardent la place
+        sp.addWidget(lw_)
+        rw_ = QtWidgets.QWidget()
+        sp.addWidget(rw_)
+        sp.setStretchFactor(1, 1)
+        sp.setChildrenCollapsible(True)
+        h.addWidget(sp)
+        right = QtWidgets.QVBoxLayout(rw_)
+        right.setContentsMargins(0, 0, 0, 0)
+        grid = QtWidgets.QGridLayout()
+        self.p_tf = _lab_plot("Transfert du récepteur", "entrée dBFS", "sortie dBFS")
+        self.p_tr = _lab_plot("Saut −30 → −10 → −30 dBFS", "s", "dBFS")
+        self.p_eq = _lab_plot("EQ de la chaîne", "Hz", "dB")
+        self.p_ph = _lab_plot("Phase (retard retiré)", "Hz", "degrés")
+        for p in (self.p_eq, self.p_ph):
+            _log_hz(p)
+        for p, tip in ((self.p_tf, "Courbe de transfert du récepteur, MESURÉE avec un escalier de sinus ; pointillés = formule."),
+                       (self.p_tr, "Saut de niveau −30 → −10 → −30 dBFS à travers émetteur + récepteur : montée, descente, dépassement."),
+                       (self.p_eq, "Réponse en fréquence (EQ) de la chaîne émetteur + récepteur (bruit rose à −20 dBFS)."),
+                       (self.p_ph, "Phase de la chaîne, retard pur retiré.")):
+            p.setToolTip(TR(tip))
+        for i, p in enumerate((self.p_tf, self.p_tr, self.p_eq, self.p_ph)):
+            grid.addWidget(p, i // 2, i % 2)
+        right.addLayout(grid, 1)
+        self.cm_tbl = QtWidgets.QTableWidget(0, 9)
+        self.cm_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Pente", "Niveau", "Erreur", "Pompage",
+                                                               "Montée", "Descente", "Dépassement", "Retard")])
+        self.cm_tbl.verticalHeader().setVisible(False)
+        self.cm_tbl.setMaximumHeight(190)
+        self.cm_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.cm_tbl.setToolTip(TR("Pente : 2 = expanseur 2:1. Niveau : sortie − entrée. Erreur : ce qui reste quand on "
+                                  "retire le gain (plus bas = plus fidèle).\nPompage : le niveau qui bouge sans raison. "
+                                  "Montée / descente : temps pour se poser après un saut de 20 dB."))
+        right.addWidget(self.cm_tbl)
+        self.cm_msg = QtWidgets.QLabel(TR("Coche les modèles à comparer, puis ▶ Comparer."))
+        self.cm_msg.setWordWrap(True)
+        right.addWidget(self.cm_msg)
+        self._card()
+        return w
+
+    def _card(self):
+        it = self.cm_list.currentItem()
+        key = it.data(Qt.ItemDataRole.UserRole) if it is not None else "evo"
+        c = compander_card(key)
+        if not c:
+            return
+        rows = ((TR("Fabricant"), TR(c["maker"])), (TR("Modèle"), TR(c["model"])), (TR("Technologie"), TR(c["tech"])),
+                (TR("Documentation"), TR(c["doc"])), (TR("Implémentation"), TR(CMP_IMPL[c["impl"]])),
+                (TR("Fidélité"), TR(c["fidelity"])), (TR("Limites"), TR(c["limits"])), (TR("Version"), c["ver"]))
+        p = c["params"]
+        rows += ((TR("Réglages du modèle"), f"{p['ratio']:g}:1 · {TR('montée')} {p['attack']:g} · {TR('descente')} "
+                  f"{p['release']:g} · {p['det']}" + (f" · {TR('genou')} {p['knee']:g} dB" if p["knee"] is not None else "")),)
+        self.cm_card.setText(f"<b>{_hesc(TR('Fiche du modèle'))}</b><br>" + "<br>".join(
+            f"<span style='color:#8e8e93'>{_hesc(a)}</span> : {_hesc(str(b))}" for a, b in rows))
+
+    def cmp_args(self):
+        return dict(keys=_checked(self.cm_list), tx_key=self.cm_tx.currentData(), audio=self.cm_src.spec,
+                    deemph_us=self.cm_de.currentData())
+
+    def cmp_run(self, wait=False):
+        a = self.cmp_args()
+        if not a["keys"]:
+            self.cm_msg.setText(TR("Coche au moins un modèle."))
+            return
+        if a["audio"].get("src") == "wav":
+            wav_load(a["audio"]["path"])
+        if wait:
+            self._cmp_done(comp_compare(**a), None)
+            return
+        self._busy(True, self.cm_go, "▶ Comparer")
+        self.owner.run_heavy(lambda: comp_compare(**a), self._cmp_done, what="Labo SDR")
+
+    def _cmp_done(self, r, err):
+        self._busy(False, self.cm_go, "▶ Comparer")
+        if err is not None or r is None:
+            self.cm_msg.setText(TR("⚠ Calcul impossible : {}").format(err))
+            return
+        self.res_cmp = r
+        for p in (self.p_tf, self.p_tr, self.p_eq, self.p_ph):
+            p.clear()
+        t = self.cm_tbl
+        t.setRowCount(0)
+        for i, row in enumerate(r["rows"]):
+            col = LAB_COLORS[i % len(LAB_COLORS)]
+            nm = TR(row["card"]["model"])
+            self.p_tf.plot(row["xin"], row["rx"], pen=pg.mkPen(col, width=1.6), name=nm)
+            th = comp_curve(row["key"], "rx")
+            if th is not None:
+                self.p_tf.plot(th[0], th[1], pen=pg.mkPen(col, width=1, style=Qt.PenStyle.DashLine))
+            tr_ = row["transient"]
+            self.p_tr.plot(tr_["t"], tr_["env"], pen=pg.mkPen(col, width=1.2), name=nm)
+            fq = row["freq"]
+            if fq:
+                self.p_eq.plot(fq["f"], _coh_mask(fq, fq["mag"]), pen=pg.mkPen(col, width=1.2), name=nm, connect="finite")
+                self.p_ph.plot(fq["f"], _coh_mask(fq, fq["phase"]), pen=pg.mkPen(col, width=1.2), name=nm,
+                               connect="finite")
+            m = row["m"]
+            t.insertRow(i)
+            vals = (nm, f"{row['slope']:.2f}", f"{m['diff']:+.1f} dB", f"{m['err']:.0f} dB", f"± {m['pump']:.1f} dB",
+                    f"{m['up']:.0f} ms", f"{m['down']:.0f} ms", f"{m['over']:+.1f} dB", f"{m['lat']:.1f} ms")
+            for j, v_ in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v_)
+                if j == 0:
+                    it.setForeground(QtGui.QColor(col))
+                t.setItem(i, j, it)
+        self.p_tf.plot([-60, 0], [-60, 0], pen=pg.mkPen("#8e8e93", width=1, style=Qt.PenStyle.DotLine))
+        self.p_tf.setYRange(-90, 10)
+        self.p_tr.setYRange(-60, 0)
+        self.p_eq.setYRange(-20, 10)
+        self.p_ph.setYRange(-180, 180)
+        t.resizeColumnsToContents()
+        self.cm_msg.setText(TR("{} · {} modèle(s) · mêmes signaux et mêmes mesures pour tous. Les modèles « approchés » "
+                               "ne sont PAS les vrais traitements des marques.").format(TR(PROVENANCE["sim"]), len(r["rows"])))
+        a = self.cmp_args()
+        self.session_save("cmp", "sim", dict(tx=a["tx_key"], deemph=a["deemph_us"], audio=audio_text(a["audio"])),
+                          cmp_metrics(r))
+
+    def _cmp_play(self):
+        r = self.res_cmp
+        if not r or not r["rows"]:
+            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
+            return
+        i = max(0, self.cm_tbl.currentRow())
+        row = r["rows"][min(i, len(r["rows"]) - 1)]
+        self.cm_msg.setText(self._play(row["out"], TR(row["card"]["model"])))
+
+    def cmp_report(self, path=None):
+        r = self.res_cmp
+        if not r:
+            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
+            return None
+        d = Path(self.owner.log_dir) / "rapports"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            path = path or str(d / f"compander_lab_{datetime.now():%Y%m%d_%H%M%S}.html")
+            write_atomic(path, comp_report_html(r, TR, observed=self.observed))
+        except OSError as e:
+            self.cm_msg.setText(TR("⚠ Rapport impossible : {}").format(e))
+            return None
+        self.cm_msg.setText(TR("📄 Rapport : {}").format(path))
+        if not os.environ.get("TSM_NO_BROWSER"):
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
+        return path
+
+    # ------------------------------------------------------------------ ③ en direct
+    def _tab_live(self):
+        w = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(w)
+        left = QtWidgets.QVBoxLayout()
+        self.lv_src = QtWidgets.QLabel("")
+        self.lv_src.setWordWrap(True)
+        left.addWidget(self.lv_src)
+        left.addWidget(QtWidgets.QLabel(TR("Modèles appliqués au son reçu :")))
+        self.lv_list = _model_list(("none_d50", "x2", "evo", "wisy_enr"))
+        self.lv_list.itemChanged.connect(lambda *_: self._live_reset())
+        left.addWidget(self.lv_list, 1)
+        self.lv_ab = QtWidgets.QPushButton(TR("🎧 Écouter avec le modèle choisi"))
+        self.lv_ab.setToolTip(TR("Le récepteur A du poste SDR passe sur ce compandeur, tout de suite : compare à l'oreille "
+                                 "(A/B) en changeant de ligne."))
+        self.lv_ab.clicked.connect(lambda *_: self.live_listen())
+        left.addWidget(self.lv_ab)
+        box = QtWidgets.QGroupBox(TR("📏 Mesurer mon vrai émetteur"))
+        bl = QtWidgets.QVBoxLayout(box)
+        t = QtWidgets.QLabel(TR("1. Dans 🎵 Générateur audio, choisis « Signal de test : escalier de niveaux » et envoie-le "
+                                "dans l'entrée audio du pack (câble).\n2. Écoute ce micro au poste SDR (A).\n"
+                                "3. Attends au moins {} s, puis mesure : la pente donne le vrai taux de compression de "
+                                "l'émetteur.").format(f"{2 * STAIR_PERIOD + 1:.0f}"))
+        t.setWordWrap(True)
+        bl.addWidget(t)
+        b = QtWidgets.QPushButton(TR("🎵 Ouvrir le générateur audio"))
+        b.clicked.connect(lambda *_: self.owner.open_audio_gen())
+        bl.addWidget(b)
+        self.lv_fit_btn = QtWidgets.QPushButton(TR("📏 Mesurer maintenant"))
+        self.lv_fit_btn.clicked.connect(lambda *_: self.live_fit())
+        bl.addWidget(self.lv_fit_btn)
+        self.lv_state = QtWidgets.QLabel("")
+        self.lv_state.setWordWrap(True)
+        self.lv_state.setToolTip(TR("État de la mesure : prêt, en cours (le son s'accumule), terminé (valable), invalide "
+                                    "(avec la raison) ou interrompu (le poste SDR s'est arrêté)."))
+        bl.addWidget(self.lv_state)
+        self.lv_fit = QtWidgets.QLabel("")
+        self.lv_fit.setWordWrap(True)
+        bl.addWidget(self.lv_fit)
+        left.addWidget(box)
+        self.lv_snap = QtWidgets.QPushButton(TR("🔬 Figer 4 s et comparer en détail"))
+        self.lv_snap.setToolTip(TR("Garde les 4 dernières secondes du son reçu, les passe dans chaque modèle coché et "
+                                   "ouvre la comparaison détaillée (marquée 📡 observé avec un vrai SDR)."))
+        self.lv_snap.clicked.connect(lambda *_: self.live_snapshot())
+        left.addWidget(self.lv_snap)
+        lw = QtWidgets.QWidget()
+        lw.setLayout(left)
+        lw.setMaximumWidth(340)
+        sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        sp.addWidget(lw)
+        rw_ = QtWidgets.QWidget()
+        sp.addWidget(rw_)
+        sp.setStretchFactor(1, 1)
+        h.addWidget(sp)
+        right = QtWidgets.QVBoxLayout(rw_)
+        right.setContentsMargins(0, 0, 0, 0)
+        grid = QtWidgets.QGridLayout()
+        self.p_lvl = _lab_plot("Niveau de chaque modèle", "s", "dBFS")
+        self.p_leq = _lab_plot("EQ en direct", "Hz", "dB")
+        self.p_lph = _lab_plot("Phase en direct", "Hz", "degrés")
+        for p in (self.p_leq, self.p_lph):
+            _log_hz(p)
+        self.p_lin = _lab_plot("Son reçu (avant expanseur)", "s", "dBFS")
+        for i, p in enumerate((self.p_lvl, self.p_lin, self.p_leq, self.p_lph)):
+            grid.addWidget(p, i // 2, i % 2)
+        right.addLayout(grid, 1)
+        self.lv_tbl = QtWidgets.QTableWidget(0, 4)
+        self.lv_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Niveau", "Crête", "Écart au son reçu")])
+        self.lv_tbl.verticalHeader().setVisible(False)
+        self.lv_tbl.setMaximumHeight(170)
+        self.lv_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.lv_tbl.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        right.addWidget(self.lv_tbl)
+        self._live_reset()
+        self._live_tap = None
+        return w
+
+    def _eng(self):
+        es = [e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()]
+        return es[0] if es else None
+
+    def _live_reset(self):
+        self.lv_keys = _checked(self.lv_list)
+        self.lv_ch = {}
+        self.lv_in = deque(maxlen=int(30 * 48000 / 2400) + 10)     # morceaux bruts (30 s)
+        self.lv_out = {k: deque(maxlen=60) for k in self.lv_keys}
+        self.lv_hist = {k: deque(maxlen=80) for k in self.lv_keys}
+        self.lv_inh = deque(maxlen=80)
+        self._lv_t = 0.0
+        self._st_res = None
+
+    def _live_on(self, on):
+        self._tap_on = bool(on)
+        e = self._eng()
+        for e_ in (getattr(self.owner, "sdr_engs", None) or {}).values():
+            if e_.worker is not None:
+                e_.worker.lab_tap = bool(on) and e_ is e
+
+    def _tick(self):
+        if self._shown("fault"):
+            self._fault_refresh()
+        if not self._shown("live"):
+            if getattr(self, "_tap_on", False):
+                self._live_on(False)
+            return
+        e = self._eng()
+        if e is None or e.worker is None:
+            self.lv_src.setText(TR("Démarre un poste SDR (▶ dans le Récepteur) et écoute un micro FM en A : le son reçu "
+                                   "passe ici dans chaque modèle. Pas de SDR ? 🧪 SDR démo."))
+            self.stair_status()
+            return
+        self._live_on(True)
+        demo = e.kind() == "demo"
+        self.set_prov("live", "sim" if demo else "obs")
+        self.stair_status()
+        dem = e.demod
+        self.lv_src.setText(TR("Source : {} · A = {} MHz · écouté avec {}").format(
+            TR(PROVENANCE["sim" if demo else "obs"]), f"{e.a:.4f}" if e.a is not None else "—",
+            TR(COMPANDERS.get(dem.get("compander") or "none", {}).get("name", ""))))
+        q = e.worker.a_pre
+        new = []
+        while q:
+            new.append(q.popleft()[1])
+        if not new:
+            return
+        x = np.concatenate(new).astype(np.float32)
+        self.lv_in.append(x)
+        de = float(dem.get("deemph") or 50.0)
+        for k in self.lv_keys:
+            ch = self.lv_ch.get(k)
+            if ch is None:
+                ch = self.lv_ch[k] = CompChain(k, de)
+            self.lv_out[k].append(ch(x))
+        now = time.time()
+        if now - self._lv_t < 0.5:
+            return
+        self._lv_t = now
+        self._live_draw(now)
+
+    def _live_draw(self, now):
+        xs = list(self.lv_in)[-40:]                     # ~2 s
+        if not xs:
+            return
+        xin = np.concatenate(xs)
+        n2 = len(xin)
+        db_in = _lab_db(xin[-24000:])
+        self.lv_inh.append((now, db_in))
+        for p in (self.p_lvl, self.p_leq, self.p_lph, self.p_lin):
+            p.clear()
+        t0 = now
+        th = np.array([a for a, _ in self.lv_inh]) - t0
+        self.p_lin.plot(th, np.array([b for _, b in self.lv_inh]), pen=pg.mkPen(LAB_COLORS[0], width=1.4),
+                        name=TR("son reçu"))
+        tb = self.lv_tbl
+        tb.setRowCount(0)
+        for i, k in enumerate(self.lv_keys):
+            col = LAB_COLORS[i % len(LAB_COLORS)]
+            outs = list(self.lv_out[k])
+            if not outs:
+                continue
+            y = np.concatenate(outs)[-n2:]
+            m = audio_meter(y[-24000:])
+            self.lv_hist[k].append((now, m["rms"]))
+            hh = list(self.lv_hist[k])
+            nm = TR(compander_card(k)["model"])
+            self.p_lvl.plot(np.array([a for a, _ in hh]) - t0, np.array([b for _, b in hh]), pen=pg.mkPen(col, width=1.3),
+                            name=nm)
+            xf = xfer_spectrum(xin[-len(y):], y)
+            if xf:                                       # seulement là où le son reçu permet de mesurer (cohérence)
+                self.p_leq.plot(xf["f"], _coh_mask(xf, xf["mag"]), pen=pg.mkPen(col, width=1.2), name=nm,
+                                connect="finite")
+                self.p_lph.plot(xf["f"], _coh_mask(xf, xf["phase"]), pen=pg.mkPen(col, width=1.2), name=nm,
+                                connect="finite")
+            tb.insertRow(i)
+            for j, v_ in enumerate((nm, f"{m['rms']:.1f} dBFS", f"{m['peak']:.1f} dBFS", f"{m['rms'] - db_in:+.1f} dB")):
+                it = QtWidgets.QTableWidgetItem(v_)
+                it.setData(Qt.ItemDataRole.UserRole, k)
+                if j == 0:
+                    it.setForeground(QtGui.QColor(col))
+                tb.setItem(i, j, it)
+        tb.resizeColumnsToContents()
+        self.p_leq.setYRange(-24, 12)
+        self.p_lph.setYRange(-180, 180)
+
+    def live_listen(self):
+        e = self._eng()
+        it = self.lv_tbl.item(max(0, self.lv_tbl.currentRow()), 0) if self.lv_tbl.rowCount() else None
+        key = it.data(Qt.ItemDataRole.UserRole) if it is not None else (self.lv_keys[0] if self.lv_keys else None)
+        cur = self.lv_list.currentItem()
+        if cur is not None and cur.checkState() == Qt.CheckState.Checked and self.lv_tbl.currentRow() < 0:
+            key = cur.data(Qt.ItemDataRole.UserRole)
+        if e is None or key is None:
+            self.lv_fit.setText(TR("Pas de poste SDR en marche."))
+            return False
+        e.demod = dict(e.demod, compander=key)
+        e._push()
+        self.lv_fit.setText(TR("🎧 A écoute maintenant avec : {}").format(TR(COMPANDERS[key]["name"])))
+        return True
+
+    def live_fit(self, x=None):
+        if x is None:
+            xs = list(self.lv_in)
+            x = np.concatenate(xs) if xs else np.zeros(0, dtype=np.float32)
+        r = stair_fit(x)
+        e = self._eng()
+        prov = "sim" if (e is None or e.kind() == "demo") else "obs"
+        r["prov"] = prov
+        secs = len(x) / 48000.0
+        st, why = stair_validity(r, _lab_db(x) if len(x) else None, secs)
+        r["state"], r["reasons"] = st, why
+        self._st_res = (st, why, r)
+        self.observed = r if st == "done" else None          # le rapport ne reprend qu'une mesure valable
+        if r["ok"]:
+            self.lv_fit.setText(TR("{} · pente {} → taux de compression ≈ {}:1 · linéarité R² {}").format(
+                TR(PROVENANCE[prov]), f"{r['slope']:.2f}", f"{r['ratio']:.2f}" if r["ratio"] else "—", f"{r['r2']:.3f}"))
+        else:
+            self.lv_fit.setText("⚠ " + TR(r["why"]))
+        self.stair_status()
+        if len(x):
+            self.session_save("stair", prov, dict(seconds=round(secs, 1)),
+                              dict(ratio=r.get("ratio"), slope=r.get("slope"), r2=r.get("r2"), state=st),
+                              " ".join(why))
+        return r
+
+    # ------------------------------------------------------------------ ④ modulations
+    def _tab_mod(self):
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        h = QtWidgets.QHBoxLayout()
+        self.md_src = audio_button(self.owner, "melody")
+        self.md_go = QtWidgets.QPushButton(TR("▶ Comparer les modulations"))
+        self.md_go.clicked.connect(lambda *_: self.mod_run())
+        self.md_step = QtWidgets.QComboBox()
+        for k, t in LAB_MOD_STEPS:
+            self.md_step.addItem(TR(t), k)
+        self.md_step.setToolTip(TR("① les noms et ce que l'appli devine ; ② seulement des indices ; ③ quiz : à toi de "
+                                   "reconnaître chaque spectre (ordre mélangé)."))
+        self.md_step.currentIndexChanged.connect(lambda *_: self._mod_step())
+        self.md_a = QtWidgets.QPushButton(TR("📡 Ajouter le signal de A"))
+        self.md_a.setToolTip(TR("Le vrai spectre autour du récepteur A du poste SDR, avec ce que l'appli en devine."))
+        self.md_a.clicked.connect(lambda *_: self.mod_add_a())
+        h.addWidget(QtWidgets.QLabel(TR("Son")))
+        h.addWidget(self.md_src)
+        h.addWidget(self.md_go)
+        h.addWidget(self.md_step)
+        h.addWidget(self.md_a)
+        h.addStretch(1)
+        v.addLayout(h)
+        t = QtWidgets.QLabel(TR("Le même son, six façons d'occuper l'air : à quoi chacune ressemble sur un spectre, et ce que "
+                                "l'appli en devine (« C'est quoi ce signal ? »)."))
+        t.setWordWrap(True)
+        v.addWidget(t)
+        self.md_grid = QtWidgets.QGridLayout()
+        self.md_plots = []
+        self.md_ans = []
+        for i in range(6):
+            p = _lab_plot("—", "kHz", "dBFS")
+            self.md_plots.append(p)
+            self.md_grid.addWidget(p, 2 * (i // 3), i % 3)
+            cb = QtWidgets.QComboBox()
+            cb.addItem(TR("— ta réponse —"), "")
+            for c_ in MOD_QUIZ_CHOICES:
+                cb.addItem(TR(c_), c_)
+            cb.setVisible(False)
+            self.md_ans.append(cb)
+            self.md_grid.addWidget(cb, 2 * (i // 3) + 1, i % 3)
+        self.md_aplot = _lab_plot("📡 Signal de A", "kHz", "dBFS")
+        self.md_aplot.hide()
+        self.md_grid.addWidget(self.md_aplot, 4, 0, 1, 3)
+        v.addLayout(self.md_grid, 1)
+        q = QtWidgets.QHBoxLayout()
+        self.md_check = QtWidgets.QPushButton(TR("✔ Vérifier"))
+        self.md_check.clicked.connect(lambda *_: self.mod_check())
+        self.md_check.setVisible(False)
+        self.md_score = QtWidgets.QLabel("")
+        self.md_score.setWordWrap(True)
+        self.md_score.setVisible(False)
+        q.addWidget(self.md_check)
+        q.addWidget(self.md_score, 1)
+        v.addLayout(q)
+        self.md_info = QtWidgets.QLabel("")
+        self.md_info.setWordWrap(True)
+        v.addWidget(self.md_info)
+        return w
+
+    def mod_run(self, wait=False):
+        a = self.md_src.spec
+        if wait:
+            self._mod_done(lab_modulations(a), None)
+            return
+        self._busy(True, self.md_go, "▶ Comparer les modulations")
+        self.owner.run_heavy(lambda: lab_modulations(a), self._mod_done, what="Labo SDR")
+
+    def _mod_done(self, rows, err):
+        self._busy(False, self.md_go, "▶ Comparer les modulations")
+        if err is not None or not rows:
+            return
+        self.res_mod = rows
+        self._md_order = [int(i) for i in np.random.default_rng().permutation(len(rows))]
+        self._mod_draw()
+
+    # ------------------------------------------------------------------ ⑤ pannes simulées (SDR démo en direct)
+    def _tab_fault(self):
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        sb = QtWidgets.QGroupBox(TR("🎬 Scénarios guidés"))          # 8.2 : un clic = chaîne réglée + panne + quoi regarder
+        sl = QtWidgets.QVBoxLayout(sb)
+        self.sc_combo = QtWidgets.QComboBox()
+        for sc in LAB_SCENARIOS:
+            self.sc_combo.addItem(TR(sc["name"]), sc["key"])
+        self.sc_combo.setToolTip(TR("Un scénario règle la chaîne complète (et pose une panne dans le SDR démo s'il est "
+                                    "allumé), puis dit quoi regarder et pourquoi."))
+        self.sc_go = QtWidgets.QPushButton(TR("▶ Lancer le scénario"))
+        self.sc_go.clicked.connect(lambda *_: self.scenario(self.sc_combo.currentData()))
+        sl.addLayout(self.owner._row(self.sc_combo, self.sc_go, None))
+        self.sc_txt = QtWidgets.QLabel(TR("Choisis un scénario : le labo le joue, tu regardes ce qui change."))
+        self.sc_txt.setWordWrap(True)
+        self.sc_txt.setTextFormat(Qt.TextFormat.RichText)
+        sl.addWidget(self.sc_txt)
+        v.addWidget(sb)
+        t = QtWidgets.QLabel(TR("Injecte une panne dans le 🧪 SDR démo, en direct, pour voir comment l'appli la détecte "
+                                "(ligne « Flux » du Récepteur, alarmes, journal). Tout est marqué SIMULÉ. Rien ne touche un "
+                                "vrai SDR."))
+        t.setWordWrap(True)
+        v.addWidget(t)
+        h = QtWidgets.QHBoxLayout()
+        h.addWidget(QtWidgets.QLabel(TR("Durée")))
+        self.ft_dur = QtWidgets.QSpinBox()
+        self.ft_dur.setRange(5, 300)
+        self.ft_dur.setValue(30)
+        self.ft_dur.setSuffix(" s")
+        h.addWidget(self.ft_dur)
+        stop = QtWidgets.QPushButton(TR("■ Arrêter la panne"))
+        stop.clicked.connect(lambda *_: self.fault(None))
+        h.addWidget(stop)
+        h.addStretch(1)
+        v.addLayout(h)
+        g = QtWidgets.QGridLayout()
+        for i, (k, txt) in enumerate(DEMO_FAULTS):
+            b = QtWidgets.QPushButton(TR(txt))
+            b.setToolTip(TR(DEMO_FAULT_HELP[k]))
+            b.clicked.connect(lambda *_, k=k: self.fault(k))
+            g.addWidget(b, i // 2, 2 * (i % 2))
+            lab = QtWidgets.QLabel(TR(DEMO_FAULT_HELP[k]))
+            lab.setWordWrap(True)
+            g.addWidget(lab, i // 2, 2 * (i % 2) + 1)
+        v.addLayout(g)
+        self.ft_lbl = QtWidgets.QLabel("")
+        self.ft_lbl.setWordWrap(True)
+        v.addWidget(self.ft_lbl)
+        v.addStretch(1)
+        return w
+
+    def scenario(self, key, wait=False):
+        """Joue un scénario : chaîne complète réglée et calculée, panne posée dans le SDR démo (s'il tourne), texte."""
+        sc = next((x for x in LAB_SCENARIOS if x["key"] == key), None)
+        if sc is None:
+            return None
+        c = sc["chain"]
+        for combo, val in ((self.ch_tx, c.get("tx_comp", "")), (self.ch_rx, c.get("rx_comp", "")),
+                           (self.ch_fault, c.get("fault", "none")), (self.ch_mode, c.get("mode", "wfm"))):
+            combo.setCurrentIndex(max(0, combo.findData(val)))
+        self.ch_snr.setValue(int(c.get("snr", 40)))
+        self.chain_run(wait=wait)
+        live = ""
+        if sc["live"]:
+            if self.owner.sdr_cfg.get("demo") and self._eng() is not None:
+                self.fault(sc["live"])
+                live = TR("Panne posée dans le SDR démo en direct ({} s).").format(self.ft_dur.value())
+            else:
+                live = TR("Allume le 🧪 SDR démo et ▶ le poste pour voir aussi l'effet en direct.")
+        self.sc_txt.setText(f"<b>{_hesc(TR(sc['name']))}</b><br>{_hesc(TR('À regarder :'))} {_hesc(TR(sc['watch']))}"
+                            f"<br>{_hesc(TR('Pourquoi :'))} {_hesc(TR(sc['why']))}" + (f"<br><i>{_hesc(live)}</i>" if live else ""))
+        try:
+            self.owner.open_sdr_lab("chain")
+        except Exception:  # noqa: BLE001
+            pass
+        return sc
+
+    def fault(self, k):
+        o = self.owner
+        if k and not o.sdr_cfg.get("demo"):
+            self.ft_lbl.setText(TR("Les pannes ne se posent que sur le 🧪 SDR démo : allume-le (menu du mode), puis ▶ dans "
+                                   "le Récepteur."))
+            return False
+        sdr_demo_fault(k, self.ft_dur.value())
+        for e_ in (getattr(o, "sdr_engs", None) or {}).values():      # 8.2 : notée dans l'historique du poste
+            if e_.running() and e_.kind() == "demo":
+                e_._ev("fault", TR(dict(DEMO_FAULTS)[k]) if k else TR("fin"), journal=False)
+        o.log_event(dict(name=TR("Labo SDR"), freq=0.0, note=("🧪 " + TR(dict(DEMO_FAULTS)[k])) if k else TR("fin")),
+                    0.0, "PANNE SIMULÉE")
+        self._fault_refresh()
+        return True
+
+    def _fault_refresh(self):
+        f = sdr_demo_fault_now()
+        e = self._eng()
+        q = e.quality() if e is not None else None
+        if f:
+            self.ft_lbl.setText(TR("🧪 Panne en cours : {} · encore {} s").format(
+                TR(dict(DEMO_FAULTS)[f["kind"]]), f"{max(0.0, f['until'] - time.time()):.0f}") +
+                ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
+        else:
+            self.ft_lbl.setText(TR("Aucune panne en cours.") + ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
+
+    def stop(self):
+        for p in list(getattr(self, "_detached", {})):
+            self.plot_attach(p)
+        self._live_on(False)
+        if self.fx is not None:
+            self.fx.stop()
+
+    # ================================================================== 8.2 : Full Lab v2
+    # ---- provenance bien visible (🧪 simulé / 📡 observé) sur chaque panneau
+    PROV_STYLE = {"sim": ("#ffb300", "rgba(255,179,0,0.14)"), "obs": ("#30d158", "rgba(48,209,88,0.14)"),
+                  "calc": ("#8e8e93", "rgba(142,142,147,0.14)")}
+
+    def _badges_setup(self):
+        self.badges = {}
+        for key in LAB_KEYS:
+            b = QtWidgets.QLabel("")
+            b.setToolTip(TR("D'où viennent les résultats de ce panneau : 🧪 simulé (signal fabriqué par l'appli), "
+                            "📡 observé (reçu par un vrai SDR) ou 🧮 calculé (formule). Un résultat simulé n'est jamais "
+                            "une mesure."))
+            self.badges[key] = b
+            w = self.panels[key]
+            try:
+                if key == "chain":
+                    self._top.insertWidget(0, b)
+                elif key in ("cmp", "live"):
+                    w.findChild(QtWidgets.QSplitter).widget(0).layout().insertWidget(0, b)
+                else:
+                    w.layout().insertWidget(0, b)
+            except Exception:  # noqa: BLE001
+                pass
+            self.set_prov(key, "sim")
+
+    def set_prov(self, key, prov):
+        b = getattr(self, "badges", {}).get(key)
+        if b is None:
+            return
+        c, bg = self.PROV_STYLE.get(prov, self.PROV_STYLE["sim"])
+        b.setText(TR(PROVENANCE.get(prov, PROVENANCE["sim"])).upper())
+        b.setStyleSheet(f"QLabel {{ color: {c}; background: {bg}; border: 1px solid {c}; border-radius: 6px; "
+                        f"padding: 2px 8px; font-weight: 600; }}")
+        b.setProperty("prov", prov)
+
+    # ---- aide, focus et export de chaque graphe
+    def _plot_title(self, p):
+        if p in getattr(self, "md_plots", []) or p is getattr(self, "md_aplot", None):
+            return "Spectre d'une modulation"
+        t = p.objectName()[4:] if p.objectName().startswith("lab:") else ""
+        return t if t in LAB_PLOT_HELP else re.sub(r"<[^>]+>", "", p.getPlotItem().titleLabel.text or "")
+
+    def plot_help_text(self, p):
+        h = lab_plot_help(self._plot_title(p), TR)
+        if not h:
+            return None
+        return (TR("Ce que montre ce graphe : {}").format(h["shows"]) + "\n" +
+                TR("On peut en déduire : {}").format(h["can"]) + "\n" + TR("On ne peut PAS en déduire : {}").format(h["cannot"]))
+
+    def plot_help(self, p):
+        txt = self.plot_help_text(p) or TR("Pas d'explication pour ce graphe.")
+        box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Information, TR("❓ Que montre ce graphe ?"), txt,
+                                    QtWidgets.QMessageBox.StandardButton.Ok, p.window())
+        box.setWindowModality(Qt.WindowModality.NonModal)
+        box.show()
+        self._help_box = box
+        return txt
+
+    def _plot_menu(self, p, full=True):
+        vb = p.getPlotItem().vb
+        vb.menu.addSeparator()
+        vb.menu.addAction(TR("❓ Que montre ce graphe ?")).triggered.connect(lambda *_, p=p: self.plot_help(p))
+        if full:
+            vb.menu.addAction(TR("🔍 Agrandir ce graphe (focus)")).triggered.connect(lambda *_, p=p: self.plot_focus(p))
+        vb.menu.addAction(TR("💾 Exporter ce graphe (PNG)")).triggered.connect(lambda *_, p=p: self.plot_export(p))
+        tip = self.plot_help_text(p)
+        if tip:
+            p.setToolTip((p.toolTip() + "\n\n" if p.toolTip() else "") + tip)
+        if full:
+            try:
+                p.scene().sigMouseClicked.connect(lambda ev, p=p: ev.double() and self.plot_focus(p))
+            except Exception:  # noqa: BLE001
+                pass
+
+    def plot_focus(self, p):
+        """Double-clic (ou menu) : ce graphe prend toute la place de son panneau ; encore une fois = tout revient."""
+        panel = next((w for w in self.panels.values() if w.isAncestorOf(p)), None)
+        if panel is None:
+            return False
+        cur = self._focus.get(id(panel))
+        if cur is not None:
+            for q in cur[1]:
+                q.show()
+            self._focus.pop(id(panel), None)
+            if cur[0] is p:
+                self.owner.set_status(TR("Tous les graphes du panneau sont revenus."))
+                return False
+        hidden = [q for q in panel.findChildren(pg.PlotWidget) if q is not p and q.isVisible()]
+        for q in hidden:
+            q.hide()
+        self._focus[id(panel)] = (p, hidden)
+        self.owner.set_status(TR("Focus : double-clic sur le graphe (ou clic droit) pour revoir les autres."))
+        return True
+
+    def plot_export(self, p, path=None):
+        d = Path(self.owner.log_dir) / "rapports"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            nm = re.sub(r"[^\w-]+", "_", self._plot_title(p))[:40].strip("_") or "graphe"
+            path = path or str(d / f"labo_{nm}_{datetime.now():%Y%m%d_%H%M%S}.png")
+            ok = p.grab().save(path)
+        except OSError:
+            ok = False
+        self.owner.set_status(TR("💾 Graphe enregistré : {}").format(path) if ok else TR("⚠ Image impossible à enregistrer."))
+        return path if ok else None
+
+    # ---- sessions du labo (JSON dans <journaux>/labo/)
+    def _sess_dir(self):
+        return Path(self.owner.log_dir) / "labo"
+
+    def session_save(self, kind, prov, params, metrics, note=""):
+        doc = lab_session_doc(kind, prov, params, metrics, time.time(), note)
+        try:
+            d = self._sess_dir()
+            d.mkdir(parents=True, exist_ok=True)
+            path = str(d / f"{datetime.now():%Y%m%d_%H%M%S_%f}_{kind}.json")
+            write_atomic(path, json.dumps(doc, ensure_ascii=False, indent=1, default=float))
+        except (OSError, TypeError, ValueError):
+            return None
+        if getattr(self, "_sess_win", None) is not None and self._sess_win.isVisible():
+            self.sessions_fill()
+        return path
+
+    def sessions_load(self):
+        out = []
+        d = self._sess_dir()
+        if not d.is_dir():
+            return out
+        for f in sorted(d.glob("*.json"), reverse=True)[:300]:
+            try:
+                doc = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if lab_session_ok(doc):
+                out.append((str(f), doc))
+        return out
+
+    def _sess_label(self, doc):
+        t = datetime.fromtimestamp(doc.get("t") or 0)
+        m = doc.get("metrics") or {}
+        extra = ""
+        if doc["kind"] == "stair":
+            extra = (f" · {m.get('ratio'):.2f}:1" if m.get("ratio") else "") + " · " + TR(STAIR_STATES.get(m.get("state"), ""))
+        elif isinstance(m, dict):
+            extra = " · " + TR("{} modèle(s)").format(len(m))
+        return f"{t:%d/%m %H:%M:%S} · {TR(LAB_SESSION_KINDS[doc['kind']])} · {TR(PROVENANCE[doc['prov']])}{extra}" + (
+            f" · {doc['note'][:60]}" if doc.get("note") else "")
+
+    def open_sessions(self):
+        w = getattr(self, "_sess_win", None)
+        if w is None:
+            w = QtWidgets.QWidget(None, Qt.WindowType.Window)
+            w.setWindowTitle(TR("🗂 Sessions du labo"))
+            v = QtWidgets.QVBoxLayout(w)
+            t = QtWidgets.QLabel(TR("Chaque comparaison et chaque mesure à l'escalier est gardée ici (conditions + résultats "
+                                    "chiffrés). Choisis-en deux du même genre pour voir ce qui a changé."))
+            t.setWordWrap(True)
+            v.addWidget(t)
+            self.ss_list = QtWidgets.QListWidget()
+            self.ss_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+            self.ss_list.itemSelectionChanged.connect(lambda *_: self.sessions_compare())
+            v.addWidget(self.ss_list, 1)
+            row = QtWidgets.QHBoxLayout()
+            for txt, fn, tip in (("⚖ Comparer les 2 choisies", lambda: self.sessions_compare(), "Écarts entre les deux sessions."),
+                                 ("💾 Exporter (CSV)", lambda: self.sessions_export(), "Les sessions choisies (ou toutes) en CSV."),
+                                 ("📁 Dossier", lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(self._sess_dir()))),
+                                  "Ouvre le dossier des sessions."),
+                                 ("🗑 Supprimer", lambda: self.sessions_delete(), "Efface les sessions choisies.")):
+                b = QtWidgets.QPushButton(TR(txt))
+                b.setToolTip(TR(tip))
+                b.clicked.connect(lambda *_, fn=fn: fn())
+                row.addWidget(b)
+            v.addLayout(row)
+            self.ss_tbl = QtWidgets.QTableWidget(0, 6)
+            self.ss_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Mesure", "A", "B", "B − A", "Unité")])
+            self.ss_tbl.verticalHeader().setVisible(False)
+            self.ss_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+            v.addWidget(self.ss_tbl, 1)
+            self.ss_msg = QtWidgets.QLabel(TR("Un écart dit seulement ce qui a changé, pas lequel est « juste »."))
+            self.ss_msg.setWordWrap(True)
+            v.addWidget(self.ss_msg)
+            w.resize(760, 560)
+            fit_dialog(w, 760, 560)
+            self._sess_win = w
+        self.sessions_fill()
+        w.show()
+        w.raise_()
+        return w
+
+    def sessions_fill(self):
+        lw = self.ss_list
+        lw.blockSignals(True)
+        lw.clear()
+        for path, doc in self.sessions_load():
+            it = QtWidgets.QListWidgetItem(self._sess_label(doc))
+            it.setData(Qt.ItemDataRole.UserRole, path)
+            lw.addItem(it)
+        lw.blockSignals(False)
+
+    def _sess_sel(self):
+        lw = getattr(self, "ss_list", None)
+        if lw is None:
+            return []
+        out = []
+        for it in lw.selectedItems():
+            try:
+                out.append((it.data(Qt.ItemDataRole.UserRole),
+                            json.loads(Path(it.data(Qt.ItemDataRole.UserRole)).read_text(encoding="utf-8"))))
+            except (OSError, ValueError):
+                pass
+        return out
+
+    def sessions_compare(self, a=None, b=None):
+        if a is None or b is None:
+            sel = self._sess_sel()
+            if len(sel) != 2:
+                if hasattr(self, "ss_msg"):
+                    self.ss_msg.setText(TR("Choisis exactement 2 sessions du même genre."))
+                return None
+            b, a = sel[0][1], sel[1][1]                  # la liste va du plus récent au plus ancien : A = l'ancienne
+        rows = lab_session_diff(a, b)
+        if hasattr(self, "ss_tbl"):
+            t = self.ss_tbl
+            t.setRowCount(0)
+            for i, r in enumerate(rows):
+                t.insertRow(i)
+                for j, v_ in enumerate(r):
+                    if j == 0 and v_ != "—":
+                        v_ = TR(compander_card(v_)["model"]) if compander_card(v_) else v_
+                    elif j == 1:
+                        v_ = TR(v_)
+                    elif isinstance(v_, float):
+                        v_ = f"{v_:+.2f}" if j == 4 else f"{v_:.2f}"
+                    t.setItem(i, j, QtWidgets.QTableWidgetItem("—" if v_ is None else str(v_)))
+            t.resizeColumnsToContents()
+            if a.get("kind") != b.get("kind"):
+                self.ss_msg.setText(TR("Ces deux sessions ne sont pas du même genre : rien à comparer."))
+            else:
+                notes = [TR("⚠ Provenances différentes ({} / {}) : un simulé n'est pas une mesure.").format(
+                    TR(PROVENANCE[a["prov"]]), TR(PROVENANCE[b["prov"]]))] if a["prov"] != b["prov"] else []
+                if a.get("ver") != b.get("ver"):
+                    notes.append(TR("⚠ Versions des modèles différentes ({} / {}).").format(a.get("ver"), b.get("ver")))
+                self.ss_msg.setText(" ".join(notes) or TR("Un écart dit seulement ce qui a changé, pas lequel est « juste »."))
+        return rows
+
+    def sessions_export(self, path=None):
+        sel = self._sess_sel() or self.sessions_load()
+        d = self._sess_dir()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            path = path or str(d / f"sessions_{datetime.now():%Y%m%d_%H%M%S}.csv")
+            buf = io.StringIO()
+            wr = csv.writer(buf, delimiter=";")
+            wr.writerow(["date", "genre", "provenance", "version", "modele", "mesure", "valeur", "note"])
+            for _p, doc in sel:
+                dt = f"{datetime.fromtimestamp(doc.get('t') or 0):%Y-%m-%d %H:%M:%S}"
+                m = doc.get("metrics") or {}
+                items = [("—", k, v) for k, v in m.items() if not isinstance(v, dict)] + \
+                        [(k, k2, v2) for k, v in m.items() if isinstance(v, dict) for k2, v2 in v.items()]
+                for mod, k, v in items:
+                    wr.writerow([dt, doc["kind"], doc["prov"], doc.get("ver", ""), mod, k, v, doc.get("note", "")])
+            write_atomic(path, buf.getvalue())
+        except OSError as e:
+            if hasattr(self, "ss_msg"):
+                self.ss_msg.setText(TR("⚠ Export impossible : {}").format(e))
+            return None
+        if hasattr(self, "ss_msg"):
+            self.ss_msg.setText(TR("💾 Exporté : {}").format(path))
+        return path
+
+    def sessions_delete(self):
+        for path, _doc in self._sess_sel():
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        self.sessions_fill()
+
+    # ---- comparaison détaillée (grande fenêtre synchronisée)
+    def cmp_detail(self, res=None):
+        res = res or self.res_cmp
+        if not res or not res.get("rows"):
+            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
+            return None
+        old = getattr(self, "_detail", None)
+        if old is not None:
+            old.close()
+            old.deleteLater()
+        real = "xin" not in res["rows"][0]               # son reçu (sinon : signaux de test de la comparaison)
+        w = QtWidgets.QWidget(None, Qt.WindowType.Window)
+        w.setWindowTitle(TR("🔍 Comparaison détaillée des compandeurs"))
+        v = QtWidgets.QVBoxLayout(w)
+        top = QtWidgets.QHBoxLayout()
+        bd = QtWidgets.QLabel("")
+        top.addWidget(bd)
+        prov = res.get("meta", {}).get("prov") or "sim"
+        c, bg = self.PROV_STYLE.get(prov, self.PROV_STYLE["sim"])
+        bd.setText(TR(PROVENANCE[prov]).upper())
+        bd.setStyleSheet(f"color:{c}; background:{bg}; border:1px solid {c}; border-radius:6px; padding:2px 8px; "
+                         "font-weight:600;")
+        meta = res.get("meta", {})
+        info = QtWidgets.QLabel(TR("Son reçu, {} s · chaque modèle appliqué au même son (sans le son d'origine, on voit ce "
+                                   "qu'il en fait, pas lequel est juste).").format(f"{meta.get('seconds', 0):.1f}") if real else
+                                TR("Mêmes signaux et mêmes mesures pour tous les modèles · modèles {}").format(CMP_MODEL_VER))
+        info.setWordWrap(True)
+        top.addWidget(info, 1)
+        v.addLayout(top)
+        chk_row = QtWidgets.QHBoxLayout()
+        chk_row.addWidget(QtWidgets.QLabel(TR("Afficher :")))
+        w.chks = []
+        for i, row in enumerate(res["rows"]):
+            cb = QtWidgets.QCheckBox(TR(row["card"]["model"]))
+            cb.setChecked(True)
+            cb.setStyleSheet(f"color: {LAB_COLORS[i % len(LAB_COLORS)]}; font-weight: 600;")
+            cb.toggled.connect(lambda *_: self._detail_draw())
+            chk_row.addWidget(cb)
+            w.chks.append(cb)
+        chk_row.addStretch(1)
+        v.addLayout(chk_row)
+        grid = QtWidgets.QGridLayout()
+        if real:
+            titles = (("Niveau de chaque modèle", "s", "dBFS"), ("Son reçu (avant expanseur)", "s", "dBFS"),
+                      ("EQ en direct", "Hz", "dB"), ("Phase en direct", "Hz", "degrés"))
+        else:
+            titles = (("Transfert du récepteur", "entrée dBFS", "sortie dBFS"), ("Saut −30 → −10 → −30 dBFS", "s", "dBFS"),
+                      ("EQ de la chaîne", "Hz", "dB"), ("Phase (retard retiré)", "Hz", "degrés"))
+        w.plots = []
+        for i, (tt, xl, yl) in enumerate(titles):
+            p = _lab_plot(tt, xl, yl)
+            p.setObjectName("lab:" + tt)
+            p.setMinimumSize(300, 220)
+            if i >= 2:
+                _log_hz(p)
+            self._plot_menu(p, full=False)
+            grid.addWidget(p, i // 2, i % 2)
+            w.plots.append(p)
+        w.plots[3].setXLink(w.plots[2])                      # EQ et phase : même zoom en fréquence
+        if real:
+            w.plots[1].setXLink(w.plots[0])                  # niveau et son reçu : même instant
+        v.addLayout(grid, 1)
+        cols = (("Modèle", None, ""),) + ((("Niveau", "out", "dBFS"), ("Crête", "pk", "dBFS"), ("Dynamique", "dyn", "dB"),
+                                            ("Écart au son reçu", "gain", "dB"))
+                                           if real else tuple((lab, k, u) for k, lab, u in LAB_DIFF_KEYS))
+        tb = QtWidgets.QTableWidget(len(res["rows"]), len(cols))
+        tb.setHorizontalHeaderLabels([TR(c_[0]) + (" (" + c_[2] + ")" if c_[2] else "") for c_ in cols])
+        tb.verticalHeader().setVisible(False)
+        tb.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        for i, row in enumerate(res["rows"]):
+            m = dict(row["m"], slope=row.get("slope"))
+            for j, (_lab, k, _u) in enumerate(cols):
+                if k is None:
+                    it = QtWidgets.QTableWidgetItem(TR(row["card"]["model"]))
+                    it.setForeground(QtGui.QColor(LAB_COLORS[i % len(LAB_COLORS)]))
+                else:
+                    val = m.get(k)
+                    it = QtWidgets.QTableWidgetItem("—" if val is None else f"{val:.2f}")
+                tb.setItem(i, j, it)
+        tb.resizeColumnsToContents()
+        tb.setMaximumHeight(60 + 28 * len(res["rows"]))
+        v.addWidget(tb)
+        w.tbl, w.res, w.real = tb, res, real
+        self._detail = w
+        self._detail_draw()
+        w.resize(1100, 760)
+        fit_dialog(w, 1100, 760)
+        w.show()
+        w.raise_()
+        return w
+
+    def _detail_draw(self):
+        w = getattr(self, "_detail", None)
+        if w is None:
+            return
+        res = w.res
+        for p in w.plots:
+            p.clear()
+        for i, (row, cb) in enumerate(zip(res["rows"], w.chks)):
+            if not cb.isChecked():
+                continue
+            col = LAB_COLORS[i % len(LAB_COLORS)]
+            nm = TR(row["card"]["model"])
+            pen = pg.mkPen(col, width=2.0)
+            if w.real:
+                w.plots[0].plot(row["te"], row["env_out"][:len(row["te"])], pen=pen, name=nm)
+            else:
+                w.plots[0].plot(row["xin"], row["rx"], pen=pen, name=nm)
+                th = comp_curve(row["key"], "rx")
+                if th is not None:
+                    w.plots[0].plot(th[0], th[1], pen=pg.mkPen(col, width=1, style=Qt.PenStyle.DashLine))
+                w.plots[1].plot(row["transient"]["t"], row["transient"]["env"], pen=pen, name=nm)
+            fq = row.get("freq")
+            if fq:
+                w.plots[2].plot(fq["f"], _coh_mask(fq, fq["mag"]), pen=pen, name=nm, connect="finite")
+                w.plots[3].plot(fq["f"], _coh_mask(fq, fq["phase"]), pen=pen, name=nm, connect="finite")
+        if w.real:
+            w.plots[1].plot(res["te"], res["env_src"][:len(res["te"])], pen=pg.mkPen(LAB_COLORS[0], width=1.6),
+                            name=TR("son reçu"))
+            w.plots[0].setYRange(-80, 5)
+            w.plots[1].setYRange(-80, 5)
+        else:
+            w.plots[0].plot([-60, 0], [-60, 0], pen=pg.mkPen("#8e8e93", width=1, style=Qt.PenStyle.DotLine))
+            w.plots[0].setYRange(-90, 10)
+            w.plots[1].setYRange(-60, 0)
+        w.plots[2].setYRange(-24, 12)
+        w.plots[3].setYRange(-180, 180)
+
+    # ---- sources réelles : chaîne complète sur l'IQ du poste SDR ou d'un enregistrement
+    def chain_real(self, secs=1.0, wait=False):
+        e = self._eng()
+        if e is None or e.worker is None or e.a is None:
+            self.ch_res.setText(TR("Pas de poste SDR en marche : démarre-le (▶ dans le Récepteur) et cale A sur un micro."))
+            return False
+        wk = e.worker
+        g = dict(parts=[], n=0, want=int(wk.rate * secs), done=False, center=wk.center, rate=wk.rate)
+        wk.iq_grab = g
+        self._grab = (g, e)
+        self.ch_res.setText(TR("⏳ Capture de {} s d'IQ autour de A…").format(f"{secs:g}"))
+        if wait:
+            t0 = time.time()
+            while not g["done"] and time.time() - t0 < 10:
+                QtWidgets.QApplication.processEvents()
+                time.sleep(0.02)
+            return self._grab_check(wait=True)
+        QtCore.QTimer.singleShot(100, self._grab_check)
+        return True
+
+    def _grab_check(self, wait=False):
+        gr = getattr(self, "_grab", None)
+        if gr is None:
+            return False
+        g, e = gr
+        if not g["done"]:
+            if e.worker is None or e.worker.iq_grab is not g:
+                self._grab = None
+                self.ch_res.setText(TR("⚠ Capture interrompue : le poste SDR s'est arrêté."))
+                return False
+            QtCore.QTimer.singleShot(100, self._grab_check)
+            return True
+        self._grab = None
+        iq = np.concatenate(g["parts"]) if g["parts"] else np.zeros(0, dtype=np.complex64)
+        dem = e.demod or {}
+        args = dict(iq=iq, fs=g["rate"], f_off=e.a * 1e6 - g["center"], mode=dem.get("mode", "wfm"),
+                    dev=dem.get("dev"), rx_comp=dem.get("compander") or None, deemph_us=float(dem.get("deemph") or 0.0))
+        self._real_src = TR("poste SDR, A = {} MHz").format(f"{e.a:.4f}")
+        self._real_prov = "sim" if e.kind() == "demo" else "obs"
+        return self._chain_real_go(args, wait)
+
+    def chain_file(self, path=None, secs=1.0, f_mhz=None, wait=False):
+        """Chaîne complète sur un enregistrement IQ SigMF (⏺ du temps réel, incident…)."""
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self.panels["chain"], TR("Enregistrement IQ"),
+                                                            str(Path(self.owner.log_dir)),
+                                                            "SigMF (*.sigmf-meta *.sigmf-data)")
+            if not path:
+                return False
+        base = re.sub(r"\.sigmf-(meta|data)(\.part)?$", "", path)
+        try:
+            with open(base + ".sigmf-meta", encoding="utf-8") as fm:
+                info = sigmf_info(json.load(fm))
+            nb = IQ_BYTES[info["dtype"]]
+            with open(base + ".sigmf-data", "rb") as fd:
+                raw = fd.read(int(info["rate"] * secs) * nb)
+            iq = np.asarray(iq_decode(info["dtype"], raw), dtype=np.complex64)
+        except (OSError, ValueError, KeyError) as ex:
+            self.ch_res.setText(TR("⚠ Lecture impossible : {}").format(ex))
+            return False
+        if len(iq) < int(info["rate"] * 0.05):
+            self.ch_res.setText(TR("⚠ Enregistrement trop court."))
+            return False
+        if f_mhz is not None:
+            f_off = f_mhz * 1e6 - info["center"]
+        else:                                             # le signal le plus fort (hors continu au centre)
+            nfft = 8192
+            avg, _mx = rt_frames(iq[: (len(iq) // nfft) * nfft], nfft)
+            Fo = (np.arange(nfft) - nfft // 2) * (info["rate"] / nfft)
+            avg = np.where(np.abs(Fo) < 30e3, -300, avg)
+            f_off = round(float(Fo[int(np.argmax(avg))]) / 1000.0) * 1000.0     # au kHz près (pas d'une case FFT)
+        args = dict(iq=iq, fs=info["rate"], f_off=f_off, mode="wfm", dev=None, rx_comp=None, deemph_us=50.0)
+        self._real_src = TR("enregistrement {} ({} MHz)").format(Path(base).name, f"{(info['center'] + f_off) / 1e6:.4f}")
+        self._real_prov = "obs"
+        return self._chain_real_go(args, wait)
+
+    def _chain_real_go(self, args, wait):
+        if wait:
+            try:
+                r = lab_chain_iq(**args)
+            except Exception as ex:  # noqa: BLE001
+                return self._chain_real_done(None, ex)
+            return self._chain_real_done(r, None)
+        self._busy(True, self.ch_go, "▶ Calculer")
+        self.owner.run_heavy(lambda: lab_chain_iq(**args), self._chain_real_done, what="Labo SDR")
+        return True
+
+    def _chain_real_done(self, r, err):
+        self._busy(False, self.ch_go, "▶ Calculer")
+        if err is not None or r is None:
+            self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
+            return None
+        self.res_chain = r
+        prov = getattr(self, "_real_prov", "obs")
+        self.set_prov("chain", prov)
+        self.ch_help.setText(TR("Signal réel : les réglages Son, Émetteur, C/N et Panne ne s'appliquent pas ici (ils servent "
+                                "à la simulation, ▶ Calculer). Vues RF prises au moment où le son est le plus fort."))
+        for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
+            p.clear()
+        out = r["out"]
+        s0 = max(0, min(len(out) - 4800, int(0.2 * 48000)))
+        tm = np.arange(min(4800, len(out) - s0)) / 48.0
+        self.p_wave.plot(tm, out[s0:s0 + len(tm)], pen=pg.mkPen(LAB_COLORS[1], width=1.0), name=TR("son démodulé"))
+        self.p_env.plot(r["te"], r["env_out"][:len(r["te"])], pen=pg.mkPen(LAB_COLORS[1], width=1.2), name=TR("sortie"))
+        self.p_env.setYRange(-80, 5)
+        self.p_iq.plot(r["iq_t"], r["I"], pen=pg.mkPen(LAB_COLORS[0], width=1), name="I")
+        self.p_iq.plot(r["iq_t"], r["Q"], pen=pg.mkPen(LAB_COLORS[3], width=1), name="Q")
+        v = r.get("views")
+        if v:
+            self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
+                              symbolBrush=pg.mkBrush(LAB_COLORS[0]))
+            self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
+        if r["L"] is not None:
+            self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
+            self.p_spec.plot(r["F"], r["Lmax"], pen=pg.mkPen(LAB_COLORS[1], width=1), name=TR("max"))
+            self.p_spec.setXRange(-200, 200)
+        m = r["m"]
+        rows = [(TR("Source"), getattr(self, "_real_src", "")), (TR("Niveau du son"), f"{m['out']:.1f} dBFS"),
+                (TR("Crête"), f"{m['pk_out']:.1f} dBFS"),
+                (TR("Dynamique"), "—" if m["dyn"] is None else f"{m['dyn']:.0f} dB"), (TR("Durée"), f"{m['seconds']:.2f} s")]
+        fl = "".join(f"<li style='color:{self.owner.tone_color(t) if t != 'ok' else 'inherit'}'>{_hesc(x)}</li>"
+                     for x, t in lab_findings_real(r, TR))
+        self.ch_res.setText(f"<b>{_hesc(TR(PROVENANCE[prov]))}</b> · " + " · ".join(
+            f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
+        mm = {k: (None if v_ is None or not np.isfinite(v_) else round(float(v_), 3)) for k, v_ in m.items()}
+        self.session_save("chain", prov, dict(source=getattr(self, "_real_src", ""), mode=r["mode"], dev=r["dev"]), mm)
+        return r
+
+    # ---- compandeurs sur le vrai son reçu : figer quelques secondes et comparer en grand
+    def live_snapshot(self, secs=4.0, wait=False):
+        xs = list(self.lv_in)
+        x = np.concatenate(xs) if xs else np.zeros(0, dtype=np.float32)
+        x = x[-int(secs * 48000):]
+        if len(x) < 48000 or not self.lv_keys:
+            self.lv_fit.setText(TR("Pas assez de son reçu (au moins 1 s) ou aucun modèle coché."))
+            return None
+        e = self._eng()
+        de = float((e.demod or {}).get("deemph") or 50.0) if e is not None else 50.0
+        prov = "sim" if (e is None or e.kind() == "demo") else "obs"
+        keys = list(self.lv_keys)
+
+        def done(r, err):
+            if err is not None or r is None:
+                self.lv_fit.setText(TR("⚠ Calcul impossible : {}").format(err))
+                return
+            r["meta"]["prov"] = prov
+            self.res_real = r
+            self.session_save("cmp_real", prov, dict(seconds=round(len(x) / 48000.0, 2), deemph=de),
+                              {row["key"]: {k: (None if v_ is None else round(float(v_), 3)) for k, v_ in row["m"].items()}
+                               for row in r["rows"]})
+            self.cmp_detail(r)
+        if wait:
+            done(comp_compare_real(keys, x, de), None)
+            return self.res_real
+        self.owner.run_heavy(lambda: comp_compare_real(keys, x, de), done, what="Labo SDR")
+        return True
+
+    # ---- état de la mesure à l'escalier
+    def stair_status(self):
+        xs = list(self.lv_in)
+        secs = sum(len(a) for a in xs) / 48000.0
+        need = 2 * STAIR_PERIOD + 1
+        r = getattr(self, "_st_res", None)
+        e = self._eng()
+        if r is not None:
+            st, why = r[0], r[1]
+            txt = TR(STAIR_STATES[st]) + (" · " + " ".join(TR(x) for x in why) if why else " · " + TR("mesure valable"))
+        elif e is None:
+            st = "stopped" if secs > 0 else "ready"
+            txt = (TR(STAIR_STATES[st]) + " · " + (TR("le poste SDR s'est arrêté pendant l'enregistrement")
+                                                   if secs > 0 else TR("démarre un poste SDR et écoute le micro en A")))
+        elif secs < need:
+            st = "running"
+            txt = TR(STAIR_STATES[st]) + f" · {secs:.0f} / {need:.0f} s"
+        else:
+            st = "ready"
+            txt = TR(STAIR_STATES[st]) + " · " + TR("assez de son pour mesurer")
+        col = {"done": "#30d158", "invalid": "#ff453a", "stopped": "#ff9f0a", "running": "#64d2ff"}.get(st, "#8e8e93")
+        if hasattr(self, "lv_state"):
+            self.lv_state.setText(f"● {txt}")
+            self.lv_state.setStyleSheet(f"color: {col}; font-weight: 600;")
+        return st, txt
+
+    # ---- modulations : découverte / indices / quiz, + le signal de A
+    def _mod_draw(self):
+        rows = getattr(self, "res_mod", None)
+        if not rows:
+            return
+        step = self.md_step.currentData()
+        order = self._md_order if step == "quiz" else list(range(len(rows)))
+        for i, (p, idx) in enumerate(zip(self.md_plots, order)):
+            r = rows[idx]
+            p.clear()
+            c = r["cls"]
+            p.plot((r["F"] - 100.0) * 1000.0, r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1))
+            if step == "discover":
+                ok = (" (" + TR("pas de case « AM » dans la détection") + ")") if r["ok"] is None else \
+                    (" ✔" if r["ok"] else " ✖")
+                p.setTitle(TR(r["name"]), size="9pt")
+                col = "#8e8e93" if r["ok"] is None else (LAB_COLORS[2] if r["ok"] else LAB_COLORS[4])
+                ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))) + ok, color=col, anchor=(0, 0),
+                                 fill=pg.mkBrush(20, 20, 22, 200))
+                ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
+                p.addItem(ti)
+                p.setToolTip(TR(c.get("why", "")) + (f"\n−20 dB : {c['bw_khz']:.1f} kHz" if c.get("bw_khz") else ""))
+            else:
+                p.setTitle(TR("Signal {}").format(i + 1), size="9pt")
+                if step == "hints":
+                    ti = pg.TextItem(mod_hint(r, TR), color="#8e8e93", anchor=(0, 0), fill=pg.mkBrush(20, 20, 22, 200))
+                    ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
+                    p.addItem(ti)
+                p.setToolTip(TR("Quel est ce signal ?"))
+            p.setXRange(-r["span"] * 1000.0, r["span"] * 1000.0, padding=0.02)
+            p.enableAutoRange(axis="y", enable=True)
+        quiz = step == "quiz"
+        for cb in self.md_ans:
+            cb.setVisible(quiz)
+        self.md_check.setVisible(quiz)
+        self.md_score.setVisible(quiz)
+        if quiz:
+            self.md_score.setText(TR("Choisis un nom sous chaque spectre, puis ✔ Vérifier."))
+
+    def _mod_step(self):
+        rows = getattr(self, "res_mod", None)
+        if self.md_step.currentData() == "quiz" and rows:
+            self._md_order = [int(i) for i in np.random.default_rng().permutation(len(rows))]
+            for cb in self.md_ans:
+                cb.setCurrentIndex(0)
+        self._mod_draw()
+
+    def mod_check(self, answers=None):
+        rows = getattr(self, "res_mod", None)
+        if not rows:
+            return None
+        truth = [rows[i]["name"] for i in self._md_order]
+        if answers is None:
+            answers = [cb.currentData() for cb in self.md_ans]
+        good, tot, ok = mod_quiz_score(answers, truth)
+        for cb, k in zip(self.md_ans, ok):
+            cb.setStyleSheet(f"color: {LAB_COLORS[2] if k else LAB_COLORS[4]}; font-weight: 600;")
+        self.md_score.setText(TR("{} / {} bonnes réponses · réponses : {}").format(
+            good, tot, " · ".join(f"{i + 1}. {TR(t)}" for i, t in enumerate(truth))))
+        return good, tot, ok
+
+    def mod_add_a(self):
+        """📡 Le signal réel de A (spectre du poste SDR) à côté des modèles, avec ce que l'appli en devine."""
+        e = self._eng()
+        fr = e.last if e is not None else None
+        if e is None or fr is None or e.a is None or len(fr["F"]) != len(fr["avg"]):
+            self.md_info.setText(TR("Pas de poste SDR en marche : démarre-le et cale A sur un signal."))
+            return None
+        F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
+        mx = fr.get("mx")                                 # crêtes du dernier morceau : l'excursion FM s'y voit mieux
+        if mx is not None and len(mx) == len(F):
+            L = np.maximum(L, np.asarray(mx, dtype=float))
+        span = 0.5
+        msk = np.abs(F - e.a) <= span
+        if msk.sum() < 8:
+            self.md_info.setText(TR("A est au bord de la fenêtre du SDR : recentre-le."))
+            return None
+        c = classify_signal(F[msk], L[msk], e.a, getattr(e, "pilot", None), span=span)
+        p = self.md_aplot
+        p.clear()
+        p.show()
+        prov = "sim" if e.kind() == "demo" else "obs"
+        p.setTitle(TR("📡 Signal de A ({} MHz) · {}").format(f"{e.a:.4f}", TR(PROVENANCE[prov])), size="9pt")
+        p.plot((F[msk] - e.a) * 1000.0, L[msk], pen=pg.mkPen(LAB_COLORS[1], width=1.2))
+        ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))), color=LAB_COLORS[1], anchor=(0, 0),
+                         fill=pg.mkBrush(20, 20, 22, 200))
+        ti.setPos(-span * 1000.0, float(np.nanmax(L[msk])) + 2.0)
+        p.addItem(ti)
+        p.setXRange(-span * 1000.0, span * 1000.0, padding=0.02)
+        self.set_prov("mod", prov)
+        self.md_info.setText(TR("À côté des modèles : le vrai signal de A. Compare sa largeur et sa forme."))
+        return c
+
+
+def lab_grid(mw, docks):
+    """8.2 : vrai affichage Labo : les 5 panneaux en grille dans la fenêtre mw (QMainWindow) — chaîne | compandeurs en
+    haut, en direct | modulations + pannes (onglets) en bas. docks = {clé: QDockWidget}."""
+    B = Qt.DockWidgetArea.BottomDockWidgetArea
+    ks = [k for k in LAB_KEYS if k in docks]
+    for k in ks:
+        mw.removeDockWidget(docks[k])
+        docks[k].setFloating(False)
+    if not ks:
+        return
+    mw.addDockWidget(B, docks[ks[0]])
+    pos = {"chain": None, "cmp": ("chain", Qt.Orientation.Horizontal), "live": ("chain", Qt.Orientation.Vertical),
+           "mod": ("cmp", Qt.Orientation.Vertical), "fault": ("mod", None)}
+    placed = {ks[0]}
+    for k in ks[1:]:
+        ref, ori = pos.get(k) or (None, None)
+        if ref not in placed:
+            ref, ori = ks[0], Qt.Orientation.Horizontal
+        if ori is None:
+            mw.tabifyDockWidget(docks[ref], docks[k])
+        else:
+            mw.splitDockWidget(docks[ref], docks[k], ori)
+        placed.add(k)
+    for k in ks:
+        docks[k].show()
+    if "mod" in docks:
+        docks["mod"].raise_()
+
+    def sizes():                                             # grille à parts égales (sinon Qt donne tout à la chaîne)
+        try:
+            W, H = max(800, mw.width()), max(500, mw.height())
+            cols = [docks[k] for k in ("chain", "cmp") if k in docks]
+            if len(cols) == 2:
+                mw.resizeDocks(cols, [W // 2, W // 2], Qt.Orientation.Horizontal)
+            rows = [docks[k] for k in ("chain", "live") if k in docks]
+            if len(rows) == 2:
+                mw.resizeDocks(rows, [int(H * 0.6), int(H * 0.4)], Qt.Orientation.Vertical)
+        except RuntimeError:
+            pass
+    QtCore.QTimer.singleShot(0, sizes)
+    QtCore.QTimer.singleShot(150, sizes)
+
+
+LAB_VIEWS = (("tabs", "▤ Rangé : un panneau à la fois (onglets)"), ("grid", "▦ Tout à l'écran (grille)"),
+             ("dual", "🖥🖥 Sur 2 écrans (chaîne et direct ici, le reste sur l'autre)"))
+
+
+class LabMixin:
+    """Labo SDR : panneaux, affichage Labo, tableau des SDR. (Méthodes de MainWindow, regroupées par thème.)"""
+
+    def open_sdr_lab(self, tab=0):
+        """Montre les panneaux du labo (en onglets en bas la 1re fois ; ensuite là où tu les as mis) et met devant celui
+        demandé (n° ou clé)."""
+        key = LAB_KEYS[int(tab)] if isinstance(tab, int) else str(tab)
+        docks = self.lab_docks
+        if not getattr(self, "_lab_hid_done", False):        # graphes masqués (config lue après la création du labo)
+            self._lab_hid_done = True
+            self._sdrlab.apply_hidden()
+        if not any(d.isVisible() or d.objectName() in self.panel_wins for d in docks.values()):
+            first = None
+            for k in LAB_KEYS:
+                d = docks[k]
+                if d.objectName() in self.panel_wins:
+                    continue
+                if first is None:
+                    if d.isFloating() or self.dockWidgetArea(d) == Qt.DockWidgetArea.NoDockWidgetArea:
+                        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, d)
+                    first = d
+                elif self.dockWidgetArea(d) == self.dockWidgetArea(first) and not d.isFloating():
+                    self.tabifyDockWidget(first, d)
+                d.show()
+        d = docks[key]
+        w = self.panel_wins.get(d.objectName())
+        if w is not None:
+            w.show()
+            w.raise_()
+        else:
+            d.show()
+            d.raise_()
+        return self._sdrlab
+
+    def close_sdr_lab(self):
+        for d in self.lab_docks.values():
+            self.panel_window(d, False)
+            d.hide()
+        self._sdrlab.stop()
+
+    def lab_view(self, on=True, how=None):
+        """8.2 (Clément : « avec un vrai affichage labo ? », puis « trop de fenêtres, plus rangé ou double écran ») : la
+        fenêtre principale ne montre plus que le labo — rangé en onglets (défaut), en grille, ou réparti sur 2 écrans ; les
+        panneaux sortis en vraie fenêtre restent où ils sont. off = retour à la disposition du mode."""
+        if on is True and how is None:
+            how = self.sdr_cfg.get("lab_view", "tabs")
+        if on and not getattr(self, "_lab_hid_done", False):
+            self._lab_hid_done = True
+            self._sdrlab.apply_hidden()
+        docks = {k: d for k, d in self.lab_docks.items() if d.objectName() not in self.panel_wins}
+        if on:
+            how = how if how in dict(LAB_VIEWS) else "tabs"
+            self.sdr_cfg["lab_view"] = how
+            if self.screen_hosts:
+                self.screens_off(relayout=False)
+            if how == "dual" and len(self.screen_list()[0]) < 2:
+                how = "grid"
+                self.set_status(TR("Un seul écran : le labo s'affiche en grille."))
+            if how == "dual":
+                scrs, main = self.screen_list()
+                other = next(i for i in range(len(scrs)) if i != main)
+                plan = {n: SCREEN_HIDE for n, _g, _t in SCREEN_PANELS}
+                for k, _t, n in LAB_DOCKS:
+                    plan[n] = main if k in ("chain", "live") else other
+                self.screens_apply(plan, quiet=True, keep_mode=True)
+                docks = {k: d for k, d in self.lab_docks.items() if k in ("chain", "live")}
+            for d in self.docks:
+                if d not in self.lab_docks.values() and d.objectName() not in self.panel_wins:
+                    d.hide()
+            self.dock_wall.hide()
+            if how == "tabs":
+                B = Qt.DockWidgetArea.BottomDockWidgetArea
+                ks = [k for k in LAB_KEYS if k in docks]
+                for k in ks:
+                    self.removeDockWidget(docks[k])
+                    docks[k].setFloating(False)
+                if ks:
+                    self.addDockWidget(B, docks[ks[0]])
+                    for k in ks[1:]:
+                        self.tabifyDockWidget(docks[ks[0]], docks[k])
+                    for k in ks:
+                        docks[k].show()
+                    docks[ks[0]].raise_()
+            else:
+                lab_grid(self, docks)
+            self.lab_view_on = True
+            QtCore.QTimer.singleShot(0, self._fit_screen)
+            self.set_status(TR("🧪 Affichage Labo : bouge les panneaux comme tu veux ; « ↩ Quitter l'affichage Labo » "
+                               "(menu du mode ou panneau Chaîne) pour revenir."))
+        else:
+            self.lab_view_on = False
+            for d in docks.values():
+                d.hide()
+            self._sdrlab.stop()
+            self.set_rf_mode(self.rf_mode)
+        try:
+            self._sdrlab.view_btn.setText(TR("↩ Quitter l'affichage Labo") if on else TR("⛶ Affichage Labo"))
+        except Exception:  # noqa: BLE001
+            pass
+        return how if on else False
+
+    lab_view_on = False
+
+    def _make_lab(self):
+        """8.2 : le labo SDR en 5 panneaux (créés avec les autres : la disposition enregistrée les replace ; ils sont dans
+        🪟 Fenêtres, se sortent en vraie fenêtre, se mettent sur l'écran qu'on veut)."""
+        self._sdrlab = SdrLab(self)
+        self.lab_docks = {}
+        B = Qt.DockWidgetArea.BottomDockWidgetArea
+        acts = self.win_menu.actions()
+        sep = next((x for x in acts if x.isSeparator()), None)
+        for key, title, name in LAB_DOCKS:
+            d = self._make_dock(TR(title), name, self._sdrlab.panels[key], B)
+            d.hide()
+            self.lab_docks[key] = d
+            self.docks.append(d)
+            if sep is not None:
+                self.win_menu.insertAction(sep, d.toggleViewAction())
+            else:
+                self.win_menu.addAction(d.toggleViewAction())
+
+    def all_lab_docks(self):
+        return list((getattr(self, "lab_docks", None) or {}).values())
+
+    def open_sdr_compat(self):
+        """8.2 : tableau de compatibilité des SDR (ce que l'appli sait faire avec chacun, et ce qui a été essayé en vrai)."""
+        d = QtWidgets.QDialog(self)
+        d.setWindowTitle(TR("📋 SDR pris en charge"))
+        fit_dialog(d, 1000, 520)
+        v = QtWidgets.QVBoxLayout(d)
+        t = QtWidgets.QLabel(TR("Ce que l'appli sait faire avec chaque SDR. « Essayé en vrai » : non pour tous à ce jour (fait "
+                                "sur des faux SDR et le 🧪 SDR démo)."))
+        t.setWordWrap(True)
+        v.addWidget(t)
+        rows = sdr_compat_rows()
+        cols = ("SDR", "Plage", "Bits", "Débit max", "Fenêtre utile", "Balayage", "Écoute / IQ", "Émission",
+                "dBm calibrés", "Essayé en vrai", "Fiche")
+        tb = QtWidgets.QTableWidget(len(rows), len(cols))
+        tb.setHorizontalHeaderLabels([TR(c) for c in cols])
+        tb.verticalHeader().setVisible(False)
+        tb.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        yes, no = "✔", "—"
+        for i, r in enumerate(rows):
+            vals = (r["name"], r["range"], str(r["bits"] or "—"), f"{r['rate']:g} MS/s" if r["rate"] else "—",
+                    f"{r['span']:g} MHz" if r["span"] else "—", yes if r["sweep"] else no, yes if r["iq"] else no,
+                    yes if r["tx"] else no, yes if r["dbm"] else no, TR("non"), TR(r["src"]))
+            for j, x in enumerate(vals):
+                tb.setItem(i, j, QtWidgets.QTableWidgetItem(x))
+        tb.resizeColumnsToContents()
+        v.addWidget(tb, 1)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(d.close)
+        v.addWidget(bb)
+        self._compat_dlg = d
+        d.show()
+        return d
+
+
+def self_test(path):
+    """RF-Technical-Monitor.exe --selftest fichier : vérifie que l'EXE contient bien ce qui est chargé à la demande
+    (réseau socket://, traductions, son). Lancé par la CI après PyInstaller (7.23.2 : sans protocol_socket dans
+    l'exe, le tinySA en réseau était impossible : « invalid URL, protocol 'socket' not known »)."""
+    import importlib
+    import socket as _s
+    out, fails = [], 0
+
+    def check(label, fn):
+        nonlocal fails
+        try:
+            fn()
+            out.append(f"OK   {label}")
+        except Exception as e:  # noqa: BLE001
+            fails += 1
+            out.append(f"FAIL {label} : {type(e).__name__} : {e}")
+
+    def net():
+        srv = _s.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        ser = serial.serial_for_url(f"socket://127.0.0.1:{srv.getsockname()[1]}", 115200, timeout=2)
+        conn, _ = srv.accept()
+        conn.sendall(b"ch> ")
+        got = ser.read(4)
+        ser.close()
+        conn.close()
+        srv.close()
+        assert got == b"ch> ", got
+
+    check("tinySA en réseau (socket://, relais / Raspberry Pi)", net)
+    check("traductions anglaises (lang_en)", lambda: importlib.import_module("lang_en"))
+    check("son (PySide6.QtMultimedia)", lambda: importlib.import_module("PySide6.QtMultimedia"))
+    check("une seule instance (PySide6.QtNetwork)", lambda: importlib.import_module("PySide6.QtNetwork").QLocalServer)
+    check("QR code (segno)", lambda: importlib.import_module("segno").make("http://192.168.1.2:8080/").matrix)
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    check("manuels embarqués (FR + EN)", lambda: [(base / "docs" / n).stat() for n in ("manuel.html", "manual_en.html")])
+    out.append(f"ÉCHECS: {fails}")
+    Path(path).write_text("\n".join(out) + "\n", encoding="utf-8")
+    return fails
+
+
+def _instance_name():
+    """Nom du canal local de l'appli (un par dossier de config, donc un par utilisateur Windows)."""
+    import hashlib
+    return "RFTechnicalMonitor-" + hashlib.sha1(str(CFG_PATH.parent).encode("utf-8")).hexdigest()[:12]
+
+
+def single_instance(app):
+    """8.0.3 (Clément : « je peux ouvrir plusieurs fois le logiciel ») : un verrou dans le dossier de config. Déjà
+    ouverte -> on lui demande de revenir devant et on rend None (cette 2ᵉ copie se ferme). Une relance (langue, garde)
+    attend jusqu'à 20 s que l'ancienne soit fermée. TSM_MULTI=1 : plusieurs copies permises (dépannage).
+    -> le serveur local (QLocalServer) à garder, ou None."""
+    from PySide6 import QtNetwork
+    if os.environ.get("TSM_MULTI") == "1":
+        return QtNetwork.QLocalServer(app)
+    CFG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock = QtCore.QLockFile(str(CFG_PATH.parent / "instance.lock"))
+    lock.setStaleLockTime(0)                 # verrou d'une appli plantée (processus mort) : repris tout seul
+    wait = 20000 if os.environ.get("TSM_WAIT_INSTANCE") == "1" else 300
+    if not lock.tryLock(wait):
+        sock = QtNetwork.QLocalSocket()
+        sock.connectToServer(_instance_name())
+        if sock.waitForConnected(1500):
+            sock.write(b"show")
+            sock.flush()
+            sock.waitForBytesWritten(1000)
+            sock.disconnectFromServer()
+        else:
+            QtWidgets.QMessageBox.information(None, APP_NAME, TR("RF Technical Monitor est déjà ouvert sur ce PC (regarde dans la "
+                                                                 "barre des tâches)."))
+        return None
+    app._instance_lock = lock
+    srv = QtNetwork.QLocalServer(app)
+    QtNetwork.QLocalServer.removeServer(_instance_name())
+    srv.listen(_instance_name())
+    return srv
+
+
+def _instance_wake(srv, win):
+    """Une 2ᵉ copie a été lancée : la fenêtre déjà ouverte revient devant."""
+    while srv.hasPendingConnections():
+        c = srv.nextPendingConnection()
+        c.disconnected.connect(c.deleteLater)
+    try:
+        if win.isMinimized():
+            win.showNormal()
+        win.show()
+        win.raise_()
+        win.activateWindow()
+        win.set_status(TR("RF Technical Monitor était déjà ouvert : le voici."))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def main():
+    if "--selftest" in sys.argv:            # CI : contrôle de l'exe, sans fenêtre
+        i = sys.argv.index("--selftest")
+        sys.exit(1 if self_test(sys.argv[i + 1] if i + 1 < len(sys.argv) else "selftest.txt") else 0)
+    if "--garde" in sys.argv:               # garde : lance l'appli et la relance si elle plante / se fige
+        run_guard()
+        sys.exit(0)
+    app = QtWidgets.QApplication(sys.argv)
+    app._gc_timer = install_gc_main_thread(app)
+    app._lang = read_language()
+    if not install_language(app._lang):
+        app._lang = "fr"
+        install_french(app)
+    ico = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    for cand in (ico / "icone.png", ico / "assets" / "icone.png"):     # exe (PyInstaller) ou sources
+        if cand.exists():
+            app.setWindowIcon(QtGui.QIcon(str(cand)))
+            break
+    app._crash_fh = install_crash_log(app)
+    if "--relais" in sys.argv:              # PC où est branché le 2ᵉ tinySA : juste le relais réseau
+        win = RelayWindow()
+    else:
+        inst = single_instance(app)         # 8.0.3 : déjà ouverte -> on la ramène devant, on ne s'ouvre pas 2 fois
+        if inst is None:
+            sys.exit(0)
+        win = MainWindow()
+        inst.newConnection.connect(lambda: _instance_wake(inst, win))
+    win.show()
+    sys.exit(app.exec())
+
+
+# ====================================================================================================
+# Fenêtre principale (8.1 étape 3 : après les parties SDR, dont elle hérite les méthodes)
+class MainWindow(SdrPostsMixin, SdrModeMixin, SdrReceiversMixin, SdrDemoMixin, SdrToolsMixin, SdrFollowMixin, ScreensMixin, LabMixin,
+                 QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VER}")
@@ -24698,10 +29919,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             self.web = ws
             self.set_status("🌐 Page web active : " + self.web_urls_text())
-
-    def web_extra(self):
-        """7.68 : routes web ajoutées par une autre version (V8) -> (extra_get, extra_pin) de WebServer. V7 : aucune."""
-        return {}, {}
 
     def web_urls_text(self):
         if self.web is None:
@@ -32090,535 +37307,7 @@ class MainWindow(QtWidgets.QMainWindow):
             lb.close()
 
 
-def log_crash(kind, text, path=None):
-    """Ajoute une erreur inattendue à crash.log (horodatée, avec la version). -> chemin du fichier."""
-    path = Path(path or CRASH_PATH)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} · {APP_NAME} {APP_VER} · {kind}\n{text}\n")
-    except OSError:
-        pass
-    return path
-
-
-def install_crash_log(app=None):
-    """L'exe n'a pas de console : toute erreur imprévue part dans crash.log, avec un message (au plus 1 / min).
-    Plantage dur (segfault) : faulthandler écrit aussi dans crash.log."""
-    state = {"last": 0.0}
-
-    def hook(t, v, tb):
-        if issubclass(t, KeyboardInterrupt):
-            return
-        path = log_crash("erreur", "".join(traceback.format_exception(t, v, tb)))
-        if app is not None and time.time() - state["last"] > 60:
-            state["last"] = time.time()
-            try:
-                QtWidgets.QMessageBox.warning(
-                    None, APP_NAME, f"Erreur inattendue : {t.__name__}: {v}\n\nLe logiciel continue. Le détail est dans :\n"
-                                    f"{path}\n(envoie ce fichier pour qu'on corrige).")
-            except Exception:  # noqa: BLE001
-                pass
-
-    def thook(args):
-        log_crash(f"erreur dans un fil ({getattr(args.thread, 'name', '?')})",
-                  "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
-
-    sys.excepthook = hook
-    threading.excepthook = thook
-    try:
-        CRASH_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fh = open(CRASH_PATH, "a", encoding="utf-8")
-        faulthandler.enable(fh)
-        return fh                                  # à garder ouvert
-    except OSError:
-        return None
-
-
-def _tr_args(tr, args, kw, which="first", lists=(), kws=()):
-    """Traduit des arguments : which = "first" (1re chaîne seulement : le texte, pas la donnée associée),
-    "all" (toutes les chaînes), ou une liste d'indices."""
-    a = list(args)
-    if which == "first":
-        for i, x in enumerate(a):
-            if isinstance(x, str):
-                a[i] = tr(x)
-                break
-    else:
-        for i, x in enumerate(a):
-            if isinstance(x, str) and (which == "all" or i in which):
-                a[i] = tr(x)
-    for i in lists:
-        if i < len(a) and isinstance(a[i], (list, tuple)):
-            a[i] = [tr(x) if isinstance(x, str) else x for x in a[i]]
-    for k in kws:
-        if isinstance(kw.get(k), str):
-            kw[k] = tr(kw[k])
-    return a, kw
-
-
-def _patch(cls, name, which="first", lists=(), kws=(), static=False):
-    orig = getattr(cls, name, None)
-    if orig is None or getattr(orig, "_tsm_tr", False):
-        return
-    tr = TR
-    if static:
-        def f(*args, **kw):
-            a, kw = _tr_args(tr, args, kw, which, lists, kws)
-            return orig(*a, **kw)
-        f._tsm_tr = True
-        setattr(cls, name, staticmethod(f))
-    else:
-        def f(self, *args, **kw):
-            a, kw = _tr_args(tr, args, kw, which, lists, kws)
-            return orig(self, *a, **kw)
-        f._tsm_tr = True
-        setattr(cls, name, f)
-
-
-def install_plain_buttons():
-    """Boutons sans emoji de tête (look « pro » 7.54) : posé sur QAbstractButton.setText et les constructeurs de
-    QPushButton / QToolButton, AVANT install_language (la traduction s'applique au texte complet, puis on retire
-    l'emoji). Les menus et listes gardent leurs emojis."""
-    W = QtWidgets
-    o_set = W.QAbstractButton.setText
-    if getattr(o_set, "_tsm_plain", False):
-        return
-
-    def set_text(self, t, _o=o_set):
-        return _o(self, plain_btn_text(t))
-    set_text._tsm_plain = True
-    W.QAbstractButton.setText = set_text
-    for cls in (W.QPushButton, W.QToolButton):
-        o_init = cls.__init__
-
-        def init(self, *a, _o=o_init, **kw):
-            _o(self, *a, **kw)
-            t = W.QAbstractButton.text(self)
-            if t:
-                o_set(self, plain_btn_text(t))
-        cls.__init__ = init
-
-
-install_plain_buttons()
-
-
-def _load_lang_en():
-    """-> (exact, modèles, morceaux de page web, vocabulaire) anglais (lang_en + lang_en_v8), ou None."""
-    here = str(Path(__file__).resolve().parent)          # à côté du programme, d'où qu'on le lance
-    if here not in sys.path:
-        sys.path.append(here)
-    try:
-        import lang_en                                    # fichier de traductions à côté du programme / dans l'exe
-    except ImportError:
-        return None
-    exact, tpl = dict(lang_en.EXACT), dict(lang_en.TEMPLATES)
-    try:
-        import lang_en_v8                                 # textes propres à la V8 (SDR), dans leur propre fichier
-        exact.update(lang_en_v8.EXACT)
-        tpl.update(lang_en_v8.TEMPLATES)
-        if not getattr(lang_en, "_v8_web", False):        # morceaux de la page web propres à la V8 (vue 🎧 Écoute)
-            lang_en.WEB = list(lang_en.WEB) + list(getattr(lang_en_v8, "WEB", []))
-            lang_en._v8_web = True
-    except ImportError:
-        pass
-    return exact, tpl, lang_en.WEB, lang_en.VOCAB
-
-
-_EN_TR = []
-
-
-def en_translator():
-    """Traducteur anglais, même si l'appli est en français (page web / alertes au choix de chacun)."""
-    if not _EN_TR:
-        if TR:
-            _EN_TR.append(TR)
-        else:
-            d = _load_lang_en()
-            _EN_TR.append(Translator(d[0], d[1]) if d else Translator())
-    return _EN_TR[0]
-
-
-_WEB_PAGES = {}
-
-
-WEB_EXTRA_JS = ""        # 7.68 : JavaScript ajouté par une autre version (V8 : vues EXT) ; vide en V7
-
-
-def web_page_full():
-    """WEB_PAGE + vues et JavaScript ajoutés par une autre version (WEB_VIEWS complétée, WEB_EXTRA_JS)."""
-    base = set(_WEB_BASE_VIEWS)
-    xv = "{" + ",".join(f'"{k}":["{i}","{t}","{d}"]' for k, i, t, d in WEB_VIEWS if k not in base) + "}"
-    return WEB_PAGE.replace("/*__VIEWS_X__*/{}", xv).replace("/*__EXTRA_JS__*/", WEB_EXTRA_JS)
-
-
-def web_page_bytes(lang):
-    """Page web de l'équipe dans la langue de la personne (« fr » : la page d'origine)."""
-    if lang not in _WEB_PAGES:
-        d = _load_lang_en() if lang == "en" else None
-        page = web_page_lang(web_page_full(), d[2], en_translator())[0] if d else web_page_full()
-        _WEB_PAGES[lang] = page.encode("utf-8")
-    return _WEB_PAGES[lang]
-
-
-def install_language(code):
-    """Langue de l'interface. « fr » : rien à faire (le programme est écrit en français). « en » : charge
-    lang_en.py et fait passer tout texte donné à Qt par TR (constructeurs et setters des widgets, menus, tableaux,
-    boîtes de message, sélecteurs de fichiers, axes pyqtgraph). À appeler AVANT de construire les fenêtres.
-    -> True si la langue est active."""
-    if code != "en":
-        return False
-    d = _load_lang_en()
-    if d is None:
-        return False
-    exact, tpl, _web, vocab = d
-    TR.__init__(exact, tpl)
-    for lst in (NAME_WORDS, SCENE_WORDS, GROUP_WORDS):    # mots proposés pour les noms : en anglais
-        lst[:] = list(dict.fromkeys(vocab.get(w, w) for w in lst))
-    W = QtWidgets
-    for cls in (W.QLabel, W.QPushButton, W.QCheckBox, W.QRadioButton, W.QToolButton, W.QGroupBox, W.QDockWidget,
-                W.QMenu, W.QListWidgetItem, W.QTableWidgetItem, QtGui.QAction, W.QCommandLinkButton, W.QToolBar):
-        _patch(cls, "__init__")
-    _patch(W.QTreeWidgetItem, "__init__", which=(), lists=(0, 1))
-    for cls, names in ((W.QAbstractButton, ("setText",)), (W.QLabel, ("setText",)), (W.QGroupBox, ("setTitle",)),
-                       (W.QWidget, ("setToolTip", "setStatusTip", "setWhatsThis", "setWindowTitle")),
-                       (W.QMenu, ("setTitle", "addAction", "addMenu", "addSection")),
-                       (W.QToolBar, ("addAction",)),
-                       (QtGui.QAction, ("setText", "setToolTip", "setStatusTip", "setIconText")),
-                       (W.QComboBox, ("setPlaceholderText",)),
-                       (W.QLineEdit, ("setPlaceholderText",)), (W.QTextEdit, ("setPlaceholderText",)),
-                       (W.QPlainTextEdit, ("setPlaceholderText",)),
-                       (W.QAbstractSpinBox, ("setSpecialValueText",)),
-                       (W.QSpinBox, ("setSuffix", "setPrefix")), (W.QDoubleSpinBox, ("setSuffix", "setPrefix")),
-                       (W.QTabWidget, ("addTab", "insertTab", "setTabText", "setTabToolTip")),
-                       (W.QTabBar, ("setTabText", "setTabToolTip")),
-                       (W.QTableWidgetItem, ("setText", "setToolTip", "setStatusTip")),
-                       (W.QListWidgetItem, ("setText", "setToolTip", "setStatusTip")),
-                       (W.QTreeWidgetItem, ("setText", "setToolTip", "setStatusTip")),
-                       (W.QListWidget, ("addItem",)), (W.QFormLayout, ("addRow", "insertRow")),
-                       (W.QStatusBar, ("showMessage",)),
-                       (W.QMessageBox, ("setText", "setInformativeText", "setDetailedText", "addButton")),
-                       (W.QDialogButtonBox, ("addButton",)),
-                       (W.QProgressDialog, ("setLabelText", "setCancelButtonText"))):
-        for n in names:
-            _patch(cls, n)
-    for n, lists in (("addItem", ()), ("insertItem", ()), ("setItemText", ()), ("addItems", (0,))):
-        orig_c = getattr(W.QComboBox, n)                  # liste modifiable (noms de scène, de groupe…) : on n'y
-        if getattr(orig_c, "_tsm_tr", False):              # touche pas, son texte est relu par le programme
-            continue
-
-        def combo(self, *args, _o=orig_c, _l=lists, **kw):
-            if not self.isEditable():
-                args, kw = _tr_args(TR, args, kw, () if _l else "first", _l)
-            return _o(self, *args, **kw)
-        combo._tsm_tr = True
-        setattr(W.QComboBox, n, combo)
-    _patch(W.QListWidget, "addItems", which=(), lists=(0,))
-    for cls in (W.QTableWidget,):
-        _patch(cls, "setHorizontalHeaderLabels", which=(), lists=(0,))
-        _patch(cls, "setVerticalHeaderLabels", which=(), lists=(0,))
-    _patch(W.QTreeWidget, "setHeaderLabels", which=(), lists=(0,))
-    _patch(W.QTreeWidget, "setHeaderLabel")
-    orig_data = W.QComboBox.setItemData                   # bulle d'un choix de liste (rôle ToolTip) seulement
-    if not getattr(orig_data, "_tsm_tr", False):
-        def set_item_data(self, i, value, role=Qt.ItemDataRole.UserRole):
-            if role == Qt.ItemDataRole.ToolTipRole and isinstance(value, str):
-                value = TR(value)
-            return orig_data(self, i, value, role)
-        set_item_data._tsm_tr = True
-        W.QComboBox.setItemData = set_item_data
-    orig_html = W.QTextEdit.setHtml
-    if not getattr(orig_html, "_tsm_tr", False):
-        def set_html(self, h):
-            return orig_html(self, TR.html(h))
-        set_html._tsm_tr = True
-        W.QTextEdit.setHtml = set_html
-    _patch(W.QMessageBox, "__init__", which="all")
-    for n in ("information", "warning", "critical", "question", "about"):
-        _patch(W.QMessageBox, n, which=(1, 2), static=True)
-    for n in ("getText", "getMultiLineText", "getInt", "getDouble"):
-        _patch(W.QInputDialog, n, which=(1, 2), static=True)
-    orig_item = W.QInputDialog.getItem
-    if not getattr(orig_item, "_tsm_tr", False):
-        def get_item(parent, title, label, items, *a, **kw):
-            items = list(items)
-            shown = [TR(x) for x in items]
-            res, ok = orig_item(parent, TR(title), TR(label), shown, *a, **kw)
-            return (items[shown.index(res)] if res in shown else res), ok    # on rend le texte d'origine
-        get_item._tsm_tr = True
-        W.QInputDialog.getItem = staticmethod(get_item)
-    for n in ("getOpenFileName", "getOpenFileNames", "getSaveFileName"):
-        _patch(W.QFileDialog, n, which=(1, 3), kws=("caption", "filter"), static=True)
-    _patch(W.QFileDialog, "getExistingDirectory", which=(1,), kws=("caption",), static=True)
-    _patch(W.QColorDialog, "getColor", which=(2,), kws=("title",), static=True)
-    _patch(pg.PlotItem, "setLabel", which=(1,), kws=("text",))
-    _patch(pg.PlotItem, "setTitle")
-    _patch(pg.LabelItem, "setText")
-    return True
-
-
-def restart_app():
-    """Relance l'appli dans un NOUVEAU processus indépendant. Exe PyInstaller « un seul fichier » : sans précaution,
-    le nouveau processus hérite des variables d'environnement de l'ancien et réutilise son dossier temporaire
-    (_MEI…), que l'ancien efface en se fermant → « No module named numpy._core._multiarray_umath » (bug 7.11.0
-    vu par Clément). PYINSTALLER_RESET_ENVIRONMENT=1 (PyInstaller ≥ 6.9) + variables _PYI_* / _MEIPASS2 retirées
-    = il repart de zéro avec son propre dossier. -> True si le processus a démarré."""
-    frozen = getattr(sys, "frozen", False)
-    args = sys.argv[1:] if frozen else [str(Path(__file__).resolve())] + sys.argv[1:]
-    env = QtCore.QProcessEnvironment.systemEnvironment()
-    for k in list(env.keys()):
-        if k.startswith("_PYI_") or k in ("_MEIPASS2", "_MEIPASS"):
-            env.remove(k)
-    env.insert("PYINSTALLER_RESET_ENVIRONMENT", "1")
-    env.insert("TSM_WAIT_INSTANCE", "1")              # 8.0.3 : attend que l'ancienne fenêtre soit fermée
-    pr = QtCore.QProcess()
-    pr.setProgram(sys.executable)
-    pr.setArguments(args)
-    pr.setProcessEnvironment(env)
-    pr.setWorkingDirectory(str(Path(sys.executable).parent if frozen else Path.cwd()))
-    ok = pr.startDetached()
-    return bool(ok[0] if isinstance(ok, tuple) else ok)
-
-
-GUARD_LOG = CFG_PATH.parent / "garde.log"
-
-
-def _guard_env(beat, restarted):
-    """Environnement de l'appli lancée par la garde (exe PyInstaller : dossier _MEI… à elle, cf. restart_app)."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k not in ("_MEIPASS2", "_MEIPASS")}
-    env.update(PYINSTALLER_RESET_ENVIRONMENT="1", TSM_HEARTBEAT=str(beat), TSM_GUARD_RESTART="1" if restarted else "0",
-               TSM_WAIT_INSTANCE="1")
-    return env
-
-
-def _beat_pid(beat):
-    """N° de processus de l'appli écrit dans le battement (7.60.2), ou None."""
-    try:
-        parts = Path(beat).read_text(encoding="utf-8").split()
-        return int(parts[1]) if len(parts) > 1 else None
-    except (OSError, ValueError):
-        return None
-
-
-def _pid_alive(pid):
-    """Le processus pid tourne-t-il encore ?"""
-    if not pid:
-        return False
-    if os.name == "nt":
-        try:
-            import ctypes
-            k = ctypes.windll.kernel32
-            h = k.OpenProcess(0x1000 | 0x00100000, False, int(pid))   # QUERY_LIMITED_INFORMATION | SYNCHRONIZE
-            if not h:
-                return False
-            try:
-                return k.WaitForSingleObject(h, 0) == 0x102           # WAIT_TIMEOUT = encore vivant
-            finally:
-                k.CloseHandle(h)
-        except Exception:  # noqa: BLE001
-            return False
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except OSError:
-        return False
-
-
-def _kill_pid(pid):
-    try:
-        if os.name == "nt":
-            subprocess.run("taskkill /F /T /PID".split() + [str(pid)], capture_output=True, timeout=15,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        else:
-            import signal
-            os.kill(int(pid), signal.SIGKILL)
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _kill_tree(pr):
-    """Ferme de force l'appli ET ses processus enfants. L'exe PyInstaller « un seul fichier » = un lanceur + l'appli
-    Python dans un 2ᵉ processus : tuer le seul lanceur laissait l'appli figée vivante (port COM gardé, puis 2 appli
-    après le dégel ; vu par Clément en 7.52 : « COM4 accès refusé » après la relance)."""
-    try:
-        if os.name == "nt":
-            subprocess.run("taskkill /F /T /PID".split() + [str(pr.pid)], capture_output=True, timeout=15,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        pr.kill()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        pr.wait(15)
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def run_guard(cmd=None, beat=None, log=None, hang_s=GUARD_HANG_S, grace_s=GUARD_GRACE_S, poll_s=2.0,
-              max_runs=None, stop=None):
-    """RF-Technical-Monitor.exe --garde : petit processus SANS fenêtre qui lance l'appli et la surveille. Elle plante
-    (code ≠ 0) -> relancée ; elle ne bat plus depuis `hang_s` (figée) -> fermée de force puis relancée ; fermée
-    exprès (code 0) -> la garde s'arrête aussi. Relancée, l'appli reprend la surveillance si elle tournait.
-    -> nombre de relances."""
-    import subprocess
-    frozen = getattr(sys, "frozen", False)
-    if cmd is None:
-        args = [a for a in sys.argv[1:] if a != "--garde"]
-        cmd = [sys.executable] + ([] if frozen else [str(Path(__file__).resolve())]) + args
-    beat = Path(beat or (CFG_PATH.parent / "battement.txt"))
-    log = Path(log or GUARD_LOG)
-
-    def note(msg):
-        try:
-            log.parent.mkdir(parents=True, exist_ok=True)
-            with open(log, "a", encoding="utf-8") as f:
-                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
-        except OSError:
-            pass
-
-    starts, runs, restarts = [], 0, 0
-    note(f"garde démarrée ({APP_NAME} {APP_VER})")
-    while True:
-        try:
-            beat.unlink()
-        except OSError:
-            pass
-        t0 = time.time()
-        starts.append(t0)
-        runs += 1
-        try:
-            pr = subprocess.Popen(cmd, env=_guard_env(beat, runs > 1),
-                                  cwd=str(Path(sys.executable).parent if frozen else Path.cwd()))
-        except OSError as e:
-            note(f"lancement impossible : {e}")
-            return restarts
-        last_loop, ref = time.time(), t0
-        why = ""
-        while True:
-            if stop is not None and stop.is_set():
-                _kill_tree(pr)
-                note("garde arrêtée")
-                return restarts
-            time.sleep(poll_s)
-            now = time.time()
-            if now - last_loop > max(30.0, 10 * poll_s):     # le PC dormait : on ne compte pas ce temps
-                ref = now
-            last_loop = now
-            try:
-                hb = max(beat.stat().st_mtime, ref)
-                age = now - hb
-            except OSError:
-                age = None if ref == t0 else now - ref
-            act = guard_action(pr.poll(), age, now - t0, hang_s, grace_s)
-            if act == "wait":
-                continue
-            if act == "stop":
-                note("appli fermée normalement : fin de la garde")
-                return restarts
-            if act == "kill":
-                why = f"figée (plus de signe de vie depuis {int(age if age is not None else now - t0)} s) : fermée de force"
-                app_pid = _beat_pid(beat)
-                _kill_tree(pr)
-                # 7.60.2 (Clément : « l'autre s'est pas arrêtée, le tiny est bloqué ») : on vise AUSSI l'appli par son
-                # propre n° (écrit dans le battement) et on attend qu'elle soit vraiment fermée avant de relancer —
-                # sinon la nouvelle n'a pas le port COM.
-                for _try in range(6):
-                    if not _pid_alive(app_pid):
-                        break
-                    _kill_pid(app_pid)
-                    time.sleep(2.0)
-                if _pid_alive(app_pid):
-                    note(f"⚠ l'appli figée (processus {app_pid}) ne se ferme pas : le port du tinySA peut rester pris")
-                elif app_pid:
-                    note(f"appli figée (processus {app_pid}) bien fermée")
-            else:
-                why = f"arrêtée avec le code {pr.returncode} (plantage)"
-            break
-        restarts += 1
-        if max_runs is not None and runs >= max_runs:
-            note(f"appli {why} ; nombre maximal de lancements atteint")
-            return restarts
-        wait_s = guard_delay(starts, time.time())
-        note(f"appli {why} ; relance dans {int(wait_s)} s")
-        log_crash("garde", f"L'appli s'est {why}. Relancée automatiquement par la garde.")
-        end = time.time() + wait_s
-        while time.time() < end:
-            if stop is not None and stop.is_set():
-                return restarts
-            time.sleep(min(1.0, poll_s))
-
-
-def guard_beat(path=None):
-    """Battement de cœur pour la garde (rien si l'appli n'a pas été lancée par la garde)."""
-    path = path or os.environ.get("TSM_HEARTBEAT")
-    if not path:
-        return False
-    try:
-        Path(path).write_text(f"{time.time()} {os.getpid()}", encoding="utf-8")   # 7.60.2 : + n° du processus
-        return True
-    except OSError:
-        return False
-
-
-def read_language():
-    """Langue choisie (config.json « lang »), sinon celle du système : français si Windows est en français,
-    anglais sinon. TSM_LANG (variable d'environnement) l'impose (tests)."""
-    env = os.environ.get("TSM_LANG")
-    if env in ("fr", "en"):
-        return env
-    for path in (CFG_PATH, CFG_BAK):
-        try:
-            v = json.loads(path.read_text(encoding="utf-8")).get("lang")
-            if v in ("fr", "en"):
-                return v
-            break
-        except Exception:  # noqa: BLE001
-            continue
-    return "fr" if QtCore.QLocale.system().language() == QtCore.QLocale.Language.French else "en"
-
-
-def install_french(app):
-    """Boutons standard de Qt en français (Oui / Non, OK / Annuler, Ouvrir…). Cherche aussi dans l'exe PyInstaller."""
-    dirs = [QtCore.QLibraryInfo.path(QtCore.QLibraryInfo.LibraryPath.TranslationsPath)]
-    base = getattr(sys, "_MEIPASS", None)
-    if base:
-        dirs += [os.path.join(base, "PySide6", "Qt", "translations"), os.path.join(base, "PySide6", "translations")]
-    ok = False
-    for name in ("qtbase_fr", "qt_fr"):
-        tr = QtCore.QTranslator(app)
-        if any(tr.load(name, d) for d in dirs if d):
-            app.installTranslator(tr)
-            ok = True
-    return ok
-
-
-def install_gc_main_thread(app, interval_ms=500):
-    """Le ramasse-miettes de Python ne tourne plus que dans le fil de l'interface.
-    Sinon (Python 3.12+) il peut se déclencher dans le fil du tinySA et y détruire des objets Qt de l'interface
-    (courbes, lignes de tableau jetées quand on change le nombre de points…) → « access violation » (crash.log de
-    Clément, 7.4.2 : ScanWorker.run, boucle d'attente de reconnexion). Même remède que GarbageCollector de pyqtgraph."""
-    gc.disable()
-    thr = gc.get_threshold()
-
-    def tick():
-        c0, c1, c2 = gc.get_count()
-        if c0 > thr[0]:
-            gc.collect(0)
-            if c1 > thr[1]:
-                gc.collect(1)
-                if c2 > thr[2]:
-                    gc.collect(2)
-
-    t = QtCore.QTimer(app)
-    t.timeout.connect(tick)
-    t.start(interval_ms)
-    return t
-
-
-# Branche V8 : bulles des menus SDR, ajoutées ici (et pas dans MainWindow.TIPS_MENU, partagé avec la V7 : sinon
-# chaque ajout de bulle côté V7 au même endroit provoquait un conflit de fusion).
+# Ce qui complète la classe une fois créée (sous-menus, actions, raccourcis des modes)
 MainWindow.EXTRA_MENUS.append(("📡 SDR (bêta : écoute et moniteur)", [   # V8 : sous-menu (sans toucher au menu V7), ordre d'usage
     ("📡 Mode SDR (panneaux SDR à l'écran)", "rf_mode_sdr"),
     ("📟+📡 Mode combiné (tinySA + SDR)", "rf_mode_both"),
@@ -32676,4882 +37365,10 @@ MainWindow.TIPS_MENU.update({
         "📡 Moniteur multicanal": "V8 : tous tes micros de la fenêtre du SDR mesurés en même temps (niveau, voisins,\n"
                                  "largeur) ; les plus importants démodulés (son, déviation, dérive, coupures).",
 })
-
-
-# ---------------------------------------------------------------- V8 étape 6 : branchements sur les prises de la V7
-class V8Bridge(QtCore.QObject):
-    """Passe une commande du fil du serveur web au fil de l'interface (signal en file d'attente)."""
-    req = Signal(object)
-
-
-def _v8_web_extra(self):
-    br = getattr(self, "_v8_bridge", None)
-    if br is None:
-        br = self._v8_bridge = V8Bridge()
-        br.req.connect(self.web_listen_do, Qt.ConnectionType.QueuedConnection)
-    return ({"/ecoute.pcm": (("ecoute",), self.web_listen_pcm), "/ecoute.json": (("ecoute",), self.web_listen_json)},
-            {"/ecoute": (listen_request, br.req.emit)})
-
-
-MainWindow.web_extra = _v8_web_extra
-
-
-def _v8_open_incidents(self):
-    """9. 📦 Rejouer un incident SDR : choisir son dossier (journaux/incidents/date/incident_…)."""
-    root = Path(self.log_dir) / "incidents"
-    d = QtWidgets.QFileDialog.getExistingDirectory(self, "Dossier d'incident à rejouer", str(root if root.is_dir()
-                                                                                           else self.log_dir))
-    if d:
-        open_incident(self, d)
-
-
-MainWindow.open_incidents = _v8_open_incidents
-
-
-# Étape 17 : les SDR sur la carte, comme les tinySA (tuile « 📡 », glisser sur une scène = la surveiller, liens, état)
-
-
-
-
-
-
-def _v8_post_live(e):
-    return e is not None and e.running() and e.last is not None and time.time() - float(e.last.get("t") or 0) < 5
-
-
-
-
-
-
-def _v8_sdr_links(self):
-    o = self.owner
-    for it in getattr(self, "sdr_links", []):
-        if it.scene() is self:
-            self.removeItem(it)
-    self.sdr_links = []
-    for pid, e in (getattr(o, "sdr_engs", None) or {}).items():
-        a = self.nodes.get(map_key("sdr", pid))
-        if a is None:
-            continue
-        for scn in e.post()["scenes"]:
-            b = self.nodes.get(map_key("scene", scn))
-            if b is None:
-                continue
-            pa, pb = a.port(b.pos().y() < a.pos().y()), b.port(b.pos().y() >= a.pos().y())
-            path = QtGui.QPainterPath(pa)
-            dy = max(40.0, abs(pb.y() - pa.y()) / 2) * (1 if pb.y() >= pa.y() else -1)
-            path.cubicTo(QtCore.QPointF(pa.x(), pa.y() + dy), QtCore.QPointF(pb.x(), pb.y() - dy), pb)
-            pen = QtGui.QPen(QtGui.QColor("#64d2ff"), 2.4)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            if not _v8_post_live(e):
-                pen.setStyle(Qt.PenStyle.DashLine)
-            it = self.addPath(path, pen)
-            it.setZValue(5)
-            self.sdr_links.append(it)
-
-
-
-
-
-
-
-
-
-
-MapScene._v8_sdr_links = _v8_sdr_links
-
-
-def _v8_open_sdr_posts(self):
-    """📡 Mes SDR (fenêtre gardée)."""
-    d = getattr(self, "_posts_dlg", None)
-    if d is None:
-        d = self._posts_dlg = SdrPostsDialog(self)
-    d.fill()
-    d.show()
-    d.raise_()
-    return d
-
-
-MainWindow.open_sdr_posts = _v8_open_sdr_posts
-
-
-
-
-# ---------------------------------------------------------------- V8 étape 16 : le SDR au cœur (panneaux, modes)
-SDR_DOCKS = (("rx", "📡 SDR · Récepteur", "dock_sdr_rx", "SdrReceiverPanel"),
-             ("spec", "📡 SDR · Spectre", "dock_sdr_spec", "SdrSpectrumPanel"),
-             ("wf", "📡 SDR · Waterfall", "dock_sdr_wf", "SdrWaterfallPanel"),
-             ("mics", "📡 SDR · Mes micros", "dock_sdr_mics", "SdrMicsPanel"),
-             ("diag", "📡 SDR · Diagnostic", "dock_sdr_diag", "SdrDiagPanel"))
-
-
-def _v8_make_post(self, pid):
-    """Étape 17 : un poste SDR = un moteur + ses 4 panneaux (déplaçables, dans 🪟 Fenêtres et les vraies fenêtres)."""
-    eng = self.sdr_engs[pid] = SdrEngine(self, pid)
-    docks = self.post_docks[pid] = {}
-    B = Qt.DockWidgetArea.BottomDockWidgetArea
-    acts = self.win_menu.actions()
-    sep = next((x for x in acts if x.isSeparator()), None)
-    for key, title, name, cls in SDR_DOCKS:
-        nm = name if pid == 1 else name.replace("dock_sdr_", f"dock_sdr{pid}_")
-        pw = globals()[cls](self, eng)
-        if key == "rx":
-            pw = SdrScroll(pw)          # 8.0.1 : le Récepteur défile au lieu d'imposer sa taille (fenêtre trop grande,
-        d = self._make_dock(self._post_title(pid, title), nm, pw, B)   # « Mes fréquences » sous le bord de l'écran)
-        d.hide()
-        docks[key] = d
-        self.docks.append(d)
-        if sep is not None:
-            self.win_menu.insertAction(sep, d.toggleViewAction())
-        else:
-            self.win_menu.addAction(d.toggleViewAction())
-    return eng
-
-
-def _v8_post_title(self, pid, title):
-    if pid == 1:
-        return title
-    p = next((x for x in sdr_posts_norm(self.sdr_cfg.get("posts")) if x["id"] == pid), None)
-    return title.replace("SDR", (p or {}).get("name") or f"SDR {pid}", 1)
-
-
-def _v8_sdr_posts_sync(self):
-    """Moteurs et panneaux d'après la liste des postes (config, 📡 Mes SDR) : création, renommage, retrait."""
-    if not hasattr(self, "sdr_engs"):
-        return
-    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
-    ids = {p["id"] for p in posts}
-    for pid in list(self.sdr_engs):
-        if pid not in ids and pid != 1:
-            self.sdr_engs.pop(pid).stop()
-            for d in self.post_docks.pop(pid, {}).values():
-                self.panel_window(d, False)
-                self.win_menu.removeAction(d.toggleViewAction())
-                if d in self.docks:
-                    self.docks.remove(d)
-                self.removeDockWidget(d)
-                d.deleteLater()
-    for p in posts:
-        if p["id"] not in self.sdr_engs:
-            self._make_post(p["id"])
-            if getattr(self, "rf_mode", "tiny") != "tiny":
-                self._post_show(p["id"])
-        for key, title, _n, _c in SDR_DOCKS:
-            d = self.post_docks[p["id"]][key]
-            t = self._post_title(p["id"], title)
-            if d.windowTitle() != t:
-                d.setWindowTitle(t)
-        for d in self.post_docks[p["id"]].values():
-            if hasattr(self.dock_widget(d), "refresh"):
-                self.dock_widget(d).refresh()
-
-
-def _v8_post_show(self, pid):
-    """Panneaux d'un poste 2…4 : en onglets à côté de ceux du poste 1 (l'utilisateur les place ensuite)."""
-    base, mine = self.post_docks[1], self.post_docks[pid]
-    for key in ("rx", "spec", "wf", "mics", "diag"):
-        d = mine[key]
-        if d.objectName() in self.panel_wins:
-            continue
-        if base[key].isVisible() and not base[key].isFloating():
-            self.tabifyDockWidget(base[key], d)
-        else:
-            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, d)
-        d.show()
-        if key == "wf" and not base["wf"].isVisible():
-            d.hide()
-
-
-def _v8_all_sdr_docks(self):
-    return [d for ds in (getattr(self, "post_docks", None) or {}).values() for d in ds.values()]
-
-
-
-
-MainWindow._make_post = _v8_make_post
-MainWindow._post_title = _v8_post_title
-MainWindow._sdr_posts_sync = _v8_sdr_posts_sync
-MainWindow._post_show = _v8_post_show
-MainWindow.all_sdr_docks = _v8_all_sdr_docks
-
-
-def _v8_fit_screen(self):
-    """8.0.1 (captures de Clément) : après un changement de mode, une fenêtre agrandie pouvait rester plus grande
-    que l'écran (bords coupés, il fallait ré-agrandir) : on la recale sur l'écran."""
-    try:
-        if self.isMinimized():
-            return
-        av = self.screen().availableGeometry()
-        if self.width() <= av.width() + 16 and self.height() <= av.height() + 16:
-            return
-        if self.isFullScreen():
-            self.showNormal()
-            self.showFullScreen()
-        elif self.isMaximized():
-            self.showNormal()
-            self.showMaximized()
-        else:
-            self.resize(min(self.width(), av.width()), min(self.height(), av.height()))
-            self.move(max(av.x(), min(self.x(), av.right() - self.width())), max(av.y(), self.y()))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-MainWindow._fit_screen = _v8_fit_screen
-
-
-def _v8_sdr_arrange(self, mode, layout="listen", base=True):
-    """Place les panneaux pour un mode et un pré-affichage (ensuite, l'utilisateur bouge tout comme il veut).
-    mode : sdr (le spectre SDR remplace celui du tinySA) | both (les deux spectres côte à côte) ;
-    layout : listen | watch | analyze | dual (spectre SDR sur l'autre écran)."""
-    if base:
-        self._layout_base()
-    R, B = Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.BottomDockWidgetArea
-    sd = self.sdr_docks
-    for d in sd.values():
-        if d.objectName() in self.panel_wins:
-            continue                                     # déjà en vraie fenêtre : on la laisse où l'utilisateur l'a mise
-        self.removeDockWidget(d)                         # repartir propre (pas d'onglet caché derrière un autre)
-        d.setFloating(False)
-    if mode == "sdr":
-        self.dock_spec.hide()
-        self.dock_wf.hide()
-        self.addDockWidget(B, sd["spec"])
-    else:                                                # combiné : le spectre SDR dans sa colonne, à droite du tinySA
-        self.addDockWidget(B, sd["spec"], Qt.Orientation.Horizontal)
-    self.splitDockWidget(sd["spec"], sd["wf"], Qt.Orientation.Vertical)
-    for d in sd.values():
-        d.show()
-    if mode != "sdr":
-        sd["wf"].hide()
-    self.addDockWidget(R, sd["rx"])
-    self.splitDockWidget(sd["rx"], self.dock_freq, Qt.Orientation.Vertical)
-    self.dock_log.setFloating(False)
-    self.tabifyDockWidget(self.dock_freq, self.dock_log)     # 8.0.1 : le Journal restait seul au-dessus du Récepteur
-    self.tabifyDockWidget(self.dock_freq, sd["mics"])
-    self.tabifyDockWidget(self.dock_freq, sd["diag"])      # 8.2 : historique, appareil, système, session
-    if layout == "watch":
-        sd["mics"].raise_()
-        sd["wf"].hide()
-    elif layout == "analyze":
-        sd["mics"].hide()
-        sd["wf"].show()
-        self.sdr_eng.set_opts(maxhold=True)
-    else:
-        self.dock_freq.raise_()
-    try:
-        self.set_level(self.ui_level)                    # ce que le niveau d'affichage cache reste caché
-        self.resizeDocks([sd["rx"]], [min(sd["rx"].widget().sizeHint().height() + 36, int(self.height() * 0.55))],
-                         Qt.Orientation.Vertical)
-        if mode == "both":                               # les deux spectres à parts égales
-            w_ = max(400, self.dock_spec.width() + sd["spec"].width())
-            self.resizeDocks([self.dock_spec, sd["spec"]], [w_ // 2, w_ // 2], Qt.Orientation.Horizontal)
-    except Exception:  # noqa: BLE001
-        pass
-    try:                                                  # 8.0.1 : petit écran (portable) -> Récepteur en onglet
-        if self.minimumSizeHint().height() > self.screen().availableGeometry().height() - 20 \
-                and sd["rx"].objectName() not in self.panel_wins:
-            self.tabifyDockWidget(self.dock_freq, sd["rx"])
-            sd["rx"].raise_()
-    except Exception:  # noqa: BLE001
-        pass
-    QtCore.QTimer.singleShot(0, self._fit_screen)
-    if layout == "dual":
-        scr = self._other_screen()
-        if scr is None:
-            self.set_status(TR("Un seul écran : tire le panneau « 📡 SDR · Spectre » par sa barre de titre pour en "
-                               "faire une fenêtre, ou branche le 2ᵉ écran."))
-        else:
-            self.panel_window(sd["spec"], True, scr, "max")
-
-
-def _v8_set_rf_mode(self, mode, layout=None):
-    """📟 tinySA / 📡 SDR / 📟+📡 Combiné : quels panneaux de base, et le SDR lancé ou arrêté. Les panneaux prêtés à
-    d'autres écrans reviennent d'abord (8.0.2)."""
-    self.screens_off(relayout=False)
-    if self.lab_view_on:                                 # 8.2 : changer de mode = quitter l'affichage Labo
-        self.lab_view_on = False
-        for d in self.lab_docks.values():
-            if d.objectName() not in self.panel_wins:
-                d.hide()
-        self._sdrlab.view_btn.setText(TR("⛶ Affichage Labo"))
-    mode = rf_mode_norm(mode)
-    self.rf_mode = mode
-    self.sdr_cfg["rf_mode"] = mode
-    if mode == "tiny":
-        for e_ in self.sdr_engs.values():
-            e_.stop()
-        self._layout_mode()
-    else:
-        self._sdr_arrange(mode, layout or "listen")
-        for pid in sorted(self.sdr_engs):               # étape 17 : tous les postes SDR
-            if pid != 1:
-                self._post_show(pid)
-            if not self.sdr_engs[pid].running():
-                self.sdr_engs[pid].start()
-    self._update_mode_btn()
-    self.set_status(dict(tiny=TR("📟 Mode tinySA."), sdr=TR("📡 Mode SDR : tout est déplaçable (barres de titre), "
-                                                              "ta disposition est retenue."),
-                         both=TR("📟+📡 Mode combiné : tinySA et SDR côte à côte, tout est déplaçable."))[mode])
-    return mode
-
-
-def _v8_update_mode_btn(self):
-    b = getattr(self, "mode_btn", None)
-    if b is not None:
-        b.setText(dict(RF_MODES).get(self.rf_mode, "📟 tinySA") + " ▾")
-
-
-def _v8_build_mode_menu(self):
-    m = self.mode_btn.menu()
-    m.clear()
-    m.addSection(TR("Mode"))
-    m.setToolTipsVisible(True)
-    for k, t in RF_MODES:
-        a_ = m.addAction(TR(t))
-        a_.setToolTip(TR(DEVICE_HELP[k]))                   # 8.0 : c'est quoi un tinySA / un SDR
-        a_.setCheckable(True)
-        a_.setChecked(k == self.rf_mode)
-        a_.triggered.connect(lambda *_, k=k: self.set_rf_mode(k))
-    m.addSection(TR("Pré-affichages SDR (ensuite, bouge tout comme tu veux)"))
-    for k, t in SDR_LAYOUTS:
-        a_ = m.addAction(TR(t))
-        a_.triggered.connect(lambda *_, k=k: self.set_rf_mode("both" if self.rf_mode == "both" else "sdr", k))
-    m.addSeparator()
-    m.addAction(TR("📡 Mes SDR (plusieurs, scènes, carte)…")).triggered.connect(lambda *_: self.open_sdr_posts())
-    a_ = m.addAction(TR("🧪 SDR démo (sans matériel, avec du son)"))          # étape 21
-    a_.setCheckable(True)
-    a_.setChecked(bool(self.sdr_cfg.get("demo")))
-    a_.triggered.connect(lambda *_, a=a_: self.set_sdr_demo(a.isChecked()))
-    m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
-    m.addAction(TR("🎵 Générateur audio (20 Hz – 20 kHz)…")).triggered.connect(lambda *_: self.open_audio_gen())
-    m.addAction(TR("🧪 Labo SDR (RF Compander Lab)…")).triggered.connect(lambda *_: self.open_sdr_lab())
-    lm = m.addMenu(TR("⛶ Affichage Labo"))
-    lm.setToolTip(TR("La fenêtre ne montre plus que le labo : rangé, en grille ou sur 2 écrans."))
-    for k_, t_ in LAB_VIEWS:
-        lm.addAction(TR(t_)).triggered.connect(lambda *_, k_=k_: self.lab_view(True, k_))
-    if self.lab_view_on:
-        lm.addAction(TR("↩ Quitter l'affichage Labo")).triggered.connect(lambda *_: self.lab_view(False))
-    m.addSeparator()
-    m.addAction(TR("🔌 Premier branchement SDR (assistant)…")).triggered.connect(lambda *_: self.open_sdr_setup())
-    m.addAction(TR("📏 Caler les niveaux du SDR sur le tinySA…")).triggered.connect(lambda *_: self.open_sdr_calib())
-    m.addAction(TR("⏪ Remonter le temps (dernières minutes)…")).triggered.connect(lambda *_: self.open_rewind())
-    m.addAction(TR("📖 Manuel SDR")).triggered.connect(lambda *_: self.open_sdr_manual())
-    m.addAction(TR("↺ Disposition de base du mode")).triggered.connect(lambda *_: self.set_rf_mode(self.rf_mode))
-    m.addAction(TR("📡 Réglages SDR…")).triggered.connect(lambda *_: self.open_sdr())
-    acts = m.actions()                                   # 8.0.2 : plusieurs écrans, avant la 1re séparation
-    a_ = QtGui.QAction(TR("🖥 Plusieurs écrans (tinySA sur l'un, SDR sur l'autre…)"), m)
-    a_.setToolTip(TR("Choisis quel panneau va sur quel écran : tinySA complet sur l'un, SDR complet sur l'autre, ou "
-                     "ton mélange."))
-    a_.triggered.connect(lambda *_: self.open_screens())
-    sec = next((x for x in acts if x.isSeparator()), None)
-    if sec is not None:
-        m.insertAction(sec, a_)
-    else:
-        m.addAction(a_)
-
-
-def _v8_mode_setup(self):
-    """Bouton de mode dans la barre du haut (créé une fois), réglages du poste relus de la config."""
-    if getattr(self, "mode_btn", None) is not None:
-        return
-    b = self.mode_btn = QtWidgets.QToolButton()
-    b.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
-    b.setMenu(QtWidgets.QMenu(b))
-    b.menu().aboutToShow.connect(self._build_mode_menu)
-    b.setToolTip(TR("Ce que tu utilises :") + "\n\n" + "\n\n".join(TR(DEVICE_HELP[k]) for k in ("tiny", "sdr", "both"))
-                 + "\n\n" + TR("Chaque mode a sa disposition de base et des pré-affichages ; ensuite tu bouges les "
-                                 "panneaux comme tu veux (ta disposition est retenue)."))
-    try:
-        self.cmd_bar.insertWidget(self._more_act, b)
-    except Exception:  # noqa: BLE001
-        self.cmd_bar.addWidget(b)
-    self._sdr_reload()
-    self.watch_table.cellDoubleClicked.connect(self._v8_watch_dbl)      # étape 18 : double-clic = le SDR s'y cale
-    self.fav_keys = []
-    for k in range(1, FAV_KEYS + 1):                   # touches 1…9 du PAVÉ NUMÉRIQUE = favoris
-        sc_ = QtGui.QShortcut(QtGui.QKeySequence(QtCore.QKeyCombination(Qt.KeyboardModifier.KeypadModifier,
-                                                                        Qt.Key(int(Qt.Key.Key_0.value) + k))), self)
-        sc_.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        sc_.activated.connect(lambda k=k: self.sdr_fav(k))
-        sc_.activatedAmbiguously.connect(lambda k=k: self.sdr_fav(k) if self.isVisible() else None)   # 2 fenêtres
-        self.fav_keys.append(sc_)
-    if self.rf_mode != "tiny" and any(d.isVisible() for d in self.all_sdr_docks()):
-        QtCore.QTimer.singleShot(1500, lambda: [e_.start() for e_ in self.sdr_engs.values()])   # rouverte en mode SDR
-    QtCore.QTimer.singleShot(400, self._fit_screen)     # 8.0.1 : disposition rouverte plus grande que l'écran
-
-
-def _v8_engine_for(self, w):
-    """Le SDR qui doit écouter ce micro : celui rattaché à sa scène (et qui couvre sa fréquence), sinon le 1er."""
-    engs = sorted((getattr(self, "sdr_engs", None) or {}).items())
-    for _pid, e in engs:
-        sc = e.post()["scenes"]
-        if sc and w.get("scene") in sc and sdr_in_range(e.model(), w["freq"]):
-            return e
-    return next((e for _pid, e in engs if sdr_in_range(e.model(), w["freq"])), self.sdr_eng)
-
-
-def _v8_sdr_tune_mic(self, w, slot="a"):
-    """Étape 18 : le SDR se cale sur ce micro (recentré si besoin) et on l'entend ; son panneau Récepteur passe devant."""
-    e = self._engine_for(w)
-    if self.rf_mode == "tiny":
-        self.set_rf_mode("sdr")
-    if slot == "b":
-        e.set_b(f=w["freq"], on=True)
-    else:
-        e.set_a(w["freq"])
-    if not e.running():
-        e.start()
-    d = self.post_docks.get(e.pid, {}).get("rx")
-    if d is not None:
-        if d.isHidden():
-            d.show()
-        d.raise_()
-    self.set_status(TR("🎧 {} ({} MHz) sur {}").format(w["name"] or "—", f"{w['freq']:.3f}", e.name()))
-    return e
-
-
-def _v8_sdr_fav(self, k):
-    """Touche k du pavé numérique : bascule l'écoute sur le micro rangé là."""
-    favs = favs_norm(self.sdr_cfg.get("favs"))
-    w = self.watch_by_key(favs[k]) if k in favs else None
-    if w is None:
-        self.set_status(TR("⭐ Touche {} libre : clic droit sur un micro (📡 Mes micros) ou sur le bouton {} du Récepteur "
-                           "pour l'y mettre.").format(k, k))
-        return None
-    return self.sdr_tune_mic(w)
-
-
-def _v8_sdr_set_fav(self, k, w):
-    self.sdr_cfg["favs"] = fav_assign(self.sdr_cfg.get("favs"), k, int(round(w["freq"] * 1000)) if w else None)
-    for d in self.all_sdr_docks():
-        if hasattr(self.dock_widget(d), "_favs_refresh"):
-            self.dock_widget(d)._favs_refresh()
-    if w:
-        self.set_status(TR("⭐ Touche {} du pavé numérique : {}").format(k, w["name"] or f"{w['freq']:.3f}"))
-
-
-def _v8_watch_dbl(self, row, col):
-    """Double-clic sur le nom ou la fréquence d'un micro (mode SDR / combiné) : le SDR se cale dessus."""
-    if col in (C_NAME, C_FREQ) and getattr(self, "rf_mode", "tiny") != "tiny" and 0 <= row < len(self.watch):
-        self.sdr_tune_mic(self.watch[row])
-
-
-def _v8_mic_demod(self, w):
-    """Réglage d'écoute d'un micro -> (préréglage | DEMOD_DIGITAL | None, « manual » | « auto » | None)."""
-    k = w.get("demod")
-    if k and (demod_preset(k) is not None or k == DEMOD_DIGITAL):
-        return k, "manual"
-    g = self.group_row(w.get("scene"), w.get("group")) if hasattr(self, "group_row") else None
-    grx = list(self.group_rxs(g)) if g and hasattr(self, "group_rxs") else []
-    own = [x for x in [w.get("rx") or ""] + grx if x]              # appareil du micro, puis de son groupe
-    names = [n for k_, n, *_r in rx_all() if k_ in own]
-    key = demod_guess(*own, *names, w.get("group"), w.get("name"), w.get("scene"))
-    if not key and hasattr(self, "rx_of"):                        # en dernier : l'appareil par défaut du plan
-        d = self.rx_of(w) or ""
-        key = demod_guess(d, *[n for k_, n, *_r in rx_all() if k_ == d])
-    return (key, "auto") if key else (None, None)
-
-
-def _v8_mic_demod_set(self, w, key):
-    """Retient le réglage d'écoute choisi à la main pour ce micro (rien si c'est celui qu'on aurait deviné)."""
-    w.pop("demod", None)
-    if key and self.mic_demod(w)[0] != key:
-        w["demod"] = key
-
-
-
-
-
-
-MainWindow.mic_demod = _v8_mic_demod
-ALARM_HELP["PILOTE"] = (                         # étape 20 : porteuse là, mais pas le pilote de TON émetteur
-    "Le SDR entend une porteuse sur ce micro, mais pas la tonalité pilote de ton émetteur (retenue la 1re fois) : un "
-    "autre émetteur est peut-être sur ta fréquence, ou ton pack a changé de réglage.",
-    "Écoute (le SDR y est calé) ; éteins ton pack : si la porteuse reste, c'est un brouilleur (chasse, fréquence de "
-    "secours). Pilote changé exprès : clic droit sur la ligne d'info du Récepteur › Oublier le pilote.")
-MainWindow.mic_demod_set = _v8_mic_demod_set
-MainWindow._engine_for = _v8_engine_for
-MainWindow.sdr_tune_mic = _v8_sdr_tune_mic
-MainWindow.sdr_fav = _v8_sdr_fav
-MainWindow.sdr_set_fav = _v8_sdr_set_fav
-MainWindow._v8_watch_dbl = _v8_watch_dbl
-MainWindow._sdr_arrange = _v8_sdr_arrange
-MainWindow.set_rf_mode = _v8_set_rf_mode
-MainWindow._update_mode_btn = _v8_update_mode_btn
-MainWindow._build_mode_menu = _v8_build_mode_menu
-MainWindow.mode_setup = _v8_mode_setup
 for _k, _t in RF_MODES:
     setattr(MainWindow, f"rf_mode_{_k}", (lambda k: lambda self: self.set_rf_mode(k))(_k))
-
-
-# Étape 16 : le mode et le poste SDR suivent le PROFIL UTILISATEUR (8.1 : dans user_doc / user_apply de la partie PURE).
-
-
-def _v8_sdr_reload(self):
-    """Réglages du poste et mode relus de sdr_cfg (démarrage, profil chargé), sans toucher à la disposition."""
-    self._sdr_posts_sync()
-    for e in self.sdr_engs.values():                 # chaque poste relit SES réglages
-        st = station_norm(e._st_cfg())
-        e.a, e.b, e.b_on, e.step, e.vol, e.sq, e.split, e.nfft, e.maxhold = (st[k] for k in (
-            "a", "b", "b_on", "step", "vol", "sq", "split", "nfft", "maxhold"))
-        if e.running():
-            e._push()
-    self.rf_mode = rf_mode_norm(self.sdr_cfg.get("rf_mode"))
-    self._update_mode_btn()
-    for d in self.all_sdr_docks():
-        pw_ = self.dock_widget(d)
-        if hasattr(pw_, "apply_level"):
-            pw_.apply_level()
-        if hasattr(pw_, "refresh"):
-            pw_.refresh()
-
-
-
-
-MainWindow._sdr_reload = _v8_sdr_reload
-
-
-def _v8_receivers_start(self, text):
-    """14. Connecte (ou reconnecte) les récepteurs de la liste (toutes marques : « g4:… », « ssc:… », Shure sans
-    préfixe), retenue dans la config (clé « shure », gardée pour les configs de l'étape 11)."""
-    addrs = receiver_addrs(text)
-    self.sdr_cfg["shure"] = receiver_addrs_text(addrs)
-    cur = getattr(self, "_shure", None) or {}
-    keep = {f"{b}:{h}:{p}" for b, h, p in addrs}
-    for k in list(cur):
-        if k not in keep:
-            cur.pop(k).stop()
-    for b, h, p in addrs:
-        if f"{b}:{h}:{p}" not in cur:
-            c = cur[f"{b}:{h}:{p}"] = ReceiverClient(h, p, b)
-            c.start()
-    self._shure = cur
-
-
-def _v8_receivers(self):
-    """Tous les canaux des récepteurs Shure connectés : [dict(host, ch, name, freq, rf, ant, audio, batt, div, hist)]."""
-    out = []
-    for c in (getattr(self, "_shure", None) or {}).values():
-        for ch, st in sorted(c.snapshot().items()):
-            age = time.time() - float(st.get("t") or 0.0) if st.get("t") else None
-            out.append(dict(st, host=c.host, ch=ch, brand=c.brand, age=age,
-                            live=bool(c.ok and age is not None and age < RX_STALE_S)))
-    return out
-
-
-def _v8_receiver_for(self, f, tol=0.025, live_only=True):
-    """Canal de récepteur réglé sur la fréquence f (MHz, ± 25 kHz), ou None. live_only : seulement s'il a donné des
-    nouvelles récentes (étape 14 : une valeur ancienne n'alimente ni le diagnostic ni la comparaison)."""
-    best = None
-    for x in self.receivers():
-        if live_only and not x.get("live"):
-            continue
-        if x.get("freq") is not None and abs(x["freq"] - f) <= tol and (best is None or abs(x["freq"] - f) <
-                                                                         abs(best["freq"] - f)):
-            best = x
-    return best
-
-
-def _v8_watch_near(self, f, tol=0.025):
-    if f is None:
-        return None
-    return min((w for w in self.watch if abs(w["freq"] - f) <= tol), key=lambda w: abs(w["freq"] - f), default=None)
-
-
-def _v8_open_receivers(self):
-    """📶 V8 étape 11 : récepteurs Shure en réseau (fenêtre gardée)."""
-    d = getattr(self, "_recvdlg", None)
-    if d is None:
-        d = self._recvdlg = ReceiversDialog(self)
-    if self.sdr_cfg.get("shure") and not getattr(self, "_shure", None):
-        self.receivers_start(self.sdr_cfg["shure"])
-    d.show()
-    d.raise_()
-    d.activateWindow()
-    return d
-
-
-def _v8_tsa_live(self):
-    """Un tinySA (pas un SDR) balaye en ce moment : ses niveaux peuvent être comparés à ceux du SDR."""
-    return any(w.isRunning() and not getattr(w, "paused", False) and not getattr(w, "sdr", False) for w in self.workers)
-
-
-def _v8_privacy(self):
-    """Étape 12 : réglages « son et vie privée » (toujours complets)."""
-    p = self.sdr_cfg.get("privacy")
-    if not isinstance(p, dict) or set(p) != set(PRIVACY_DEFAULT):
-        p = self.sdr_cfg["privacy"] = privacy_norm(p)
-    return p
-
-
-def _v8_privacy_ok(self, parent=None):
-    """Accord explicite avant le 1er enregistrement de son (ou d'IQ). -> True si on peut enregistrer."""
-    p = self.privacy()
-    if p["ack"]:
-        return True
-    r = QtWidgets.QMessageBox.question(
-        parent or self, TR("Enregistrer du son ?"),
-        TR(PRIVACY_TEXT) + "\n\n" + TR("Conservation : {} (réglable dans 📡 Réglages SDR).").format(
-            keep_text(p["keep_days"], TR)) + "\n\n" + TR("D'accord pour enregistrer ?"))
-    if r != QtWidgets.QMessageBox.StandardButton.Yes:
-        return False
-    p["ack"] = True
-    try:
-        self._save_config()
-    except Exception:  # noqa: BLE001
-        pass
-    return True
-
-
-def _v8_retention(self, now=None):
-    """Étape 12 : efface le son, l'IQ et les dossiers d'incident plus vieux que la durée choisie. -> nombre effacé."""
-    days = self.privacy()["keep_days"]
-    if not days:
-        return 0
-    now = time.time() if now is None else now
-    ent = []
-    for sub in ("enregistrements_audio", "enregistrements_iq", "incidents"):
-        root = Path(self.log_dir) / sub
-        if not root.is_dir():
-            continue
-        try:
-            for d in root.iterdir():
-                for p in (d.iterdir() if d.is_dir() else [d]):
-                    ent.append((p, p.stat().st_mtime))
-        except OSError:
-            continue
-    n = 0
-    for p in retention_pick(ent, now, days):
-        try:
-            shutil.rmtree(p) if p.is_dir() else p.unlink()
-            n += 1
-        except OSError:
-            pass
-    for sub in ("enregistrements_audio", "enregistrements_iq", "incidents"):
-        root = Path(self.log_dir) / sub
-        try:
-            for d in (root.iterdir() if root.is_dir() else []):
-                if d.is_dir() and not any(d.iterdir()):
-                    d.rmdir()
-        except OSError:
-            pass
-    return n
-
-
-def _v8_sdr_timer(self):
-    """Minuteur V8 (créé à l'ouverture d'une fenêtre SDR) : ménage des enregistrements toutes les heures."""
-    if getattr(self, "_v8_tm", None) is None:
-        self._v8_tm = QtCore.QTimer(self)
-        self._v8_tm.timeout.connect(lambda: self.sdr_retention())
-        self._v8_tm.start(3600 * 1000)
-        try:
-            self.sdr_retention()
-        except Exception:  # noqa: BLE001
-            pass
-
-
-MainWindow.privacy = _v8_privacy
-MainWindow.privacy_ok = _v8_privacy_ok
-MainWindow.sdr_retention = _v8_retention
-MainWindow.sdr_timer = _v8_sdr_timer
-MainWindow.receivers_start = _v8_receivers_start
-MainWindow.receivers = _v8_receivers
-MainWindow.receiver_for = _v8_receiver_for
-MainWindow.watch_near = _v8_watch_near
-MainWindow.open_receivers = _v8_open_receivers
-MainWindow.tsa_live = _v8_tsa_live
 MainWindow.FREQ_ACTIONS += [("🎧 Écouter avec le SDR", "listen_freq"), ("🔎 C'est quoi ce signal ? (SDR)", "analyze_freq"),
                              ("⏱ Temps réel autour (SDR)", "rt_freq")]
-WEB_VIEWS.append(("ecoute", "🎧", "Écoute", "Écouter un micro analogique sur le téléphone, avec le SDR du PC"))
-WEB_VIEW_KEYS.append("ecoute")
-# vue 🎧 Écoute : le PC démodule avec son SDR, le son arrive en PCM 16 kHz (1re ligne en code : pas du texte à traduire)
-WEB_EXTRA_JS += r"""
-function e8(){return 8}
-let EA=null,ESEQ=0,ENEXT=0,ETIMER=null,EST=null;
-EXT.ecoute={mount(el){el.innerHTML=`<div class="tools"><button class="btn" id="eon">🔊 Activer le son ici</button><span id="est" class="mut"></span></div><div class="mut" style="margin:6px 0">Le PC écoute avec son SDR (HackRF, RTL-SDR…). Touche 🎧 sur un micro : le son arrive ici, avec un petit retard. Code PIN demandé (celui du PC). Les micros numériques ne s'écoutent pas.</div><div class="tools"><input class="in" id="eq" placeholder="🔎 Nom, fréquence…"><input class="in" id="ef" placeholder="Autre fréquence (MHz)" inputmode="decimal" style="width:11em"><button class="btn" id="ego">🎧 Écouter</button></div><div class="grid" id="eg"></div>`;
- $("#eon").onclick=()=>eAudio();$("#eq").oninput=()=>update("ecoute");$("#ego").onclick=()=>{const f=parseFloat(($("#ef").value||"").replace(",","."));if(f>0)eCmd("start",f)};eState()},
- update(st){const q=($("#eq").value||"").toLowerCase(),L=EST||{};
-  $("#est").textContent=L.on?("🎧 "+(L.name||"")+" · "+(L.f?L.f.toFixed(3)+" MHz":"")+(L.rf!=null?" · "+L.rf+" dBFS":"")+(L.rec?" · ⏺":"")+(L.hop?" · 🔁":"")):"Pas d'écoute en cours";
-  $("#eg").innerHTML=st.rows.filter(r=>!q||(r.name+" "+r.freq.toFixed(3)).toLowerCase().includes(q)).map(r=>{const on=L.on&&L.f!=null&&Math.abs(L.f-r.freq)<0.0006;
-   return `<div class="c ${r.tone}"><div class="n">${esc(r.name)}</div><div>${r.freq.toFixed(3)} MHz</div><button class="btn" data-ef="${on?"stop":r.freq}">${on?"■ Arrêter":"🎧 Écouter"}</button></div>`}).join("");
-  eState()}};
-async function eState(){try{const r=await api("ecoute.json");if(r.ok)EST=await r.json()}catch(e){}}
-document.addEventListener("click",e=>{const b=e.target.closest("button[data-ef]");if(!b)return;if(b.dataset.ef==="stop")eCmd("stop");else eCmd("start",+b.dataset.ef)});
-async function eCmd(a,f){let pin=LS.get("pin","");if(!pin){pin=prompt("Code PIN (réglé sur le PC de surveillance) :")||"";if(!pin)return}
- let r;try{r=await post("ecoute",{pin:pin,action:a,f:f})}catch(x){alert("PC injoignable");return}
- if(r.ok){LS.set("pin",pin);if(a==="start")eAudio();setTimeout(eState,600);return}
- if(r.status===403){LS.set("pin","");alert("Code PIN incorrect.")}else if(r.status===429)alert("Trop d'essais : attends une minute.");else alert("Refusé ("+r.status+")")}
-function eAudio(){try{if(!EA){const C=window.AudioContext||window.webkitAudioContext;EA=new C()}EA.resume();ESEQ=0;ENEXT=0}catch(e){alert("Son impossible sur ce navigateur");return}
- if(!ETIMER)ETIMER=setInterval(ePull,250);const b=$("#eon");if(b)b.textContent="🔊 Son actif"}
-async function ePull(){if(route()!=="ecoute"||!EA)return;
- let r;try{r=await api("ecoute.pcm?s="+ESEQ)}catch(e){return}if(!r.ok)return;const b=await r.arrayBuffer();if(b.byteLength<12)return;
- const h=new DataView(b);ESEQ=h.getUint32(4,true);const rate=h.getUint32(8,true),n=(b.byteLength-12)>>1;if(!n)return;
- const buf=EA.createBuffer(1,n,rate),ch=buf.getChannelData(0);for(let i=0;i<n;i++)ch[i]=h.getInt16(12+2*i,true)/32768;
- const s=EA.createBufferSource();s.buffer=buf;s.connect(EA.destination);const now=EA.currentTime;
- if(ENEXT<now+0.05||ENEXT>now+1.5)ENEXT=now+0.25;s.start(ENEXT);ENEXT+=n/rate}
-"""
-
-
-# ------------------------------------------------------------------ V8 étape 21 : SDR démo + émission HackRF
-def wav_load(path, max_s=180.0):
-    """Fichier WAV (PCM 8 / 16 / 24 / 32 bits, mono ou stéréo, n'importe quel débit) -> WAV_PCM[path] en mono 48 kHz,
-    3 min au plus (audit : 10 min = 115 Mo de mémoire par fichier).
-    -> (ok, texte)."""
-    import wave
-    path = str(path or "")
-    if path in WAV_PCM:
-        return True, ""
-    try:
-        with wave.open(path, "rb") as w:
-            ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
-            raw = w.readframes(min(n, int(max_s * fr)))
-    except (OSError, EOFError, wave.Error) as e:
-        return False, TR("WAV illisible : {}").format(e)
-    if sw == 1:
-        a = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
-    elif sw == 2:
-        a = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-    elif sw == 3:
-        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
-        v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
-        a = (np.where(v >= 1 << 23, v - (1 << 24), v)).astype(np.float32) / float(1 << 23)
-    elif sw == 4:
-        a = np.frombuffer(raw, dtype="<i4").astype(np.float32) / float(1 << 31)
-    else:
-        return False, TR("WAV : format non pris en charge")
-    if ch > 1:
-        a = a[: len(a) // ch * ch].reshape(-1, ch).mean(axis=1)
-    if fr != 48000 and len(a) > 1:
-        x = np.arange(int(len(a) * 48000 / fr)) * (fr / 48000.0)
-        a = np.interp(x, np.arange(len(a)), a).astype(np.float32)
-    if not len(a):
-        return False, TR("WAV vide")
-    pk = float(np.max(np.abs(a)))
-    WAV_PCM[path] = (a / pk * 0.9 if pk > 0.9 else a).astype(np.float32)
-    return True, TR("{} s de son").format(f"{len(a) / 48000:.1f}")
-
-
-_TEMP_WAV_N = [0]
-
-
-def temp_wav_path(kind, old=None):
-    """8.0.2 (Clément : « le générateur audio n'a qu'un 1 kHz ») : QSoundEffect garde en mémoire le son d'un fichier
-    déjà lu (cache par adresse) -> réécrire le MÊME fichier rejouait le 1er son. Un nom neuf à chaque lecture ; l'ancien
-    est effacé si possible (sous Windows il peut être encore ouvert : il partira au prochain coup)."""
-    import tempfile
-    _TEMP_WAV_N[0] += 1
-    d = tempfile.gettempdir()
-    for p_ in ([old] if old else []) + [os.path.join(d, n_) for n_ in os.listdir(d)
-                                        if n_.startswith(f"tsm_{kind}_{os.getpid()}_")]:
-        try:
-            os.remove(p_)
-        except OSError:
-            pass
-    return os.path.join(d, f"tsm_{kind}_{os.getpid()}_{_TEMP_WAV_N[0]}.wav")
-
-
-class AudioMeterBar(QtWidgets.QWidget):
-    """8.1 : vu-mètre audio horizontal (−60 … 0 dBFS) : barre = niveau RMS (convention AES17 : sinus plein = 0 dBFS),
-    trait = crête, losange ambre = niveau visé ; fond en zones (vert / jaune dès −9 / rouge dès −1), gradué tous les
-    1 à 5 dB selon la largeur, valeurs écrites tous les 5 / 10 dB, repère d'alignement (−18 EBU / −20 SMPTE) en ambre."""
-    LO, HI = -60.0, 0.0
-
-    def __init__(self, owner, parent=None):
-        super().__init__(parent)
-        self.owner, self.m, self.target = owner, None, None
-        self.setMinimumSize(160, 30)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
-        self.setToolTip(TR("Vu-mètre : barre = niveau moyen (RMS), trait = crête, losange = niveau visé.\n"
-                           "Repères −18 et −20 dBFS = niveaux d'alignement EBU / SMPTE. Clic = fiche des échelles."))
-
-    def set_meter(self, m, target=None):
-        self.m, self.target = m, target
-        self.update()
-
-    def mousePressEvent(self, e):
-        self.owner.open_scales()
-
-    def paintEvent(self, ev):
-        p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        W, H = self.width(), self.height()
-        bh = 10
-        x0, x1 = 6.0, W - 6.0
-        pos = lambda db: x0 + (x1 - x0) * (min(self.HI, max(self.LO, db)) - self.LO) / (self.HI - self.LO)  # noqa: E731
-        p.setPen(QtCore.Qt.PenStyle.NoPen)
-        for a_, b_, col in ((-60, -9, "#4fd1c5"), (-9, -1, "#ffb300"), (-1, 0, "#ff6b6b")):   # zones en fond
-            c = QtGui.QColor(col)
-            c.setAlpha(45)
-            p.setBrush(c)
-            p.drawRect(QtCore.QRectF(pos(a_), 2, pos(b_) - pos(a_), bh))
-        m = self.m or {}
-        rms, pk = m.get("rms", -math.inf), m.get("peak", -math.inf)
-        if math.isfinite(rms):
-            col = "#ff6b6b" if rms > -1 else ("#ffb300" if rms > -9 else "#4fd1c5")
-            p.setBrush(QtGui.QColor(col))
-            p.drawRoundedRect(QtCore.QRectF(x0, 2, pos(rms) - x0, bh), 2, 2)
-        if math.isfinite(pk):
-            p.setPen(QtGui.QPen(QtGui.QColor("#ff6b6b" if m.get("clip") else "#f5f5f7"), 2))
-            p.drawLine(QtCore.QPointF(pos(pk), 1), QtCore.QPointF(pos(pk), bh + 3))
-        try:
-            align = audio_align(getattr(self.owner, "audio_ref", None))[0]
-        except Exception:
-            align = -18.0
-        f = p.font()
-        f.setPointSizeF(max(6.5, f.pointSizeF() - 2))
-        p.setFont(f)
-        mins, mids, labs = meter_ticks(int(self.LO), int(self.HI), x1 - x0,
-                                       label_px=QtGui.QFontMetrics(f).horizontalAdvance("−60") + 8)
-        yt = bh + 2
-        for vs, ln, col in ((mins, 2.5, QtGui.QColor(160, 160, 170, 110)), (mids, 4.0, QtGui.QColor(160, 160, 170, 190)),
-                            (labs, 5.0, QtGui.QColor(170, 170, 180))):
-            p.setPen(QtGui.QPen(col, 1.0))
-            for db in vs:
-                p.drawLine(QtCore.QPointF(pos(db), yt), QtCore.QPointF(pos(db), yt + ln))
-        if self.LO <= align <= self.HI:                  # repère d'alignement (−18 dBFS = 0 dBu en EBU…)
-            p.setPen(QtGui.QPen(QtGui.QColor("#ffb300"), 1.4))
-            p.drawLine(QtCore.QPointF(pos(align), 1), QtCore.QPointF(pos(align), yt + 5))
-        if self.target is not None:
-            p.setPen(QtCore.Qt.PenStyle.NoPen)
-            p.setBrush(QtGui.QColor("#ffb300"))
-            xt = pos(self.target)
-            p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(xt, bh + 2), QtCore.QPointF(xt - 4, bh + 7),
-                                           QtCore.QPointF(xt + 4, bh + 7)]))
-        p.setPen(QtGui.QColor(160, 160, 170))
-        for db in labs:
-            p.drawText(QtCore.QRectF(pos(db) - 15, yt + 4, 30, 12), Qt.AlignmentFlag.AlignCenter, str(db))
-        p.end()
-
-
-class ScalesDialog(QtWidgets.QDialog):
-    """8.1 : 📏 Échelles et niveaux : unité des vu-mètres, alignement numérique / analogique, référence dBr, niveau visé,
-    et la fiche (tableau : où chaque unité sert et comment l'utiliser ici)."""
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self.setWindowTitle(TR("📏 Échelles et niveaux"))
-        lay = QtWidgets.QVBoxLayout(self)
-        ref = owner.audio_ref
-        f = QtWidgets.QFormLayout()
-        self.unit = QtWidgets.QComboBox()
-        for k, t in AUDIO_UNITS:
-            self.unit.addItem(TR(t), k)
-        self.unit.setCurrentIndex(max(0, self.unit.findData(ref["unit"])))
-        self.unit.setToolTip(TR("Unité des vu-mètres audio de l'appli (générateur, écoute SDR)."))
-        self.align = QtWidgets.QComboBox()
-        for k, t, _a, _b in AUDIO_ALIGNS:
-            self.align.addItem(TR(t), k)
-        self.align.setCurrentIndex(max(0, self.align.findData(ref["align"])))
-        self.align.setToolTip(TR("Quel niveau numérique (dBFS) correspond à quel niveau analogique (dBu) chez toi :\n"
-                                 "EBU (Europe) −18 dBFS = 0 dBu ; SMPTE (USA) −20 dBFS = +4 dBu ; ou le tien."))
-        self.c_fs, self.c_u, self.dbr, self.tgt = (QtWidgets.QDoubleSpinBox() for _ in range(4))
-        for sp_, lo, hi, v, sfx, tip in ((self.c_fs, -60, 0, ref["dbfs"], " dBFS", "Alignement perso : ce niveau numérique…"),
-                                         (self.c_u, -40, 30, ref["dbu"], " dBu", "… correspond à ce niveau analogique."),
-                                         (self.dbr, -60, 0, ref["dbr"], " dBFS", "Niveau qui vaut 0 dBr (ta référence)."),
-                                         (self.tgt, -60, 0, ref["target"], " dBFS",
-                                          "Niveau visé par défaut (générateur, réglage d'un pack).")):
-            sp_.setRange(lo, hi)
-            sp_.setDecimals(1)
-            sp_.setSingleStep(0.5)
-            sp_.setValue(v)
-            sp_.setSuffix(sfx)
-            sp_.setToolTip(TR(tip))
-        f.addRow(TR("Unité des vu-mètres :"), self.unit)
-        f.addRow(TR("Alignement :"), self.align)
-        f.addRow(TR("Perso :"), self.owner._row(self.c_fs, "=", self.c_u, None))
-        f.addRow(TR("Référence dBr :"), self.dbr)
-        f.addRow(TR("Niveau visé :"), self.tgt)
-        lay.addLayout(f)
-        self.conv = QtWidgets.QLabel("")
-        self.conv.setWordWrap(True)
-        lay.addWidget(self.conv)
-        tb = QtWidgets.QTextBrowser()
-        tb.setHtml(scales_help_html(TR))
-        tb.setMinimumHeight(260)
-        lay.addWidget(tb, 1)
-        close = QtWidgets.QPushButton(TR("Fermer"))
-        close.setToolTip(TR("Ferme cette fenêtre (les réglages sont gardés)."))
-        close.clicked.connect(lambda *_: self.close())
-        lay.addLayout(owner._row(None, close))
-        for w_ in (self.unit, self.align):
-            w_.currentIndexChanged.connect(lambda *_: self.apply())
-        for w_ in (self.c_fs, self.c_u, self.dbr, self.tgt):
-            w_.valueChanged.connect(lambda *_: self.apply())
-        self.resize(820, 640)
-        fit_dialog(self, 820, 640)
-        self.apply()
-
-    def apply(self):
-        o = self.owner
-        o.audio_ref = audio_ref_norm(dict(unit=self.unit.currentData(), align=self.align.currentData(),
-                                          dbfs=self.c_fs.value(), dbu=self.c_u.value(), dbr=self.dbr.value(),
-                                          target=self.tgt.value()))
-        cust = o.audio_ref["align"] == "custom"
-        self.c_fs.setEnabled(cust)
-        self.c_u.setEnabled(cust)
-        r = o.audio_ref
-        self.conv.setText(TR("Avec ces réglages : {} = {} = {} = {} · niveau visé {} = {}").format(
-            fmt_audio(-18, r, "dbfs"), fmt_audio(-18, r, "dbu"), fmt_audio(-18, r, "dbv"), fmt_audio(-18, r, "vrms"),
-            fmt_audio(r["target"], r, "dbfs"), fmt_audio(r["target"], r, "dbu")))
-
-
-class AudioPickDialog(QtWidgets.QDialog):
-    """🎵 Choisir un son (étape 21) : générateur 20 Hz – 20 kHz (une fréquence ou un balayage), bruits, voix / mélodie /
-    bips de démo, sons de l'appli, ton fichier WAV ; ▶ pour l'écouter sur le PC. Seul (standalone) = 🎵 Générateur
-    audio qui joue en boucle sur la sortie audio de l'appli."""
-
-    def __init__(self, owner, spec=None, standalone=False, title=None):
-        super().__init__(owner)
-        self.owner, self.standalone, self.fx, self._tmp = owner, standalone, None, None
-        self.setWindowTitle(title or ("🎵 Générateur audio (20 Hz – 20 kHz)" if standalone else "🎵 Choisir un son"))
-        sp = audio_spec_norm(spec or dict(src="tone" if standalone else "voice"))
-        lay = QtWidgets.QVBoxLayout(self)
-        if standalone:
-            why = QtWidgets.QLabel(TR("À quoi ça sert ? Écouter un son de test ici, ou l'affecter (en bas) : à un micro de ta "
-                                      "liste (il l'émet dans les modes démo tinySA et SDR), à un son d'alarme, ou à "
-                                      "l'émission avec un HackRF."))
-            why.setWordWrap(True)
-            lay.addWidget(why)
-        f = QtWidgets.QFormLayout()
-        self.src = QtWidgets.QComboBox()
-        for k_, t_ in AUDIO_SRCS:
-            self.src.addItem(t_, k_)
-        self.src.setCurrentIndex(max(0, self.src.findData(sp["src"])))
-        self.src.setToolTip("D'où vient le son.")
-        f.addRow("Source :", self.src)
-
-        def hz(v, tip):
-            b = QtWidgets.QDoubleSpinBox()
-            b.setRange(20.0, 20000.0)
-            b.setDecimals(0)
-            b.setSuffix(" Hz")
-            b.setValue(v)
-            b.setToolTip(tip)
-            return b
-        self.f = hz(sp["f"], "Fréquence du son (20 Hz – 20 kHz).")
-        self.f1 = hz(sp["f1"], "Fréquence de départ du balayage.")
-        self.f2 = hz(sp["f2"], "Fréquence d'arrivée du balayage.")
-        self.dur = QtWidgets.QDoubleSpinBox()
-        self.dur.setRange(1.0, 120.0)
-        self.dur.setDecimals(0)
-        self.dur.setSuffix(" s")
-        self.dur.setValue(sp["dur"])
-        self.dur.setToolTip("Durée d'un balayage (il recommence ensuite).")
-        self.log = QtWidgets.QCheckBox("Logarithmique (autant de temps par octave)")
-        self.log.setChecked(sp["log"])
-        self.log.setToolTip("Coché : chaque octave dure le même temps (comme à l'oreille). Décoché : linéaire en Hz.")
-        self.app = QtWidgets.QComboBox()
-        for k_, t_ in APP_SOUNDS:
-            self.app.addItem(t_, k_)
-        self.app.setCurrentIndex(max(0, self.app.findData(sp["app"])))
-        self.app.setToolTip("Les sons que joue l'appli (alarmes, appel des micros), répétés.")
-        self.path, self.wav_lbl = sp["path"], QtWidgets.QLabel("")
-        wb = QtWidgets.QPushButton("📂 Choisir un WAV…")
-        wb.setToolTip("Ton fichier WAV (voix, musique, signal de test), joué en boucle.")
-        wb.clicked.connect(lambda *_: self.pick_wav())
-        self.rows = {}
-        for key, lab, w in (("f", "Fréquence :", self.f), ("f1", "De :", self.f1), ("f2", "À :", self.f2),
-                            ("dur", "Durée :", self.dur), ("log", "", self.log), ("app", "Son :", self.app)):
-            f.addRow(lab, w)
-            self.rows[key] = w
-        rw = QtWidgets.QWidget()
-        rl = QtWidgets.QHBoxLayout(rw)
-        rl.setContentsMargins(0, 0, 0, 0)
-        rl.addWidget(wb)
-        rl.addWidget(self.wav_lbl, 1)
-        f.addRow("Fichier :", rw)
-        self.rows["wav"] = rw
-        ref = owner.audio_ref                                 # 8.1 : niveau visé, vu-mètre, déviation
-        self.lvl_chk = QtWidgets.QCheckBox("Régler le niveau à")
-        self.lvl_chk.setChecked(sp.get("lvl") is not None)
-        self.lvl_chk.setToolTip("Coché : le son est amené à ce niveau (moyen, RMS). Décoché : son niveau d'origine.\n"
-                                "Repère d'alignement courant : −18 dBFS (EBU) ou −20 dBFS (SMPTE).")
-        self.lvl = QtWidgets.QDoubleSpinBox()
-        self.lvl.setDecimals(1)
-        self.lvl.setSingleStep(0.5)
-        self.lvl_unit = ref["unit"] if ref["unit"] != "vrms" else "dbu"
-        lo_, hi_ = (dbfs_to_unit(-60, ref, self.lvl_unit), dbfs_to_unit(0, ref, self.lvl_unit))
-        self.lvl.setRange(min(lo_, hi_), max(lo_, hi_))
-        self.lvl.setSuffix(" " + dict(AUDIO_UNITS).get(self.lvl_unit, "dBFS"))
-        self.lvl.setValue(dbfs_to_unit(sp["lvl"] if sp.get("lvl") is not None else ref["target"], ref, self.lvl_unit))
-        self.lvl.setToolTip("Niveau visé, dans l'unité choisie dans 📏 Échelles et niveaux.")
-        tgt = QtWidgets.QPushButton("🎯")
-        tgt.setToolTip("Mettre le niveau visé du réglage (📏 Échelles et niveaux).")
-        tgt.clicked.connect(lambda *_: (self.lvl_chk.setChecked(True),
-                                        self.lvl.setValue(dbfs_to_unit(owner.audio_ref["target"], owner.audio_ref,
-                                                                       self.lvl_unit))))
-        helpb = QtWidgets.QPushButton("📏")
-        helpb.setToolTip("Échelles et niveaux : unité, alignement, et la fiche qui explique dBFS, dBu, dBV…")
-        helpb.clicked.connect(lambda *_: owner.open_scales())
-        f.addRow(owner._row(self.lvl_chk, self.lvl, tgt, helpb, None))
-        self.gain = QtWidgets.QDoubleSpinBox()              # 8.1 : gain à la main (ou celui calculé, affiché)
-        self.gain.setRange(-60.0, 40.0)
-        self.gain.setDecimals(1)
-        self.gain.setSingleStep(1.0)
-        self.gain.setSuffix(" dB")
-        self.gain.setValue(float(sp.get("gain") or 0.0))
-        self.gain.setToolTip("Gain appliqué au son. « Régler le niveau » décoché : c'est toi qui le règles.\n"
-                             "Coché : il est calculé pour atteindre le niveau visé (sur tout le fichier), sans jamais "
-                             "écrêter.")
-        self.gain_lbl = QtWidgets.QLabel("")
-        f.addRow("Gain :", owner._row(self.gain, self.gain_lbl, None))
-        self.gain.valueChanged.connect(lambda *_: None if self.lvl_chk.isChecked() else self._changed())
-        self.meter = AudioMeterBar(owner, self)
-        f.addRow("Niveau :", self.meter)
-        self.meter_txt = QtWidgets.QLabel("")
-        self.meter_txt.setWordWrap(True)
-        self.meter_txt.setToolTip("Mesuré sur le son qui sera joué : moyen (RMS), crête, True Peak, et la déviation FM\n"
-                                  "que ce niveau donne sur un micro (0 dBFS = déviation max du réglage d'écoute).")
-        f.addRow(self.meter_txt)
-        self.lvl_chk.toggled.connect(lambda *_: self._changed())
-        self.lvl.valueChanged.connect(lambda *_: self._changed())
-        lay.addLayout(f)
-        note = QtWidgets.QLabel("Dans l'écoute d'un micro HF (FM), les aigus au-delà de ~15 kHz sont coupés : c'est la "
-                                "bande audio d'un micro, pas un défaut.")
-        note.setWordWrap(True)
-        note.setStyleSheet("color: #8e8e93;")
-        lay.addWidget(note)
-        self.play_btn = QtWidgets.QPushButton("▶ Écouter ici")
-        self.play_btn.setCheckable(True)
-        self.play_btn.setToolTip("Joue le son sur la sortie audio de l'appli (⚙ Réglages › Son).")
-        self.play_btn.toggled.connect(lambda on: self.play(on))
-        self.vol = QtWidgets.QSlider(Qt.Orientation.Horizontal)
-        self.vol.setRange(0, 100)
-        self.vol.setValue(40)
-        self.vol.setMaximumWidth(140)
-        self.vol.setToolTip("Volume (commence bas : un générateur peut être fort).")
-        self.vol.valueChanged.connect(lambda v: self.fx.setVolume(v / 100.0) if self.fx is not None else None)
-        self.msg = QtWidgets.QLabel("")
-        self.msg.setWordWrap(True)
-        lay.addLayout(owner._row(self.play_btn, "Volume :", self.vol, None))
-        lay.addWidget(self.msg)
-        if standalone:                                      # 8.0.3 : « le générateur sert à quoi ? » -> l'affecter
-            box = QtWidgets.QGroupBox(TR("Utiliser ce son pour…"))
-            bl = QtWidgets.QFormLayout(box)
-            self.target = QtWidgets.QComboBox()
-            self.target.setToolTip(TR("Où va ce son : un micro de ta liste (il l'émet dans les démos tinySA / SDR), un son "
-                                      "d'alarme, ou l'émission avec un HackRF."))
-            self.sig = QtWidgets.QComboBox()
-            for k_, t_ in DEMO_SIG_KINDS:
-                self.sig.addItem(TR(t_), k_)
-            self.sig.setToolTip(TR("Ce que ce micro émet dans les démos (tinySA et SDR) : micro FM avec ce son, micro "
-                                   "numérique, coupures, brouilleur, rien."))
-            self.assign_btn = QtWidgets.QPushButton(TR("✔ Affecter"))
-            self.assign_btn.setToolTip(TR("Applique ce son (et ce type de signal) à la cible choisie."))
-            self.assign_btn.clicked.connect(lambda *_: self.assign())
-            bl.addRow(TR("Cible :"), self.target)
-            bl.addRow(TR("Signal (démos) :"), self.sig)
-            bl.addRow("", self.assign_btn)
-            self.target.currentIndexChanged.connect(lambda *_: self._target_changed())
-            lay.addWidget(box)
-            self.fill_targets()
-        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close if standalone else
-                                        QtWidgets.QDialogButtonBox.StandardButton.Ok |
-                                        QtWidgets.QDialogButtonBox.StandardButton.Cancel)
-        bb.accepted.connect(self.accept)
-        bb.rejected.connect(self.reject)
-        lay.addWidget(bb)
-        for w in (self.src, self.app):
-            w.currentIndexChanged.connect(lambda *_: self._changed())
-        for w in (self.f, self.f1, self.f2, self.dur):
-            w.valueChanged.connect(lambda *_: self._changed())
-        self.log.toggled.connect(lambda *_: self._changed())
-        self.finished.connect(lambda *_: self.play(False))
-        self._changed()
-
-    def fill_targets(self):
-        """Cibles : tes micros (démos), les sons d'alarme, l'émission HackRF."""
-        o = self.owner
-        cur = self.target.currentData()
-        self.target.blockSignals(True)
-        self.target.clear()
-        for w in sorted(o.watch, key=lambda w: w["freq"]):
-            self.target.addItem(TR("🎤 {} · {} MHz (démos tinySA / SDR)").format(w.get("name") or "—", f"{w['freq']:.3f}"),
-                                f"mic:{int(round(w['freq'] * 1000))}")
-        for k_, t_ in (("alarm2", "🔔 Son d'alarme critique"), ("alarm1", "🔔 Son d'alarme normale"),
-                       ("alarm0", "🔔 Son d'alarme info"), ("ok", "✓ Son de l'appel des micros")):
-            self.target.addItem(TR(t_), f"alarm:{k_}")
-        self.target.addItem(TR("📡 Émettre avec un HackRF (nouvelle ligne)"), "tx:")
-        i = self.target.findData(cur) if cur is not None else -1
-        self.target.setCurrentIndex(max(0, i))
-        self.target.blockSignals(False)
-        self._target_changed()
-
-    def _tgt(self):
-        k, _, v = str(self.target.currentData() or ":").partition(":")
-        return k, (int(v) if k == "mic" and v.isdigit() else v)
-
-    def _target_changed(self):
-        if hasattr(self, "meter"):
-            QtCore.QTimer.singleShot(0, self._measure)      # la déviation dépend du micro visé
-        t = self._tgt()
-        self.sig.setEnabled(t[0] == "mic")
-        if t[0] == "mic":
-            k = (self.owner.sdr_cfg.get("demo_kind") or {}).get(str(t[1])) or "auto"
-            self.sig.setCurrentIndex(max(0, self.sig.findData(k)))
-
-    def assign(self):
-        o, sp = self.owner, self.spec()
-        t = self._tgt()
-        if t[0] == "mic":
-            w = o.watch_by_key(t[1])
-            if w is None:
-                return
-            o.demo_sound(w, sp)
-            dk = dict(o.sdr_cfg.get("demo_kind") or {})
-            if self.sig.currentData() == "auto":
-                dk.pop(str(t[1]), None)
-            else:
-                dk[str(t[1])] = self.sig.currentData()
-            o.sdr_cfg["demo_kind"] = dk
-            for e_ in (getattr(o, "sdr_engs", None) or {}).values():
-                e_._t_demo = 0.0                            # le SDR démo prend le nouveau signal tout de suite
-            self.msg.setText(TR("✔ {} : « {} », {} — lance le mode démo (tinySA ou 🧪 SDR démo) pour le voir et "
-                                "l'écouter.").format(w.get("name") or f"{w['freq']:.3f}", audio_text(sp, TR),
-                                                     self.sig.currentText()))
-        elif t[0] == "alarm":
-            o.set_alarm_sound(t[1], sp)
-            self.msg.setText(TR("✔ Son « {} » affecté : {}.").format(self.target.currentText(), audio_text(sp, TR)))
-        elif t[0] == "tx":
-            d = o.open_sdr_tx()
-            if d is not None:
-                d.add_row(dict(f=606.0, kind="fm", audio=sp))
-                self.msg.setText(TR("✔ Ligne ajoutée à l'émission HackRF : règle sa fréquence."))
-
-    def spec(self):
-        lvl = unit_to_dbfs(self.lvl.value(), self.owner.audio_ref, self.lvl_unit) if self.lvl_chk.isChecked() else None
-        return audio_spec_norm(dict(src=self.src.currentData(), f=self.f.value(), f1=self.f1.value(), f2=self.f2.value(),
-                                    dur=self.dur.value(), log=self.log.isChecked(), app=self.app.currentData(),
-                                    path=self.path, lvl=lvl, gain=0.0 if lvl is not None else self.gain.value()))
-
-    def _measure(self):
-        """8.1 : vu-mètre et déviation du son choisi (mesurés sur 1 à 3 s du son réel)."""
-        try:
-            sp = self.spec()
-            if sp["src"] == "wav" and sp["path"]:
-                wav_load(sp["path"])
-            secs = min(3.0, sp["dur"]) if sp["src"] == "sweep" else 1.5
-            ref = self.owner.audio_ref
-            g_, lim_ = audio_gain(sp, 0)
-            if sp["src"] == "wav" and len(WAV_PCM.get(sp["path"], [])):   # 8.1 : un WAV est mesuré EN ENTIER
-                x_ = np.clip(np.asarray(WAV_PCM[sp["path"]], dtype=np.float32) * 10.0 ** (g_ / 20.0), -1.0, 1.0)
-                m = audio_meter(x_)
-            else:
-                m = audio_meter(demo_audio(sp, np.arange(int(secs * 48000)) / 48000.0, 0))
-            self.gain.setEnabled(sp.get("lvl") is None)
-            if sp.get("lvl") is not None:
-                self.gain.blockSignals(True)
-                self.gain.setValue(g_)
-                self.gain.blockSignals(False)
-            self.gain_lbl.setText(TR("⚠ limité par la crête : niveau visé pas atteint (le son écrêterait)") if lim_
-                                  else (TR("calculé pour le niveau visé") if sp.get("lvl") is not None else ""))
-            self.gain_lbl.setStyleSheet("color: #ff9f0a;" if lim_ else "color: #8e8e93;")
-            self.meter.set_meter(m, sp["lvl"] if sp.get("lvl") is not None else None)
-            nom = 48.0
-            t_ = self._tgt() if hasattr(self, "target") else ("", None)
-            if t_[0] == "mic":
-                w = self.owner.watch_by_key(t_[1])
-                p_ = demod_preset(self.owner.mic_demod(w)[0]) if w else None
-                nom = float((p_ or {}).get("dev") or 48000) / 1000.0
-            self.meter_txt.setText(TR("moyen {} · crête {} · True Peak {} · en FM : déviation crête {} kHz (0 dBFS = {} kHz)")
-                                   .format(fmt_audio(m["rms"], ref), fmt_audio(m["peak"], ref, "dbfs"),
-                                           fmt_audio(m["tp"], ref, "dbfs").replace("dBFS", "dBTP"),
-                                           f"{fm_deviation(m['peak'], nom):.1f}".replace(".", ","), f"{nom:g}"))
-        except Exception as e:  # noqa: BLE001
-            self.meter_txt.setText(str(e))
-
-    def _changed(self):
-        src = self.src.currentData()
-        show = {"tone": ("f",), "sweep": ("f1", "f2", "dur", "log"), "app": ("app",), "wav": ("wav",)}.get(src, ())
-        lay = self.layout().itemAt(0).layout()
-        for k, w in self.rows.items():
-            try:
-                lay.setRowVisible(w, k in show)
-            except Exception:  # noqa: BLE001
-                w.setVisible(k in show)
-        self.wav_lbl.setText(audio_text(self.spec(), TR) if self.path else TR("(aucun fichier)"))
-        if hasattr(self, "meter"):
-            self._measure()
-        if self.play_btn.isChecked():                       # on change le son en l'écoutant : on relance
-            self.play(True)                                 # (8.0.2 : play(False) décochait ▶ -> plus de relance)
-
-    def pick_wav(self):
-        p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Fichier WAV", "", "Son WAV (*.wav);;Tous (*)")
-        if not p:
-            return
-        ok, txt = wav_load(p)
-        self.msg.setText(txt)
-        if ok:
-            self.path = p
-            self.src.setCurrentIndex(max(0, self.src.findData("wav")))
-        self._changed()
-
-    def play(self, on):
-        if self.fx is not None:
-            try:
-                self.fx.stop()
-            except Exception:  # noqa: BLE001
-                pass
-            self.fx = None
-        if not on:
-            if self.play_btn.isChecked():
-                self.play_btn.blockSignals(True)
-                self.play_btn.setChecked(False)
-                self.play_btn.blockSignals(False)
-            if getattr(self, "_live_t", None) is not None:
-                self._live_t.stop()
-                self._live = None
-                self._measure()                              # retour à la mesure du son entier
-            return
-        import tempfile
-        import wave
-        sp = self.spec()
-        if sp["src"] == "wav" and sp["path"]:
-            wav_load(sp["path"])
-        secs = sp["dur"] if sp["src"] == "sweep" else (min(30.0, len(WAV_PCM.get(sp["path"], [])) / 48000.0)
-                                                         if sp["src"] == "wav" else 4.0)
-        t = np.arange(int(max(0.5, secs) * 48000)) / 48000.0
-        a = demo_audio(sp, t, 0)
-        try:
-            self._tmp = temp_wav_path("gen", self._tmp)  # 8.0.2 : un NOUVEAU fichier à chaque lecture (voir temp_wav_path)
-            with wave.open(self._tmp, "wb") as w:        # stéréo 16 bits 48 kHz : le format le plus partout lu
-                w.setnchannels(2)
-                w.setsampwidth(2)
-                w.setframerate(48000)
-                w.writeframes(np.repeat((np.clip(a, -1, 1) * 32767).astype("<i2"), 2).tobytes())
-            from PySide6 import QtMultimedia
-            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
-            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
-            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
-            fx.setLoopCount(-2)                              # QSoundEffect.Infinite : en boucle
-            fx.setVolume(self.vol.value() / 100.0)
-            fx.play()
-            self.fx = fx
-            self._live = (a.astype(np.float32), time.monotonic(), sp.get("lvl"))   # 8.1 : vu-mètre en direct
-            self._live_pk = -math.inf
-            if getattr(self, "_live_t", None) is None:
-                self._live_t = QtCore.QTimer(self)
-                self._live_t.timeout.connect(self._live_tick)
-            self._live_t.start(50)
-            self.msg.setText(TR("▶ {} (en boucle)").format(audio_text(sp, TR)))
-        except Exception as e:  # noqa: BLE001 — jamais de plantage pour un son
-            self.msg.setText(TR("⚠ Son impossible ici : {}").format(e))
-            self.play(False)
-
-
-    def _live_tick(self):
-        """8.1 : pendant « Écouter ici », le vu-mètre suit ce qui sort (50 ms autour de la position de lecture,
-        crête tenue qui redescend) : un WAV, une voix ou un balayage font bouger la barre en direct."""
-        lv = getattr(self, "_live", None)
-        if not lv or self.fx is None:
-            return
-        a, t0, tgt = lv
-        n = len(a)
-        if not n:
-            return
-        i = int((time.monotonic() - t0) * 48000) % n
-        seg = a[i:i + 2400] if i + 2400 <= n else np.concatenate([a[i:], a[:i + 2400 - n]])
-        m = audio_meter(seg)
-        self._live_pk = max(m["peak"], self._live_pk - 0.6) if math.isfinite(m["peak"]) else self._live_pk - 0.6
-        m = dict(m, peak=self._live_pk)
-        self.meter.set_meter(m, tgt)
-
-
-def audio_button(owner, spec, on_change=None):
-    """Bouton « 🎵 son » qui ouvre AudioPickDialog ; le choix est dans b.spec."""
-    b = QtWidgets.QPushButton()
-    b.spec = audio_spec_norm(spec)
-    b.setToolTip("Le son qui module ce signal : générateur, balayage, bruit, sons de l'appli, ton WAV…")
-
-    def upd():
-        b.setText("🎵 " + audio_text(b.spec, TR))
-
-    def pick():
-        d = AudioPickDialog(owner, b.spec)
-        if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            b.spec = d.spec()
-            upd()
-            if on_change:
-                on_change(b.spec)
-    b.clicked.connect(lambda *_: pick())
-    upd()
-    return b
-
-
-def _v8_open_audio_gen(self):
-    d = getattr(self, "_audiogen", None)
-    if d is None:
-        d = self._audiogen = AudioPickDialog(self, standalone=True)
-    d.fill_targets()
-    d.show()
-    d.raise_()
-    return d
-
-
-def _v8_demo_sound(self, w, spec):
-    """🎵 Son d'un micro dans le SDR démo (sdr_cfg « demo_snd » {kHz: source}) ; None = son par défaut."""
-    d = dict(self.sdr_cfg.get("demo_snd") or {})
-    k = str(int(round(w["freq"] * 1000)))
-    if spec is None:
-        d.pop(k, None)
-    else:
-        d[k] = audio_spec_norm(spec)
-        if d[k]["src"] == "wav":
-            wav_load(d[k]["path"])
-    self.sdr_cfg["demo_snd"] = d
-    for e in (getattr(self, "sdr_engs", None) or {}).values():
-        e._t_demo = 0.0                                   # le SDR démo prend le nouveau son tout de suite
-
-
-def _v8_pick_demo_sound(self, w):
-    cur = (self.sdr_cfg.get("demo_snd") or {}).get(str(int(round(w["freq"] * 1000))))
-    d = AudioPickDialog(self, cur, title=TR("🎵 Son de {} dans le SDR démo").format(w.get("name") or f"{w['freq']:.3f}"))
-    if d.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-        self.demo_sound(w, d.spec())
-
-
-MainWindow.open_audio_gen = _v8_open_audio_gen
-# ---- étape 21 (Clément : « on peut même choisir les sons d'alarmes » -> « garde ça en V8 ») : sons des alarmes au choix
-
-
-
-
-
-
-def _v8_set_alarm_sound(self, key, spec):
-    d = alarm_sounds_norm(getattr(self.sound, "custom", None))
-    if spec is None:
-        d.pop(key, None)
-    else:
-        d[key] = audio_spec_norm(spec)
-        if d[key]["src"] == "wav":
-            wav_load(d[key]["path"])
-    self.sound.custom = d
-
-
-def _v8_test_alarm_sound(self, key):
-    self.sound.play({"alarm2": ALARM_TONES[2], "alarm1": ALARM_TONES[1], "alarm0": ALARM_TONES[0],
-                     "ok": TONE_OK}.get(key, ALARM_TONES[2]))
-
-
-MainWindow.set_alarm_sound = _v8_set_alarm_sound
-MainWindow.test_alarm_sound = _v8_test_alarm_sound
-
-
-
-
-
-
-MainWindow.demo_sound = _v8_demo_sound
-MainWindow.pick_demo_sound = _v8_pick_demo_sound
-
-
-class SdrTxDialog(QtWidgets.QDialog):
-    """📡 Émettre avec un HackRF, EN CÂBLE (étape 21) : faux micros FM (son + pilote), porteuses, talkies, blocs larges,
-    brouilleur intermittent — pour tester un récepteur, l'écoute de l'appli, l'intermod ou s'entraîner à la chasse.
-    En SDR démo, rien n'est émis : le SDR démo « reçoit » l'émission simulée."""
-    COLS = ("MHz", "Type", "Son", "Pilote", "Intermittent", "Niveau")
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner, self.run = owner, None
-        self.setWindowTitle("📡 Émettre avec un HackRF (en câble)")
-        lay = QtWidgets.QVBoxLayout(self)
-        warn = QtWidgets.QLabel("⚠ Émettre à l'antenne sans autorisation est interdit. En CÂBLE seulement, avec un "
-                                "atténuateur (30 dB ou plus) avant l'entrée du récepteur ou du tinySA.")
-        warn.setWordWrap(True)
-        warn.setStyleSheet(f"color: {owner.tone_color('bad')}; font-weight: bold;")
-        lay.addWidget(warn)
-        self.demo_lbl = QtWidgets.QLabel("")
-        self.demo_lbl.setWordWrap(True)
-        lay.addWidget(self.demo_lbl)
-        self.tbl = QtWidgets.QTableWidget(0, len(self.COLS))
-        self.tbl.setHorizontalHeaderLabels(list(self.COLS))
-        self.tbl.horizontalHeader().setStretchLastSection(True)
-        self.tbl.setToolTip("Ce que le HackRF émet en même temps (8 au plus, tous dans une même fenêtre de quelques MHz).")
-        lay.addWidget(self.tbl, 1)
-        add = QtWidgets.QPushButton("＋ Ajouter un signal")
-        add.setToolTip("Un faux micro FM de plus (change le type, le son…).")
-        add.clicked.connect(lambda *_: self.add_row())
-        mine = QtWidgets.QPushButton("Depuis ma liste")
-        mine.setToolTip("Ajoute les micros choisis dans « Mes fréquences » (ou les 3 premiers).")
-        mine.clicked.connect(lambda *_: self.from_list())
-        dele = QtWidgets.QPushButton("Retirer")
-        dele.setToolTip("Retire les lignes choisies.")
-        dele.clicked.connect(lambda *_: self.del_rows())
-        lay.addLayout(owner._row(add, mine, dele, None))
-        self.gain = QtWidgets.QSpinBox()
-        self.gain.setRange(0, 47)
-        self.gain.setSuffix(" dB")
-        self.gain.setToolTip("Gain d'émission du HackRF (0 à 47 dB). Commence à 0 : en câble, c'est déjà bien assez.")
-        self.amp = QtWidgets.QCheckBox("Ampli (+ ~11 dB)")
-        self.amp.setToolTip("Ampli de sortie du HackRF. Inutile en câble : laisse-le coupé.")
-        self.dur = QtWidgets.QComboBox()
-        for m_ in TX_DURATIONS:
-            self.dur.addItem(TR("{} min").format(m_), m_)
-        self.dur.setCurrentIndex(1)
-        self.dur.setToolTip("L'émission s'arrête toute seule au bout de ce temps.")
-        lay.addLayout(owner._row("Gain :", self.gain, self.amp, "Durée :", self.dur, None))
-        self.cable = QtWidgets.QCheckBox("Je suis EN CÂBLE avec un atténuateur, aucune antenne branchée")
-        self.cable.setToolTip("Obligatoire pour émettre.")
-        lay.addWidget(self.cable)
-        self.info = QtWidgets.QLabel("")
-        self.info.setWordWrap(True)
-        lay.addWidget(self.info)
-        self.go = QtWidgets.QPushButton("📡 Émettre")
-        self.go.setToolTip("Lance / arrête l'émission.")
-        self.go.clicked.connect(lambda *_: self.toggle())
-        close = QtWidgets.QPushButton("Fermer")
-        close.setToolTip("Ferme la fenêtre (l'émission s'arrête).")
-        close.clicked.connect(self.close)
-        lay.addLayout(owner._row(self.go, None, close))
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.refresh)
-        self.timer.start(500)
-        fit_dialog(self, 760, 520)
-        self.add_row(dict(f=606.0))
-        self.refresh()
-
-    # ---- lignes
-    def add_row(self, r=None):
-        r = dict(dict(f=606.0, kind="fm", audio="voice", pilot=True, burst=False, lvl=0.0), **(r or {}))
-        if self.tbl.rowCount() >= TX_MAX_SIGS:
-            return
-        i = self.tbl.rowCount()
-        self.tbl.insertRow(i)
-        f = QtWidgets.QDoubleSpinBox()
-        f.setRange(1.0, 6000.0)
-        f.setDecimals(3)
-        f.setSingleStep(0.025)
-        f.setValue(float(r["f"]))
-        k = QtWidgets.QComboBox()
-        for k_, t_ in SIG_KINDS:
-            k.addItem(t_, k_)
-        k.setCurrentIndex(max(0, k.findData(r["kind"])))
-        a = audio_button(self.owner, r["audio"])
-        p = QtWidgets.QCheckBox()
-        p.setChecked(bool(r["pilot"]))
-        p.setToolTip("Tonalité pilote inaudible (32,768 kHz) comme beaucoup de micros analogiques.")
-        b = QtWidgets.QCheckBox()
-        b.setChecked(bool(r["burst"]))
-        b.setToolTip("Allumé 1 s toutes les 4 s : un brouilleur qui va et vient (chasse, alarmes).")
-        lv = QtWidgets.QSpinBox()
-        lv.setRange(-40, 0)
-        lv.setSuffix(" dB")
-        lv.setValue(int(r["lvl"]))
-        lv.setToolTip("Niveau par rapport au signal le plus fort (0 dB).")
-        for c, w in enumerate((f, k, a, p, b, lv)):
-            self.tbl.setCellWidget(i, c, w)
-        for w in (f, lv):
-            w.valueChanged.connect(lambda *_: self.refresh())
-        k.currentIndexChanged.connect(lambda *_: self.refresh())
-
-    def rows(self):
-        out = []
-        for i in range(self.tbl.rowCount()):
-            w = [self.tbl.cellWidget(i, c) for c in range(len(self.COLS))]
-            out.append(dict(f=w[0].value(), kind=w[1].currentData(), audio=w[2].spec, pilot=w[3].isChecked(),
-                            burst=w[4].isChecked(), lvl=float(w[5].value())))
-        return out
-
-    def from_list(self):
-        o = self.owner
-        rows = sorted({ix.row() for ix in o.watch_table.selectionModel().selectedRows()}) if hasattr(o, "watch_table") \
-            else []
-        ws = [o.watch[r] for r in rows if 0 <= r < len(o.watch)] or list(o.watch[:3])
-        for w in ws:
-            dig = o.mic_demod(w)[0] == DEMOD_DIGITAL if hasattr(o, "mic_demod") else False
-            self.add_row(dict(f=w["freq"], kind="noise" if dig or (w.get("bw") or 0) > 0 else "fm"))
-        self.refresh()
-
-    def del_rows(self):
-        for r in sorted({ix.row() for ix in self.tbl.selectionModel().selectedIndexes()}, reverse=True):
-            self.tbl.removeRow(r)
-        self.refresh()
-
-    # ---- émission
-    def demo(self):
-        return bool(self.owner.sdr_cfg.get("demo"))
-
-    def plan(self):
-        return tx_plan(self.rows())
-
-    def refresh(self):
-        r = self.run
-        on = r is not None and r.running()
-        if r is not None and not on:
-            self._ended(r)
-        self.demo_lbl.setText(TR("🧪 SDR démo allumé : émission SIMULÉE, rien ne sort. Le SDR démo la « reçoit » : regarde "
-                                 "le spectre et écoute.") if self.demo() else "")
-        if on:
-            left = max(0, int(r.until - time.time()))
-            self.info.setText(TR("📡 Émission en cours · {} min {:02d} s restantes").format(left // 60, left % 60))
-        else:
-            p = self.plan()
-            self.info.setText(p if isinstance(p, str) else TR("Centre {} MHz · débit {} MS/s · {} signal(aux)").format(
-                f"{p[0] / 1e6:.3f}", f"{p[1] / 1e6:g}", len(p[2])))
-        t = "■ Arrêter l'émission" if on else "📡 Émettre"
-        if getattr(self, "_gt", None) != t:
-            self._gt = t
-            self.go.setText(t)
-
-    def toggle(self):
-        if self.run is not None and self.run.running():
-            self.stop()
-            return
-        o = self.owner
-        if not self.cable.isChecked() and not self.demo():
-            self.info.setText(TR("Coche d'abord « en câble avec un atténuateur »."))
-            return
-        p = self.plan()
-        if isinstance(p, str):
-            self.info.setText(p)
-            return
-        fc, rate, sigs = p
-        until = time.time() + 60.0 * int(self.dur.currentData() or 5)
-        if self.demo():
-            self.run = TxRunner(fc, rate, sigs, until, demo=True)
-        else:
-            busy = [e for e in (getattr(o, "sdr_engs", None) or {}).values() if e.running() and e.kind() == "hackrf"]
-            busy += [w for w in getattr(o, "workers", []) if w.isRunning() and getattr(w, "sdr", False)
-                     and (parse_sdr_addr(getattr(w, "port", "")) or ("",))[0] == "hackrf"]     # audit : balayage hackrf_sweep
-            if busy:
-                self.info.setText(TR("Un poste SDR utilise le HackRF : arrête-le d'abord (un HackRF reçoit OU émet)."))
-                return
-            exe = getattr(o, "_tx_tool", None) or find_sdr_tool("hackrf_transfer", o.sdr_cfg.get("dir", ""))
-            if not exe:
-                self.info.setText(TR("hackrf_transfer introuvable (outils HackRF : PothosSDR, ou 📡 Réglages SDR)."))
-                return
-            ser = next((pp["serial"] for pp in sdr_posts_norm(o.sdr_cfg.get("posts"))
-                        if (sdr_model(pp["model"]) or {}).get("kind") == "hackrf" and pp["serial"]), "")
-            try:
-                self.run = TxRunner(fc, rate, sigs, until, exe=exe, gain=self.gain.value(), amp=self.amp.isChecked(),
-                                    serial=ser)
-            except OSError as ex:
-                self.info.setText(TR("⚠ Impossible de lancer hackrf_transfer : {}").format(ex))
-                return
-        o.log_event(dict(name=TR("Émission SDR"), freq=fc / 1e6, note=TR("{} · gain {} dB{} · {}").format(
-            ", ".join(f"{s_['f']:.3f}" for s_ in sigs), self.gain.value(), TR(" · ampli") if self.amp.isChecked() else "",
-            TR("simulée (SDR démo)") if self.demo() else TR("en câble"))), 0.0, "ÉMISSION SDR")
-        self.refresh()
-
-    def _ended(self, r):
-        self.run = None
-        why = r.why or (r.err[-1] if r.err else "")
-        self.owner.log_event(dict(name=TR("Émission SDR"), freq=r.fc / 1e6, note=why or TR("arrêtée")), 0.0,
-                             "FIN D'ÉMISSION SDR")
-        if why:
-            self.owner.set_status(TR("⚠ Émission arrêtée : {}").format(why))
-
-    def stop(self):
-        r = self.run
-        if r is not None:
-            r.stop()
-            self._ended(r)
-        self.refresh()
-
-    def closeEvent(self, ev):
-        self.stop()
-        super().closeEvent(ev)
-
-
-def _v8_demo_mics(self):
-    """Micros que « reçoit » le SDR démo : ta liste (sauf les 💤 éteints et ceux hors de l'état 📸 actif)."""
-    out = []
-    tuned = {}                     # 8.1 : micro écouté sur A -> le « pack » démo est réglé comme ton écoute (même
-    for e_ in (getattr(self, "sdr_engs", None) or {}).values():       # déviation nominale, même compander) : un
-        cm = getattr(e_, "cur_mic", None)                             # −18 dBFS envoyé se lit −18 dBFS à l'écoute
-        if cm is not None and isinstance(getattr(e_, "demod", None), dict):
-            d_ = e_.demod
-            tuned[id(cm)] = (float(d_.get("dev") or LISTEN_MODES.get(d_.get("mode", ""), {}).get("dev") or 0) or None,
-                             d_.get("compander") or "")
-    for w in self.watch:
-        if w.get("muted") or w.get("off"):
-            continue
-        snd = (self.sdr_cfg.get("demo_snd") or {}).get(str(int(round(w["freq"] * 1000))))
-        if snd and audio_spec_norm(snd)["src"] == "wav" and audio_spec_norm(snd)["path"] not in WAV_PCM:
-            wav_load(audio_spec_norm(snd)["path"])
-        out.append(dict(f=w["freq"], name=w.get("name", ""), bw=float(w.get("bw") or 0.0),
-                        free=self.is_keep_free(w.get("status")),
-                        digital=self.mic_demod(w)[0] == DEMOD_DIGITAL, snd=snd,
-                        dev=float((demod_preset(self.mic_demod(w)[0]) or {}).get("dev") or 0) or None,
-                        comp=(demod_preset(self.mic_demod(w)[0]) or {}).get("comp") or "",
-                        kind=(self.sdr_cfg.get("demo_kind") or {}).get(str(int(round(w["freq"] * 1000)))) or "auto"))
-        if id(w) in tuned:
-            out[-1]["dev"], out[-1]["comp"] = tuned[id(w)]
-    return out
-
-
-def _v8_set_sdr_demo(self, on):
-    """🧪 SDR démo allumé / éteint : les postes en marche repartent sur la nouvelle source."""
-    on = bool(on)
-    if bool(self.sdr_cfg.get("demo")) == on:
-        return
-    run = [e for e in (getattr(self, "sdr_engs", None) or {}).values() if e.running()]
-    for e in run:
-        e.stop()
-    self.sdr_cfg["demo"] = on
-    tx = getattr(self, "_sdrtx", None)
-    if tx is not None and tx.run is not None:
-        tx.stop()
-    if on:
-        if self.rf_mode == "tiny":
-            self.set_rf_mode("sdr")
-        for e in run or [self.sdr_eng]:
-            e.start()
-        self.set_status(TR("🧪 SDR démo : tes micros sont « reçus » avec du son et un pilote ; un brouilleur passe de temps "
-                           "en temps, un micro s'éteint, un autre perd son pilote."))
-    else:
-        sdr_demo_set(plan=[], tx=[])
-        self.set_status(TR("SDR démo coupé : le poste SDR reprendra ton vrai SDR au prochain ▶."))
-    for d in self.all_sdr_docks():
-        if hasattr(self.dock_widget(d), "refresh"):
-            self.dock_widget(d).refresh()
-
-
-def _v8_open_sdr_tx(self):
-    d = getattr(self, "_sdrtx", None)
-    if d is None:
-        d = self._sdrtx = SdrTxDialog(self)
-    d.show()
-    d.raise_()
-    return d
-
-
-MainWindow.demo_mics = _v8_demo_mics
-MainWindow.set_sdr_demo = _v8_set_sdr_demo
-MainWindow.sdr_demo_on = lambda self: self.set_sdr_demo(True)
-MainWindow.sdr_demo_off = lambda self: self.set_sdr_demo(False)
-MainWindow.open_sdr_tx = _v8_open_sdr_tx
-MainWindow.toggle_sdr_demo = lambda self: self.set_sdr_demo(not self.sdr_cfg.get("demo"))
-
-
-# ------------------------------------------------------------------ V8 étape 22 : premier branchement, calibration,
-# remonter le temps (8.0 : les chapitres SDR sont dans le manuel principal, partie « Le SDR (bêta) »)
-
-
-def sdr_gain_scan(kind, model, base_gains, tool_dir="", iq_tool=None, center=600e6, key="lna", secs=0.4, cancel=None,
-                  progress=None, wr_lib=None):
-    """🎚 Essaie chaque valeur de l'étage `key` (sans Qt, dans un fil) : saturation (part d'échantillons à pleine
-    échelle), bruit (médiane du spectre) et crête (dBFS de l'échantillon le plus fort). -> [dict(gain, ovf, floor,
-    peak)] ou lève RuntimeError (SDR introuvable…)."""
-    steps = gain_steps(model, key) or [None]
-    rate = sdr_rate(model, kind)
-    rows = []
-    for i, g in enumerate(steps):
-        if cancel is not None and cancel():
-            break
-        gains = dict(base_gains or {})
-        if g is not None:
-            gains[key] = g
-        src = open_iq_source(kind, center, rate, gains, tool=iq_tool, tool_dir=tool_dir, wr_lib=wr_lib)
-        dog = threading.Timer(secs + 6.0, src.close)
-        dog.daemon = True
-        dog.start()
-        try:
-            nb = IQ_BYTES[src.dtype]
-            want = int((secs + 0.15) * src.rate) * nb
-            buf, t0 = bytearray(), time.time()
-            while len(buf) < want and time.time() - t0 < secs + 4.0:
-                d = src.read(min(262144, want - len(buf)))
-                if not d:
-                    break
-                buf += d
-        finally:
-            dog.cancel()
-            src.close()
-        skip = int(0.15 * src.rate) * nb
-        if len(buf) <= skip + 4096 * nb:
-            raise RuntimeError((list(src.err or []) or [TR("aucune donnée reçue")])[-1][:160])
-        iq = iq_decode(src.dtype, bytes(buf[skip: skip + (len(buf) - skip) // nb * nb]))
-        ovf = float(np.mean((np.abs(iq.real) > 0.98) | (np.abs(iq.imag) > 0.98)))
-        avg, _mx = rt_frames(iq, 4096)
-        pk = float(np.max(np.abs(iq))) if len(iq) else 0.0
-        rows.append(dict(gain=g, ovf=round(ovf, 5), floor=round(float(np.median(avg)), 1) if avg is not None else None,
-                         peak=round(20.0 * math.log10(max(pk, 1e-6)), 1)))
-        if progress:
-            progress(i + 1, len(steps))
-    return rows
-
-
-class SdrSetupWizard(QtWidgets.QDialog):
-    """🔌 Premier branchement SDR (étape 22) : choisir son SDR, le trouver, régler le gain tout seul, écouter un micro,
-    caler les niveaux sur le tinySA, et un diagnostic à envoyer. Chaque étape dit ✔ / ✖ et quoi faire."""
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner, self.res, self.job = owner, {}, None
-        self.setWindowTitle("🔌 Premier branchement SDR")
-        lay = QtWidgets.QVBoxLayout(self)
-        intro = QtWidgets.QLabel("Branche ton SDR, puis fais les étapes dans l'ordre. Si une étape bloque, le 🩺 diagnostic "
-                                 "en bas résume tout pour le support.")
-        intro.setWordWrap(True)
-        lay.addWidget(intro)
-        self.demo_lbl = QtWidgets.QLabel("")
-        self.demo_lbl.setWordWrap(True)
-        self.demo_btn = QtWidgets.QPushButton("Couper le SDR démo")
-        self.demo_btn.setToolTip("Le SDR démo est allumé : coupe-le pour régler ton vrai SDR.")
-        self.demo_btn.clicked.connect(lambda *_: (owner.set_sdr_demo(False), self.refresh()))
-        lay.addLayout(owner._row(self.demo_lbl, self.demo_btn))
-        g = QtWidgets.QGridLayout()
-        self.model = QtWidgets.QComboBox()
-        for m_ in SDR_MODELS:
-            if m_["kind"]:
-                self.model.addItem(m_["name"], m_["key"])
-        cur = owner.sdr_cfg.get("model") or SDR_MODEL_DEFAULT.get("hackrf")
-        self.model.setCurrentIndex(max(0, self.model.findData(cur)))
-        self.model.setToolTip("Le modèle exact de ton SDR (règle ses débits, gains et plage).")
-        self.model.currentIndexChanged.connect(lambda *_: self.set_model())
-        self.st = {}
-        steps = (("model", "1. Mon SDR", self.model),
-                 ("probe", "2. Le trouver", self._btn("🔌 Chercher mon SDR", "Outil trouvé, SDR détecté, signal reçu, débit tenu.", self.probe)),
-                 ("gain", "3. Régler le gain tout seul", self._btn("🎚 Régler le gain", "Essaie chaque gain et garde le plus fort qui ne sature pas.", self.gain)),
-                 ("listen", "4. Écouter un micro", self._btn("🎧 Écouter", "Lance le poste SDR sur un de tes micros : tu dois l'entendre.", self.listen)),
-                 ("calib", "5. Caler les niveaux (facultatif)", self._btn("📏 Caler sur le tinySA", "Compare les mêmes signaux vus par le tinySA et le SDR : niveaux du SDR en vrais dBm.", lambda: owner.open_sdr_calib())),
-                 ("diag", "6. Diagnostic", self._btn("🩺 Diagnostic à envoyer", "Écrit un fichier qui résume tout (à m'envoyer si ça coince).", self.diag)))
-        for r, (k, t, w) in enumerate(steps):
-            g.addWidget(QtWidgets.QLabel(f"<b>{TR(t)}</b>"), r, 0)
-            g.addWidget(w, r, 1)
-            lab = QtWidgets.QLabel("")
-            lab.setWordWrap(True)
-            lab.setMinimumWidth(320)
-            g.addWidget(lab, r, 2)
-            self.st[k] = lab
-        g.setColumnStretch(2, 1)
-        lay.addLayout(g)
-        self.bar = QtWidgets.QProgressBar()
-        self.bar.setVisible(False)
-        lay.addWidget(self.bar)
-        lay.addStretch(1)
-        close = QtWidgets.QPushButton("Fermer")
-        close.setToolTip("Ferme l'assistant (ce qui est réglé reste réglé).")
-        close.clicked.connect(self.close)
-        lay.addLayout(owner._row(None, close))
-        fit_dialog(self, 860, 460)
-        self.refresh()
-
-    def _btn(self, text, tip, fn):
-        b = QtWidgets.QPushButton(text)
-        b.setToolTip(tip)
-        b.clicked.connect(lambda *_: fn())
-        return b
-
-    def mdl(self):
-        return sdr_model(self.model.currentData()) or sdr_model(SDR_MODEL_DEFAULT["hackrf"])
-
-    def set_model(self):
-        o, m_ = self.owner, self.mdl()
-        o.sdr_cfg["model"] = m_["key"]
-        o.sdr_cfg.setdefault("models", {})[m_["kind"]] = m_["key"]
-        self.say("model", "✔", TR("{} : {} – {} MHz, fenêtre jusqu'à {} MHz").format(
-            m_["name"], f"{m_['fmin']:g}", f"{m_['fmax']:g}", f"{sdr_span_mhz(m_, sdr_rate(m_)):.1f}"))
-
-    def say(self, key, mark, txt):
-        self.res[key] = (mark, txt)
-        c = {"✔": "ok", "✖": "bad", "⚠": "warn"}.get(mark)
-        self.st[key].setText(f"{mark} {txt}")
-        self.st[key].setStyleSheet(f"color: {self.owner.tone_color(c)};" if c else "")
-
-    def refresh(self):
-        on = bool(self.owner.sdr_cfg.get("demo"))
-        self.demo_lbl.setText(TR("🧪 Le SDR démo est allumé : l'assistant règle ton VRAI SDR, coupe la démo d'abord.")
-                              if on else "")
-        self.demo_btn.setVisible(on)
-        if "model" not in self.res:
-            self.set_model()
-
-    def _busy(self):
-        if self.job is not None and not self.job.get("done"):
-            return True
-        run = [e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()]
-        if run:                                          # audit : on demande avant d'arrêter l'écoute en cours
-            q = QtWidgets.QMessageBox.question(self, TR("Poste SDR en marche"),
-                                               TR("Le poste SDR est en marche : l'arrêter le temps du test ?\n"
-                                                  "(un SDR ne sert qu'à un logiciel à la fois)"))
-            if q != QtWidgets.QMessageBox.StandardButton.Yes:
-                return True
-            for e in run:
-                e.stop()
-        return False
-
-    def probe(self):
-        if self._busy():
-            return
-        o, m_ = self.owner, self.mdl()
-        self.say("probe", "…", TR("recherche…"))
-
-        def done(res, err=None):
-            if err is not None or not isinstance(res, dict):
-                self.say("probe", "✖", str(err or res)[:200])
-                return
-            lines, ok = probe_report(res, TR)
-            self.say("probe", "✔" if ok else "✖", " · ".join(lines) if lines else TR("rien"))
-        self.job = o.run_heavy(lambda: sdr_probe(m_["kind"], m_, o.sdr_gains(m_["kind"]), o.sdr_cfg.get("dir", ""),
-                                                 getattr(o, "_listen_tool", None), 2.0, wr_lib=WINRADIO_LIB),
-                               done, self.st["probe"], what="Test du SDR")
-
-    def gain(self):
-        if self._busy():
-            return
-        o, m_ = self.owner, self.mdl()
-        key = "lna" if gain_steps(m_, "lna") else None
-        if key is None or m_["kind"] == "winradio":
-            self.say("gain", "⚠", TR("ce SDR n'a pas de gain réglable ici : règle-le dans 📡 Réglages SDR"))
-            return
-        self.say("gain", "…", TR("essai des gains…"))
-        self.bar.setVisible(True)
-        self.bar.setRange(0, len(gain_steps(m_, key)))
-        prog = {"v": 0}
-        mics = [w["freq"] for w in o.watch if sdr_in_range(m_, w["freq"])]
-        center = (mics[0] if mics else (600.0 if sdr_in_range(m_, 600.0) else (m_["fmin"] + m_["fmax"]) / 2)) * 1e6
-
-        ref = {}
-
-        def run():
-            return sdr_gain_scan(m_["kind"], m_, o.sdr_gains(m_["kind"]), o.sdr_cfg.get("dir", ""),
-                                 getattr(o, "_listen_tool", None), center, key,
-                                 cancel=lambda: (ref.get("job") or {}).get("cancel"),
-                                 progress=lambda a, b: prog.update(v=a), wr_lib=WINRADIO_LIB)
-
-        def done(rows, err=None):
-            self.bar.setVisible(False)
-            if err is not None or isinstance(rows, Exception) or not rows:
-                self.say("gain", "✖", TR("essai impossible : {}").format(err or rows or TR("rien reçu")))
-                return
-            g_, why = auto_gain_pick(rows)
-            self.gain_rows = rows
-            gs = o.sdr_cfg.setdefault("gains", {}).setdefault(m_["key"], {})
-            gs[key] = int(g_)
-            o.log_event(dict(name=TR("SDR"), freq=center / 1e6, note=TR("gain auto {} : {} dB ({})").format(
-                key.upper(), g_, TR(why))), 0.0, "RÉGLAGE")
-            self.say("gain", "⚠" if ("sature" in why or "peu de marge" in why) else "✔", TR("{} = {} dB : {}").format(key.upper(), g_, TR(why)) +
-                     " · " + " ".join(f"{r_['gain']}:{100 * r_['ovf']:.1f}%" for r_ in rows))
-        self.job = ref["job"] = o.run_heavy(run, done, self.st["gain"], what="Réglage du gain")
-        t = QtCore.QTimer(self)
-        t.timeout.connect(lambda: self.bar.setValue(prog["v"]) if self.bar.isVisible() else t.stop())
-        t.start(300)
-
-    def listen(self):
-        o = self.owner
-        m_ = self.mdl()
-        ws = [w for w in o.watch if sdr_in_range(m_, w["freq"]) and not w.get("muted")]
-        if ws:
-            o.sdr_tune_mic(ws[0])
-            self.say("listen", "✔", TR("poste SDR lancé sur {} : tu dois l'entendre (🔊 volume du Récepteur)").format(
-                ws[0]["name"] or f"{ws[0]['freq']:.3f}"))
-        else:
-            o.set_rf_mode("sdr")
-            o.sdr_eng.start()
-            self.say("listen", "⚠", TR("aucun micro dans la plage du SDR : règle A à la main (fréquence du Récepteur)"))
-
-    def report(self):
-        o, m_ = self.owner, self.mdl()
-        lines = [f"RF Technical Monitor {APP_VER} — {TR('premier branchement SDR')} — {datetime.now():%Y-%m-%d %H:%M:%S}",
-                 f"{TR('Modèle')} : {m_['name']} ({m_['key']}, {m_['kind']})",
-                 f"{TR('Gains')} : {o.sdr_gains(m_['kind'])}",
-                 f"{TR('Correction de niveau')} : {o.sdr_offset(m_['kind']):+.1f} dB",
-                 f"{TR('Dossier des outils')} : {o.sdr_cfg.get('dir', '') or '—'}", ""]
-        for k, (mark, txt) in self.res.items():
-            lines.append(f"[{k}] {mark} {txt}")
-        for r_ in getattr(self, "gain_rows", []) or []:
-            lines.append(f"  gain {r_['gain']} : {TR('saturation')} {100 * r_['ovf']:.2f} %, {TR('bruit')} {r_['floor']} dBFS, "
-                         f"{TR('crête')} {r_['peak']} dBFS")
-        for e in (getattr(o, "sdr_engs", None) or {}).values():
-            lines.append(f"{TR('Poste')} {e.pid} ({e.name()}) : {TR('en marche') if e.running() else TR('arrêté')} · {e.msg}")
-            w = e.worker
-            if w is not None:
-                lines += [f"  err : {x}" for x in list(getattr(w, "err", []) or [])[-10:]]
-        return "\n".join(lines) + "\n"
-
-    def diag(self):
-        d = Path(self.owner.log_dir) / "diagnostic"
-        try:
-            d.mkdir(parents=True, exist_ok=True)
-            p = d / f"diagnostic_sdr_{datetime.now():%Y%m%d_%H%M%S}.txt"
-            write_atomic(str(p), self.report())
-            self.say("diag", "✔", str(p))
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(d)))
-        except OSError as ex:
-            self.say("diag", "✖", str(ex))
-
-
-class SdrCalibDialog(QtWidgets.QDialog):
-    """📏 Caler les niveaux du SDR sur le tinySA (étape 22) : les mêmes signaux vus par les deux pendant ~15 s
-    (puissance de canal ± 100 kHz), écart médian = correction dBFS -> dBm du modèle de SDR."""
-    SECS = 15.0
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner, self.t0, self.acc = owner, None, None
-        self.setWindowTitle("📏 Caler les niveaux du SDR sur le tinySA")
-        lay = QtWidgets.QVBoxLayout(self)
-        info = QtWidgets.QLabel("Le tinySA mesure en dBm, le SDR en dBFS (relatif à son convertisseur). Avec les DEUX en "
-                                "marche (mode combiné) et des signaux dans la fenêtre du SDR (tes micros allumés), l'appli "
-                                "compare les mêmes signaux pendant 15 s et en déduit la correction du SDR. Mets les deux "
-                                "antennes au même endroit.")
-        info.setWordWrap(True)
-        lay.addWidget(info)
-        self.tbl = QtWidgets.QTableWidget(0, 4)
-        self.tbl.setHorizontalHeaderLabels([TR("MHz"), TR("tinySA (dBm)"), TR("SDR (dBFS)"), TR("Écart (dB)")])
-        self.tbl.horizontalHeader().setStretchLastSection(True)
-        self.tbl.setToolTip("Les signaux vus par les deux (puissance sur ± 100 kHz).")
-        lay.addWidget(self.tbl, 1)
-        self.msg = QtWidgets.QLabel("")
-        self.msg.setWordWrap(True)
-        lay.addWidget(self.msg)
-        self.go = QtWidgets.QPushButton("▶ Mesurer (15 s)")
-        self.go.setToolTip("Lance la comparaison.")
-        self.go.clicked.connect(lambda *_: self.start())
-        self.apply_btn = QtWidgets.QPushButton("✔ Appliquer la correction")
-        self.apply_btn.setToolTip("Garde cette correction pour ce modèle de SDR (📡 Réglages SDR › correction de niveau).")
-        self.apply_btn.setEnabled(False)
-        self.apply_btn.clicked.connect(lambda *_: self.apply())
-        close = QtWidgets.QPushButton("Fermer")
-        close.setToolTip("Ferme la fenêtre.")
-        close.clicked.connect(self.close)
-        lay.addLayout(owner._row(self.go, self.apply_btn, None, close))
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.result = None
-        fit_dialog(self, 640, 460)
-
-    def eng(self):
-        return next((e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()), None)
-
-    def start(self):
-        o, e = self.owner, self.eng()
-        if o.sdr_cfg.get("demo"):
-            self.msg.setText(TR("Le SDR démo n'a rien à caler : ses niveaux sont fabriqués. Coupe-le pour caler ton vrai SDR."))
-            return
-        if e is None:
-            self.msg.setText(TR("Lance d'abord le poste SDR (▶ du Récepteur), en mode combiné avec le tinySA."))
-            return
-        if not o.is_running():
-            self.msg.setText(TR("Lance d'abord la surveillance du tinySA (▶ Démarrer)."))
-            return
-        self.e, self.t0, self.acc, self.tsa, self.result = e, time.time(), None, {}, None
-        self.apply_btn.setEnabled(False)
-        self.timer.start(500)
-        self._tick()
-
-    def _tick(self):
-        o, e = self.owner, getattr(self, "e", None)
-        if self.t0 is None or e is None:
-            return
-        fr = e.last
-        if fr is not None and len(fr["F"]) == len(fr["avg"]):
-            F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
-            if self.acc is not None and len(self.acc[0]) == len(F) and abs(self.acc[0][0] - F[0]) < 1e-6:
-                self.acc = (F, np.maximum(self.acc[1], L))
-            else:
-                self.acc = (F, L)
-        for bid, v in list(o.latest.items()):
-            if isinstance(bid, int) and bid >= 0 and v is not None and len(v[0]):
-                F, L = np.asarray(v[0], dtype=float), np.asarray(v[1], dtype=float)
-                old = self.tsa.get(bid)
-                self.tsa[bid] = (F, np.maximum(old[1], L)) if old is not None and len(old[0]) == len(F) else (F, L)
-        left = self.SECS - (time.time() - self.t0)
-        if left > 0:
-            self.msg.setText(TR("Mesure… {} s").format(int(left) + 1))
-            return
-        self.timer.stop()
-        self.t0 = None
-        self.compute()
-
-    def compute(self):
-        o = self.owner
-        if self.acc is None or not self.tsa:
-            self.msg.setText(TR("Rien à comparer : le tinySA balaye-t-il la fenêtre du SDR ?"))
-            return
-        Fs, Ls = self.acc
-        parts = sorted(self.tsa.values(), key=lambda v: float(v[0][0]))
-        Ft = np.concatenate([p[0] for p in parts])
-        Lt = np.concatenate([p[1] for p in parts])
-        rbw = (o.live_rbw()[0] if hasattr(o, "live_rbw") else None) or 100.0
-        cands = calib_candidates(Ft, Lt, Fs, Ls, rbw)
-        self.tbl.setRowCount(len(cands))
-        for r, c in enumerate(cands):
-            for col, v in enumerate((f"{c['f']:.3f}", f"{c['tsa']:.1f}", f"{c['sdr']:.1f}", f"{c['tsa'] - c['sdr']:+.1f}")):
-                self.tbl.setItem(r, col, QtWidgets.QTableWidgetItem(v))
-        res = sdr_tsa_offset(cands)
-        self.result = res
-        if res is None:
-            self.msg.setText(TR("Pas assez de signaux vus par les deux (il en faut {}) : allume des micros dans la fenêtre du "
-                                "SDR, ou rapproche les antennes.").format(CAL_MIN_SIGNALS))
-            return
-        cur = o.sdr_offset(self.e.kind())
-        stp = float(np.median(np.diff(Ft))) * 1000.0 if len(Ft) > 2 else 0.0
-        self.msg.setText(TR("Correction mesurée : {} dB (± {} dB sur {} signaux) · actuelle : {} dB").format(
-            f"{res['offset']:+.1f}", f"{res['spread']:.1f}", res["n"], f"{cur:+.1f}") +
-            (TR(" · ⚠ écarts importants : antennes à des endroits différents ?") if res["spread"] > 6 else "") +
-            (TR(" · ⚠ pas du tinySA ({} kHz) plus grand que sa RBW ({} kHz) : mesure moins sûre (zoome ou affine le "
-                "pas)").format(f"{stp:.0f}", f"{rbw:g}") if stp > 1.5 * rbw else ""))
-        self.apply_btn.setEnabled(True)
-
-    def apply(self):
-        o, res = self.owner, self.result
-        if not res:
-            return
-        m_ = self.e.model()
-        o.sdr_cfg.setdefault("offsets", {})[m_["key"]] = float(res["offset"])
-        o.log_event(dict(name=TR("SDR"), freq=0.0, note=TR("niveaux calés sur le tinySA : {} dB ({})").format(
-            f"{res['offset']:+.1f}", m_["name"])), 0.0, "RÉGLAGE")
-        self.msg.setText(TR("✔ Correction gardée pour {} : {} dB.").format(m_["name"], f"{res['offset']:+.1f}"))
-        self.apply_btn.setEnabled(False)
-
-    def closeEvent(self, ev):
-        self.timer.stop()
-        super().closeEvent(ev)
-
-
-class RewindDialog(QtWidgets.QDialog):
-    """⏪ Remonter le temps (étape 22) : le waterfall des dernières minutes du poste SDR (le plus récent en haut, les
-    alarmes en repères), clic = choisir un instant, ▶ réécouter à partir de là, 💾 garder le passage (son + image).
-    Tout est en mémoire (rien sur le disque tant qu'on ne garde pas)."""
-
-    def __init__(self, owner, eng=None):
-        super().__init__(owner)
-        self.owner, self.eng = owner, eng or owner.sdr_eng
-        self.t_sel, self.fx, self._tmp, self.img_arr = None, None, None, None
-        self.setWindowTitle(TR("⏪ Remonter le temps · {}").format(self.eng.name()))
-        lay = QtWidgets.QVBoxLayout(self)
-        self.dur = QtWidgets.QComboBox()
-        for m_ in REWIND_MINUTES:
-            self.dur.addItem(TR("{} min gardées").format(m_) if m_ else TR("Désactivé (rien gardé)"), m_)
-        rm = owner.sdr_cfg.get("rewind_min", 3)
-        self.dur.setCurrentIndex(max(0, self.dur.findData(rm if rm in REWIND_MINUTES else 3)))
-        self.dur.setToolTip("Combien de temps CHAQUE poste SDR garde en mémoire (son : ~11 Mo par minute et par poste ;\n"
-                            "5 min avec 4 postes ≈ 230 Mo). « Désactivé » : rien n'est gardé.")
-        self.dur.currentIndexChanged.connect(lambda *_: self.set_dur())
-        rf = QtWidgets.QPushButton("↻ Mettre à jour")
-        rf.setToolTip("Recharge les dernières secondes.")
-        rf.clicked.connect(lambda *_: self.draw())
-        self.mem = QtWidgets.QLabel("")
-        lay.addLayout(owner._row(self.dur, rf, None, self.mem))
-        self.plot = pg.PlotWidget()
-        self.plot.setLabel("bottom", "MHz")
-        self.plot.setLabel("left", TR("il y a (s)"))
-        sdr_light_axes(self.plot)
-        self.plot.setToolTip("Le plus récent en haut. Clic = choisir cet instant.")
-        self.img = pg.ImageItem()
-        self.img.setLookupTable(make_lut(owner.theme.get("wf", "Inferno")))
-        self.plot.addItem(self.img)
-        self.sel_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#ffd60a", width=1.5))
-        self.plot.addItem(self.sel_line)
-        self.sel_line.hide()
-        self.plot.scene().sigMouseClicked.connect(self._click)
-        self.marks = []
-        lay.addWidget(self.plot, 1)
-        self.at = QtWidgets.QLabel("Clique sur le waterfall pour choisir un instant.")
-        self.at.setWordWrap(True)
-        lay.addWidget(self.at)
-        self.play_btn = QtWidgets.QPushButton("▶ Réécouter à partir d'ici")
-        self.play_btn.setCheckable(True)
-        self.play_btn.setToolTip("Rejoue ce que le poste SDR faisait entendre à cet instant (60 s au plus).")
-        self.play_btn.toggled.connect(lambda on: self.play(on))
-        self.keep_btn = QtWidgets.QPushButton("💾 Garder ce passage")
-        self.keep_btn.setToolTip("Enregistre le son (WAV, 60 s) et l'image du waterfall. Demande ton accord la 1re fois.")
-        self.keep_btn.clicked.connect(lambda *_: self.keep())
-        close = QtWidgets.QPushButton("Fermer")
-        close.setToolTip("Ferme la fenêtre (la mémoire continue de se remplir).")
-        close.clicked.connect(self.close)
-        lay.addLayout(owner._row(self.play_btn, self.keep_btn, None, close))
-        self.finished.connect(lambda *_: self.play(False))
-        fit_dialog(self, 900, 600)
-        self.draw()
-
-    def set_dur(self):
-        m_ = int(self.dur.currentData() if self.dur.currentData() is not None else 3)
-        self.owner.sdr_cfg["rewind_min"] = m_
-        for e in (getattr(self.owner, "sdr_engs", None) or {}).values():
-            e.rew.set_minutes(m_)
-
-    def draw(self):
-        rb = self.eng.rew
-        fr = list(rb.frames)
-        now = time.time()
-        self.mem.setText(TR("{} Mo en mémoire").format(f"{rb.mem_mb():.0f}"))
-        for it in self.marks:
-            self.plot.removeItem(it)
-        self.marks = []
-        if not fr:
-            self.img.clear()
-            self.at.setText(TR("Désactivé : choisis une durée en haut à gauche.") if not rb.keep else
-                            TR("Rien en mémoire : lance le poste SDR (▶ du Récepteur), puis reviens ici."))
-            return
-        lo = min(float(f[0]) for _t, f, _l in fr)
-        hi = max(float(f[-1]) for _t, f, _l in fr)
-        cols = 800
-        grid = np.linspace(lo, hi, cols)
-        arr = np.full((len(fr), cols), np.nan, dtype=np.float32)
-        for i, (_t, f, l) in enumerate(fr):
-            m = (grid >= f[0]) & (grid <= f[-1])
-            arr[i, m] = np.interp(grid[m], f, l.astype(np.float32))
-        fl = float(np.nanpercentile(arr, 10)) if np.isfinite(arr).any() else -100.0
-        arr = np.nan_to_num(arr, nan=fl)
-        self.img_arr, self.t_rows = arr, np.array([t for t, _f, _l in fr])
-        age_old = now - fr[0][0]
-        self.img.setImage(arr[::-1].T, autoLevels=False, levels=(fl, fl + 50.0))
-        self.img.setRect(QtCore.QRectF(lo, 0.0, max(1e-6, hi - lo), max(0.5, age_old)))
-        self.plot.getViewBox().invertY(True)                 # 0 s (maintenant) en haut
-        self.plot.setXRange(lo, hi, padding=0)
-        self.plot.setYRange(0, max(0.5, age_old), padding=0)
-        o = self.owner
-        for a in list(o.alarms.active.values()) + list(o.alarms.done):
-            if a.get("freq") and lo <= float(a["freq"]) <= hi and fr[0][0] <= a["t0"] <= now:
-                ti = pg.TextItem(f"⚠ {a['kind']}", color=o.tone_color("bad"), anchor=(0.5, 1.0))
-                ti.setPos(float(a["freq"]), now - a["t0"])
-                self.plot.addItem(ti)
-                self.marks.append(ti)
-
-    def _click(self, ev):
-        vb = self.plot.getViewBox()
-        p = vb.mapSceneToView(ev.scenePos())
-        self.select(time.time() - float(p.y()))
-
-    def select(self, t):
-        self.t_sel = float(t)
-        self.sel_line.setValue(time.time() - self.t_sel)
-        self.sel_line.show()
-        tu = self.eng.rew.tune_at(self.t_sel)
-        ago = int(max(0, time.time() - self.t_sel))
-        self.at.setText(TR("Il y a {} min {:02d} s · A = {}").format(ago // 60, ago % 60, (
-            f"{tu[0]:.3f} MHz" + (f" ({tu[1]})" if tu[1] else "")) if tu else "—"))
-        if self.play_btn.isChecked():
-            self.play(False)
-            self.play(True)
-
-    def play(self, on):
-        if self.fx is not None:
-            try:
-                self.fx.stop()
-            except Exception:  # noqa: BLE001
-                pass
-            self.fx = None
-        if not on:
-            if self.play_btn.isChecked():
-                self.play_btn.blockSignals(True)
-                self.play_btn.setChecked(False)
-                self.play_btn.blockSignals(False)
-            return
-        if self.t_sel is None:
-            self.select((self.eng.rew.span() or (time.time() - 10, time.time()))[0])
-        b = self.eng.rew.audio_from(self.t_sel, 60.0)
-        if not b:
-            self.at.setText(TR("Pas de son gardé à cet instant (poste arrêté, ou trop ancien)."))
-            self.play(False)
-            return
-        import tempfile
-        import wave
-        try:
-            self._tmp = temp_wav_path("rewind", self._tmp)
-            with wave.open(self._tmp, "wb") as w:
-                w.setnchannels(2)
-                w.setsampwidth(2)
-                w.setframerate(LISTEN_RATE)
-                w.writeframes(b)
-            from PySide6 import QtMultimedia
-            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
-            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
-            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
-            fx.setVolume(0.8)
-            fx.play()
-            self.fx = fx
-        except Exception as ex:  # noqa: BLE001
-            self.at.setText(TR("⚠ Son impossible ici : {}").format(ex))
-            self.play(False)
-
-    def keep(self):
-        import wave
-        o = self.owner
-        if self.t_sel is None:
-            self.at.setText(TR("Choisis d'abord un instant (clic sur le waterfall)."))
-            return
-        if not o.privacy_ok(self):
-            return
-        d = Path(o.log_dir) / "enregistrements_audio" / datetime.now().strftime("%Y-%m-%d")
-        try:
-            d.mkdir(parents=True, exist_ok=True)
-            base = d / f"rewind_{datetime.fromtimestamp(self.t_sel):%H%M%S}"
-            with wave.open(str(base) + ".wav", "wb") as w:
-                w.setnchannels(2)
-                w.setsampwidth(2)
-                w.setframerate(LISTEN_RATE)
-                w.writeframes(self.eng.rew.audio_from(self.t_sel, 60.0))
-            self.plot.grab().save(str(base) + ".png")
-        except OSError as ex:
-            self.at.setText(TR("⚠ Enregistrement impossible : {}").format(ex))
-            return
-        tu = self.eng.rew.tune_at(self.t_sel)
-        o.log_event(dict(name=(tu[1] if tu else "") or TR("SDR"), freq=tu[0] if tu else 0.0,
-                         note=TR("passage gardé : {}").format(str(base) + ".wav")), 0.0, "ENREGISTRÉ (SDR)")
-        self.at.setText(TR("✔ Gardé : {}").format(str(base) + ".wav / .png"))
-
-
-def _v8_open_sdr_setup(self):
-    d = getattr(self, "_sdrsetup", None)
-    if d is None:
-        d = self._sdrsetup = SdrSetupWizard(self)
-    d.refresh()
-    d.show()
-    d.raise_()
-    return d
-
-
-def _v8_open_sdr_calib(self):
-    d = getattr(self, "_sdrcalib", None)
-    if d is None:
-        d = self._sdrcalib = SdrCalibDialog(self)
-    d.show()
-    d.raise_()
-    return d
-
-
-def _v8_open_rewind(self, eng=None):
-    d = getattr(self, "_rewind", None)
-    if d is None or (eng is not None and d.eng is not eng):
-        d = self._rewind = RewindDialog(self, eng)
-    d.draw()
-    d.show()
-    d.raise_()
-    return d
-
-
-def _v8_open_sdr_manual(self):
-    """📖 Manuel SDR : le manuel principal, partie « Le SDR (bêta) » (8.0)."""
-    return self.open_manual("sdr-poste")
-
-
-MainWindow.open_sdr_setup = _v8_open_sdr_setup
-MainWindow.open_sdr_calib = _v8_open_sdr_calib
-MainWindow.open_rewind = _v8_open_rewind
-MainWindow.open_sdr_manual = _v8_open_sdr_manual
-
-
-class ScreenWindow(QtWidgets.QMainWindow):
-    """8.0.2 : une fenêtre COMPLÈTE sur un autre écran, qui réunit plusieurs panneaux (rangeables, en onglets). Les
-    panneaux y sont prêtés : leurs objets restent ceux de la fenêtre principale (tout le programme continue de leur
-    parler). Fermer = tout ramener dans la fenêtre principale."""
-
-    def __init__(self, owner, idx):
-        super().__init__(None)
-        self.owner, self.idx, self.closing, self.items = owner, idx, False, {}
-        self.setWindowTitle(f"{APP_NAME} – " + TR("Écran {}").format(idx + 1))
-        self.setWindowIcon(owner.windowIcon())
-        self.setDockNestingEnabled(True)
-        c = QtWidgets.QWidget()
-        c.setMaximumHeight(0)
-        self.setCentralWidget(c)
-        for cn, ar in ((Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
-                       (Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)):
-            self.setCorner(cn, ar)
-        tb = QtWidgets.QToolBar()
-        tb.setObjectName("barre_ecran")
-        tb.setMovable(False)
-        self.addToolBar(tb)
-        lab = QtWidgets.QLabel(" 🖥 " + TR("Écran {}").format(idx + 1) + "  ")
-        lab.setToolTip(TR("Fenêtre de cet écran : ses panneaux se déplacent par leur barre de titre (côte à côte, en "
-                          "onglets). F11 : plein écran."))
-        tb.addWidget(lab)
-        for txt, tip, fn in (("⛶ Plein écran", "Plein écran sur cet écran (F11 ; Échap pour sortir).", self.toggle_full),
-                             ("🖥 Écrans…", "Choisir quel panneau va sur quel écran.", lambda: owner.open_screens()),
-                             ("📌 Tout ramener", "Remet tous les panneaux dans la fenêtre principale.",
-                              lambda: owner.screens_off())):
-            b = QtWidgets.QPushButton(TR(txt))
-            b.setToolTip(TR(tip))
-            b.clicked.connect(lambda *_, fn=fn: fn())
-            tb.addWidget(b)
-        QtGui.QShortcut(QtGui.QKeySequence("F11"), self, activated=self.toggle_full)
-        QtGui.QShortcut(QtGui.QKeySequence("Escape"), self, activated=lambda: self.isFullScreen() and self.toggle_full())
-
-    def put(self, name, title, w):
-        d = QtWidgets.QDockWidget(title, self)
-        d.setObjectName("scr_" + name)
-        d.setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable)
-        d.setWidget(w)
-        w.show()
-        self.items[name] = d
-
-    def arrange(self):
-        """Disposition de départ : spectres en haut, waterfalls dessous, Récepteur + listes (onglets) à droite."""
-        B, R = Qt.DockWidgetArea.BottomDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea
-        it = self.items
-        center = [n for n in ("dock_spectre", "dock_sdr_spec", "dock_wf", "dock_sdr_wf", "dock_alarmes") if n in it]
-        tops = [n for n in ("dock_spectre", "dock_sdr_spec") if n in it]
-        prev = None
-        for n in tops:
-            if prev is None:
-                self.addDockWidget(B, it[n])
-            else:
-                self.splitDockWidget(it[prev], it[n], Qt.Orientation.Horizontal)
-            prev = n
-        for wf, sp in (("dock_wf", "dock_spectre"), ("dock_sdr_wf", "dock_sdr_spec")):
-            if wf in it:
-                if sp in it:
-                    self.splitDockWidget(it[sp], it[wf], Qt.Orientation.Vertical)
-                elif prev is None:
-                    self.addDockWidget(B, it[wf])
-                    prev = wf
-                else:
-                    self.splitDockWidget(it[prev], it[wf], Qt.Orientation.Horizontal)
-                    prev = wf
-        if "dock_alarmes" in it:
-            below = next((n for n in ("dock_wf", "dock_spectre", "dock_sdr_wf", "dock_sdr_spec") if n in it), None)
-            if below:
-                self.splitDockWidget(it[below], it["dock_alarmes"], Qt.Orientation.Vertical)
-            else:
-                self.addDockWidget(B, it["dock_alarmes"])
-        side = R if center else B
-        tabs = [n for n in ("dock_freq", "dock_journal", "dock_sdr_mics", "dock_sdr_diag") if n in it]
-        if "dock_sdr_rx" in it:
-            self.addDockWidget(side, it["dock_sdr_rx"])
-            if tabs:
-                self.splitDockWidget(it["dock_sdr_rx"], it[tabs[0]], Qt.Orientation.Vertical)
-        elif tabs:
-            self.addDockWidget(side, it[tabs[0]])
-        for n in tabs[1:]:
-            self.tabifyDockWidget(it[tabs[0]], it[n])
-        if tabs:
-            it[tabs[0]].raise_()
-        labs = [n for n in it if n.startswith("dock_lab")]      # 8.2 : labo SDR, en onglets
-        if labs and len(labs) == len(it):                        # écran du labo seul : vrai affichage Labo (grille)
-            lab_grid(self, {k: it[n] for k, _t, n in LAB_DOCKS if n in it})
-            labs = []
-        if labs:
-            self.addDockWidget(B, it[labs[0]])
-            for n in labs[1:]:
-                self.tabifyDockWidget(it[labs[0]], it[n])
-            it[labs[0]].raise_()
-        for d in it.values():
-            d.show()
-
-    def place(self, screen, full=False):
-        self.setGeometry(screen.availableGeometry().adjusted(30, 30, -30, -30))
-        if full:
-            self.showFullScreen()
-        else:
-            self.showMaximized()
-        QtCore.QTimer.singleShot(120, self._sizes)
-
-    def _sizes(self):
-        try:
-            it, W = self.items, max(self.width(), 800)
-            side = [it[n] for n in ("dock_sdr_rx", "dock_freq") if n in it]
-            if side and any(n in it for n in ("dock_spectre", "dock_sdr_spec", "dock_wf", "dock_sdr_wf")):
-                self.resizeDocks(side[:1], [int(W * 0.32)], Qt.Orientation.Horizontal)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def toggle_full(self):
-        if self.isFullScreen():
-            self.showMaximized()
-        else:
-            self.showFullScreen()
-
-    def take(self):
-        """Rend les panneaux (nom, widget) et vide la fenêtre."""
-        out = []
-        for n, d in list(self.items.items()):
-            w = d.widget()
-            d.setWidget(QtWidgets.QWidget())
-            out.append((n, w))
-        self.items = {}
-        return out
-
-    def state(self):
-        return dict(geo=bytes(self.saveGeometry().toBase64()).decode(),
-                    state=bytes(self.saveState().toBase64()).decode())
-
-    def closeEvent(self, e):
-        if not self.closing:
-            QtCore.QTimer.singleShot(0, lambda: self.owner.screens_off())
-        super().closeEvent(e)
-
-
-class ScreensDialog(QtWidgets.QDialog):
-    """🖥 Plusieurs écrans : quel panneau sur quel écran (ou caché), préréglages, identifier les écrans."""
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self.setWindowTitle(TR("🖥 Plusieurs écrans"))
-        lay = QtWidgets.QVBoxLayout(self)
-        self.info = QtWidgets.QLabel()
-        self.info.setWordWrap(True)
-        lay.addWidget(self.info)
-        ident = QtWidgets.QPushButton(TR("👋 Identifier les écrans"))
-        ident.setToolTip(TR("Affiche un grand numéro sur chaque écran pendant 3 secondes."))
-        ident.clicked.connect(lambda *_: owner.identify_screens())
-        lay.addLayout(owner._row(ident, None))
-        pre = QtWidgets.QGroupBox(TR("Préréglages"))
-        pl = FlowLayout(pre)
-        self.pre_btns = {}
-        for k, t in SCREEN_PRESETS:
-            b = QtWidgets.QPushButton(TR(t))
-            b.setToolTip(TR("Remplit le tableau ci-dessous ; « Appliquer » pour le mettre en place."))
-            b.clicked.connect(lambda *_, k=k: self.preset(k))
-            pl.addWidget(b)
-            self.pre_btns[k] = b
-        lay.addWidget(pre)
-        self.tbl = QtWidgets.QTableWidget(len(SCREEN_PANELS), 2)
-        self.tbl.setHorizontalHeaderLabels([TR("Panneau"), TR("Va sur")])
-        self.tbl.verticalHeader().hide()
-        self.tbl.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.tbl.setColumnWidth(1, 250)
-        self.tbl.setToolTip(TR("Pour chaque panneau : l'écran où il va (« fenêtre principale » = celui de la fenêtre "
-                               "avec les menus), ou caché. Les panneaux d'un même autre écran sont réunis dans une "
-                               "fenêtre complète, où tu les ranges comme tu veux."))
-        self.combos = {}
-        for r, (n, _g, t) in enumerate(SCREEN_PANELS):
-            it = QtWidgets.QTableWidgetItem(TR(t))
-            it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.tbl.setItem(r, 0, it)
-            cb = QtWidgets.QComboBox()
-            cb.setToolTip(TR("Écran où va ce panneau, ou « Caché »."))
-            self.tbl.setCellWidget(r, 1, cb)
-            self.combos[n] = cb
-        lay.addWidget(self.tbl, 1)
-        self.full = QtWidgets.QCheckBox(TR("Plein écran sur les autres écrans (sans barre des tâches)"))
-        self.full.setToolTip(TR("Sinon : fenêtre agrandie (la barre des tâches reste visible). F11 pour basculer."))
-        lay.addWidget(self.full)
-        ok = QtWidgets.QPushButton(TR("✔ Appliquer"))
-        ok.setToolTip(TR("Met les panneaux sur les écrans choisis."))
-        ok.clicked.connect(lambda *_: self.apply())
-        back = QtWidgets.QPushButton(TR("📌 Tout ramener"))
-        back.setToolTip(TR("Remet tous les panneaux dans la fenêtre principale (disposition de base du mode)."))
-        back.clicked.connect(lambda *_: (owner.screens_off(), self.fill()))
-        close = QtWidgets.QPushButton(TR("Fermer"))
-        close.setToolTip(TR("Ferme cette fenêtre (la répartition reste en place)."))
-        close.clicked.connect(lambda *_: self.close())
-        lay.addLayout(owner._row(ok, back, None, close))
-        self.resize(640, 580)
-        fit_dialog(self, 640, 580)
-        self.fill()
-
-    def fill(self):
-        o = self.owner
-        scrs, main = o.screen_list()
-        lines = [TR("Écran {} : {} · {}×{}").format(k + 1, sc.name(), sc.size().width(), sc.size().height())
-                 + (" · " + TR("fenêtre principale ici") if k == main else "") for k, sc in enumerate(scrs)]
-        if len(scrs) < 2:
-            lines.append(TR("⚠ Un seul écran détecté : branche le 2ᵉ (Windows : Paramètres › Affichage › « Étendre "
-                            "ces affichages »), puis rouvre cette fenêtre. Tu peux déjà cacher ou montrer des panneaux."))
-        self.info.setText("\n".join(lines))
-        for k, b in self.pre_btns.items():
-            b.setEnabled(len(scrs) > 1 or k == "all_here")
-        plan = o.screens_cfg["plan"] if o.screen_hosts else o.screens_current()
-        for n, cb in self.combos.items():
-            cb.blockSignals(True)
-            cb.clear()
-            for k in range(len(scrs)):
-                cb.addItem(TR("Écran {}").format(k + 1) + (" · " + TR("fenêtre principale") if k == main else ""), k)
-            cb.addItem(TR("Caché"), SCREEN_HIDE)
-            v = plan.get(n, SCREEN_HIDE)
-            i = cb.findData(v if v < len(scrs) else main)
-            cb.setCurrentIndex(max(0, i))
-            cb.blockSignals(False)
-        self.full.setChecked(bool(o.screens_cfg.get("full")))
-
-    def plan(self):
-        return {n: int(cb.currentData()) for n, cb in self.combos.items()}
-
-    def preset(self, key):
-        scrs, main = self.owner.screen_list()
-        other = next((k for k in range(len(scrs)) if k != main), main)
-        pl = screen_preset(key, main, other, sdr=getattr(self.owner, "rf_mode", "tiny") != "tiny"
-                           or key in ("tiny_sdr", "sdr_tiny"))
-        for n, cb in self.combos.items():
-            cb.setCurrentIndex(max(0, cb.findData(pl.get(n, SCREEN_HIDE))))
-
-    def apply(self):
-        self.owner.screens_apply(self.plan(), self.full.isChecked())
-        self.fill()
-
-
-def _v8_dock_widget(self, d):
-    """Le vrai panneau d'un dock, où qu'il soit (fenêtre principale, vraie fenêtre, fenêtre d'un autre écran)."""
-    n = d.objectName()
-    for host in (getattr(self, "screen_hosts", None) or {}).values():
-        if n in host.items:
-            return host.items[n].widget()
-    pw = (getattr(self, "panel_wins", None) or {}).get(n)
-    if pw is not None and pw.body.count():
-        return pw.body.itemAt(0).widget()
-    return d.widget()
-
-
-def _v8_screen_list(self):
-    scrs = QtGui.QGuiApplication.screens()
-    cur = self.screen()
-    main = next((k for k, s_ in enumerate(scrs) if s_ == cur), 0)
-    return scrs, main
-
-
-def _v8_screens_docks(self):
-    by = {d.objectName(): d for d in list(self.docks) + self.all_sdr_docks()}
-    return {n: by[n] for n, _g, _t in SCREEN_PANELS if n in by}
-
-
-def _v8_screens_current(self):
-    """Plan qui décrit ce qu'on voit maintenant (tout dans la fenêtre principale)."""
-    _scrs, main = self.screen_list()
-    return {n: (main if d.isVisible() or n in self.panel_wins else SCREEN_HIDE) for n, d in self.screens_docks().items()}
-
-
-def _v8_screens_apply(self, plan, full=False, quiet=False, keep_mode=False):
-    """Met chaque panneau sur l'écran choisi (plan {panneau: écran | -1}) ; les autres écrans reçoivent une fenêtre
-    complète avec leurs panneaux. Le mode (tinySA / SDR / combiné) suit les panneaux montrés."""
-    self.screens_off(relayout=False)
-    self.panel_attach_all()
-    scrs, main = self.screen_list()
-    docks = self.screens_docks()
-    plan = screen_plan_fit({n: plan.get(n, SCREEN_HIDE) for n in docks}, len(scrs), main)
-    mode = self.rf_mode if keep_mode else screen_rf_mode(plan)    # 8.2 : labo sur 2 écrans -> le mode ne bouge pas
-    self.rf_mode = mode
-    self.sdr_cfg["rf_mode"] = mode
-    groups = {n: g for n, g, _t in SCREEN_PANELS}
-    here = {groups[n] for n, v in plan.items() if v == main}
-    try:
-        if "sdr" in here and "tiny" in here:
-            self._sdr_arrange("both", "listen")
-        elif "sdr" in here:
-            self._sdr_arrange("sdr", "listen")
-        else:
-            self._layout_base()
-            for d in self.all_sdr_docks():
-                d.hide()
-    except Exception:  # noqa: BLE001
-        pass
-    for n, d in docks.items():
-        v = plan[n]
-        if v == main:
-            d.show()
-        elif v == SCREEN_HIDE:
-            d.hide()
-    self.screen_hosts = {}
-    for idx in screens_used(plan, main):
-        host = ScreenWindow(self, idx)
-        for n, _g, _t in SCREEN_PANELS:
-            if plan.get(n) != idx or n not in docks:
-                continue
-            d = docks[n]
-            w = d.widget()
-            ph = QtWidgets.QPushButton(TR("🖥 « {} » est sur l'écran {} — cliquer pour tout ramener").format(
-                d.windowTitle(), idx + 1))
-            ph.setToolTip(TR("Remet tous les panneaux dans la fenêtre principale."))
-            ph.clicked.connect(lambda *_: self.screens_off())
-            d.setWidget(ph)
-            d.hide()
-            host.put(n, d.windowTitle(), w)
-        host.arrange()
-        host.place(scrs[idx], full)
-        self.screen_hosts[idx] = host
-    if keep_mode:
-        pass                                             # 8.2 : labo — le SDR garde son état
-    elif mode != "tiny":
-        for e_ in self.sdr_engs.values():
-            if not e_.running():
-                e_.start()
-    else:
-        for e_ in self.sdr_engs.values():
-            e_.stop()
-    self._update_mode_btn()
-    self.screens_cfg = dict(self.screens_cfg, on=bool(self.screen_hosts), plan=plan, full=bool(full))
-    for d in self.all_sdr_docks():
-        try:
-            self.dock_widget(d).apply_level()
-        except Exception:  # noqa: BLE001
-            pass
-    QtCore.QTimer.singleShot(0, self._fit_screen)
-    if not quiet:
-        self.set_status(TR("🖥 Panneaux répartis sur {} écran(s) : bouge-les par leur barre de titre ; « 📌 Tout ramener » "
-                           "pour revenir.").format(1 + len(self.screen_hosts)) if self.screen_hosts
-                        else TR("🖥 Tout est dans la fenêtre principale."))
-    return plan
-
-
-def _v8_screens_off(self, relayout=True):
-    """Ramène les panneaux des autres écrans dans la fenêtre principale."""
-    hosts = getattr(self, "screen_hosts", None) or {}
-    if not hosts:
-        return False
-    docks = self.screens_docks()
-    for host in hosts.values():
-        for n, w in host.take():
-            d = docks.get(n)
-            if d is None:
-                w.deleteLater()
-                continue
-            old = d.widget()
-            d.setWidget(w)
-            w.show()
-            if old is not None:
-                old.deleteLater()
-        host.closing = True
-        host.close()
-        host.deleteLater()
-    self.screen_hosts = {}
-    self.screens_cfg["on"] = False
-    if relayout:
-        self._layout_mode()
-        self.set_status(TR("📌 Tous les panneaux sont revenus dans la fenêtre principale."))
-    return True
-
-
-def _v8_screens_state(self):
-    st = dict(self.screens_cfg)
-    st["on"] = bool(getattr(self, "screen_hosts", None))
-    st["hosts"] = {str(k): h.state() for k, h in (getattr(self, "screen_hosts", None) or {}).items()}
-    return st
-
-
-def _v8_screens_restore(self):
-    """Au démarrage : les fenêtres des autres écrans rouvertes comme on les a laissées (écran débranché : ses panneaux
-    reviennent dans la fenêtre principale)."""
-    cfg = self.screens_cfg
-    if not cfg.get("on") or not cfg.get("plan"):
-        return
-    try:
-        self.screens_apply(cfg["plan"], cfg.get("full"), quiet=True)
-        for k, host in self.screen_hosts.items():
-            h = cfg.get("hosts", {}).get(str(k)) or {}
-            if h.get("state"):
-                host.restoreState(QtCore.QByteArray.fromBase64(h["state"].encode()))
-    except Exception:  # noqa: BLE001
-        self.screens_off()
-
-
-def _v8_identify_screens(self):
-    """Un grand numéro sur chaque écran (3 s)."""
-    for lb in getattr(self, "_ident_lbls", []):
-        lb.close()
-    self._ident_lbls = []
-    _scrs, main = self.screen_list()
-    for k, sc in enumerate(_scrs):
-        lb = QtWidgets.QLabel(f"{k + 1}" + ("\n" + TR("fenêtre principale") if k == main else ""))
-        lb.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
-        lb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lb.setStyleSheet("background: rgba(10,132,255,0.92); color: white; font-size: 96px; font-weight: bold; "
-                         "border-radius: 24px; padding: 20px;")
-        g = sc.availableGeometry()
-        lb.setGeometry(g.center().x() - 220, g.center().y() - 160, 440, 320)
-        lb.show()
-        self._ident_lbls.append(lb)
-    QtCore.QTimer.singleShot(3000, lambda: [lb.close() for lb in getattr(self, "_ident_lbls", [])])
-
-
-def _v8_open_screens(self):
-    dlg = getattr(self, "_screens_dlg", None)
-    if dlg is None:
-        dlg = self._screens_dlg = ScreensDialog(self)
-    dlg.fill()
-    dlg.show()
-    dlg.raise_()
-    dlg.activateWindow()
-    return dlg
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _v8_watch_selected(self):
-    """Lignes choisies dans « Mes fréquences »."""
-    try:
-        return [self.watch[r] for r in self._sel_rows() if 0 <= r < len(self.watch)]
-    except Exception:  # noqa: BLE001
-        return []
-
-
-def _v8_sdr_follow(self, ws, on, pid=1):
-    """8.0.2 : ajoute (on) / retire des micros de ceux que suit le poste SDR pid."""
-    ws = [w for w in (ws or []) if w]
-    if not ws:
-        self.set_status(TR("Choisis d'abord une ou plusieurs lignes dans « Mes fréquences »."))
-        return False
-    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
-    p = next((x for x in posts if x["id"] == pid), None)
-    if p is None:
-        return False
-    keys = [int(round(w["freq"] * 1000)) for w in ws]
-    before = set(p["mics"])
-    if not on and not before:                     # « tous » : retirer = garder tous les autres
-        before = {int(round(w["freq"] * 1000)) for w in self.sdr_engs[pid].ws()} if pid in self.sdr_engs else set()
-    p["mics"] = post_mics_set(sorted(before), keys, on)
-    if not on and not p["mics"] and before:
-        p["mics"] = []                            # plus aucun : il suit de nouveau tous les micros
-    self.sdr_cfg["posts"] = posts
-    nm = self.sdr_engs[pid].name() if pid in self.sdr_engs else f"SDR {pid}"
-    n = len(set(keys) - before) if on else len(set(keys) & before)
-    self.set_status((TR("📡 {} : {} micro(s) ajouté(s), {} suivi(s) en tout.") if on else
-                     TR("📡 {} : {} micro(s) retiré(s), {} suivi(s) en tout.")).format(nm, n, len(p["mics"]))
-                    if p["mics"] else TR("📡 {} suit de nouveau tous les micros.").format(nm))
-    self._sdr_follow_refresh()
-    return True
-
-
-def _v8_sdr_follow_clear(self, pid=1):
-    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
-    for x in posts:
-        if x["id"] == pid:
-            x["mics"] = []
-    self.sdr_cfg["posts"] = posts
-    self.set_status(TR("📡 Le SDR suit de nouveau tous les micros."))
-    self._sdr_follow_refresh()
-
-
-def _v8_sdr_follow_refresh(self):
-    for d in self.all_sdr_docks():
-        pw = self.dock_widget(d)
-        if isinstance(pw, SdrMicsPanel):
-            pw.ws = []
-            pw.refresh()
-
-
-def _v8_sdr_follow_menu(self, m, ws):
-    """Clic droit dans Mes fréquences : 📡 suivre / ne plus suivre avec le SDR (un sous-menu par SDR s'il y en a
-    plusieurs)."""
-    keys = {int(round(w["freq"] * 1000)) for w in ws}
-    posts = sdr_posts_norm(self.sdr_cfg.get("posts"))
-    for p in posts:
-        mine = set(p["mics"])
-        tgt = m.addMenu(TR("📡 Suivre avec {}").format(p["name"])) if len(posts) > 1 else m
-        if not keys <= mine:
-            tgt.addAction(TR("📡 Suivre avec le SDR ({} micro(s))  Ctrl+Maj+F").format(len(keys)) if len(posts) == 1
-                          else TR("Suivre ({} micro(s))").format(len(keys))).triggered.connect(
-                lambda *_, pid=p["id"]: self.sdr_follow(ws, True, pid))
-        if keys & mine:
-            tgt.addAction(TR("📡 Ne plus suivre avec le SDR") if len(posts) == 1 else TR("Ne plus suivre")).triggered.connect(
-                lambda *_, pid=p["id"]: self.sdr_follow(ws, False, pid))
-        if mine:
-            tgt.addAction(TR("📡 Le SDR suit de nouveau tous les micros") if len(posts) == 1
-                          else TR("Suivre de nouveau tous les micros")).triggered.connect(
-                lambda *_, pid=p["id"]: self.sdr_follow_clear(pid))
-
-
-def _v8_sdr_follow_key(self):
-    """Ctrl+Maj+F dans Mes fréquences : la sélection rejoint (ou quitte, si elle y est déjà) les micros du SDR 1."""
-    ws = self.watch_selected()
-    if not ws:
-        return
-    mine = set(sdr_posts_norm(self.sdr_cfg.get("posts"))[0]["mics"])
-    keys = {int(round(w["freq"] * 1000)) for w in ws}
-    self.sdr_follow(ws, not (keys <= mine), 1)
-
-
-
-
-MainWindow.watch_selected = _v8_watch_selected
-MainWindow.sdr_follow = _v8_sdr_follow
-MainWindow.sdr_follow_clear = _v8_sdr_follow_clear
-MainWindow._sdr_follow_refresh = _v8_sdr_follow_refresh
-MainWindow._sdr_follow_menu = _v8_sdr_follow_menu
-MainWindow.sdr_follow_key = _v8_sdr_follow_key
-def _v8_open_scales(self):
-    """📏 Échelles et niveaux : réglages des vu-mètres audio + la fiche (8.1)."""
-    d = getattr(self, "_scales", None)
-    if d is None:
-        d = self._scales = ScalesDialog(self)
-    d.show()
-    d.raise_()
-    d.activateWindow()
-    return d
-
-
-MainWindow.open_scales = _v8_open_scales
-MainWindow.audio_ref = audio_ref_norm(None)
-
-
-def _v8_set_sdr_audio(self, key):
-    """Sortie de l'écoute SDR choisie (⚙ › Son) : enregistrée, et le son en cours repart tout de suite dessus."""
-    self.sdr_cfg["audio_dev"] = str(key or "")
-    holders = list((getattr(self, "sdr_engs", None) or {}).values()) + \
-        [getattr(self, nm, None) for nm in ("_listen", "_multimon", "_rt")]
-    for h in holders:
-        a = getattr(h, "audio", None) if h is not None else None
-        if isinstance(a, AudioPump):
-            q = a.q
-            a.close()
-            h.audio = AudioPump(q, sdr_audio_device(self))
-            h.audio.start()
-
-
-MainWindow.set_sdr_audio = _v8_set_sdr_audio
-
-
-def _v8_set_meter_style(self, style):
-    """8.1 : vu-mètre RF en aiguille (« analog ») ou en barre (« bar ») : tous les vu-mètres du SDR suivent, choix gardé."""
-    if style not in dict(METER_STYLES):
-        return
-    self.sdr_cfg["meter_style"] = style
-    for w in QtWidgets.QApplication.allWidgets():
-        if isinstance(w, SMeterGauge):
-            w.set_style(style)
-
-
-MainWindow.set_meter_style = _v8_set_meter_style
-MainWindow.screen_hosts = {}
-MainWindow.screens_cfg = screens_norm(None)
-MainWindow.dock_widget = _v8_dock_widget
-MainWindow.screen_list = _v8_screen_list
-MainWindow.screens_docks = _v8_screens_docks
-MainWindow.screens_current = _v8_screens_current
-MainWindow.screens_apply = _v8_screens_apply
-MainWindow.screens_off = _v8_screens_off
-MainWindow.screens_state = _v8_screens_state
-MainWindow.screens_restore = _v8_screens_restore
-MainWindow.identify_screens = _v8_identify_screens
-MainWindow.open_screens = _v8_open_screens
-
-
-
-# ---- 8.2 : 🧪 Labo SDR / RF Compander Lab (Clément : « j'adoooore l'idée du labo SDR en démo », « comparer les
-# compandeurs des marques en live avec phase, EQ et tout ») — un moteur de mesure commun (tsm_core : CompChain,
-# measure_*, comp_compare, xfer_spectrum, stair_fit), deux usages : simulé (reproductible) et observé (SDR réel).
-LAB_COLORS = ("#64d2ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff453a", "#ffd60a", "#5e5ce6", "#ff375f", "#66d4cf",
-              "#ac8e68")
-
-
-def _lab_plot(title, xl, yl):
-    p = pg.PlotWidget()
-    p.setTitle(TR(title), size="9pt")
-    p.setLabel("bottom", TR(xl))
-    p.setLabel("left", TR(yl))
-    p.showGrid(x=True, y=True, alpha=0.2)
-    sdr_light_axes(p)
-    p.addLegend(offset=(6, 6), labelTextSize="8pt")
-    p.setMinimumHeight(110)
-    p.setMinimumWidth(120)                       # rétrécit avec le panneau au lieu d'être coupé à droite
-    p.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
-    return p
-
-
-def _log_hz(p):
-    """Axe des fréquences en log, graduations lisibles (50 Hz … 20 kHz)."""
-    p.setLogMode(x=True, y=False)
-    fs = (50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
-    p.getAxis("bottom").setTicks([[(math.log10(f), f"{f // 1000}k" if f >= 1000 else str(f)) for f in fs], []])
-    p.setXRange(math.log10(50), math.log10(20000), padding=0.0)
-
-
-def _coh_mask(xf, a, lim=0.6):
-    """Valeurs où le son ne permet pas de mesurer (cohérence faible : pas d'énergie à cette fréquence) -> NaN."""
-    a = np.asarray(a, dtype=float).copy()
-    a[np.asarray(xf["coh"]) < lim] = np.nan
-    return a
-
-
-def _comp_combo(cur="", none_label="Aucun (pas de compresseur)"):
-    c = QtWidgets.QComboBox()
-    c.addItem(TR(none_label), "")
-    for k, v in COMPANDERS.items():
-        if k != "none":
-            c.addItem(TR(v["name"]), k)
-    c.setCurrentIndex(max(0, c.findData(cur)))
-    return c
-
-
-def _model_list(checked=()):
-    lw = QtWidgets.QListWidget()
-    for k, v in COMPANDERS.items():
-        it = QtWidgets.QListWidgetItem(TR(v["name"]))
-        it.setData(Qt.ItemDataRole.UserRole, k)
-        it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-        it.setCheckState(Qt.CheckState.Checked if k in checked else Qt.CheckState.Unchecked)
-        card = compander_card(k)
-        it.setToolTip(TR(card["maker"]) + " · " + TR(CMP_IMPL[card["impl"]]) + "\n" + TR(card["limits"]))
-        lw.addItem(it)
-    lw.setMaximumWidth(330)
-    return lw
-
-
-def _checked(lw):
-    return [lw.item(i).data(Qt.ItemDataRole.UserRole) for i in range(lw.count())
-            if lw.item(i).checkState() == Qt.CheckState.Checked]
-
-
-LAB_DOCKS = (("chain", "🧪 Labo · Chaîne complète", "dock_lab_chain"),
-             ("cmp", "🧪 Labo · Compandeurs", "dock_lab_cmp"),
-             ("live", "🧪 Labo · En direct (SDR)", "dock_lab_live"),
-             ("mod", "🧪 Labo · Modulations", "dock_lab_mod"),
-             ("fault", "🧪 Labo · Pannes simulées", "dock_lab_fault"))
-LAB_KEYS = [k for k, _t, _n in LAB_DOCKS]
-
-
-class SdrLab(QtCore.QObject):
-    """🧪 Labo SDR (RF Compander Lab), en PANNEAUX comme le SDR (Clément : « en full fenêtrage, choisir sur quel écran,
-    mettre tout ce qu'on veut où on veut ») : 1. la chaîne complète d'un micro HF pas à pas ; 2. comparateur de
-    compandeurs (transfert, transitoires, EQ, phase, rapport) ; 3. en direct (SDR réel = observé, ou SDR démo = simulé) :
-    plusieurs modèles en parallèle sur le son reçu, écoute A/B, mesure d'un vrai émetteur avec l'escalier ;
-    4. modulations ; 5. pannes simulées dans le SDR démo. Chaque partie = un panneau (🪟 Fenêtres, vraie fenêtre, écran)."""
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self._tmp, self.fx, self._job, self.res_cmp, self.observed = None, None, None, None, None
-        self._focus, self._detail, self._sess_win, self._help_box, self.res_real = {}, None, None, None, None
-        self._grab, self._st_res, self._md_order, self.res_mod = None, None, [], None
-        self.panels = {}
-        for key, build in (("chain", self._tab_chain), ("cmp", self._tab_cmp), ("live", self._tab_live),
-                           ("mod", self._tab_mod), ("fault", self._tab_fault)):
-            self.panels[key] = build()
-        intro = QtWidgets.QLabel(TR("Un banc de mesure : les mêmes signaux et les mêmes mesures pour tous les modèles. "
-                                    "Chaque résultat dit d'où il vient : 🧪 simulé, 📡 observé (SDR réel) ou 🧮 calculé."))
-        intro.setWordWrap(True)
-        man = QtWidgets.QPushButton(TR("❓ Manuel"))
-        man.setToolTip(TR("Le chapitre du manuel sur le labo SDR."))
-        man.clicked.connect(lambda *_: owner.open_manual("sdr-labo"))
-        self.view_btn = QtWidgets.QToolButton()
-        self.view_btn.setText(TR("⛶ Affichage Labo"))
-        self.view_btn.setToolTip(TR("La fenêtre ne montre plus que le labo : rangé en onglets, tout en grille, ou sur 2 écrans. "
-                                    "Clic droit sur un graphe : le détacher en fenêtre ou le masquer."))
-        self.view_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
-        vm = QtWidgets.QMenu(self.view_btn)
-        vm.aboutToShow.connect(lambda m=vm: self._view_menu(m))
-        self.view_btn.setMenu(vm)
-        self.ses_btn = QtWidgets.QPushButton(TR("🗂 Sessions du labo"))
-        self.ses_btn.setToolTip(TR("Comparaisons et mesures gardées : les retrouver, en comparer deux, les exporter."))
-        self.ses_btn.clicked.connect(lambda *_: self.open_sessions())
-        top = QtWidgets.QHBoxLayout()
-        self._top = top
-        top.addWidget(intro, 1)
-        top.addWidget(self.ses_btn)
-        top.addWidget(self.view_btn)
-        top.addWidget(man)
-        self.panels["chain"].layout().insertLayout(0, top)
-        self._plot_setup()
-        self._badges_setup()
-        self.tm = QtCore.QTimer(self)
-        self.tm.timeout.connect(self._tick)
-        self.tm.start(250)
-
-    def _view_menu(self, m):
-        o = self.owner
-        m.clear()
-        cur = o.sdr_cfg.get("lab_view", "tabs") if o.lab_view_on else None
-        for k, t in LAB_VIEWS:
-            a = m.addAction(TR(t))
-            a.setCheckable(True)
-            a.setChecked(k == cur)
-            a.triggered.connect(lambda *_, k=k: o.lab_view(True, k))
-        m.addSeparator()
-        a = m.addAction(TR("↺ Remettre tous les graphes"))
-        a.triggered.connect(lambda *_: self.plots_restore())
-        if o.lab_view_on:
-            m.addAction(TR("↩ Quitter l'affichage Labo")).triggered.connect(lambda *_: o.lab_view(False))
-
-    # ---- 8.2 : chaque graphe détachable / masquable (clic droit)
-    def _plots(self):
-        return [p for w in self.panels.values() for p in w.findChildren(pg.PlotWidget)] + list(self._detached.keys())
-
-    def _plot_key(self, p):
-        return p.objectName() or ""
-
-    def _plot_setup(self):
-        """Ajoute à chaque graphe du labo (menu du clic droit) : détacher en fenêtre, masquer, tout remettre."""
-        self._detached, self._ph = {}, {}
-        for w in self.panels.values():
-            for i, p in enumerate(w.findChildren(pg.PlotWidget)):
-                t = p.getPlotItem().titleLabel.text or f"g{i}"
-                p.setObjectName("lab:" + re.sub(r"<[^>]+>", "", t)[:60])
-                vb = p.getPlotItem().vb
-                vb.menu.addSeparator()
-                vb.menu.addAction(TR("⧉ Détacher ce graphe (fenêtre)")).triggered.connect(
-                    lambda *_, p=p: self.plot_detach(p))
-                vb.menu.addAction(TR("✕ Masquer ce graphe")).triggered.connect(lambda *_, p=p: self.plot_hide(p))
-                vb.menu.addAction(TR("↺ Remettre tous les graphes")).triggered.connect(lambda *_: self.plots_restore())
-                self._plot_menu(p)
-
-    def apply_hidden(self):
-        """Graphes masqués d'après la config (appelé à l'ouverture du labo : la config est lue APRÈS sa création)."""
-        hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
-        for p in self._plots():
-            p.setVisible(self._plot_key(p) not in hidden)
-
-    def plot_hide(self, p):
-        if p in self._detached:
-            self.plot_attach(p)
-        p.hide()
-        h = set(self.owner.sdr_cfg.get("lab_hidden") or [])
-        h.add(self._plot_key(p))
-        self.owner.sdr_cfg["lab_hidden"] = sorted(h)
-        self.owner.set_status(TR("Graphe masqué : clic droit sur un autre graphe › « ↺ Remettre tous les graphes »."))
-
-    def plot_detach(self, p):
-        """Le graphe part dans sa propre fenêtre (à mettre sur l'écran qu'on veut) ; une étiquette garde sa place."""
-        if p in self._detached:
-            return self._detached[p]
-        par = p.parentWidget()
-        lay = par.layout() if par is not None else None
-        if lay is None:
-            return None
-        ph = QtWidgets.QPushButton(TR("⧉ graphe détaché — cliquer pour le raccrocher"))
-        ph.setToolTip(TR("Ce graphe est dans sa propre fenêtre. Clic : le remettre ici."))
-        ph.clicked.connect(lambda *_, p=p: self.plot_attach(p))
-        lay.replaceWidget(p, ph)
-        self._ph[p] = (ph, lay)
-        win = QtWidgets.QWidget(None, Qt.WindowType.Window)
-        win.setWindowTitle(TR("🧪 Labo · {}").format(p.getPlotItem().titleLabel.text or ""))
-        v = QtWidgets.QVBoxLayout(win)
-        v.setContentsMargins(4, 4, 4, 4)
-        bar = QtWidgets.QHBoxLayout()
-        nxt = QtWidgets.QPushButton(TR("🖥 Écran suivant"))
-        nxt.setToolTip(TR("Envoie cette fenêtre sur l'écran suivant."))
-        nxt.clicked.connect(lambda *_, w=win: self._next_screen(w))
-        back = QtWidgets.QPushButton(TR("📌 Raccrocher"))
-        back.setToolTip(TR("Remet ce graphe dans son panneau du labo."))
-        back.clicked.connect(lambda *_, p=p: self.plot_attach(p))
-        bar.addWidget(nxt)
-        bar.addStretch(1)
-        bar.addWidget(back)
-        v.addLayout(bar)
-        v.addWidget(p, 1)
-        p.show()
-        win.closeEvent = lambda ev, p=p: (self.plot_attach(p), ev.accept())
-        win.resize(720, 460)
-        win.show()
-        self._detached[p] = win
-        return win
-
-    def _next_screen(self, w):
-        scrs = QtGui.QGuiApplication.screens()
-        if len(scrs) < 2:
-            self.owner.set_status(TR("Un seul écran : déplace la fenêtre où tu veux."))
-            return
-        i = (scrs.index(w.screen()) + 1) % len(scrs) if w.screen() in scrs else 0
-        g = scrs[i].availableGeometry()
-        w.move(g.x() + 40, g.y() + 40)
-
-    def plot_attach(self, p):
-        win = self._detached.pop(p, None)
-        ph, lay = self._ph.pop(p, (None, None))
-        if ph is not None:
-            lay.replaceWidget(ph, p)
-            ph.deleteLater()
-            p.show()
-        if win is not None:
-            win.closeEvent = lambda ev: ev.accept()
-            win.close()
-            win.deleteLater()
-
-    def plots_restore(self):
-        for p in list(self._detached):
-            self.plot_attach(p)
-        for p in self._plots():
-            p.show()
-        self.owner.sdr_cfg["lab_hidden"] = []
-
-    def _shown(self, key):
-        """Panneau vraiment à l'écran (un onglet caché derrière un autre reste « visible » pour Qt : sa zone est vide)."""
-        w = self.panels.get(key)
-        return w is not None and w.isVisible() and not w.visibleRegion().isEmpty()
-
-    # ------------------------------------------------------------------ outils
-    def _play(self, a, label=""):
-        import wave
-        try:
-            if self.fx is not None:
-                self.fx.stop()
-            a = np.asarray(a, dtype=np.float32)
-            self._tmp = temp_wav_path("lab", self._tmp)
-            with wave.open(self._tmp, "wb") as w:
-                w.setnchannels(2)
-                w.setsampwidth(2)
-                w.setframerate(48000)
-                w.writeframes(np.repeat((np.clip(a, -1, 1) * 32767).astype("<i2"), 2).tobytes())
-            from PySide6 import QtMultimedia
-            dev = self.owner.sound._device(QtMultimedia) if hasattr(self.owner, "sound") else None
-            fx = QtMultimedia.QSoundEffect(dev, self) if dev is not None else QtMultimedia.QSoundEffect(self)
-            fx.setSource(QtCore.QUrl.fromLocalFile(self._tmp))
-            fx.setVolume(0.8)
-            fx.play()
-            self.fx = fx
-            return TR("▶ {}").format(label)
-        except Exception as e:  # noqa: BLE001
-            return TR("⚠ Son impossible ici : {}").format(e)
-
-    def _busy(self, on, btn, txt):
-        btn.setEnabled(not on)
-        btn.setText(TR("⏳ Calcul…") if on else TR(txt))
-
-    # ------------------------------------------------------------------ ① chaîne complète
-    def _tab_chain(self):
-        w = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(w)
-        self.ch_src = audio_button(self.owner, "voice")
-        self.ch_mode = QtWidgets.QComboBox()
-        for k, t in LAB_MODES:
-            self.ch_mode.addItem(TR(t), k)
-        self.ch_dev = QtWidgets.QSpinBox()
-        self.ch_dev.setRange(1, 75)
-        self.ch_dev.setValue(30)
-        self.ch_dev.setSuffix(" kHz")
-        self.ch_dev.setToolTip(TR("Déviation crête de l'émetteur (= 0 dBFS du son)."))
-        self.ch_tx = _comp_combo("evo")
-        self.ch_tx.setToolTip(TR("Compresseur de l'émetteur (le pack)."))
-        self.ch_rx = _comp_combo("evo", "Aucun (pas d'expanseur)")
-        self.ch_rx.setToolTip(TR("Expanseur du récepteur. Différent de l'émetteur = dynamique faussée (essaie !)."))
-        self.ch_snr = QtWidgets.QSpinBox()
-        self.ch_snr.setRange(0, 80)
-        self.ch_snr.setValue(40)
-        self.ch_snr.setSuffix(" dB")
-        self.ch_snr.setToolTip(TR("Rapport porteuse / bruit dans le canal (C/N)."))
-        self.ch_fault = QtWidgets.QComboBox()
-        for k, t in LAB_FAULTS:
-            self.ch_fault.addItem(TR(t), k)
-        self.ch_go = QtWidgets.QPushButton(TR("▶ Calculer"))
-        self.ch_go.clicked.connect(lambda *_: self.chain_run())
-        self.ch_in = QtWidgets.QPushButton(TR("🔊 Entrée"))
-        self.ch_in.clicked.connect(lambda *_: self._chain_play("src"))
-        self.ch_out = QtWidgets.QPushButton(TR("🔊 Sortie"))
-        self.ch_out.clicked.connect(lambda *_: self._chain_play("out"))
-        g = QtWidgets.QGridLayout()
-        for i, (lab, wid) in enumerate(((TR("Son"), self.ch_src), (TR("Modulation"), self.ch_mode),
-                                        (TR("Déviation"), self.ch_dev), (TR("Émetteur"), self.ch_tx),
-                                        (TR("Récepteur"), self.ch_rx), (TR("C/N"), self.ch_snr),
-                                        (TR("Panne"), self.ch_fault))):
-            g.addWidget(QtWidgets.QLabel(lab), i // 4, 2 * (i % 4))
-            g.addWidget(wid, i // 4, 2 * (i % 4) + 1)
-        self.ch_real = QtWidgets.QPushButton(TR("📡 Signal de A"))
-        self.ch_real.setToolTip(TR("Capture 1 s d'IQ du poste SDR autour du récepteur A et montre la même chaîne sur ce "
-                                   "VRAI signal (sans le son d'origine : pas d'« erreur » mesurable)."))
-        self.ch_real.clicked.connect(lambda *_: self.chain_real())
-        self.ch_file = QtWidgets.QPushButton(TR("📂 IQ enregistré…"))
-        self.ch_file.setToolTip(TR("La même chaîne sur un enregistrement IQ SigMF (⏺ du temps réel, dossier d'incident)."))
-        self.ch_file.clicked.connect(lambda *_: self.chain_file())
-        h = QtWidgets.QHBoxLayout()
-        h.addWidget(self.ch_go)
-        h.addWidget(self.ch_in)
-        h.addWidget(self.ch_out)
-        h.addWidget(self.ch_real)
-        h.addWidget(self.ch_file)
-        h.addStretch(1)
-        g.addLayout(h, 1, 6, 1, 2)
-        v.addLayout(g)
-        self.ch_help = QtWidgets.QLabel("")
-        self.ch_help.setWordWrap(True)
-        v.addWidget(self.ch_help)
-        self.ch_fault.currentIndexChanged.connect(lambda *_: self._fault_help())
-        self._fault_help()
-        flow = QtWidgets.QLabel(TR("Le trajet du signal :  🎵 son  →  compresseur (émetteur)  →  modulation FM = I et Q (3, 4) "
-                                   " →  l'air : bruit, panne (5)  →  démodulation (6)  →  expanseur (récepteur)  →  🔊 son "
-                                   "(1, 2)"))
-        flow.setWordWrap(True)
-        flow.setStyleSheet("color: #8e8e93;")
-        flow.setToolTip(TR("Chaque graphe montre une étape : les numéros renvoient aux titres des graphes."))
-        v.addWidget(flow)
-        grid = QtWidgets.QGridLayout()
-        self.p_wave = _lab_plot("1. Son : entrée et sortie (100 ms)", "ms", "amplitude")
-        self.p_env = _lab_plot("2. Niveau dans le temps", "s", "dBFS")
-        self.p_iq = _lab_plot("3. IQ dans le temps (2 ms) : I et Q", "ms", "")
-        self.p_const = _lab_plot("4. Constellation (canal)", "I", "Q")
-        self.p_const.setAspectLocked(True)
-        self.p_spec = _lab_plot("5. Spectre de l'IQ", "kHz autour de la porteuse", "dBFS")
-        self.p_fi = _lab_plot("6. Fréquence instantanée", "ms", "kHz")
-        for i, p in enumerate((self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi)):
-            grid.addWidget(p, i // 3, i % 3)
-        v.addLayout(grid, 1)
-        self.ch_res = QtWidgets.QLabel(TR("Choisis un son, des compandeurs, une panne, puis ▶ Calculer."))
-        self.ch_res.setWordWrap(True)
-        self.ch_res.setTextFormat(Qt.TextFormat.RichText)
-        v.addWidget(self.ch_res)
-        return w
-
-    def _fault_help(self):
-        a, b = LAB_FAULT_HELP.get(self.ch_fault.currentData(), ("", ""))
-        self.ch_help.setText(TR(a) + (" " + TR("Ce qu'on voit :") + " " + TR(b) if b else ""))
-
-    def chain_args(self):
-        return dict(audio=self.ch_src.spec, mode=self.ch_mode.currentData(), dev=self.ch_dev.value() * 1000.0,
-                    tx_comp=self.ch_tx.currentData(), rx_comp=self.ch_rx.currentData(), snr=float(self.ch_snr.value()),
-                    fault=self.ch_fault.currentData())
-
-    def chain_run(self, wait=False):
-        a = self.chain_args()
-        if a["audio"].get("src") == "wav":
-            wav_load(a["audio"]["path"])
-        if wait:
-            self._chain_done(lab_chain(**a), None)
-            return
-        self._busy(True, self.ch_go, "▶ Calculer")
-        self.owner.run_heavy(lambda: lab_chain(**a), self._chain_done, what="Labo SDR")
-
-    def _chain_done(self, r, err):
-        self._busy(False, self.ch_go, "▶ Calculer")
-        if err is not None or r is None:
-            self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
-            return
-        self.res_chain = r
-        self.set_prov("chain", "sim")
-        for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
-            p.clear()
-        s0 = int(0.5 * 48000)
-        k = slice(s0, s0 + 4800)
-        tm = np.arange(4800) / 48.0
-        self.p_wave.plot(tm, r["src"][k], pen=pg.mkPen(LAB_COLORS[0], width=1.2), name=TR("entrée"))
-        self.p_wave.plot(tm, r["out"][k], pen=pg.mkPen(LAB_COLORS[1], width=1.0), name=TR("sortie"))
-        for key, c, nm in (("env_src", 0, "entrée"), ("env_comp", 2, "après le compresseur"), ("env_out", 1, "sortie")):
-            self.p_env.plot(r["te"], r[key][:len(r["te"])], pen=pg.mkPen(LAB_COLORS[c], width=1.2), name=TR(nm))
-        self.p_env.setYRange(-80, 5)
-        self.p_iq.plot(r["iq_t"], r["I"], pen=pg.mkPen(LAB_COLORS[0], width=1), name="I")
-        self.p_iq.plot(r["iq_t"], r["Q"], pen=pg.mkPen(LAB_COLORS[3], width=1), name="Q")
-        v = r.get("views")
-        if v:
-            self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
-                              symbolBrush=pg.mkBrush(LAB_COLORS[0]))
-            self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
-        if r["L"] is not None:
-            self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
-            self.p_spec.plot(r["F"], r["Lmax"], pen=pg.mkPen(LAB_COLORS[1], width=1), name=TR("max"))
-            self.p_spec.setXRange(-200, 200)
-        m = r["m"]
-        rows = [(TR("Niveau entrée / sortie"), f"{m['src']:.1f} / {m['out']:.1f} dBFS ({m['diff']:+.1f} dB)"),
-                (TR("Crête entrée / sortie"), f"{m['pk_src']:.1f} / {m['pk_out']:.1f} dBFS"),
-                (TR("Erreur résiduelle"), f"{m['err']:.0f} dB"), (TR("Retard"), f"{m['lat']:.1f} ms"),
-                (TR("Pompage"), f"± {m['pump']:.1f} dB")]
-        fl = "".join(f"<li style='color:{self.owner.tone_color(t) if t != 'ok' else 'inherit'}'>{_hesc(x)}</li>"
-                     for x, t in lab_findings(r, TR))
-        self.ch_res.setText(f"<b>{_hesc(TR(PROVENANCE['sim']))}</b> · " + " · ".join(
-            f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
-
-    def _chain_play(self, which):
-        r = getattr(self, "res_chain", None)
-        if r is None:
-            self.ch_res.setText(TR("Calcule d'abord (▶ Calculer)."))
-            return
-        self.ch_help.setText(self._play(r[which], TR("entrée") if which == "src" else TR("sortie")))
-
-    # ------------------------------------------------------------------ ② comparateur
-    def _tab_cmp(self):
-        w = QtWidgets.QWidget()
-        h = QtWidgets.QHBoxLayout(w)
-        left = QtWidgets.QVBoxLayout()
-        left.addWidget(QtWidgets.QLabel(TR("Modèles du récepteur à comparer :")))
-        self.cm_list = _model_list(("evo", "x2", "wisy_enr", "wisy_ens"))
-        self.cm_list.currentItemChanged.connect(lambda *_: self._card())
-        left.addWidget(self.cm_list, 1)
-        f = QtWidgets.QFormLayout()
-        self.cm_tx = _comp_combo("evo")
-        self.cm_tx.setToolTip(TR("Compresseur de l'émetteur, le même pour tous (la référence de la comparaison)."))
-        f.addRow(TR("Émetteur"), self.cm_tx)
-        self.cm_src = audio_button(self.owner, "voice")
-        f.addRow(TR("Son"), self.cm_src)
-        self.cm_de = QtWidgets.QComboBox()
-        for us in (50.0, 75.0, 0.0):
-            self.cm_de.addItem(f"{us:g} µs" if us else TR("aucune"), us)
-        self.cm_de.setToolTip(TR("Désaccentuation (et pré-accentuation de l'émetteur) quand le modèle n'impose pas la sienne."))
-        f.addRow(TR("Désaccentuation"), self.cm_de)
-        left.addLayout(f)
-        self.cm_go = QtWidgets.QPushButton(TR("▶ Comparer"))
-        self.cm_go.clicked.connect(lambda *_: self.cmp_run())
-        self.cm_play = QtWidgets.QPushButton(TR("🔊 Écouter le modèle choisi"))
-        self.cm_play.clicked.connect(lambda *_: self._cmp_play())
-        self.cm_rep = QtWidgets.QPushButton(TR("📄 Rapport comparatif"))
-        self.cm_rep.clicked.connect(lambda *_: self.cmp_report())
-        self.cm_det = QtWidgets.QPushButton(TR("🔍 Comparaison détaillée"))
-        self.cm_det.setToolTip(TR("Les 4 graphes en grand dans une fenêtre, modèles à cocher, EQ et phase zoomés ensemble."))
-        self.cm_det.clicked.connect(lambda *_: self.cmp_detail())
-        for b in (self.cm_go, self.cm_det, self.cm_play, self.cm_rep):
-            left.addWidget(b)
-        self.cm_card = QtWidgets.QLabel("")
-        self.cm_card.setWordWrap(True)
-        self.cm_card.setTextFormat(Qt.TextFormat.RichText)
-        self.cm_card.setMaximumWidth(330)
-        left.addWidget(self.cm_card)
-        sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)      # poignée : agrandir les graphes si le panneau est étroit
-        lw_ = QtWidgets.QWidget()
-        lw_.setLayout(left)
-        lw_.setMaximumWidth(330)                                 # les graphes gardent la place
-        sp.addWidget(lw_)
-        rw_ = QtWidgets.QWidget()
-        sp.addWidget(rw_)
-        sp.setStretchFactor(1, 1)
-        sp.setChildrenCollapsible(True)
-        h.addWidget(sp)
-        right = QtWidgets.QVBoxLayout(rw_)
-        right.setContentsMargins(0, 0, 0, 0)
-        grid = QtWidgets.QGridLayout()
-        self.p_tf = _lab_plot("Transfert du récepteur", "entrée dBFS", "sortie dBFS")
-        self.p_tr = _lab_plot("Saut −30 → −10 → −30 dBFS", "s", "dBFS")
-        self.p_eq = _lab_plot("EQ de la chaîne", "Hz", "dB")
-        self.p_ph = _lab_plot("Phase (retard retiré)", "Hz", "degrés")
-        for p in (self.p_eq, self.p_ph):
-            _log_hz(p)
-        for p, tip in ((self.p_tf, "Courbe de transfert du récepteur, MESURÉE avec un escalier de sinus ; pointillés = formule."),
-                       (self.p_tr, "Saut de niveau −30 → −10 → −30 dBFS à travers émetteur + récepteur : montée, descente, dépassement."),
-                       (self.p_eq, "Réponse en fréquence (EQ) de la chaîne émetteur + récepteur (bruit rose à −20 dBFS)."),
-                       (self.p_ph, "Phase de la chaîne, retard pur retiré.")):
-            p.setToolTip(TR(tip))
-        for i, p in enumerate((self.p_tf, self.p_tr, self.p_eq, self.p_ph)):
-            grid.addWidget(p, i // 2, i % 2)
-        right.addLayout(grid, 1)
-        self.cm_tbl = QtWidgets.QTableWidget(0, 9)
-        self.cm_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Pente", "Niveau", "Erreur", "Pompage",
-                                                               "Montée", "Descente", "Dépassement", "Retard")])
-        self.cm_tbl.verticalHeader().setVisible(False)
-        self.cm_tbl.setMaximumHeight(190)
-        self.cm_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.cm_tbl.setToolTip(TR("Pente : 2 = expanseur 2:1. Niveau : sortie − entrée. Erreur : ce qui reste quand on "
-                                  "retire le gain (plus bas = plus fidèle).\nPompage : le niveau qui bouge sans raison. "
-                                  "Montée / descente : temps pour se poser après un saut de 20 dB."))
-        right.addWidget(self.cm_tbl)
-        self.cm_msg = QtWidgets.QLabel(TR("Coche les modèles à comparer, puis ▶ Comparer."))
-        self.cm_msg.setWordWrap(True)
-        right.addWidget(self.cm_msg)
-        self._card()
-        return w
-
-    def _card(self):
-        it = self.cm_list.currentItem()
-        key = it.data(Qt.ItemDataRole.UserRole) if it is not None else "evo"
-        c = compander_card(key)
-        if not c:
-            return
-        rows = ((TR("Fabricant"), TR(c["maker"])), (TR("Modèle"), TR(c["model"])), (TR("Technologie"), TR(c["tech"])),
-                (TR("Documentation"), TR(c["doc"])), (TR("Implémentation"), TR(CMP_IMPL[c["impl"]])),
-                (TR("Fidélité"), TR(c["fidelity"])), (TR("Limites"), TR(c["limits"])), (TR("Version"), c["ver"]))
-        p = c["params"]
-        rows += ((TR("Réglages du modèle"), f"{p['ratio']:g}:1 · {TR('montée')} {p['attack']:g} · {TR('descente')} "
-                  f"{p['release']:g} · {p['det']}" + (f" · {TR('genou')} {p['knee']:g} dB" if p["knee"] is not None else "")),)
-        self.cm_card.setText(f"<b>{_hesc(TR('Fiche du modèle'))}</b><br>" + "<br>".join(
-            f"<span style='color:#8e8e93'>{_hesc(a)}</span> : {_hesc(str(b))}" for a, b in rows))
-
-    def cmp_args(self):
-        return dict(keys=_checked(self.cm_list), tx_key=self.cm_tx.currentData(), audio=self.cm_src.spec,
-                    deemph_us=self.cm_de.currentData())
-
-    def cmp_run(self, wait=False):
-        a = self.cmp_args()
-        if not a["keys"]:
-            self.cm_msg.setText(TR("Coche au moins un modèle."))
-            return
-        if a["audio"].get("src") == "wav":
-            wav_load(a["audio"]["path"])
-        if wait:
-            self._cmp_done(comp_compare(**a), None)
-            return
-        self._busy(True, self.cm_go, "▶ Comparer")
-        self.owner.run_heavy(lambda: comp_compare(**a), self._cmp_done, what="Labo SDR")
-
-    def _cmp_done(self, r, err):
-        self._busy(False, self.cm_go, "▶ Comparer")
-        if err is not None or r is None:
-            self.cm_msg.setText(TR("⚠ Calcul impossible : {}").format(err))
-            return
-        self.res_cmp = r
-        for p in (self.p_tf, self.p_tr, self.p_eq, self.p_ph):
-            p.clear()
-        t = self.cm_tbl
-        t.setRowCount(0)
-        for i, row in enumerate(r["rows"]):
-            col = LAB_COLORS[i % len(LAB_COLORS)]
-            nm = TR(row["card"]["model"])
-            self.p_tf.plot(row["xin"], row["rx"], pen=pg.mkPen(col, width=1.6), name=nm)
-            th = comp_curve(row["key"], "rx")
-            if th is not None:
-                self.p_tf.plot(th[0], th[1], pen=pg.mkPen(col, width=1, style=Qt.PenStyle.DashLine))
-            tr_ = row["transient"]
-            self.p_tr.plot(tr_["t"], tr_["env"], pen=pg.mkPen(col, width=1.2), name=nm)
-            fq = row["freq"]
-            if fq:
-                self.p_eq.plot(fq["f"], _coh_mask(fq, fq["mag"]), pen=pg.mkPen(col, width=1.2), name=nm, connect="finite")
-                self.p_ph.plot(fq["f"], _coh_mask(fq, fq["phase"]), pen=pg.mkPen(col, width=1.2), name=nm,
-                               connect="finite")
-            m = row["m"]
-            t.insertRow(i)
-            vals = (nm, f"{row['slope']:.2f}", f"{m['diff']:+.1f} dB", f"{m['err']:.0f} dB", f"± {m['pump']:.1f} dB",
-                    f"{m['up']:.0f} ms", f"{m['down']:.0f} ms", f"{m['over']:+.1f} dB", f"{m['lat']:.1f} ms")
-            for j, v_ in enumerate(vals):
-                it = QtWidgets.QTableWidgetItem(v_)
-                if j == 0:
-                    it.setForeground(QtGui.QColor(col))
-                t.setItem(i, j, it)
-        self.p_tf.plot([-60, 0], [-60, 0], pen=pg.mkPen("#8e8e93", width=1, style=Qt.PenStyle.DotLine))
-        self.p_tf.setYRange(-90, 10)
-        self.p_tr.setYRange(-60, 0)
-        self.p_eq.setYRange(-20, 10)
-        self.p_ph.setYRange(-180, 180)
-        t.resizeColumnsToContents()
-        self.cm_msg.setText(TR("{} · {} modèle(s) · mêmes signaux et mêmes mesures pour tous. Les modèles « approchés » "
-                               "ne sont PAS les vrais traitements des marques.").format(TR(PROVENANCE["sim"]), len(r["rows"])))
-        a = self.cmp_args()
-        self.session_save("cmp", "sim", dict(tx=a["tx_key"], deemph=a["deemph_us"], audio=audio_text(a["audio"])),
-                          cmp_metrics(r))
-
-    def _cmp_play(self):
-        r = self.res_cmp
-        if not r or not r["rows"]:
-            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
-            return
-        i = max(0, self.cm_tbl.currentRow())
-        row = r["rows"][min(i, len(r["rows"]) - 1)]
-        self.cm_msg.setText(self._play(row["out"], TR(row["card"]["model"])))
-
-    def cmp_report(self, path=None):
-        r = self.res_cmp
-        if not r:
-            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
-            return None
-        d = Path(self.owner.log_dir) / "rapports"
-        try:
-            d.mkdir(parents=True, exist_ok=True)
-            path = path or str(d / f"compander_lab_{datetime.now():%Y%m%d_%H%M%S}.html")
-            write_atomic(path, comp_report_html(r, TR, observed=self.observed))
-        except OSError as e:
-            self.cm_msg.setText(TR("⚠ Rapport impossible : {}").format(e))
-            return None
-        self.cm_msg.setText(TR("📄 Rapport : {}").format(path))
-        if not os.environ.get("TSM_NO_BROWSER"):
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
-        return path
-
-    # ------------------------------------------------------------------ ③ en direct
-    def _tab_live(self):
-        w = QtWidgets.QWidget()
-        h = QtWidgets.QHBoxLayout(w)
-        left = QtWidgets.QVBoxLayout()
-        self.lv_src = QtWidgets.QLabel("")
-        self.lv_src.setWordWrap(True)
-        left.addWidget(self.lv_src)
-        left.addWidget(QtWidgets.QLabel(TR("Modèles appliqués au son reçu :")))
-        self.lv_list = _model_list(("none_d50", "x2", "evo", "wisy_enr"))
-        self.lv_list.itemChanged.connect(lambda *_: self._live_reset())
-        left.addWidget(self.lv_list, 1)
-        self.lv_ab = QtWidgets.QPushButton(TR("🎧 Écouter avec le modèle choisi"))
-        self.lv_ab.setToolTip(TR("Le récepteur A du poste SDR passe sur ce compandeur, tout de suite : compare à l'oreille "
-                                 "(A/B) en changeant de ligne."))
-        self.lv_ab.clicked.connect(lambda *_: self.live_listen())
-        left.addWidget(self.lv_ab)
-        box = QtWidgets.QGroupBox(TR("📏 Mesurer mon vrai émetteur"))
-        bl = QtWidgets.QVBoxLayout(box)
-        t = QtWidgets.QLabel(TR("1. Dans 🎵 Générateur audio, choisis « Signal de test : escalier de niveaux » et envoie-le "
-                                "dans l'entrée audio du pack (câble).\n2. Écoute ce micro au poste SDR (A).\n"
-                                "3. Attends au moins {} s, puis mesure : la pente donne le vrai taux de compression de "
-                                "l'émetteur.").format(f"{2 * STAIR_PERIOD + 1:.0f}"))
-        t.setWordWrap(True)
-        bl.addWidget(t)
-        b = QtWidgets.QPushButton(TR("🎵 Ouvrir le générateur audio"))
-        b.clicked.connect(lambda *_: self.owner.open_audio_gen())
-        bl.addWidget(b)
-        self.lv_fit_btn = QtWidgets.QPushButton(TR("📏 Mesurer maintenant"))
-        self.lv_fit_btn.clicked.connect(lambda *_: self.live_fit())
-        bl.addWidget(self.lv_fit_btn)
-        self.lv_state = QtWidgets.QLabel("")
-        self.lv_state.setWordWrap(True)
-        self.lv_state.setToolTip(TR("État de la mesure : prêt, en cours (le son s'accumule), terminé (valable), invalide "
-                                    "(avec la raison) ou interrompu (le poste SDR s'est arrêté)."))
-        bl.addWidget(self.lv_state)
-        self.lv_fit = QtWidgets.QLabel("")
-        self.lv_fit.setWordWrap(True)
-        bl.addWidget(self.lv_fit)
-        left.addWidget(box)
-        self.lv_snap = QtWidgets.QPushButton(TR("🔬 Figer 4 s et comparer en détail"))
-        self.lv_snap.setToolTip(TR("Garde les 4 dernières secondes du son reçu, les passe dans chaque modèle coché et "
-                                   "ouvre la comparaison détaillée (marquée 📡 observé avec un vrai SDR)."))
-        self.lv_snap.clicked.connect(lambda *_: self.live_snapshot())
-        left.addWidget(self.lv_snap)
-        lw = QtWidgets.QWidget()
-        lw.setLayout(left)
-        lw.setMaximumWidth(340)
-        sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
-        sp.addWidget(lw)
-        rw_ = QtWidgets.QWidget()
-        sp.addWidget(rw_)
-        sp.setStretchFactor(1, 1)
-        h.addWidget(sp)
-        right = QtWidgets.QVBoxLayout(rw_)
-        right.setContentsMargins(0, 0, 0, 0)
-        grid = QtWidgets.QGridLayout()
-        self.p_lvl = _lab_plot("Niveau de chaque modèle", "s", "dBFS")
-        self.p_leq = _lab_plot("EQ en direct", "Hz", "dB")
-        self.p_lph = _lab_plot("Phase en direct", "Hz", "degrés")
-        for p in (self.p_leq, self.p_lph):
-            _log_hz(p)
-        self.p_lin = _lab_plot("Son reçu (avant expanseur)", "s", "dBFS")
-        for i, p in enumerate((self.p_lvl, self.p_lin, self.p_leq, self.p_lph)):
-            grid.addWidget(p, i // 2, i % 2)
-        right.addLayout(grid, 1)
-        self.lv_tbl = QtWidgets.QTableWidget(0, 4)
-        self.lv_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Niveau", "Crête", "Écart au son reçu")])
-        self.lv_tbl.verticalHeader().setVisible(False)
-        self.lv_tbl.setMaximumHeight(170)
-        self.lv_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.lv_tbl.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        right.addWidget(self.lv_tbl)
-        self._live_reset()
-        self._live_tap = None
-        return w
-
-    def _eng(self):
-        es = [e for e in (getattr(self.owner, "sdr_engs", None) or {}).values() if e.running()]
-        return es[0] if es else None
-
-    def _live_reset(self):
-        self.lv_keys = _checked(self.lv_list)
-        self.lv_ch = {}
-        self.lv_in = deque(maxlen=int(30 * 48000 / 2400) + 10)     # morceaux bruts (30 s)
-        self.lv_out = {k: deque(maxlen=60) for k in self.lv_keys}
-        self.lv_hist = {k: deque(maxlen=80) for k in self.lv_keys}
-        self.lv_inh = deque(maxlen=80)
-        self._lv_t = 0.0
-        self._st_res = None
-
-    def _live_on(self, on):
-        self._tap_on = bool(on)
-        e = self._eng()
-        for e_ in (getattr(self.owner, "sdr_engs", None) or {}).values():
-            if e_.worker is not None:
-                e_.worker.lab_tap = bool(on) and e_ is e
-
-    def _tick(self):
-        if self._shown("fault"):
-            self._fault_refresh()
-        if not self._shown("live"):
-            if getattr(self, "_tap_on", False):
-                self._live_on(False)
-            return
-        e = self._eng()
-        if e is None or e.worker is None:
-            self.lv_src.setText(TR("Démarre un poste SDR (▶ dans le Récepteur) et écoute un micro FM en A : le son reçu "
-                                   "passe ici dans chaque modèle. Pas de SDR ? 🧪 SDR démo."))
-            self.stair_status()
-            return
-        self._live_on(True)
-        demo = e.kind() == "demo"
-        self.set_prov("live", "sim" if demo else "obs")
-        self.stair_status()
-        dem = e.demod
-        self.lv_src.setText(TR("Source : {} · A = {} MHz · écouté avec {}").format(
-            TR(PROVENANCE["sim" if demo else "obs"]), f"{e.a:.4f}" if e.a is not None else "—",
-            TR(COMPANDERS.get(dem.get("compander") or "none", {}).get("name", ""))))
-        q = e.worker.a_pre
-        new = []
-        while q:
-            new.append(q.popleft()[1])
-        if not new:
-            return
-        x = np.concatenate(new).astype(np.float32)
-        self.lv_in.append(x)
-        de = float(dem.get("deemph") or 50.0)
-        for k in self.lv_keys:
-            ch = self.lv_ch.get(k)
-            if ch is None:
-                ch = self.lv_ch[k] = CompChain(k, de)
-            self.lv_out[k].append(ch(x))
-        now = time.time()
-        if now - self._lv_t < 0.5:
-            return
-        self._lv_t = now
-        self._live_draw(now)
-
-    def _live_draw(self, now):
-        xs = list(self.lv_in)[-40:]                     # ~2 s
-        if not xs:
-            return
-        xin = np.concatenate(xs)
-        n2 = len(xin)
-        db_in = _lab_db(xin[-24000:])
-        self.lv_inh.append((now, db_in))
-        for p in (self.p_lvl, self.p_leq, self.p_lph, self.p_lin):
-            p.clear()
-        t0 = now
-        th = np.array([a for a, _ in self.lv_inh]) - t0
-        self.p_lin.plot(th, np.array([b for _, b in self.lv_inh]), pen=pg.mkPen(LAB_COLORS[0], width=1.4),
-                        name=TR("son reçu"))
-        tb = self.lv_tbl
-        tb.setRowCount(0)
-        for i, k in enumerate(self.lv_keys):
-            col = LAB_COLORS[i % len(LAB_COLORS)]
-            outs = list(self.lv_out[k])
-            if not outs:
-                continue
-            y = np.concatenate(outs)[-n2:]
-            m = audio_meter(y[-24000:])
-            self.lv_hist[k].append((now, m["rms"]))
-            hh = list(self.lv_hist[k])
-            nm = TR(compander_card(k)["model"])
-            self.p_lvl.plot(np.array([a for a, _ in hh]) - t0, np.array([b for _, b in hh]), pen=pg.mkPen(col, width=1.3),
-                            name=nm)
-            xf = xfer_spectrum(xin[-len(y):], y)
-            if xf:                                       # seulement là où le son reçu permet de mesurer (cohérence)
-                self.p_leq.plot(xf["f"], _coh_mask(xf, xf["mag"]), pen=pg.mkPen(col, width=1.2), name=nm,
-                                connect="finite")
-                self.p_lph.plot(xf["f"], _coh_mask(xf, xf["phase"]), pen=pg.mkPen(col, width=1.2), name=nm,
-                                connect="finite")
-            tb.insertRow(i)
-            for j, v_ in enumerate((nm, f"{m['rms']:.1f} dBFS", f"{m['peak']:.1f} dBFS", f"{m['rms'] - db_in:+.1f} dB")):
-                it = QtWidgets.QTableWidgetItem(v_)
-                it.setData(Qt.ItemDataRole.UserRole, k)
-                if j == 0:
-                    it.setForeground(QtGui.QColor(col))
-                tb.setItem(i, j, it)
-        tb.resizeColumnsToContents()
-        self.p_leq.setYRange(-24, 12)
-        self.p_lph.setYRange(-180, 180)
-
-    def live_listen(self):
-        e = self._eng()
-        it = self.lv_tbl.item(max(0, self.lv_tbl.currentRow()), 0) if self.lv_tbl.rowCount() else None
-        key = it.data(Qt.ItemDataRole.UserRole) if it is not None else (self.lv_keys[0] if self.lv_keys else None)
-        cur = self.lv_list.currentItem()
-        if cur is not None and cur.checkState() == Qt.CheckState.Checked and self.lv_tbl.currentRow() < 0:
-            key = cur.data(Qt.ItemDataRole.UserRole)
-        if e is None or key is None:
-            self.lv_fit.setText(TR("Pas de poste SDR en marche."))
-            return False
-        e.demod = dict(e.demod, compander=key)
-        e._push()
-        self.lv_fit.setText(TR("🎧 A écoute maintenant avec : {}").format(TR(COMPANDERS[key]["name"])))
-        return True
-
-    def live_fit(self, x=None):
-        if x is None:
-            xs = list(self.lv_in)
-            x = np.concatenate(xs) if xs else np.zeros(0, dtype=np.float32)
-        r = stair_fit(x)
-        e = self._eng()
-        prov = "sim" if (e is None or e.kind() == "demo") else "obs"
-        r["prov"] = prov
-        secs = len(x) / 48000.0
-        st, why = stair_validity(r, _lab_db(x) if len(x) else None, secs)
-        r["state"], r["reasons"] = st, why
-        self._st_res = (st, why, r)
-        self.observed = r if st == "done" else None          # le rapport ne reprend qu'une mesure valable
-        if r["ok"]:
-            self.lv_fit.setText(TR("{} · pente {} → taux de compression ≈ {}:1 · linéarité R² {}").format(
-                TR(PROVENANCE[prov]), f"{r['slope']:.2f}", f"{r['ratio']:.2f}" if r["ratio"] else "—", f"{r['r2']:.3f}"))
-        else:
-            self.lv_fit.setText("⚠ " + TR(r["why"]))
-        self.stair_status()
-        if len(x):
-            self.session_save("stair", prov, dict(seconds=round(secs, 1)),
-                              dict(ratio=r.get("ratio"), slope=r.get("slope"), r2=r.get("r2"), state=st),
-                              " ".join(why))
-        return r
-
-    # ------------------------------------------------------------------ ④ modulations
-    def _tab_mod(self):
-        w = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(w)
-        h = QtWidgets.QHBoxLayout()
-        self.md_src = audio_button(self.owner, "melody")
-        self.md_go = QtWidgets.QPushButton(TR("▶ Comparer les modulations"))
-        self.md_go.clicked.connect(lambda *_: self.mod_run())
-        self.md_step = QtWidgets.QComboBox()
-        for k, t in LAB_MOD_STEPS:
-            self.md_step.addItem(TR(t), k)
-        self.md_step.setToolTip(TR("① les noms et ce que l'appli devine ; ② seulement des indices ; ③ quiz : à toi de "
-                                   "reconnaître chaque spectre (ordre mélangé)."))
-        self.md_step.currentIndexChanged.connect(lambda *_: self._mod_step())
-        self.md_a = QtWidgets.QPushButton(TR("📡 Ajouter le signal de A"))
-        self.md_a.setToolTip(TR("Le vrai spectre autour du récepteur A du poste SDR, avec ce que l'appli en devine."))
-        self.md_a.clicked.connect(lambda *_: self.mod_add_a())
-        h.addWidget(QtWidgets.QLabel(TR("Son")))
-        h.addWidget(self.md_src)
-        h.addWidget(self.md_go)
-        h.addWidget(self.md_step)
-        h.addWidget(self.md_a)
-        h.addStretch(1)
-        v.addLayout(h)
-        t = QtWidgets.QLabel(TR("Le même son, six façons d'occuper l'air : à quoi chacune ressemble sur un spectre, et ce que "
-                                "l'appli en devine (« C'est quoi ce signal ? »)."))
-        t.setWordWrap(True)
-        v.addWidget(t)
-        self.md_grid = QtWidgets.QGridLayout()
-        self.md_plots = []
-        self.md_ans = []
-        for i in range(6):
-            p = _lab_plot("—", "kHz", "dBFS")
-            self.md_plots.append(p)
-            self.md_grid.addWidget(p, 2 * (i // 3), i % 3)
-            cb = QtWidgets.QComboBox()
-            cb.addItem(TR("— ta réponse —"), "")
-            for c_ in MOD_QUIZ_CHOICES:
-                cb.addItem(TR(c_), c_)
-            cb.setVisible(False)
-            self.md_ans.append(cb)
-            self.md_grid.addWidget(cb, 2 * (i // 3) + 1, i % 3)
-        self.md_aplot = _lab_plot("📡 Signal de A", "kHz", "dBFS")
-        self.md_aplot.hide()
-        self.md_grid.addWidget(self.md_aplot, 4, 0, 1, 3)
-        v.addLayout(self.md_grid, 1)
-        q = QtWidgets.QHBoxLayout()
-        self.md_check = QtWidgets.QPushButton(TR("✔ Vérifier"))
-        self.md_check.clicked.connect(lambda *_: self.mod_check())
-        self.md_check.setVisible(False)
-        self.md_score = QtWidgets.QLabel("")
-        self.md_score.setWordWrap(True)
-        self.md_score.setVisible(False)
-        q.addWidget(self.md_check)
-        q.addWidget(self.md_score, 1)
-        v.addLayout(q)
-        self.md_info = QtWidgets.QLabel("")
-        self.md_info.setWordWrap(True)
-        v.addWidget(self.md_info)
-        return w
-
-    def mod_run(self, wait=False):
-        a = self.md_src.spec
-        if wait:
-            self._mod_done(lab_modulations(a), None)
-            return
-        self._busy(True, self.md_go, "▶ Comparer les modulations")
-        self.owner.run_heavy(lambda: lab_modulations(a), self._mod_done, what="Labo SDR")
-
-    def _mod_done(self, rows, err):
-        self._busy(False, self.md_go, "▶ Comparer les modulations")
-        if err is not None or not rows:
-            return
-        self.res_mod = rows
-        self._md_order = [int(i) for i in np.random.default_rng().permutation(len(rows))]
-        self._mod_draw()
-
-    # ------------------------------------------------------------------ ⑤ pannes simulées (SDR démo en direct)
-    def _tab_fault(self):
-        w = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(w)
-        sb = QtWidgets.QGroupBox(TR("🎬 Scénarios guidés"))          # 8.2 : un clic = chaîne réglée + panne + quoi regarder
-        sl = QtWidgets.QVBoxLayout(sb)
-        self.sc_combo = QtWidgets.QComboBox()
-        for sc in LAB_SCENARIOS:
-            self.sc_combo.addItem(TR(sc["name"]), sc["key"])
-        self.sc_combo.setToolTip(TR("Un scénario règle la chaîne complète (et pose une panne dans le SDR démo s'il est "
-                                    "allumé), puis dit quoi regarder et pourquoi."))
-        self.sc_go = QtWidgets.QPushButton(TR("▶ Lancer le scénario"))
-        self.sc_go.clicked.connect(lambda *_: self.scenario(self.sc_combo.currentData()))
-        sl.addLayout(self.owner._row(self.sc_combo, self.sc_go, None))
-        self.sc_txt = QtWidgets.QLabel(TR("Choisis un scénario : le labo le joue, tu regardes ce qui change."))
-        self.sc_txt.setWordWrap(True)
-        self.sc_txt.setTextFormat(Qt.TextFormat.RichText)
-        sl.addWidget(self.sc_txt)
-        v.addWidget(sb)
-        t = QtWidgets.QLabel(TR("Injecte une panne dans le 🧪 SDR démo, en direct, pour voir comment l'appli la détecte "
-                                "(ligne « Flux » du Récepteur, alarmes, journal). Tout est marqué SIMULÉ. Rien ne touche un "
-                                "vrai SDR."))
-        t.setWordWrap(True)
-        v.addWidget(t)
-        h = QtWidgets.QHBoxLayout()
-        h.addWidget(QtWidgets.QLabel(TR("Durée")))
-        self.ft_dur = QtWidgets.QSpinBox()
-        self.ft_dur.setRange(5, 300)
-        self.ft_dur.setValue(30)
-        self.ft_dur.setSuffix(" s")
-        h.addWidget(self.ft_dur)
-        stop = QtWidgets.QPushButton(TR("■ Arrêter la panne"))
-        stop.clicked.connect(lambda *_: self.fault(None))
-        h.addWidget(stop)
-        h.addStretch(1)
-        v.addLayout(h)
-        g = QtWidgets.QGridLayout()
-        for i, (k, txt) in enumerate(DEMO_FAULTS):
-            b = QtWidgets.QPushButton(TR(txt))
-            b.setToolTip(TR(DEMO_FAULT_HELP[k]))
-            b.clicked.connect(lambda *_, k=k: self.fault(k))
-            g.addWidget(b, i // 2, 2 * (i % 2))
-            lab = QtWidgets.QLabel(TR(DEMO_FAULT_HELP[k]))
-            lab.setWordWrap(True)
-            g.addWidget(lab, i // 2, 2 * (i % 2) + 1)
-        v.addLayout(g)
-        self.ft_lbl = QtWidgets.QLabel("")
-        self.ft_lbl.setWordWrap(True)
-        v.addWidget(self.ft_lbl)
-        v.addStretch(1)
-        return w
-
-    def scenario(self, key, wait=False):
-        """Joue un scénario : chaîne complète réglée et calculée, panne posée dans le SDR démo (s'il tourne), texte."""
-        sc = next((x for x in LAB_SCENARIOS if x["key"] == key), None)
-        if sc is None:
-            return None
-        c = sc["chain"]
-        for combo, val in ((self.ch_tx, c.get("tx_comp", "")), (self.ch_rx, c.get("rx_comp", "")),
-                           (self.ch_fault, c.get("fault", "none")), (self.ch_mode, c.get("mode", "wfm"))):
-            combo.setCurrentIndex(max(0, combo.findData(val)))
-        self.ch_snr.setValue(int(c.get("snr", 40)))
-        self.chain_run(wait=wait)
-        live = ""
-        if sc["live"]:
-            if self.owner.sdr_cfg.get("demo") and self._eng() is not None:
-                self.fault(sc["live"])
-                live = TR("Panne posée dans le SDR démo en direct ({} s).").format(self.ft_dur.value())
-            else:
-                live = TR("Allume le 🧪 SDR démo et ▶ le poste pour voir aussi l'effet en direct.")
-        self.sc_txt.setText(f"<b>{_hesc(TR(sc['name']))}</b><br>{_hesc(TR('À regarder :'))} {_hesc(TR(sc['watch']))}"
-                            f"<br>{_hesc(TR('Pourquoi :'))} {_hesc(TR(sc['why']))}" + (f"<br><i>{_hesc(live)}</i>" if live else ""))
-        try:
-            self.owner.open_sdr_lab("chain")
-        except Exception:  # noqa: BLE001
-            pass
-        return sc
-
-    def fault(self, k):
-        o = self.owner
-        if k and not o.sdr_cfg.get("demo"):
-            self.ft_lbl.setText(TR("Les pannes ne se posent que sur le 🧪 SDR démo : allume-le (menu du mode), puis ▶ dans "
-                                   "le Récepteur."))
-            return False
-        sdr_demo_fault(k, self.ft_dur.value())
-        for e_ in (getattr(o, "sdr_engs", None) or {}).values():      # 8.2 : notée dans l'historique du poste
-            if e_.running() and e_.kind() == "demo":
-                e_._ev("fault", TR(dict(DEMO_FAULTS)[k]) if k else TR("fin"), journal=False)
-        o.log_event(dict(name=TR("Labo SDR"), freq=0.0, note=("🧪 " + TR(dict(DEMO_FAULTS)[k])) if k else TR("fin")),
-                    0.0, "PANNE SIMULÉE")
-        self._fault_refresh()
-        return True
-
-    def _fault_refresh(self):
-        f = sdr_demo_fault_now()
-        e = self._eng()
-        q = e.quality() if e is not None else None
-        if f:
-            self.ft_lbl.setText(TR("🧪 Panne en cours : {} · encore {} s").format(
-                TR(dict(DEMO_FAULTS)[f["kind"]]), f"{max(0.0, f['until'] - time.time()):.0f}") +
-                ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
-        else:
-            self.ft_lbl.setText(TR("Aucune panne en cours.") + ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
-
-    def stop(self):
-        for p in list(getattr(self, "_detached", {})):
-            self.plot_attach(p)
-        self._live_on(False)
-        if self.fx is not None:
-            self.fx.stop()
-
-    # ================================================================== 8.2 : Full Lab v2
-    # ---- provenance bien visible (🧪 simulé / 📡 observé) sur chaque panneau
-    PROV_STYLE = {"sim": ("#ffb300", "rgba(255,179,0,0.14)"), "obs": ("#30d158", "rgba(48,209,88,0.14)"),
-                  "calc": ("#8e8e93", "rgba(142,142,147,0.14)")}
-
-    def _badges_setup(self):
-        self.badges = {}
-        for key in LAB_KEYS:
-            b = QtWidgets.QLabel("")
-            b.setToolTip(TR("D'où viennent les résultats de ce panneau : 🧪 simulé (signal fabriqué par l'appli), "
-                            "📡 observé (reçu par un vrai SDR) ou 🧮 calculé (formule). Un résultat simulé n'est jamais "
-                            "une mesure."))
-            self.badges[key] = b
-            w = self.panels[key]
-            try:
-                if key == "chain":
-                    self._top.insertWidget(0, b)
-                elif key in ("cmp", "live"):
-                    w.findChild(QtWidgets.QSplitter).widget(0).layout().insertWidget(0, b)
-                else:
-                    w.layout().insertWidget(0, b)
-            except Exception:  # noqa: BLE001
-                pass
-            self.set_prov(key, "sim")
-
-    def set_prov(self, key, prov):
-        b = getattr(self, "badges", {}).get(key)
-        if b is None:
-            return
-        c, bg = self.PROV_STYLE.get(prov, self.PROV_STYLE["sim"])
-        b.setText(TR(PROVENANCE.get(prov, PROVENANCE["sim"])).upper())
-        b.setStyleSheet(f"QLabel {{ color: {c}; background: {bg}; border: 1px solid {c}; border-radius: 6px; "
-                        f"padding: 2px 8px; font-weight: 600; }}")
-        b.setProperty("prov", prov)
-
-    # ---- aide, focus et export de chaque graphe
-    def _plot_title(self, p):
-        if p in getattr(self, "md_plots", []) or p is getattr(self, "md_aplot", None):
-            return "Spectre d'une modulation"
-        t = p.objectName()[4:] if p.objectName().startswith("lab:") else ""
-        return t if t in LAB_PLOT_HELP else re.sub(r"<[^>]+>", "", p.getPlotItem().titleLabel.text or "")
-
-    def plot_help_text(self, p):
-        h = lab_plot_help(self._plot_title(p), TR)
-        if not h:
-            return None
-        return (TR("Ce que montre ce graphe : {}").format(h["shows"]) + "\n" +
-                TR("On peut en déduire : {}").format(h["can"]) + "\n" + TR("On ne peut PAS en déduire : {}").format(h["cannot"]))
-
-    def plot_help(self, p):
-        txt = self.plot_help_text(p) or TR("Pas d'explication pour ce graphe.")
-        box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Information, TR("❓ Que montre ce graphe ?"), txt,
-                                    QtWidgets.QMessageBox.StandardButton.Ok, p.window())
-        box.setWindowModality(Qt.WindowModality.NonModal)
-        box.show()
-        self._help_box = box
-        return txt
-
-    def _plot_menu(self, p, full=True):
-        vb = p.getPlotItem().vb
-        vb.menu.addSeparator()
-        vb.menu.addAction(TR("❓ Que montre ce graphe ?")).triggered.connect(lambda *_, p=p: self.plot_help(p))
-        if full:
-            vb.menu.addAction(TR("🔍 Agrandir ce graphe (focus)")).triggered.connect(lambda *_, p=p: self.plot_focus(p))
-        vb.menu.addAction(TR("💾 Exporter ce graphe (PNG)")).triggered.connect(lambda *_, p=p: self.plot_export(p))
-        tip = self.plot_help_text(p)
-        if tip:
-            p.setToolTip((p.toolTip() + "\n\n" if p.toolTip() else "") + tip)
-        if full:
-            try:
-                p.scene().sigMouseClicked.connect(lambda ev, p=p: ev.double() and self.plot_focus(p))
-            except Exception:  # noqa: BLE001
-                pass
-
-    def plot_focus(self, p):
-        """Double-clic (ou menu) : ce graphe prend toute la place de son panneau ; encore une fois = tout revient."""
-        panel = next((w for w in self.panels.values() if w.isAncestorOf(p)), None)
-        if panel is None:
-            return False
-        cur = self._focus.get(id(panel))
-        if cur is not None:
-            for q in cur[1]:
-                q.show()
-            self._focus.pop(id(panel), None)
-            if cur[0] is p:
-                self.owner.set_status(TR("Tous les graphes du panneau sont revenus."))
-                return False
-        hidden = [q for q in panel.findChildren(pg.PlotWidget) if q is not p and q.isVisible()]
-        for q in hidden:
-            q.hide()
-        self._focus[id(panel)] = (p, hidden)
-        self.owner.set_status(TR("Focus : double-clic sur le graphe (ou clic droit) pour revoir les autres."))
-        return True
-
-    def plot_export(self, p, path=None):
-        d = Path(self.owner.log_dir) / "rapports"
-        try:
-            d.mkdir(parents=True, exist_ok=True)
-            nm = re.sub(r"[^\w-]+", "_", self._plot_title(p))[:40].strip("_") or "graphe"
-            path = path or str(d / f"labo_{nm}_{datetime.now():%Y%m%d_%H%M%S}.png")
-            ok = p.grab().save(path)
-        except OSError:
-            ok = False
-        self.owner.set_status(TR("💾 Graphe enregistré : {}").format(path) if ok else TR("⚠ Image impossible à enregistrer."))
-        return path if ok else None
-
-    # ---- sessions du labo (JSON dans <journaux>/labo/)
-    def _sess_dir(self):
-        return Path(self.owner.log_dir) / "labo"
-
-    def session_save(self, kind, prov, params, metrics, note=""):
-        doc = lab_session_doc(kind, prov, params, metrics, time.time(), note)
-        try:
-            d = self._sess_dir()
-            d.mkdir(parents=True, exist_ok=True)
-            path = str(d / f"{datetime.now():%Y%m%d_%H%M%S_%f}_{kind}.json")
-            write_atomic(path, json.dumps(doc, ensure_ascii=False, indent=1, default=float))
-        except (OSError, TypeError, ValueError):
-            return None
-        if getattr(self, "_sess_win", None) is not None and self._sess_win.isVisible():
-            self.sessions_fill()
-        return path
-
-    def sessions_load(self):
-        out = []
-        d = self._sess_dir()
-        if not d.is_dir():
-            return out
-        for f in sorted(d.glob("*.json"), reverse=True)[:300]:
-            try:
-                doc = json.loads(f.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if lab_session_ok(doc):
-                out.append((str(f), doc))
-        return out
-
-    def _sess_label(self, doc):
-        t = datetime.fromtimestamp(doc.get("t") or 0)
-        m = doc.get("metrics") or {}
-        extra = ""
-        if doc["kind"] == "stair":
-            extra = (f" · {m.get('ratio'):.2f}:1" if m.get("ratio") else "") + " · " + TR(STAIR_STATES.get(m.get("state"), ""))
-        elif isinstance(m, dict):
-            extra = " · " + TR("{} modèle(s)").format(len(m))
-        return f"{t:%d/%m %H:%M:%S} · {TR(LAB_SESSION_KINDS[doc['kind']])} · {TR(PROVENANCE[doc['prov']])}{extra}" + (
-            f" · {doc['note'][:60]}" if doc.get("note") else "")
-
-    def open_sessions(self):
-        w = getattr(self, "_sess_win", None)
-        if w is None:
-            w = QtWidgets.QWidget(None, Qt.WindowType.Window)
-            w.setWindowTitle(TR("🗂 Sessions du labo"))
-            v = QtWidgets.QVBoxLayout(w)
-            t = QtWidgets.QLabel(TR("Chaque comparaison et chaque mesure à l'escalier est gardée ici (conditions + résultats "
-                                    "chiffrés). Choisis-en deux du même genre pour voir ce qui a changé."))
-            t.setWordWrap(True)
-            v.addWidget(t)
-            self.ss_list = QtWidgets.QListWidget()
-            self.ss_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-            self.ss_list.itemSelectionChanged.connect(lambda *_: self.sessions_compare())
-            v.addWidget(self.ss_list, 1)
-            row = QtWidgets.QHBoxLayout()
-            for txt, fn, tip in (("⚖ Comparer les 2 choisies", lambda: self.sessions_compare(), "Écarts entre les deux sessions."),
-                                 ("💾 Exporter (CSV)", lambda: self.sessions_export(), "Les sessions choisies (ou toutes) en CSV."),
-                                 ("📁 Dossier", lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(self._sess_dir()))),
-                                  "Ouvre le dossier des sessions."),
-                                 ("🗑 Supprimer", lambda: self.sessions_delete(), "Efface les sessions choisies.")):
-                b = QtWidgets.QPushButton(TR(txt))
-                b.setToolTip(TR(tip))
-                b.clicked.connect(lambda *_, fn=fn: fn())
-                row.addWidget(b)
-            v.addLayout(row)
-            self.ss_tbl = QtWidgets.QTableWidget(0, 6)
-            self.ss_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Mesure", "A", "B", "B − A", "Unité")])
-            self.ss_tbl.verticalHeader().setVisible(False)
-            self.ss_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-            v.addWidget(self.ss_tbl, 1)
-            self.ss_msg = QtWidgets.QLabel(TR("Un écart dit seulement ce qui a changé, pas lequel est « juste »."))
-            self.ss_msg.setWordWrap(True)
-            v.addWidget(self.ss_msg)
-            w.resize(760, 560)
-            fit_dialog(w, 760, 560)
-            self._sess_win = w
-        self.sessions_fill()
-        w.show()
-        w.raise_()
-        return w
-
-    def sessions_fill(self):
-        lw = self.ss_list
-        lw.blockSignals(True)
-        lw.clear()
-        for path, doc in self.sessions_load():
-            it = QtWidgets.QListWidgetItem(self._sess_label(doc))
-            it.setData(Qt.ItemDataRole.UserRole, path)
-            lw.addItem(it)
-        lw.blockSignals(False)
-
-    def _sess_sel(self):
-        lw = getattr(self, "ss_list", None)
-        if lw is None:
-            return []
-        out = []
-        for it in lw.selectedItems():
-            try:
-                out.append((it.data(Qt.ItemDataRole.UserRole),
-                            json.loads(Path(it.data(Qt.ItemDataRole.UserRole)).read_text(encoding="utf-8"))))
-            except (OSError, ValueError):
-                pass
-        return out
-
-    def sessions_compare(self, a=None, b=None):
-        if a is None or b is None:
-            sel = self._sess_sel()
-            if len(sel) != 2:
-                if hasattr(self, "ss_msg"):
-                    self.ss_msg.setText(TR("Choisis exactement 2 sessions du même genre."))
-                return None
-            b, a = sel[0][1], sel[1][1]                  # la liste va du plus récent au plus ancien : A = l'ancienne
-        rows = lab_session_diff(a, b)
-        if hasattr(self, "ss_tbl"):
-            t = self.ss_tbl
-            t.setRowCount(0)
-            for i, r in enumerate(rows):
-                t.insertRow(i)
-                for j, v_ in enumerate(r):
-                    if j == 0 and v_ != "—":
-                        v_ = TR(compander_card(v_)["model"]) if compander_card(v_) else v_
-                    elif j == 1:
-                        v_ = TR(v_)
-                    elif isinstance(v_, float):
-                        v_ = f"{v_:+.2f}" if j == 4 else f"{v_:.2f}"
-                    t.setItem(i, j, QtWidgets.QTableWidgetItem("—" if v_ is None else str(v_)))
-            t.resizeColumnsToContents()
-            if a.get("kind") != b.get("kind"):
-                self.ss_msg.setText(TR("Ces deux sessions ne sont pas du même genre : rien à comparer."))
-            else:
-                notes = [TR("⚠ Provenances différentes ({} / {}) : un simulé n'est pas une mesure.").format(
-                    TR(PROVENANCE[a["prov"]]), TR(PROVENANCE[b["prov"]]))] if a["prov"] != b["prov"] else []
-                if a.get("ver") != b.get("ver"):
-                    notes.append(TR("⚠ Versions des modèles différentes ({} / {}).").format(a.get("ver"), b.get("ver")))
-                self.ss_msg.setText(" ".join(notes) or TR("Un écart dit seulement ce qui a changé, pas lequel est « juste »."))
-        return rows
-
-    def sessions_export(self, path=None):
-        sel = self._sess_sel() or self.sessions_load()
-        d = self._sess_dir()
-        try:
-            d.mkdir(parents=True, exist_ok=True)
-            path = path or str(d / f"sessions_{datetime.now():%Y%m%d_%H%M%S}.csv")
-            buf = io.StringIO()
-            wr = csv.writer(buf, delimiter=";")
-            wr.writerow(["date", "genre", "provenance", "version", "modele", "mesure", "valeur", "note"])
-            for _p, doc in sel:
-                dt = f"{datetime.fromtimestamp(doc.get('t') or 0):%Y-%m-%d %H:%M:%S}"
-                m = doc.get("metrics") or {}
-                items = [("—", k, v) for k, v in m.items() if not isinstance(v, dict)] + \
-                        [(k, k2, v2) for k, v in m.items() if isinstance(v, dict) for k2, v2 in v.items()]
-                for mod, k, v in items:
-                    wr.writerow([dt, doc["kind"], doc["prov"], doc.get("ver", ""), mod, k, v, doc.get("note", "")])
-            write_atomic(path, buf.getvalue())
-        except OSError as e:
-            if hasattr(self, "ss_msg"):
-                self.ss_msg.setText(TR("⚠ Export impossible : {}").format(e))
-            return None
-        if hasattr(self, "ss_msg"):
-            self.ss_msg.setText(TR("💾 Exporté : {}").format(path))
-        return path
-
-    def sessions_delete(self):
-        for path, _doc in self._sess_sel():
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-        self.sessions_fill()
-
-    # ---- comparaison détaillée (grande fenêtre synchronisée)
-    def cmp_detail(self, res=None):
-        res = res or self.res_cmp
-        if not res or not res.get("rows"):
-            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
-            return None
-        old = getattr(self, "_detail", None)
-        if old is not None:
-            old.close()
-            old.deleteLater()
-        real = "xin" not in res["rows"][0]               # son reçu (sinon : signaux de test de la comparaison)
-        w = QtWidgets.QWidget(None, Qt.WindowType.Window)
-        w.setWindowTitle(TR("🔍 Comparaison détaillée des compandeurs"))
-        v = QtWidgets.QVBoxLayout(w)
-        top = QtWidgets.QHBoxLayout()
-        bd = QtWidgets.QLabel("")
-        top.addWidget(bd)
-        prov = res.get("meta", {}).get("prov") or "sim"
-        c, bg = self.PROV_STYLE.get(prov, self.PROV_STYLE["sim"])
-        bd.setText(TR(PROVENANCE[prov]).upper())
-        bd.setStyleSheet(f"color:{c}; background:{bg}; border:1px solid {c}; border-radius:6px; padding:2px 8px; "
-                         "font-weight:600;")
-        meta = res.get("meta", {})
-        info = QtWidgets.QLabel(TR("Son reçu, {} s · chaque modèle appliqué au même son (sans le son d'origine, on voit ce "
-                                   "qu'il en fait, pas lequel est juste).").format(f"{meta.get('seconds', 0):.1f}") if real else
-                                TR("Mêmes signaux et mêmes mesures pour tous les modèles · modèles {}").format(CMP_MODEL_VER))
-        info.setWordWrap(True)
-        top.addWidget(info, 1)
-        v.addLayout(top)
-        chk_row = QtWidgets.QHBoxLayout()
-        chk_row.addWidget(QtWidgets.QLabel(TR("Afficher :")))
-        w.chks = []
-        for i, row in enumerate(res["rows"]):
-            cb = QtWidgets.QCheckBox(TR(row["card"]["model"]))
-            cb.setChecked(True)
-            cb.setStyleSheet(f"color: {LAB_COLORS[i % len(LAB_COLORS)]}; font-weight: 600;")
-            cb.toggled.connect(lambda *_: self._detail_draw())
-            chk_row.addWidget(cb)
-            w.chks.append(cb)
-        chk_row.addStretch(1)
-        v.addLayout(chk_row)
-        grid = QtWidgets.QGridLayout()
-        if real:
-            titles = (("Niveau de chaque modèle", "s", "dBFS"), ("Son reçu (avant expanseur)", "s", "dBFS"),
-                      ("EQ en direct", "Hz", "dB"), ("Phase en direct", "Hz", "degrés"))
-        else:
-            titles = (("Transfert du récepteur", "entrée dBFS", "sortie dBFS"), ("Saut −30 → −10 → −30 dBFS", "s", "dBFS"),
-                      ("EQ de la chaîne", "Hz", "dB"), ("Phase (retard retiré)", "Hz", "degrés"))
-        w.plots = []
-        for i, (tt, xl, yl) in enumerate(titles):
-            p = _lab_plot(tt, xl, yl)
-            p.setObjectName("lab:" + tt)
-            p.setMinimumSize(300, 220)
-            if i >= 2:
-                _log_hz(p)
-            self._plot_menu(p, full=False)
-            grid.addWidget(p, i // 2, i % 2)
-            w.plots.append(p)
-        w.plots[3].setXLink(w.plots[2])                      # EQ et phase : même zoom en fréquence
-        if real:
-            w.plots[1].setXLink(w.plots[0])                  # niveau et son reçu : même instant
-        v.addLayout(grid, 1)
-        cols = (("Modèle", None, ""),) + ((("Niveau", "out", "dBFS"), ("Crête", "pk", "dBFS"), ("Dynamique", "dyn", "dB"),
-                                            ("Écart au son reçu", "gain", "dB"))
-                                           if real else tuple((lab, k, u) for k, lab, u in LAB_DIFF_KEYS))
-        tb = QtWidgets.QTableWidget(len(res["rows"]), len(cols))
-        tb.setHorizontalHeaderLabels([TR(c_[0]) + (" (" + c_[2] + ")" if c_[2] else "") for c_ in cols])
-        tb.verticalHeader().setVisible(False)
-        tb.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        for i, row in enumerate(res["rows"]):
-            m = dict(row["m"], slope=row.get("slope"))
-            for j, (_lab, k, _u) in enumerate(cols):
-                if k is None:
-                    it = QtWidgets.QTableWidgetItem(TR(row["card"]["model"]))
-                    it.setForeground(QtGui.QColor(LAB_COLORS[i % len(LAB_COLORS)]))
-                else:
-                    val = m.get(k)
-                    it = QtWidgets.QTableWidgetItem("—" if val is None else f"{val:.2f}")
-                tb.setItem(i, j, it)
-        tb.resizeColumnsToContents()
-        tb.setMaximumHeight(60 + 28 * len(res["rows"]))
-        v.addWidget(tb)
-        w.tbl, w.res, w.real = tb, res, real
-        self._detail = w
-        self._detail_draw()
-        w.resize(1100, 760)
-        fit_dialog(w, 1100, 760)
-        w.show()
-        w.raise_()
-        return w
-
-    def _detail_draw(self):
-        w = getattr(self, "_detail", None)
-        if w is None:
-            return
-        res = w.res
-        for p in w.plots:
-            p.clear()
-        for i, (row, cb) in enumerate(zip(res["rows"], w.chks)):
-            if not cb.isChecked():
-                continue
-            col = LAB_COLORS[i % len(LAB_COLORS)]
-            nm = TR(row["card"]["model"])
-            pen = pg.mkPen(col, width=2.0)
-            if w.real:
-                w.plots[0].plot(row["te"], row["env_out"][:len(row["te"])], pen=pen, name=nm)
-            else:
-                w.plots[0].plot(row["xin"], row["rx"], pen=pen, name=nm)
-                th = comp_curve(row["key"], "rx")
-                if th is not None:
-                    w.plots[0].plot(th[0], th[1], pen=pg.mkPen(col, width=1, style=Qt.PenStyle.DashLine))
-                w.plots[1].plot(row["transient"]["t"], row["transient"]["env"], pen=pen, name=nm)
-            fq = row.get("freq")
-            if fq:
-                w.plots[2].plot(fq["f"], _coh_mask(fq, fq["mag"]), pen=pen, name=nm, connect="finite")
-                w.plots[3].plot(fq["f"], _coh_mask(fq, fq["phase"]), pen=pen, name=nm, connect="finite")
-        if w.real:
-            w.plots[1].plot(res["te"], res["env_src"][:len(res["te"])], pen=pg.mkPen(LAB_COLORS[0], width=1.6),
-                            name=TR("son reçu"))
-            w.plots[0].setYRange(-80, 5)
-            w.plots[1].setYRange(-80, 5)
-        else:
-            w.plots[0].plot([-60, 0], [-60, 0], pen=pg.mkPen("#8e8e93", width=1, style=Qt.PenStyle.DotLine))
-            w.plots[0].setYRange(-90, 10)
-            w.plots[1].setYRange(-60, 0)
-        w.plots[2].setYRange(-24, 12)
-        w.plots[3].setYRange(-180, 180)
-
-    # ---- sources réelles : chaîne complète sur l'IQ du poste SDR ou d'un enregistrement
-    def chain_real(self, secs=1.0, wait=False):
-        e = self._eng()
-        if e is None or e.worker is None or e.a is None:
-            self.ch_res.setText(TR("Pas de poste SDR en marche : démarre-le (▶ dans le Récepteur) et cale A sur un micro."))
-            return False
-        wk = e.worker
-        g = dict(parts=[], n=0, want=int(wk.rate * secs), done=False, center=wk.center, rate=wk.rate)
-        wk.iq_grab = g
-        self._grab = (g, e)
-        self.ch_res.setText(TR("⏳ Capture de {} s d'IQ autour de A…").format(f"{secs:g}"))
-        if wait:
-            t0 = time.time()
-            while not g["done"] and time.time() - t0 < 10:
-                QtWidgets.QApplication.processEvents()
-                time.sleep(0.02)
-            return self._grab_check(wait=True)
-        QtCore.QTimer.singleShot(100, self._grab_check)
-        return True
-
-    def _grab_check(self, wait=False):
-        gr = getattr(self, "_grab", None)
-        if gr is None:
-            return False
-        g, e = gr
-        if not g["done"]:
-            if e.worker is None or e.worker.iq_grab is not g:
-                self._grab = None
-                self.ch_res.setText(TR("⚠ Capture interrompue : le poste SDR s'est arrêté."))
-                return False
-            QtCore.QTimer.singleShot(100, self._grab_check)
-            return True
-        self._grab = None
-        iq = np.concatenate(g["parts"]) if g["parts"] else np.zeros(0, dtype=np.complex64)
-        dem = e.demod or {}
-        args = dict(iq=iq, fs=g["rate"], f_off=e.a * 1e6 - g["center"], mode=dem.get("mode", "wfm"),
-                    dev=dem.get("dev"), rx_comp=dem.get("compander") or None, deemph_us=float(dem.get("deemph") or 0.0))
-        self._real_src = TR("poste SDR, A = {} MHz").format(f"{e.a:.4f}")
-        self._real_prov = "sim" if e.kind() == "demo" else "obs"
-        return self._chain_real_go(args, wait)
-
-    def chain_file(self, path=None, secs=1.0, f_mhz=None, wait=False):
-        """Chaîne complète sur un enregistrement IQ SigMF (⏺ du temps réel, incident…)."""
-        if path is None:
-            path, _ = QtWidgets.QFileDialog.getOpenFileName(self.panels["chain"], TR("Enregistrement IQ"),
-                                                            str(Path(self.owner.log_dir)),
-                                                            "SigMF (*.sigmf-meta *.sigmf-data)")
-            if not path:
-                return False
-        base = re.sub(r"\.sigmf-(meta|data)(\.part)?$", "", path)
-        try:
-            with open(base + ".sigmf-meta", encoding="utf-8") as fm:
-                info = sigmf_info(json.load(fm))
-            nb = IQ_BYTES[info["dtype"]]
-            with open(base + ".sigmf-data", "rb") as fd:
-                raw = fd.read(int(info["rate"] * secs) * nb)
-            iq = np.asarray(iq_decode(info["dtype"], raw), dtype=np.complex64)
-        except (OSError, ValueError, KeyError) as ex:
-            self.ch_res.setText(TR("⚠ Lecture impossible : {}").format(ex))
-            return False
-        if len(iq) < int(info["rate"] * 0.05):
-            self.ch_res.setText(TR("⚠ Enregistrement trop court."))
-            return False
-        if f_mhz is not None:
-            f_off = f_mhz * 1e6 - info["center"]
-        else:                                             # le signal le plus fort (hors continu au centre)
-            nfft = 8192
-            avg, _mx = rt_frames(iq[: (len(iq) // nfft) * nfft], nfft)
-            Fo = (np.arange(nfft) - nfft // 2) * (info["rate"] / nfft)
-            avg = np.where(np.abs(Fo) < 30e3, -300, avg)
-            f_off = round(float(Fo[int(np.argmax(avg))]) / 1000.0) * 1000.0     # au kHz près (pas d'une case FFT)
-        args = dict(iq=iq, fs=info["rate"], f_off=f_off, mode="wfm", dev=None, rx_comp=None, deemph_us=50.0)
-        self._real_src = TR("enregistrement {} ({} MHz)").format(Path(base).name, f"{(info['center'] + f_off) / 1e6:.4f}")
-        self._real_prov = "obs"
-        return self._chain_real_go(args, wait)
-
-    def _chain_real_go(self, args, wait):
-        if wait:
-            try:
-                r = lab_chain_iq(**args)
-            except Exception as ex:  # noqa: BLE001
-                return self._chain_real_done(None, ex)
-            return self._chain_real_done(r, None)
-        self._busy(True, self.ch_go, "▶ Calculer")
-        self.owner.run_heavy(lambda: lab_chain_iq(**args), self._chain_real_done, what="Labo SDR")
-        return True
-
-    def _chain_real_done(self, r, err):
-        self._busy(False, self.ch_go, "▶ Calculer")
-        if err is not None or r is None:
-            self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
-            return None
-        self.res_chain = r
-        prov = getattr(self, "_real_prov", "obs")
-        self.set_prov("chain", prov)
-        self.ch_help.setText(TR("Signal réel : les réglages Son, Émetteur, C/N et Panne ne s'appliquent pas ici (ils servent "
-                                "à la simulation, ▶ Calculer). Vues RF prises au moment où le son est le plus fort."))
-        for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
-            p.clear()
-        out = r["out"]
-        s0 = max(0, min(len(out) - 4800, int(0.2 * 48000)))
-        tm = np.arange(min(4800, len(out) - s0)) / 48.0
-        self.p_wave.plot(tm, out[s0:s0 + len(tm)], pen=pg.mkPen(LAB_COLORS[1], width=1.0), name=TR("son démodulé"))
-        self.p_env.plot(r["te"], r["env_out"][:len(r["te"])], pen=pg.mkPen(LAB_COLORS[1], width=1.2), name=TR("sortie"))
-        self.p_env.setYRange(-80, 5)
-        self.p_iq.plot(r["iq_t"], r["I"], pen=pg.mkPen(LAB_COLORS[0], width=1), name="I")
-        self.p_iq.plot(r["iq_t"], r["Q"], pen=pg.mkPen(LAB_COLORS[3], width=1), name="Q")
-        v = r.get("views")
-        if v:
-            self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
-                              symbolBrush=pg.mkBrush(LAB_COLORS[0]))
-            self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
-        if r["L"] is not None:
-            self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
-            self.p_spec.plot(r["F"], r["Lmax"], pen=pg.mkPen(LAB_COLORS[1], width=1), name=TR("max"))
-            self.p_spec.setXRange(-200, 200)
-        m = r["m"]
-        rows = [(TR("Source"), getattr(self, "_real_src", "")), (TR("Niveau du son"), f"{m['out']:.1f} dBFS"),
-                (TR("Crête"), f"{m['pk_out']:.1f} dBFS"),
-                (TR("Dynamique"), "—" if m["dyn"] is None else f"{m['dyn']:.0f} dB"), (TR("Durée"), f"{m['seconds']:.2f} s")]
-        fl = "".join(f"<li style='color:{self.owner.tone_color(t) if t != 'ok' else 'inherit'}'>{_hesc(x)}</li>"
-                     for x, t in lab_findings_real(r, TR))
-        self.ch_res.setText(f"<b>{_hesc(TR(PROVENANCE[prov]))}</b> · " + " · ".join(
-            f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
-        mm = {k: (None if v_ is None or not np.isfinite(v_) else round(float(v_), 3)) for k, v_ in m.items()}
-        self.session_save("chain", prov, dict(source=getattr(self, "_real_src", ""), mode=r["mode"], dev=r["dev"]), mm)
-        return r
-
-    # ---- compandeurs sur le vrai son reçu : figer quelques secondes et comparer en grand
-    def live_snapshot(self, secs=4.0, wait=False):
-        xs = list(self.lv_in)
-        x = np.concatenate(xs) if xs else np.zeros(0, dtype=np.float32)
-        x = x[-int(secs * 48000):]
-        if len(x) < 48000 or not self.lv_keys:
-            self.lv_fit.setText(TR("Pas assez de son reçu (au moins 1 s) ou aucun modèle coché."))
-            return None
-        e = self._eng()
-        de = float((e.demod or {}).get("deemph") or 50.0) if e is not None else 50.0
-        prov = "sim" if (e is None or e.kind() == "demo") else "obs"
-        keys = list(self.lv_keys)
-
-        def done(r, err):
-            if err is not None or r is None:
-                self.lv_fit.setText(TR("⚠ Calcul impossible : {}").format(err))
-                return
-            r["meta"]["prov"] = prov
-            self.res_real = r
-            self.session_save("cmp_real", prov, dict(seconds=round(len(x) / 48000.0, 2), deemph=de),
-                              {row["key"]: {k: (None if v_ is None else round(float(v_), 3)) for k, v_ in row["m"].items()}
-                               for row in r["rows"]})
-            self.cmp_detail(r)
-        if wait:
-            done(comp_compare_real(keys, x, de), None)
-            return self.res_real
-        self.owner.run_heavy(lambda: comp_compare_real(keys, x, de), done, what="Labo SDR")
-        return True
-
-    # ---- état de la mesure à l'escalier
-    def stair_status(self):
-        xs = list(self.lv_in)
-        secs = sum(len(a) for a in xs) / 48000.0
-        need = 2 * STAIR_PERIOD + 1
-        r = getattr(self, "_st_res", None)
-        e = self._eng()
-        if r is not None:
-            st, why = r[0], r[1]
-            txt = TR(STAIR_STATES[st]) + (" · " + " ".join(TR(x) for x in why) if why else " · " + TR("mesure valable"))
-        elif e is None:
-            st = "stopped" if secs > 0 else "ready"
-            txt = (TR(STAIR_STATES[st]) + " · " + (TR("le poste SDR s'est arrêté pendant l'enregistrement")
-                                                   if secs > 0 else TR("démarre un poste SDR et écoute le micro en A")))
-        elif secs < need:
-            st = "running"
-            txt = TR(STAIR_STATES[st]) + f" · {secs:.0f} / {need:.0f} s"
-        else:
-            st = "ready"
-            txt = TR(STAIR_STATES[st]) + " · " + TR("assez de son pour mesurer")
-        col = {"done": "#30d158", "invalid": "#ff453a", "stopped": "#ff9f0a", "running": "#64d2ff"}.get(st, "#8e8e93")
-        if hasattr(self, "lv_state"):
-            self.lv_state.setText(f"● {txt}")
-            self.lv_state.setStyleSheet(f"color: {col}; font-weight: 600;")
-        return st, txt
-
-    # ---- modulations : découverte / indices / quiz, + le signal de A
-    def _mod_draw(self):
-        rows = getattr(self, "res_mod", None)
-        if not rows:
-            return
-        step = self.md_step.currentData()
-        order = self._md_order if step == "quiz" else list(range(len(rows)))
-        for i, (p, idx) in enumerate(zip(self.md_plots, order)):
-            r = rows[idx]
-            p.clear()
-            c = r["cls"]
-            p.plot((r["F"] - 100.0) * 1000.0, r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1))
-            if step == "discover":
-                ok = (" (" + TR("pas de case « AM » dans la détection") + ")") if r["ok"] is None else \
-                    (" ✔" if r["ok"] else " ✖")
-                p.setTitle(TR(r["name"]), size="9pt")
-                col = "#8e8e93" if r["ok"] is None else (LAB_COLORS[2] if r["ok"] else LAB_COLORS[4])
-                ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))) + ok, color=col, anchor=(0, 0),
-                                 fill=pg.mkBrush(20, 20, 22, 200))
-                ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
-                p.addItem(ti)
-                p.setToolTip(TR(c.get("why", "")) + (f"\n−20 dB : {c['bw_khz']:.1f} kHz" if c.get("bw_khz") else ""))
-            else:
-                p.setTitle(TR("Signal {}").format(i + 1), size="9pt")
-                if step == "hints":
-                    ti = pg.TextItem(mod_hint(r, TR), color="#8e8e93", anchor=(0, 0), fill=pg.mkBrush(20, 20, 22, 200))
-                    ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
-                    p.addItem(ti)
-                p.setToolTip(TR("Quel est ce signal ?"))
-            p.setXRange(-r["span"] * 1000.0, r["span"] * 1000.0, padding=0.02)
-            p.enableAutoRange(axis="y", enable=True)
-        quiz = step == "quiz"
-        for cb in self.md_ans:
-            cb.setVisible(quiz)
-        self.md_check.setVisible(quiz)
-        self.md_score.setVisible(quiz)
-        if quiz:
-            self.md_score.setText(TR("Choisis un nom sous chaque spectre, puis ✔ Vérifier."))
-
-    def _mod_step(self):
-        rows = getattr(self, "res_mod", None)
-        if self.md_step.currentData() == "quiz" and rows:
-            self._md_order = [int(i) for i in np.random.default_rng().permutation(len(rows))]
-            for cb in self.md_ans:
-                cb.setCurrentIndex(0)
-        self._mod_draw()
-
-    def mod_check(self, answers=None):
-        rows = getattr(self, "res_mod", None)
-        if not rows:
-            return None
-        truth = [rows[i]["name"] for i in self._md_order]
-        if answers is None:
-            answers = [cb.currentData() for cb in self.md_ans]
-        good, tot, ok = mod_quiz_score(answers, truth)
-        for cb, k in zip(self.md_ans, ok):
-            cb.setStyleSheet(f"color: {LAB_COLORS[2] if k else LAB_COLORS[4]}; font-weight: 600;")
-        self.md_score.setText(TR("{} / {} bonnes réponses · réponses : {}").format(
-            good, tot, " · ".join(f"{i + 1}. {TR(t)}" for i, t in enumerate(truth))))
-        return good, tot, ok
-
-    def mod_add_a(self):
-        """📡 Le signal réel de A (spectre du poste SDR) à côté des modèles, avec ce que l'appli en devine."""
-        e = self._eng()
-        fr = e.last if e is not None else None
-        if e is None or fr is None or e.a is None or len(fr["F"]) != len(fr["avg"]):
-            self.md_info.setText(TR("Pas de poste SDR en marche : démarre-le et cale A sur un signal."))
-            return None
-        F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
-        mx = fr.get("mx")                                 # crêtes du dernier morceau : l'excursion FM s'y voit mieux
-        if mx is not None and len(mx) == len(F):
-            L = np.maximum(L, np.asarray(mx, dtype=float))
-        span = 0.5
-        msk = np.abs(F - e.a) <= span
-        if msk.sum() < 8:
-            self.md_info.setText(TR("A est au bord de la fenêtre du SDR : recentre-le."))
-            return None
-        c = classify_signal(F[msk], L[msk], e.a, getattr(e, "pilot", None), span=span)
-        p = self.md_aplot
-        p.clear()
-        p.show()
-        prov = "sim" if e.kind() == "demo" else "obs"
-        p.setTitle(TR("📡 Signal de A ({} MHz) · {}").format(f"{e.a:.4f}", TR(PROVENANCE[prov])), size="9pt")
-        p.plot((F[msk] - e.a) * 1000.0, L[msk], pen=pg.mkPen(LAB_COLORS[1], width=1.2))
-        ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))), color=LAB_COLORS[1], anchor=(0, 0),
-                         fill=pg.mkBrush(20, 20, 22, 200))
-        ti.setPos(-span * 1000.0, float(np.nanmax(L[msk])) + 2.0)
-        p.addItem(ti)
-        p.setXRange(-span * 1000.0, span * 1000.0, padding=0.02)
-        self.set_prov("mod", prov)
-        self.md_info.setText(TR("À côté des modèles : le vrai signal de A. Compare sa largeur et sa forme."))
-        return c
-
-
-def _v8_make_lab(self):
-    """8.2 : le labo SDR en 5 panneaux (créés avec les autres : la disposition enregistrée les replace ; ils sont dans
-    🪟 Fenêtres, se sortent en vraie fenêtre, se mettent sur l'écran qu'on veut)."""
-    self._sdrlab = SdrLab(self)
-    self.lab_docks = {}
-    B = Qt.DockWidgetArea.BottomDockWidgetArea
-    acts = self.win_menu.actions()
-    sep = next((x for x in acts if x.isSeparator()), None)
-    for key, title, name in LAB_DOCKS:
-        d = self._make_dock(TR(title), name, self._sdrlab.panels[key], B)
-        d.hide()
-        self.lab_docks[key] = d
-        self.docks.append(d)
-        if sep is not None:
-            self.win_menu.insertAction(sep, d.toggleViewAction())
-        else:
-            self.win_menu.addAction(d.toggleViewAction())
-
-
-def _v8_open_sdr_lab(self, tab=0):
-    """Montre les panneaux du labo (en onglets en bas la 1re fois ; ensuite là où tu les as mis) et met devant celui
-    demandé (n° ou clé)."""
-    key = LAB_KEYS[int(tab)] if isinstance(tab, int) else str(tab)
-    docks = self.lab_docks
-    if not getattr(self, "_lab_hid_done", False):        # graphes masqués (config lue après la création du labo)
-        self._lab_hid_done = True
-        self._sdrlab.apply_hidden()
-    if not any(d.isVisible() or d.objectName() in self.panel_wins for d in docks.values()):
-        first = None
-        for k in LAB_KEYS:
-            d = docks[k]
-            if d.objectName() in self.panel_wins:
-                continue
-            if first is None:
-                if d.isFloating() or self.dockWidgetArea(d) == Qt.DockWidgetArea.NoDockWidgetArea:
-                    self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, d)
-                first = d
-            elif self.dockWidgetArea(d) == self.dockWidgetArea(first) and not d.isFloating():
-                self.tabifyDockWidget(first, d)
-            d.show()
-    d = docks[key]
-    w = self.panel_wins.get(d.objectName())
-    if w is not None:
-        w.show()
-        w.raise_()
-    else:
-        d.show()
-        d.raise_()
-    return self._sdrlab
-
-
-def lab_grid(mw, docks):
-    """8.2 : vrai affichage Labo : les 5 panneaux en grille dans la fenêtre mw (QMainWindow) — chaîne | compandeurs en
-    haut, en direct | modulations + pannes (onglets) en bas. docks = {clé: QDockWidget}."""
-    B = Qt.DockWidgetArea.BottomDockWidgetArea
-    ks = [k for k in LAB_KEYS if k in docks]
-    for k in ks:
-        mw.removeDockWidget(docks[k])
-        docks[k].setFloating(False)
-    if not ks:
-        return
-    mw.addDockWidget(B, docks[ks[0]])
-    pos = {"chain": None, "cmp": ("chain", Qt.Orientation.Horizontal), "live": ("chain", Qt.Orientation.Vertical),
-           "mod": ("cmp", Qt.Orientation.Vertical), "fault": ("mod", None)}
-    placed = {ks[0]}
-    for k in ks[1:]:
-        ref, ori = pos.get(k) or (None, None)
-        if ref not in placed:
-            ref, ori = ks[0], Qt.Orientation.Horizontal
-        if ori is None:
-            mw.tabifyDockWidget(docks[ref], docks[k])
-        else:
-            mw.splitDockWidget(docks[ref], docks[k], ori)
-        placed.add(k)
-    for k in ks:
-        docks[k].show()
-    if "mod" in docks:
-        docks["mod"].raise_()
-
-    def sizes():                                             # grille à parts égales (sinon Qt donne tout à la chaîne)
-        try:
-            W, H = max(800, mw.width()), max(500, mw.height())
-            cols = [docks[k] for k in ("chain", "cmp") if k in docks]
-            if len(cols) == 2:
-                mw.resizeDocks(cols, [W // 2, W // 2], Qt.Orientation.Horizontal)
-            rows = [docks[k] for k in ("chain", "live") if k in docks]
-            if len(rows) == 2:
-                mw.resizeDocks(rows, [int(H * 0.6), int(H * 0.4)], Qt.Orientation.Vertical)
-        except RuntimeError:
-            pass
-    QtCore.QTimer.singleShot(0, sizes)
-    QtCore.QTimer.singleShot(150, sizes)
-
-
-LAB_VIEWS = (("tabs", "▤ Rangé : un panneau à la fois (onglets)"), ("grid", "▦ Tout à l'écran (grille)"),
-             ("dual", "🖥🖥 Sur 2 écrans (chaîne et direct ici, le reste sur l'autre)"))
-
-
-def _v8_lab_view(self, on=True, how=None):
-    """8.2 (Clément : « avec un vrai affichage labo ? », puis « trop de fenêtres, plus rangé ou double écran ») : la
-    fenêtre principale ne montre plus que le labo — rangé en onglets (défaut), en grille, ou réparti sur 2 écrans ; les
-    panneaux sortis en vraie fenêtre restent où ils sont. off = retour à la disposition du mode."""
-    if on is True and how is None:
-        how = self.sdr_cfg.get("lab_view", "tabs")
-    if on and not getattr(self, "_lab_hid_done", False):
-        self._lab_hid_done = True
-        self._sdrlab.apply_hidden()
-    docks = {k: d for k, d in self.lab_docks.items() if d.objectName() not in self.panel_wins}
-    if on:
-        how = how if how in dict(LAB_VIEWS) else "tabs"
-        self.sdr_cfg["lab_view"] = how
-        if self.screen_hosts:
-            self.screens_off(relayout=False)
-        if how == "dual" and len(self.screen_list()[0]) < 2:
-            how = "grid"
-            self.set_status(TR("Un seul écran : le labo s'affiche en grille."))
-        if how == "dual":
-            scrs, main = self.screen_list()
-            other = next(i for i in range(len(scrs)) if i != main)
-            plan = {n: SCREEN_HIDE for n, _g, _t in SCREEN_PANELS}
-            for k, _t, n in LAB_DOCKS:
-                plan[n] = main if k in ("chain", "live") else other
-            self.screens_apply(plan, quiet=True, keep_mode=True)
-            docks = {k: d for k, d in self.lab_docks.items() if k in ("chain", "live")}
-        for d in self.docks:
-            if d not in self.lab_docks.values() and d.objectName() not in self.panel_wins:
-                d.hide()
-        self.dock_wall.hide()
-        if how == "tabs":
-            B = Qt.DockWidgetArea.BottomDockWidgetArea
-            ks = [k for k in LAB_KEYS if k in docks]
-            for k in ks:
-                self.removeDockWidget(docks[k])
-                docks[k].setFloating(False)
-            if ks:
-                self.addDockWidget(B, docks[ks[0]])
-                for k in ks[1:]:
-                    self.tabifyDockWidget(docks[ks[0]], docks[k])
-                for k in ks:
-                    docks[k].show()
-                docks[ks[0]].raise_()
-        else:
-            lab_grid(self, docks)
-        self.lab_view_on = True
-        QtCore.QTimer.singleShot(0, self._fit_screen)
-        self.set_status(TR("🧪 Affichage Labo : bouge les panneaux comme tu veux ; « ↩ Quitter l'affichage Labo » "
-                           "(menu du mode ou panneau Chaîne) pour revenir."))
-    else:
-        self.lab_view_on = False
-        for d in docks.values():
-            d.hide()
-        self._sdrlab.stop()
-        self.set_rf_mode(self.rf_mode)
-    try:
-        self._sdrlab.view_btn.setText(TR("↩ Quitter l'affichage Labo") if on else TR("⛶ Affichage Labo"))
-    except Exception:  # noqa: BLE001
-        pass
-    return how if on else False
-
-
-def _v8_close_sdr_lab(self):
-    for d in self.lab_docks.values():
-        self.panel_window(d, False)
-        d.hide()
-    self._sdrlab.stop()
-
-
-def _v8_all_lab_docks(self):
-    return list((getattr(self, "lab_docks", None) or {}).values())
-
-
-def _v8_sdr_compat_table(self):
-    """8.2 : tableau de compatibilité des SDR (ce que l'appli sait faire avec chacun, et ce qui a été essayé en vrai)."""
-    d = QtWidgets.QDialog(self)
-    d.setWindowTitle(TR("📋 SDR pris en charge"))
-    fit_dialog(d, 1000, 520)
-    v = QtWidgets.QVBoxLayout(d)
-    t = QtWidgets.QLabel(TR("Ce que l'appli sait faire avec chaque SDR. « Essayé en vrai » : non pour tous à ce jour (fait "
-                            "sur des faux SDR et le 🧪 SDR démo)."))
-    t.setWordWrap(True)
-    v.addWidget(t)
-    rows = sdr_compat_rows()
-    cols = ("SDR", "Plage", "Bits", "Débit max", "Fenêtre utile", "Balayage", "Écoute / IQ", "Émission",
-            "dBm calibrés", "Essayé en vrai", "Fiche")
-    tb = QtWidgets.QTableWidget(len(rows), len(cols))
-    tb.setHorizontalHeaderLabels([TR(c) for c in cols])
-    tb.verticalHeader().setVisible(False)
-    tb.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-    yes, no = "✔", "—"
-    for i, r in enumerate(rows):
-        vals = (r["name"], r["range"], str(r["bits"] or "—"), f"{r['rate']:g} MS/s" if r["rate"] else "—",
-                f"{r['span']:g} MHz" if r["span"] else "—", yes if r["sweep"] else no, yes if r["iq"] else no,
-                yes if r["tx"] else no, yes if r["dbm"] else no, TR("non"), TR(r["src"]))
-        for j, x in enumerate(vals):
-            tb.setItem(i, j, QtWidgets.QTableWidgetItem(x))
-    tb.resizeColumnsToContents()
-    v.addWidget(tb, 1)
-    bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
-    bb.rejected.connect(d.close)
-    v.addWidget(bb)
-    self._compat_dlg = d
-    d.show()
-    return d
-
-
-MainWindow.open_sdr_lab = _v8_open_sdr_lab
-MainWindow.close_sdr_lab = _v8_close_sdr_lab
-MainWindow.lab_view = _v8_lab_view
-MainWindow.lab_view_on = False
-MainWindow._make_lab = _v8_make_lab
-MainWindow.all_lab_docks = _v8_all_lab_docks
-MainWindow.open_sdr_compat = _v8_sdr_compat_table
-
-
-def self_test(path):
-    """RF-Technical-Monitor.exe --selftest fichier : vérifie que l'EXE contient bien ce qui est chargé à la demande
-    (réseau socket://, traductions, son). Lancé par la CI après PyInstaller (7.23.2 : sans protocol_socket dans
-    l'exe, le tinySA en réseau était impossible : « invalid URL, protocol 'socket' not known »)."""
-    import importlib
-    import socket as _s
-    out, fails = [], 0
-
-    def check(label, fn):
-        nonlocal fails
-        try:
-            fn()
-            out.append(f"OK   {label}")
-        except Exception as e:  # noqa: BLE001
-            fails += 1
-            out.append(f"FAIL {label} : {type(e).__name__} : {e}")
-
-    def net():
-        srv = _s.socket()
-        srv.bind(("127.0.0.1", 0))
-        srv.listen(1)
-        ser = serial.serial_for_url(f"socket://127.0.0.1:{srv.getsockname()[1]}", 115200, timeout=2)
-        conn, _ = srv.accept()
-        conn.sendall(b"ch> ")
-        got = ser.read(4)
-        ser.close()
-        conn.close()
-        srv.close()
-        assert got == b"ch> ", got
-
-    check("tinySA en réseau (socket://, relais / Raspberry Pi)", net)
-    check("traductions anglaises (lang_en)", lambda: importlib.import_module("lang_en"))
-    check("son (PySide6.QtMultimedia)", lambda: importlib.import_module("PySide6.QtMultimedia"))
-    check("une seule instance (PySide6.QtNetwork)", lambda: importlib.import_module("PySide6.QtNetwork").QLocalServer)
-    check("QR code (segno)", lambda: importlib.import_module("segno").make("http://192.168.1.2:8080/").matrix)
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    check("manuels embarqués (FR + EN)", lambda: [(base / "docs" / n).stat() for n in ("manuel.html", "manual_en.html")])
-    out.append(f"ÉCHECS: {fails}")
-    Path(path).write_text("\n".join(out) + "\n", encoding="utf-8")
-    return fails
-
-
-def _instance_name():
-    """Nom du canal local de l'appli (un par dossier de config, donc un par utilisateur Windows)."""
-    import hashlib
-    return "RFTechnicalMonitor-" + hashlib.sha1(str(CFG_PATH.parent).encode("utf-8")).hexdigest()[:12]
-
-
-def single_instance(app):
-    """8.0.3 (Clément : « je peux ouvrir plusieurs fois le logiciel ») : un verrou dans le dossier de config. Déjà
-    ouverte -> on lui demande de revenir devant et on rend None (cette 2ᵉ copie se ferme). Une relance (langue, garde)
-    attend jusqu'à 20 s que l'ancienne soit fermée. TSM_MULTI=1 : plusieurs copies permises (dépannage).
-    -> le serveur local (QLocalServer) à garder, ou None."""
-    from PySide6 import QtNetwork
-    if os.environ.get("TSM_MULTI") == "1":
-        return QtNetwork.QLocalServer(app)
-    CFG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lock = QtCore.QLockFile(str(CFG_PATH.parent / "instance.lock"))
-    lock.setStaleLockTime(0)                 # verrou d'une appli plantée (processus mort) : repris tout seul
-    wait = 20000 if os.environ.get("TSM_WAIT_INSTANCE") == "1" else 300
-    if not lock.tryLock(wait):
-        sock = QtNetwork.QLocalSocket()
-        sock.connectToServer(_instance_name())
-        if sock.waitForConnected(1500):
-            sock.write(b"show")
-            sock.flush()
-            sock.waitForBytesWritten(1000)
-            sock.disconnectFromServer()
-        else:
-            QtWidgets.QMessageBox.information(None, APP_NAME, TR("RF Technical Monitor est déjà ouvert sur ce PC (regarde dans la "
-                                                                 "barre des tâches)."))
-        return None
-    app._instance_lock = lock
-    srv = QtNetwork.QLocalServer(app)
-    QtNetwork.QLocalServer.removeServer(_instance_name())
-    srv.listen(_instance_name())
-    return srv
-
-
-def _instance_wake(srv, win):
-    """Une 2ᵉ copie a été lancée : la fenêtre déjà ouverte revient devant."""
-    while srv.hasPendingConnections():
-        c = srv.nextPendingConnection()
-        c.disconnected.connect(c.deleteLater)
-    try:
-        if win.isMinimized():
-            win.showNormal()
-        win.show()
-        win.raise_()
-        win.activateWindow()
-        win.set_status(TR("RF Technical Monitor était déjà ouvert : le voici."))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def main():
-    if "--selftest" in sys.argv:            # CI : contrôle de l'exe, sans fenêtre
-        i = sys.argv.index("--selftest")
-        sys.exit(1 if self_test(sys.argv[i + 1] if i + 1 < len(sys.argv) else "selftest.txt") else 0)
-    if "--garde" in sys.argv:               # garde : lance l'appli et la relance si elle plante / se fige
-        run_guard()
-        sys.exit(0)
-    app = QtWidgets.QApplication(sys.argv)
-    app._gc_timer = install_gc_main_thread(app)
-    app._lang = read_language()
-    if not install_language(app._lang):
-        app._lang = "fr"
-        install_french(app)
-    ico = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    for cand in (ico / "icone.png", ico / "assets" / "icone.png"):     # exe (PyInstaller) ou sources
-        if cand.exists():
-            app.setWindowIcon(QtGui.QIcon(str(cand)))
-            break
-    app._crash_fh = install_crash_log(app)
-    if "--relais" in sys.argv:              # PC où est branché le 2ᵉ tinySA : juste le relais réseau
-        win = RelayWindow()
-    else:
-        inst = single_instance(app)         # 8.0.3 : déjà ouverte -> on la ramène devant, on ne s'ouvre pas 2 fois
-        if inst is None:
-            sys.exit(0)
-        win = MainWindow()
-        inst.newConnection.connect(lambda: _instance_wake(inst, win))
-    win.show()
-    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
