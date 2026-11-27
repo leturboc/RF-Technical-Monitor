@@ -1207,5 +1207,66 @@ ok("scénarios du labo : chacun a sa chaîne, quoi regarder et pourquoi", all(sc
 bv_ = ns["bb_views"](np.exp(1j * np.linspace(0, 20, 2048)).astype(np.complex64), 240000.0)
 ok("vue « I et Q dans le temps » : temps et I / Q de même longueur", len(bv_["ti"]) == len(bv_["I"]) == len(bv_["Q"]))
 
+# ---- 8.2 Full Lab v2 : validation du moteur de comparaison (chantier 5)
+cc_ = ns["comp_compare"]
+r1_ = cc_(["x2", "evo"], "evo", seconds=2.0)
+r2_ = cc_(["x2", "evo"], "evo", seconds=2.0)
+ok("moteur : même comparaison = mêmes chiffres (reproductible)",
+   all(abs(a_["m"][k_] - b_["m"][k_]) < 1e-9 for a_, b_ in zip(r1_["rows"], r2_["rows"]) for k_ in ("diff", "err", "pump")))
+xs_ = ns["xfer_spectrum"]
+nz_ = np.random.default_rng(3).standard_normal(48000 * 2).astype(np.float32) * 0.1
+id_ = xs_(nz_, nz_.copy(), 48000)
+ok("moteur : sortie = entrée -> EQ 0 dB et phase 0° partout",
+   id_ is not None and float(np.nanmax(np.abs(id_["mag"]))) < 0.05 and float(np.nanmax(np.abs(id_["phase"]))) < 0.5)
+g6_ = xs_(nz_, nz_ * 0.5, 48000)
+ok("moteur : gain de −6 dB lu −6 dB", g6_ is not None and abs(float(np.nanmedian(g6_["mag"])) + 6.02) < 0.1)
+dl_ = xs_(nz_, np.concatenate([np.zeros(240, np.float32), nz_[:-240]]), 48000)
+ok("moteur : un retard pur ne fausse ni l'EQ ni la phase (retard retiré)",
+   dl_ is not None and abs(dl_["delay_ms"] - 5.0) < 0.2 and float(np.nanmedian(np.abs(dl_["mag"][dl_["coh"] > 0.9]))) < 0.3
+   and float(np.nanmedian(np.abs(dl_["phase"][dl_["coh"] > 0.9]))) < 5.0, str(dl_ and dl_["delay_ms"]))
+for k_ in [k_ for k_ in ns["COMPANDERS"]]:
+    ch1_, ch2_ = ns["CompChain"](k_, 50.0), ns["CompChain"](k_, 50.0)
+    one_ = ch1_(nz_)
+    parts_ = np.concatenate([ch2_(nz_[i_:i_ + 777]) for i_ in range(0, len(nz_), 777)])
+    ok(f"moteur : {k_} identique d'un tenant ou par morceaux de 777",
+       float(np.max(np.abs(one_ - parts_))) < 1e-6 * float(np.max(np.abs(one_))) + 1e-7)
+gq_ = ns["SigGen"](2400000, 100e6, [dict(key="m", kind="fm", f=100.25, lvl=0, dev=30000, audio="voice", k=0,
+                                        pilot=ns["DEMO_PILOT"])], noise=0.01).block(2400000)
+rq_ = ns["lab_chain_iq"](gq_, 2400000, 250000.0, "wfm", None, None, 50.0)
+ok("labo réel : chaîne sur un IQ (pas d'erreur inventée, pilote, déviation ±30 kHz retrouvée)",
+   rq_["real"] and rq_["src"] is None and rq_["pilot_start"] and rq_["health"] and 22 < rq_["health"]["dev"] < 34,
+   str(rq_["health"]))
+ok("labo réel : constats sans « erreur » ni « retard »",
+   all("Erreur" not in t_ for t_, _ in ns["lab_findings_real"](rq_)))
+rr_ = ns["comp_compare_real"](["none_d50", "x2"], rq_["out"], 50.0)
+ok("labo réel : compandeurs sur le son reçu, provenance observée, 2:1 = plus de dynamique",
+   rr_["meta"]["prov"] == "obs" and len(rr_["rows"]) == 2
+   and rr_["rows"][1]["m"]["dyn"] > rr_["rows"][0]["m"]["dyn"] + 5, str([r_["m"]["dyn"] for r_ in rr_["rows"]]))
+sv_ = ns["stair_validity"]
+st_ = ns["stair_signal"](np.arange(int(2.2 * ns["STAIR_PERIOD"] * 48000)) / 48000.0)
+ft_ = ns["stair_fit"](ns["CompTx"]("evo", None)(st_))
+ok("escalier : mesure valable = terminé", sv_(ft_, -20.0, 22.0) == ("done", []))
+ok("escalier : son trop faible / trop court = invalide, raisons dites", sv_(ft_, -60.0, 10.0)[0] == "invalid"
+   and len(sv_(ft_, -60.0, 10.0)[1]) == 2)
+ok("escalier : non reconnu = invalide", sv_(dict(ok=False, why="x"))[0] == "invalid")
+ft2_ = ns["stair_fit"](ns["CompTx"]("evo", None)(st_)[int(0.4 * 48000):])
+ok("escalier : repère de silence raccourci encore reconnu", ft2_["ok"] and abs(ft2_["ratio"] - 2.0) < 0.2, str(ft2_.get("why")))
+da_ = ns["lab_session_doc"]("cmp", "sim", {}, ns["cmp_metrics"](r1_))
+db_ = ns["lab_session_doc"]("cmp", "sim", {}, ns["cmp_metrics"](cc_(["x2", "evo"], "", seconds=2.0)))
+dd_ = ns["lab_session_diff"](da_, db_)
+ok("sessions : doc valable, écarts par modèle et par mesure", ns["lab_session_ok"](da_) and len(dd_) >= 10
+   and any(abs(r_[4] or 0) > 1 for r_ in dd_))
+ok("sessions : même session = aucun écart", all((r_[4] or 0) == 0 for r_ in ns["lab_session_diff"](da_, da_)))
+ok("sessions : genres différents = rien à comparer",
+   ns["lab_session_diff"](da_, ns["lab_session_doc"]("stair", "obs", {}, {"ratio": 2.0})) == [])
+ok("quiz : score", ns["mod_quiz_score"](["a", "b", "c"], ["a", "x", "c"]) == (2, 3, [True, False, True]))
+mods_ = ns["lab_modulations"]("melody")
+ok("quiz : chaque modulation a un nom proposé dans les réponses",
+   all(r_["name"] in ns["MOD_QUIZ_CHOICES"] for r_ in mods_) and len(ns["MOD_QUIZ_CHOICES"]) == len(mods_))
+ok("quiz : un indice ne donne pas le nom", all(r_["name"] not in ns["mod_hint"](r_) and ns["mod_hint"](r_) for r_ in mods_))
+for t_ in ("1. Son : entrée et sortie (100 ms)", "Transfert du récepteur", "EQ en direct", "Spectre d'une modulation"):
+    h_ = ns["lab_plot_help"](t_)
+    ok(f"aide du graphe « {t_} » : montre / déduire / pas déduire", h_ and all(h_[k_] for k_ in ("shows", "can", "cannot")))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

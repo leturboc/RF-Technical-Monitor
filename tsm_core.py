@@ -14537,7 +14537,8 @@ class CompChain:
                 h = np.convolve(h, lowpass_taps(cp["lp"], rate, 63)).astype(np.float32)
             self.eq = [FirDecim(h, 1), FirDecim(h, 1)]
         self.st = {"_cps": {"env": 0.05}}
-        self._hf = FirDecim(lowpass_taps(cp["hf"], rate, 31), 1) if cp.get("hf") else None
+        self._hf = lowpass_taps(cp["hf"], rate, 31).astype(np.float32) if cp.get("hf") else None
+        self._hf_tail = np.zeros(30, dtype=np.float32)
 
     def deemph(self, a, ch=0):
         if self.de is None or not len(a):
@@ -14563,9 +14564,9 @@ class CompChain:
             side = None
             if self._hf is not None:
                 mono_ = a.mean(axis=1) if a.ndim == 2 else a
-                side = self._hf(mono_.astype(np.float32))[:len(mono_)]
-                if len(side) < len(mono_):
-                    side = np.concatenate([side, np.zeros(len(mono_) - len(side), dtype=np.float32)])
+                x_ = np.concatenate([self._hf_tail, mono_.astype(np.float32)])     # 8.2 : en flux exact (même
+                side = np.convolve(x_, self._hf)[30:30 + len(mono_)].astype(np.float32)  # résultat quel que soit
+                self._hf_tail = x_[-30:]                                                  # le découpage)
             a = expand2(a, self.st, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"],
                         knee=cp["knee"], low=cp["low"], side=side)
         return a
@@ -14772,9 +14773,9 @@ def stair_fit(x, rate=48000):
     top = float(np.percentile(e, 95))
     lo = float(np.percentile(e, 2))              # le silence repère = le plus bas reçu (le bruit remonté par le
     quiet = (e < lo + 6.0) & (e < top - 15.0)    # compresseur peut le laisser à ~30 dB sous le haut, pas 40)
-    k_gap = int(0.4 / 0.02)
-    ends, run = [], 0
-    for i, q in enumerate(quiet):               # fin de chaque silence d'au moins 0,4 s = début d'un escalier
+    k_gap = int(0.24 / 0.02)                    # le repère fait 0,6 s, mais le son reçu peut le raccourcir (compresseur,
+    ends, run = [], 0                           # morceaux perdus) : 0,24 s suffisent (les marches restent bien au-dessus)
+    for i, q in enumerate(quiet):               # fin de chaque silence = début d'un escalier
         if q:
             run += 1
         else:
@@ -15079,6 +15080,284 @@ LAB_SCENARIOS = (
                              "note « Porteuse sans son ».",
          why="Un émetteur peut émettre sans moduler (mute, micro débranché du pack) : la RF seule ne le voit pas."),
 )
+
+
+
+# ----- 8.2 : Full Lab v2 — aide par graphe, sessions du labo, validité des mesures, sources réelles, quiz des modulations
+# Aide de chaque graphe du labo (clé = titre court) : ce qu'il montre, ce qu'on peut en déduire, ce qu'on ne peut PAS.
+LAB_PLOT_HELP = {
+    "1. Son : entrée et sortie (100 ms)": (
+        "La forme d'onde du son, avant l'émetteur (bleu) et après le récepteur (orange), alignées.",
+        "Si les deux se superposent : la chaîne rend le son fidèlement. Un écart de taille = un écart de niveau.",
+        "La qualité perçue : deux formes un peu différentes peuvent sonner pareil (la phase change la forme, pas le son)."),
+    "2. Niveau dans le temps": (
+        "Le niveau (dBFS, fenêtres de 10 ms) de l'entrée, du son compressé par l'émetteur et de la sortie.",
+        "La compression de l'émetteur (courbe verte plus « plate »), le travail de l'expanseur, le pompage.",
+        "La qualité d'un compandeur de marque : c'est un MODÈLE approché."),
+    "3. IQ dans le temps (2 ms) : I et Q": (
+        "Les deux composantes du signal radio reçu (I en phase, Q en quadrature), vues à la loupe.",
+        "Une porteuse FM = deux sinus décalés d'un quart de tour, d'amplitude constante ; le bruit les rend irrégulières.",
+        "Le contenu audio : il est dans la vitesse de rotation, pas dans la forme de I ou de Q seuls."),
+    "4. Constellation (canal)": (
+        "Chaque échantillon du canal comme un point (I, Q), normalisé.",
+        "FM propre = un cercle fin ; bruit = cercle épais ; saturation = coins carrés ; brouilleur = cercle déformé.",
+        "La déviation (le volume) : un cercle ne dit pas à quelle vitesse il est parcouru."),
+    "5. Spectre de l'IQ": (
+        "La puissance en fonction de la fréquence autour de la porteuse (moyenne et max).",
+        "La largeur occupée, un autre signal dans ou près du canal, le niveau de bruit.",
+        "Le son ni le compandeur ; un spectre « propre » ne garantit pas un son propre."),
+    "6. Fréquence instantanée": (
+        "L'écart de fréquence à chaque instant : c'est exactement ce que le démodulateur FM transforme en son.",
+        "La déviation (± kHz), une dérive (courbe qui monte), les clics FM (pics brefs) d'un signal faible.",
+        "Le niveau RF : un signal fort et un faible peuvent avoir la même fréquence instantanée."),
+    "Transfert du récepteur": (
+        "Niveau de sortie en fonction du niveau d'entrée, MESURÉ avec un escalier de sinus (pointillés = formule).",
+        "Le taux d'expansion (pente 2 = 2:1), le genou (ENR), les butées.",
+        "Le comportement en musique réelle (dépend aussi des temps de montée / descente)."),
+    "Saut −30 → −10 → −30 dBFS": (
+        "Comment la chaîne réagit à un saut brusque de 20 dB, à la montée puis à la descente.",
+        "Les temps de montée / descente, le dépassement (attaque trop forte) : le « pompage » se voit ici.",
+        "La sensation à l'oreille, qui dépend du programme."),
+    "EQ de la chaîne": (
+        "La réponse en fréquence de la chaîne émetteur + récepteur (bruit rose).",
+        "Les aigus relevés (ENS), coupés (ENR), la désaccentuation mal assortie.",
+        "Les fréquences absentes de la source : là, rien n'est mesuré (courbe interrompue)."),
+    "Phase (retard retiré)": (
+        "Le décalage de phase de la chaîne selon la fréquence, une fois le retard pur retiré.",
+        "Des filtres (passe-bas, désaccentuation) : la phase tourne là où l'EQ bouge.",
+        "Un défaut audible à elle seule : une phase qui tourne lentement ne s'entend en général pas."),
+    "Niveau de chaque modèle": (
+        "Le niveau de sortie de chaque modèle appliqué au son reçu, dans le temps.",
+        "Quel modèle « remonte » ou « écrase » le plus ce son-là.",
+        "Lequel est le bon : sans le son d'origine, on ne peut pas le dire (seul l'escalier donne une vraie référence)."),
+    "Son reçu (avant expanseur)": (
+        "Le niveau du son démodulé tel qu'il arrive de l'émetteur, avant tout expanseur.",
+        "S'il y a du son (pack en mute ?), sa dynamique compressée, les silences.",
+        "Le niveau au micro : l'émetteur a déjà compressé."),
+    "EQ en direct": (
+        "Pour chaque modèle : sortie / son reçu, selon la fréquence (en direct).",
+        "La couleur que chaque modèle donne au son reçu.",
+        "Les fréquences que ce son ne contient pas (courbe interrompue)."),
+    "Phase en direct": (
+        "Pour chaque modèle : phase sortie / son reçu, retard pur retiré.",
+        "Les filtres de chaque modèle.",
+        "La qualité du son à elle seule."),
+    "Spectre d'une modulation": (
+        "Le spectre d'une façon d'émettre (FM, AM, numérique, TNT…) avec le même son, centré sur la porteuse.",
+        "La largeur occupée, la forme du dessus (plat = numérique, pointu = porteuse), ce que l'appli en devine.",
+        "La qualité du son ; deux appareils d'une même famille se ressemblent beaucoup ici."),
+}
+
+
+def lab_plot_help(title, tr=None):
+    tr = tr or (lambda s: s)
+    h = LAB_PLOT_HELP.get(title)
+    if not h:
+        return None
+    return dict(shows=tr(h[0]), can=tr(h[1]), cannot=tr(h[2]))
+
+
+LAB_SESSION_KINDS = {"cmp": "Comparaison de compandeurs", "stair": "Mesure d'un émetteur (escalier)",
+                     "chain": "Chaîne complète", "cmp_real": "Compandeurs sur un son reçu"}
+
+
+def lab_session_doc(kind, prov, params, metrics, t=None, note=""):
+    """Une session du labo (enregistrée en JSON) : quoi, provenance, conditions, résultats. Les courbes ne sont pas
+    gardées (taille) : les résultats chiffrés et les conditions suffisent à refaire et comparer."""
+    return dict(fmt="rftm-lab", v=1, kind=kind if kind in LAB_SESSION_KINDS else "cmp",
+                prov=prov if prov in PROVENANCE else "sim", t=float(t or 0.0), params=dict(params or {}),
+                metrics=metrics, note=str(note)[:500], ver=CMP_MODEL_VER)
+
+
+def lab_session_ok(d):
+    return isinstance(d, dict) and d.get("fmt") == "rftm-lab" and d.get("kind") in LAB_SESSION_KINDS
+
+
+def cmp_metrics(res):
+    """Résultats chiffrés d'une comparaison (comp_compare) -> {clé du modèle: {mesure: valeur}}."""
+    out = {}
+    for r in res.get("rows", []):
+        m = dict(r["m"])
+        m["slope"] = r.get("slope")
+        out[r["key"]] = {k: (None if v is None else round(float(v), 3)) for k, v in m.items()}
+    return out
+
+
+LAB_DIFF_KEYS = (("slope", "Pente", ""), ("diff", "Niveau", "dB"), ("err", "Erreur", "dB"), ("pump", "Pompage", "dB"),
+                 ("up", "Montée", "ms"), ("down", "Descente", "ms"), ("over", "Dépassement", "dB"),
+                 ("lat", "Retard", "ms"))
+
+
+def lab_session_diff(a, b):
+    """Écarts entre deux sessions du labo (même genre) -> [(modèle, mesure, A, B, B − A, unité)] ; pour une mesure
+    d'émetteur : [("—", "Taux", A, B, …)]. Ne dit pas lequel est « juste » : seulement ce qui a changé."""
+    rows = []
+    if a.get("kind") != b.get("kind"):
+        return rows
+    if a["kind"] == "stair":
+        for k, lab, u in (("ratio", "Taux de compression", ":1"), ("slope", "Pente", ""), ("r2", "Linéarité R²", "")):
+            va, vb = (a.get("metrics") or {}).get(k), (b.get("metrics") or {}).get(k)
+            rows.append(("—", lab, va, vb, None if va is None or vb is None else vb - va, u))
+        return rows
+    ma, mb = a.get("metrics") or {}, b.get("metrics") or {}
+    for key in [k for k in ma if k in mb]:
+        for k, lab, u in LAB_DIFF_KEYS:
+            va, vb = ma[key].get(k), mb[key].get(k)
+            if va is None and vb is None:
+                continue
+            rows.append((key, lab, va, vb, None if va is None or vb is None else vb - va, u))
+    return rows
+
+
+STAIR_STATES = {"ready": "Prêt", "running": "En cours", "done": "Terminé", "invalid": "Invalide",
+                "stopped": "Interrompu"}
+
+
+def stair_validity(r, audio_db=None, seconds=None):
+    """Validité d'une mesure à l'escalier -> (état « done » | « invalid », [raisons]). Exigé : escalier reconnu,
+    linéarité R² ≥ 0,98, pente plausible (0,3…1,2 : de 3:1 à moins que 1:1), son assez fort, au moins 2 périodes."""
+    why = []
+    if not r or not r.get("ok"):
+        why.append((r or {}).get("why") or "Escalier non reconnu.")
+        return "invalid", why
+    if r.get("r2", 0) < 0.98:
+        why.append(f"Marches irrégulières (R² {r.get('r2', 0):.3f} < 0,98) : bruit, squelch ou limiteur de l'émetteur ?")
+    sl = r.get("slope") or 0
+    if not 0.3 <= sl <= 1.2:
+        why.append(f"Pente invraisemblable ({sl:.2f}) : vérifie que c'est bien l'escalier qui passe.")
+    if audio_db is not None and audio_db < -50:
+        why.append("Son reçu très faible : vérifie le niveau envoyé dans le pack.")
+    if seconds is not None and seconds < 2 * STAIR_PERIOD - 1:
+        why.append(f"Moins de 2 périodes enregistrées ({seconds:.0f} s) : résultat moins sûr.")
+    return ("invalid" if why else "done"), why
+
+
+def _lab_dyn(e):
+    """Dynamique d'un niveau dans le temps (dB) : 95ᵉ − 10ᵉ centile, le très bas compté à −90 (un expanseur qui pousse
+    le silence sous −90 ne doit pas « perdre » de la dynamique)."""
+    e = np.asarray(e, dtype=float)
+    e = e[np.isfinite(e)]
+    if len(e) < 6:
+        return None
+    e = np.maximum(e, -90.0)
+    return float(np.percentile(e, 95) - np.percentile(e, 10))
+
+
+def lab_chain_iq(iq, fs, f_off, mode="wfm", dev=None, rx_comp=None, deemph_us=0.0):
+    """Chaîne complète sur un VRAI signal reçu (IQ du poste SDR ou d'un enregistrement) : pas de son d'origine connu ->
+    on montre IQ, constellation, spectre, fréquence instantanée, son démodulé et ses mesures (niveau, crête, pilote,
+    santé, autre signal dans le canal, saturation). Provenance : observé. -> dict (mêmes clés que lab_chain quand c'est
+    possible ; src / comp / env_src = None)."""
+    iq = np.asarray(iq, dtype=np.complex64)
+    fs = float(fs)
+    md = LISTEN_MODES.get(mode) or LISTEN_MODES["wfm"]
+    dev = float(dev or md.get("dev") or 30000.0)
+    dem = ChannelDemod(fs, f_off, mode, deemph_us, None, rx_comp or None, dev)
+    step = max(1, int(0.05 * fs))
+    outs, pil = [], []
+    for i in range(0, len(iq), step):
+        a, _lv = dem.process(iq[i:i + step])
+        if len(a):
+            outs.append(np.asarray(a[:, 0] if np.ndim(a) == 2 else a, dtype=np.float32))
+        pil.append(dem.pilot is not None)
+    out = np.concatenate(outs) if outs else np.zeros(0, dtype=np.float32)
+    nfft = 4096
+    # spectre autour du canal : on ramène le canal au centre (décalage) puis FFT
+    x = iq[: (len(iq) // nfft) * nfft]
+    if len(x):
+        tt = np.arange(len(x)) / fs
+        x = (x * np.exp(-2j * np.pi * f_off * tt)).astype(np.complex64)
+    avg, mx = rt_frames(x, nfft) if len(x) >= nfft else (None, None)
+    Fk = (np.arange(nfft) - nfft // 2) * (fs / nfft) / 1000.0
+    other = None
+    if avg is not None:
+        flo = float(np.percentile(avg, 20))
+        side_ = (np.abs(Fk) > dev / 1000.0 + 20.0) & (np.abs(Fk) <= md["cut"] / 1000.0)
+        if side_.any() and float(np.max(avg[side_])) > flo + 25.0:
+            other = float(Fk[side_][int(np.argmax(avg[side_]))])
+    bb = getattr(dem, "last_bb", None)
+    te, eo = _lab_env(out)
+    ki = int(min(len(iq), 0.002 * fs))
+    xc = iq[:ki] * np.exp(-2j * np.pi * f_off * np.arange(ki) / fs) if ki else iq[:0]
+    return dict(real=True, rate=fs, t=np.arange(len(out)) / 48000.0, src=None, comp=None, out=out, te=te,
+                env_src=None, env_comp=None, env_out=eo, iq_t=np.arange(ki) / fs * 1000.0,
+                I=np.real(xc).astype(np.float32), Q=np.imag(xc).astype(np.float32), F=Fk, L=avg, Lmax=mx,
+                views=bb_views(bb, dem.fs1) if bb is not None else None, fault="none", mode=mode, dev=dev,
+                tx_comp="", rx_comp=rx_comp or "", ovf=float(np.mean(np.abs(iq.real) > 0.98)) if len(iq) else 0.0,
+                lost=None, other=other, pilot_start=bool(any(pil[: max(1, len(pil) // 2)])),
+                pilot_end=bool(pil and pil[-1]), health=dem.health, level=dem.level,
+                m=dict(out=_lab_db(out), pk_out=20 * math.log10(float(np.max(np.abs(out))) + 1e-9) if len(out) else -math.inf,
+                       dyn=_lab_dyn(eo),
+                       level=dem.level, seconds=len(iq) / fs))
+
+
+def lab_findings_real(r, tr=None):
+    """Ce que le labo voit sur un vrai signal (lab_chain_iq) -> [(texte, ton)]."""
+    tr = tr or (lambda x: x)
+    out = [(tr("Signal réel : le son d'origine est inconnu, donc pas d'« erreur » ni de « retard » mesurables"), "ok")]
+    m = r["m"]
+    if m["out"] < -50:
+        out.append((tr("Presque pas de son démodulé : pack en mute, mauvaise fréquence ou mauvais mode ?"), "warn"))
+    if r.get("other") is not None:
+        out.append((tr("Autre signal dans le canal, à {} kHz de la porteuse").format(f"{r['other']:+.0f}"), "bad"))
+    if r["ovf"] > 0.001:
+        out.append((tr("Saturation : {} % des échantillons à pleine échelle").format(f"{100 * r['ovf']:.1f}"), "bad"))
+    if r.get("pilot_start"):
+        out.append((tr("Pilote vu") if r.get("pilot_end") else tr("Pilote vu au début, perdu à la fin"),
+                    "ok" if r.get("pilot_end") else "warn"))
+    h = r.get("health")
+    if h:
+        out.append((tr("Déviation crête ≈ ± {} kHz, dérive {} kHz").format(f"{h.get('dev', 0):.1f}", f"{h.get('drift', 0):+.1f}"),
+                    "ok" if abs(h.get("drift", 0)) < 3 else "warn"))
+    return out
+
+
+def comp_compare_real(keys, pre, deemph_us=50.0, rate=48000):
+    """Compandeurs sur un VRAI son reçu (démodulé, avant tout expanseur) : chaque modèle appliqué au même son. Sans le
+    son d'origine, on montre ce que chaque modèle en FAIT (niveau, crête, dynamique, EQ / phase relatives au son reçu),
+    pas lequel est juste. -> dict(meta, rows) au format proche de comp_compare (rows[i]["m"] : out, pk, dyn, gain)."""
+    pre = np.asarray(pre, dtype=np.float32)
+    rows = []
+    te, ein = _lab_env(pre)
+    din = _lab_dyn(ein)
+    for key in keys:
+        if key not in COMPANDERS:
+            continue
+        y = _run_chunks(CompChain(key, deemph_us), pre)
+        _te, eo = _lab_env(y)
+        xf = xfer_spectrum(pre, y, rate)
+        dyn = _lab_dyn(eo)
+        rows.append(dict(key=key, card=compander_card(key), out=y, te=_te, env_out=eo, freq=xf,
+                         m=dict(out=_lab_db(y), pk=20 * math.log10(float(np.max(np.abs(y))) + 1e-9) if len(y) else None,
+                                dyn=dyn, gain=_lab_db(y) - _lab_db(pre))))
+    return dict(meta=dict(prov="obs", seconds=len(pre) / rate, deemph=deemph_us, ver=CMP_MODEL_VER, dyn_in=din,
+                          lvl_in=_lab_db(pre)), rows=rows, src=pre, te=te, env_src=ein)
+
+
+MOD_QUIZ_CHOICES = ("Micro HF (FM ±30 kHz)", "Talkie (FM ±5 kHz)", "Porteuse pure", "AM (aviation)",
+                    "Micro numérique (bloc 200 kHz)", "TNT (bloc 7,6 MHz)")
+LAB_MOD_STEPS = (("discover", "① Découverte (noms et réponse de l'appli)"), ("hints", "② Indices (largeur, forme)"),
+                 ("quiz", "③ Quiz (sans indication)"))
+
+
+def mod_hint(row, tr=None):
+    """Indice d'un spectre pour l'étape ② : largeur à −20 dB, plat ou pointu, porteuse ou pas — sans donner le nom."""
+    tr = tr or (lambda s: s)
+    c = row.get("cls") or {}
+    bw = c.get("bw_khz")
+    flat = c.get("flat")
+    parts = []
+    if bw is not None:
+        parts.append(tr("largeur ≈ {} kHz").format(f"{bw:.0f}" if bw >= 10 else f"{bw:.1f}"))
+    if flat is not None:
+        parts.append(tr("dessus plat") if flat < 2.5 else tr("dessus irrégulier"))
+    return " · ".join(parts)
+
+
+def mod_quiz_score(answers, truth):
+    """Score du quiz : answers / truth = listes de noms -> (bonnes, total, [bon ?])."""
+    ok = [a == t for a, t in zip(answers, truth)]
+    return sum(ok), len(truth), ok
 
 
 # ===== PURE-END

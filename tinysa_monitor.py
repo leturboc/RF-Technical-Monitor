@@ -257,15 +257,16 @@ from tsm_core import (  # noqa: F401
     HEAT_DIR_COLORS, HEAT_DOT_SIZES, HEAT_MAX, HEAT_PALETTES, HEAT_PAL_DEFAULT, HEAT_REACH, HEAT_REACHES,
     HEAT_TRAIL_WIDTHS, HINT_EMPTY_S, HINT_TNT_S, HIST_MAX, HIST_WHAT, HOP_OPEN_DB, HYST, HopState, IM_CHUNK,
     IM_MAX_PAIRS, IM_NAMES, IM_SEV_TEXT, IM_TOL_CUSTOM, IM_TOL_PRESETS, INC_AUTO_KINDS, INC_COOLDOWN_S, INC_GAP_S,
-    INC_MAX_MB, INC_POST_S, IQ_BYTES, IQ_RING_BUDGET, IQ_RING_S, KEEP_DAYS, LAB_EXPECT, LAB_FAULTS, LAB_FAULT_HELP,
-    LAB_MODES, LAB_RATE, LAB_SCENARIOS, LAB_SECONDS, LANGS, LAYOUT_PARTS, LC_TEXT, LEGEND_ITEMS, LEVEL_UNITS,
-    LEVEL_WORDS, LIBRE_COLOR, LISTEN_COMPANDERS, LISTEN_HOP_DWELL, LISTEN_IF, LISTEN_MODES, LISTEN_RATE,
-    LISTEN_WEB_KEEP, LISTEN_WEB_RATE, LOG_KINDS, LORA_COUNTRY, LORA_PLANS, MAP_BG_MAX_B64, MAP_COORD_MAX,
-    MAP_DEFAULT, MAP_STEP, METER_STYLES, MIN_PTS, MK_STATES, MS_BAD, MS_CSS, MS_FLAP, MS_WARN, MUTE_AUDIO_DB,
-    MUTE_CARRIER_DB, MUTE_HOLD_S, MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES,
-    OLD_DEFAULT_THEME, OccWindow, PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S,
-    PILOT_TOL_HZ, PLANNING_DEFAULT, PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX,
-    PREP_CSS, PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT,
+    INC_MAX_MB, INC_POST_S, IQ_BYTES, IQ_RING_BUDGET, IQ_RING_S, KEEP_DAYS, LAB_DIFF_KEYS, LAB_EXPECT, LAB_FAULTS,
+    LAB_FAULT_HELP, LAB_MODES, LAB_MOD_STEPS, LAB_PLOT_HELP, LAB_RATE, LAB_SCENARIOS, LAB_SECONDS,
+    LAB_SESSION_KINDS, LANGS, LAYOUT_PARTS, LC_TEXT, LEGEND_ITEMS, LEVEL_UNITS, LEVEL_WORDS, LIBRE_COLOR,
+    LISTEN_COMPANDERS, LISTEN_HOP_DWELL, LISTEN_IF, LISTEN_MODES, LISTEN_RATE, LISTEN_WEB_KEEP, LISTEN_WEB_RATE,
+    LOG_KINDS, LORA_COUNTRY, LORA_PLANS, MAP_BG_MAX_B64, MAP_COORD_MAX, MAP_DEFAULT, MAP_STEP, METER_STYLES,
+    MIN_PTS, MK_STATES, MOD_QUIZ_CHOICES, MS_BAD, MS_CSS, MS_FLAP, MS_WARN, MUTE_AUDIO_DB, MUTE_CARRIER_DB,
+    MUTE_HOLD_S, MicHistory, NAME_WORDS, NOISE_DBM_HZ, NOISE_RATE, NOTIFY_MODES, OLD_CRT_THEMES, OLD_DEFAULT_THEME,
+    OccWindow, PATROL_DWELLS, PATROL_SRCS, PF_SEP, PHASES, PILOT_LEARN_S, PILOT_MISS_S, PILOT_TOL_HZ,
+    PLANNING_DEFAULT, PLAN_EU, PLAN_EXTS, PLAN_OVERRIDES, PLAN_US, PLAN_US_LOW, POST_MICS_MAX, PREP_CSS,
+    PRESET_LABELS, PRIVACY_DEFAULT, PRIVACY_TEXT, PROBE_STEPS, PROBE_TEXT, PROBLEM_CARDS, PROBLEM_IMPACT,
     PROBLEM_IMPACT_DEFAULT, PROVENANCE, PcmRing, Persist, PinGuard, PreRing, QUICK_PRESETS, RBW_LIST, READY_ICONS,
     RECUR_KINDS, RECUR_LABELS, REG_CHECKED, REH_AUDIO_DB, REH_MIN_N, REH_NOISE_DB, REH_SNR_DB, RELAY_PORT,
     REPORT_PRO_CSS, REWIND_BINS, REWIND_FRAME_S, REWIND_MINUTES, RF_MODES, RT_FFT, RT_RATES, RX_AF_VIEWS,
@@ -277,92 +278,94 @@ from tsm_core import (  # noqa: F401
     SDR_SESSION_HEAD, SDR_STEPS_KHZ, SECRET_WEB, SEP, SESSION_DEFAULT, SESSION_JOURNAL_HEAD, SHOW_EXT, SHOW_KEYS,
     SHOW_META, SHURE_PORT, SIGNAL_DEFAULTS, SIGNAL_LABELS, SIGNAL_TONES, SIG_KINDS, SIG_TYPES, SIM_MARK,
     SITE_COLORS, SLOW_CYCLE_S, SNR_GOOD, SNR_LOW, SNR_OK, SOUND_DEFAULT, SOUND_STYLES, STAIR_GAP_S, STAIR_LEVELS,
-    STAIR_PERIOD, STAIR_STEP_S, STATE_TXT, STATION_DEFAULT, STATUS_AUTO_COLORS, STATUS_HELP, STEPS, STEP_ALIAS,
-    STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen, StreamStats, SweepAccum, SweepStore, TECH_ACTIONS,
-    TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL, TNT_MARGIN_DB,
-    TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS, TX_RATES, Translator,
-    UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack, VRX_BUDGET, VRX_MAX,
-    WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN, WEB_VIEW_KEYS, WF_MAPS,
-    WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _CARD_APPROX, _EZ, _EZ_DEV_RE, _FREQ_WORDS, _G,
-    _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC, _OVR, _PROBLEM_KEYS,
-    _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM, _TOL_LARGE,
-    _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist, _clean_grid,
-    _cp, _cp_state, _deemph_taps, _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _gain_stream, _hdr_safe,
-    _hm, _khz, _lab_comp, _lab_db, _lab_env, _level_fn, _name_tokens, _noise_loop, _norm_hdr, _num, _number_dups,
-    _pf_pick, _pf_tols, _pf_vec, _plan_doc, _run_chunks, _rx_num, _sat_status, _scan_float, _scan_step,
-    _scan_tokens, _scan_unit_hint, _seq_audio, _sine, _split_free_line, _svg_hours, _svg_iq_spectrum, _svg_multi,
-    _svg_series, _svg_spectrum, _tone_env, _valid, _xml_root, _zone, adjacent_db, age_text, alarm_explain,
-    alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick, anfr_text,
-    anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_gain,
+    STAIR_PERIOD, STAIR_STATES, STAIR_STEP_S, STATE_TXT, STATION_DEFAULT, STATUS_AUTO_COLORS, STATUS_HELP, STEPS,
+    STEP_ALIAS, STEP_DEFAULT, STEP_HINTS, STOPPED_HEALTH, SigGen, StreamStats, SweepAccum, SweepStore,
+    TECH_ACTIONS, TEMPLATE_DROP, THEMES, THEME_KEYS, THEME_PALETTES, TINYSA_REFUSALS, TNT_DEFAULT, TNT_FILL,
+    TNT_MARGIN_DB, TONE_OK, TONE_OK_CLASSIC, TOURS, TOUR_KEYS, TR, TUTO_ALERTES, TX_DURATIONS, TX_MAX_SIGS,
+    TX_RATES, Translator, UI_LEVELS, UI_WORDS, UNIT_DIV, UNIT_SUFFIX, UNKNOWN_HEALTH, USER_KEYS, UndoStack,
+    VRX_BUDGET, VRX_MAX, WALL_SIZES, WALL_TILE, WAV_PCM, WEB_PAGE, WEB_PORT, WEB_VIEWS, WEB_VIEWS_HIDDEN,
+    WEB_VIEW_KEYS, WF_MAPS, WIDE_RATIO, WIZARD_SCAN_S, WIZARD_STEPS, WR_ADC_RATE, _BRANDS, _CARD_APPROX, _EZ,
+    _EZ_DEV_RE, _FREQ_WORDS, _G, _GROUP_WORDS, _LABEL_RE, _LEAD_ICON, _NAME_PRIORITY, _NOISE, _OKABE, _OLD_CRT_ACC,
+    _OVR, _PROBLEM_KEYS, _QE_NUM, _SCENE_WORDS, _SRC_CEPT, _SRC_ITU, _SRC_LEVEL, _STATUS_WORDS, _TOL_EZ, _TOL_IEM,
+    _TOL_LARGE, _TOL_NONE, _TOL_SLXD, _WEB_BASE_VIEWS, _abbrev, _anfr_dms, _audio_text, _chime_pcm, _circ_dist,
+    _clean_grid, _cp, _cp_state, _deemph_taps, _ez_dev_params, _ez_num, _fill_score, _fin, _fmt_ts, _gain_stream,
+    _hdr_safe, _hm, _khz, _lab_comp, _lab_db, _lab_dyn, _lab_env, _level_fn, _name_tokens, _noise_loop, _norm_hdr,
+    _num, _number_dups, _pf_pick, _pf_tols, _pf_vec, _plan_doc, _run_chunks, _rx_num, _sat_status, _scan_float,
+    _scan_step, _scan_tokens, _scan_unit_hint, _seq_audio, _sine, _split_free_line, _svg_hours, _svg_iq_spectrum,
+    _svg_multi, _svg_series, _svg_spectrum, _tone_env, _valid, _xml_root, _zone, adjacent_db, age_text,
+    alarm_explain, alarm_pcm, alarm_pick, alarm_sounds_norm, alarm_stats, alarms_in_window, analyze_csv, anfr_pick,
+    anfr_text, anfr_tnt_sites, anomaly_text, app_sound_seq, apply_overrides, assign_bands, audio_align, audio_gain,
     audio_int16, audio_meter, audio_ref_norm, audio_source_level, audio_source_stats, audio_spec_norm, audio_text,
     auto_gain_pick, auto_rbw, auto_scan_step, auto_thr_help_html, axis_panels, band_clip, band_issue, bb_views,
     bits_dynamic, blend, block_choices, block_overlaps, block_points, build_entries, build_entries_ex, build_plan,
     build_report_html, bundle_pick, busy_lim, busy_pred, calib_candidates, calib_maxhold, calib_offset,
-    calib_repeat, capacity_view, caps_text, chan_power, chron_group, classify_signal, clean_colors, comp_compare,
-    comp_curve, comp_report_html, compander_card, compare_receivers, compare_spectra, compare_text, compress2,
-    config_public, contrast_text, coord_blockers, coord_docs, coord_why_advice, coord_why_text, copy_name,
-    count_overruns, country_bands, country_from_locale, country_uhf, coverage_state, coverage_text, covered,
-    data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text, default_view_band, demo_audio,
-    demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow, density_lut, density_raster,
-    describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps, devx_norm, diag_short,
-    diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor, expected_obw_khz,
-    ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id, ezrf_map_norm, ezrf_planning,
-    ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm, feature_match, festival_cfg_norm,
-    festival_due, festival_text, find_free, find_header, flap_count, floor_curve, floor_track, fm_deviation,
-    fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan, freq_digits, freq_list_text,
-    freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan, gen_commands, geo_km,
-    glossary_find, gonio_points, guard_action, guard_delay, header_kind, heat_arrow, heat_dir_color, heat_field,
-    heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb, heat_rgba, heat_scale,
-    heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc, hunt_level, hunt_request,
-    hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text, im_scan, im_verdict,
-    incident_duration, incident_prune, incident_report_html, incident_slug, input_plan, interp_measured, iq_ci8,
-    iq_decode, iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch, journal_csv_rows, json_dumps_compact,
-    keep_text, key_dec, key_enc, lab_align, lab_chain, lab_findings, lab_modulations, label_words, layers_recolor,
-    lc_feed, lc_hints, lc_new, lc_summary, lc_text, level_at, level_at_many, level_block, level_everywhere,
-    level_everywhere_text, level_words, listen_center, listen_cmd, listen_request, listen_windows, log_kind,
-    log_kinds_norm, lora_overlap, lowpass_taps, make_label, make_stylesheet, map_auto_place, map_bg_embed,
-    map_bg_extract, map_cfg_norm, map_key, map_scene_monitor, map_snap, marker_visible, measure_freq,
-    measure_transfer, measure_transient, merge_scans, meter_ticks, mic_health, missing_bands, mk_default,
-    mk_filtered, mk_layer_key, morning_html, morning_summary, multi_site, mute_check, name_candidates, name_match,
-    name_rank, net_host_port, net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number,
-    next_mic, next_state, noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request,
-    number_run, obw_khz, occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid,
-    parse_dpa_acp, parse_ezrf3, parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4, parse_plan_file,
-    parse_plan_text, parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text, parse_sdb3,
-    parse_sdr_addr, parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show, patrol_items,
-    patrol_next, pcm_mono16k, pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots, pf_issue_text,
-    pf_orders, pf_suggest, phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict, place_parse,
-    plain_btn_text, plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines, planning_norm,
-    planning_paused, post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html, preset_changes,
-    preset_match, preset_value_text, presets_all, privacy_norm, probe_rate, probe_report, probe_seen, problem_card,
-    problem_key, quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge, rbw_tag, rbw_text, read_rows,
-    read_show, read_user, ready_checks, ready_summary, rec_mb_per_hour, rec_size_text, receiver_addrs,
-    receiver_addrs_text, receiver_alerts, reconnect_delay, recurring_events, recurring_text, reg_allowed_pred,
-    reg_detail, reg_issues, reg_known, reg_status, reg_summary, reg_tag, rehearsal_check, rehearsal_norm,
-    resample_max, resolution_pairs, resource_view, retention_pick, rf_audio_diag, rf_diag_summary, rf_diagnose,
-    rf_linear_text, rf_mode_norm, rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band, rx_custom_dump,
-    rx_custom_norm, rx_from_library, rx_help_html, rx_library_find, rx_profile, rx_set_custom, s_meter,
-    safe_filename, sat_level, scales_help_html, scan_changes, scan_check, scan_crop, scan_csv, scan_gaps,
-    scan_peaks, scan_segments, scan_step_khz, scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on,
-    scope_match, screen_plan_fit, screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm,
-    sdr_bin_hz, sdr_carrier, sdr_cfg_extra, sdr_cmd, sdr_compat_rows, sdr_event, sdr_event_row, sdr_floor_dbfs,
-    sdr_gains_for, sdr_in_range, sdr_iq_rate, sdr_level, sdr_model, sdr_model_of, sdr_model_text, sdr_models_for,
-    sdr_post_clash, sdr_posts_norm, sdr_quality_events, sdr_ranges, sdr_rate, sdr_session_html, sdr_session_row,
-    sdr_span_mhz, sdr_tsa_offset, sdr_zones, segment_plan, session_cfg_norm, session_journal_rows, session_name,
-    show_apply, show_doc, show_filename, show_summary, show_template, shure_addrs, shure_apply, shure_init,
-    shure_parse, shure_split, sigmf_annot, sigmf_info, sigmf_meta, signal_key, signal_report, signal_view,
-    single_band_view, site_doc_scene, site_move, site_rename, site_replace, site_report_html, site_scan_doc,
-    site_scan_info, site_scans_norm, site_set_hidden, site_visible, sites_for_scope, snapshot_name,
-    sniff_delimiter, snooze_left, snr_view, soft_style, sound_cfg_norm, spectrum_info, spectrum_status,
-    spectrum_text, speed_table, split_band, split_freq_rows, ssc_apply, ssc_flatten, ssc_init, stair_fit,
-    stair_signal, state_off, states_norm, station_norm, store_occupancy, stream_quality, strong_peaks,
-    suggest_labels, suggest_own_thr, sweep_line, tech_request, telegram_chats, telegram_request, terrain_request,
-    theme_pal, tinysa_refusal, tnt_apply_manual, tnt_cfg_norm, tnt_channel_list, tnt_measure, tnt_near_text,
-    tnt_sites_near, tnt_summary, to_stereo, to_unit, tone_pcm, trace_at, tv_channels, tx_cmd, tx_plan,
-    uhf_band_needed, ui_word, unit_hint, unit_to_dbfs, unknown_bursts, user_apply, user_doc, user_filename,
-    user_presets_merge, user_presets_norm, vfo_center, vfo_inside, vrx_auto, wall_grid, wall_visible, watch_diff,
-    watch_rows, web_link, web_page_lang, web_spectrum, web_state, web_views_norm, what_is, what_is_text,
-    wizard_status, wr_pick_ddc, wr_snapshot_spectrum, wsm_to_wwb_text, wwb_scan_text, xfer_spectrum, zoom_points,
+    calib_repeat, capacity_view, caps_text, chan_power, chron_group, classify_signal, clean_colors, cmp_metrics,
+    comp_compare, comp_compare_real, comp_curve, comp_report_html, compander_card, compare_receivers,
+    compare_spectra, compare_text, compress2, config_public, contrast_text, coord_blockers, coord_docs,
+    coord_why_advice, coord_why_text, copy_name, count_overruns, country_bands, country_from_locale, country_uhf,
+    coverage_state, coverage_text, covered, data_status, datetime_utc_iso, dbfs_to_unit, decimate_max, decode_text,
+    default_view_band, demo_audio, demo_plan_levels, demo_sdr_plan, demod_guess, demod_preset, density_glow,
+    density_lut, density_raster, describe_freq, detect_brand, dev_ord, dev_scenes_norm, deviation_db, device_caps,
+    devx_norm, diag_short, diff_spectra, diversity_merge, diversity_share, eff_thresholds, expand2, expected_floor,
+    expected_obw_khz, ezrf_auto_map, ezrf_dev_key, ezrf_diff, ezrf_entries, ezrf_group_label, ezrf_id,
+    ezrf_map_norm, ezrf_planning, ezrf_profile_names, ezrf_remap, ezrf_scene_guess, fav_assign, favs_norm,
+    feature_match, festival_cfg_norm, festival_due, festival_text, find_free, find_header, flap_count, floor_curve,
+    floor_track, fm_deviation, fmt_audio, fmt_comma, fmt_duration, fmt_freq_mhz, fmt_level, focus_plan,
+    freq_digits, freq_list_text, freshness, from_unit, g4_apply, g4_init, gain_steps, gain_to_target, gap_nan,
+    gen_commands, geo_km, glossary_find, gonio_points, guard_action, guard_delay, header_kind, heat_arrow,
+    heat_dir_color, heat_field, heat_for, heat_freqs, heat_hex, heat_hot, heat_isolines, heat_path, heat_rgb,
+    heat_rgba, heat_scale, heat_stops, hex_to_rgb, hint_due, history_norm, home_next, home_status, html_esc,
+    hunt_level, hunt_request, hunt_tone, im3_clash, im_class, im_explain, im_formula, im_pairs, im_rules_text,
+    im_scan, im_verdict, incident_duration, incident_prune, incident_report_html, incident_slug, input_plan,
+    interp_measured, iq_ci8, iq_decode, iq_from_bytes, iq_ring_seconds, is_ezrf_paste, iso_to_epoch,
+    journal_csv_rows, json_dumps_compact, keep_text, key_dec, key_enc, lab_align, lab_chain, lab_chain_iq,
+    lab_findings, lab_findings_real, lab_modulations, lab_plot_help, lab_session_diff, lab_session_doc,
+    lab_session_ok, label_words, layers_recolor, lc_feed, lc_hints, lc_new, lc_summary, lc_text, level_at,
+    level_at_many, level_block, level_everywhere, level_everywhere_text, level_words, listen_center, listen_cmd,
+    listen_request, listen_windows, log_kind, log_kinds_norm, lora_overlap, lowpass_taps, make_label,
+    make_stylesheet, map_auto_place, map_bg_embed, map_bg_extract, map_cfg_norm, map_key, map_scene_monitor,
+    map_snap, marker_visible, measure_freq, measure_transfer, measure_transient, merge_scans, meter_ticks,
+    mic_health, missing_bands, mk_default, mk_filtered, mk_layer_key, mod_hint, mod_quiz_score, morning_html,
+    morning_summary, multi_site, mute_check, name_candidates, name_match, name_rank, net_host_port,
+    net_profile_name, net_profiles_merge, net_profiles_norm, net_text, next_free_number, next_mic, next_state,
+    noise_floor, noisy_zones, norm_freq, notify_text, notify_wanted, ntfy_request, number_run, obw_khz,
+    occupied_width, only_here, palette_color, parse_device_addr, parse_deviceid, parse_dpa_acp, parse_ezrf3,
+    parse_ezrf_paste, parse_freq_cell, parse_label, parse_lst4, parse_plan_file, parse_plan_text,
+    parse_quick_entry, parse_scan_custom, parse_scan_lines, parse_scan_text, parse_sdb3, parse_sdr_addr,
+    parse_shure_cug, parse_wisycom_show, parse_wsm_project, parse_wwb_show, patrol_items, patrol_next, pcm_mono16k,
+    pcm_packet, peak_near, perf_view, pf_check, pf_fill, pf_fill_lots, pf_issue_text, pf_orders, pf_suggest,
+    phases_norm, phases_table, phosphor_shades, pilot_learn, pilot_verdict, place_parse, plain_btn_text,
+    plan_fill_pending, plan_to_text, plan_vrx, planning_active, planning_lines, planning_norm, planning_paused,
+    post_mics_norm, post_mics_set, post_watch, prep_dates, prep_html, preset_changes, preset_match,
+    preset_value_text, presets_all, privacy_norm, probe_rate, probe_report, probe_seen, problem_card, problem_key,
+    quick_names, quick_preset, rbw_combine, rbw_coord_line, rbw_merge, rbw_tag, rbw_text, read_rows, read_show,
+    read_user, ready_checks, ready_summary, rec_mb_per_hour, rec_size_text, receiver_addrs, receiver_addrs_text,
+    receiver_alerts, reconnect_delay, recurring_events, recurring_text, reg_allowed_pred, reg_detail, reg_issues,
+    reg_known, reg_status, reg_summary, reg_tag, rehearsal_check, rehearsal_norm, resample_max, resolution_pairs,
+    resource_view, retention_pick, rf_audio_diag, rf_diag_summary, rf_diagnose, rf_linear_text, rf_mode_norm,
+    rgb_to_hex, rt_frames, rt_freqs, rt_useful, rx_all, rx_band, rx_custom_dump, rx_custom_norm, rx_from_library,
+    rx_help_html, rx_library_find, rx_profile, rx_set_custom, s_meter, safe_filename, sat_level, scales_help_html,
+    scan_changes, scan_check, scan_crop, scan_csv, scan_gaps, scan_peaks, scan_segments, scan_step_khz,
+    scan_uniform, scan_unit_scale, scan_write, scene_timeline, sched_on, scope_match, screen_plan_fit,
+    screen_preset, screen_rf_mode, screens_norm, screens_used, sdr_auto_norm, sdr_bin_hz, sdr_carrier,
+    sdr_cfg_extra, sdr_cmd, sdr_compat_rows, sdr_event, sdr_event_row, sdr_floor_dbfs, sdr_gains_for, sdr_in_range,
+    sdr_iq_rate, sdr_level, sdr_model, sdr_model_of, sdr_model_text, sdr_models_for, sdr_post_clash,
+    sdr_posts_norm, sdr_quality_events, sdr_ranges, sdr_rate, sdr_session_html, sdr_session_row, sdr_span_mhz,
+    sdr_tsa_offset, sdr_zones, segment_plan, session_cfg_norm, session_journal_rows, session_name, show_apply,
+    show_doc, show_filename, show_summary, show_template, shure_addrs, shure_apply, shure_init, shure_parse,
+    shure_split, sigmf_annot, sigmf_info, sigmf_meta, signal_key, signal_report, signal_view, single_band_view,
+    site_doc_scene, site_move, site_rename, site_replace, site_report_html, site_scan_doc, site_scan_info,
+    site_scans_norm, site_set_hidden, site_visible, sites_for_scope, snapshot_name, sniff_delimiter, snooze_left,
+    snr_view, soft_style, sound_cfg_norm, spectrum_info, spectrum_status, spectrum_text, speed_table, split_band,
+    split_freq_rows, ssc_apply, ssc_flatten, ssc_init, stair_fit, stair_signal, stair_validity, state_off,
+    states_norm, station_norm, store_occupancy, stream_quality, strong_peaks, suggest_labels, suggest_own_thr,
+    sweep_line, tech_request, telegram_chats, telegram_request, terrain_request, theme_pal, tinysa_refusal,
+    tnt_apply_manual, tnt_cfg_norm, tnt_channel_list, tnt_measure, tnt_near_text, tnt_sites_near, tnt_summary,
+    to_stereo, to_unit, tone_pcm, trace_at, tv_channels, tx_cmd, tx_plan, uhf_band_needed, ui_word, unit_hint,
+    unit_to_dbfs, unknown_bursts, user_apply, user_doc, user_filename, user_presets_merge, user_presets_norm,
+    vfo_center, vfo_inside, vrx_auto, wall_grid, wall_visible, watch_diff, watch_rows, web_link, web_page_lang,
+    web_spectrum, web_state, web_views_norm, what_is, what_is_text, wizard_status, wr_pick_ddc,
+    wr_snapshot_spectrum, wsm_to_wwb_text, wwb_scan_text, xfer_spectrum, zoom_points,
 )
 
 
@@ -11383,6 +11386,7 @@ class RealtimeWorker(QtCore.QThread):
         self.a_raw = deque(maxlen=12)    # 8.1 : son de A tel qu'il sort du démodulateur (vu-mètre : sans volume ni B)
         self.a_pre = deque(maxlen=400)   # 8.2 : son de A démodulé BRUT (avant désaccentuation / expanseur) : Compander Lab
         self.lab_tap = False             # 8.2 : rempli seulement quand le Compander Lab regarde
+        self.iq_grab = None              # 8.2 : capture d'IQ brut demandée par le labo (dict parts, n, want, done)
         self.prof = dict(fft=0.0, dem=0.0, rest=0.0)   # 8.1 : temps de calcul (ms par morceau de 50 ms) par étape
         self.fft_frac = 1.0              # 8.1 : part des échantillons mise dans le spectre (allégé si le PC ne suit pas)
         self.proc = None
@@ -11520,6 +11524,13 @@ class RealtimeWorker(QtCore.QThread):
                     sst.invalid += int(np.count_nonzero(bad_))
                     iq = np.where(bad_, 0, iq).astype(iq.dtype)
                 pos += len(iq)
+                g_ = self.iq_grab
+                if g_ is not None and not g_["done"]:            # 8.2 : labo, chaîne complète sur le vrai signal
+                    g_["parts"].append(iq.copy())
+                    g_["n"] += len(iq)
+                    if g_["n"] >= g_["want"]:
+                        g_["done"] = True
+                        self.iq_grab = None
                 t_s0 = time.perf_counter()
                 if self.fft_frac < 1.0:          # 8.1 : PC à la peine -> spectre sur une partie du morceau, le son reste
                     avg, mx = rt_frames(iq[:max(self.nfft, int(len(iq) * self.fft_frac))], self.nfft)
@@ -35592,6 +35603,8 @@ class SdrLab(QtCore.QObject):
         super().__init__(owner)
         self.owner = owner
         self._tmp, self.fx, self._job, self.res_cmp, self.observed = None, None, None, None, None
+        self._focus, self._detail, self._sess_win, self._help_box, self.res_real = {}, None, None, None, None
+        self._grab, self._st_res, self._md_order, self.res_mod = None, None, [], None
         self.panels = {}
         for key, build in (("chain", self._tab_chain), ("cmp", self._tab_cmp), ("live", self._tab_live),
                            ("mod", self._tab_mod), ("fault", self._tab_fault)):
@@ -35610,12 +35623,18 @@ class SdrLab(QtCore.QObject):
         vm = QtWidgets.QMenu(self.view_btn)
         vm.aboutToShow.connect(lambda m=vm: self._view_menu(m))
         self.view_btn.setMenu(vm)
+        self.ses_btn = QtWidgets.QPushButton(TR("🗂 Sessions du labo"))
+        self.ses_btn.setToolTip(TR("Comparaisons et mesures gardées : les retrouver, en comparer deux, les exporter."))
+        self.ses_btn.clicked.connect(lambda *_: self.open_sessions())
         top = QtWidgets.QHBoxLayout()
+        self._top = top
         top.addWidget(intro, 1)
+        top.addWidget(self.ses_btn)
         top.addWidget(self.view_btn)
         top.addWidget(man)
         self.panels["chain"].layout().insertLayout(0, top)
         self._plot_setup()
+        self._badges_setup()
         self.tm = QtCore.QTimer(self)
         self.tm.timeout.connect(self._tick)
         self.tm.start(250)
@@ -35655,6 +35674,8 @@ class SdrLab(QtCore.QObject):
                     lambda *_, p=p: self.plot_detach(p))
                 vb.menu.addAction(TR("✕ Masquer ce graphe")).triggered.connect(lambda *_, p=p: self.plot_hide(p))
                 vb.menu.addAction(TR("↺ Remettre tous les graphes")).triggered.connect(lambda *_: self.plots_restore())
+                self._plot_menu(p)
+
     def apply_hidden(self):
         """Graphes masqués d'après la config (appelé à l'ouverture du labo : la config est lue APRÈS sa création)."""
         hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
@@ -35805,10 +35826,19 @@ class SdrLab(QtCore.QObject):
                                         (TR("Panne"), self.ch_fault))):
             g.addWidget(QtWidgets.QLabel(lab), i // 4, 2 * (i % 4))
             g.addWidget(wid, i // 4, 2 * (i % 4) + 1)
+        self.ch_real = QtWidgets.QPushButton(TR("📡 Signal de A"))
+        self.ch_real.setToolTip(TR("Capture 1 s d'IQ du poste SDR autour du récepteur A et montre la même chaîne sur ce "
+                                   "VRAI signal (sans le son d'origine : pas d'« erreur » mesurable)."))
+        self.ch_real.clicked.connect(lambda *_: self.chain_real())
+        self.ch_file = QtWidgets.QPushButton(TR("📂 IQ enregistré…"))
+        self.ch_file.setToolTip(TR("La même chaîne sur un enregistrement IQ SigMF (⏺ du temps réel, dossier d'incident)."))
+        self.ch_file.clicked.connect(lambda *_: self.chain_file())
         h = QtWidgets.QHBoxLayout()
         h.addWidget(self.ch_go)
         h.addWidget(self.ch_in)
         h.addWidget(self.ch_out)
+        h.addWidget(self.ch_real)
+        h.addWidget(self.ch_file)
         h.addStretch(1)
         g.addLayout(h, 1, 6, 1, 2)
         v.addLayout(g)
@@ -35866,6 +35896,7 @@ class SdrLab(QtCore.QObject):
             self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
             return
         self.res_chain = r
+        self.set_prov("chain", "sim")
         for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
             p.clear()
         s0 = int(0.5 * 48000)
@@ -35931,7 +35962,10 @@ class SdrLab(QtCore.QObject):
         self.cm_play.clicked.connect(lambda *_: self._cmp_play())
         self.cm_rep = QtWidgets.QPushButton(TR("📄 Rapport comparatif"))
         self.cm_rep.clicked.connect(lambda *_: self.cmp_report())
-        for b in (self.cm_go, self.cm_play, self.cm_rep):
+        self.cm_det = QtWidgets.QPushButton(TR("🔍 Comparaison détaillée"))
+        self.cm_det.setToolTip(TR("Les 4 graphes en grand dans une fenêtre, modèles à cocher, EQ et phase zoomés ensemble."))
+        self.cm_det.clicked.connect(lambda *_: self.cmp_detail())
+        for b in (self.cm_go, self.cm_det, self.cm_play, self.cm_rep):
             left.addWidget(b)
         self.cm_card = QtWidgets.QLabel("")
         self.cm_card.setWordWrap(True)
@@ -36054,6 +36088,9 @@ class SdrLab(QtCore.QObject):
         t.resizeColumnsToContents()
         self.cm_msg.setText(TR("{} · {} modèle(s) · mêmes signaux et mêmes mesures pour tous. Les modèles « approchés » "
                                "ne sont PAS les vrais traitements des marques.").format(TR(PROVENANCE["sim"]), len(r["rows"])))
+        a = self.cmp_args()
+        self.session_save("cmp", "sim", dict(tx=a["tx_key"], deemph=a["deemph_us"], audio=audio_text(a["audio"])),
+                          cmp_metrics(r))
 
     def _cmp_play(self):
         r = self.res_cmp
@@ -36113,10 +36150,20 @@ class SdrLab(QtCore.QObject):
         self.lv_fit_btn = QtWidgets.QPushButton(TR("📏 Mesurer maintenant"))
         self.lv_fit_btn.clicked.connect(lambda *_: self.live_fit())
         bl.addWidget(self.lv_fit_btn)
+        self.lv_state = QtWidgets.QLabel("")
+        self.lv_state.setWordWrap(True)
+        self.lv_state.setToolTip(TR("État de la mesure : prêt, en cours (le son s'accumule), terminé (valable), invalide "
+                                    "(avec la raison) ou interrompu (le poste SDR s'est arrêté)."))
+        bl.addWidget(self.lv_state)
         self.lv_fit = QtWidgets.QLabel("")
         self.lv_fit.setWordWrap(True)
         bl.addWidget(self.lv_fit)
         left.addWidget(box)
+        self.lv_snap = QtWidgets.QPushButton(TR("🔬 Figer 4 s et comparer en détail"))
+        self.lv_snap.setToolTip(TR("Garde les 4 dernières secondes du son reçu, les passe dans chaque modèle coché et "
+                                   "ouvre la comparaison détaillée (marquée 📡 observé avec un vrai SDR)."))
+        self.lv_snap.clicked.connect(lambda *_: self.live_snapshot())
+        left.addWidget(self.lv_snap)
         lw = QtWidgets.QWidget()
         lw.setLayout(left)
         lw.setMaximumWidth(340)
@@ -36161,6 +36208,7 @@ class SdrLab(QtCore.QObject):
         self.lv_hist = {k: deque(maxlen=80) for k in self.lv_keys}
         self.lv_inh = deque(maxlen=80)
         self._lv_t = 0.0
+        self._st_res = None
 
     def _live_on(self, on):
         self._tap_on = bool(on)
@@ -36180,9 +36228,12 @@ class SdrLab(QtCore.QObject):
         if e is None or e.worker is None:
             self.lv_src.setText(TR("Démarre un poste SDR (▶ dans le Récepteur) et écoute un micro FM en A : le son reçu "
                                    "passe ici dans chaque modèle. Pas de SDR ? 🧪 SDR démo."))
+            self.stair_status()
             return
         self._live_on(True)
         demo = e.kind() == "demo"
+        self.set_prov("live", "sim" if demo else "obs")
+        self.stair_status()
         dem = e.demod
         self.lv_src.setText(TR("Source : {} · A = {} MHz · écouté avec {}").format(
             TR(PROVENANCE["sim" if demo else "obs"]), f"{e.a:.4f}" if e.a is not None else "—",
@@ -36275,12 +36326,21 @@ class SdrLab(QtCore.QObject):
         e = self._eng()
         prov = "sim" if (e is None or e.kind() == "demo") else "obs"
         r["prov"] = prov
-        self.observed = r
+        secs = len(x) / 48000.0
+        st, why = stair_validity(r, _lab_db(x) if len(x) else None, secs)
+        r["state"], r["reasons"] = st, why
+        self._st_res = (st, why, r)
+        self.observed = r if st == "done" else None          # le rapport ne reprend qu'une mesure valable
         if r["ok"]:
             self.lv_fit.setText(TR("{} · pente {} → taux de compression ≈ {}:1 · linéarité R² {}").format(
                 TR(PROVENANCE[prov]), f"{r['slope']:.2f}", f"{r['ratio']:.2f}" if r["ratio"] else "—", f"{r['r2']:.3f}"))
         else:
             self.lv_fit.setText("⚠ " + TR(r["why"]))
+        self.stair_status()
+        if len(x):
+            self.session_save("stair", prov, dict(seconds=round(secs, 1)),
+                              dict(ratio=r.get("ratio"), slope=r.get("slope"), r2=r.get("r2"), state=st),
+                              " ".join(why))
         return r
 
     # ------------------------------------------------------------------ ④ modulations
@@ -36291,9 +36351,20 @@ class SdrLab(QtCore.QObject):
         self.md_src = audio_button(self.owner, "melody")
         self.md_go = QtWidgets.QPushButton(TR("▶ Comparer les modulations"))
         self.md_go.clicked.connect(lambda *_: self.mod_run())
+        self.md_step = QtWidgets.QComboBox()
+        for k, t in LAB_MOD_STEPS:
+            self.md_step.addItem(TR(t), k)
+        self.md_step.setToolTip(TR("① les noms et ce que l'appli devine ; ② seulement des indices ; ③ quiz : à toi de "
+                                   "reconnaître chaque spectre (ordre mélangé)."))
+        self.md_step.currentIndexChanged.connect(lambda *_: self._mod_step())
+        self.md_a = QtWidgets.QPushButton(TR("📡 Ajouter le signal de A"))
+        self.md_a.setToolTip(TR("Le vrai spectre autour du récepteur A du poste SDR, avec ce que l'appli en devine."))
+        self.md_a.clicked.connect(lambda *_: self.mod_add_a())
         h.addWidget(QtWidgets.QLabel(TR("Son")))
         h.addWidget(self.md_src)
         h.addWidget(self.md_go)
+        h.addWidget(self.md_step)
+        h.addWidget(self.md_a)
         h.addStretch(1)
         v.addLayout(h)
         t = QtWidgets.QLabel(TR("Le même son, six façons d'occuper l'air : à quoi chacune ressemble sur un spectre, et ce que "
@@ -36302,11 +36373,35 @@ class SdrLab(QtCore.QObject):
         v.addWidget(t)
         self.md_grid = QtWidgets.QGridLayout()
         self.md_plots = []
+        self.md_ans = []
         for i in range(6):
             p = _lab_plot("—", "kHz", "dBFS")
             self.md_plots.append(p)
-            self.md_grid.addWidget(p, i // 3, i % 3)
+            self.md_grid.addWidget(p, 2 * (i // 3), i % 3)
+            cb = QtWidgets.QComboBox()
+            cb.addItem(TR("— ta réponse —"), "")
+            for c_ in MOD_QUIZ_CHOICES:
+                cb.addItem(TR(c_), c_)
+            cb.setVisible(False)
+            self.md_ans.append(cb)
+            self.md_grid.addWidget(cb, 2 * (i // 3) + 1, i % 3)
+        self.md_aplot = _lab_plot("📡 Signal de A", "kHz", "dBFS")
+        self.md_aplot.hide()
+        self.md_grid.addWidget(self.md_aplot, 4, 0, 1, 3)
         v.addLayout(self.md_grid, 1)
+        q = QtWidgets.QHBoxLayout()
+        self.md_check = QtWidgets.QPushButton(TR("✔ Vérifier"))
+        self.md_check.clicked.connect(lambda *_: self.mod_check())
+        self.md_check.setVisible(False)
+        self.md_score = QtWidgets.QLabel("")
+        self.md_score.setWordWrap(True)
+        self.md_score.setVisible(False)
+        q.addWidget(self.md_check)
+        q.addWidget(self.md_score, 1)
+        v.addLayout(q)
+        self.md_info = QtWidgets.QLabel("")
+        self.md_info.setWordWrap(True)
+        v.addWidget(self.md_info)
         return w
 
     def mod_run(self, wait=False):
@@ -36322,21 +36417,8 @@ class SdrLab(QtCore.QObject):
         if err is not None or not rows:
             return
         self.res_mod = rows
-        for p, r in zip(self.md_plots, rows):
-            p.clear()
-            c = r["cls"]
-            ok = (" (" + TR("pas de case « AM » dans la détection") + ")") if r["ok"] is None else \
-                (" ✔" if r["ok"] else " ✖")
-            p.setTitle(TR(r["name"]), size="9pt")
-            p.plot((r["F"] - 100.0) * 1000.0, r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1))
-            col = "#8e8e93" if r["ok"] is None else (LAB_COLORS[2] if r["ok"] else LAB_COLORS[4])
-            ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))) + ok, color=col, anchor=(0, 0),
-                             fill=pg.mkBrush(20, 20, 22, 200))
-            ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
-            p.addItem(ti)
-            p.setXRange(-r["span"] * 1000.0, r["span"] * 1000.0, padding=0.02)      # centré sur la porteuse
-            p.enableAutoRange(axis="y", enable=True)
-            p.setToolTip(TR(c.get("why", "")) + (f"\n−20 dB : {c['bw_khz']:.1f} kHz" if c.get("bw_khz") else ""))
+        self._md_order = [int(i) for i in np.random.default_rng().permutation(len(rows))]
+        self._mod_draw()
 
     # ------------------------------------------------------------------ ⑤ pannes simulées (SDR démo en direct)
     def _tab_fault(self):
@@ -36448,6 +36530,682 @@ class SdrLab(QtCore.QObject):
         self._live_on(False)
         if self.fx is not None:
             self.fx.stop()
+
+    # ================================================================== 8.2 : Full Lab v2
+    # ---- provenance bien visible (🧪 simulé / 📡 observé) sur chaque panneau
+    PROV_STYLE = {"sim": ("#ffb300", "rgba(255,179,0,0.14)"), "obs": ("#30d158", "rgba(48,209,88,0.14)"),
+                  "calc": ("#8e8e93", "rgba(142,142,147,0.14)")}
+
+    def _badges_setup(self):
+        self.badges = {}
+        for key in LAB_KEYS:
+            b = QtWidgets.QLabel("")
+            b.setToolTip(TR("D'où viennent les résultats de ce panneau : 🧪 simulé (signal fabriqué par l'appli), "
+                            "📡 observé (reçu par un vrai SDR) ou 🧮 calculé (formule). Un résultat simulé n'est jamais "
+                            "une mesure."))
+            self.badges[key] = b
+            w = self.panels[key]
+            try:
+                if key == "chain":
+                    self._top.insertWidget(0, b)
+                elif key in ("cmp", "live"):
+                    w.findChild(QtWidgets.QSplitter).widget(0).layout().insertWidget(0, b)
+                else:
+                    w.layout().insertWidget(0, b)
+            except Exception:  # noqa: BLE001
+                pass
+            self.set_prov(key, "sim")
+
+    def set_prov(self, key, prov):
+        b = getattr(self, "badges", {}).get(key)
+        if b is None:
+            return
+        c, bg = self.PROV_STYLE.get(prov, self.PROV_STYLE["sim"])
+        b.setText(TR(PROVENANCE.get(prov, PROVENANCE["sim"])).upper())
+        b.setStyleSheet(f"QLabel {{ color: {c}; background: {bg}; border: 1px solid {c}; border-radius: 6px; "
+                        f"padding: 2px 8px; font-weight: 600; }}")
+        b.setProperty("prov", prov)
+
+    # ---- aide, focus et export de chaque graphe
+    def _plot_title(self, p):
+        if p in getattr(self, "md_plots", []) or p is getattr(self, "md_aplot", None):
+            return "Spectre d'une modulation"
+        t = p.objectName()[4:] if p.objectName().startswith("lab:") else ""
+        return t if t in LAB_PLOT_HELP else re.sub(r"<[^>]+>", "", p.getPlotItem().titleLabel.text or "")
+
+    def plot_help_text(self, p):
+        h = lab_plot_help(self._plot_title(p), TR)
+        if not h:
+            return None
+        return (TR("Ce que montre ce graphe : {}").format(h["shows"]) + "\n" +
+                TR("On peut en déduire : {}").format(h["can"]) + "\n" + TR("On ne peut PAS en déduire : {}").format(h["cannot"]))
+
+    def plot_help(self, p):
+        txt = self.plot_help_text(p) or TR("Pas d'explication pour ce graphe.")
+        box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Information, TR("❓ Que montre ce graphe ?"), txt,
+                                    QtWidgets.QMessageBox.StandardButton.Ok, p.window())
+        box.setWindowModality(Qt.WindowModality.NonModal)
+        box.show()
+        self._help_box = box
+        return txt
+
+    def _plot_menu(self, p, full=True):
+        vb = p.getPlotItem().vb
+        vb.menu.addSeparator()
+        vb.menu.addAction(TR("❓ Que montre ce graphe ?")).triggered.connect(lambda *_, p=p: self.plot_help(p))
+        if full:
+            vb.menu.addAction(TR("🔍 Agrandir ce graphe (focus)")).triggered.connect(lambda *_, p=p: self.plot_focus(p))
+        vb.menu.addAction(TR("💾 Exporter ce graphe (PNG)")).triggered.connect(lambda *_, p=p: self.plot_export(p))
+        tip = self.plot_help_text(p)
+        if tip:
+            p.setToolTip((p.toolTip() + "\n\n" if p.toolTip() else "") + tip)
+        if full:
+            try:
+                p.scene().sigMouseClicked.connect(lambda ev, p=p: ev.double() and self.plot_focus(p))
+            except Exception:  # noqa: BLE001
+                pass
+
+    def plot_focus(self, p):
+        """Double-clic (ou menu) : ce graphe prend toute la place de son panneau ; encore une fois = tout revient."""
+        panel = next((w for w in self.panels.values() if w.isAncestorOf(p)), None)
+        if panel is None:
+            return False
+        cur = self._focus.get(id(panel))
+        if cur is not None:
+            for q in cur[1]:
+                q.show()
+            self._focus.pop(id(panel), None)
+            if cur[0] is p:
+                self.owner.set_status(TR("Tous les graphes du panneau sont revenus."))
+                return False
+        hidden = [q for q in panel.findChildren(pg.PlotWidget) if q is not p and q.isVisible()]
+        for q in hidden:
+            q.hide()
+        self._focus[id(panel)] = (p, hidden)
+        self.owner.set_status(TR("Focus : double-clic sur le graphe (ou clic droit) pour revoir les autres."))
+        return True
+
+    def plot_export(self, p, path=None):
+        d = Path(self.owner.log_dir) / "rapports"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            nm = re.sub(r"[^\w-]+", "_", self._plot_title(p))[:40].strip("_") or "graphe"
+            path = path or str(d / f"labo_{nm}_{datetime.now():%Y%m%d_%H%M%S}.png")
+            ok = p.grab().save(path)
+        except OSError:
+            ok = False
+        self.owner.set_status(TR("💾 Graphe enregistré : {}").format(path) if ok else TR("⚠ Image impossible à enregistrer."))
+        return path if ok else None
+
+    # ---- sessions du labo (JSON dans <journaux>/labo/)
+    def _sess_dir(self):
+        return Path(self.owner.log_dir) / "labo"
+
+    def session_save(self, kind, prov, params, metrics, note=""):
+        doc = lab_session_doc(kind, prov, params, metrics, time.time(), note)
+        try:
+            d = self._sess_dir()
+            d.mkdir(parents=True, exist_ok=True)
+            path = str(d / f"{datetime.now():%Y%m%d_%H%M%S_%f}_{kind}.json")
+            write_atomic(path, json.dumps(doc, ensure_ascii=False, indent=1, default=float))
+        except (OSError, TypeError, ValueError):
+            return None
+        if getattr(self, "_sess_win", None) is not None and self._sess_win.isVisible():
+            self.sessions_fill()
+        return path
+
+    def sessions_load(self):
+        out = []
+        d = self._sess_dir()
+        if not d.is_dir():
+            return out
+        for f in sorted(d.glob("*.json"), reverse=True)[:300]:
+            try:
+                doc = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if lab_session_ok(doc):
+                out.append((str(f), doc))
+        return out
+
+    def _sess_label(self, doc):
+        t = datetime.fromtimestamp(doc.get("t") or 0)
+        m = doc.get("metrics") or {}
+        extra = ""
+        if doc["kind"] == "stair":
+            extra = (f" · {m.get('ratio'):.2f}:1" if m.get("ratio") else "") + " · " + TR(STAIR_STATES.get(m.get("state"), ""))
+        elif isinstance(m, dict):
+            extra = " · " + TR("{} modèle(s)").format(len(m))
+        return f"{t:%d/%m %H:%M:%S} · {TR(LAB_SESSION_KINDS[doc['kind']])} · {TR(PROVENANCE[doc['prov']])}{extra}" + (
+            f" · {doc['note'][:60]}" if doc.get("note") else "")
+
+    def open_sessions(self):
+        w = getattr(self, "_sess_win", None)
+        if w is None:
+            w = QtWidgets.QWidget(None, Qt.WindowType.Window)
+            w.setWindowTitle(TR("🗂 Sessions du labo"))
+            v = QtWidgets.QVBoxLayout(w)
+            t = QtWidgets.QLabel(TR("Chaque comparaison et chaque mesure à l'escalier est gardée ici (conditions + résultats "
+                                    "chiffrés). Choisis-en deux du même genre pour voir ce qui a changé."))
+            t.setWordWrap(True)
+            v.addWidget(t)
+            self.ss_list = QtWidgets.QListWidget()
+            self.ss_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+            self.ss_list.itemSelectionChanged.connect(lambda *_: self.sessions_compare())
+            v.addWidget(self.ss_list, 1)
+            row = QtWidgets.QHBoxLayout()
+            for txt, fn, tip in (("⚖ Comparer les 2 choisies", lambda: self.sessions_compare(), "Écarts entre les deux sessions."),
+                                 ("💾 Exporter (CSV)", lambda: self.sessions_export(), "Les sessions choisies (ou toutes) en CSV."),
+                                 ("📁 Dossier", lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(self._sess_dir()))),
+                                  "Ouvre le dossier des sessions."),
+                                 ("🗑 Supprimer", lambda: self.sessions_delete(), "Efface les sessions choisies.")):
+                b = QtWidgets.QPushButton(TR(txt))
+                b.setToolTip(TR(tip))
+                b.clicked.connect(lambda *_, fn=fn: fn())
+                row.addWidget(b)
+            v.addLayout(row)
+            self.ss_tbl = QtWidgets.QTableWidget(0, 6)
+            self.ss_tbl.setHorizontalHeaderLabels([TR(x) for x in ("Modèle", "Mesure", "A", "B", "B − A", "Unité")])
+            self.ss_tbl.verticalHeader().setVisible(False)
+            self.ss_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+            v.addWidget(self.ss_tbl, 1)
+            self.ss_msg = QtWidgets.QLabel(TR("Un écart dit seulement ce qui a changé, pas lequel est « juste »."))
+            self.ss_msg.setWordWrap(True)
+            v.addWidget(self.ss_msg)
+            w.resize(760, 560)
+            fit_dialog(w, 760, 560)
+            self._sess_win = w
+        self.sessions_fill()
+        w.show()
+        w.raise_()
+        return w
+
+    def sessions_fill(self):
+        lw = self.ss_list
+        lw.blockSignals(True)
+        lw.clear()
+        for path, doc in self.sessions_load():
+            it = QtWidgets.QListWidgetItem(self._sess_label(doc))
+            it.setData(Qt.ItemDataRole.UserRole, path)
+            lw.addItem(it)
+        lw.blockSignals(False)
+
+    def _sess_sel(self):
+        lw = getattr(self, "ss_list", None)
+        if lw is None:
+            return []
+        out = []
+        for it in lw.selectedItems():
+            try:
+                out.append((it.data(Qt.ItemDataRole.UserRole),
+                            json.loads(Path(it.data(Qt.ItemDataRole.UserRole)).read_text(encoding="utf-8"))))
+            except (OSError, ValueError):
+                pass
+        return out
+
+    def sessions_compare(self, a=None, b=None):
+        if a is None or b is None:
+            sel = self._sess_sel()
+            if len(sel) != 2:
+                if hasattr(self, "ss_msg"):
+                    self.ss_msg.setText(TR("Choisis exactement 2 sessions du même genre."))
+                return None
+            b, a = sel[0][1], sel[1][1]                  # la liste va du plus récent au plus ancien : A = l'ancienne
+        rows = lab_session_diff(a, b)
+        if hasattr(self, "ss_tbl"):
+            t = self.ss_tbl
+            t.setRowCount(0)
+            for i, r in enumerate(rows):
+                t.insertRow(i)
+                for j, v_ in enumerate(r):
+                    if j == 0 and v_ != "—":
+                        v_ = TR(compander_card(v_)["model"]) if compander_card(v_) else v_
+                    elif j == 1:
+                        v_ = TR(v_)
+                    elif isinstance(v_, float):
+                        v_ = f"{v_:+.2f}" if j == 4 else f"{v_:.2f}"
+                    t.setItem(i, j, QtWidgets.QTableWidgetItem("—" if v_ is None else str(v_)))
+            t.resizeColumnsToContents()
+            if a.get("kind") != b.get("kind"):
+                self.ss_msg.setText(TR("Ces deux sessions ne sont pas du même genre : rien à comparer."))
+            else:
+                notes = [TR("⚠ Provenances différentes ({} / {}) : un simulé n'est pas une mesure.").format(
+                    TR(PROVENANCE[a["prov"]]), TR(PROVENANCE[b["prov"]]))] if a["prov"] != b["prov"] else []
+                if a.get("ver") != b.get("ver"):
+                    notes.append(TR("⚠ Versions des modèles différentes ({} / {}).").format(a.get("ver"), b.get("ver")))
+                self.ss_msg.setText(" ".join(notes) or TR("Un écart dit seulement ce qui a changé, pas lequel est « juste »."))
+        return rows
+
+    def sessions_export(self, path=None):
+        sel = self._sess_sel() or self.sessions_load()
+        d = self._sess_dir()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            path = path or str(d / f"sessions_{datetime.now():%Y%m%d_%H%M%S}.csv")
+            buf = io.StringIO()
+            wr = csv.writer(buf, delimiter=";")
+            wr.writerow(["date", "genre", "provenance", "version", "modele", "mesure", "valeur", "note"])
+            for _p, doc in sel:
+                dt = f"{datetime.fromtimestamp(doc.get('t') or 0):%Y-%m-%d %H:%M:%S}"
+                m = doc.get("metrics") or {}
+                items = [("—", k, v) for k, v in m.items() if not isinstance(v, dict)] + \
+                        [(k, k2, v2) for k, v in m.items() if isinstance(v, dict) for k2, v2 in v.items()]
+                for mod, k, v in items:
+                    wr.writerow([dt, doc["kind"], doc["prov"], doc.get("ver", ""), mod, k, v, doc.get("note", "")])
+            write_atomic(path, buf.getvalue())
+        except OSError as e:
+            if hasattr(self, "ss_msg"):
+                self.ss_msg.setText(TR("⚠ Export impossible : {}").format(e))
+            return None
+        if hasattr(self, "ss_msg"):
+            self.ss_msg.setText(TR("💾 Exporté : {}").format(path))
+        return path
+
+    def sessions_delete(self):
+        for path, _doc in self._sess_sel():
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        self.sessions_fill()
+
+    # ---- comparaison détaillée (grande fenêtre synchronisée)
+    def cmp_detail(self, res=None):
+        res = res or self.res_cmp
+        if not res or not res.get("rows"):
+            self.cm_msg.setText(TR("Compare d'abord (▶ Comparer)."))
+            return None
+        old = getattr(self, "_detail", None)
+        if old is not None:
+            old.close()
+            old.deleteLater()
+        real = "xin" not in res["rows"][0]               # son reçu (sinon : signaux de test de la comparaison)
+        w = QtWidgets.QWidget(None, Qt.WindowType.Window)
+        w.setWindowTitle(TR("🔍 Comparaison détaillée des compandeurs"))
+        v = QtWidgets.QVBoxLayout(w)
+        top = QtWidgets.QHBoxLayout()
+        bd = QtWidgets.QLabel("")
+        top.addWidget(bd)
+        prov = res.get("meta", {}).get("prov") or "sim"
+        c, bg = self.PROV_STYLE.get(prov, self.PROV_STYLE["sim"])
+        bd.setText(TR(PROVENANCE[prov]).upper())
+        bd.setStyleSheet(f"color:{c}; background:{bg}; border:1px solid {c}; border-radius:6px; padding:2px 8px; "
+                         "font-weight:600;")
+        meta = res.get("meta", {})
+        info = QtWidgets.QLabel(TR("Son reçu, {} s · chaque modèle appliqué au même son (sans le son d'origine, on voit ce "
+                                   "qu'il en fait, pas lequel est juste).").format(f"{meta.get('seconds', 0):.1f}") if real else
+                                TR("Mêmes signaux et mêmes mesures pour tous les modèles · modèles {}").format(CMP_MODEL_VER))
+        info.setWordWrap(True)
+        top.addWidget(info, 1)
+        v.addLayout(top)
+        chk_row = QtWidgets.QHBoxLayout()
+        chk_row.addWidget(QtWidgets.QLabel(TR("Afficher :")))
+        w.chks = []
+        for i, row in enumerate(res["rows"]):
+            cb = QtWidgets.QCheckBox(TR(row["card"]["model"]))
+            cb.setChecked(True)
+            cb.setStyleSheet(f"color: {LAB_COLORS[i % len(LAB_COLORS)]}; font-weight: 600;")
+            cb.toggled.connect(lambda *_: self._detail_draw())
+            chk_row.addWidget(cb)
+            w.chks.append(cb)
+        chk_row.addStretch(1)
+        v.addLayout(chk_row)
+        grid = QtWidgets.QGridLayout()
+        if real:
+            titles = (("Niveau de chaque modèle", "s", "dBFS"), ("Son reçu (avant expanseur)", "s", "dBFS"),
+                      ("EQ en direct", "Hz", "dB"), ("Phase en direct", "Hz", "degrés"))
+        else:
+            titles = (("Transfert du récepteur", "entrée dBFS", "sortie dBFS"), ("Saut −30 → −10 → −30 dBFS", "s", "dBFS"),
+                      ("EQ de la chaîne", "Hz", "dB"), ("Phase (retard retiré)", "Hz", "degrés"))
+        w.plots = []
+        for i, (tt, xl, yl) in enumerate(titles):
+            p = _lab_plot(tt, xl, yl)
+            p.setObjectName("lab:" + tt)
+            p.setMinimumSize(300, 220)
+            if i >= 2:
+                _log_hz(p)
+            self._plot_menu(p, full=False)
+            grid.addWidget(p, i // 2, i % 2)
+            w.plots.append(p)
+        w.plots[3].setXLink(w.plots[2])                      # EQ et phase : même zoom en fréquence
+        if real:
+            w.plots[1].setXLink(w.plots[0])                  # niveau et son reçu : même instant
+        v.addLayout(grid, 1)
+        cols = (("Modèle", None),) + ((("Niveau", "out"), ("Crête", "pk"), ("Dynamique", "dyn"), ("Écart au son reçu", "gain"))
+                                      if real else tuple((lab, k) for k, lab, _u in LAB_DIFF_KEYS))
+        tb = QtWidgets.QTableWidget(len(res["rows"]), len(cols))
+        tb.setHorizontalHeaderLabels([TR(c_[0]) for c_ in cols])
+        tb.verticalHeader().setVisible(False)
+        tb.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        for i, row in enumerate(res["rows"]):
+            m = dict(row["m"], slope=row.get("slope"))
+            for j, (_lab, k) in enumerate(cols):
+                if k is None:
+                    it = QtWidgets.QTableWidgetItem(TR(row["card"]["model"]))
+                    it.setForeground(QtGui.QColor(LAB_COLORS[i % len(LAB_COLORS)]))
+                else:
+                    val = m.get(k)
+                    it = QtWidgets.QTableWidgetItem("—" if val is None else f"{val:.2f}")
+                tb.setItem(i, j, it)
+        tb.resizeColumnsToContents()
+        tb.setMaximumHeight(60 + 28 * len(res["rows"]))
+        v.addWidget(tb)
+        w.tbl, w.res, w.real = tb, res, real
+        self._detail = w
+        self._detail_draw()
+        w.resize(1100, 760)
+        fit_dialog(w, 1100, 760)
+        w.show()
+        w.raise_()
+        return w
+
+    def _detail_draw(self):
+        w = getattr(self, "_detail", None)
+        if w is None:
+            return
+        res = w.res
+        for p in w.plots:
+            p.clear()
+        for i, (row, cb) in enumerate(zip(res["rows"], w.chks)):
+            if not cb.isChecked():
+                continue
+            col = LAB_COLORS[i % len(LAB_COLORS)]
+            nm = TR(row["card"]["model"])
+            pen = pg.mkPen(col, width=2.0)
+            if w.real:
+                w.plots[0].plot(row["te"], row["env_out"][:len(row["te"])], pen=pen, name=nm)
+            else:
+                w.plots[0].plot(row["xin"], row["rx"], pen=pen, name=nm)
+                th = comp_curve(row["key"], "rx")
+                if th is not None:
+                    w.plots[0].plot(th[0], th[1], pen=pg.mkPen(col, width=1, style=Qt.PenStyle.DashLine))
+                w.plots[1].plot(row["transient"]["t"], row["transient"]["env"], pen=pen, name=nm)
+            fq = row.get("freq")
+            if fq:
+                w.plots[2].plot(fq["f"], _coh_mask(fq, fq["mag"]), pen=pen, name=nm, connect="finite")
+                w.plots[3].plot(fq["f"], _coh_mask(fq, fq["phase"]), pen=pen, name=nm, connect="finite")
+        if w.real:
+            w.plots[1].plot(res["te"], res["env_src"][:len(res["te"])], pen=pg.mkPen(LAB_COLORS[0], width=1.6),
+                            name=TR("son reçu"))
+            w.plots[0].setYRange(-80, 5)
+            w.plots[1].setYRange(-80, 5)
+        else:
+            w.plots[0].plot([-60, 0], [-60, 0], pen=pg.mkPen("#8e8e93", width=1, style=Qt.PenStyle.DotLine))
+            w.plots[0].setYRange(-90, 10)
+            w.plots[1].setYRange(-60, 0)
+        w.plots[2].setYRange(-24, 12)
+        w.plots[3].setYRange(-180, 180)
+
+    # ---- sources réelles : chaîne complète sur l'IQ du poste SDR ou d'un enregistrement
+    def chain_real(self, secs=1.0, wait=False):
+        e = self._eng()
+        if e is None or e.worker is None or e.a is None:
+            self.ch_res.setText(TR("Pas de poste SDR en marche : démarre-le (▶ dans le Récepteur) et cale A sur un micro."))
+            return False
+        wk = e.worker
+        g = dict(parts=[], n=0, want=int(wk.rate * secs), done=False, center=wk.center, rate=wk.rate)
+        wk.iq_grab = g
+        self._grab = (g, e)
+        self.ch_res.setText(TR("⏳ Capture de {} s d'IQ autour de A…").format(f"{secs:g}"))
+        if wait:
+            t0 = time.time()
+            while not g["done"] and time.time() - t0 < 10:
+                QtWidgets.QApplication.processEvents()
+                time.sleep(0.02)
+            return self._grab_check(wait=True)
+        QtCore.QTimer.singleShot(100, self._grab_check)
+        return True
+
+    def _grab_check(self, wait=False):
+        gr = getattr(self, "_grab", None)
+        if gr is None:
+            return False
+        g, e = gr
+        if not g["done"]:
+            if e.worker is None or e.worker.iq_grab is not g:
+                self._grab = None
+                self.ch_res.setText(TR("⚠ Capture interrompue : le poste SDR s'est arrêté."))
+                return False
+            QtCore.QTimer.singleShot(100, self._grab_check)
+            return True
+        self._grab = None
+        iq = np.concatenate(g["parts"]) if g["parts"] else np.zeros(0, dtype=np.complex64)
+        dem = e.demod or {}
+        args = dict(iq=iq, fs=g["rate"], f_off=e.a * 1e6 - g["center"], mode=dem.get("mode", "wfm"),
+                    dev=dem.get("dev"), rx_comp=dem.get("compander") or None, deemph_us=float(dem.get("deemph") or 0.0))
+        self._real_src = TR("poste SDR, A = {} MHz").format(f"{e.a:.4f}")
+        self._real_prov = "sim" if e.kind() == "demo" else "obs"
+        return self._chain_real_go(args, wait)
+
+    def chain_file(self, path=None, secs=1.0, f_mhz=None, wait=False):
+        """Chaîne complète sur un enregistrement IQ SigMF (⏺ du temps réel, incident…)."""
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self.panels["chain"], TR("Enregistrement IQ"),
+                                                            str(Path(self.owner.log_dir)),
+                                                            "SigMF (*.sigmf-meta *.sigmf-data)")
+            if not path:
+                return False
+        base = re.sub(r"\.sigmf-(meta|data)(\.part)?$", "", path)
+        try:
+            with open(base + ".sigmf-meta", encoding="utf-8") as fm:
+                info = sigmf_info(json.load(fm))
+            nb = IQ_BYTES[info["dtype"]]
+            with open(base + ".sigmf-data", "rb") as fd:
+                raw = fd.read(int(info["rate"] * secs) * nb)
+            iq = np.asarray(iq_decode(info["dtype"], raw), dtype=np.complex64)
+        except (OSError, ValueError, KeyError) as ex:
+            self.ch_res.setText(TR("⚠ Lecture impossible : {}").format(ex))
+            return False
+        if len(iq) < int(info["rate"] * 0.05):
+            self.ch_res.setText(TR("⚠ Enregistrement trop court."))
+            return False
+        if f_mhz is not None:
+            f_off = f_mhz * 1e6 - info["center"]
+        else:                                             # le signal le plus fort (hors continu au centre)
+            nfft = 8192
+            avg, _mx = rt_frames(iq[: (len(iq) // nfft) * nfft], nfft)
+            Fo = (np.arange(nfft) - nfft // 2) * (info["rate"] / nfft)
+            avg = np.where(np.abs(Fo) < 30e3, -300, avg)
+            f_off = round(float(Fo[int(np.argmax(avg))]) / 1000.0) * 1000.0     # au kHz près (pas d'une case FFT)
+        args = dict(iq=iq, fs=info["rate"], f_off=f_off, mode="wfm", dev=None, rx_comp=None, deemph_us=50.0)
+        self._real_src = TR("enregistrement {} ({} MHz)").format(Path(base).name, f"{(info['center'] + f_off) / 1e6:.4f}")
+        self._real_prov = "obs"
+        return self._chain_real_go(args, wait)
+
+    def _chain_real_go(self, args, wait):
+        if wait:
+            try:
+                r = lab_chain_iq(**args)
+            except Exception as ex:  # noqa: BLE001
+                return self._chain_real_done(None, ex)
+            return self._chain_real_done(r, None)
+        self._busy(True, self.ch_go, "▶ Calculer")
+        self.owner.run_heavy(lambda: lab_chain_iq(**args), self._chain_real_done, what="Labo SDR")
+        return True
+
+    def _chain_real_done(self, r, err):
+        self._busy(False, self.ch_go, "▶ Calculer")
+        if err is not None or r is None:
+            self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
+            return None
+        self.res_chain = r
+        prov = getattr(self, "_real_prov", "obs")
+        self.set_prov("chain", prov)
+        for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
+            p.clear()
+        out = r["out"]
+        s0 = max(0, min(len(out) - 4800, int(0.2 * 48000)))
+        tm = np.arange(min(4800, len(out) - s0)) / 48.0
+        self.p_wave.plot(tm, out[s0:s0 + len(tm)], pen=pg.mkPen(LAB_COLORS[1], width=1.0), name=TR("son démodulé"))
+        self.p_env.plot(r["te"], r["env_out"][:len(r["te"])], pen=pg.mkPen(LAB_COLORS[1], width=1.2), name=TR("sortie"))
+        self.p_env.setYRange(-80, 5)
+        self.p_iq.plot(r["iq_t"], r["I"], pen=pg.mkPen(LAB_COLORS[0], width=1), name="I")
+        self.p_iq.plot(r["iq_t"], r["Q"], pen=pg.mkPen(LAB_COLORS[3], width=1), name="Q")
+        v = r.get("views")
+        if v:
+            self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
+                              symbolBrush=pg.mkBrush(LAB_COLORS[0]))
+            self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
+        if r["L"] is not None:
+            self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
+            self.p_spec.plot(r["F"], r["Lmax"], pen=pg.mkPen(LAB_COLORS[1], width=1), name=TR("max"))
+            self.p_spec.setXRange(-200, 200)
+        m = r["m"]
+        rows = [(TR("Source"), getattr(self, "_real_src", "")), (TR("Niveau du son"), f"{m['out']:.1f} dBFS"),
+                (TR("Crête"), f"{m['pk_out']:.1f} dBFS"),
+                (TR("Dynamique"), "—" if m["dyn"] is None else f"{m['dyn']:.0f} dB"), (TR("Durée"), f"{m['seconds']:.2f} s")]
+        fl = "".join(f"<li style='color:{self.owner.tone_color(t) if t != 'ok' else 'inherit'}'>{_hesc(x)}</li>"
+                     for x, t in lab_findings_real(r, TR))
+        self.ch_res.setText(f"<b>{_hesc(TR(PROVENANCE[prov]))}</b> · " + " · ".join(
+            f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
+        mm = {k: (None if v_ is None or not np.isfinite(v_) else round(float(v_), 3)) for k, v_ in m.items()}
+        self.session_save("chain", prov, dict(source=getattr(self, "_real_src", ""), mode=r["mode"], dev=r["dev"]), mm)
+        return r
+
+    # ---- compandeurs sur le vrai son reçu : figer quelques secondes et comparer en grand
+    def live_snapshot(self, secs=4.0, wait=False):
+        xs = list(self.lv_in)
+        x = np.concatenate(xs) if xs else np.zeros(0, dtype=np.float32)
+        x = x[-int(secs * 48000):]
+        if len(x) < 48000 or not self.lv_keys:
+            self.lv_fit.setText(TR("Pas assez de son reçu (au moins 1 s) ou aucun modèle coché."))
+            return None
+        e = self._eng()
+        de = float((e.demod or {}).get("deemph") or 50.0) if e is not None else 50.0
+        prov = "sim" if (e is None or e.kind() == "demo") else "obs"
+        keys = list(self.lv_keys)
+
+        def done(r, err):
+            if err is not None or r is None:
+                self.lv_fit.setText(TR("⚠ Calcul impossible : {}").format(err))
+                return
+            r["meta"]["prov"] = prov
+            self.res_real = r
+            self.session_save("cmp_real", prov, dict(seconds=round(len(x) / 48000.0, 2), deemph=de),
+                              {row["key"]: {k: (None if v_ is None else round(float(v_), 3)) for k, v_ in row["m"].items()}
+                               for row in r["rows"]})
+            self.cmp_detail(r)
+        if wait:
+            done(comp_compare_real(keys, x, de), None)
+            return self.res_real
+        self.owner.run_heavy(lambda: comp_compare_real(keys, x, de), done, what="Labo SDR")
+        return True
+
+    # ---- état de la mesure à l'escalier
+    def stair_status(self):
+        xs = list(self.lv_in)
+        secs = sum(len(a) for a in xs) / 48000.0
+        need = 2 * STAIR_PERIOD + 1
+        r = getattr(self, "_st_res", None)
+        e = self._eng()
+        if r is not None:
+            st, why = r[0], r[1]
+            txt = TR(STAIR_STATES[st]) + (" · " + " ".join(TR(x) for x in why) if why else " · " + TR("mesure valable"))
+        elif e is None:
+            st = "stopped" if secs > 0 else "ready"
+            txt = (TR(STAIR_STATES[st]) + " · " + (TR("le poste SDR s'est arrêté pendant l'enregistrement")
+                                                   if secs > 0 else TR("démarre un poste SDR et écoute le micro en A")))
+        elif secs < need:
+            st = "running"
+            txt = TR(STAIR_STATES[st]) + f" · {secs:.0f} / {need:.0f} s"
+        else:
+            st = "ready"
+            txt = TR(STAIR_STATES[st]) + " · " + TR("assez de son pour mesurer")
+        col = {"done": "#30d158", "invalid": "#ff453a", "stopped": "#ff9f0a", "running": "#64d2ff"}.get(st, "#8e8e93")
+        if hasattr(self, "lv_state"):
+            self.lv_state.setText(f"● {txt}")
+            self.lv_state.setStyleSheet(f"color: {col}; font-weight: 600;")
+        return st, txt
+
+    # ---- modulations : découverte / indices / quiz, + le signal de A
+    def _mod_draw(self):
+        rows = getattr(self, "res_mod", None)
+        if not rows:
+            return
+        step = self.md_step.currentData()
+        order = self._md_order if step == "quiz" else list(range(len(rows)))
+        for i, (p, idx) in enumerate(zip(self.md_plots, order)):
+            r = rows[idx]
+            p.clear()
+            c = r["cls"]
+            p.plot((r["F"] - 100.0) * 1000.0, r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1))
+            if step == "discover":
+                ok = (" (" + TR("pas de case « AM » dans la détection") + ")") if r["ok"] is None else \
+                    (" ✔" if r["ok"] else " ✖")
+                p.setTitle(TR(r["name"]), size="9pt")
+                col = "#8e8e93" if r["ok"] is None else (LAB_COLORS[2] if r["ok"] else LAB_COLORS[4])
+                ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))) + ok, color=col, anchor=(0, 0),
+                                 fill=pg.mkBrush(20, 20, 22, 200))
+                ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
+                p.addItem(ti)
+                p.setToolTip(TR(c.get("why", "")) + (f"\n−20 dB : {c['bw_khz']:.1f} kHz" if c.get("bw_khz") else ""))
+            else:
+                p.setTitle(TR("Signal {}").format(i + 1), size="9pt")
+                if step == "hints":
+                    ti = pg.TextItem(mod_hint(r, TR), color="#8e8e93", anchor=(0, 0), fill=pg.mkBrush(20, 20, 22, 200))
+                    ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
+                    p.addItem(ti)
+                p.setToolTip(TR("Quel est ce signal ?"))
+            p.setXRange(-r["span"] * 1000.0, r["span"] * 1000.0, padding=0.02)
+            p.enableAutoRange(axis="y", enable=True)
+        quiz = step == "quiz"
+        for cb in self.md_ans:
+            cb.setVisible(quiz)
+        self.md_check.setVisible(quiz)
+        self.md_score.setVisible(quiz)
+        if quiz:
+            self.md_score.setText(TR("Choisis un nom sous chaque spectre, puis ✔ Vérifier."))
+
+    def _mod_step(self):
+        rows = getattr(self, "res_mod", None)
+        if self.md_step.currentData() == "quiz" and rows:
+            self._md_order = [int(i) for i in np.random.default_rng().permutation(len(rows))]
+            for cb in self.md_ans:
+                cb.setCurrentIndex(0)
+        self._mod_draw()
+
+    def mod_check(self, answers=None):
+        rows = getattr(self, "res_mod", None)
+        if not rows:
+            return None
+        truth = [rows[i]["name"] for i in self._md_order]
+        if answers is None:
+            answers = [cb.currentData() for cb in self.md_ans]
+        good, tot, ok = mod_quiz_score(answers, truth)
+        for cb, k in zip(self.md_ans, ok):
+            cb.setStyleSheet(f"color: {LAB_COLORS[2] if k else LAB_COLORS[4]}; font-weight: 600;")
+        self.md_score.setText(TR("{} / {} bonnes réponses · réponses : {}").format(
+            good, tot, " · ".join(f"{i + 1}. {TR(t)}" for i, t in enumerate(truth))))
+        return good, tot, ok
+
+    def mod_add_a(self):
+        """📡 Le signal réel de A (spectre du poste SDR) à côté des modèles, avec ce que l'appli en devine."""
+        e = self._eng()
+        fr = e.last if e is not None else None
+        if e is None or fr is None or e.a is None or len(fr["F"]) != len(fr["avg"]):
+            self.md_info.setText(TR("Pas de poste SDR en marche : démarre-le et cale A sur un signal."))
+            return None
+        F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
+        span = 0.5
+        msk = np.abs(F - e.a) <= span
+        if msk.sum() < 8:
+            self.md_info.setText(TR("A est au bord de la fenêtre du SDR : recentre-le."))
+            return None
+        c = classify_signal(F[msk], L[msk], e.a, getattr(e, "pilot", None), span=span)
+        p = self.md_aplot
+        p.clear()
+        p.show()
+        prov = "sim" if e.kind() == "demo" else "obs"
+        p.setTitle(TR("📡 Signal de A ({} MHz) · {}").format(f"{e.a:.4f}", TR(PROVENANCE[prov])), size="9pt")
+        p.plot((F[msk] - e.a) * 1000.0, L[msk], pen=pg.mkPen(LAB_COLORS[1], width=1.2))
+        ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))), color=LAB_COLORS[1], anchor=(0, 0),
+                         fill=pg.mkBrush(20, 20, 22, 200))
+        ti.setPos(-span * 1000.0, float(np.nanmax(L[msk])) + 2.0)
+        p.addItem(ti)
+        p.setXRange(-span * 1000.0, span * 1000.0, padding=0.02)
+        self.set_prov("mod", prov)
+        self.md_info.setText(TR("À côté des modèles : le vrai signal de A. Compare sa largeur et sa forme."))
+        return c
 
 
 def _v8_make_lab(self):

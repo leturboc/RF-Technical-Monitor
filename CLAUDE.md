@@ -1877,6 +1877,27 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   - **Rien n'est vérifié sur du vrai matériel** : modèles des marques = approximations (fiches le disent) ; mesure de
     l'émetteur par escalier jamais faite avec un vrai pack ; qualité du flux jamais vue avec un vrai SDR qui perd des
     échantillons ; seuils (cohérence 0,6, coupure 0,5 s, « autre signal » +25 dB) = choix de Claude.
+  - **Full Lab v2 (retour du collègue sur la capture du labo, 5 chantiers ; Clément : « le labo pourra être simulé et
+    avec des vraies fréquences mesurées en SDR ? »)** : PURE `LAB_PLOT_HELP` / `lab_plot_help` (montre / déduire / PAS
+    déduire, clé = titre court), `lab_session_doc` / `lab_session_ok` / `cmp_metrics` / `LAB_DIFF_KEYS` /
+    `lab_session_diff` (même genre seulement ; dit ce qui change, jamais lequel est juste), `STAIR_STATES`,
+    `stair_validity` (R² ≥ 0,98, pente 0,3–1,2, son ≥ −50 dBFS, ≥ 2 périodes), `lab_chain_iq` (vrai IQ : pas d'erreur ni
+    de retard inventés, `real`), `lab_findings_real`, `comp_compare_real` (modèles sur le son reçu, prov « obs »),
+    `_lab_dyn` (silence poussé sous −90 compté à −90), `MOD_QUIZ_CHOICES`, `LAB_MOD_STEPS`, `mod_hint`, `mod_quiz_score`.
+    `stair_fit` : repère de silence ≥ 0,24 s (le son reçu le raccourcit ; 0,4 s ratait en démo). **Bug trouvé par la
+    validation** : `CompChain` avec détecteur sans aigus (ENR) dépendait du découpage (FirDecim + zéros) -> convolution en
+    flux exacte (`_hf_tail`) : tous les modèles identiques d'un tenant ou par morceaux (test sur TOUS les COMPANDERS).
+    Qt (SdrLab) : badges `set_prov` (🧪 SIMULÉ / 📡 OBSERVÉ) en tête de chaque panneau ; menu de chaque graphe
+    `_plot_menu` (❓ `plot_help` non modal + bulle, 🔍 `plot_focus` = double-clic, 💾 `plot_export` PNG dans rapports/) ;
+    `cmp_detail(res)` (fenêtre `_detail`, 4 graphes 300 × 220, cases par modèle, EQ / phase `setXLink`, réel : niveau /
+    son reçu liés, tableau complet) ; sessions JSON `<journaux>/labo/` (`session_save` après comparaison, chaîne réelle,
+    escalier, son figé ; `open_sessions` / `sessions_compare` / `sessions_export` CSV / `sessions_delete`) ; `stair_status`
+    (`lv_state`) ; sources réelles : `RealtimeWorker.iq_grab` (capture d'IQ brut demandée par le labo) -> `chain_real`,
+    `chain_file` (SigMF, signal le plus fort au kHz près), `live_snapshot` (4 s de `lv_in` -> `comp_compare_real` ->
+    `cmp_detail`), `mod_add_a` (spectre de A, `md_aplot`) ; quiz `md_step` / `md_ans` / `mod_check`. Testé : test_sdr
+    (reproductible, identité 0 dB / 0°, −6 dB, retard retiré, découpage, IQ réel, escalier valide / invalide, sessions,
+    quiz, aides), gui_reel + gui_en. **Jamais sur un vrai SDR ni avec de vrais packs** (provenance « obs » vue seulement
+    sur un fichier SigMF fabriqué).
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.

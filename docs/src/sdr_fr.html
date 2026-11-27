@@ -222,6 +222,43 @@ l'émetteur (2:1, 1,5:1…), marqué 📡 observé, et repris dans le rapport.</
 (Sennheiser, Shure, Wisycom, Lectrosonics) sont des reproductions au jugé, <b>pas les vrais traitements</b>. Le labo
 compare des MODÈLES. Et le son reçu par un SDR a pu passer par d'autres traitements (limiteur, filtres de l'émetteur) :
 sans référence connue, une différence ne peut pas être attribuée au seul compandeur.</div>
+<h3>Simulé ou réel : d'où vient chaque résultat</h3>
+<p>Chaque panneau porte un <b>badge</b> bien visible : <b>🧪 SIMULÉ</b> (signal fabriqué par l'appli ou SDR démo) ou
+<b>📡 OBSERVÉ</b> (reçu par un vrai SDR). Le labo marche aussi sur de <b>vraies fréquences</b> :</p>
+<ul>
+  <li><b>Chaîne complète › 📡 Signal de A</b> : capture 1 s d'IQ du poste SDR autour du récepteur A et montre les mêmes
+    vues (I et Q, constellation, spectre, fréquence instantanée, son démodulé), avec niveau, crête, dynamique, pilote,
+    déviation et autre signal dans le canal. <b>📂 IQ enregistré…</b> fait pareil sur un fichier SigMF (⏺ du temps réel,
+    dossier d'incident) : le signal le plus fort est trouvé tout seul.</li>
+  <li><b>En direct › 🔬 Figer 4 s et comparer en détail</b> : les 4 dernières secondes du son reçu (avant l'expanseur)
+    passent dans chaque modèle coché, et la comparaison détaillée s'ouvre.</li>
+  <li><b>Modulations › 📡 Ajouter le signal de A</b> : le vrai spectre de A à côté des six modèles, avec ce que l'appli
+    en devine.</li>
+</ul>
+<p>Sur un vrai signal, le son d'origine est <b>inconnu</b> : le labo ne peut pas dire quel modèle est « juste », ni
+mesurer une erreur ou un retard. Il montre ce que chaque modèle <b>fait</b> du son reçu. Seule la mesure à l'escalier
+donne une vraie référence.</p>
+<h3>Lire et agrandir les graphes</h3>
+<p>Survole un graphe, ou clic droit › <b>❓ Que montre ce graphe ?</b> : ce qu'il montre, ce qu'on peut en déduire, et
+ce qu'on <b>ne peut pas</b> en déduire. <b>Double-clic</b> sur un graphe (ou clic droit › 🔍 Agrandir) : il prend toute
+la place de son panneau ; encore un double-clic et les autres reviennent. Clic droit › <b>💾 Exporter ce graphe
+(PNG)</b> : une image dans le dossier des rapports. Panneau Compandeurs › <b>🔍 Comparaison détaillée</b> : les quatre
+graphes en grand dans une fenêtre, les modèles à cocher, l'EQ et la phase zoomés ensemble (et, sur un son reçu, le
+niveau de chaque modèle et le son reçu sur le même instant), plus le tableau de toutes les mesures.</p>
+<h3>Sessions du labo</h3>
+<p>Chaque comparaison, chaque chaîne sur un vrai signal et chaque mesure à l'escalier est <b>gardée</b> (conditions et
+résultats chiffrés, dans le dossier des journaux, sous-dossier « labo »). <b>🗂 Sessions du labo</b> (panneau Chaîne) :
+les retrouver, en choisir <b>deux du même genre</b> pour voir les écarts mesure par mesure, les exporter en CSV, les
+supprimer. Un écart dit ce qui a changé, pas lequel est juste ; le labo prévient si les deux sessions n'ont pas la même
+provenance (simulé / observé) ou la même version des modèles.</p>
+<p>La mesure à l'escalier affiche son <b>état</b> : <b>Prêt</b>, <b>En cours</b> (le son s'accumule, « 12 / 20 s »),
+<b>Terminé</b> (mesure valable), <b>Invalide</b> (avec la raison : marches irrégulières, pente invraisemblable, son trop
+faible, moins de deux périodes) ou <b>Interrompu</b> (le poste SDR s'est arrêté). Seule une mesure valable va dans le
+rapport.</p>
+<h3>Apprendre les modulations</h3>
+<p>Panneau Modulations, liste à côté de ▶ : <b>① Découverte</b> (les noms et ce que l'appli devine), <b>② Indices</b>
+(seulement la largeur et la forme du dessus) et <b>③ Quiz</b> (ordre mélangé : choisis un nom sous chaque spectre,
+puis ✔ Vérifier).</p>
 <h3>Qualité du flux, rémanence et référence</h3>
 <p>La ligne <b>Flux</b> du Récepteur dit si le SDR livre bien tout : échantillons perdus (USB ou PC qui ne suit pas),
 coupures, saturation de l'entrée, reconnexions. Un SDR qui décroche est relancé tout seul (après 3, 10 puis 30 s).

@@ -197,6 +197,21 @@ if _lab is not None:
             scan(_lab.panels[_k], f"SdrLab-{_k}")
             _lab.panels[_k].grab().save(os.path.join(OUT, f"labo_{_k}.png"))
         look(open(_lab.cmp_report(os.path.join(OUT, "labo_rapport.html")), encoding="utf-8").read(), "Lab-report")
+        _dw = _lab.cmp_detail()                        # 8.2 Full Lab v2 : comparaison détaillée, sessions, aide, quiz
+        scan(_dw, "SdrLab-detail")
+        _dw.close()
+        _sw = _lab.open_sessions()
+        _lab.ss_list.selectAll()
+        scan(_sw, "SdrLab-sessions")
+        _sw.close()
+        look(_lab.plot_help_text(_lab.p_tf) or "", "Lab-plot-help")
+        win.open_sdr_lab(3)
+        _lab.md_step.setCurrentIndex(2)
+        _lab.mod_check()
+        scan(_lab.panels["mod"], "SdrLab-quiz")
+        _lab.md_step.setCurrentIndex(0)
+        _lab.stair_status()
+        scan(_lab.panels["live"], "SdrLab-live-state")
     except Exception:
         hook(*sys.exc_info())
 for tl in app.topLevelWidgets():

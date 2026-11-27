@@ -2509,3 +2509,189 @@ EXACT.update({                                      # 8.2 : affichages du labo, 
     "🖥🖥 Sur 2 écrans (chaîne et direct ici, le reste sur l'autre)": "🖥🖥 On 2 screens (chain and live here, the rest on the other)",
     "🧪 Labo · {}": "🧪 Lab · {}",
 })
+EXACT.update({                                      # 8.2 : Full Lab v2 (aide par graphe, focus, sessions, sources réelles, quiz)
+    "A est au bord de la fenêtre du SDR : recentre-le.": "A is at the edge of the SDR window: recentre it.",
+    "Afficher :": "Show:",
+    "Capture 1 s d'IQ du poste SDR autour du récepteur A et montre la même chaîne sur ce VRAI signal (sans le son d'origine : pas d'« erreur » mesurable).":
+        "Captures 1 s of IQ from the SDR station around receiver A and shows the same chain on this REAL signal (without the original audio: no “error” can be measured).",
+    "Ce que montre ce graphe : {}": "What this graph shows: {}",
+    "Ces deux sessions ne sont pas du même genre : rien à comparer.": "These two sessions are not of the same kind: nothing to compare.",
+    "Chaque comparaison et chaque mesure à l'escalier est gardée ici (conditions + résultats chiffrés). Choisis-en deux du même genre pour voir ce qui a changé.":
+        "Every comparison and every staircase measurement is kept here (conditions + figures). Pick two of the same kind to see what changed.",
+    "Chaque échantillon du canal comme un point (I, Q), normalisé.": "Each sample of the channel as an (I, Q) point, normalised.",
+    "Chaîne complète": "Full chain",
+    "Choisis exactement 2 sessions du même genre.": "Pick exactly 2 sessions of the same kind.",
+    "Choisis un nom sous chaque spectre, puis ✔ Vérifier.": "Pick a name under each spectrum, then ✔ Check.",
+    "Comment la chaîne réagit à un saut brusque de 20 dB, à la montée puis à la descente.":
+        "How the chain reacts to a sudden 20 dB jump, going up then going down.",
+    "Compandeurs sur un son reçu": "Companders on received audio",
+    "Comparaison de compandeurs": "Compander comparison",
+    "Comparaisons et mesures gardées : les retrouver, en comparer deux, les exporter.":
+        "Saved comparisons and measurements: find them, compare two, export them.",
+    "D'où viennent les résultats de ce panneau : 🧪 simulé (signal fabriqué par l'appli), 📡 observé (reçu par un vrai SDR) ou 🧮 calculé (formule). Un résultat simulé n'est jamais une mesure.":
+        "Where this panel's results come from: 🧪 simulated (signal made by the app), 📡 observed (received by a real SDR) or 🧮 calculated (formula). A simulated result is never a measurement.",
+    "Des filtres (passe-bas, désaccentuation) : la phase tourne là où l'EQ bouge.": "Filters (low-pass, de-emphasis): the phase turns where the EQ moves.",
+    "Dynamique": "Dynamic range",
+    "Déviation crête ≈ ± {} kHz, dérive {} kHz": "Peak deviation ≈ ± {} kHz, drift {} kHz",
+    "Efface les sessions choisies.": "Deletes the selected sessions.",
+    "En cours": "Running",
+    "Enregistrement IQ": "IQ recording",
+    "Escalier non reconnu.": "Staircase not recognised.",
+    "FM propre = un cercle fin ; bruit = cercle épais ; saturation = coins carrés ; brouilleur = cercle déformé.":
+        "Clean FM = thin circle; noise = thick circle; clipping = square corners; interferer = distorted circle.",
+    "Focus : double-clic sur le graphe (ou clic droit) pour revoir les autres.": "Focus: double-click the graph (or right-click) to see the others again.",
+    "Garde les 4 dernières secondes du son reçu, les passe dans chaque modèle coché et ouvre la comparaison détaillée (marquée 📡 observé avec un vrai SDR).":
+        "Keeps the last 4 seconds of received audio, runs them through each ticked model and opens the detailed comparison (marked 📡 observed with a real SDR).",
+    "Interrompu": "Interrupted",
+    "Invalide": "Invalid",
+    "L'écart de fréquence à chaque instant : c'est exactement ce que le démodulateur FM transforme en son.":
+        "The frequency offset at each instant: exactly what the FM demodulator turns into audio.",
+    "La compression de l'émetteur (courbe verte plus « plate »), le travail de l'expanseur, le pompage.":
+        "The transmitter's compression (flatter green curve), the expander's work, pumping.",
+    "La couleur que chaque modèle donne au son reçu.": "The colour each model gives the received audio.",
+    "La déviation (le volume) : un cercle ne dit pas à quelle vitesse il est parcouru.": "The deviation (the volume): a circle doesn't tell how fast it is travelled.",
+    "La déviation (± kHz), une dérive (courbe qui monte), les clics FM (pics brefs) d'un signal faible.":
+        "The deviation (± kHz), a drift (rising curve), FM clicks (short spikes) of a weak signal.",
+    "La forme d'onde du son, avant l'émetteur (bleu) et après le récepteur (orange), alignées.":
+        "The audio waveform, before the transmitter (blue) and after the receiver (orange), aligned.",
+    "La largeur occupée, la forme du dessus (plat = numérique, pointu = porteuse), ce que l'appli en devine.":
+        "The occupied width, the shape of the top (flat = digital, peaked = carrier), what the app guesses.",
+    "La largeur occupée, un autre signal dans ou près du canal, le niveau de bruit.": "The occupied width, another signal in or near the channel, the noise level.",
+    "La même chaîne sur un enregistrement IQ SigMF (⏺ du temps réel, dossier d'incident).":
+        "The same chain on a SigMF IQ recording (⏺ from real-time, incident folder).",
+    "La puissance en fonction de la fréquence autour de la porteuse (moyenne et max).": "Power versus frequency around the carrier (average and max).",
+    "La qualité d'un compandeur de marque : c'est un MODÈLE approché.": "The quality of a brand's compander: this is an approximate MODEL.",
+    "La qualité du son ; deux appareils d'une même famille se ressemblent beaucoup ici.": "Audio quality; two devices of the same family look very alike here.",
+    "La qualité du son à elle seule.": "Audio quality on its own.",
+    "La qualité perçue : deux formes un peu différentes peuvent sonner pareil (la phase change la forme, pas le son).":
+        "Perceived quality: two slightly different shapes can sound the same (phase changes the shape, not the sound).",
+    "La réponse en fréquence de la chaîne émetteur + récepteur (bruit rose).": "The frequency response of the transmitter + receiver chain (pink noise).",
+    "La sensation à l'oreille, qui dépend du programme.": "How it feels to the ear, which depends on the programme.",
+    "Le comportement en musique réelle (dépend aussi des temps de montée / descente).": "Behaviour with real music (also depends on attack / release times).",
+    "Le contenu audio : il est dans la vitesse de rotation, pas dans la forme de I ou de Q seuls.":
+        "The audio content: it is in the rotation speed, not in the shape of I or Q alone.",
+    "Le décalage de phase de la chaîne selon la fréquence, une fois le retard pur retiré.": "The chain's phase shift versus frequency, once the pure delay is removed.",
+    "Le niveau (dBFS, fenêtres de 10 ms) de l'entrée, du son compressé par l'émetteur et de la sortie.":
+        "The level (dBFS, 10 ms windows) of the input, of the audio compressed by the transmitter and of the output.",
+    "Le niveau RF : un signal fort et un faible peuvent avoir la même fréquence instantanée.": "The RF level: a strong and a weak signal can have the same instantaneous frequency.",
+    "Le niveau au micro : l'émetteur a déjà compressé.": "The level at the mic: the transmitter has already compressed.",
+    "Le niveau de sortie de chaque modèle appliqué au son reçu, dans le temps.": "The output level of each model applied to the received audio, over time.",
+    "Le niveau du son démodulé tel qu'il arrive de l'émetteur, avant tout expanseur.": "The level of the demodulated audio as it arrives from the transmitter, before any expander.",
+    "Le son ni le compandeur ; un spectre « propre » ne garantit pas un son propre.": "The audio or the compander; a “clean” spectrum doesn't guarantee clean audio.",
+    "Le spectre d'une façon d'émettre (FM, AM, numérique, TNT…) avec le même son, centré sur la porteuse.":
+        "The spectrum of one way of transmitting (FM, AM, digital, DTT…) with the same audio, centred on the carrier.",
+    "Le taux d'expansion (pente 2 = 2:1), le genou (ENR), les butées.": "The expansion ratio (slope 2 = 2:1), the knee (ENR), the limits.",
+    "Le vrai spectre autour du récepteur A du poste SDR, avec ce que l'appli en devine.": "The real spectrum around receiver A of the SDR station, with what the app guesses.",
+    "Lequel est le bon : sans le son d'origine, on ne peut pas le dire (seul l'escalier donne une vraie référence).":
+        "Which one is right: without the original audio it can't be told (only the staircase gives a true reference).",
+    "Les 4 graphes en grand dans une fenêtre, modèles à cocher, EQ et phase zoomés ensemble.":
+        "The 4 graphs large in one window, models to tick, EQ and phase zoomed together.",
+    "Les aigus relevés (ENS), coupés (ENR), la désaccentuation mal assortie.": "Treble lifted (ENS), cut (ENR), mismatched de-emphasis.",
+    "Les deux composantes du signal radio reçu (I en phase, Q en quadrature), vues à la loupe.":
+        "The two components of the received radio signal (I in phase, Q in quadrature), seen up close.",
+    "Les filtres de chaque modèle.": "Each model's filters.",
+    "Les fréquences absentes de la source : là, rien n'est mesuré (courbe interrompue).": "Frequencies missing from the source: nothing is measured there (broken curve).",
+    "Les fréquences que ce son ne contient pas (courbe interrompue).": "Frequencies this audio doesn't contain (broken curve).",
+    "Les sessions choisies (ou toutes) en CSV.": "The selected sessions (or all of them) as CSV.",
+    "Les temps de montée / descente, le dépassement (attaque trop forte) : le « pompage » se voit ici.":
+        "Attack / release times, overshoot (attack too strong): “pumping” shows here.",
+    "Linéarité R²": "Linearity R²",
+    "Mesure d'un émetteur (escalier)": "Transmitter measurement (staircase)",
+    "Mêmes signaux et mêmes mesures pour tous les modèles · modèles {}": "Same signals and same measurements for all models · models {}",
+    "Niveau de sortie en fonction du niveau d'entrée, MESURÉ avec un escalier de sinus (pointillés = formule).":
+        "Output level versus input level, MEASURED with a sine staircase (dotted = formula).",
+    "Niveau du son": "Audio level",
+    "On ne peut PAS en déduire : {}": "It can NOT tell you: {}",
+    "On peut en déduire : {}": "It can tell you: {}",
+    "Ouvre le dossier des sessions.": "Opens the sessions folder.",
+    "Pas assez de son reçu (au moins 1 s) ou aucun modèle coché.": "Not enough received audio (at least 1 s) or no model ticked.",
+    "Pas d'explication pour ce graphe.": "No explanation for this graph.",
+    "Pas de poste SDR en marche : démarre-le (▶ dans le Récepteur) et cale A sur un micro.":
+        "No SDR station running: start it (▶ in the Receiver) and tune A to a mic.",
+    "Pas de poste SDR en marche : démarre-le et cale A sur un signal.": "No SDR station running: start it and tune A to a signal.",
+    "Pilote vu": "Pilot seen",
+    "Pilote vu au début, perdu à la fin": "Pilot seen at the start, lost at the end",
+    "Pour chaque modèle : phase sortie / son reçu, retard pur retiré.": "For each model: output / received audio phase, pure delay removed.",
+    "Pour chaque modèle : sortie / son reçu, selon la fréquence (en direct).": "For each model: output / received audio, versus frequency (live).",
+    "Presque pas de son démodulé : pack en mute, mauvaise fréquence ou mauvais mode ?": "Almost no demodulated audio: pack muted, wrong frequency or wrong mode?",
+    "Prêt": "Ready",
+    "Quel est ce signal ?": "What is this signal?",
+    "Quel modèle « remonte » ou « écrase » le plus ce son-là.": "Which model “lifts” or “squashes” this audio the most.",
+    "S'il y a du son (pack en mute ?), sa dynamique compressée, les silences.": "Whether there is audio (pack muted?), its compressed dynamics, the silences.",
+    "Si les deux se superposent : la chaîne rend le son fidèlement. Un écart de taille = un écart de niveau.":
+        "If the two overlap: the chain reproduces the audio faithfully. A size difference = a level difference.",
+    "SigMF (*.sigmf-meta *.sigmf-data)": "SigMF (*.sigmf-meta *.sigmf-data)",
+    "Signal réel : le son d'origine est inconnu, donc pas d'« erreur » ni de « retard » mesurables":
+        "Real signal: the original audio is unknown, so no “error” or “delay” can be measured",
+    "Signal {}": "Signal {}",
+    "Son reçu très faible : vérifie le niveau envoyé dans le pack.": "Very weak received audio: check the level sent into the pack.",
+    "Son reçu, {} s · chaque modèle appliqué au même son (sans le son d'origine, on voit ce qu'il en fait, pas lequel est juste).":
+        "Received audio, {} s · each model applied to the same audio (without the original, you see what it does with it, not which one is right).",
+    "Spectre d'une modulation": "Spectrum of a modulation",
+    "Taux de compression": "Compression ratio",
+    "Terminé": "Done",
+    "Tous les graphes du panneau sont revenus.": "All the panel's graphs are back.",
+    "Un défaut audible à elle seule : une phase qui tourne lentement ne s'entend en général pas.":
+        "An audible fault on its own: a slowly turning phase is usually not heard.",
+    "Un écart dit seulement ce qui a changé, pas lequel est « juste ».": "A difference only says what changed, not which one is “right”.",
+    "Une porteuse FM = deux sinus décalés d'un quart de tour, d'amplitude constante ; le bruit les rend irrégulières.":
+        "An FM carrier = two sines a quarter turn apart, of constant amplitude; noise makes them irregular.",
+    "assez de son pour mesurer": "enough audio to measure",
+    "dessus irrégulier": "irregular top",
+    "dessus plat": "flat top",
+    "démarre un poste SDR et écoute le micro en A": "start an SDR station and listen to the mic on A",
+    "enregistrement {} ({} MHz)": "recording {} ({} MHz)",
+    "largeur ≈ {} kHz": "width ≈ {} kHz",
+    "le poste SDR s'est arrêté pendant l'enregistrement": "the SDR station stopped during the recording",
+    "mesure valable": "valid measurement",
+    "poste SDR, A = {} MHz": "SDR station, A = {} MHz",
+    "son démodulé": "demodulated audio",
+    "{} / {} bonnes réponses · réponses : {}": "{} / {} correct · answers: {}",
+    "{} modèle(s)": "{} model(s)",
+    "À côté des modèles : le vrai signal de A. Compare sa largeur et sa forme.": "Next to the models: the real signal of A. Compare its width and shape.",
+    "Écarts entre les deux sessions.": "Differences between the two sessions.",
+    "État de la mesure : prêt, en cours (le son s'accumule), terminé (valable), invalide (avec la raison) ou interrompu (le poste SDR s'est arrêté).":
+        "Measurement state: ready, running (audio is building up), done (valid), invalid (with the reason) or interrupted (the SDR station stopped).",
+    "— ta réponse —": "— your answer —",
+    "⏳ Capture de {} s d'IQ autour de A…": "⏳ Capturing {} s of IQ around A…",
+    "① Découverte (noms et réponse de l'appli)": "① Discover (names and the app's answer)",
+    "① les noms et ce que l'appli devine ; ② seulement des indices ; ③ quiz : à toi de reconnaître chaque spectre (ordre mélangé).":
+        "① the names and what the app guesses; ② only hints; ③ quiz: you recognise each spectrum (shuffled order).",
+    "② Indices (largeur, forme)": "② Hints (width, shape)",
+    "③ Quiz (sans indication)": "③ Quiz (no hints)",
+    "⚖ Comparer les 2 choisies": "⚖ Compare the 2 selected",
+    "⚠ Capture interrompue : le poste SDR s'est arrêté.": "⚠ Capture interrupted: the SDR station stopped.",
+    "⚠ Enregistrement trop court.": "⚠ Recording too short.",
+    "⚠ Export impossible : {}": "⚠ Export failed: {}",
+    "⚠ Image impossible à enregistrer.": "⚠ Image could not be saved.",
+    "⚠ Lecture impossible : {}": "⚠ Cannot read: {}",
+    "⚠ Provenances différentes ({} / {}) : un simulé n'est pas une mesure.": "⚠ Different origins ({} / {}): a simulation is not a measurement.",
+    "⚠ Versions des modèles différentes ({} / {}).": "⚠ Different model versions ({} / {}).",
+    "✔ Vérifier": "✔ Check",
+    "❓ Que montre ce graphe ?": "❓ What does this graph show?",
+    "💾 Exporter (CSV)": "💾 Export (CSV)",
+    "💾 Exporter ce graphe (PNG)": "💾 Export this graph (PNG)",
+    "💾 Exporté : {}": "💾 Exported: {}",
+    "💾 Graphe enregistré : {}": "💾 Graph saved: {}",
+    "📁 Dossier": "📁 Folder",
+    "📂 IQ enregistré…": "📂 Recorded IQ…",
+    "📡 Ajouter le signal de A": "📡 Add the signal of A",
+    "📡 Signal de A": "📡 Signal of A",
+    "📡 Signal de A ({} MHz) · {}": "📡 Signal of A ({} MHz) · {}",
+    "🔍 Agrandir ce graphe (focus)": "🔍 Enlarge this graph (focus)",
+    "🔍 Comparaison détaillée": "🔍 Detailed comparison",
+    "🔍 Comparaison détaillée des compandeurs": "🔍 Detailed compander comparison",
+    "🔬 Figer 4 s et comparer en détail": "🔬 Freeze 4 s and compare in detail",
+    "🗂 Sessions du labo": "🗂 Lab sessions",
+})
+TEMPLATES.update({                                  # 8.2 : Full Lab v2, validité de la mesure à l'escalier
+    "Marches irrégulières (R² {} < 0,98) : bruit, squelch ou limiteur de l'émetteur ?":
+        "Irregular steps (R² {} < 0.98): noise, squelch or the transmitter's limiter?",
+    "Moins de 2 périodes enregistrées ({} s) : résultat moins sûr.": "Fewer than 2 periods recorded ({} s): less reliable result.",
+    "Pente invraisemblable ({}) : vérifie que c'est bien l'escalier qui passe.":
+        "Implausible slope ({}): check that it really is the staircase coming through.",
+})
+SAME_TEMPLATES += ["{}_{}.json", "sessions_{}.csv", "labo_{}_{}.png",
+                   "color:{}; background:{}; border:1px solid {}; border-radius:6px; padding:2px 8px; font-weight:600;",
+                   "QLabel {{ color: {}; background: {}; border: 1px solid {}; border-radius: 6px; padding: 2px 8px; "
+                   "font-weight: 600; }}"]

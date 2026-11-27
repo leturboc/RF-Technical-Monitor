@@ -215,6 +215,41 @@ and included in the report.</p>
 Shure, Wisycom, Lectrosonics) are reproductions by judgement, <b>not the real processing</b>. The lab compares MODELS.
 And audio received by an SDR may have gone through other processing (limiter, transmitter filters): without a known
 reference, a difference cannot be put down to the compander alone.</div>
+<h3>Simulated or real: where each result comes from</h3>
+<p>Each panel carries a clearly visible <b>badge</b>: <b>🧪 SIMULATED</b> (signal made by the app or demo SDR) or
+<b>📡 OBSERVED</b> (received by a real SDR). The lab also works on <b>real frequencies</b>:</p>
+<ul>
+  <li><b>Full chain › 📡 Signal of A</b>: captures 1 s of IQ from the SDR station around receiver A and shows the same
+    views (I and Q, constellation, spectrum, instantaneous frequency, demodulated audio), with level, peak, dynamic range,
+    pilot, deviation and any other signal in the channel. <b>📂 Recorded IQ…</b> does the same on a SigMF file (⏺ from
+    real-time, incident folder): the strongest signal is found automatically.</li>
+  <li><b>Live › 🔬 Freeze 4 s and compare in detail</b>: the last 4 seconds of received audio (before the expander) go
+    through each ticked model, and the detailed comparison opens.</li>
+  <li><b>Modulations › 📡 Add the signal of A</b>: the real spectrum of A next to the six models, with what the app
+    guesses.</li>
+</ul>
+<p>On a real signal the original audio is <b>unknown</b>: the lab cannot say which model is “right”, nor measure an
+error or a delay. It shows what each model <b>does</b> with the received audio. Only the staircase measurement gives a
+true reference.</p>
+<h3>Reading and enlarging the graphs</h3>
+<p>Hover over a graph, or right-click › <b>❓ What does this graph show?</b>: what it shows, what it can tell you, and
+what it <b>cannot</b> tell you. <b>Double-click</b> a graph (or right-click › 🔍 Enlarge): it takes the whole panel;
+double-click again and the others come back. Right-click › <b>💾 Export this graph (PNG)</b>: an image in the reports
+folder. Compander panel › <b>🔍 Detailed comparison</b>: the four graphs large in one window, models to tick, EQ and
+phase zoomed together (and, on received audio, each model's level and the received audio on the same time axis), plus
+the table of every measurement.</p>
+<h3>Lab sessions</h3>
+<p>Every comparison, every chain on a real signal and every staircase measurement is <b>kept</b> (conditions and
+figures, in the logs folder, “labo” sub-folder). <b>🗂 Lab sessions</b> (Chain panel): find them, pick <b>two of the
+same kind</b> to see the differences measurement by measurement, export them as CSV, delete them. A difference says what
+changed, not which one is right; the lab warns you if the two sessions don't have the same origin (simulated /
+observed) or the same model version.</p>
+<p>The staircase measurement shows its <b>state</b>: <b>Ready</b>, <b>Running</b> (audio is building up, “12 / 20 s”),
+<b>Done</b> (valid measurement), <b>Invalid</b> (with the reason: irregular steps, implausible slope, audio too weak,
+fewer than two periods) or <b>Interrupted</b> (the SDR station stopped). Only a valid measurement goes into the report.</p>
+<h3>Learning the modulations</h3>
+<p>Modulations panel, list next to ▶: <b>① Discover</b> (the names and what the app guesses), <b>② Hints</b> (only the
+width and the shape of the top) and <b>③ Quiz</b> (shuffled order: pick a name under each spectrum, then ✔ Check).</p>
 <h3>Stream quality, persistence and reference</h3>
 <p>The Receiver's <b>Stream</b> line tells whether the SDR delivers everything: lost samples (USB or PC can't keep up),
 dropouts, input saturation, reconnections. An SDR that drops out is restarted automatically (after 3, 10 then 30 s). On
