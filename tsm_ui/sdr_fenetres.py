@@ -2634,6 +2634,23 @@ class ScreensMixin:
         cfg = self.screens_cfg
         if not cfg.get("on") or not cfg.get("plan"):
             return
+        mark = CFG_PATH.parent / "ecrans_en_cours.txt"      # 8.1 (crash.log de Clément 27/11 : 3 démarrages d'affilée
+        if mark.exists():                                   # arrêtés net par Qt ici, sous Windows) : si le démarrage
+            try:                                            # d'avant a planté PENDANT cette étape, on ne la refait pas
+                mark.unlink()
+            except OSError:
+                pass
+            self.screens_cfg = dict(cfg, on=False)
+            log_crash("écrans", "Le démarrage précédent s'est arrêté en rouvrant les fenêtres des autres écrans : "
+                      "elles ne sont pas rouvertes cette fois (tout est dans la fenêtre principale).")
+            self.set_status(TR("🖥 Le dernier démarrage avait planté en rouvrant les autres écrans : tout est dans la "
+                               "fenêtre principale. 🖥 Plusieurs écrans pour les répartir à nouveau."))
+            return
+        try:
+            mark.parent.mkdir(parents=True, exist_ok=True)
+            mark.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+        except OSError:
+            mark = None
         try:
             self.screens_apply(cfg["plan"], cfg.get("full"), quiet=True)
             for k, host in self.screen_hosts.items():
@@ -2642,6 +2659,11 @@ class ScreensMixin:
                     host.restoreState(QtCore.QByteArray.fromBase64(h["state"].encode()))
         except Exception:  # noqa: BLE001
             self.screens_off()
+        if mark is not None:
+            try:
+                mark.unlink()
+            except OSError:
+                pass
 
     def identify_screens(self):
         """Un grand numéro sur chaque écran (3 s)."""

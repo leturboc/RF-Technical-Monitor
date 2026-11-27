@@ -181,6 +181,17 @@ win.simulate(False)
 wait(2500)
 check("🧪 Simuler encore : simulation coupée, surveillance arrêtée sans relance ni fenêtre d'erreur",
       not win.simulating() and not win.sdr_cfg.get("demo") and not win.is_running() and not problems, str(problems))
+# 8.1 : démarrage précédent planté en rouvrant les autres écrans (crash.log de Clément 27/11) -> pas de 2ᵉ essai
+mk_ = m.CFG_PATH.parent / "ecrans_en_cours.txt"
+win.screens_cfg = {"on": True, "plan": {"dock_sdr_rx": 1, "dock_sdr_spec": 1}, "full": False, "hosts": {}}
+mk_.parent.mkdir(parents=True, exist_ok=True); mk_.write_text("x")
+win.screens_restore(); wait(200)
+check("témoin de plantage : les autres écrans ne sont pas rouverts, témoin effacé, plan coupé",
+      not win.screen_hosts and not mk_.exists() and not win.screens_cfg.get("on"))
+win.screens_cfg = {"on": True, "plan": {"dock_sdr_rx": 1, "dock_sdr_spec": 1}, "full": False, "hosts": {}}
+win.screens_restore(); wait(300)
+check("sans témoin : les écrans sont rouverts et le témoin retiré à la fin", bool(win.screen_hosts) and not mk_.exists())
+win.screens_off(); wait(200)
 check("aucune exception", not errs, errs[:1])
 win._closing = True
 try:

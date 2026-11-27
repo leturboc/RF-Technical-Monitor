@@ -127,6 +127,12 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `sdr_tune_mic`) + « 🎵 Son de ce micro… » (`pick_demo_sound`) dans Chaîne et En direct ; ⏯ En direct grise les
     réglages de simulation ; constellation à axes fixes ±1,8 (le rapport verrouillé l'écrasait) ; niveaux du direct en
     −70…+5 dBFS ; texte des résultats de la chaîne en zone de hauteur fixe (6 lignes) qui défile.
+    crash.log de Clément (27/11, 3e) : 3 démarrages d'affilée arrêtés net (« Fatal Python error: Aborted », Qt) dans
+    `screens_restore` -> `screens_apply` -> `_layout_base` (`addDockWidget(R, dock_log)`), appli impossible à relancer ;
+    PAS reproduit sous Linux (2 écrans virtuels, tous les préréglages). Sécurité : témoin `ecrans_en_cours.txt` (à côté
+    de config.json) posé avant la réouverture des autres écrans et retiré après ; présent au démarrage = le précédent a
+    planté là -> écrans pas rouverts, `screens_cfg["on"]` = False, message dans la barre d'état + crash.log. Cause
+    native toujours inconnue. Test : test_ecrans.
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

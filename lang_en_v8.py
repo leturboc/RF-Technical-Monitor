@@ -2757,3 +2757,5 @@ EXACT.update({                                      # 8.1 : labo, ce qu'on écou
     "🧪 SDR démo, son : {}": "🧪 demo SDR, audio: {}",
 })
 SAME_TEMPLATES += [" · A = {} MHz"]
+EXACT["🖥 Le dernier démarrage avait planté en rouvrant les autres écrans : tout est dans la fenêtre principale. 🖥 Plusieurs écrans pour les répartir à nouveau."] = \
+    "🖥 The last start crashed while reopening the other screens: everything is in the main window. 🖥 Multiple screens to spread it out again."
