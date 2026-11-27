@@ -36871,15 +36871,16 @@ class SdrLab(QtCore.QObject):
         if real:
             w.plots[1].setXLink(w.plots[0])                  # niveau et son reçu : même instant
         v.addLayout(grid, 1)
-        cols = (("Modèle", None),) + ((("Niveau", "out"), ("Crête", "pk"), ("Dynamique", "dyn"), ("Écart au son reçu", "gain"))
-                                      if real else tuple((lab, k) for k, lab, _u in LAB_DIFF_KEYS))
+        cols = (("Modèle", None, ""),) + ((("Niveau", "out", "dBFS"), ("Crête", "pk", "dBFS"), ("Dynamique", "dyn", "dB"),
+                                            ("Écart au son reçu", "gain", "dB"))
+                                           if real else tuple((lab, k, u) for k, lab, u in LAB_DIFF_KEYS))
         tb = QtWidgets.QTableWidget(len(res["rows"]), len(cols))
-        tb.setHorizontalHeaderLabels([TR(c_[0]) for c_ in cols])
+        tb.setHorizontalHeaderLabels([TR(c_[0]) + (" (" + c_[2] + ")" if c_[2] else "") for c_ in cols])
         tb.verticalHeader().setVisible(False)
         tb.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         for i, row in enumerate(res["rows"]):
             m = dict(row["m"], slope=row.get("slope"))
-            for j, (_lab, k) in enumerate(cols):
+            for j, (_lab, k, _u) in enumerate(cols):
                 if k is None:
                     it = QtWidgets.QTableWidgetItem(TR(row["card"]["model"]))
                     it.setForeground(QtGui.QColor(LAB_COLORS[i % len(LAB_COLORS)]))
@@ -37031,6 +37032,8 @@ class SdrLab(QtCore.QObject):
         self.res_chain = r
         prov = getattr(self, "_real_prov", "obs")
         self.set_prov("chain", prov)
+        self.ch_help.setText(TR("Signal réel : les réglages Son, Émetteur, C/N et Panne ne s'appliquent pas ici (ils servent "
+                                "à la simulation, ▶ Calculer). Vues RF prises au moment où le son est le plus fort."))
         for p in (self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi):
             p.clear()
         out = r["out"]
@@ -37186,6 +37189,9 @@ class SdrLab(QtCore.QObject):
             self.md_info.setText(TR("Pas de poste SDR en marche : démarre-le et cale A sur un signal."))
             return None
         F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
+        mx = fr.get("mx")                                 # crêtes du dernier morceau : l'excursion FM s'y voit mieux
+        if mx is not None and len(mx) == len(F):
+            L = np.maximum(L, np.asarray(mx, dtype=float))
         span = 0.5
         msk = np.abs(F - e.a) <= span
         if msk.sum() < 8:

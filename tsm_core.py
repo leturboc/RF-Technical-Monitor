@@ -15255,10 +15255,16 @@ def lab_chain_iq(iq, fs, f_off, mode="wfm", dev=None, rx_comp=None, deemph_us=0.
     dem = ChannelDemod(fs, f_off, mode, deemph_us, None, rx_comp or None, dev)
     step = max(1, int(0.05 * fs))
     outs, pil = [], []
+    best = (-1.0, None, 0)                     # vues RF prises au moment le plus fort du son (pas dans un silence)
     for i in range(0, len(iq), step):
         a, _lv = dem.process(iq[i:i + step])
         if len(a):
-            outs.append(np.asarray(a[:, 0] if np.ndim(a) == 2 else a, dtype=np.float32))
+            mono = np.asarray(a[:, 0] if np.ndim(a) == 2 else a, dtype=np.float32)
+            outs.append(mono)
+            r_ = float(np.sqrt(np.mean(mono ** 2)))
+            bb_ = getattr(dem, "last_bb", None)
+            if r_ > best[0] and bb_ is not None:
+                best = (r_, np.array(bb_, copy=True), i)
         pil.append(dem.pilot is not None)
     out = np.concatenate(outs) if outs else np.zeros(0, dtype=np.float32)
     nfft = 4096
@@ -15275,10 +15281,11 @@ def lab_chain_iq(iq, fs, f_off, mode="wfm", dev=None, rx_comp=None, deemph_us=0.
         side_ = (np.abs(Fk) > dev / 1000.0 + 20.0) & (np.abs(Fk) <= md["cut"] / 1000.0)
         if side_.any() and float(np.max(avg[side_])) > flo + 25.0:
             other = float(Fk[side_][int(np.argmax(avg[side_]))])
-    bb = getattr(dem, "last_bb", None)
+    bb = best[1] if best[1] is not None else getattr(dem, "last_bb", None)
     te, eo = _lab_env(out)
     ki = int(min(len(iq), 0.002 * fs))
-    xc = iq[:ki] * np.exp(-2j * np.pi * f_off * np.arange(ki) / fs) if ki else iq[:0]
+    i0 = min(best[2], max(0, len(iq) - ki))
+    xc = iq[i0:i0 + ki] * np.exp(-2j * np.pi * f_off * np.arange(ki) / fs) if ki else iq[:0]
     return dict(real=True, rate=fs, t=np.arange(len(out)) / 48000.0, src=None, comp=None, out=out, te=te,
                 env_src=None, env_comp=None, env_out=eo, iq_t=np.arange(ki) / fs * 1000.0,
                 I=np.real(xc).astype(np.float32), Q=np.imag(xc).astype(np.float32), F=Fk, L=avg, Lmax=mx,

@@ -2695,3 +2695,7 @@ SAME_TEMPLATES += ["{}_{}.json", "sessions_{}.csv", "labo_{}_{}.png",
                    "color:{}; background:{}; border:1px solid {}; border-radius:6px; padding:2px 8px; font-weight:600;",
                    "QLabel {{ color: {}; background: {}; border: 1px solid {}; border-radius: 6px; padding: 2px 8px; "
                    "font-weight: 600; }}"]
+EXACT.update({
+    "Signal réel : les réglages Son, Émetteur, C/N et Panne ne s'appliquent pas ici (ils servent à la simulation, ▶ Calculer). Vues RF prises au moment où le son est le plus fort.":
+        "Real signal: the Audio, Transmitter, C/N and Fault settings don't apply here (they are for the simulation, ▶ Calculate). RF views taken where the audio is loudest.",
+})
