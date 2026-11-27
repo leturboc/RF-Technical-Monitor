@@ -43,7 +43,7 @@ if win is None:
     sys.exit(1)
 
 # -------------------------------------------------- structure : docks / menus
-check("6 docks créés (spectre et mur compris, réglages dans ⚙)", len(win.docks) == 6 + len(getattr(m, "SDR_DOCKS", ()))
+check("6 docks créés (spectre et mur compris, réglages dans ⚙)", len(win.docks) == 6 + len(getattr(m, "SDR_DOCKS", ())) + len(getattr(m, "LAB_DOCKS", ()))
       and all(hasattr(d, "toggleViewAction") for d in win.docks))     # V8 : + les panneaux SDR
 check("menu Fenêtres rempli", len(win.win_menu.all_actions()) >= 8, str(len(win.win_menu.all_actions())))
 for fn in (win.layout_standard, win.layout_analyzer, win.layout_monitor, win.layout_dual, win.wall_other_screen):
