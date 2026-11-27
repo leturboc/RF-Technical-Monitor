@@ -1146,6 +1146,10 @@ for key_, rt_ in (("evo", 2.0), ("wisy_enc12", 1.5), ("none", 1.0)):
     ok(f"escalier : taux de compression de l'émetteur retrouvé ({key_})", f_["ok"] and abs(f_["ratio"] - rt_) < 0.05,
        str(f_.get("ratio")))
 ok("escalier trop court -> dit pourquoi", not ns["stair_fit"](st_[:48000])["ok"])
+stn_ = st_ + 0.003 * np.random.default_rng(0).standard_normal(len(st_)).astype(np.float32)
+f_ = ns["stair_fit"](ns["CompTx"]("evo", None)(stn_))
+ok("escalier dans le bruit (−50 dBFS, remonté par le compresseur) : taux retrouvé (1 kHz seulement)",
+   f_["ok"] and abs(f_["ratio"] - 2.0) < 0.1, str(f_.get("ratio")))
 rows_ = ns["lab_modulations"]()
 ok("modulations : 6 familles, la détection reconnaît 5 sur 5", len(rows_) == 6
    and all(r["ok"] for r in rows_ if r["ok"] is not None), str([(r["key"], r["cls"]["kind"]) for r in rows_]))

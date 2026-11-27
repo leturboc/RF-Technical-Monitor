@@ -14705,17 +14705,33 @@ def stair_signal(t):
     return np.where(c >= 0, a * np.sin(2 * np.pi * 1000.0 * t), 0.0).astype(np.float32)
 
 
+def _tone_env(x, rate=48000, f=1000.0, win=0.02):
+    """Niveau (dBFS d'un sinus) de la SEULE tonalité f, tranche par tranche (FFT Hann) : le bruit large bande (souffle,
+    bruit remonté par le compresseur) ne compte presque plus. -> (t s, dB)."""
+    x = np.asarray(x, dtype=np.float64)
+    n = int(rate * win)
+    m = len(x) // n
+    if m == 0:
+        return np.zeros(0), np.zeros(0)
+    w = np.hanning(n)
+    X = np.abs(np.fft.rfft(x[:m * n].reshape(m, n) * w, axis=1))
+    k = int(round(f * n / rate))
+    a = np.sqrt(np.sum(X[:, max(0, k - 2):k + 3] ** 2, axis=1)) * 2.0 / w.sum() / math.sqrt(1.5)   # crête du sinus
+    return (np.arange(m) + 0.5) * win, 20.0 * np.log10(a + 1e-9)
+
+
 def stair_fit(x, rate=48000):
     """Analyse un escalier reçu (son démodulé AVANT l'expanseur, au moins une période complète) : cherche le silence
     repère, mesure chaque marche (milieu), et ajuste sortie = pente × entrée + décalage. -> dict(ok, levels_in,
     levels_out, slope, ratio (taux de compression = 1 / pente), r2, why)."""
     x = np.asarray(x, dtype=np.float32)
-    t, e = _lab_env(x, rate, 0.02)
+    t, e = _tone_env(x, rate, 1000.0, 0.02)          # le 1 kHz de l'escalier seulement
     if len(e) < int(STAIR_PERIOD / 0.02) + 10:
         return dict(ok=False, why="Pas assez de son : il faut au moins une période complète de l'escalier "
                                   f"({STAIR_PERIOD:.1f} s), mieux deux.")
     top = float(np.percentile(e, 95))
-    quiet = e < top - 40.0
+    lo = float(np.percentile(e, 2))              # le silence repère = le plus bas reçu (le bruit remonté par le
+    quiet = (e < lo + 6.0) & (e < top - 15.0)    # compresseur peut le laisser à ~30 dB sous le haut, pas 40)
     k_gap = int(0.4 / 0.02)
     ends, run = [], 0
     for i, q in enumerate(quiet):               # fin de chaque silence d'au moins 0,4 s = début d'un escalier
