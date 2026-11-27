@@ -191,11 +191,11 @@ if _lab is not None:
         _lab.chain_run(wait=True)
         _lab.cmp_run(wait=True)
         _lab.mod_run(wait=True)
-        for _i in range(_lab.tabs.count()):
-            _lab.tabs.setCurrentIndex(_i)
+        for _i, _k in enumerate(m.LAB_KEYS):
+            win.open_sdr_lab(_i)
             wait(300)
-            scan(_lab, f"SdrLab-{_i}")
-            _lab.grab().save(os.path.join(OUT, f"labo_{_i}.png"))
+            scan(_lab.panels[_k], f"SdrLab-{_k}")
+            _lab.panels[_k].grab().save(os.path.join(OUT, f"labo_{_k}.png"))
         look(open(_lab.cmp_report(os.path.join(OUT, "labo_rapport.html")), encoding="utf-8").read(), "Lab-report")
     except Exception:
         hook(*sys.exc_info())

@@ -13718,6 +13718,11 @@ SCREEN_PANELS = (
     ("dock_sdr_spec", "sdr", "📡 SDR · Spectre"),
     ("dock_sdr_wf", "sdr", "📡 SDR · Waterfall"),
     ("dock_sdr_mics", "sdr", "📡 SDR · Mes micros"),
+    ("dock_lab_chain", "lab", "🧪 Labo · Chaîne complète"),        # 8.2 : labo SDR en panneaux
+    ("dock_lab_cmp", "lab", "🧪 Labo · Compandeurs"),
+    ("dock_lab_live", "lab", "🧪 Labo · En direct (SDR)"),
+    ("dock_lab_mod", "lab", "🧪 Labo · Modulations"),
+    ("dock_lab_fault", "lab", "🧪 Labo · Pannes simulées"),
 )
 SCREEN_PRESETS = (
     ("tiny_sdr", "📟 tinySA ici · 📡 SDR sur l'autre écran"),
@@ -13743,6 +13748,8 @@ def screen_preset(key, main=0, other=1, sdr=True):
             v = main
         if g == "sdr" and not sdr and key not in ("tiny_sdr", "sdr_tiny"):
             v = SCREEN_HIDE
+        if g == "lab":
+            v = SCREEN_HIDE                                  # 8.2 : le labo ne s'ouvre que si on le demande
         if n == "dock_alarmes" and key == "all_here":
             v = SCREEN_HIDE                                  # comme la disposition de base (bandeau au besoin)
         plan[n] = v

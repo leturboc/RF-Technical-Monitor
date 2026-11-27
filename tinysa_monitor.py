@@ -30055,6 +30055,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sdr_engs, self.post_docks = {}, {}
         self._make_post(1)
         self.sdr_eng, self.sdr_docks = self.sdr_engs[1], self.post_docks[1]
+        self._make_lab()                             # 8.2 : labo SDR en panneaux
         return r
 
     def _dock_sizes(self):
@@ -30084,7 +30085,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel_attach_all()
         for d in self.docks:
             d.setFloating(False)
-            if not d.objectName().startswith("dock_sdr"):   # 8.0 : les panneaux SDR suivent le mode (montés ici, le
+            if not d.objectName().startswith(("dock_sdr", "dock_lab")):   # 8.0 : les panneaux SDR suivent le mode (montés ici, le
                 d.show()                                    # Récepteur agrandissait la fenêtre : 1 028 -> 1 491 px)
         self.addDockWidget(R, self.dock_freq)
         self.addDockWidget(R, self.dock_log)
@@ -30156,7 +30157,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def panel_docks(self):
         """Panneaux qu'on peut sortir en vraie fenêtre : ceux de l'appli + du SDR, sauf ceux prêtés à un autre écran."""
         hosted = {n for h in (getattr(self, "screen_hosts", None) or {}).values() for n in h.items}
-        return [d for d in self._panel_docks_base() + self.all_sdr_docks() if d.objectName() not in hosted]
+        return [d for d in self._panel_docks_base() + self.all_sdr_docks() + self.all_lab_docks()
+                if d.objectName() not in hosted]
 
     def panel_window(self, d, on, screen=None, mode=None):
         """Sort le panneau d dans une vraie fenêtre (on) ou le raccroche (off). screen : écran où la placer
@@ -34581,6 +34583,12 @@ class ScreenWindow(QtWidgets.QMainWindow):
             self.tabifyDockWidget(it[tabs[0]], it[n])
         if tabs:
             it[tabs[0]].raise_()
+        labs = [n for n in it if n.startswith("dock_lab")]      # 8.2 : labo SDR, en onglets
+        if labs:
+            self.addDockWidget(B, it[labs[0]])
+            for n in labs[1:]:
+                self.tabifyDockWidget(it[labs[0]], it[n])
+            it[labs[0]].raise_()
         for d in it.values():
             d.show()
 
@@ -35137,39 +35145,46 @@ def _checked(lw):
             if lw.item(i).checkState() == Qt.CheckState.Checked]
 
 
-class SdrLabDialog(QtWidgets.QDialog):
-    """🧪 Labo SDR (RF Compander Lab) : 1. la chaîne complète d'un micro HF pas à pas ; 2. comparateur de compandeurs
-    (transfert, transitoires, EQ, phase, rapport) ; 3. en direct (SDR réel = observé, ou SDR démo = simulé) : plusieurs
-    modèles en parallèle sur le son reçu, écoute A/B, mesure d'un vrai émetteur avec l'escalier ; 4. modulations ;
-    5. pannes simulées dans le SDR démo."""
+LAB_DOCKS = (("chain", "🧪 Labo · Chaîne complète", "dock_lab_chain"),
+             ("cmp", "🧪 Labo · Compandeurs", "dock_lab_cmp"),
+             ("live", "🧪 Labo · En direct (SDR)", "dock_lab_live"),
+             ("mod", "🧪 Labo · Modulations", "dock_lab_mod"),
+             ("fault", "🧪 Labo · Pannes simulées", "dock_lab_fault"))
+LAB_KEYS = [k for k, _t, _n in LAB_DOCKS]
+
+
+class SdrLab(QtCore.QObject):
+    """🧪 Labo SDR (RF Compander Lab), en PANNEAUX comme le SDR (Clément : « en full fenêtrage, choisir sur quel écran,
+    mettre tout ce qu'on veut où on veut ») : 1. la chaîne complète d'un micro HF pas à pas ; 2. comparateur de
+    compandeurs (transfert, transitoires, EQ, phase, rapport) ; 3. en direct (SDR réel = observé, ou SDR démo = simulé) :
+    plusieurs modèles en parallèle sur le son reçu, écoute A/B, mesure d'un vrai émetteur avec l'escalier ;
+    4. modulations ; 5. pannes simulées dans le SDR démo. Chaque partie = un panneau (🪟 Fenêtres, vraie fenêtre, écran)."""
 
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
-        self.setWindowTitle(TR("🧪 Labo SDR — RF Compander Lab"))
-        fit_dialog(self, 1180, 820)
         self._tmp, self.fx, self._job, self.res_cmp, self.observed = None, None, None, None, None
-        lay = QtWidgets.QVBoxLayout(self)
+        self.panels = {}
+        for key, build in (("chain", self._tab_chain), ("cmp", self._tab_cmp), ("live", self._tab_live),
+                           ("mod", self._tab_mod), ("fault", self._tab_fault)):
+            self.panels[key] = build()
         intro = QtWidgets.QLabel(TR("Un banc de mesure : les mêmes signaux et les mêmes mesures pour tous les modèles. "
                                     "Chaque résultat dit d'où il vient : 🧪 simulé, 📡 observé (SDR réel) ou 🧮 calculé."))
         intro.setWordWrap(True)
-        lay.addWidget(intro)
-        self.tabs = QtWidgets.QTabWidget()
-        lay.addWidget(self.tabs, 1)
-        self.tabs.addTab(self._tab_chain(), TR("① Chaîne complète"))
-        self.tabs.addTab(self._tab_cmp(), TR("② Comparer les compandeurs"))
-        self.tabs.addTab(self._tab_live(), TR("③ En direct (SDR)"))
-        self.tabs.addTab(self._tab_mod(), TR("④ Modulations"))
-        self.tabs.addTab(self._tab_fault(), TR("⑤ Pannes simulées"))
-        self.tabs.currentChanged.connect(lambda *_: self._live_on(self.tabs.currentIndex() == 2 and self.isVisible()))
-        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Close)
-        bb.rejected.connect(self.close)
-        man = bb.addButton(TR("❓ Manuel"), QtWidgets.QDialogButtonBox.ButtonRole.HelpRole)
+        man = QtWidgets.QPushButton(TR("❓ Manuel"))
+        man.setToolTip(TR("Le chapitre du manuel sur le labo SDR."))
         man.clicked.connect(lambda *_: owner.open_manual("sdr-labo"))
-        lay.addWidget(bb)
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(intro, 1)
+        top.addWidget(man)
+        self.panels["chain"].layout().insertLayout(0, top)
         self.tm = QtCore.QTimer(self)
         self.tm.timeout.connect(self._tick)
         self.tm.start(250)
+
+    def _shown(self, key):
+        w = self.panels.get(key)
+        return w is not None and w.isVisible()
 
     # ------------------------------------------------------------------ outils
     def _play(self, a, label=""):
@@ -35569,15 +35584,18 @@ class SdrLabDialog(QtWidgets.QDialog):
         self._lv_t = 0.0
 
     def _live_on(self, on):
+        self._tap_on = bool(on)
         e = self._eng()
         for e_ in (getattr(self.owner, "sdr_engs", None) or {}).values():
             if e_.worker is not None:
                 e_.worker.lab_tap = bool(on) and e_ is e
 
     def _tick(self):
-        if self.tabs.currentIndex() == 4:
+        if self._shown("fault"):
             self._fault_refresh()
-        if self.tabs.currentIndex() != 2 or not self.isVisible():
+        if not self._shown("live"):
+            if getattr(self, "_tap_on", False):
+                self._live_on(False)
             return
         e = self._eng()
         if e is None or e.worker is None:
@@ -35794,25 +35812,69 @@ class SdrLabDialog(QtWidgets.QDialog):
         else:
             self.ft_lbl.setText(TR("Aucune panne en cours.") + ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
 
-    def closeEvent(self, ev):
+    def stop(self):
         self._live_on(False)
         if self.fx is not None:
             self.fx.stop()
-        super().closeEvent(ev)
 
-    def showEvent(self, ev):
-        super().showEvent(ev)
-        self._live_on(self.tabs.currentIndex() == 2)
+
+def _v8_make_lab(self):
+    """8.2 : le labo SDR en 5 panneaux (créés avec les autres : la disposition enregistrée les replace ; ils sont dans
+    🪟 Fenêtres, se sortent en vraie fenêtre, se mettent sur l'écran qu'on veut)."""
+    self._sdrlab = SdrLab(self)
+    self.lab_docks = {}
+    B = Qt.DockWidgetArea.BottomDockWidgetArea
+    acts = self.win_menu.actions()
+    sep = next((x for x in acts if x.isSeparator()), None)
+    for key, title, name in LAB_DOCKS:
+        d = self._make_dock(TR(title), name, self._sdrlab.panels[key], B)
+        d.hide()
+        self.lab_docks[key] = d
+        self.docks.append(d)
+        if sep is not None:
+            self.win_menu.insertAction(sep, d.toggleViewAction())
+        else:
+            self.win_menu.addAction(d.toggleViewAction())
 
 
 def _v8_open_sdr_lab(self, tab=0):
-    d = getattr(self, "_sdrlab", None)
-    if d is None:
-        d = self._sdrlab = SdrLabDialog(self)
-    d.tabs.setCurrentIndex(int(tab))
-    d.show()
-    d.raise_()
-    return d
+    """Montre les panneaux du labo (en onglets en bas la 1re fois ; ensuite là où tu les as mis) et met devant celui
+    demandé (n° ou clé)."""
+    key = LAB_KEYS[int(tab)] if isinstance(tab, int) else str(tab)
+    docks = self.lab_docks
+    if not any(d.isVisible() or d.objectName() in self.panel_wins for d in docks.values()):
+        first = None
+        for k in LAB_KEYS:
+            d = docks[k]
+            if d.objectName() in self.panel_wins:
+                continue
+            if first is None:
+                if d.isFloating() or self.dockWidgetArea(d) == Qt.DockWidgetArea.NoDockWidgetArea:
+                    self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, d)
+                first = d
+            elif self.dockWidgetArea(d) == self.dockWidgetArea(first) and not d.isFloating():
+                self.tabifyDockWidget(first, d)
+            d.show()
+    d = docks[key]
+    w = self.panel_wins.get(d.objectName())
+    if w is not None:
+        w.show()
+        w.raise_()
+    else:
+        d.show()
+        d.raise_()
+    return self._sdrlab
+
+
+def _v8_close_sdr_lab(self):
+    for d in self.lab_docks.values():
+        self.panel_window(d, False)
+        d.hide()
+    self._sdrlab.stop()
+
+
+def _v8_all_lab_docks(self):
+    return list((getattr(self, "lab_docks", None) or {}).values())
 
 
 def _v8_sdr_compat_table(self):
@@ -35850,6 +35912,9 @@ def _v8_sdr_compat_table(self):
 
 
 MainWindow.open_sdr_lab = _v8_open_sdr_lab
+MainWindow.close_sdr_lab = _v8_close_sdr_lab
+MainWindow._make_lab = _v8_make_lab
+MainWindow.all_lab_docks = _v8_all_lab_docks
 MainWindow.open_sdr_compat = _v8_sdr_compat_table
 
 

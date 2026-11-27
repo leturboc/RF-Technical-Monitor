@@ -2313,3 +2313,11 @@ SAME_TEMPLATES += [
     "<p>{} · <span class='prov'>{}</span> · {} {}</p>", "<ul>{}</ul>", "<h2>{} <span class='prov'>{}</span></h2>",
     "<b>{}</b><br>", "<li style='color:{}'>{}</li>",
 ]
+EXACT.update({                                      # 8.2 : labo SDR en panneaux
+    "Le chapitre du manuel sur le labo SDR.": "The manual chapter about the SDR lab.",
+    "🧪 Labo · Chaîne complète": "🧪 Lab · Full chain",
+    "🧪 Labo · Compandeurs": "🧪 Lab · Companders",
+    "🧪 Labo · En direct (SDR)": "🧪 Lab · Live (SDR)",
+    "🧪 Labo · Modulations": "🧪 Lab · Modulations",
+    "🧪 Labo · Pannes simulées": "🧪 Lab · Simulated faults",
+})

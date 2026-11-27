@@ -1806,7 +1806,13 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
     AM interpolé ; la détection n'a pas de classe AM).
   - **`ChannelDemod.pre_raw`** (son démodulé brut, avant désaccentuation / expanseur) -> `RealtimeWorker.a_pre` (rempli
     seulement si `lab_tap`).
-  - **`SdrLabDialog`** (`open_sdr_lab(tab)`, `self._sdrlab` ; menu du mode + sous-menu SDR) : ① chaîne complète (6 vues,
+  - **Labo en PANNEAUX** (Clément : « en full fenêtrage comme le SDR, choisir l'écran, mettre tout où on veut ») :
+    `SdrLab` (QObject, `self._sdrlab`, `panels` {clé: widget}, `_shown(clé)` = widget visible où qu'il soit), docks
+    `LAB_DOCKS` / `LAB_KEYS` (`dock_lab_chain` / `_cmp` / `_live` / `_mod` / `_fault`) créés dans `_build_docks`
+    (`_make_lab`, cachés ; `_layout_base` ne les montre pas), dans `self.docks`, 🪟 Fenêtres, `panel_docks` (vraies
+    fenêtres) et `SCREEN_PANELS` (groupe « lab », caché par tous les préréglages d'écrans ; `ScreenWindow.arrange` les
+    met en onglets). `open_sdr_lab(n° | clé)` (1re fois : onglets en bas), `close_sdr_lab`, `all_lab_docks`.
+    Parties (menu du mode + sous-menu SDR) : ① chaîne complète (6 vues,
     pannes), ② comparateur (transfert mesuré + formule en pointillés, saut, EQ, phase, tableau, fiche, 🔊, 📄 rapport dans
     `<journaux>/rapports/compander_lab_*.html`, `TSM_NO_BROWSER` pour les tests), ③ en direct (son reçu de A dans chaque
     modèle coché en parallèle : niveau, EQ / phase masquées si cohérence < 0,6 (`_coh_mask`), 🎧 A/B = `e.demod`
