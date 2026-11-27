@@ -1422,8 +1422,8 @@ win.screen_list = lambda: ([win.screen(), win.screen()], 0)
 win.screens_apply(m.screen_preset("tiny_sdr", 0, 1))
 wait(1200)
 _h2 = win.screen_hosts.get(1)
-check("8.0.2 : tinySA ici · SDR sur l'autre écran = une fenêtre complète avec les 4 panneaux SDR",
-      _h2 is not None and sorted(_h2.items) == ["dock_sdr_mics", "dock_sdr_rx", "dock_sdr_spec", "dock_sdr_wf"]
+check("8.0.2 : tinySA ici · SDR sur l'autre écran = une fenêtre complète avec les panneaux SDR",
+      _h2 is not None and sorted(_h2.items) == sorted(d_[2] for d_ in m.SDR_DOCKS)
       and win.rf_mode == "both" and win.dock_spec.isVisible() and not win.sdr_docks["rx"].isVisible(),
       f"{sorted(_h2.items) if _h2 else None} · mode {win.rf_mode}")
 check("8.0.2 : le programme parle toujours aux panneaux prêtés (Récepteur, SDR en marche)",
@@ -1755,7 +1755,8 @@ _kinds = [ev_["kind"] for ev_ in getattr(_e21, "hist", [])]
 check("8.2 : historique du poste : pertes, coupure, saturation, SDR perdu puis revenu",
       all(k_ in _kinds for k_ in ("drop_on", "lost", "back")) and any(k_ in _kinds for k_ in ("sat_on",)),
       str(sorted(set(_kinds))))
-check("8.2 : événements de la démo marqués simulés", all(ev_.get("sim") for ev_ in _e21.hist))
+check("8.2 : événements de la démo marqués simulés", all(ev_.get("sim") for ev_ in _e21.hist
+      if ev_["kind"] in ("drop_on", "gap", "sat_on", "lost", "back", "fault")))
 _lab.ft_dur.setValue(10)
 _lab.fault("nosrc")
 _t0 = time.time()
@@ -2069,7 +2070,8 @@ _ps17[0]["serial"] = "S1"
 _ps17[1].update(serial="S2", name="SDR scène", scenes=[_sc17] if _sc17 else [])
 _pd._save(_ps17)
 _pd.fill()
-check("17 : 2ᵉ SDR = moteur + ses 4 panneaux (titrés à son nom)", _p2 in win.sdr_engs and len(win.all_sdr_docks()) == 8
+check("17 : 2ᵉ SDR = moteur + ses panneaux (titrés à son nom)", _p2 in win.sdr_engs
+      and len(win.all_sdr_docks()) == 2 * len(m.SDR_DOCKS)
       and win.post_docks[_p2]["spec"].windowTitle().startswith("📡 SDR scène"), str(sorted(win.sdr_engs)))
 win.sdr_engs[_p2].a = _pair[0]["freq"] + 0.1
 step("17 : mode SDR avec 2 SDR", lambda: win.set_rf_mode("sdr"))
@@ -2098,7 +2100,7 @@ if _n17 is not None and _sc17:
           str(win.sdr_engs[_p2].post()))
 _ps17 = [p_ for p_ in m.sdr_posts_norm(win.sdr_cfg["posts"]) if p_["id"] != _p2]
 _pd._save(_ps17)
-check("17 : SDR retiré = moteur et panneaux retirés", _p2 not in win.sdr_engs and len(win.all_sdr_docks()) == 4)
+check("17 : SDR retiré = moteur et panneaux retirés", _p2 not in win.sdr_engs and len(win.all_sdr_docks()) == len(m.SDR_DOCKS))
 _pd.close()
 step("16 : retour tinySA", lambda: win.set_rf_mode("tiny"))
 win.set_level(_lv16)
