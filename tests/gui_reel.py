@@ -1707,10 +1707,23 @@ win.demo_sound(_pair[0], {"src": "stair"})
 _dk82 = dict(win.sdr_cfg.get("demo_kind") or {})
 win.sdr_cfg["demo_kind"] = dict(_dk82, **{str(int(round(_pair[0]["freq"] * 1000))): "fm"})   # toujours là (le 1er
 _e21._t_demo = 0.0                                                    # micro démo s'éteint 15 s toutes les 2 min)
+_e21.set_auto(tune=False)
+if _e21.patrol is not None:
+    _e21.patrol_stop()
+win.sdr_tune_mic(_pair[0])                                            # A sur ce micro (un test d'avant a pu le déplacer)
 wait(1500)
 _lab._live_reset()
 wait(int((m.STAIR_PERIOD * 2 + 1.5) * 1000))
 _fit = _lab.live_fit()
+if not _fit.get("ok"):                                                # diagnostic : ce qui a été reçu
+    try:
+        _x82 = np.concatenate(list(_lab.lv_in))
+        np.save(os.path.join(OUT, "escalier_recu.npy"), _x82)
+        _t82, _env82 = m._lab_env(_x82, 48000, 0.25)
+        print("escalier reçu (dB / 0,25 s) :", np.round(_env82, 0).tolist(), "A =", _e21.a, "micro", _pair[0]["freq"],
+              "démod", _e21.demod, flush=True)
+    except Exception as _ex:
+        print("diagnostic escalier impossible", _ex)
 check("8.2 : escalier reçu par le SDR démo : taux de compression de l'émetteur retrouvé",
       _fit.get("ok") and _fit.get("ratio") and 1.6 < _fit["ratio"] < 2.4, str({k_: _fit.get(k_) for k_ in ("ok", "ratio", "why")}))
 win.demo_sound(_pair[0], {"src": "voice"})
