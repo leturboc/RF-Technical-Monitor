@@ -2759,3 +2759,6 @@ EXACT.update({                                      # 8.1 : labo, ce qu'on écou
 SAME_TEMPLATES += [" · A = {} MHz"]
 EXACT["🖥 Le dernier démarrage avait planté en rouvrant les autres écrans : tout est dans la fenêtre principale. 🖥 Plusieurs écrans pour les répartir à nouveau."] = \
     "🖥 The last start crashed while reopening the other screens: everything is in the main window. 🖥 Multiple screens to spread it out again."
+EXACT["Le démarrage précédent s'est arrêté en rouvrant les fenêtres des autres écrans : elles ne sont pas rouvertes cette fois (tout est dans la fenêtre principale)."] = \
+    "The previous start stopped while reopening the windows of the other screens: they are not reopened this time (everything is in the main window)."
+EXACT["écrans"] = "screens"
