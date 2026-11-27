@@ -328,6 +328,7 @@ class SdrEngine(QtCore.QObject):
         self.demod_key, self.cur_mic, self.demod_how = (d0[0] if d0 else None), None, None   # étape 19
         self._t_feed = 0.0
         self.q = deque(maxlen=60)
+        self.side = deque(maxlen=600)                   # copie du son pour l'interface (le fil du son lit la source)
         self.af = deque(maxlen=8)                       # derniers blocs de son (spectre du son)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._pump)
@@ -438,6 +439,8 @@ class SdrEngine(QtCore.QObject):
         if self.audio is None:
             self.audio = AudioPump(self.q, sdr_audio_device(self.owner))   # 8.1 : son nourri par son propre fil
             self.audio.start()
+        self.audio.side = self.side
+        self.audio.src = w.audio                        # le fil du son lit directement la file du calcul
         self.timer.start(10)                             # 8.1 : son nourri plus souvent (moins de trous)
         if kind == "demo":                              # étape 21 : le SDR démo connaît tout de suite tes micros
             self._t_demo = time.time()
@@ -779,14 +782,17 @@ class SdrEngine(QtCore.QObject):
         w = self.worker
         if w is None:
             return
-        while w.audio:
-            b = w.audio.popleft()
+        direct = self.audio is not None and self.audio.src is w.audio
+        src = self.side if direct else w.audio          # son déjà parti vers la carte par son fil : ici, la copie
+        while src:
+            b = src.popleft()
             if self.wav is not None:
                 try:
                     self.wav["wv"].writeframes(b)
                 except Exception:  # noqa: BLE001
                     self.rec_audio(False)
-            self.q.append(b)
+            if not direct:
+                self.q.append(b)
             self.af.append(b)
             self.pre.push(b)                             # étape 20 : 10 s d'avant, pour l'alarme
             self.rew.push_audio(time.time() - len(b) / (LISTEN_RATE * 4.0), b)   # étape 22 : ⏪ remonter le temps
@@ -795,7 +801,7 @@ class SdrEngine(QtCore.QObject):
                     self.arec["wv"].writeframes(b)
                 except Exception:  # noqa: BLE001
                     self._arec_end()
-        if self.audio is not None:
+        if self.audio is not None and not direct:
             self.audio.feed(self.q)
 
     def level_at(self, f, half=0.1):

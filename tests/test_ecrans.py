@@ -1,7 +1,7 @@
 """8.1 : vraie appli hors écran avec DEUX écrans virtuels (Linux) : le labo sur 2 écrans puis changement de mode ne doit
 détruire aucun panneau (crash.log de Clément 27/11/2026 : « Internal C++ object already deleted » en boucle), et le
 bouton « 🧪 Simuler » lance bien tinySA démo + SDR démo. Sauté sous Windows (pas de plateforme offscreen à 2 écrans)."""
-import os, sys, json, tempfile, importlib.util, traceback
+import os, sys, json, tempfile, importlib.util, traceback, time
 if sys.platform == "win32":
     print("sauté sous Windows\nÉCHECS: 0")
     sys.exit(0)
@@ -120,6 +120,16 @@ check("🧪 Simuler : tinySA démo + SDR démo, surveillance lancée, mode combi
       and e.running() and win.rf_mode == "both", f"sim={win.simulating()} run={win.is_running()} sdr={e.running()} "
       f"mode={win.rf_mode}")
 check("🧪 Simuler : marqué simulé", win.simulated())
+e_ = win.sdr_eng
+wait(1500)
+if e_.audio is not None:
+    e_.side.clear()
+    time.sleep(1.5)                     # l'interface est bloquée 1,5 s (labo, graphes, 2ᵉ écran…)
+    got_ = sum(len(b_) for b_ in list(e_.side)) / (m.LISTEN_RATE * 4.0)
+    check("son du SDR : continue d'arriver à la carte son pendant que l'interface est bloquée (vidéo de Clément)",
+          got_ >= 1.0, f"{got_:.2f} s de son en 1,5 s")
+else:
+    check("son du SDR : fil du son démarré", False, "pas de AudioPump")
 _lv0 = win.ui_level
 win.set_level("expert")
 rxd_ = [d_ for d_ in win.docks if d_.objectName() == "dock_sdr_rx"][0]

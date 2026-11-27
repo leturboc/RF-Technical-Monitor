@@ -92,7 +92,7 @@ class SdrLab(QtCore.QObject):
         self._tmp, self.fx, self._job, self.res_cmp, self.observed = None, None, None, None, None
         self._focus, self._detail, self._sess_win, self._help_box, self.res_real = {}, None, None, None, None
         self._grab, self._st_res, self._md_order, self.res_mod = None, None, [], None
-        self.restore_btns, self.badges = {}, {}
+        self.restore_btns, self.badges, self.src_bars = {}, {}, {}
         self.panels = {}
         for key, build in (("chain", self._tab_chain), ("cmp", self._tab_cmp), ("live", self._tab_live),
                            ("mod", self._tab_mod), ("fault", self._tab_fault)):
@@ -128,6 +128,11 @@ class SdrLab(QtCore.QObject):
         self.panels["chain"].layout().insertLayout(0, top)
         self._plot_setup()
         self._badges_setup()
+        try:
+            self.panels["chain"].layout().insertWidget(1, self._src_bar("chain"))
+            self.panels["live"].findChild(QtWidgets.QSplitter).widget(1).layout().insertWidget(0, self._src_bar("live"))
+        except Exception:  # noqa: BLE001
+            pass
         self._hidden_ui()
         self.tm = QtCore.QTimer(self)
         self.tm.timeout.connect(self._tick)
@@ -391,7 +396,8 @@ class SdrLab(QtCore.QObject):
         self.p_env = _lab_plot("2. Niveau dans le temps", "s", "dBFS")
         self.p_iq = _lab_plot("3. IQ dans le temps (2 ms) : I et Q", "ms", "")
         self.p_const = _lab_plot("4. Constellation (canal)", "I", "Q")
-        self.p_const.setAspectLocked(True)
+        self.p_const.setXRange(-1.8, 1.8, padding=0)     # axes fixes (plus de rapport verrouillé : dans un panneau
+        self.p_const.setYRange(-1.8, 1.8, padding=0)     # large et plat, l'axe I s'étirait à ±15 et le cercle disparaissait)
         self.p_spec = _lab_plot("5. Spectre de l'IQ", "kHz autour de la porteuse", "dBFS")
         self.p_fi = _lab_plot("6. Fréquence instantanée", "ms", "kHz")
         for i, p in enumerate((self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi)):
@@ -400,7 +406,13 @@ class SdrLab(QtCore.QObject):
         self.ch_res = QtWidgets.QLabel(TR("Choisis un son, des compandeurs, une panne, puis ▶ Calculer."))
         self.ch_res.setWordWrap(True)
         self.ch_res.setTextFormat(Qt.TextFormat.RichText)
-        v.addWidget(self.ch_res)
+        self.ch_res.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        sa = QtWidgets.QScrollArea()                     # hauteur FIXE (6 lignes, défile si plus) : les graphes ne
+        sa.setWidgetResizable(True)                      # sautent pas quand le texte change, et ne sont pas écrasés
+        sa.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        sa.setWidget(self.ch_res)
+        sa.setFixedHeight(self.ch_res.fontMetrics().lineSpacing() * 6 + 6)
+        v.addWidget(sa)
         return w
 
     def _fault_help(self):
@@ -445,6 +457,8 @@ class SdrLab(QtCore.QObject):
         if v:
             self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
                               symbolBrush=pg.mkBrush(LAB_COLORS[0]))
+            self.p_const.setXRange(-1.8, 1.8, padding=0)   # I / Q normalisés : le cercle remplit le graphe
+            self.p_const.setYRange(-1.8, 1.8, padding=0)   # (vidéo de Clément : un petit rond sur un axe de ±15)
             self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
         if r["L"] is not None:
             self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
@@ -749,7 +763,98 @@ class SdrLab(QtCore.QObject):
             if e_.worker is not None:
                 e_.worker.lab_tap = bool(on) and e_ is e
 
+    # ---- 8.1 (vidéo de Clément : « on comprend pas grand-chose à quoi est où ») : ce qu'on écoute, toujours affiché
+    def _src_bar(self, key):
+        w = QtWidgets.QFrame()
+        w.setObjectName("src_bar")
+        w.setStyleSheet("QFrame#src_bar { border: 1px solid rgba(100,210,255,0.45); border-radius: 6px; }")
+        h = QtWidgets.QHBoxLayout(w)
+        h.setContentsMargins(8, 3, 8, 3)
+        lbl = QtWidgets.QLabel("")
+        lbl.setTextFormat(Qt.TextFormat.RichText)
+        lbl.setWordWrap(True)
+        lbl.setToolTip(TR("Ce que le labo reçoit en direct : le micro sur lequel est réglé le récepteur A du poste SDR, "
+                          "le son qu'il transporte (SDR démo) et le compandeur de l'écoute."))
+        cb = QtWidgets.QComboBox()
+        cb.setToolTip(TR("Choisir le micro écouté (règle le récepteur A du poste SDR dessus)."))
+        cb.setMinimumContentsLength(18)
+        cb.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        cb.activated.connect(lambda *_, cb=cb: self._src_pick(cb))
+        snd = QtWidgets.QPushButton(TR("🎵 Son de ce micro…"))
+        snd.setToolTip(TR("SDR démo : choisir le son que ce micro transporte (sinus, balayage, voix, WAV…)."))
+        snd.clicked.connect(lambda *_: self._src_sound())
+        h.addWidget(lbl, 1)
+        h.addWidget(cb)
+        h.addWidget(snd)
+        self.src_bars[key] = (w, lbl, cb, snd)
+        return w
+
+    def _src_mics(self, e):
+        return sorted(e.ws() or [], key=lambda w_: float(w_["freq"]))
+
+    def src_refresh(self):
+        e = self._eng()
+        for key, (w, lbl, cb, snd) in self.src_bars.items():
+            if not self._shown(key):
+                continue
+            if e is None or e.a is None:
+                txt = "<b>" + _hesc(TR("🎧 Rien n'est reçu")) + "</b> · " + _hesc(TR(
+                    "aucun poste SDR en marche : « 🧪 Simuler (sans matériel) » en haut du labo, ou ▶ dans le Récepteur."))
+                cb.setEnabled(False)
+                snd.setEnabled(False)
+            else:
+                mic = e.mic_at(e.a)
+                demo = e.kind() == "demo"
+                comp = TR(COMPANDERS.get((e.demod or {}).get("compander") or "none", {}).get("name", ""))
+                if demo and mic is not None:
+                    sp = (self.owner.sdr_cfg.get("demo_snd") or {}).get(str(int(round(mic["freq"] * 1000))))
+                    son = audio_text(sp, TR) if sp else TR("son par défaut du micro")
+                else:
+                    son = None
+                txt = ("<b>" + _hesc(TR("🎧 Tu écoutes")) + "</b> · " + _hesc(
+                    (mic.get("name") or "") if mic else TR("aucun micro de la liste")) + f" · A = {e.a:.4f} MHz"
+                    + " · " + (TR("🧪 SDR démo, son : {}").format(_hesc(son)) if son else
+                               (TR("🧪 SDR démo") if demo else TR("📡 vrai SDR")))
+                    + " · " + TR("écoute : {}").format(_hesc(comp)))
+                ms = self._src_mics(e)
+                sig = tuple((m_.get("name"), m_["freq"]) for m_ in ms)
+                if getattr(cb, "_sig", None) != sig:
+                    cb._sig = sig
+                    cb.blockSignals(True)
+                    cb.clear()
+                    for m_ in ms:
+                        cb.addItem(f"{m_.get('name') or ''} — {m_['freq']:.3f}", float(m_["freq"]))
+                    cb.blockSignals(False)
+                if mic is not None:
+                    i_ = cb.findData(float(mic["freq"]))
+                    if i_ >= 0 and cb.currentIndex() != i_:
+                        cb.blockSignals(True)
+                        cb.setCurrentIndex(i_)
+                        cb.blockSignals(False)
+                cb.setEnabled(bool(ms))
+                snd.setEnabled(demo and mic is not None)
+            if lbl.text() != txt:
+                lbl.setText(txt)
+
+    def _src_pick(self, cb):
+        e = self._eng()
+        f = cb.currentData()
+        if e is None or f is None:
+            return
+        mic = next((m_ for m_ in self._src_mics(e) if abs(float(m_["freq"]) - float(f)) < 1e-6), None)
+        if mic is not None:
+            self.owner.sdr_tune_mic(mic)
+            self._clive_tuned = True                    # ⏯ En direct : on garde le micro choisi à la main
+
+    def _src_sound(self):
+        e = self._eng()
+        mic = e.mic_at(e.a) if e is not None and e.a is not None else None
+        if mic is not None and e.kind() == "demo":
+            self.owner.pick_demo_sound(mic)
+
     def _tick(self):
+        if self._shown("chain") or self._shown("live"):
+            self.src_refresh()
         if self._shown("fault"):
             self._fault_refresh()
         if not self._shown("live"):
@@ -834,6 +939,8 @@ class SdrLab(QtCore.QObject):
         tb.resizeColumnsToContents()
         self.p_leq.setYRange(-24, 12)
         self.p_lph.setYRange(-180, 180)
+        self.p_lvl.setYRange(-70, 5)                     # niveaux : échelle fixe (un son constant donnait un axe de
+        self.p_lin.setYRange(-70, 5)                     # « 13.5190 » qui zoomait sur des millièmes de dB)
 
     def live_listen(self):
         e = self._eng()
@@ -1599,9 +1706,11 @@ class SdrLab(QtCore.QObject):
             tm.setInterval(150)
             tm.timeout.connect(self._clive_step)
         self._clive_grab, self._clive_job, self._clive_tuned = None, False, False
+        for w_ in (self.ch_src, self.ch_mode, self.ch_dev, self.ch_tx, self.ch_rx, self.ch_snr, self.ch_fault, self.ch_go,
+                   self.ch_in, self.ch_out, self.ch_real, self.ch_file):
+            w_.setEnabled(not on)                      # en direct : ces réglages (simulation) ne servent pas
         if not on:
             tm.stop()
-            self.ch_res.setMinimumHeight(0)
             self.ch_res.setText(TR("En direct arrêté : les graphes gardent la dernière image."))
             return False
         if self._eng() is None:
@@ -1696,6 +1805,8 @@ class SdrLab(QtCore.QObject):
         if v:
             self.p_const.plot(v["I"], v["Q"], pen=None, symbol="o", symbolSize=3, symbolPen=None,
                               symbolBrush=pg.mkBrush(LAB_COLORS[0]))
+            self.p_const.setXRange(-1.8, 1.8, padding=0)   # I / Q normalisés : le cercle remplit le graphe
+            self.p_const.setYRange(-1.8, 1.8, padding=0)   # (vidéo de Clément : un petit rond sur un axe de ±15)
             self.p_fi.plot(v["tf"], v["finst"], pen=pg.mkPen(LAB_COLORS[2], width=1))
         if r["L"] is not None:
             self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
@@ -1712,9 +1823,6 @@ class SdrLab(QtCore.QObject):
             f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
         if live:
             self.live_frames = getattr(self, "live_frames", 0) + 1
-            h_ = self.ch_res.sizeHint().height()            # le texte ne rétrécit pas d'une image à l'autre : les
-            if h_ > self.ch_res.minimumHeight():            # graphes au-dessus ne sautent pas
-                self.ch_res.setMinimumHeight(h_)
             return r
         mm = {k: (None if v_ is None or not np.isfinite(v_) else round(float(v_), 3)) for k, v_ in m.items()}
         self.session_save("chain", prov, dict(source=getattr(self, "_real_src", ""), mode=r["mode"], dev=r["dev"]), mm)

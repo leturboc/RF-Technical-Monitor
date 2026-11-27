@@ -2738,3 +2738,22 @@ EXACT.update({                                      # 8.1 : graphes masqués rem
     "Graphe masqué : bouton « ↺ … graphe(s) masqué(s) » en haut du panneau pour le remettre.":
         "Graph hidden: “↺ … hidden graph(s)” button at the top of the panel to bring it back.",
 })
+EXACT.update({                                      # 8.1 : labo, ce qu'on écoute (vidéo de Clément)
+    "🎧 Rien n'est reçu": "🎧 Nothing received",
+    "aucun poste SDR en marche : « 🧪 Simuler (sans matériel) » en haut du labo, ou ▶ dans le Récepteur.":
+        "no SDR station running: “🧪 Simulate (no hardware)” at the top of the lab, or ▶ in the Receiver.",
+    "🎧 Tu écoutes": "🎧 You're listening to",
+    "aucun micro de la liste": "no mic from the list",
+    "Ce que le labo reçoit en direct : le micro sur lequel est réglé le récepteur A du poste SDR, le son qu'il transporte (SDR démo) et le compandeur de l'écoute.":
+        "What the lab receives live: the mic receiver A of the SDR station is tuned to, the audio it carries (demo SDR) and the listening compander.",
+    "Choisir le micro écouté (règle le récepteur A du poste SDR dessus).": "Choose the mic to listen to (tunes receiver A of the SDR station to it).",
+    "SDR démo : choisir le son que ce micro transporte (sinus, balayage, voix, WAV…).":
+        "Demo SDR: choose the audio this mic carries (sine, sweep, voice, WAV…).",
+    "son par défaut du micro": "the mic's default audio",
+    "écoute : {}": "listening: {}",
+    "🎵 Son de ce micro…": "🎵 This mic's audio…",
+    "Son de ce micro…": "This mic's audio…",
+    "📡 vrai SDR": "📡 real SDR",
+    "🧪 SDR démo, son : {}": "🧪 demo SDR, audio: {}",
+})
+SAME_TEMPLATES += [" · A = {} MHz"]

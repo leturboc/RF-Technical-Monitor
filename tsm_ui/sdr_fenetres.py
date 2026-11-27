@@ -2475,9 +2475,10 @@ class SdrFollowMixin:
         for h in holders:
             a = getattr(h, "audio", None) if h is not None else None
             if isinstance(a, AudioPump):
-                q = a.q
+                q, src, side = a.q, a.src, a.side
                 a.close()
                 h.audio = AudioPump(q, sdr_audio_device(self))
+                h.audio.src, h.audio.side = src, side           # le nouveau fil reprend la même source
                 h.audio.start()
 
     def set_meter_style(self, style):

@@ -115,6 +115,18 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     relançait la surveillance sur le vrai tinySA -> absent -> `ProblemDialog.exec()` modal. Vrai défaut : maintenant
     `switch_source(..., restart=False)` = surveillance arrêtée ; test_ecrans remplace `ProblemDialog.exec` (fenêtre
     imprévue = échec, jamais de blocage).
+    2ᵉ vidéo de Clément (27/11, 14:39 : « pas intuitif, on comprend pas à quoi est où ; le son, une sine 1 kHz, est haché ;
+    le rafraîchissement et les courbes font tout buguer ») : son analysé = 1 kHz propre mais 0,8 s de son / 1,2–1,65 s
+    de silence ; le son démodulé, lui, est continu (vérifié). Cause : `SdrEngine._pump` (minuteur de l'INTERFACE)
+    passait le son du fil de calcul vers `AudioPump` -> interface occupée = son en paquets, et `AudioOut.MAX_LAG` (0,6 s)
+    jetait le surplus. Maintenant `AudioPump.src` = file du fil de calcul, lue par le fil du son lui-même (`_move`,
+    minuteur connecté par LAMBDA : une méthode de l'objet QThread serait exécutée dans le fil de l'interface !) ; copie
+    dans `side` pour l'interface (WAV, ⏪, spectre du son, tampon d'alarme). Test : interface bloquée 1,5 s -> le son
+    continue. (Écoute / moniteur / temps réel gardent l'ancien chemin `_aq`.) Labo : bandeau `src_bars` « 🎧 Tu
+    écoutes · micro · A = … MHz · SDR démo, son : … · écoute : compandeur » + liste des micros (`_src_pick` ->
+    `sdr_tune_mic`) + « 🎵 Son de ce micro… » (`pick_demo_sound`) dans Chaîne et En direct ; ⏯ En direct grise les
+    réglages de simulation ; constellation à axes fixes ±1,8 (le rapport verrouillé l'écrasait) ; niveaux du direct en
+    −70…+5 dBFS ; texte des résultats de la chaîne en zone de hauteur fixe (6 lignes) qui défile.
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

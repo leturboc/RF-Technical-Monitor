@@ -1194,12 +1194,26 @@ class AudioPump(QtCore.QThread):
     def __init__(self, q, device=""):
         super().__init__()
         self.q, self.out, self.error, self.device = q, None, "", device
+        self.src, self.side = None, None    # 8.1 (vidéo de Clément, son haché 0,8 s / 1,4 s) : le fil va chercher le son
+        #                                     LUI-MÊME à la source (src = file du fil de calcul) ; une copie part dans
+        #                                     `side` pour l'interface (WAV, ⏪, spectre du son), sans la retarder
+
+    def _move(self):
+        src, side = self.src, self.side
+        if src is not None:
+            while src:
+                b = src.popleft()
+                self.q.append(b)
+                if side is not None:
+                    side.append(b)
+        self.out.feed(self.q)
 
     def run(self):
         self.out = AudioOut(None, self.device)
         self.error = self.out.error
         tm = QtCore.QTimer()
-        tm.timeout.connect(lambda: self.out.feed(self.q))
+        tm.timeout.connect(lambda: self._move())       # lambda : exécuté dans CE fil (une méthode de l'objet QThread,
+        #                                                qui vit dans le fil de l'interface, y serait renvoyée)
         tm.start(5)
         self.exec()
         tm.stop()
