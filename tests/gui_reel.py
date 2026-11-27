@@ -1704,7 +1704,9 @@ _ecomp = "evo"
 _e21.demod = dict(_e21.demod, compander=_ecomp)
 _e21._push()
 win.demo_sound(_pair[0], {"src": "stair"})
-_e21._t_demo = 0.0
+_dk82 = dict(win.sdr_cfg.get("demo_kind") or {})
+win.sdr_cfg["demo_kind"] = dict(_dk82, **{str(int(round(_pair[0]["freq"] * 1000))): "fm"})   # toujours là (le 1er
+_e21._t_demo = 0.0                                                    # micro démo s'éteint 15 s toutes les 2 min)
 wait(1500)
 _lab._live_reset()
 wait(int((m.STAIR_PERIOD * 2 + 1.5) * 1000))
@@ -1712,6 +1714,7 @@ _fit = _lab.live_fit()
 check("8.2 : escalier reçu par le SDR démo : taux de compression de l'émetteur retrouvé",
       _fit.get("ok") and _fit.get("ratio") and 1.6 < _fit["ratio"] < 2.4, str({k_: _fit.get(k_) for k_ in ("ok", "ratio", "why")}))
 win.demo_sound(_pair[0], {"src": "voice"})
+win.sdr_cfg["demo_kind"] = _dk82
 win.open_sdr_lab(4)
 _lab.ft_dur.setValue(6)
 _lab.fault("drop")
