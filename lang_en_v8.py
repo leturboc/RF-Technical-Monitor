@@ -2321,3 +2321,14 @@ EXACT.update({                                      # 8.2 : labo SDR en panneaux
     "🧪 Labo · Modulations": "🧪 Lab · Modulations",
     "🧪 Labo · Pannes simulées": "🧪 Lab · Simulated faults",
 })
+EXACT.update({                                      # 8.2 : affichage Labo
+    "La fenêtre ne montre plus que le labo, ses 5 panneaux en grille (re-clic : retour). Chaque panneau se déplace, se sort en vraie fenêtre ou part sur un autre écran.":
+        "The window shows only the lab, its 5 panels in a grid (click again: back). Each panel can be moved, pulled out as a real window or sent to another screen.",
+    "La fenêtre ne montre plus que le labo, ses 5 panneaux en grille.": "The window shows only the lab, its 5 panels in a grid.",
+    "↩ Quitter l'affichage Labo": "↩ Leave the Lab view",
+    "⛶ Affichage Labo": "⛶ Lab view",
+    "⛶ Affichage Labo (tout l'écran)": "⛶ Lab view (whole screen)",
+    "🧪 Affichage Labo : bouge les panneaux comme tu veux ; « ↩ Quitter l'affichage Labo » (menu du mode ou panneau Chaîne) pour revenir.":
+        "🧪 Lab view: move the panels as you like; “↩ Leave the Lab view” (mode menu or Chain panel) to go back.",
+    "🧪 Labo sur l'autre écran · le reste ici": "🧪 Lab on the other screen · the rest here",
+})

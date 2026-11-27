@@ -13729,6 +13729,7 @@ SCREEN_PRESETS = (
     ("sdr_tiny", "📡 SDR ici · 📟 tinySA sur l'autre écran"),
     ("list_out", "📋 Mes fréquences et journal sur l'autre écran"),
     ("all_here", "🧩 Tout dans la fenêtre principale"),
+    ("lab_out", "🧪 Labo sur l'autre écran · le reste ici"),
 )
 SCREEN_HIDE = -1
 
@@ -13748,8 +13749,8 @@ def screen_preset(key, main=0, other=1, sdr=True):
             v = main
         if g == "sdr" and not sdr and key not in ("tiny_sdr", "sdr_tiny"):
             v = SCREEN_HIDE
-        if g == "lab":
-            v = SCREEN_HIDE                                  # 8.2 : le labo ne s'ouvre que si on le demande
+        if g == "lab":                                       # 8.2 : le labo ne s'ouvre que si on le demande
+            v = other if key == "lab_out" else SCREEN_HIDE
         if n == "dock_alarmes" and key == "all_here":
             v = SCREEN_HIDE                                  # comme la disposition de base (bandeau au besoin)
         plan[n] = v

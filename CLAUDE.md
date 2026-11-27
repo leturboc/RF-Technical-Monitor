@@ -1812,6 +1812,11 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
     (`_make_lab`, cachés ; `_layout_base` ne les montre pas), dans `self.docks`, 🪟 Fenêtres, `panel_docks` (vraies
     fenêtres) et `SCREEN_PANELS` (groupe « lab », caché par tous les préréglages d'écrans ; `ScreenWindow.arrange` les
     met en onglets). `open_sdr_lab(n° | clé)` (1re fois : onglets en bas), `close_sdr_lab`, `all_lab_docks`.
+    **⛶ Affichage Labo** (Clément : « un vrai affichage labo ») : `lab_view(on)` (`lab_view_on`) cache les autres
+    panneaux et pose la grille `lab_grid(mw, docks)` (chaîne | compandeurs / en direct | modulations + pannes) ; quitter =
+    `set_rf_mode(rf_mode)` (changer de mode quitte aussi) ; bouton `view_btn` du panneau Chaîne + menu du mode ; préréglage
+    d'écrans `lab_out` (labo seul sur l'autre écran -> `ScreenWindow.arrange` en grille). Colonnes réglages | graphes en
+    QSplitter (Compandeurs, En direct).
     Parties (menu du mode + sous-menu SDR) : ① chaîne complète (6 vues,
     pannes), ② comparateur (transfert mesuré + formule en pointillés, saut, EQ, phase, tableau, fiche, 🔊, 📄 rapport dans
     `<journaux>/rapports/compander_lab_*.html`, `TSM_NO_BROWSER` pour les tests), ③ en direct (son reçu de A dans chaque

@@ -32549,6 +32549,12 @@ def _v8_set_rf_mode(self, mode, layout=None):
     """📟 tinySA / 📡 SDR / 📟+📡 Combiné : quels panneaux de base, et le SDR lancé ou arrêté. Les panneaux prêtés à
     d'autres écrans reviennent d'abord (8.0.2)."""
     self.screens_off(relayout=False)
+    if self.lab_view_on:                                 # 8.2 : changer de mode = quitter l'affichage Labo
+        self.lab_view_on = False
+        for d in self.lab_docks.values():
+            if d.objectName() not in self.panel_wins:
+                d.hide()
+        self._sdrlab.view_btn.setText(TR("⛶ Affichage Labo"))
     mode = rf_mode_norm(mode)
     self.rf_mode = mode
     self.sdr_cfg["rf_mode"] = mode
@@ -32600,6 +32606,9 @@ def _v8_build_mode_menu(self):
     m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
     m.addAction(TR("🎵 Générateur audio (20 Hz – 20 kHz)…")).triggered.connect(lambda *_: self.open_audio_gen())
     m.addAction(TR("🧪 Labo SDR (RF Compander Lab)…")).triggered.connect(lambda *_: self.open_sdr_lab())
+    a_ = m.addAction(TR("↩ Quitter l'affichage Labo") if self.lab_view_on else TR("⛶ Affichage Labo (tout l'écran)"))
+    a_.setToolTip(TR("La fenêtre ne montre plus que le labo, ses 5 panneaux en grille."))
+    a_.triggered.connect(lambda *_: self.lab_view(not self.lab_view_on))
     m.addSeparator()
     m.addAction(TR("🔌 Premier branchement SDR (assistant)…")).triggered.connect(lambda *_: self.open_sdr_setup())
     m.addAction(TR("📏 Caler les niveaux du SDR sur le tinySA…")).triggered.connect(lambda *_: self.open_sdr_calib())
@@ -34584,6 +34593,9 @@ class ScreenWindow(QtWidgets.QMainWindow):
         if tabs:
             it[tabs[0]].raise_()
         labs = [n for n in it if n.startswith("dock_lab")]      # 8.2 : labo SDR, en onglets
+        if labs and len(labs) == len(it):                        # écran du labo seul : vrai affichage Labo (grille)
+            lab_grid(self, {k: it[n] for k, _t, n in LAB_DOCKS if n in it})
+            labs = []
         if labs:
             self.addDockWidget(B, it[labs[0]])
             for n in labs[1:]:
@@ -35097,7 +35109,7 @@ def _lab_plot(title, xl, yl):
     p.showGrid(x=True, y=True, alpha=0.2)
     sdr_light_axes(p)
     p.addLegend(offset=(6, 6), labelTextSize="8pt")
-    p.setMinimumHeight(150)
+    p.setMinimumHeight(110)
     return p
 
 
@@ -35174,8 +35186,13 @@ class SdrLab(QtCore.QObject):
         man = QtWidgets.QPushButton(TR("❓ Manuel"))
         man.setToolTip(TR("Le chapitre du manuel sur le labo SDR."))
         man.clicked.connect(lambda *_: owner.open_manual("sdr-labo"))
+        self.view_btn = QtWidgets.QPushButton(TR("⛶ Affichage Labo"))
+        self.view_btn.setToolTip(TR("La fenêtre ne montre plus que le labo, ses 5 panneaux en grille (re-clic : retour). "
+                                    "Chaque panneau se déplace, se sort en vraie fenêtre ou part sur un autre écran."))
+        self.view_btn.clicked.connect(lambda *_: owner.lab_view(not owner.lab_view_on))
         top = QtWidgets.QHBoxLayout()
         top.addWidget(intro, 1)
+        top.addWidget(self.view_btn)
         top.addWidget(man)
         self.panels["chain"].layout().insertLayout(0, top)
         self.tm = QtCore.QTimer(self)
@@ -35378,8 +35395,17 @@ class SdrLab(QtCore.QObject):
         self.cm_card.setTextFormat(Qt.TextFormat.RichText)
         self.cm_card.setMaximumWidth(330)
         left.addWidget(self.cm_card)
-        h.addLayout(left)
-        right = QtWidgets.QVBoxLayout()
+        sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)      # poignée : agrandir les graphes si le panneau est étroit
+        lw_ = QtWidgets.QWidget()
+        lw_.setLayout(left)
+        sp.addWidget(lw_)
+        rw_ = QtWidgets.QWidget()
+        sp.addWidget(rw_)
+        sp.setStretchFactor(1, 1)
+        sp.setChildrenCollapsible(True)
+        h.addWidget(sp)
+        right = QtWidgets.QVBoxLayout(rw_)
+        right.setContentsMargins(0, 0, 0, 0)
         grid = QtWidgets.QGridLayout()
         self.p_tf = _lab_plot("Courbe de transfert du récepteur (mesurée ; pointillés = formule)", "entrée dBFS", "sortie dBFS")
         self.p_tr = _lab_plot("Saut de niveau −30 → −10 → −30 dBFS (émetteur + récepteur)", "s", "dBFS")
@@ -35403,7 +35429,6 @@ class SdrLab(QtCore.QObject):
         self.cm_msg = QtWidgets.QLabel(TR("Coche les modèles à comparer, puis ▶ Comparer."))
         self.cm_msg.setWordWrap(True)
         right.addWidget(self.cm_msg)
-        h.addLayout(right, 1)
         self._card()
         return w
 
@@ -35546,8 +35571,14 @@ class SdrLab(QtCore.QObject):
         lw = QtWidgets.QWidget()
         lw.setLayout(left)
         lw.setMaximumWidth(340)
-        h.addWidget(lw)
-        right = QtWidgets.QVBoxLayout()
+        sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        sp.addWidget(lw)
+        rw_ = QtWidgets.QWidget()
+        sp.addWidget(rw_)
+        sp.setStretchFactor(1, 1)
+        h.addWidget(sp)
+        right = QtWidgets.QVBoxLayout(rw_)
+        right.setContentsMargins(0, 0, 0, 0)
         grid = QtWidgets.QGridLayout()
         self.p_lvl = _lab_plot("Niveau de sortie de chaque modèle (20 s)", "s", "dBFS")
         self.p_leq = _lab_plot("EQ en direct : sortie / son reçu", "Hz", "dB")
@@ -35565,7 +35596,6 @@ class SdrLab(QtCore.QObject):
         self.lv_tbl.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.lv_tbl.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         right.addWidget(self.lv_tbl)
-        h.addLayout(right, 1)
         self._live_reset()
         self._live_tap = None
         return w
@@ -35866,6 +35896,62 @@ def _v8_open_sdr_lab(self, tab=0):
     return self._sdrlab
 
 
+def lab_grid(mw, docks):
+    """8.2 : vrai affichage Labo : les 5 panneaux en grille dans la fenêtre mw (QMainWindow) — chaîne | compandeurs en
+    haut, en direct | modulations + pannes (onglets) en bas. docks = {clé: QDockWidget}."""
+    B = Qt.DockWidgetArea.BottomDockWidgetArea
+    ks = [k for k in LAB_KEYS if k in docks]
+    for k in ks:
+        mw.removeDockWidget(docks[k])
+        docks[k].setFloating(False)
+    if not ks:
+        return
+    mw.addDockWidget(B, docks[ks[0]])
+    pos = {"chain": None, "cmp": ("chain", Qt.Orientation.Horizontal), "live": ("chain", Qt.Orientation.Vertical),
+           "mod": ("cmp", Qt.Orientation.Vertical), "fault": ("mod", None)}
+    placed = {ks[0]}
+    for k in ks[1:]:
+        ref, ori = pos.get(k) or (None, None)
+        if ref not in placed:
+            ref, ori = ks[0], Qt.Orientation.Horizontal
+        if ori is None:
+            mw.tabifyDockWidget(docks[ref], docks[k])
+        else:
+            mw.splitDockWidget(docks[ref], docks[k], ori)
+        placed.add(k)
+    for k in ks:
+        docks[k].show()
+    if "mod" in docks:
+        docks["mod"].raise_()
+
+
+def _v8_lab_view(self, on=True):
+    """8.2 (Clément : « avec un vrai affichage labo ? ») : la fenêtre principale ne montre plus que le labo, en grille ;
+    les panneaux sortis en vraie fenêtre restent où ils sont. off = retour à la disposition du mode."""
+    docks = {k: d for k, d in self.lab_docks.items() if d.objectName() not in self.panel_wins}
+    if on:
+        for d in self.docks:
+            if d not in self.lab_docks.values() and d.objectName() not in self.panel_wins:
+                d.hide()
+        self.dock_wall.hide()
+        lab_grid(self, docks)
+        self.lab_view_on = True
+        QtCore.QTimer.singleShot(0, self._fit_screen)
+        self.set_status(TR("🧪 Affichage Labo : bouge les panneaux comme tu veux ; « ↩ Quitter l'affichage Labo » "
+                           "(menu du mode ou panneau Chaîne) pour revenir."))
+    else:
+        self.lab_view_on = False
+        for d in docks.values():
+            d.hide()
+        self._sdrlab.stop()
+        self.set_rf_mode(self.rf_mode)
+    try:
+        self._sdrlab.view_btn.setText(TR("↩ Quitter l'affichage Labo") if on else TR("⛶ Affichage Labo"))
+    except Exception:  # noqa: BLE001
+        pass
+    return on
+
+
 def _v8_close_sdr_lab(self):
     for d in self.lab_docks.values():
         self.panel_window(d, False)
@@ -35913,6 +35999,8 @@ def _v8_sdr_compat_table(self):
 
 MainWindow.open_sdr_lab = _v8_open_sdr_lab
 MainWindow.close_sdr_lab = _v8_close_sdr_lab
+MainWindow.lab_view = _v8_lab_view
+MainWindow.lab_view_on = False
 MainWindow._make_lab = _v8_make_lab
 MainWindow.all_lab_docks = _v8_all_lab_docks
 MainWindow.open_sdr_compat = _v8_sdr_compat_table
