@@ -1786,6 +1786,49 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
   marche / arrêt (`on`, `pilot_on`) évalués À L'ÉCHANTILLON (`_mask`, avant : au début du bloc). `audio_source_stats` :
   un WAV remplacé sous le même nom est re-mesuré (clé = longueur + somme d'un échantillon sur 997). Commentaire de
   `demo_sdr_plan` (7 signaux, pas 6). Tests test_sdr (+ 9). Pas fait : rien d'autre de confirmé dans cet audit.
+- **8.2 (Clément, 27/11/2026, propositions de son collègue « faire tout ce qui n'existe pas, et le labo SDR en démo », puis
+  « RF Compander Lab, comparer les compandeurs des marques en live avec phase, EQ et tout »)** — branche refonte-8.1 :
+  - **Simulé toujours marqué** : PURE `SIM_MARK`, `AlarmBook.sim` (alarmes « 🧪 … », info « simulé (démo) », `sim`),
+    `notify_text` « (SIMULÉ, démo) » ; `MainWindow.simulated()` (démo tinySA ou poste SDR « demo »), synchronisé dans
+    `_alarm_tick` ; journal « 🧪 SIMULÉ (démo) · … », titre de la fenêtre et de la page web marqués.
+  - **Moteur de mesure commun (PURE)** : `CompChain` (récepteur : désaccentuation du modèle sinon `deemph_us`, couleur,
+    expanseur ; **ChannelDemod l'utilise** pour couleur + expanseur : le labo mesure exactement ce que l'écoute fait),
+    `CompTx` (compresseur + pré-accentuation = inverse exact), `measure_transfer` (escalier de sinus MESURÉ),
+    `measure_transient` (saut −30 → −10 → −30 : montée / descente à 1 dB, dépassement), `xfer_spectrum` (Welch : |H|,
+    phase sans le retard pur, cohérence), `measure_freq` (bruit rose), `comp_compare` (multi-modèles, mêmes signaux),
+    `comp_report_html` (conditions, modèles / versions / fiches, indicateurs, différences, observation réelle, limites),
+    `COMPANDER_CARDS` / `compander_card` (fabricant, modèle, techno, doc, implémentation exact | approx | generic | auth,
+    fidélité, limites, `CMP_MODEL_VER`), `PROVENANCE` (🧪 simulé / 📡 observé / 🧮 calculé), `comp_curve` (formule).
+    Signal de test **« escalier »** (`AUDIO_SRCS` « stair », `stair_signal` : 0,6 s de silence repère + 9 marches 1 kHz
+    −40 → 0 dBFS) et `stair_fit` (pente -> taux de compression d'un VRAI émetteur ; il faut ~2 périodes = 20 s).
+    `lab_chain` (son -> compresseur -> FM IQ + bruit + panne -> ChannelDemod -> sortie ; mesures, vues, `other` = autre
+    signal dans le canal), `lab_findings`, `LAB_FAULTS` / `LAB_FAULT_HELP`, `lab_modulations` (6 familles, `LAB_EXPECT`,
+    AM interpolé ; la détection n'a pas de classe AM).
+  - **`ChannelDemod.pre_raw`** (son démodulé brut, avant désaccentuation / expanseur) -> `RealtimeWorker.a_pre` (rempli
+    seulement si `lab_tap`).
+  - **`SdrLabDialog`** (`open_sdr_lab(tab)`, `self._sdrlab` ; menu du mode + sous-menu SDR) : ① chaîne complète (6 vues,
+    pannes), ② comparateur (transfert mesuré + formule en pointillés, saut, EQ, phase, tableau, fiche, 🔊, 📄 rapport dans
+    `<journaux>/rapports/compander_lab_*.html`, `TSM_NO_BROWSER` pour les tests), ③ en direct (son reçu de A dans chaque
+    modèle coché en parallèle : niveau, EQ / phase masquées si cohérence < 0,6 (`_coh_mask`), 🎧 A/B = `e.demod`
+    compander, 📏 mesurer l'émetteur réel = `stair_fit`, provenance obs / sim, `self.observed` repris dans le rapport),
+    ④ modulations, ⑤ pannes dans le SDR démo en direct. `_log_hz` (axe log lisible).
+  - **Pannes simulées en direct** : PURE `DEMO_FAULTS` / `DEMO_FAULT_HELP` ; `SDR_DEMO_STATE["fault"]`,
+    `sdr_demo_fault(kind, secs)` / `sdr_demo_fault_now` ; `DemoIQ.read` : drop (le SDR produit n/0,8, on en livre n),
+    stall (3 s sans rien, `_stall`), sat, unplug (b"" -> arrêt), jam, pilot, noise ; journal « PANNE SIMULÉE ».
+  - **Qualité du flux** (vrai SDR aussi) : PURE `StreamStats` (reçus / attendus au débit sur 10 s, coupures > 0,5 s sur
+    1 min), `stream_quality` ; `RealtimeWorker.sstat` -> trame `q` ; `SdrEngine.quality()` (+ `recon`) ; ligne **Flux** du
+    Récepteur (`flux`, orange / rouge). **Reconnexion automatique** du poste (`_stopped` -> `_retry_t`, `reconnect_delay`
+    3 / 10 / 30 s ; pas pour « introuvable » ; `stop()` l'annule).
+  - **Spectre SDR** : `pers_chk` Rémanence (`density_raster` des 30 derniers, 4 / s), `ref_btn` 📌 Référence (spectre ou
+    pics gardés en pointillés, `ref_lbl` écart à A + plus gros écart) ; Plus / Expert seulement.
+  - **📋 SDR pris en charge** : PURE `sdr_compat_rows` ; `open_sdr_compat` (menu SDR, bouton « 📋 Tous les SDR » des
+    Réglages SDR). « Essayé en vrai » = non pour tous.
+  - Manuel : chapitre `sdr-labo` (docs/src/sdr_*.html, PARTS de make_manual). Tests : test_sdr (+31), gui_reel (labo,
+    escalier reçu par le SDR démo -> taux 2:1 retrouvé, pannes, reconnexion, rémanence, référence, tableau), gui_en (labo +
+    rapport en anglais).
+  - **Rien n'est vérifié sur du vrai matériel** : modèles des marques = approximations (fiches le disent) ; mesure de
+    l'émetteur par escalier jamais faite avec un vrai pack ; qualité du flux jamais vue avec un vrai SDR qui perd des
+    échantillons ; seuils (cohérence 0,6, coupure 0,5 s, « autre signal » +25 dB) = choix de Claude.
 - **Deuxième tinySA** : fait (USB + réseau, bascule auto). Testé avec un faux tinySA ; **jamais avec deux vrais
   tinySA** ni un vrai réseau de festival. À vérifier : délai `expect_scan` avec RBW étroit, Wi-Fi.
 - Alertes ntfy / Telegram testées avec un faux serveur local : **pas d'envoi réel** vérifié vers ntfy.sh / Telegram.

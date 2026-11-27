@@ -4787,6 +4787,9 @@ ALARM_PRIO = {2: "Critique", 1: "Normale", 0: "Info"}
 ALARM_ORDER = (2, 1, 0)
 
 
+SIM_MARK = "🧪 "              # 8.1 : préfixe de tout ce qui vient d'une source simulée (démo tinySA / SDR démo)
+
+
 class AlarmBook:
     """Registre des alarmes : une alarme par (type, fréquence), qui reste affichée jusqu'à ce que la cause
     disparaisse ; l'acquittement coupe le son sans l'effacer."""
@@ -4796,6 +4799,7 @@ class AlarmBook:
         self.done = []            # alarmes terminées (les plus récentes en dernier)
         self.seq = 0
         self.repeat_s = float(repeat_s)
+        self.sim = False          # 8.1 : source SIMULÉE (démo) en ce moment -> les nouvelles alarmes sont marquées
 
     def raise_(self, key, kind, name, freq, prio, now, level=None, layer="", info=""):
         """Déclenche l'alarme. -> True si elle est NOUVELLE (c'est là qu'on fait du bruit)."""
@@ -4807,9 +4811,11 @@ class AlarmBook:
             a["prio"] = prio
             return False
         self.seq += 1
+        if self.sim:              # 8.1 : jamais une alarme de démo prise pour une vraie (liste, mode Show, web, alertes)
+            name, info = SIM_MARK + name, ("simulé (démo) · " + info) if info else "simulé (démo)"
         self.active[key] = dict(id=self.seq, key=key, kind=kind, name=name, freq=freq, prio=int(prio), t0=now,
                                 t_last=now, t_end=None, level=level, layer=layer, info=info, acked=False,
-                                last_sound=now)
+                                last_sound=now, sim=bool(self.sim))
         return True
 
     def clear(self, key, now):
@@ -5707,7 +5713,7 @@ def alarm_explain(a, now, level_txt="", thr_txt=""):
 def notify_text(a, site=""):
     """Alarme (dict AlarmBook) -> (titre, corps) courts, lisibles sur un écran verrouillé.
     7.56 : + une ligne « quoi faire » (conseil d'ALARM_HELP)."""
-    title = f"⚠ {a['kind']} — {a['name']}"
+    title = f"⚠ {a['kind']} — {a['name']}" + (" (SIMULÉ, démo)" if a.get("sim") else "")
     bits = []
     if a.get("freq"):
         bits.append(f"{a['freq']:.3f} MHz")
@@ -6825,17 +6831,8 @@ class ChannelDemod:
         self.level = -120.0
         self.pilot, self._pbuf = None, []             # tonalité ultrasonore vue dans le FM (pilote, données)
         self.health, self._hbuf = None, []            # étape 8 : déviation crête / dérive (FM)
-        cpq = COMPANDERS.get(compander) or {}
-        self.eq = None
-        if cpq.get("air") or cpq.get("lp"):           # couleur du mode : aigus relevés et / ou haut coupé
-            h = np.zeros(63, dtype=np.float32)
-            h[31] = 1.0
-            g = 10.0 ** (cpq.get("air", 0.0) / 20.0) - 1.0
-            if g:
-                h = h * (1.0 + g) - g * lowpass_taps(6000.0, LISTEN_RATE, 63)
-            if cpq.get("lp"):
-                h = np.convolve(h, lowpass_taps(cpq["lp"], LISTEN_RATE, 63)).astype(np.float32)
-            self.eq = [FirDecim(h, 1), FirDecim(h, 1)]
+        self.chain = CompChain(compander, 0.0)      # 8.2 : couleur + expanseur (même code que le Compander Lab)
+        self.pre = self.pre_raw = None
         if mode == "wfm_st":             # stéréo : pilote 19 kHz, sous-porteuse 38 kHz (G − D)
             k = np.arange(129) - 64
             self.fp = FirDecim(2.0 * lowpass_taps(800.0, self.fs1, 129) * np.cos(2 * np.pi * 19000.0 * k / self.fs1), 1)
@@ -6957,7 +6954,9 @@ class ChannelDemod:
                     self.dbuf, self.dskip = self.dbuf[k_:], self.dskip - k_
                 n_ = len(p)
                 da, self.dbuf = self.dbuf[:n_], self.dbuf[n_:]
-                mono = self._deemph(self.f2(da).astype(np.float32), 0)
+                m0 = self.f2(da).astype(np.float32)
+                self.pre_raw = m0
+                mono = self._deemph(m0, 0)
                 if self.pil > 0.02:                         # pilote présent : stéréo
                     # pilote A·sin θ, sous-porteuse sin 2θ = 2 sin θ cos θ (norme : passages à zéro communs) ;
                     # cos θ par dérivée centrée
@@ -6969,7 +6968,9 @@ class ChannelDemod:
                 nn = min(len(mono), len(diff))
                 a = np.stack([mono[:nn] + diff[:nn], mono[:nn] - diff[:nn]], axis=1)
             else:
-                a = self._deemph(self.f2(d).astype(np.float32), 0)
+                a0 = self.f2(d).astype(np.float32)
+                self.pre_raw = a0                         # 8.2 : son démodulé brut (avant désaccentuation et expanseur)
+                a = self._deemph(a0, 0)
             t0 = self._tp("audio", t0)
             self._watch_pilot(d)
             self._watch_health(d)
@@ -6989,28 +6990,9 @@ class ChannelDemod:
             else:
                 zz = self._nco(zz, -self.sh, LISTEN_RATE, "ph3")    # retour : audio = partie réelle
             a = self._agc(np.real(zz).astype(np.float32))
-        if self.eq is not None and len(a):
-            if a.ndim == 2:
-                l_, r_ = self.eq[0](a[:, 0]), self.eq[1](a[:, 1])
-                nn = min(len(l_), len(r_))
-                a = np.stack([l_[:nn], r_[:nn]], axis=1).astype(np.float32)
-            else:
-                a = self.eq[0](a).astype(np.float32)
-        cp = COMPANDERS.get(self.compander)
-        if cp is not None and cp["ratio"] > 1.0 and len(a):
-            if cp["hf"] and getattr(self, "_hf", None) is None:
-                self._hf = FirDecim(lowpass_taps(cp["hf"], LISTEN_RATE, 31), 1)
-                self._hf_buf = np.zeros(15, dtype=np.float32)
-            side = None
-            if cp["hf"]:                                  # détecteur sans les aigus extrêmes (ENR)
-                mono_ = a.mean(axis=1) if a.ndim == 2 else a
-                sb_ = np.concatenate([self._hf_buf, mono_.astype(np.float32)])
-                side = self._hf(sb_)[:len(mono_)]
-                self._hf_buf = np.zeros(0, dtype=np.float32)
-                if len(side) < len(mono_):
-                    side = np.concatenate([side, np.zeros(len(mono_) - len(side), dtype=np.float32)])
-            a = expand2(a, self, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"],
-                        knee=cp["knee"], low=cp["low"], side=side)
+        if len(a):
+            self.pre = a                                  # 8.2 : son AVANT expanseur (Compander Lab en direct)
+            a = self.chain.color_expand(a)
             t0 = self._tp("compander", t0)
         if self.squelch is not None and self.level < self.squelch:
             a = np.zeros_like(a)
@@ -9498,7 +9480,7 @@ TX_DURATIONS = (1, 5, 15, 30)                # minutes : l'émission s'arrête t
 AUDIO_SRCS = (("voice", "Voix « un, deux »"), ("melody", "Mélodie"), ("beep", "Bips"),
               ("tone", "Générateur : une fréquence (20 Hz – 20 kHz)"), ("sweep", "Générateur : balayage (sweep)"),
               ("white", "Bruit blanc"), ("pink", "Bruit rose"), ("app", "Un son de l'appli"), ("wav", "Mon fichier WAV"),
-              ("silence", "Silence (porteuse seule)"))
+              ("silence", "Silence (porteuse seule)"), ("stair", "Signal de test : escalier de niveaux (mesurer un émetteur)"))
 APP_SOUNDS = (("alarm2", "Alarme critique"), ("alarm1", "Alarme normale"), ("alarm0", "Alarme info"),
               ("ok", "Appel des micros ✓"))
 
@@ -9689,6 +9671,8 @@ def demo_audio(kind, t, k=0):
         kind = spec["src"]
     if kind == "silence":
         return np.zeros(len(t), dtype=np.float32)
+    if kind == "stair":                           # 8.2 : signal de test du Compander Lab
+        return stair_signal(t)
     if kind == "tone":
         f = spec["f"] if spec else 1000.0
         return (0.8 * np.sin(2 * np.pi * f * t)).astype(np.float32)
@@ -14075,6 +14059,758 @@ def scales_help_html(tr=lambda s: s):
                    f"<td>{DBU_V * 10 ** (dbu / 20):.3f}</td></tr>".replace(".", ","))
     out.append("</table>")
     return "".join(out)
+
+
+
+# ----- 8.2 : 🧪 Labo SDR (démo) — la chaîne d'un micro HF, pas à pas, et des pannes simulées -----
+LAB_RATE = 480000                 # débit IQ du labo (2 × le 1er étage de l'écoute : calcul léger)
+LAB_MODES = (("wfm", "FM large (micro HF)"), ("nfm", "FM étroite (talkie)"))
+LAB_FAULTS = (("none", "Aucune"), ("drop", "Blocs perdus (trous dans l'IQ)"), ("sat", "Saturation (entrée trop forte)"),
+              ("jam", "Brouilleur juste à côté"), ("pilot", "Pilote qui disparaît"), ("noise", "Signal faible (bruit)"),
+              ("drift", "Émetteur qui dérive"))
+LAB_FAULT_HELP = {
+    "none": ("Chaîne propre.", "Rien à signaler : niveau de sortie ≈ niveau d'entrée si les compandeurs sont les mêmes."),
+    "drop": ("Le SDR perd des paquets d'échantillons (USB trop chargé, PC qui ne suit pas).",
+             "Clics / trous dans le son ; en direct, l'appli compte les « échantillons perdus » du flux."),
+    "sat": ("L'entrée du SDR est trop forte : le convertisseur écrête.",
+            "Spectre qui s'élargit (raies parasites), constellation carrée ; en direct : indicateur « saturation »."),
+    "jam": ("Un autre émetteur à 70 kHz entre dans le canal.",
+            "Sifflements / craquements, fréquence instantanée qui saute ; le spectre montre la 2ᵉ porteuse."),
+    "pilot": ("Le pilote (tonalité ultrasonore) s'arrête à mi-chemin.",
+              "Le pilote n'est plus vu ; sur une fréquence suivie, l'appli lève l'alarme PILOTE."),
+    "noise": ("Le signal arrive faible (8 dB au-dessus du bruit).",
+              "Souffle, crépitements ; le compandeur du récepteur « pompe » le bruit."),
+    "drift": ("L'émetteur dérive de 0 à 15 kHz pendant l'essai.",
+              "Fréquence instantanée qui monte ; la santé du micro affiche la dérive."),
+}
+LAB_SECONDS = 1.6
+
+
+def _lab_env(x, rate=48000, win=0.01):
+    """Enveloppe efficace (dBFS d'un sinus : RMS × √2) par fenêtres de `win` s -> (t s, dB)."""
+    x = np.asarray(x, dtype=np.float64)
+    n = max(1, int(rate * win))
+    m = len(x) // n
+    if m == 0:
+        return np.zeros(0), np.zeros(0)
+    r = np.sqrt(np.mean(x[:m * n].reshape(m, n) ** 2, axis=1)) * math.sqrt(2.0)
+    return (np.arange(m) + 0.5) * win, 20.0 * np.log10(r + 1e-9)
+
+
+def _lab_db(x):
+    x = np.asarray(x, dtype=np.float64)
+    return 20.0 * math.log10(math.sqrt(float(np.mean(x * x))) * math.sqrt(2.0) + 1e-9) if len(x) else -math.inf
+
+
+def lab_align(src, out, rate=48000, lo_ms=-20.0, hi_ms=80.0):
+    """Retard de `out` sur `src` (ms) par intercorrélation (FFT), cherché entre lo_ms et hi_ms. -> (retard ms, corr)."""
+    a = np.asarray(src, dtype=np.float64)
+    b = np.asarray(out, dtype=np.float64)
+    n = min(len(a), len(b))
+    if n < 64:
+        return 0.0, 0.0
+    a, b = a[:n] - a[:n].mean(), b[:n] - b[:n].mean()
+    N = 1 << int(math.ceil(math.log2(2 * n)))
+    c = np.fft.irfft(np.conj(np.fft.rfft(a, N)) * np.fft.rfft(b, N), N)
+    lags = np.arange(N)
+    lags[lags >= N // 2] -= N
+    lo, hi = int(lo_ms * rate / 1000.0), int(hi_ms * rate / 1000.0)
+    m = (lags >= lo) & (lags <= hi)
+    i = int(np.argmax(np.abs(c[m])))
+    den = float(np.sqrt(np.sum(a * a) * np.sum(b * b))) or 1.0
+    return float(lags[m][i]) * 1000.0 / rate, float(c[m][i] / den)
+
+
+def _lab_comp(audio, k, n, comp):
+    t = np.arange(n) / 48000.0
+    src = demo_audio(audio, t, k)
+    cp = COMPANDERS.get(comp or "")
+    if cp is None or cp["ratio"] <= 1.0:
+        return src, src
+    return src, compress2(src, {}, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"])
+
+
+def lab_chain(audio="voice", k=0, mode="wfm", dev=None, tx_comp="", rx_comp="", snr=40.0, seconds=LAB_SECONDS,
+              fault="none", rate=LAB_RATE, f_off=60000.0, seed=3):
+    """Toute la chaîne d'un micro HF, calculée d'un coup (pur numpy) : son de départ -> compresseur de l'émetteur ->
+    modulation FM (IQ, + bruit, + panne) -> démodulation du récepteur -> expanseur -> son de sortie. Mesures : niveaux,
+    écart, erreur après alignement, retard, « pompage » (écart d'enveloppe), pilote, santé. -> dict."""
+    seconds = max(0.4, float(seconds))
+    md = LISTEN_MODES.get(mode) or LISTEN_MODES["wfm"]
+    dev = float(dev or (30000.0 if mode == "wfm" else 2500.0))
+    n_a = int(seconds * 48000)
+    src, cmp_ = _lab_comp(audio, k, n_a, tx_comp)
+    if fault == "noise":
+        snr = min(float(snr), 8.0)
+    cut = md["cut"]
+    amp = 0.3
+    noise = math.sqrt(amp * amp / 10.0 ** (float(snr) / 10.0) * rate / (2.0 * cut))   # C/N dans le canal (± cut)
+    sig = dict(key="lab", kind="fm" if mode == "wfm" else "nfm", f=100.0 + f_off / 1e6, lvl=0.0, dev=dev,
+               audio=audio, k=k, comp=tx_comp or "", pilot=DEMO_PILOT if mode == "wfm" else 0.0)
+    if fault == "pilot":
+        sig["pilot_on"] = (10.0 * seconds, seconds / 2.0, 0.0)
+    sigs = [sig]
+    if fault == "jam":
+        sigs.append(dict(key="jam", kind="nfm", f=100.0 + (f_off + 70000.0) / 1e6, lvl=-4.0, dev=3000.0,
+                         audio="beep", k=3))
+    gen = SigGen(rate, 100e6, sigs, noise=noise, seed=seed)
+    n_iq = int(seconds * rate)
+    iq = gen.block(n_iq)
+    notes = []
+    if fault == "drift":
+        df = np.linspace(0.0, 15000.0, n_iq)
+        iq = (iq * np.exp(2j * np.pi * np.cumsum(df) / rate)).astype(np.complex64)
+    elif fault == "sat":
+        g = 6.0
+        iq = (np.clip(iq.real * g, -1, 1) + 1j * np.clip(iq.imag * g, -1, 1)).astype(np.complex64)
+    ovf = float(np.mean(np.abs(iq.real) > 0.98))
+    if fault == "drop":
+        blk = int(0.05 * rate)
+        keep = np.ones(n_iq, dtype=bool)
+        for c in (0.55, 0.62, 0.8):
+            i0 = int(c * n_iq)
+            keep[i0:i0 + blk // 2] = False
+        lost = 1.0 - keep.mean()
+        iq = iq[keep]
+        notes.append(f"{lost * 100:.1f} %")
+    dem = ChannelDemod(rate, f_off, mode, 0.0, None, rx_comp or None, dev)
+    outs, step = [], int(0.05 * rate)
+    pil_seen = []
+    for i in range(0, len(iq), step):
+        a, _lv = dem.process(iq[i:i + step])
+        if len(a):
+            outs.append(np.asarray(a[:, 0] if np.ndim(a) == 2 else a, dtype=np.float32))
+        pil_seen.append(dem.pilot is not None)
+    out = np.concatenate(outs) if outs else np.zeros(0, dtype=np.float32)
+    lat, corr = lab_align(src, out)
+    sh = int(round(lat * 48.0))
+    o = out[sh:] if sh >= 0 else np.concatenate([np.zeros(-sh, dtype=np.float32), out])
+    n = min(len(src), len(o))
+    s0 = int(0.3 * 48000)                                  # 0,3 s pour que les compandeurs se posent
+    S, O = src[s0:n].astype(np.float64), o[s0:n].astype(np.float64)
+    g = float(np.dot(S, O) / (np.dot(S, S) or 1.0))
+    err = 10.0 * math.log10(float(np.sum((O - g * S) ** 2)) / (float(np.sum((g * S) ** 2)) or 1e-12) + 1e-12) \
+        if len(S) else 0.0
+    te, es = _lab_env(src[:n])
+    _, ec = _lab_env(cmp_[:n])
+    _, eo = _lab_env(o[:n])
+    m = (es > -45.0) & (te > 0.3)
+    dif = eo[m] - es[m]
+    pump = float(np.std(dif)) if m.sum() > 4 else 0.0
+    avg, mx = rt_frames(iq, 4096)
+    Fk = (np.arange(4096) - 2048) * (rate / 4096) / 1000.0
+    bb = getattr(dem, "last_bb", None)
+    views = bb_views(bb, dem.fs1) if bb is not None else None
+    ki = int(0.002 * rate)
+    Fc = Fk - f_off / 1000.0                                # kHz autour de la fréquence du canal
+    other = None
+    if avg is not None:
+        flo = float(np.percentile(avg, 20))
+        side_ = (np.abs(Fc) > dev / 1000.0 + 20.0) & (np.abs(Fc) <= cut / 1000.0)
+        if side_.any() and float(np.max(avg[side_])) > flo + 25.0:
+            other = float(Fc[side_][int(np.argmax(avg[side_]))])
+    return dict(other=other,
+        rate=rate, t=np.arange(n) / 48000.0, src=src[:n], comp=cmp_[:n], out=o[:n], te=te, env_src=es, env_comp=ec,
+        env_out=eo, iq_t=np.arange(ki) / rate * 1000.0, I=iq.real[:ki].copy(), Q=iq.imag[:ki].copy(),
+        F=Fc, L=avg, Lmax=mx, views=views, fault=fault, mode=mode, dev=dev, tx_comp=tx_comp or "",
+        rx_comp=rx_comp or "", ovf=ovf, lost=notes[0] if notes else None,
+        pilot_start=bool(any(pil_seen[: max(1, len(pil_seen) // 2)])), pilot_end=bool(pil_seen and pil_seen[-1]),
+        health=dem.health, level=dem.level,
+        m=dict(src=_lab_db(S), comp=_lab_db(cmp_[s0:n]), out=_lab_db(O), diff=_lab_db(O) - _lab_db(S),
+               pk_src=20 * math.log10(float(np.max(np.abs(S))) + 1e-9) if len(S) else -math.inf,
+               pk_out=20 * math.log10(float(np.max(np.abs(O))) + 1e-9) if len(O) else -math.inf,
+               err=err, gain=20 * math.log10(abs(g) + 1e-9), lat=lat, corr=corr, pump=pump))
+
+
+def lab_findings(r, tr=None):
+    """Ce que le labo voit dans un résultat de lab_chain -> [(texte, ton ok|warn|bad)]."""
+    tr = tr or (lambda x: x)
+    m = r["m"]
+    out = []
+    d = m["diff"]
+    if abs(d) <= 1.5:
+        out.append((tr("Niveau : la sortie retrouve l'entrée ({} dB)").format(f"{d:+.1f}"), "ok"))
+    else:
+        out.append((tr("Niveau : la sortie s'écarte de l'entrée ({} dB)").format(f"{d:+.1f}"), "warn" if abs(d) < 6 else "bad"))
+    if r["tx_comp"] != r["rx_comp"] and (COMPANDERS.get(r["tx_comp"] or "none", {}).get("ratio", 1) > 1
+                                         or COMPANDERS.get(r["rx_comp"] or "none", {}).get("ratio", 1) > 1):
+        out.append((tr("Compandeurs différents à l'émission et à la réception : la dynamique est faussée"), "bad"))
+    if m["pump"] > 3.0:
+        out.append((tr("Pompage : le niveau de sortie suit mal l'entrée (écart ± {} dB)").format(f"{m['pump']:.1f}"),
+                    "warn" if m["pump"] < 6 else "bad"))
+    out.append((tr("Fidélité : erreur résiduelle {} dB (plus c'est bas, mieux c'est)").format(f"{m['err']:.0f}"),
+                "ok" if m["err"] < -20 else "warn" if m["err"] < -8 else "bad"))
+    out.append((tr("Retard de la chaîne : {} ms").format(f"{m['lat']:.1f}"), "ok"))
+    if r.get("other") is not None:
+        out.append((tr("Autre signal dans le canal, à {} kHz de la porteuse").format(f"{r['other']:+.0f}"), "bad"))
+    if r["ovf"] > 0.001:
+        out.append((tr("Saturation : {} % des échantillons à pleine échelle").format(f"{100 * r['ovf']:.1f}"), "bad"))
+    if r.get("lost"):
+        out.append((tr("Échantillons perdus : {}").format(r["lost"]), "bad"))
+    if r["mode"] == "wfm":
+        if r["pilot_start"] and not r["pilot_end"]:
+            out.append((tr("Pilote vu au début, perdu à la fin : alarme PILOTE en direct"), "bad"))
+        elif r["pilot_start"]:
+            out.append((tr("Pilote vu tout le long"), "ok"))
+    h = r.get("health")
+    if h and abs(h.get("drift", 0.0)) > 3.0:
+        out.append((tr("Dérive mesurée : {} kHz").format(f"{h['drift']:+.1f}"), "warn" if abs(h["drift"]) < 8 else "bad"))
+    return out
+
+
+def comp_curve(comp, side="rx", lo=-60.0, hi=0.0, n=61):
+    """Courbe statique d'un compandeur (niveau stable) : entrée dBFS -> sortie dBFS, côté émetteur (« tx » :
+    compression) ou récepteur (« rx » : expansion, genou compris), ou « chain » (tx puis rx). Même formule que
+    compress2 / expand2 (réf. 0,25 efficace), sans les butées de temps. -> (x, y) ; None si pas de compandeur."""
+    cp = COMPANDERS.get(comp or "")
+    if cp is None or cp["ratio"] <= 1.0:
+        return None
+    x = np.linspace(lo, hi, n)
+    ref = 20.0 * math.log10(0.25 * math.sqrt(2.0))      # référence en dBFS d'un sinus
+
+    def tx(v):
+        g = np.clip((v - ref) * (1.0 / cp["ratio"] - 1.0), 20 * math.log10(0.03), 20 * math.log10(30.0))
+        return v + g
+
+    def rx(v):
+        r = np.full_like(v, cp["ratio"])
+        if cp.get("knee") is not None and cp.get("low"):
+            r = np.where(v - ref < cp["knee"], cp["ratio"] + cp["low"], r)
+        g = np.clip((v - ref) * (r - 1.0), 20 * math.log10(0.001), 20 * math.log10(4.0))
+        return v + g
+    y = tx(x) if side == "tx" else rx(x) if side == "rx" else rx(tx(x))
+    return x, y
+
+
+LAB_EXPECT = dict(wfm="fm_ana", nfm="nfm", cw="cw", am=None, num="num", tnt="tnt")   # am : pas de classe AM
+
+
+def lab_modulations(audio="melody", k=0):
+    """Comparateur : même son, modulations différentes -> [dict(key, name, F MHz, L dB, cls (classify_signal), span)].
+    Pour voir à quoi ressemble chaque famille sur un spectre et ce que l'appli en devine."""
+    rows = []
+    specs = (("wfm", "Micro HF (FM ±30 kHz)", dict(kind="fm", dev=30000.0, pilot=DEMO_PILOT), 2400000, 0.5),
+             ("nfm", "Talkie (FM ±5 kHz)", dict(kind="nfm", dev=5000.0), 2400000, 0.06),
+             ("cw", "Porteuse pure", dict(kind="cw"), 2400000, 0.06),
+             ("am", "AM (aviation)", None, 2400000, 0.06),
+             ("num", "Micro numérique (bloc 200 kHz)", dict(kind="noise", bw=0.2), 2400000, 0.5),
+             ("tnt", "TNT (bloc 7,6 MHz)", dict(kind="noise", bw=7.6), 12000000, 6.0))
+    for key, name, sg, rate, span in specs:
+        n = int(rate * 0.12)
+        if sg is None:
+            t = np.arange(n) / rate
+            ta = np.arange(int(0.12 * 48000) + 2) / 48000.0
+            a = np.interp(t, ta, demo_audio(audio, ta, k))       # interpolé (répéter créait des images à ±48 kHz)
+            noise = 0.01 / math.sqrt(2.0) * (np.random.default_rng(1).standard_normal(n)
+                                             + 1j * np.random.default_rng(2).standard_normal(n))
+            iq = (0.3 * (1.0 + 0.6 * a) * np.exp(2j * np.pi * 0.0 * t) + noise).astype(np.complex64)
+        else:
+            s = dict(sg, key=key, f=100.0, lvl=0.0, audio=audio, k=k)
+            iq = SigGen(rate, 100e6, [s], noise=0.01, seed=5).block(n)
+        nfft = 16384 if rate > 3e6 else 8192
+        avg, _mx = rt_frames(iq, nfft)
+        F = rt_freqs(100e6, rate, nfft)
+        msk = np.abs(F - 100.0) <= span
+        cls = classify_signal(F[msk], avg[msk], 100.0, (DEMO_PILOT, 30.0) if key == "wfm" else None, span=span)
+        rows.append(dict(key=key, name=name, F=F[msk], L=avg[msk], cls=cls, span=span, expect=LAB_EXPECT.get(key),
+                         ok=(cls["kind"] == LAB_EXPECT.get(key)) if LAB_EXPECT.get(key) else None))
+    return rows
+
+
+# Pannes à injecter dans le SDR démo en DIRECT (DemoIQ) : ce que l'appli doit détecter
+DEMO_FAULTS = (("drop", "Blocs perdus (USB qui sature)"), ("stall", "Flux figé 3 s"), ("sat", "Saturation"),
+               ("unplug", "SDR débranché"), ("jam", "Brouilleur sur un micro"), ("pilot", "Pilotes coupés"),
+               ("noise", "Bruit fort (antenne loin)"))
+DEMO_FAULT_HELP = {
+    "drop": "Le SDR démo perd 20 % de ses échantillons : la ligne « Flux » du poste passe en orange (échantillons perdus).",
+    "stall": "Le flux s'arrête 3 s : « Flux » signale une coupure, le moniteur grise ses mesures.",
+    "sat": "L'entrée écrête : « Flux » signale la saturation, le spectre se remplit de raies.",
+    "unplug": "Le SDR ne répond plus : le poste s'arrête (« débranché ou occupé ? ») puis repart quand la panne cesse.",
+    "jam": "Un brouilleur se pose sur le 1er micro : alarme CONFLIT / son qui grésille.",
+    "pilot": "Tous les pilotes s'arrêtent : alarme PILOTE sur les micros dont le pilote est appris.",
+    "noise": "Le bruit monte de 20 dB : marges qui fondent, micros « faibles ».",
+}
+
+
+def stream_quality(q, ovf=0.0, tr=None):
+    """8.2 : qualité du flux IQ d'un SDR (réel ou démo). q = dict(lost %, gaps (coupures > 0,5 s depuis 1 min), short
+    (lectures incomplètes), rate_ok). -> (texte, ton ok|warn|bad)."""
+    tr = tr or (lambda x: x)
+    q = q or {}
+    parts, tone = [], "ok"
+    lost = q.get("lost")
+    if lost is not None and lost >= 0.5:
+        parts.append(tr("{} % d'échantillons perdus").format(f"{lost:.1f}"))
+        tone = "bad" if lost >= 5 else "warn"
+    if q.get("gaps"):
+        parts.append(tr("{} coupure(s) du flux").format(q["gaps"]))
+        tone = "bad"
+    if ovf and ovf > 0.001:
+        parts.append(tr("saturation {} %").format(f"{100 * ovf:.1f}"))
+        tone = "bad" if ovf > 0.01 else ("warn" if tone == "ok" else tone)
+    if not parts:
+        return tr("✔ Flux propre (aucune perte, aucune saturation)"), "ok"
+    return "⚠ " + " · ".join(parts), tone
+
+
+class StreamStats:
+    """8.2 : compte, sur une minute glissante, ce que le SDR a vraiment livré (échantillons reçus / attendus au débit
+    réglé, coupures > `gap_s`) : une perte d'échantillons (USB, PC) ne passe plus inaperçue."""
+
+    def __init__(self, rate, gap_s=0.5, win=10.0):
+        self.rate, self.gap_s, self.win = float(rate), float(gap_s), float(win)
+        self.t0 = self.tl = None
+        self.got = deque()
+        self.gaps = deque()
+
+    def feed(self, t, n):
+        if self.t0 is None:
+            self.t0 = self.tl = t
+            self.got.append((t, n))
+            return
+        if t - self.tl > self.gap_s:
+            self.gaps.append(t)
+        self.tl = t
+        self.got.append((t, n))
+        while self.got and t - self.got[0][0] > self.win:
+            self.got.popleft()
+        while self.gaps and t - self.gaps[0] > 60.0:
+            self.gaps.popleft()
+
+    def view(self):
+        if len(self.got) < 3:
+            return dict(lost=None, gaps=len(self.gaps))
+        t0, t1 = self.got[0][0], self.got[-1][0]
+        if t1 - t0 < 1.0:
+            return dict(lost=None, gaps=len(self.gaps))
+        got = sum(n for _t, n in list(self.got)[1:])
+        exp = self.rate * (t1 - t0)
+        return dict(lost=max(0.0, 100.0 * (1.0 - got / exp)) if exp > 0 else None, gaps=len(self.gaps))
+
+
+def sdr_compat_rows():
+    """8.2 : tableau de compatibilité des SDR connus -> [dict(name, kind, range, bits, rate, span, sweep, iq, tx, dbm,
+    tested, src)] (tx = émission prise en charge ; tested = essayé avec le vrai matériel)."""
+    rows = []
+    for m in SDR_MODELS:
+        c = device_caps(m["kind"], m)
+        r = max(m.get("rates") or [0])
+        rows.append(dict(name=m["name"], kind=m["kind"], range=f"{m['fmin']:g} – {m['fmax']:g} MHz",
+                         bits=m.get("bits"), rate=r / 1e6 if r else None, span=c.get("span"), sweep=c["sweep"],
+                         iq=c["iq"], tx=m["kind"] == "hackrf", dbm=bool(m.get("cal")), tested=False,
+                         src=m.get("src", "")))
+    return rows
+
+
+
+# ----- 8.2 : RF Compander Lab — un moteur de mesure COMMUN (simulé ou observé), des fiches de modèles, la provenance -----
+PROVENANCE = {"sim": "🧪 simulé", "obs": "📡 observé (SDR réel)", "calc": "🧮 calculé (formule)"}
+CMP_IMPL = {"exact": "Formule publique (exacte)", "approx": "Approché d'après une documentation publique",
+            "generic": "Modèle générique (pas d'une marque)", "auth": "Traitement propriétaire autorisé"}
+CMP_MODEL_VER = "2026.11-1"     # version des modèles : change dès qu'un réglage d'un compandeur bouge
+_CARD_APPROX = ("Courbe réelle non publiée : modèle 2:1 réglé au jugé d'après la description du fabricant. "
+                "Non validé par une mesure sur le vrai matériel.")
+COMPANDER_CARDS = {
+    "none": dict(maker="—", model="Aucun traitement", tech="Ni compandeur ni désaccentuation", impl="exact",
+                 doc="Définition (sortie = entrée)", limits="Sert de référence."),
+    "none_d50": dict(maker="—", model="Désaccentuation 50 µs", tech="Filtre du 1er ordre (Europe)", impl="exact",
+                     doc="Norme de radiodiffusion FM (constante de temps publique)", limits="Pas de compandeur."),
+    "none_d75": dict(maker="—", model="Désaccentuation 75 µs", tech="Filtre du 1er ordre (Amériques)", impl="exact",
+                     doc="Norme de radiodiffusion FM (constante de temps publique)", limits="Pas de compandeur."),
+    "x2": dict(maker="—", model="Expanseur 2:1 générique", tech="2:1, détecteur efficace", impl="generic",
+               doc="Principe général d'un compandeur", limits="Ne correspond à aucune marque."),
+    "sa572": dict(maker="NXP / Philips (circuit)", model="SA572 / NE570", tech="2:1, redressement moyen",
+                  impl="approx", doc="Fiche technique publique du circuit",
+                  limits="Temps de montée / descente dépendent des condensateurs du fabricant du micro."),
+    "rms": dict(maker="—", model="Compandeur RMS 2:1 (type dbx)", tech="2:1, détecteur efficace", impl="generic",
+                doc="Principe public du détecteur efficace", limits="Pas le circuit dbx (propriétaire)."),
+    "wisy_enc": dict(maker="Wisycom", model="ENC", tech="Voix, pré-accentuation réduite", impl="approx",
+                     doc="Manuel Wisycom (description des modes)", limits=_CARD_APPROX),
+    "wisy_enr": dict(maker="Wisycom", model="ENR", tech="Réduction de bruit, genou, détecteur sans les aigus",
+                     impl="approx", doc="Manuel Wisycom (description des modes)", limits=_CARD_APPROX),
+    "wisy_ens": dict(maker="Wisycom", model="ENS", tech="Live, aigus relevés", impl="approx",
+                     doc="Manuel Wisycom (description des modes)", limits=_CARD_APPROX),
+    "wisy_enc12": dict(maker="Wisycom", model="ENC 1.2", tech="Dynamique réduite (1,5:1)", impl="approx",
+                       doc="Manuel Wisycom (description des modes)", limits=_CARD_APPROX),
+    "wisy_enr12": dict(maker="Wisycom", model="ENR 1.2", tech="Dynamique réduite, genou", impl="approx",
+                       doc="Manuel Wisycom (description des modes)", limits=_CARD_APPROX),
+    "sen": dict(maker="Sennheiser", model="HiDyn plus (3000 / 5000)", tech="2:1", impl="approx",
+                doc="Fiches produit (nom du procédé seulement)", limits=_CARD_APPROX),
+    "evo": dict(maker="Sennheiser", model="HDX (evolution G2 / G3 / G4)", tech="2:1, redressement moyen", impl="approx",
+                doc="Fiches produit (nom du procédé seulement)", limits=_CARD_APPROX),
+    "shure": dict(maker="Shure", model="Compandeur analogique", tech="2:1, redressement moyen", impl="approx",
+                  doc="Fiches produit (nom du procédé seulement)", limits=_CARD_APPROX),
+    "lex": dict(maker="Lectrosonics", model="Mode SR / LEX", tech="2:1, rapide", impl="approx",
+                doc="Fiches produit (nom du procédé seulement)", limits=_CARD_APPROX),
+}
+
+
+def compander_card(key):
+    """Fiche normalisée d'un compandeur : fabricant, modèle, technologie, documentation, implémentation, fidélité,
+    limites, version, réglages du modèle. Jamais de mélange : un modèle générique, une approximation et un traitement
+    propriétaire sont des niveaux d'implémentation différents."""
+    cp = COMPANDERS.get(key)
+    if cp is None:
+        return None
+    c = dict(COMPANDER_CARDS.get(key) or dict(maker="—", model=cp["name"], tech="", impl="generic", doc="", limits=""))
+    c.update(key=key, name=cp["name"], ver=CMP_MODEL_VER,
+             fidelity="Formule exacte" if c["impl"] == "exact" else "Non validé par une mesure sur le vrai matériel",
+             params=dict(ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], det=cp["det"],
+                         deemph=cp["deemph"], knee=cp["knee"], low=cp["low"], hf=cp["hf"], air=cp["air"], lp=cp["lp"]))
+    return c
+
+
+def _deemph_taps(us, rate=48000):
+    a = math.exp(-1.0 / (rate * us * 1e-6))
+    return ((1.0 - a) * a ** np.arange(64)).astype(np.float32)
+
+
+class CompChain:
+    """Chaîne audio d'un RÉCEPTEUR pour un modèle (8.2, interface commune) : désaccentuation (celle du modèle, sinon
+    `deemph_us`), couleur (aigus / passe-bas), expanseur. Même calcul que ChannelDemod (qui l'utilise) : le labo mesure
+    exactement ce que l'écoute fait. En flux : traiter d'un tenant ou par morceaux donne le même son."""
+
+    def __init__(self, key, deemph_us=None, rate=48000):
+        self.key, self.rate = key, rate
+        cp = COMPANDERS.get(key) or {}
+        self.cp = cp
+        d = cp.get("deemph")
+        us = d if d is not None else deemph_us
+        self.de = _deemph_taps(us, rate) if us else None
+        self.de_tail = {0: np.zeros(63, dtype=np.float32), 1: np.zeros(63, dtype=np.float32)}
+        self.eq = None
+        if cp.get("air") or cp.get("lp"):
+            h = np.zeros(63, dtype=np.float32)
+            h[31] = 1.0
+            g = 10.0 ** (cp.get("air", 0.0) / 20.0) - 1.0
+            if g:
+                h = h * (1.0 + g) - g * lowpass_taps(6000.0, rate, 63)
+            if cp.get("lp"):
+                h = np.convolve(h, lowpass_taps(cp["lp"], rate, 63)).astype(np.float32)
+            self.eq = [FirDecim(h, 1), FirDecim(h, 1)]
+        self.st = {"_cps": {"env": 0.05}}
+        self._hf = FirDecim(lowpass_taps(cp["hf"], rate, 31), 1) if cp.get("hf") else None
+
+    def deemph(self, a, ch=0):
+        if self.de is None or not len(a):
+            return a
+        t = self.de_tail[ch]
+        x = np.concatenate([t, a])
+        c = np.convolve(x, self.de)[63:63 + len(a)]
+        self.de_tail[ch] = x[-63:]
+        return c.astype(np.float32)
+
+    def color_expand(self, a):
+        """Couleur puis expanseur (ce que ChannelDemod fait après sa désaccentuation)."""
+        a = np.asarray(a, dtype=np.float32)
+        if self.eq is not None and len(a):
+            if a.ndim == 2:
+                l_, r_ = self.eq[0](a[:, 0]), self.eq[1](a[:, 1])
+                nn = min(len(l_), len(r_))
+                a = np.stack([l_[:nn], r_[:nn]], axis=1).astype(np.float32)
+            else:
+                a = self.eq[0](a).astype(np.float32)
+        cp = self.cp
+        if cp and cp["ratio"] > 1.0 and len(a):
+            side = None
+            if self._hf is not None:
+                mono_ = a.mean(axis=1) if a.ndim == 2 else a
+                side = self._hf(mono_.astype(np.float32))[:len(mono_)]
+                if len(side) < len(mono_):
+                    side = np.concatenate([side, np.zeros(len(mono_) - len(side), dtype=np.float32)])
+            a = expand2(a, self.st, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"],
+                        knee=cp["knee"], low=cp["low"], side=side)
+        return a
+
+    def __call__(self, a):
+        return self.color_expand(self.deemph(np.asarray(a, dtype=np.float32)))
+
+
+class CompTx:
+    """Chaîne audio d'un ÉMETTEUR pour un modèle : compresseur puis pré-accentuation (l'inverse exact de la
+    désaccentuation du récepteur, si le modèle en a une)."""
+
+    def __init__(self, key, deemph_us=None, rate=48000):
+        cp = COMPANDERS.get(key) or {}
+        self.cp = cp
+        d = cp.get("deemph")
+        us = d if d is not None else deemph_us
+        self.a = math.exp(-1.0 / (rate * us * 1e-6)) if us else None
+        self.prev = 0.0
+        self.st = {}
+
+    def __call__(self, x):
+        x = np.asarray(x, dtype=np.float32)
+        cp = self.cp
+        if cp and cp["ratio"] > 1.0 and len(x):
+            x = compress2(x, self.st, ratio=cp["ratio"], attack=cp["attack"], release=cp["release"], detector=cp["det"])
+        if self.a is not None and len(x):
+            y = np.concatenate([[self.prev], x.astype(np.float64)])
+            self.prev = float(x[-1])
+            x = ((y[1:] - self.a * y[:-1]) / (1.0 - self.a)).astype(np.float32)
+        return x
+
+
+def _run_chunks(proc, x, n=1200):
+    out = [proc(x[i:i + n]) for i in range(0, len(x), n)]
+    return np.concatenate(out) if out else np.zeros(0, dtype=np.float32)
+
+
+def _sine(db, n, f=1000.0, rate=48000, t0=0):
+    return (10.0 ** (db / 20.0) * np.sin(2 * np.pi * f * (t0 + np.arange(n)) / rate)).astype(np.float32)
+
+
+def measure_transfer(make, lo=-60.0, hi=0.0, step=5.0, dwell=0.4, rate=48000):
+    """Courbe de transfert MESURÉE (pas la formule) : un escalier de sinus 1 kHz traverse la chaîne `make()` d'un seul
+    tenant ; niveau de sortie mesuré sur la fin de chaque marche (une fois l'enveloppe posée). -> (entrée dB, sortie dB)."""
+    lv = np.arange(lo, hi + 1e-9, step)
+    n = int(dwell * rate)
+    x = np.concatenate([_sine(v, n, t0=i * n) for i, v in enumerate(lv)])
+    y = _run_chunks(make(), x)
+    tail = int(0.15 * rate)
+    out = [_lab_db(y[(i + 1) * n - tail:(i + 1) * n]) for i in range(len(lv))]
+    return lv, np.array(out)
+
+
+def measure_transient(make, lo=-30.0, hi=-10.0, rate=48000, seg=1.0):
+    """Saut de niveau (lo -> hi -> lo, sinus 1 kHz) : enveloppe de sortie (2 ms), dépassement (dB au-dessus du niveau
+    posé juste après la montée), temps de montée et de descente (à 1 dB près du niveau posé). -> dict."""
+    n = int(seg * rate)
+    x = np.concatenate([_sine(lo, n), _sine(hi, n, t0=n), _sine(lo, n, t0=2 * n)])
+    y = _run_chunks(make(), x)
+    t, e = _lab_env(y, rate, 0.002)
+    tin, ein = _lab_env(x, rate, 0.002)
+
+    def settle(i0, i1):
+        steady = float(np.median(e[i1 - int(0.2 / 0.002):i1]))
+        seg_ = e[i0:i1]
+        far = np.nonzero(np.abs(seg_ - steady) > 1.0)[0]
+        ts = (far[-1] + 1) * 0.002 if len(far) else 0.0
+        return steady, ts, float(np.max(seg_) - steady), float(np.min(seg_) - steady)
+    k = int(seg / 0.002)
+    s_up, t_up, over, _ = settle(k, 2 * k)
+    s_dn, t_dn, _, under = settle(2 * k, 3 * k)
+    return dict(t=t, env=e, env_in=ein, up_ms=1000.0 * t_up, down_ms=1000.0 * t_dn, over_db=over, under_db=under,
+                step_in=hi - lo, step_out=s_up - s_dn)
+
+
+def xfer_spectrum(x, y, rate=48000, nfft=4096):
+    """Fonction de transfert de x vers y par spectres croisés moyennés (Welch) : |H| dB et phase (degrés, retard pur
+    retiré), sur 50 Hz – 20 kHz. Le même calcul sert au labo (simulé) et au direct (observé). -> dict(f, mag, phase,
+    delay_ms, coh)."""
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    n = min(len(x), len(y))
+    if n < nfft:
+        return None
+    w = np.hanning(nfft)
+    hop = nfft // 2
+    Sxx = Syy = 0.0
+    Sxy = 0.0
+    for i in range(0, n - nfft + 1, hop):
+        X = np.fft.rfft(x[i:i + nfft] * w)
+        Y = np.fft.rfft(y[i:i + nfft] * w)
+        Sxx = Sxx + np.abs(X) ** 2
+        Syy = Syy + np.abs(Y) ** 2
+        Sxy = Sxy + Y * np.conj(X)
+    f = np.fft.rfftfreq(nfft, 1.0 / rate)
+    H = Sxy / (Sxx + 1e-20)
+    coh = np.abs(Sxy) ** 2 / (Sxx * Syy + 1e-30)
+    m = (f >= 50.0) & (f <= 20000.0)
+    ph = np.unwrap(np.angle(H[m]))
+    good = coh[m] > 0.5
+    delay = 0.0
+    if good.sum() > 8:
+        sl = np.polyfit(2 * np.pi * f[m][good], ph[good], 1)[0]
+        delay = -sl
+        ph = ph + 2 * np.pi * f[m] * delay
+    ph = (ph + math.pi) % (2 * math.pi) - math.pi
+    return dict(f=f[m], mag=20.0 * np.log10(np.abs(H[m]) + 1e-12), phase=np.degrees(ph), delay_ms=1000.0 * delay,
+                coh=coh[m])
+
+
+def measure_freq(make, level=-20.0, seconds=3.0, rate=48000):
+    """Réponse en fréquence ET en phase d'une chaîne (bruit rose à `level` dBFS, enveloppe stable : le gain du
+    compandeur se pose). -> xfer_spectrum (+ 1 s d'attente pour que l'enveloppe se pose)."""
+    n = int(seconds * rate)
+    x = demo_audio("pink", np.arange(n) / rate)
+    x = (x * 10.0 ** ((level - _lab_db(x)) / 20.0)).astype(np.float32)
+    y = _run_chunks(make(), x)
+    s0 = rate
+    return xfer_spectrum(x[s0:], y[s0:], rate)
+
+
+def comp_compare(keys, tx_key="", audio="voice", deemph_us=50.0, seconds=4.0, k=0):
+    """8.2 : comparateur multi-modèles. Pour chaque modèle de récepteur : courbe de transfert mesurée (récepteur seul,
+    et chaîne émetteur -> récepteur), saut de niveau, réponse en fréquence et en phase de la chaîne, et passage de la
+    même source (niveau, erreur, retard, pompage). Mêmes signaux, même moteur de mesure pour tous. -> dict."""
+    n = int(seconds * 48000)
+    src = demo_audio(audio, np.arange(n) / 48000.0, k)
+    out = dict(meta=dict(tx=tx_key or "", audio=audio, deemph=deemph_us, seconds=seconds, ver=CMP_MODEL_VER,
+                         prov="sim"), rows=[])
+    for key in keys:
+        if key not in COMPANDERS:
+            continue
+        rx_only = lambda key=key: CompChain(key, deemph_us)                       # noqa: E731
+        chain = lambda key=key: (lambda tx, rx: (lambda a: rx(tx(a))))(CompTx(tx_key, deemph_us),
+                                                                       CompChain(key, deemph_us))   # noqa: E731
+        xi, yo = measure_transfer(rx_only)
+        _, yc = measure_transfer(chain)
+        tr_ = measure_transient(chain)
+        fq = measure_freq(chain)
+        y = _run_chunks(chain(), src)
+        lat, corr = lab_align(src, y)
+        sh = int(round(lat * 48.0))
+        o = y[sh:] if sh >= 0 else np.concatenate([np.zeros(-sh, dtype=np.float32), y])
+        m_ = min(len(src), len(o))
+        s0 = int(0.5 * 48000)
+        S, O = src[s0:m_].astype(np.float64), o[s0:m_].astype(np.float64)
+        g = float(np.dot(S, O) / (np.dot(S, S) or 1.0))
+        err = 10.0 * math.log10(float(np.sum((O - g * S) ** 2)) / (float(np.sum((g * S) ** 2)) or 1e-12) + 1e-12)
+        te, es = _lab_env(src[:m_])
+        _, eo = _lab_env(o[:m_])
+        mm = (es > -45.0) & (te > 0.5)
+        pump = float(np.std(eo[mm] - es[mm])) if mm.sum() > 4 else 0.0
+        sl = np.polyfit(xi[xi >= -40], yo[xi >= -40], 1)[0] if len(xi) > 3 else 1.0
+        out["rows"].append(dict(key=key, card=compander_card(key), xin=xi, rx=yo, chain=yc, slope=float(sl),
+                                transient=tr_, freq=fq, out=o[:m_], te=te, env_out=eo,
+                                m=dict(diff=_lab_db(O) - _lab_db(S), err=err, lat=lat, corr=corr, pump=pump,
+                                       up=tr_["up_ms"], down=tr_["down_ms"], over=tr_["over_db"],
+                                       step=tr_["step_out"])))
+    out["src"], out["env_src"] = src, _lab_env(src)[1]
+    return out
+
+
+# Signal de test « escalier » (à mettre dans l'entrée audio d'un VRAI émetteur) : 0,6 s de silence (repère), puis
+# 9 marches de 1 kHz de −40 à 0 dBFS, 1 s chacune. Reçu au SDR AVANT l'expanseur, il donne la compression de
+# l'émetteur : pente = 1 / taux.
+STAIR_LEVELS = tuple(range(-40, 1, 5))
+STAIR_STEP_S, STAIR_GAP_S = 1.0, 0.6
+STAIR_PERIOD = STAIR_GAP_S + STAIR_STEP_S * len(STAIR_LEVELS)
+
+
+def stair_signal(t):
+    t = np.asarray(t, dtype=np.float64)
+    c = t % STAIR_PERIOD - STAIR_GAP_S
+    i = np.clip(np.floor(c / STAIR_STEP_S).astype(np.int64), 0, len(STAIR_LEVELS) - 1)
+    a = 10.0 ** (np.asarray(STAIR_LEVELS, dtype=np.float64)[i] / 20.0)
+    return np.where(c >= 0, a * np.sin(2 * np.pi * 1000.0 * t), 0.0).astype(np.float32)
+
+
+def stair_fit(x, rate=48000):
+    """Analyse un escalier reçu (son démodulé AVANT l'expanseur, au moins une période complète) : cherche le silence
+    repère, mesure chaque marche (milieu), et ajuste sortie = pente × entrée + décalage. -> dict(ok, levels_in,
+    levels_out, slope, ratio (taux de compression = 1 / pente), r2, why)."""
+    x = np.asarray(x, dtype=np.float32)
+    t, e = _lab_env(x, rate, 0.02)
+    if len(e) < int(STAIR_PERIOD / 0.02) + 10:
+        return dict(ok=False, why="Pas assez de son : il faut au moins une période complète de l'escalier "
+                                  f"({STAIR_PERIOD:.1f} s), mieux deux.")
+    top = float(np.percentile(e, 95))
+    quiet = e < top - 40.0
+    k_gap = int(0.4 / 0.02)
+    ends, run = [], 0
+    for i, q in enumerate(quiet):               # fin de chaque silence d'au moins 0,4 s = début d'un escalier
+        if q:
+            run += 1
+        else:
+            if run >= k_gap:
+                ends.append(i)
+            run = 0
+    for j in ends:
+        if j + int(STAIR_STEP_S * len(STAIR_LEVELS) / 0.02) > len(e):
+            continue
+        lv = []
+        for k in range(len(STAIR_LEVELS)):
+            a0 = j + int((k * STAIR_STEP_S + 0.3) / 0.02)
+            a1 = j + int((k * STAIR_STEP_S + 0.8) / 0.02)
+            lv.append(float(np.median(e[a0:a1])))
+        xi = np.asarray(STAIR_LEVELS, dtype=float)
+        yo = np.asarray(lv)
+        if np.any(np.diff(yo) <= 0):
+            continue
+        p = np.polyfit(xi, yo, 1)
+        res = yo - np.polyval(p, xi)
+        r2 = 1.0 - float(np.sum(res ** 2)) / (float(np.sum((yo - yo.mean()) ** 2)) or 1e-12)
+        sl = float(p[0])
+        return dict(ok=True, levels_in=list(xi), levels_out=lv, slope=sl, ratio=1.0 / sl if sl > 0.05 else None,
+                    offset=float(p[1]), r2=r2, why="")
+    if ends and all(j + int(STAIR_STEP_S * len(STAIR_LEVELS) / 0.02) > len(e) for j in ends):
+        return dict(ok=False, why="Escalier pas encore complet : attends encore quelques secondes et recommence.")
+    return dict(ok=False, why="Escalier non reconnu : vérifie que le signal de test passe bien (silence repère, "
+                              "marches qui montent), et que le son n'est pas coupé par le squelch.")
+
+
+def comp_report_html(res, tr=None, title="RF Compander Lab — rapport comparatif", observed=None):
+    """Rapport comparatif (HTML autonome) : conditions, sources, modèles et versions (fiches), indicateurs, écarts
+    observés, limites de validité. observed = résultat de stair_fit d'une mesure réelle (provenance 📡) ou None."""
+    tr = tr or (lambda s: s)
+    from html import escape as e
+    import datetime as _dt
+    meta = res.get("meta", {})
+    rows = res.get("rows", [])
+    css = ("body{font-family:-apple-system,Segoe UI,Arial,Helvetica;max-width:1000px;margin:24px auto;color:#1c1c1e;"
+           "padding:0 16px}h1{font-size:22px}h2{font-size:17px;margin-top:28px}table{border-collapse:collapse;"
+           "width:100%;font-size:13px}td,th{border:1px solid #d1d1d6;padding:5px 7px;text-align:left}th{background:"
+           "#f2f2f7}.prov{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5f1ff;font-size:12px}"
+           ".warn{background:#fff4e0;border-left:4px solid #ff9f0a;padding:8px 12px;margin:12px 0}")
+    h = [f"<!doctype html><meta charset='utf-8'><title>{e(tr(title))}</title><style>{css}</style>",
+         f"<h1>{e(tr(title))}</h1>",
+         f"<p>{e(_dt.datetime.now().strftime('%d/%m/%Y %H:%M'))} · <span class='prov'>"
+         f"{e(tr(PROVENANCE[meta.get('prov', 'sim')]))}</span> · {e(tr('version des modèles'))} {e(meta.get('ver', ''))}</p>",
+         f"<div class='warn'>{e(tr('Les compandeurs des marques ne sont pas publiés : les modèles « approchés » sont des reproductions au jugé, pas les vrais traitements. Une différence entre deux modèles dit comment ces MODÈLES se comportent, pas les vrais appareils.'))}</div>",
+         f"<h2>{e(tr('Conditions de comparaison'))}</h2><table>",
+         f"<tr><th>{e(tr('Source'))}</th><td>{e(tr(audio_text(meta.get('audio', 'voice'), tr)))}</td></tr>",
+         f"<tr><th>{e(tr('Émetteur (compresseur)'))}</th><td>{e(tr(COMPANDERS.get(meta.get('tx') or 'none', {}).get('name', '—')))}</td></tr>",
+         f"<tr><th>{e(tr('Désaccentuation par défaut'))}</th><td>{meta.get('deemph', 0):g} µs</td></tr>",
+         f"<tr><th>{e(tr('Durée de la source'))}</th><td>{meta.get('seconds', 0):g} s</td></tr>",
+         f"<tr><th>{e(tr('Mesures'))}</th><td>{e(tr('escalier de sinus 1 kHz (−60 → 0 dBFS, 0,4 s par marche) ; saut −30 → −10 dBFS ; bruit rose à −20 dBFS (réponse et phase, retard retiré) ; passage de la source'))}</td></tr></table>",
+         f"<h2>{e(tr('Modèles comparés'))}</h2><table><tr><th>{e(tr('Modèle'))}</th><th>{e(tr('Fabricant'))}</th>"
+         f"<th>{e(tr('Technologie'))}</th><th>{e(tr('Implémentation'))}</th><th>{e(tr('Documentation'))}</th>"
+         f"<th>{e(tr('Fidélité'))}</th><th>{e(tr('Limites'))}</th></tr>"]
+    for r in rows:
+        c = r["card"]
+        h.append(f"<tr><td>{e(tr(c['name']))}</td><td>{e(tr(c['maker']))}</td><td>{e(tr(c['tech']))}</td>"
+                 f"<td>{e(tr(CMP_IMPL[c['impl']]))}</td><td>{e(tr(c['doc']))}</td><td>{e(tr(c['fidelity']))}</td>"
+                 f"<td>{e(tr(c['limits']))}</td></tr>")
+    h.append("</table>")
+    h.append(f"<h2>{e(tr('Indicateurs calculés'))}</h2><table><tr><th>{e(tr('Modèle'))}</th>"
+             f"<th>{e(tr('Pente (récepteur seul)'))}</th><th>{e(tr('Niveau sortie − entrée'))}</th>"
+             f"<th>{e(tr('Erreur résiduelle'))}</th><th>{e(tr('Pompage'))}</th><th>{e(tr('Montée'))}</th>"
+             f"<th>{e(tr('Descente'))}</th><th>{e(tr('Dépassement'))}</th><th>{e(tr('Saut de 20 dB rendu'))}</th>"
+             f"<th>{e(tr('Retard'))}</th></tr>")
+    for r in rows:
+        m = r["m"]
+        h.append(f"<tr><td>{e(tr(r['card']['name']))}</td><td>{r['slope']:.2f}</td><td>{m['diff']:+.1f} dB</td>"
+                 f"<td>{m['err']:.0f} dB</td><td>± {m['pump']:.1f} dB</td><td>{m['up']:.0f} ms</td>"
+                 f"<td>{m['down']:.0f} ms</td><td>{m['over']:+.1f} dB</td><td>{m['step']:.1f} dB</td>"
+                 f"<td>{m['lat']:.1f} ms</td></tr>")
+    h.append("</table>")
+    if len(rows) >= 2:
+        h.append(f"<h2>{e(tr('Différences observées'))}</h2><ul>")
+        base = rows[0]
+        for r in rows[1:]:
+            d = r["m"]["diff"] - base["m"]["diff"]
+            h.append("<li>" + e(tr("{} contre {} : niveau {} dB, pompage {} dB, montée {} ms").format(
+                tr(r["card"]["name"]), tr(base["card"]["name"]), f"{d:+.1f}",
+                f"{r['m']['pump'] - base['m']['pump']:+.1f}", f"{r['m']['up'] - base['m']['up']:+.0f}")) + "</li>")
+        h.append("</ul>")
+    if observed:
+        h.append(f"<h2>{e(tr('Observation réelle'))} <span class='prov'>{e(tr(PROVENANCE['obs']))}</span></h2>")
+        if observed.get("ok"):
+            h.append("<p>" + e(tr("Émetteur mesuré avec l'escalier : pente {} (taux ≈ {}:1), linéarité R² = {}.").format(
+                f"{observed['slope']:.2f}", f"{observed['ratio']:.2f}" if observed.get("ratio") else "—",
+                f"{observed['r2']:.3f}")) + "</p>")
+        else:
+            h.append("<p>" + e(tr(observed.get("why", ""))) + "</p>")
+    h.append(f"<h2>{e(tr('Limites de validité'))}</h2><ul>" + "".join(
+        f"<li>{e(tr(x))}</li>" for x in (
+            "Mesures faites sur les MODÈLES de l'appli (simulation), sauf la section « Observation réelle ».",
+            "Le son reçu par un SDR a pu passer par d'autres traitements (limiteur, filtres de l'émetteur) : sans "
+            "référence connue, une différence ne peut pas être attribuée au seul compandeur.",
+            "Pente mesurée entre −40 et 0 dBFS ; sous −40 dBFS, le genou (ENR) et les butées changent le comportement.",
+            "Temps de montée / descente : à 1 dB près du niveau posé, après un saut de 20 dB à 1 kHz.")) + "</ul>")
+    return "\n".join(h)
 
 
 # ===== PURE-END

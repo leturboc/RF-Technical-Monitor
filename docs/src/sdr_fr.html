@@ -155,6 +155,52 @@ ton choix (voir « Sons, générateur et alarmes »).</p>
 tu vois à quoi ressemble ta liste sur le spectre. Dans le <b>🎵 Générateur audio</b>, « Utiliser ce son pour… » ›
 un micro de ta liste : son son ET ce qu'il émet dans les deux démos (micro FM, numérique, coupures, brouilleur, rien).</p>
 
+<!--CH labo|Le labo SDR (RF Compander Lab)-->
+<p><b>🧪 Labo SDR</b> (menu du mode, ou sous-menu SDR) est un <b>banc de mesure</b> : les mêmes signaux et les mêmes
+mesures pour tous les modèles, et chaque résultat dit d'où il vient : <b>🧪 simulé</b>, <b>📡 observé</b> (vrai SDR)
+ou <b>🧮 calculé</b> (formule). Cinq onglets :</p>
+<ul>
+  <li><b>① Chaîne complète</b> : un micro HF pas à pas. Son de départ → compresseur de l'émetteur → modulation FM (IQ,
+    bruit, panne) → démodulation → expanseur → son de sortie. Six vues synchronisées (son entrée / sortie, niveau dans le
+    temps, I et Q, constellation, spectre de l'IQ, fréquence instantanée) et les mesures : niveaux, écart, erreur
+    résiduelle, retard, pompage. Choisis une <b>panne</b> (blocs perdus, saturation, brouilleur à côté, pilote qui
+    disparaît, signal faible, émetteur qui dérive) pour voir ce qu'elle fait et ce que l'appli en détecte. Essaie un
+    compandeur différent à l'émission et à la réception : la dynamique est faussée, et le labo le dit.</li>
+  <li><b>② Comparer les compandeurs</b> : coche plusieurs modèles. Pour chacun, les mêmes essais : <b>courbe de
+    transfert mesurée</b> (un escalier de sinus, avec la formule en pointillés), <b>saut de niveau</b> de 20 dB (temps de
+    montée et de descente, dépassement), <b>réponse en fréquence (EQ)</b> et <b>phase</b> de la chaîne (retard pur retiré),
+    et passage de ta source (niveau, erreur, pompage). Chaque modèle a sa <b>fiche</b> : fabricant, technologie,
+    documentation, implémentation, fidélité, limites, version. <b>📄 Rapport comparatif</b> écrit tout ça en HTML :
+    conditions, sources, modèles et versions, indicateurs, différences, limites de validité.</li>
+  <li><b>③ En direct (SDR)</b> : pendant que le poste SDR écoute un micro FM en A, le son reçu <b>avant l'expanseur</b>
+    passe dans chaque modèle coché, en parallèle : niveau, EQ et phase de chacun en direct. <b>🎧 Écouter avec le modèle
+    choisi</b> bascule l'écoute de A sur ce compandeur (comparaison à l'oreille, A/B). L'EQ et la phase ne sont tracées que
+    là où le son reçu permet de mesurer (une voix ne contient pas toutes les fréquences).</li>
+  <li><b>④ Modulations</b> : le même son en FM large, FM étroite, porteuse pure, AM, bloc numérique et TNT : à quoi
+    chacune ressemble sur un spectre, et ce que la détection « C'est quoi ce signal ? » en devine (elle n'a pas de case
+    « AM »).</li>
+  <li><b>⑤ Pannes simulées</b> : injecte une panne dans le <b>🧪 SDR démo en direct</b> (blocs perdus, flux figé,
+    saturation, SDR débranché, brouilleur sur un micro, pilotes coupés, bruit fort) pendant 5 s à 5 min, pour voir la
+    ligne <b>Flux</b> du Récepteur, les alarmes et le journal réagir. Tout est marqué SIMULÉ ; rien ne touche un vrai
+    SDR.</li>
+</ul>
+<h3>Mesurer ton vrai émetteur</h3>
+<p>C'est la seule façon d'avoir une <b>vraie référence</b>. Dans le <b>🎵 Générateur audio</b>, choisis
+<b>« Signal de test : escalier de niveaux »</b> (un silence repère puis 9 marches de 1 kHz, de −40 à 0 dBFS) et
+envoie-le en câble dans l'entrée audio du pack. Écoute ce micro au poste SDR (A), attends une vingtaine de secondes,
+puis onglet ③ › <b>📏 Mesurer maintenant</b> : la pente des marches reçues donne le <b>taux de compression réel</b> de
+l'émetteur (2:1, 1,5:1…), marqué 📡 observé, et repris dans le rapport.</p>
+<div class="box warn"><b>À savoir.</b> Les compandeurs des marques ne sont pas publiés : les modèles « approchés »
+(Sennheiser, Shure, Wisycom, Lectrosonics) sont des reproductions au jugé, <b>pas les vrais traitements</b>. Le labo
+compare des MODÈLES. Et le son reçu par un SDR a pu passer par d'autres traitements (limiteur, filtres de l'émetteur) :
+sans référence connue, une différence ne peut pas être attribuée au seul compandeur.</div>
+<h3>Qualité du flux, rémanence et référence</h3>
+<p>La ligne <b>Flux</b> du Récepteur dit si le SDR livre bien tout : échantillons perdus (USB ou PC qui ne suit pas),
+coupures, saturation de l'entrée, reconnexions. Un SDR qui décroche est relancé tout seul (après 3, 10 puis 30 s).
+Sur le spectre du SDR : <b>Rémanence</b> (les derniers spectres s'effacent doucement : un signal intermittent brille) et
+<b>📌 Référence</b> (fige le spectre en pointillés, puis affiche l'écart à A et le plus gros changement). <b>📋 Tous les
+SDR</b> (Réglages SDR) : ce que l'appli sait faire avec chaque modèle.</p>
+
 <!--CH emettre|Émettre avec un HackRF-->
 <div class="box warn"><b>Émettre à l'antenne sans autorisation est interdit.</b> Cette fonction est faite pour
 travailler <b>en câble</b>, avec un atténuateur de 30 dB ou plus avant l'entrée du récepteur ou du tinySA.</div>

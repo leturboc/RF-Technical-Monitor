@@ -150,6 +150,50 @@ SDRs.</p>
 see what your list looks like on the spectrum. In the <b>🎵 Audio generator</b>, “Use this sound for…” › a mic of your
 list: its sound AND what it transmits in both demos (FM mic, digital, dropouts, jammer, nothing).</p>
 
+<!--CH labo|The SDR lab (RF Compander Lab)-->
+<p><b>🧪 SDR lab</b> (mode menu, or SDR submenu) is a <b>test bench</b>: the same signals and the same measurements for
+all models, and each result says where it comes from: <b>🧪 simulated</b>, <b>📡 observed</b> (real SDR) or
+<b>🧮 computed</b> (formula). Five tabs:</p>
+<ul>
+  <li><b>① Full chain</b>: a wireless mic step by step. Source audio → transmitter compressor → FM modulation (IQ, noise,
+    fault) → demodulation → expander → output audio. Six synchronised views (audio in / out, level over time, I and Q,
+    constellation, IQ spectrum, instantaneous frequency) and the measurements: levels, difference, residual error, delay,
+    pumping. Pick a <b>fault</b> (lost blocks, saturation, interferer next door, pilot disappearing, weak signal, drifting
+    transmitter) to see what it does and what the app detects. Try a different compander at transmit and receive: the
+    dynamics are wrong, and the lab says so.</li>
+  <li><b>② Compare companders</b>: tick several models. For each, the same tests: <b>measured transfer curve</b> (a sine
+    staircase, with the formula dotted), 20 dB <b>level jump</b> (attack and release times, overshoot), <b>frequency
+    response (EQ)</b> and <b>phase</b> of the chain (pure delay removed), and your source passed through (level, error,
+    pumping). Each model has its <b>sheet</b>: maker, technology, documentation, implementation, fidelity, limits,
+    version. <b>📄 Comparison report</b> writes all of it as HTML: conditions, sources, models and versions, indicators,
+    differences, limits of validity.</li>
+  <li><b>③ Live (SDR)</b>: while the SDR station listens to an FM mic on A, the received audio <b>before the expander</b>
+    goes through each ticked model in parallel: level, EQ and phase of each, live. <b>🎧 Listen with the chosen model</b>
+    switches A's listening to that compander (comparison by ear, A/B). EQ and phase are only drawn where the received
+    audio allows a measurement (a voice doesn't contain every frequency).</li>
+  <li><b>④ Modulations</b>: the same audio as wide FM, narrow FM, pure carrier, AM, digital block and DTT: what each
+    looks like on a spectrum, and what the “What is this signal?” detection guesses (it has no “AM” class).</li>
+  <li><b>⑤ Simulated faults</b>: inject a fault into the <b>live 🧪 SDR demo</b> (lost blocks, frozen stream,
+    saturation, SDR unplugged, interferer on a mic, pilots cut, strong noise) for 5 s to 5 min, to watch the Receiver's
+    <b>Stream</b> line, the alarms and the log react. Everything is marked SIMULATED; nothing touches a real SDR.</li>
+</ul>
+<h3>Measuring your real transmitter</h3>
+<p>This is the only way to get a <b>real reference</b>. In the <b>🎵 Audio generator</b>, choose <b>“Test signal: level
+staircase”</b> (a marker silence then 9 steps of 1 kHz, from −40 to 0 dBFS) and feed it by cable into the pack's audio
+input. Listen to that mic on the SDR station (A), wait about twenty seconds, then tab ③ › <b>📏 Measure now</b>: the
+slope of the received steps gives the transmitter's <b>real compression ratio</b> (2:1, 1.5:1…), marked 📡 observed,
+and included in the report.</p>
+<div class="box warn"><b>Good to know.</b> Brand companders are not published: the “approximated” models (Sennheiser,
+Shure, Wisycom, Lectrosonics) are reproductions by judgement, <b>not the real processing</b>. The lab compares MODELS.
+And audio received by an SDR may have gone through other processing (limiter, transmitter filters): without a known
+reference, a difference cannot be put down to the compander alone.</div>
+<h3>Stream quality, persistence and reference</h3>
+<p>The Receiver's <b>Stream</b> line tells whether the SDR delivers everything: lost samples (USB or PC can't keep up),
+dropouts, input saturation, reconnections. An SDR that drops out is restarted automatically (after 3, 10 then 30 s). On
+the SDR spectrum: <b>Persistence</b> (recent spectra fade slowly: an intermittent signal glows) and <b>📌 Reference</b>
+(freezes the spectrum as a dashed line, then shows the difference at A and the largest change). <b>📋 All SDRs</b> (SDR
+settings): what the app can do with each model.</p>
+
 <!--CH emettre|Transmitting with a HackRF-->
 <div class="box warn"><b>Transmitting over the air without authorisation is forbidden.</b> This feature is for working
 <b>on a cable</b>, with an attenuator of 30 dB or more before the receiver's or tinySA's input.</div>

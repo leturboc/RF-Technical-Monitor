@@ -176,12 +176,27 @@ for name in ("edit_labels", "edit_statuses", "edit_colors", "edit_plan", "add_wa
              "show_about", "open_linecheck", "open_scan_convert", "open_alerts", "edit_show_info", "open_show_dialog",
              "make_report", "export_by_scene", "open_sites", "open_coord", "open_net_profiles", "pick_wall", "open_relay", "add_block_dialog",
              "open_festival", "open_ready", "open_show_mode",
-             "open_sdr", "open_listen", "open_realtime"):          # les 3 derniers : V8 (SDR) seulement
+             "open_sdr", "open_listen", "open_realtime", "open_sdr_lab", "open_sdr_compat"):   # les derniers : V8 (SDR)
     fn = getattr(win, name, None)
     if fn is None:
         continue
     try:
         fn(); wait(600)
+    except Exception:
+        hook(*sys.exc_info())
+os.environ["TSM_NO_BROWSER"] = "1"
+_lab = getattr(win, "_sdrlab", None)                   # 8.2 : labo SDR, chaque onglet avec ses résultats
+if _lab is not None:
+    try:
+        _lab.chain_run(wait=True)
+        _lab.cmp_run(wait=True)
+        _lab.mod_run(wait=True)
+        for _i in range(_lab.tabs.count()):
+            _lab.tabs.setCurrentIndex(_i)
+            wait(300)
+            scan(_lab, f"SdrLab-{_i}")
+            _lab.grab().save(os.path.join(OUT, f"labo_{_i}.png"))
+        look(open(_lab.cmp_report(os.path.join(OUT, "labo_rapport.html")), encoding="utf-8").read(), "Lab-report")
     except Exception:
         hook(*sys.exc_info())
 for tl in app.topLevelWidgets():

@@ -1085,5 +1085,80 @@ ns["WAV_PCM"]["/essai/remplace.wav"] = (0.05 * np.sin(np.arange(48000) * 0.05)).
 _gb = ns["audio_gain"](_sw9)[0]
 ok("WAV remplacé sous le même nom : niveau re-mesuré (gain +20 dB)", abs((_gb - _ga) - 20.0) < 0.1, f"{_ga:.1f} -> {_gb:.1f}")
 
+_ab = ns["AlarmBook"]()
+_ab.raise_(("CONFLIT", 1), "CONFLIT", "HF 1", 600.0, 2, 0.0)
+_ab.sim = True
+_ab.raise_(("CONFLIT", 2), "CONFLIT", "HF 2", 601.0, 2, 0.0)
+_a1, _a2 = _ab.active[("CONFLIT", 1)], _ab.active[("CONFLIT", 2)]
+ok("démo : alarme née d'une source simulée marquée 🧪 (nom, info, alerte téléphone), la vraie non",
+   _a2["name"].startswith("🧪") and _a2["sim"] and "simulé" in _a2["info"] and not _a1["sim"]
+   and "SIMULÉ" in ns["notify_text"](_a2)[0] and "SIMULÉ" not in ns["notify_text"](_a1)[0])
+
+# ---- 8.2 : labo SDR / RF Compander Lab (moteur de mesure commun)
+_lc = ns["lab_chain"]
+r_ = _lc("voice", 0, "wfm", None, "evo", "evo", 40.0, 1.6, "none")
+ok("labo : même compandeur émetteur / récepteur -> sortie au niveau de l'entrée", abs(r_["m"]["diff"]) < 1.5
+   and r_["m"]["err"] < -15, f"{r_['m']['diff']:+.2f} {r_['m']['err']:.0f}")
+r_ = _lc("voice", 0, "wfm", None, "evo", "", 40.0, 1.6, "none")
+ok("labo : expanseur oublié -> signalé", any("faussée" in t for t, _ in ns["lab_findings"](r_)))
+for flt, word in (("sat", "Saturation"), ("jam", "Autre signal"), ("pilot", "Pilote vu au début"), ("drop", "perdus"),
+                  ("drift", "Dérive")):
+    r_ = _lc("voice", 0, "wfm", None, "", "", 40.0, 1.6, flt)
+    ok(f"labo : panne « {flt} » vue", any(word in t for t, _ in ns["lab_findings"](r_)),
+       str([t for t, _ in ns["lab_findings"](r_)]))
+CC = ns["CompChain"]
+x_ = ns["demo_audio"]("voice", np.arange(48000 * 2) / 48000.0)
+a1 = CC("evo", 50.0)(x_)
+c2 = CC("evo", 50.0)
+a2 = np.concatenate([c2(x_[i:i + 777]) for i in range(0, len(x_), 777)])
+ok("CompChain : même son d'un tenant ou par morceaux", float(np.max(np.abs(a1 - a2))) < 1e-5)
+dm = ns["ChannelDemod"](480000, 0.0, "wfm", 0.0, None, "wisy_enr", 30000.0)
+ok("ChannelDemod passe par CompChain (même code que le labo)", isinstance(dm.chain, CC) and dm.chain.key == "wisy_enr")
+xi_, yo_ = ns["measure_transfer"](lambda: CC("x2", None))
+sl_ = np.polyfit(xi_[xi_ >= -40], yo_[xi_ >= -40], 1)[0]
+ok("transfert MESURÉ d'un expanseur 2:1 : pente 2", abs(sl_ - 2.0) < 0.1, f"{sl_:.2f}")
+th_ = ns["comp_curve"]("x2", "rx")
+ok("transfert mesuré ≈ formule (−40…0 dBFS)", float(np.max(np.abs(np.interp(xi_[xi_ >= -40], *th_) - yo_[xi_ >= -40]))) < 1.5)
+tr_ = ns["measure_transient"](lambda: CC("x2", None))
+ok("saut de 20 dB -> 40 dB rendus par un 2:1, temps de montée mesuré", abs(tr_["step_out"] - 40.0) < 1.5
+   and 0 < tr_["up_ms"] < 500, f"{tr_['step_out']:.1f} {tr_['up_ms']:.0f}")
+fq_ = ns["measure_freq"](lambda: CC("none_d50", None))
+g1, g10 = np.interp(1000, fq_["f"], fq_["mag"]), np.interp(10000, fq_["f"], fq_["mag"])
+th10 = -10 * math.log10(1 + (2 * math.pi * 10000 * 50e-6) ** 2) + 10 * math.log10(1 + (2 * math.pi * 1000 * 50e-6) ** 2)
+ok("EQ mesurée : désaccentuation 50 µs (≈ formule à 10 kHz)", abs((g10 - g1) - th10) < 1.0, f"{g10 - g1:.1f} / {th10:.1f}")
+tx_ = ns["CompTx"]("none_d50", None)
+rx_ = CC("none_d50", None)
+y_ = rx_(tx_(x_))
+ok("pré-accentuation de l'émetteur = inverse exact de la désaccentuation", float(np.max(np.abs(y_ - x_))) < 2e-3)
+cmp_ = ns["comp_compare"](["x2", "evo"], "evo", seconds=2.0)
+ok("comparateur : 2 modèles, mêmes mesures", len(cmp_["rows"]) == 2 and all(r["freq"] for r in cmp_["rows"])
+   and cmp_["meta"]["prov"] == "sim")
+h_ = ns["comp_report_html"](cmp_)
+ok("rapport : conditions, modèles, indicateurs, limites, provenance", all(k in h_ for k in (
+    "Conditions de comparaison", "Modèles comparés", "Indicateurs calculés", "Limites de validité", "simulé")))
+card_ = ns["compander_card"]("evo")
+ok("fiche : implémentation « approchée », jamais présentée comme le vrai traitement", card_["impl"] == "approx"
+   and "Non validé" in card_["fidelity"] and ns["compander_card"]("none_d50")["impl"] == "exact")
+ok("fiche : une par compandeur", all(ns["compander_card"](k) for k in ns["COMPANDERS"]))
+st_ = ns["stair_signal"](np.arange(int(2.2 * ns["STAIR_PERIOD"] * 48000)) / 48000.0)
+for key_, rt_ in (("evo", 2.0), ("wisy_enc12", 1.5), ("none", 1.0)):
+    f_ = ns["stair_fit"](ns["CompTx"](key_, None)(st_))
+    ok(f"escalier : taux de compression de l'émetteur retrouvé ({key_})", f_["ok"] and abs(f_["ratio"] - rt_) < 0.05,
+       str(f_.get("ratio")))
+ok("escalier trop court -> dit pourquoi", not ns["stair_fit"](st_[:48000])["ok"])
+rows_ = ns["lab_modulations"]()
+ok("modulations : 6 familles, la détection reconnaît 5 sur 5", len(rows_) == 6
+   and all(r["ok"] for r in rows_ if r["ok"] is not None), str([(r["key"], r["cls"]["kind"]) for r in rows_]))
+ss_ = ns["StreamStats"](1000.0)
+for i in range(30):
+    ss_.feed(i * 0.1, 80)
+ok("flux : 20 % d'échantillons perdus mesurés", abs(ss_.view()["lost"] - 20.0) < 2.0, str(ss_.view()))
+ss_.feed(6.0, 100)
+ok("flux : coupure comptée", ss_.view()["gaps"] == 1)
+ok("flux : texte et ton", ns["stream_quality"](dict(lost=20.0, gaps=1), 0.0)[1] == "bad"
+   and ns["stream_quality"](dict(lost=0.0, gaps=0), 0.0)[1] == "ok")
+ok("tableau des SDR : une ligne par modèle, rien d'« essayé en vrai »", len(ns["sdr_compat_rows"]()) == len(ns["SDR_MODELS"])
+   and not any(r["tested"] for r in ns["sdr_compat_rows"]()))
+
 print("\nÉCHECS:", fails)
 sys.exit(1 if fails else 0)

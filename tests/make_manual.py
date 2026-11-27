@@ -30,7 +30,7 @@ PARTS = [
       "deux", "alertes", "sessions", "journal", "apparence"]),
     ("E", "Le SDR (bêta)", "The SDR (beta)",
      ["sdr-poste", "sdr-branchement", "sdr-ecoute", "sdr-favoris", "sdr-surveiller", "sdr-plusieurs", "sdr-caler",
-      "sdr-remonter", "sdr-demo", "sdr-emettre", "sdr-sons", "sdr-avance", "sdr-savoir"]),
+      "sdr-remonter", "sdr-demo", "sdr-labo", "sdr-emettre", "sdr-sons", "sdr-avance", "sdr-savoir"]),
     ("F", "Aide", "Help", ["faq", "depannage", "lexique", "menus", "clavier", "donnees"]),
 ]
 DROP = {"limites"}          # chapitres retirés (« ce qui n'est pas vérifié » : suivi dans CLAUDE.md, pas dans le manuel)
