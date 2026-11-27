@@ -1,6 +1,6 @@
 # TinySA Monitor — contexte pour Claude Code
 
-Application Windows (un seul fichier : `tinysa_monitor.py`, ~7 600 lignes) pour tinySA Ultra : spectre en direct +
+Application Windows (`tinysa_monitor.py` + `tsm_core.py` + dossier `tsm_ui/`, ~53 000 lignes en tout) pour tinySA Ultra : spectre en direct +
 monitoring de 100+ fréquences, pensée pour la coordination HF en festival. Version courante : **8.1.0 « RF Technical Monitor »** (publiée le 26/11/2026 sur main à la demande de Clément, release v8.1.0).
 Stack : Python 3.12/3.13, PySide6, pyqtgraph, numpy, pyserial. Compilée en .exe avec PyInstaller (`build.bat` ou le
 workflow GitHub Actions `.github/workflows/build-exe.yml`).
@@ -59,8 +59,29 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
   = ramène les écrans puis `_layout_mode`), `_late_layout` -> `_late_layout_v8` ; MapScene `_scene_state_base`,
   `_keys_all_base`, `_label_base`, `_refresh_base`, `_update_links_base`, `_node_dropped_base`, `_node_open_base` ;
   `SoundOut._play_base` ; `SettingsDialog._init_base`. `set_rf_mode` et le menu du mode intègrent les écrans.
-  Reste (étape 3) : ~64 fonctions V8 posées sur MainWindow par `MainWindow.x = _v8_x` (à regrouper en vraie classe /
-  module SDR), découpage de l'interface en modules, tests plus rapides.
+  **Étape 3 faite (27/11/2026, Clément : « go étape 3 »)** :
+  - **Plus aucun `MainWindow.x = _v8_x`** : les 76 rattachements sont devenus 8 classes « mixins » (SdrPostsMixin,
+    SdrModeMixin, SdrReceiversMixin, SdrDemoMixin, SdrToolsMixin, SdrFollowMixin, ScreensMixin, LabMixin) ;
+    `MapScene._sdr_links` (était `_v8_sdr_links`), `_sdr_watch_dbl` (était `_v8_watch_dbl`). Piège trouvé : une méthode
+    de la classe gagne sur celle d'un mixin du même nom (un rattachement, lui, écrasait) -> `web_extra` V7 (vide)
+    masquait celle du SDR : retirée. Vérifier les doublons de noms entre MainWindow et ses mixins avant d'en ajouter.
+  - **Découpage** : `tinysa_monitor.py` (~660 lignes) = en-tête, imports, `from tsm_core import (...)`, ligne
+    `_load_parts(globals())  # ===== PARTIES-ICI`, classe MainWindow (attributs de classe SEULEMENT : bulles, menus,
+    constantes), compléments après la classe (sous-menu SDR, FREQ_ACTIONS, `rf_mode_*`), `if __name__`. Le reste est
+    dans **`tsm_ui/`** (20 fichiers, ordre = `tsm_ui.PARTS`) : appareils, web, dialogues, sdr_materiel, sdr_poste,
+    outils, accueil, carte, fenetres, demarrage (main, garde, self_test), sdr_fenetres, labo, puis les méthodes de
+    MainWindow par thème en classes `Fen*` : fen_construction (`__init__`, `_build_ui`), fen_config, fen_appareils,
+    fen_scenes, fen_liste, fen_spectre, fen_outils, fen_alarmes. **Ce ne sont PAS des modules à importer** : `load_parts`
+    exécute chaque fichier (code relu par `find_spec` / `get_code`, donc aussi dans l'exe) DANS l'espace de noms de
+    tinysa_monitor.py : mêmes noms qu'avant, un test qui fait `m.X = …` le change pour toutes les parties. Pas de
+    docstring en tête d'une partie (elle écraserait `__doc__` du programme) : des commentaires. PyInstaller :
+    `--collect-submodules tsm_ui` (workflow + build.bat ; maquette emballée testée sous Linux). Nouvelle méthode de
+    MainWindow = dans la bonne classe `Fen*` ; nouvel attribut de classe = dans la classe MainWindow de tinysa_monitor.py.
+  - Tests : `tests/_src.py` (`ui_source()` = principal avec les parties insérées à leur place, `source()` = + cœur) ;
+    `check_names` passe pyflakes sur `ui_source()` (fichier temporaire) et **échoue si pyflakes manque** (il n'était
+    installé ni dans le conteneur ni dans la CI : le contrôle des noms indéfinis ne tournait pas ; ajouté à la CI).
+    **`python tests/run_all.py`** : tests rapides en parallèle, tests sensibles au temps ensuite, puis gui_reel et
+    gui_en ; `--fast` sans les deux interfaces ; durées et sorties dans `tests/sorties/`.
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

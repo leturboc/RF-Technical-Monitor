@@ -12,7 +12,7 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
-SRC = "\n".join(open(os.path.join(ROOT, f_), encoding="utf-8").read() for f_ in ("tsm_core.py", "tinysa_monitor.py"))
+SRC = __import__("_src").source()          # 8.1 étape 3 : tout le programme (cœur, principal, parties)
 VER = re.search(r'^APP_VER = "([^"]+)"', SRC, re.M).group(1)
 import unicodedata  # noqa: E402
 _g = {"unicodedata": unicodedata}

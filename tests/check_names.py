@@ -51,7 +51,10 @@ try:
         print("FAIL pyflakes n'est pas installé (pip install pyflakes) : les noms indéfinis ne sont PAS vérifiés")
         print("ÉCHECS: 1")
         _sys.exit(1)
-    _out = _sp.run([_sys.executable, "-m", "pyflakes"] + [__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", f) for f in ("tsm_core.py", "tinysa_monitor.py")], capture_output=True, text=True).stdout
+    import tempfile as _tf, os as _os
+    _ui = _os.path.join(_tf.mkdtemp(prefix="tsm_names_"), "interface_complete.py")      # 8.1 étape 3 : l'interface
+    open(_ui, "w", encoding="utf-8").write(__import__("_src").ui_source())             # = principal + parties
+    _out = _sp.run([_sys.executable, "-m", "pyflakes", _ui, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "tsm_core.py")], capture_output=True, text=True).stdout
     _bad = [l for l in _out.splitlines() if "undefined name" in l]
     print("noms indéfinis (pyflakes) :", _bad or "aucun")
     if _bad:

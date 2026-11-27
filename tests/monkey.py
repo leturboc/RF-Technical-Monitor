@@ -32,7 +32,7 @@ current = [""]
 
 def hook(t, v, tb):
     frames = traceback.extract_tb(tb)
-    where = next((f"{f.name}:{f.lineno}" for f in reversed(frames) if f.filename.endswith("tinysa_monitor.py")),
+    where = next((f"{f.name}:{f.lineno}" for f in reversed(frames) if (f.filename.endswith("tinysa_monitor.py") or "tsm_ui" in f.filename)),
                  frames[-1].name if frames else "?")
     key = (t.__name__, where)
     if key not in errors:
