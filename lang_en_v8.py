@@ -2476,3 +2476,17 @@ SAME_TEMPLATES += ["<p><span class='prov'>{}</span> · {} · {} → {}</p>", "<t
                    "<br><i>{}</i>", "<li>{} : {}</li>", "{} MS/s ({} %)", "<b>{}</b><br>{} {}<br>{} {}",
                    "<h2>{}</h2><table><tr>", "<tr><td style='color:#8e8e93;padding-right:10px'>{}</td><td>{}</td></tr>",
                    "evenements_{}.csv"]
+EXACT.update({                                      # 8.2 : titres courts des graphes du labo
+    "6. Fréquence instantanée": "6. Instantaneous frequency",
+    "Courbe de transfert du récepteur, MESURÉE avec un escalier de sinus ; pointillés = formule.":
+        "Receiver transfer curve, MEASURED with a sine staircase; dotted = formula.",
+    "EQ de la chaîne": "Chain EQ", "EQ en direct": "Live EQ", "Niveau de chaque modèle": "Level of each model",
+    "Phase (retard retiré)": "Phase (delay removed)", "Phase de la chaîne, retard pur retiré.": "Chain phase, pure delay removed.",
+    "Phase en direct": "Live phase",
+    "Réponse en fréquence (EQ) de la chaîne émetteur + récepteur (bruit rose à −20 dBFS).":
+        "Frequency response (EQ) of the transmitter + receiver chain (pink noise at −20 dBFS).",
+    "Saut de niveau −30 → −10 → −30 dBFS à travers émetteur + récepteur : montée, descente, dépassement.":
+        "Level jump −30 → −10 → −30 dBFS through transmitter + receiver: attack, release, overshoot.",
+    "Saut −30 → −10 → −30 dBFS": "Jump −30 → −10 → −30 dBFS", "Son reçu (avant expanseur)": "Received audio (before expander)",
+    "Transfert du récepteur": "Receiver transfer",
+})

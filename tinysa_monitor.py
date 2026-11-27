@@ -8771,6 +8771,10 @@ class SdrEngine(QtCore.QObject):
         self.rew = RewindBuffer(int(rm) if rm in REWIND_MINUTES else 3, LISTEN_RATE * 4)        # étape 22 : ⏪
         self.tick = QtCore.QTimer(self)
         self.tick.timeout.connect(self._tick)
+        # 8.2 : diagnostic du poste (posés ici : un attribut absent ne doit jamais être lu par défaut)
+        self.hist, self.sess_rows = deque(maxlen=SDR_HIST_MAX), deque(maxlen=43200)
+        self._sess, self._fails, self.recon, self._recovering = None, 0, 0, False
+        self._qst, self._mst, self.sess_t0, self._t_dg, self._t_row = {}, {}, time.time(), 0.0, 0.0
 
     # ---- poste (étape 17 : plusieurs SDR)
     def _st_cfg(self):
@@ -10888,7 +10892,6 @@ class SdrDiagPanel(SdrPanelBase):
         self.tm = QtCore.QTimer(self)
         self.tm.timeout.connect(self.refresh)
         self.tm.start(1000)
-        self.refresh()
 
     def _sev_color(self, sev):
         return self.owner.tone_color(sev) if sev in ("warn", "bad") else (
@@ -10916,7 +10919,7 @@ class SdrDiagPanel(SdrPanelBase):
                 t.setItem(i, j, it)
 
     def refresh(self):
-        if not self.isVisible():
+        if self.isVisible() is not True:
             return
         e, o = self.eng, self.owner
         demo = e.kind() == "demo"
@@ -35516,6 +35519,8 @@ def _lab_plot(title, xl, yl):
     sdr_light_axes(p)
     p.addLegend(offset=(6, 6), labelTextSize="8pt")
     p.setMinimumHeight(110)
+    p.setMinimumWidth(120)                       # rétrécit avec le panneau au lieu d'être coupé à droite
+    p.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
     return p
 
 
@@ -35701,7 +35706,7 @@ class SdrLab(QtCore.QObject):
         self.p_const = _lab_plot("4. Constellation (canal)", "I", "Q")
         self.p_const.setAspectLocked(True)
         self.p_spec = _lab_plot("5. Spectre de l'IQ", "kHz autour de la porteuse", "dBFS")
-        self.p_fi = _lab_plot("6. Fréquence instantanée (ce qu'entend le démodulateur)", "ms", "kHz")
+        self.p_fi = _lab_plot("6. Fréquence instantanée", "ms", "kHz")
         for i, p in enumerate((self.p_wave, self.p_env, self.p_iq, self.p_const, self.p_spec, self.p_fi)):
             grid.addWidget(p, i // 3, i % 3)
         v.addLayout(grid, 1)
@@ -35811,6 +35816,7 @@ class SdrLab(QtCore.QObject):
         sp = QtWidgets.QSplitter(Qt.Orientation.Horizontal)      # poignée : agrandir les graphes si le panneau est étroit
         lw_ = QtWidgets.QWidget()
         lw_.setLayout(left)
+        lw_.setMaximumWidth(330)                                 # les graphes gardent la place
         sp.addWidget(lw_)
         rw_ = QtWidgets.QWidget()
         sp.addWidget(rw_)
@@ -35820,12 +35826,17 @@ class SdrLab(QtCore.QObject):
         right = QtWidgets.QVBoxLayout(rw_)
         right.setContentsMargins(0, 0, 0, 0)
         grid = QtWidgets.QGridLayout()
-        self.p_tf = _lab_plot("Courbe de transfert du récepteur (mesurée ; pointillés = formule)", "entrée dBFS", "sortie dBFS")
-        self.p_tr = _lab_plot("Saut de niveau −30 → −10 → −30 dBFS (émetteur + récepteur)", "s", "dBFS")
-        self.p_eq = _lab_plot("Réponse en fréquence (EQ) de la chaîne", "Hz", "dB")
-        self.p_ph = _lab_plot("Phase de la chaîne (retard pur retiré)", "Hz", "degrés")
+        self.p_tf = _lab_plot("Transfert du récepteur", "entrée dBFS", "sortie dBFS")
+        self.p_tr = _lab_plot("Saut −30 → −10 → −30 dBFS", "s", "dBFS")
+        self.p_eq = _lab_plot("EQ de la chaîne", "Hz", "dB")
+        self.p_ph = _lab_plot("Phase (retard retiré)", "Hz", "degrés")
         for p in (self.p_eq, self.p_ph):
             _log_hz(p)
+        for p, tip in ((self.p_tf, "Courbe de transfert du récepteur, MESURÉE avec un escalier de sinus ; pointillés = formule."),
+                       (self.p_tr, "Saut de niveau −30 → −10 → −30 dBFS à travers émetteur + récepteur : montée, descente, dépassement."),
+                       (self.p_eq, "Réponse en fréquence (EQ) de la chaîne émetteur + récepteur (bruit rose à −20 dBFS)."),
+                       (self.p_ph, "Phase de la chaîne, retard pur retiré.")):
+            p.setToolTip(TR(tip))
         for i, p in enumerate((self.p_tf, self.p_tr, self.p_eq, self.p_ph)):
             grid.addWidget(p, i // 2, i % 2)
         right.addLayout(grid, 1)
@@ -35993,12 +36004,12 @@ class SdrLab(QtCore.QObject):
         right = QtWidgets.QVBoxLayout(rw_)
         right.setContentsMargins(0, 0, 0, 0)
         grid = QtWidgets.QGridLayout()
-        self.p_lvl = _lab_plot("Niveau de sortie de chaque modèle (20 s)", "s", "dBFS")
-        self.p_leq = _lab_plot("EQ en direct : sortie / son reçu", "Hz", "dB")
-        self.p_lph = _lab_plot("Phase en direct (retard pur retiré)", "Hz", "degrés")
+        self.p_lvl = _lab_plot("Niveau de chaque modèle", "s", "dBFS")
+        self.p_leq = _lab_plot("EQ en direct", "Hz", "dB")
+        self.p_lph = _lab_plot("Phase en direct", "Hz", "degrés")
         for p in (self.p_leq, self.p_lph):
             _log_hz(p)
-        self.p_lin = _lab_plot("Son reçu (avant expanseur) : niveau", "s", "dBFS")
+        self.p_lin = _lab_plot("Son reçu (avant expanseur)", "s", "dBFS")
         for i, p in enumerate((self.p_lvl, self.p_lin, self.p_leq, self.p_lph)):
             grid.addWidget(p, i // 2, i % 2)
         right.addLayout(grid, 1)
@@ -36191,8 +36202,15 @@ class SdrLab(QtCore.QObject):
             c = r["cls"]
             ok = (" (" + TR("pas de case « AM » dans la détection") + ")") if r["ok"] is None else \
                 (" ✔" if r["ok"] else " ✖")
-            p.setTitle(TR(r["name"]) + " — " + TR("deviné : {}").format(TR(c.get("name", ""))) + ok, size="9pt")
+            p.setTitle(TR(r["name"]), size="9pt")
             p.plot((r["F"] - 100.0) * 1000.0, r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1))
+            col = "#8e8e93" if r["ok"] is None else (LAB_COLORS[2] if r["ok"] else LAB_COLORS[4])
+            ti = pg.TextItem(TR("deviné : {}").format(TR(c.get("name", ""))) + ok, color=col, anchor=(0, 0),
+                             fill=pg.mkBrush(20, 20, 22, 200))
+            ti.setPos(-r["span"] * 1000.0, float(np.nanmax(r["L"])) + 2.0)
+            p.addItem(ti)
+            p.setXRange(-r["span"] * 1000.0, r["span"] * 1000.0, padding=0.02)      # centré sur la porteuse
+            p.enableAutoRange(axis="y", enable=True)
             p.setToolTip(TR(c.get("why", "")) + (f"\n−20 dB : {c['bw_khz']:.1f} kHz" if c.get("bw_khz") else ""))
 
     # ------------------------------------------------------------------ ⑤ pannes simulées (SDR démo en direct)
@@ -36380,6 +36398,20 @@ def lab_grid(mw, docks):
         docks[k].show()
     if "mod" in docks:
         docks["mod"].raise_()
+
+    def sizes():                                             # grille à parts égales (sinon Qt donne tout à la chaîne)
+        try:
+            W, H = max(800, mw.width()), max(500, mw.height())
+            cols = [docks[k] for k in ("chain", "cmp") if k in docks]
+            if len(cols) == 2:
+                mw.resizeDocks(cols, [W // 2, W // 2], Qt.Orientation.Horizontal)
+            rows = [docks[k] for k in ("chain", "live") if k in docks]
+            if len(rows) == 2:
+                mw.resizeDocks(rows, [int(H * 0.52), int(H * 0.48)], Qt.Orientation.Vertical)
+        except RuntimeError:
+            pass
+    QtCore.QTimer.singleShot(0, sizes)
+    QtCore.QTimer.singleShot(150, sizes)
 
 
 def _v8_lab_view(self, on=True):
