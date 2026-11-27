@@ -43,6 +43,8 @@ from PySide6 import QtWidgets, QtCore  # noqa: E402
 import shiboken6  # noqa: E402
 app = QtWidgets.QApplication(sys.argv)
 m.install_gc_main_thread(app)
+problems = []
+m.ProblemDialog.exec = lambda self, *a: problems.append(self.windowTitle()) or 0   # jamais de fenêtre bloquante
 win = m.MainWindow()
 win.show()
 fails = 0
@@ -167,7 +169,8 @@ wait(1500)
 check("labo : en direct arrêté = plus de mise à jour", lab.live_frames == n_)
 win.simulate(False)
 wait(2500)
-check("🧪 Simuler encore : simulation coupée", not win.simulating() and not win.sdr_cfg.get("demo"))
+check("🧪 Simuler encore : simulation coupée, surveillance arrêtée sans relance ni fenêtre d'erreur",
+      not win.simulating() and not win.sdr_cfg.get("demo") and not win.is_running() and not problems, str(problems))
 check("aucune exception", not errs, errs[:1])
 win._closing = True
 try:

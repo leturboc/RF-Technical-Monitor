@@ -111,6 +111,10 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     présente, 667 ↔ 686 px). test_ecrans bloqué 15 min sur la CI Linux (pas chez moi) : chien de garde 240 s qui écrit
     « Error: … bloqué dans … » (annotation) puis sort ; cause à lire au prochain passage. Piège faux Qt : `hasattr` sur un
     objet du faux Qt répond toujours oui -> initialiser les attributs dans `__init__` (restore_btns, badges).
+    Le chien de garde a montré la cause du blocage CI : `simulate(False)` pendant la surveillance -> `switch_source`
+    relançait la surveillance sur le vrai tinySA -> absent -> `ProblemDialog.exec()` modal. Vrai défaut : maintenant
+    `switch_source(..., restart=False)` = surveillance arrêtée ; test_ecrans remplace `ProblemDialog.exec` (fenêtre
+    imprévue = échec, jamais de blocage).
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

@@ -1380,7 +1380,7 @@ class FenOutils:
         self._ready.show()
         return self._ready
 
-    def switch_source(self, demo, index=None):
+    def switch_source(self, demo, index=None, restart=True):
         """Démo ↔ tinySA (carte ① de l'accueil). Pendant la surveillance : arrêt propre, bascule, puis reprise (journal de
         Clément 16/11/2026 : la démo se décochait en pleine surveillance, le balayage continuait en démo puis l'appli
         plantait)."""
@@ -1403,7 +1403,8 @@ class FenOutils:
                     self.set_status("La surveillance ne s'arrête pas : change de source une fois arrêtée.")
                 return
             apply()
-            QtCore.QTimer.singleShot(300, lambda: self.toggle_run(auto=True))
+            if restart:
+                QtCore.QTimer.singleShot(300, lambda: self.toggle_run(auto=True))
         QtCore.QTimer.singleShot(200, wait)
 
     def toggle_demo_off(self):

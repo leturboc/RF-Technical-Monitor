@@ -1516,8 +1516,8 @@ class SdrDemoMixin:
                                "Simuler » encore une fois pour revenir au vrai matériel."))
         else:
             self.set_sdr_demo(False)
-            if self.demo_chk.isChecked():
-                self.switch_source(False)
+            if self.demo_chk.isChecked():           # surveillance ARRÊTÉE, pas relancée sur un tinySA peut-être absent
+                self.switch_source(False, restart=False)
             self.set_status(TR("Simulation coupée : branche ton tinySA / SDR et ▶ Démarrer."))
         return self.simulating()
 
