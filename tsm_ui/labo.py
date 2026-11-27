@@ -112,7 +112,12 @@ class SdrLab(QtCore.QObject):
         self.ses_btn.clicked.connect(lambda *_: self.open_sessions())
         top = QtWidgets.QHBoxLayout()
         self._top = top
+        self.sim_btn = QtWidgets.QPushButton(TR("🧪 Simuler (sans matériel)"))
+        self.sim_btn.setToolTip(TR("Allume le SDR démo (tes micros simulés, avec du son) pour que les panneaux « En direct », "
+                                   "« Pannes » et « Signal de A » aient quelque chose à recevoir."))
+        self.sim_btn.clicked.connect(lambda *_: owner.simulate(True))
         top.addWidget(intro, 1)
+        top.addWidget(self.sim_btn)
         top.addWidget(self.ses_btn)
         top.addWidget(self.view_btn)
         top.addWidget(man)
@@ -242,7 +247,10 @@ class SdrLab(QtCore.QObject):
     def _shown(self, key):
         """Panneau vraiment à l'écran (un onglet caché derrière un autre reste « visible » pour Qt : sa zone est vide)."""
         w = self.panels.get(key)
-        return w is not None and w.isVisible() and not w.visibleRegion().isEmpty()
+        try:
+            return w is not None and w.isVisible() and not w.visibleRegion().isEmpty()
+        except RuntimeError:                              # panneau détruit : ne pas remplir crash.log 4 fois / s
+            return False
 
     # ------------------------------------------------------------------ outils
     def _play(self, a, label=""):

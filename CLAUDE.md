@@ -82,6 +82,15 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     installé ni dans le conteneur ni dans la CI : le contrôle des noms indéfinis ne tournait pas ; ajouté à la CI).
     **`python tests/run_all.py`** : tests rapides en parallèle, tests sensibles au temps ensuite, puis gui_reel et
     gui_en ; `--fast` sans les deux interfaces ; durées et sorties dans `tests/sorties/`.
+  - **1er essai de l'exe par Clément (27/11/2026)** : crash.log = « Internal C++ object already deleted » : labo sur 2
+    écrans puis changement de mode. Cause : `ScreenWindow.take` remplaçait chaque panneau prêté par un QWidget vide, un
+    par un -> des panneaux du labo en onglets dans la fenêtre de l'autre écran étaient détruits (reproduit hors écran avec
+    2 écrans virtuels ; mécanisme exact côté Qt / PySide non élucidé). Corrigé : tout relire, puis `setParent(None)`.
+    `SdrLab._shown` ne lève plus (239 erreurs en 1 min dans crash.log). Test **`tests/test_ecrans.py`** (2 écrans virtuels,
+    Linux, CI linux-tests). Clément : « j'arrive pas à simuler, je trouve pas le bouton » -> **`simulate(on)`** /
+    `simulating()` (SdrDemoMixin : tinySA démo + SDR démo + mode combiné + surveillance) : bouton « 🧪 Simuler » de
+    l'accueil (`HomeBar.sim_btn`, suit l'état), « 🧪 Tout simuler » en tête du menu du mode, « 🧪 Simuler (sans
+    matériel) » en haut du labo ; manuel (chapitre sdr-demo).
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

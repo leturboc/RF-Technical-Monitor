@@ -103,8 +103,14 @@ class HomeBar(QtWidgets.QWidget):
         self.wiz_btn = QtWidgets.QPushButton("🧭 Assistant")
         self.wiz_btn.setToolTip("L'assistant pas à pas : show, micros, scan, canaux TNT, prêt pour le show.")
         self.wiz_btn.clicked.connect(lambda *_: o.open_wizard())
+        self.sim_btn = QtWidgets.QPushButton("🧪 Simuler")
+        self.sim_btn.setCheckable(True)
+        self.sim_btn.setToolTip("Essayer sans matériel : tinySA et SDR simulés (micros avec du son), surveillance lancée.\n"
+                                "Tout est marqué SIMULÉ. Recliquer pour revenir au vrai matériel.")
+        self.sim_btn.clicked.connect(lambda *_: o.simulate(self.sim_btn.isChecked()))
         _row = QtWidgets.QHBoxLayout()
         _row.setSpacing(4)
+        _row.addWidget(self.sim_btn)
         _row.addWidget(self.wiz_btn)
         _row.addWidget(self.tour_btn)
         side.addLayout(_row)
@@ -134,6 +140,12 @@ class HomeBar(QtWidgets.QWidget):
 
     def refresh(self, info):
         o = self.owner
+        try:
+            on_ = bool(o.simulating())
+            if self.sim_btn.isChecked() != on_:
+                self.sim_btn.setChecked(on_)
+        except Exception:  # noqa: BLE001
+            pass
         th = o.theme
         nxt = home_next(info)
         acc = th.get("ui_accent", "#3b82f6")

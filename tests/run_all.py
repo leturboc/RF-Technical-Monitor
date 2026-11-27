@@ -15,7 +15,7 @@ ROOT = os.path.dirname(HERE)
 OUT = os.path.join(HERE, "sorties")
 PARALLEL = ["test_v7", "test_im", "test_plan", "smoke_test", "smoke_test2", "smoke_test3", "smoke_test4",
             "smoke_test5", "smoke_test6", "test_alertes", "test_i18n", "test_relais_pi", "test_sdr", "check_names"]
-SERIAL = ["test_garde", "test_sdr_qt", "test_reseau", "test_reseau_qt", "test_instance"]   # sensibles au temps
+SERIAL = ["test_garde", "test_sdr_qt", "test_reseau", "test_reseau_qt", "test_instance", "test_ecrans"]   # sensibles au temps
 GUI = [("gui_reel", ["tests/captures"]), ("gui_en", ["tests/captures/en"])]
 
 

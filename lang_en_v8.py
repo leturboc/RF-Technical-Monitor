@@ -2699,3 +2699,23 @@ EXACT.update({
     "Signal réel : les réglages Son, Émetteur, C/N et Panne ne s'appliquent pas ici (ils servent à la simulation, ▶ Calculer). Vues RF prises au moment où le son est le plus fort.":
         "Real signal: the Audio, Transmitter, C/N and Fault settings don't apply here (they are for the simulation, ▶ Calculate). RF views taken where the audio is loudest.",
 })
+EXACT.update({                                      # 8.1 : « 🧪 Simuler » en un clic (accueil, menu du mode, labo)
+    "🧪 Simuler": "🧪 Simulate",
+    "Simuler": "Simulate",
+    "Essayer sans matériel : tinySA et SDR simulés (micros avec du son), surveillance lancée.":
+        "Try without hardware: simulated tinySA and SDR (mics with audio), monitoring started.",
+    "Tout est marqué SIMULÉ. Recliquer pour revenir au vrai matériel.": "Everything is marked SIMULATED. Click again to go back to real hardware.",
+    "Essayer sans matériel": "Try without hardware",
+    "🧪 Tout simuler (tinySA + SDR démo, avec du son)": "🧪 Simulate everything (demo tinySA + SDR, with audio)",
+    "Un clic : tinySA démo + SDR démo, mode combiné, surveillance lancée. Tout est marqué SIMULÉ.":
+        "One click: demo tinySA + demo SDR, combined mode, monitoring started. Everything is marked SIMULATED.",
+    "🧪 Simuler (sans matériel)": "🧪 Simulate (no hardware)",
+    "Simuler (sans matériel)": "Simulate (no hardware)",
+    "Allume le SDR démo (tes micros simulés, avec du son) pour que les panneaux « En direct », « Pannes » et « Signal de A » aient quelque chose à recevoir.":
+        "Turns on the demo SDR (your mics simulated, with audio) so the “Live”, “Faults” and “Signal of A” panels have something to receive.",
+    "🧪 Simulation : tinySA et SDR simulés, surveillance lancée. Tout est marqué SIMULÉ ; « 🧪 Simuler » encore une fois pour revenir au vrai matériel.":
+        "🧪 Simulation: simulated tinySA and SDR, monitoring started. Everything is marked SIMULATED; “🧪 Simulate” again to go back to real hardware.",
+    "Simulation coupée : branche ton tinySA / SDR et ▶ Démarrer.": "Simulation off: plug in your tinySA / SDR and ▶ Start.",
+})
+EXACT["Essayer sans matériel : tinySA et SDR simulés (micros avec du son), surveillance lancée.\nTout est marqué SIMULÉ. Recliquer pour revenir au vrai matériel."] = \
+    "Try without hardware: simulated tinySA and SDR (mics with audio), monitoring started.\nEverything is marked SIMULATED. Click again to go back to real hardware."

@@ -338,6 +338,12 @@ class SdrModeMixin:
     def _build_mode_menu(self):
         m = self.mode_btn.menu()
         m.clear()
+        m.addSection(TR("Essayer sans matériel"))
+        a_ = m.addAction(TR("🧪 Tout simuler (tinySA + SDR démo, avec du son)"))
+        a_.setCheckable(True)
+        a_.setChecked(self.simulating())
+        a_.setToolTip(TR("Un clic : tinySA démo + SDR démo, mode combiné, surveillance lancée. Tout est marqué SIMULÉ."))
+        a_.triggered.connect(lambda *_, a_=a_: self.simulate(a_.isChecked()))
         m.addSection(TR("Mode"))
         m.setToolTipsVisible(True)
         for k, t in RF_MODES:
@@ -1490,6 +1496,31 @@ class SdrDemoMixin:
             if hasattr(self.dock_widget(d), "refresh"):
                 self.dock_widget(d).refresh()
 
+    def simulate(self, on=True):
+        """🧪 Tout simuler en un clic (Clément 27/11 : « j'arrive pas à simuler, je trouve pas le bouton ») : tinySA démo +
+        SDR démo, mode combiné, surveillance lancée. off = tout couper (le vrai matériel reprend au prochain ▶)."""
+        if on:
+            if not self.demo_chk.isChecked():
+                self.switch_source(True)
+            self.set_sdr_demo(True)
+            if self.rf_mode != "both":
+                self.set_rf_mode("both")
+            for e in (getattr(self, "sdr_engs", None) or {}).values():
+                if not e.running():
+                    e.start()
+            QtCore.QTimer.singleShot(600, lambda: self.is_running() or self.toggle_run(auto=True))
+            self.set_status(TR("🧪 Simulation : tinySA et SDR simulés, surveillance lancée. Tout est marqué SIMULÉ ; « 🧪 "
+                               "Simuler » encore une fois pour revenir au vrai matériel."))
+        else:
+            self.set_sdr_demo(False)
+            if self.demo_chk.isChecked():
+                self.switch_source(False)
+            self.set_status(TR("Simulation coupée : branche ton tinySA / SDR et ▶ Démarrer."))
+        return self.simulating()
+
+    def simulating(self):
+        return bool(self.demo_chk.isChecked() and self.sdr_cfg.get("demo"))
+
     sdr_demo_on = lambda self: self.set_sdr_demo(True)
 
     sdr_demo_off = lambda self: self.set_sdr_demo(False)
@@ -2223,11 +2254,10 @@ class ScreenWindow(QtWidgets.QMainWindow):
 
     def take(self):
         """Rend les panneaux (nom, widget) et vide la fenêtre."""
-        out = []
-        for n, d in list(self.items.items()):
-            w = d.widget()
-            d.setWidget(QtWidgets.QWidget())
-            out.append((n, w))
+        out = [(n, d.widget()) for n, d in list(self.items.items())]
+        for _n, w in out:              # 8.2 : d'abord tout relire, puis détacher (remplacer chaque panneau par un
+            if w is not None:          # widget vide détruisait des panneaux du labo rangés en onglets : crash.log de
+                w.setParent(None)      # Clément 27/11, labo sur 2 écrans puis changement de mode)
         self.items = {}
         return out
 

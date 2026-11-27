@@ -236,7 +236,7 @@ jobs:
         shell: bash
         run: |
           bad=0
-          for t in test_reseau test_reseau_qt test_relais_pi test_garde test_v7 test_instance; do
+          for t in test_reseau test_reseau_qt test_relais_pi test_garde test_v7 test_instance test_ecrans; do
             echo "== $t"
             if ! timeout 900 python -u tests/$t.py > "out_$t.log" 2>&1; then
               bad=1
