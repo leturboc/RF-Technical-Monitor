@@ -33015,9 +33015,12 @@ def _v8_build_mode_menu(self):
     m.addAction(TR("📡 Émettre avec un HackRF (en câble)…")).triggered.connect(lambda *_: self.open_sdr_tx())
     m.addAction(TR("🎵 Générateur audio (20 Hz – 20 kHz)…")).triggered.connect(lambda *_: self.open_audio_gen())
     m.addAction(TR("🧪 Labo SDR (RF Compander Lab)…")).triggered.connect(lambda *_: self.open_sdr_lab())
-    a_ = m.addAction(TR("↩ Quitter l'affichage Labo") if self.lab_view_on else TR("⛶ Affichage Labo (tout l'écran)"))
-    a_.setToolTip(TR("La fenêtre ne montre plus que le labo, ses 5 panneaux en grille."))
-    a_.triggered.connect(lambda *_: self.lab_view(not self.lab_view_on))
+    lm = m.addMenu(TR("⛶ Affichage Labo"))
+    lm.setToolTip(TR("La fenêtre ne montre plus que le labo : rangé, en grille ou sur 2 écrans."))
+    for k_, t_ in LAB_VIEWS:
+        lm.addAction(TR(t_)).triggered.connect(lambda *_, k_=k_: self.lab_view(True, k_))
+    if self.lab_view_on:
+        lm.addAction(TR("↩ Quitter l'affichage Labo")).triggered.connect(lambda *_: self.lab_view(False))
     m.addSeparator()
     m.addAction(TR("🔌 Premier branchement SDR (assistant)…")).triggered.connect(lambda *_: self.open_sdr_setup())
     m.addAction(TR("📏 Caler les niveaux du SDR sur le tinySA…")).triggered.connect(lambda *_: self.open_sdr_calib())
@@ -35186,7 +35189,7 @@ def _v8_screens_current(self):
     return {n: (main if d.isVisible() or n in self.panel_wins else SCREEN_HIDE) for n, d in self.screens_docks().items()}
 
 
-def _v8_screens_apply(self, plan, full=False, quiet=False):
+def _v8_screens_apply(self, plan, full=False, quiet=False, keep_mode=False):
     """Met chaque panneau sur l'écran choisi (plan {panneau: écran | -1}) ; les autres écrans reçoivent une fenêtre
     complète avec leurs panneaux. Le mode (tinySA / SDR / combiné) suit les panneaux montrés."""
     self.screens_off(relayout=False)
@@ -35194,7 +35197,7 @@ def _v8_screens_apply(self, plan, full=False, quiet=False):
     scrs, main = self.screen_list()
     docks = self.screens_docks()
     plan = screen_plan_fit({n: plan.get(n, SCREEN_HIDE) for n in docks}, len(scrs), main)
-    mode = screen_rf_mode(plan)
+    mode = self.rf_mode if keep_mode else screen_rf_mode(plan)    # 8.2 : labo sur 2 écrans -> le mode ne bouge pas
     self.rf_mode = mode
     self.sdr_cfg["rf_mode"] = mode
     groups = {n: g for n, g, _t in SCREEN_PANELS}
@@ -35234,7 +35237,9 @@ def _v8_screens_apply(self, plan, full=False, quiet=False):
         host.arrange()
         host.place(scrs[idx], full)
         self.screen_hosts[idx] = host
-    if mode != "tiny":
+    if keep_mode:
+        pass                                             # 8.2 : labo — le SDR garde son état
+    elif mode != "tiny":
         for e_ in self.sdr_engs.values():
             if not e_.running():
                 e_.start()
@@ -35597,22 +35602,142 @@ class SdrLab(QtCore.QObject):
         man = QtWidgets.QPushButton(TR("❓ Manuel"))
         man.setToolTip(TR("Le chapitre du manuel sur le labo SDR."))
         man.clicked.connect(lambda *_: owner.open_manual("sdr-labo"))
-        self.view_btn = QtWidgets.QPushButton(TR("⛶ Affichage Labo"))
-        self.view_btn.setToolTip(TR("La fenêtre ne montre plus que le labo, ses 5 panneaux en grille (re-clic : retour). "
-                                    "Chaque panneau se déplace, se sort en vraie fenêtre ou part sur un autre écran."))
-        self.view_btn.clicked.connect(lambda *_: owner.lab_view(not owner.lab_view_on))
+        self.view_btn = QtWidgets.QToolButton()
+        self.view_btn.setText(TR("⛶ Affichage Labo"))
+        self.view_btn.setToolTip(TR("La fenêtre ne montre plus que le labo : rangé en onglets, tout en grille, ou sur 2 écrans. "
+                                    "Clic droit sur un graphe : le détacher en fenêtre ou le masquer."))
+        self.view_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        vm = QtWidgets.QMenu(self.view_btn)
+        vm.aboutToShow.connect(lambda m=vm: self._view_menu(m))
+        self.view_btn.setMenu(vm)
         top = QtWidgets.QHBoxLayout()
         top.addWidget(intro, 1)
         top.addWidget(self.view_btn)
         top.addWidget(man)
         self.panels["chain"].layout().insertLayout(0, top)
+        self._plot_setup()
         self.tm = QtCore.QTimer(self)
         self.tm.timeout.connect(self._tick)
         self.tm.start(250)
 
+    def _view_menu(self, m):
+        o = self.owner
+        m.clear()
+        cur = o.sdr_cfg.get("lab_view", "tabs") if o.lab_view_on else None
+        for k, t in LAB_VIEWS:
+            a = m.addAction(TR(t))
+            a.setCheckable(True)
+            a.setChecked(k == cur)
+            a.triggered.connect(lambda *_, k=k: o.lab_view(True, k))
+        m.addSeparator()
+        a = m.addAction(TR("↺ Remettre tous les graphes"))
+        a.triggered.connect(lambda *_: self.plots_restore())
+        if o.lab_view_on:
+            m.addAction(TR("↩ Quitter l'affichage Labo")).triggered.connect(lambda *_: o.lab_view(False))
+
+    # ---- 8.2 : chaque graphe détachable / masquable (clic droit)
+    def _plots(self):
+        return [p for w in self.panels.values() for p in w.findChildren(pg.PlotWidget)] + list(self._detached.keys())
+
+    def _plot_key(self, p):
+        return p.objectName() or ""
+
+    def _plot_setup(self):
+        """Ajoute à chaque graphe du labo (menu du clic droit) : détacher en fenêtre, masquer, tout remettre."""
+        self._detached, self._ph = {}, {}
+        for w in self.panels.values():
+            for i, p in enumerate(w.findChildren(pg.PlotWidget)):
+                t = p.getPlotItem().titleLabel.text or f"g{i}"
+                p.setObjectName("lab:" + re.sub(r"<[^>]+>", "", t)[:60])
+                vb = p.getPlotItem().vb
+                vb.menu.addSeparator()
+                vb.menu.addAction(TR("⧉ Détacher ce graphe (fenêtre)")).triggered.connect(
+                    lambda *_, p=p: self.plot_detach(p))
+                vb.menu.addAction(TR("✕ Masquer ce graphe")).triggered.connect(lambda *_, p=p: self.plot_hide(p))
+                vb.menu.addAction(TR("↺ Remettre tous les graphes")).triggered.connect(lambda *_: self.plots_restore())
+    def apply_hidden(self):
+        """Graphes masqués d'après la config (appelé à l'ouverture du labo : la config est lue APRÈS sa création)."""
+        hidden = set(self.owner.sdr_cfg.get("lab_hidden") or [])
+        for p in self._plots():
+            p.setVisible(self._plot_key(p) not in hidden)
+
+    def plot_hide(self, p):
+        if p in self._detached:
+            self.plot_attach(p)
+        p.hide()
+        h = set(self.owner.sdr_cfg.get("lab_hidden") or [])
+        h.add(self._plot_key(p))
+        self.owner.sdr_cfg["lab_hidden"] = sorted(h)
+        self.owner.set_status(TR("Graphe masqué : clic droit sur un autre graphe › « ↺ Remettre tous les graphes »."))
+
+    def plot_detach(self, p):
+        """Le graphe part dans sa propre fenêtre (à mettre sur l'écran qu'on veut) ; une étiquette garde sa place."""
+        if p in self._detached:
+            return self._detached[p]
+        par = p.parentWidget()
+        lay = par.layout() if par is not None else None
+        if lay is None:
+            return None
+        ph = QtWidgets.QPushButton(TR("⧉ graphe détaché — cliquer pour le raccrocher"))
+        ph.setToolTip(TR("Ce graphe est dans sa propre fenêtre. Clic : le remettre ici."))
+        ph.clicked.connect(lambda *_, p=p: self.plot_attach(p))
+        lay.replaceWidget(p, ph)
+        self._ph[p] = (ph, lay)
+        win = QtWidgets.QWidget(None, Qt.WindowType.Window)
+        win.setWindowTitle(TR("🧪 Labo · {}").format(p.getPlotItem().titleLabel.text or ""))
+        v = QtWidgets.QVBoxLayout(win)
+        v.setContentsMargins(4, 4, 4, 4)
+        bar = QtWidgets.QHBoxLayout()
+        nxt = QtWidgets.QPushButton(TR("🖥 Écran suivant"))
+        nxt.setToolTip(TR("Envoie cette fenêtre sur l'écran suivant."))
+        nxt.clicked.connect(lambda *_, w=win: self._next_screen(w))
+        back = QtWidgets.QPushButton(TR("📌 Raccrocher"))
+        back.setToolTip(TR("Remet ce graphe dans son panneau du labo."))
+        back.clicked.connect(lambda *_, p=p: self.plot_attach(p))
+        bar.addWidget(nxt)
+        bar.addStretch(1)
+        bar.addWidget(back)
+        v.addLayout(bar)
+        v.addWidget(p, 1)
+        p.show()
+        win.closeEvent = lambda ev, p=p: (self.plot_attach(p), ev.accept())
+        win.resize(720, 460)
+        win.show()
+        self._detached[p] = win
+        return win
+
+    def _next_screen(self, w):
+        scrs = QtGui.QGuiApplication.screens()
+        if len(scrs) < 2:
+            self.owner.set_status(TR("Un seul écran : déplace la fenêtre où tu veux."))
+            return
+        i = (scrs.index(w.screen()) + 1) % len(scrs) if w.screen() in scrs else 0
+        g = scrs[i].availableGeometry()
+        w.move(g.x() + 40, g.y() + 40)
+
+    def plot_attach(self, p):
+        win = self._detached.pop(p, None)
+        ph, lay = self._ph.pop(p, (None, None))
+        if ph is not None:
+            lay.replaceWidget(ph, p)
+            ph.deleteLater()
+            p.show()
+        if win is not None:
+            win.closeEvent = lambda ev: ev.accept()
+            win.close()
+            win.deleteLater()
+
+    def plots_restore(self):
+        for p in list(self._detached):
+            self.plot_attach(p)
+        for p in self._plots():
+            p.show()
+        self.owner.sdr_cfg["lab_hidden"] = []
+
     def _shown(self, key):
+        """Panneau vraiment à l'écran (un onglet caché derrière un autre reste « visible » pour Qt : sa zone est vide)."""
         w = self.panels.get(key)
-        return w is not None and w.isVisible()
+        return w is not None and w.isVisible() and not w.visibleRegion().isEmpty()
 
     # ------------------------------------------------------------------ outils
     def _play(self, a, label=""):
@@ -36318,6 +36443,8 @@ class SdrLab(QtCore.QObject):
             self.ft_lbl.setText(TR("Aucune panne en cours.") + ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
 
     def stop(self):
+        for p in list(getattr(self, "_detached", {})):
+            self.plot_attach(p)
         self._live_on(False)
         if self.fx is not None:
             self.fx.stop()
@@ -36347,6 +36474,9 @@ def _v8_open_sdr_lab(self, tab=0):
     demandé (n° ou clé)."""
     key = LAB_KEYS[int(tab)] if isinstance(tab, int) else str(tab)
     docks = self.lab_docks
+    if not getattr(self, "_lab_hid_done", False):        # graphes masqués (config lue après la création du labo)
+        self._lab_hid_done = True
+        self._sdrlab.apply_hidden()
     if not any(d.isVisible() or d.objectName() in self.panel_wins for d in docks.values()):
         first = None
         for k in LAB_KEYS:
@@ -36407,23 +36537,62 @@ def lab_grid(mw, docks):
                 mw.resizeDocks(cols, [W // 2, W // 2], Qt.Orientation.Horizontal)
             rows = [docks[k] for k in ("chain", "live") if k in docks]
             if len(rows) == 2:
-                mw.resizeDocks(rows, [int(H * 0.52), int(H * 0.48)], Qt.Orientation.Vertical)
+                mw.resizeDocks(rows, [int(H * 0.6), int(H * 0.4)], Qt.Orientation.Vertical)
         except RuntimeError:
             pass
     QtCore.QTimer.singleShot(0, sizes)
     QtCore.QTimer.singleShot(150, sizes)
 
 
-def _v8_lab_view(self, on=True):
-    """8.2 (Clément : « avec un vrai affichage labo ? ») : la fenêtre principale ne montre plus que le labo, en grille ;
-    les panneaux sortis en vraie fenêtre restent où ils sont. off = retour à la disposition du mode."""
+LAB_VIEWS = (("tabs", "▤ Rangé : un panneau à la fois (onglets)"), ("grid", "▦ Tout à l'écran (grille)"),
+             ("dual", "🖥🖥 Sur 2 écrans (chaîne et direct ici, le reste sur l'autre)"))
+
+
+def _v8_lab_view(self, on=True, how=None):
+    """8.2 (Clément : « avec un vrai affichage labo ? », puis « trop de fenêtres, plus rangé ou double écran ») : la
+    fenêtre principale ne montre plus que le labo — rangé en onglets (défaut), en grille, ou réparti sur 2 écrans ; les
+    panneaux sortis en vraie fenêtre restent où ils sont. off = retour à la disposition du mode."""
+    if on is True and how is None:
+        how = self.sdr_cfg.get("lab_view", "tabs")
+    if on and not getattr(self, "_lab_hid_done", False):
+        self._lab_hid_done = True
+        self._sdrlab.apply_hidden()
     docks = {k: d for k, d in self.lab_docks.items() if d.objectName() not in self.panel_wins}
     if on:
+        how = how if how in dict(LAB_VIEWS) else "tabs"
+        self.sdr_cfg["lab_view"] = how
+        if self.screen_hosts:
+            self.screens_off(relayout=False)
+        if how == "dual" and len(self.screen_list()[0]) < 2:
+            how = "grid"
+            self.set_status(TR("Un seul écran : le labo s'affiche en grille."))
+        if how == "dual":
+            scrs, main = self.screen_list()
+            other = next(i for i in range(len(scrs)) if i != main)
+            plan = {n: SCREEN_HIDE for n, _g, _t in SCREEN_PANELS}
+            for k, _t, n in LAB_DOCKS:
+                plan[n] = main if k in ("chain", "live") else other
+            self.screens_apply(plan, quiet=True, keep_mode=True)
+            docks = {k: d for k, d in self.lab_docks.items() if k in ("chain", "live")}
         for d in self.docks:
             if d not in self.lab_docks.values() and d.objectName() not in self.panel_wins:
                 d.hide()
         self.dock_wall.hide()
-        lab_grid(self, docks)
+        if how == "tabs":
+            B = Qt.DockWidgetArea.BottomDockWidgetArea
+            ks = [k for k in LAB_KEYS if k in docks]
+            for k in ks:
+                self.removeDockWidget(docks[k])
+                docks[k].setFloating(False)
+            if ks:
+                self.addDockWidget(B, docks[ks[0]])
+                for k in ks[1:]:
+                    self.tabifyDockWidget(docks[ks[0]], docks[k])
+                for k in ks:
+                    docks[k].show()
+                docks[ks[0]].raise_()
+        else:
+            lab_grid(self, docks)
         self.lab_view_on = True
         QtCore.QTimer.singleShot(0, self._fit_screen)
         self.set_status(TR("🧪 Affichage Labo : bouge les panneaux comme tu veux ; « ↩ Quitter l'affichage Labo » "
@@ -36438,7 +36607,7 @@ def _v8_lab_view(self, on=True):
         self._sdrlab.view_btn.setText(TR("↩ Quitter l'affichage Labo") if on else TR("⛶ Affichage Labo"))
     except Exception:  # noqa: BLE001
         pass
-    return on
+    return how if on else False
 
 
 def _v8_close_sdr_lab(self):

@@ -7647,6 +7647,12 @@ def sdr_cfg_extra(sd):
                                af=rv.get("af") if rv.get("af") in dict(RX_AF_VIEWS) else "spec")
     if sd.get("meter_style") in dict(METER_STYLES):     # 8.1 : vu-mètre RF en aiguille ou en barre
         out["meter_style"] = sd["meter_style"]
+    if sd.get("lab_view") in ("tabs", "grid", "dual"):   # 8.2 : affichage du labo, graphes masqués, sessions
+        out["lab_view"] = sd["lab_view"]
+    if isinstance(sd.get("lab_hidden"), list):
+        out["lab_hidden"] = [str(x)[:80] for x in sd["lab_hidden"] if isinstance(x, str)][:60]
+    if "sdr_session" in sd:
+        out["sdr_session"] = bool(sd.get("sdr_session"))
     if "demo" in sd:                                   # étape 21 : SDR démo (sans matériel)
         out["demo"] = bool(sd.get("demo"))
     if sd.get("rewind_min") in REWIND_MINUTES:          # étape 22 : ⏪ minutes gardées

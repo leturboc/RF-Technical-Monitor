@@ -1817,6 +1817,16 @@ Restent à vérifier sur Windows : sons (`QApplication.beep`), vrai port série,
     `set_rf_mode(rf_mode)` (changer de mode quitte aussi) ; bouton `view_btn` du panneau Chaîne + menu du mode ; préréglage
     d'écrans `lab_out` (labo seul sur l'autre écran -> `ScreenWindow.arrange` en grille). Colonnes réglages | graphes en
     QSplitter (Compandeurs, En direct).
+    **Moins de fenêtres (Clément : « trop de fenêtres, plus rangé ou double écran ; chaque courbe détachable et
+    enlevable »)** : `LAB_VIEWS` tabs (DÉFAUT, onglets plein écran) | grid | dual (`screens_apply(plan, keep_mode=True)` :
+    chaîne + direct sur l'écran principal en grille, le reste sur l'autre via `ScreenWindow` ; le mode tinySA / SDR ne
+    bouge pas ; un seul écran = grille) ; `lab_view(on, how)`, `sdr_cfg["lab_view"]`, menu `view_btn` (`_view_menu`) + sous-
+    menu du mode. Graphes : `_plot_setup` ajoute au menu du clic droit de CHAQUE PlotWidget (ViewBox.menu) « ⧉ Détacher »
+    (`plot_detach` : fenêtre `Qt.Window`, 🖥 Écran suivant, 📌 Raccrocher, bouton à sa place `_ph`), « ✕ Masquer »
+    (`plot_hide`, `sdr_cfg["lab_hidden"]` par `objectName` « lab:titre », appliqué à la 1re ouverture : `apply_hidden`),
+    « ↺ Remettre tous » (`plots_restore`). `_shown` = visible ET `visibleRegion` non vide (un onglet caché reste « visible »
+    pour Qt : sans ça, l'onglet En direct calculait en arrière-plan). Titres des graphes courts (un titre long élargit le
+    tracé : coupé à droite), explication en bulle.
     Parties (menu du mode + sous-menu SDR) : ① chaîne complète (6 vues,
     pannes), ② comparateur (transfert mesuré + formule en pointillés, saut, EQ, phase, tableau, fiche, 🔊, 📄 rapport dans
     `<journaux>/rapports/compander_lab_*.html`, `TSM_NO_BROWSER` pour les tests), ③ en direct (son reçu de A dans chaque

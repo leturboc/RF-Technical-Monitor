@@ -2490,3 +2490,22 @@ EXACT.update({                                      # 8.2 : titres courts des gr
     "Saut −30 → −10 → −30 dBFS": "Jump −30 → −10 → −30 dBFS", "Son reçu (avant expanseur)": "Received audio (before expander)",
     "Transfert du récepteur": "Receiver transfer",
 })
+EXACT.update({                                      # 8.2 : affichages du labo, graphes détachables / masquables
+    "Ce graphe est dans sa propre fenêtre. Clic : le remettre ici.": "This graph is in its own window. Click: put it back here.",
+    "Envoie cette fenêtre sur l'écran suivant.": "Sends this window to the next screen.",
+    "Graphe masqué : clic droit sur un autre graphe › « ↺ Remettre tous les graphes ».": "Graph hidden: right-click another graph › “↺ Restore all graphs”.",
+    "La fenêtre ne montre plus que le labo : rangé en onglets, tout en grille, ou sur 2 écrans. Clic droit sur un graphe : le détacher en fenêtre ou le masquer.":
+        "The window shows only the lab: tidy in tabs, all in a grid, or on 2 screens. Right-click a graph: pull it out as a window or hide it.",
+    "La fenêtre ne montre plus que le labo : rangé, en grille ou sur 2 écrans.": "The window shows only the lab: tidy, in a grid or on 2 screens.",
+    "Remet ce graphe dans son panneau du labo.": "Puts this graph back in its lab panel.",
+    "Un seul écran : déplace la fenêtre où tu veux.": "Only one screen: move the window wherever you like.",
+    "Un seul écran : le labo s'affiche en grille.": "Only one screen: the lab is shown in a grid.",
+    "↺ Remettre tous les graphes": "↺ Restore all graphs",
+    "▤ Rangé : un panneau à la fois (onglets)": "▤ Tidy: one panel at a time (tabs)",
+    "▦ Tout à l'écran (grille)": "▦ Everything on screen (grid)",
+    "✕ Masquer ce graphe": "✕ Hide this graph",
+    "⧉ Détacher ce graphe (fenêtre)": "⧉ Pull this graph out (window)",
+    "⧉ graphe détaché — cliquer pour le raccrocher": "⧉ graph pulled out — click to put it back",
+    "🖥🖥 Sur 2 écrans (chaîne et direct ici, le reste sur l'autre)": "🖥🖥 On 2 screens (chain and live here, the rest on the other)",
+    "🧪 Labo · {}": "🧪 Lab · {}",
+})
