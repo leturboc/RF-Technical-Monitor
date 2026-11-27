@@ -79,6 +79,21 @@ check("🧪 Simuler : tinySA démo + SDR démo, surveillance lancée, mode combi
 check("🧪 Simuler : marqué simulé", win.simulated())
 win.home.refresh(win.home_info())
 check("🧪 Simuler : le bouton de l'accueil suit", win.home.sim_btn.isChecked())
+lab = win.open_sdr_lab(0)
+wait(300)
+lab.live_frames = 0
+lab.chain_live(True)
+wait(7000)
+check("labo : chaîne complète EN DIRECT sur le SDR démo (graphes mis à jour en continu, marqué simulé)",
+      lab.live_frames >= 3 and lab.res_chain.get("real") and lab.badges["chain"].property("prov") == "sim"
+      and len(lab.p_const.getPlotItem().listDataItems()) > 0, f"images={lab.live_frames} {lab.ch_res.text()[:120]}")
+print("images en direct :", lab.live_frames, "en 7 s", flush=True)
+if os.environ.get("CAPTURE"):
+    lab.panels["chain"].grab().save(os.environ["CAPTURE"])
+lab.chain_live(False)
+n_ = lab.live_frames
+wait(1500)
+check("labo : en direct arrêté = plus de mise à jour", lab.live_frames == n_)
 win.simulate(False)
 wait(2500)
 check("🧪 Simuler encore : simulation coupée", not win.simulating() and not win.sdr_cfg.get("demo"))

@@ -91,6 +91,11 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     `simulating()` (SdrDemoMixin : tinySA démo + SDR démo + mode combiné + surveillance) : bouton « 🧪 Simuler » de
     l'accueil (`HomeBar.sim_btn`, suit l'état), « 🧪 Tout simuler » en tête du menu du mode, « 🧪 Simuler (sans
     matériel) » en haut du labo ; manuel (chapitre sdr-demo).
+    Clément : « on peut calculer mais pas voir les courbes simulées en direct avec le générateur qui tourne » ->
+    **⏯ En direct** (`SdrLab.chain_live`, `_clive_step` minuteur 150 ms : capture 0,4 s d'IQ (`iq_grab`) puis
+    `lab_chain_iq` dans `run_heavy`, ~1 image / s ici ; sans poste -> `simulate(True)` ; `_clive_target` cale A sur le micro
+    suivi le plus proche / un micro du SDR démo / le pic de la fenêtre si A n'a pas de porteuse ; pas de session enregistrée
+    en direct ; zoom du spectre gardé). Test dans test_ecrans.
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du

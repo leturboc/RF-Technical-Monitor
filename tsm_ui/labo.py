@@ -331,6 +331,13 @@ class SdrLab(QtCore.QObject):
         h.addWidget(self.ch_out)
         h.addWidget(self.ch_real)
         h.addWidget(self.ch_file)
+        self.ch_live = QtWidgets.QPushButton(TR("⏯ En direct"))
+        self.ch_live.setCheckable(True)
+        self.ch_live.setToolTip(TR("Les 6 graphes suivent en continu le signal reçu par le poste SDR sur A (environ 2 fois "
+                                   "par seconde). Pas de SDR ? La simulation (SDR démo, avec son générateur) démarre "
+                                   "toute seule."))
+        self.ch_live.toggled.connect(lambda on: self.chain_live(on))
+        h.addWidget(self.ch_live)
         h.addStretch(1)
         g.addLayout(h, 1, 6, 1, 2)
         v.addLayout(g)
@@ -1017,6 +1024,8 @@ class SdrLab(QtCore.QObject):
             self.ft_lbl.setText(TR("Aucune panne en cours.") + ("\n" + TR("Flux : {}").format(q[0]) if q else ""))
 
     def stop(self):
+        if getattr(self, "_clive", False):
+            self.chain_live(False)
         for p in list(getattr(self, "_detached", {})):
             self.plot_attach(p)
         self._live_on(False)
@@ -1516,8 +1525,93 @@ class SdrLab(QtCore.QObject):
         self.owner.run_heavy(lambda: lab_chain_iq(**args), self._chain_real_done, what="Labo SDR")
         return True
 
-    def _chain_real_done(self, r, err):
-        self._busy(False, self.ch_go, "▶ Calculer")
+    # ---- 8.1 : chaîne complète EN DIRECT (Clément : « voir les courbes simulées en direct avec le générateur qui tourne »)
+    def chain_live(self, on=True):
+        self._clive = bool(on)
+        if self.ch_live.isChecked() != self._clive:
+            self.ch_live.blockSignals(True)
+            self.ch_live.setChecked(self._clive)
+            self.ch_live.blockSignals(False)
+        tm = getattr(self, "_clive_tm", None)
+        if tm is None:
+            tm = self._clive_tm = QtCore.QTimer(self)
+            tm.setInterval(150)
+            tm.timeout.connect(self._clive_step)
+        self._clive_grab, self._clive_job, self._clive_tuned = None, False, False
+        if not on:
+            tm.stop()
+            self.ch_res.setText(TR("En direct arrêté : les graphes gardent la dernière image."))
+            return False
+        if self._eng() is None:
+            self.owner.simulate(True)
+            self.ch_res.setText(TR("⏳ Démarrage de la simulation (SDR démo)…"))
+        tm.start()
+        return True
+
+    def _clive_target(self, e):
+        """A n'est sur aucun signal ? -> la fréquence où le caler : le micro suivi le plus proche (sinon, en démo, un micro
+        simulé ; sinon le signal le plus fort de la fenêtre). None = A est déjà sur une porteuse."""
+        fr = e.last
+        if fr is not None and len(fr["F"]) == len(fr["avg"]) and sdr_carrier(fr["F"], fr["avg"], e.a):
+            return None
+        fs = [float(w["freq"]) for w in (e.ws() or []) if not w.get("muted") and not w.get("off") and not w.get("bw")]
+        if not fs and e.kind() == "demo":
+            fs = [float(s["f"]) for s in SDR_DEMO_STATE.get("plan") or [] if s.get("kind") == "fm"]
+        if fs:
+            return min(fs, key=lambda f: abs(f - e.a))
+        if fr is not None and len(fr["F"]) == len(fr["avg"]) and len(fr["F"]) > 8:
+            F, L = np.asarray(fr["F"], dtype=float), np.asarray(fr["avg"], dtype=float)
+            L = np.where(np.abs(F - float(np.median(F))) < 0.05, -300, L)       # pas le pic du continu au centre
+            return float(F[int(np.argmax(L))])
+        return None
+
+    def _clive_step(self):
+        if not getattr(self, "_clive", False) or self._clive_job:
+            return
+        e = self._eng()
+        if e is None or e.worker is None or e.a is None:
+            self.ch_res.setText(TR("⏳ En direct : en attente du poste SDR (▶ dans le Récepteur, A sur un micro)…"))
+            self._clive_grab = None
+            return
+        gr = self._clive_grab
+        wk = e.worker
+        if gr is None:
+            if not self._shown("chain"):
+                return
+            if not getattr(self, "_clive_tuned", False) and e.last is not None:
+                self._clive_tuned = True
+                f_ = self._clive_target(e)
+                if f_ is not None and e.set_a(f_) is not False:
+                    self.owner.set_status(TR("⏯ En direct : A n'était sur aucun signal, calé sur {} MHz.").format(f"{f_:.4f}"))
+                    return                                     # le poste se recentre : on capture au tour suivant
+            g = dict(parts=[], n=0, want=int(wk.rate * 0.4), done=False, center=wk.center, rate=wk.rate)
+            wk.iq_grab = g
+            self._clive_grab = (g, e, time.time())
+            return
+        g, e0, t0 = gr
+        if e0 is not e or (not g["done"] and (wk.iq_grab is not g or time.time() - t0 > 4.0)):
+            self._clive_grab = None                         # poste changé, arrêté ou trop lent : on recommence
+            return
+        if not g["done"]:
+            return
+        self._clive_grab = None
+        iq = np.concatenate(g["parts"]) if g["parts"] else np.zeros(0, dtype=np.complex64)
+        dem = e.demod or {}
+        args = dict(iq=iq, fs=g["rate"], f_off=e.a * 1e6 - g["center"], mode=dem.get("mode", "wfm"),
+                    dev=dem.get("dev"), rx_comp=dem.get("compander") or None, deemph_us=float(dem.get("deemph") or 0.0))
+        self._real_src = TR("poste SDR, A = {} MHz").format(f"{e.a:.4f}") + " · " + TR("en direct")
+        self._real_prov = "sim" if e.kind() == "demo" else "obs"
+        self._clive_job = True
+
+        def done(r, err):
+            self._clive_job = False
+            if getattr(self, "_clive", False):
+                self._chain_real_done(r, err, live=True)
+        self.owner.run_heavy(lambda: lab_chain_iq(**args), done, what="Labo SDR")
+
+    def _chain_real_done(self, r, err, live=False):
+        if not live:
+            self._busy(False, self.ch_go, "▶ Calculer")
         if err is not None or r is None:
             self.ch_res.setText(TR("⚠ Calcul impossible : {}").format(err))
             return None
@@ -1544,7 +1638,8 @@ class SdrLab(QtCore.QObject):
         if r["L"] is not None:
             self.p_spec.plot(r["F"], r["L"], pen=pg.mkPen(LAB_COLORS[0], width=1), name=TR("moyenne"))
             self.p_spec.plot(r["F"], r["Lmax"], pen=pg.mkPen(LAB_COLORS[1], width=1), name=TR("max"))
-            self.p_spec.setXRange(-200, 200)
+            if not live or not getattr(self, "live_frames", 0):     # en direct : le zoom choisi est gardé
+                self.p_spec.setXRange(-200, 200)
         m = r["m"]
         rows = [(TR("Source"), getattr(self, "_real_src", "")), (TR("Niveau du son"), f"{m['out']:.1f} dBFS"),
                 (TR("Crête"), f"{m['pk_out']:.1f} dBFS"),
@@ -1553,6 +1648,9 @@ class SdrLab(QtCore.QObject):
                      for x, t in lab_findings_real(r, TR))
         self.ch_res.setText(f"<b>{_hesc(TR(PROVENANCE[prov]))}</b> · " + " · ".join(
             f"{_hesc(a)} : <b>{_hesc(b)}</b>" for a, b in rows) + f"<ul>{fl}</ul>")
+        if live:
+            self.live_frames = getattr(self, "live_frames", 0) + 1
+            return r
         mm = {k: (None if v_ is None or not np.isfinite(v_) else round(float(v_), 3)) for k, v_ in m.items()}
         self.session_save("chain", prov, dict(source=getattr(self, "_real_src", ""), mode=r["mode"], dev=r["dev"]), mm)
         return r

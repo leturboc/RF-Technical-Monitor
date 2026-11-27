@@ -2719,3 +2719,15 @@ EXACT.update({                                      # 8.1 : « 🧪 Simuler » e
 })
 EXACT["Essayer sans matériel : tinySA et SDR simulés (micros avec du son), surveillance lancée.\nTout est marqué SIMULÉ. Recliquer pour revenir au vrai matériel."] = \
     "Try without hardware: simulated tinySA and SDR (mics with audio), monitoring started.\nEverything is marked SIMULATED. Click again to go back to real hardware."
+EXACT.update({                                      # 8.1 : chaîne complète en direct
+    "En direct arrêté : les graphes gardent la dernière image.": "Live stopped: the graphs keep the last frame.",
+    "Les 6 graphes suivent en continu le signal reçu par le poste SDR sur A (environ 2 fois par seconde). Pas de SDR ? La simulation (SDR démo, avec son générateur) démarre toute seule.":
+        "The 6 graphs follow the signal received by the SDR station on A continuously (about twice a second). No SDR? The simulation (demo SDR, with its generator) starts by itself.",
+    "⏯ En direct": "⏯ Live",
+    "En direct": "Live",
+    "en direct": "live",
+    "⏳ Démarrage de la simulation (SDR démo)…": "⏳ Starting the simulation (demo SDR)…",
+    "⏳ En direct : en attente du poste SDR (▶ dans le Récepteur, A sur un micro)…":
+        "⏳ Live: waiting for the SDR station (▶ in the Receiver, A on a mic)…",
+})
+EXACT["⏯ En direct : A n'était sur aucun signal, calé sur {} MHz."] = "⏯ Live: A wasn't on any signal, tuned to {} MHz."
