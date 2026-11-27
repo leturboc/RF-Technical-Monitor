@@ -92,6 +92,7 @@ class SdrLab(QtCore.QObject):
         self._tmp, self.fx, self._job, self.res_cmp, self.observed = None, None, None, None, None
         self._focus, self._detail, self._sess_win, self._help_box, self.res_real = {}, None, None, None, None
         self._grab, self._st_res, self._md_order, self.res_mod = None, None, [], None
+        self.restore_btns, self.badges = {}, {}
         self.panels = {}
         for key, build in (("chain", self._tab_chain), ("cmp", self._tab_cmp), ("live", self._tab_live),
                            ("mod", self._tab_mod), ("fault", self._tab_fault)):
@@ -1083,8 +1084,6 @@ class SdrLab(QtCore.QObject):
             rb.setStyleSheet("QPushButton { color: #ffb300; font-weight: 600; }")
             rb.clicked.connect(lambda *_, k=key: self.panel_restore(k))
             rb.hide()
-            if not hasattr(self, "restore_btns"):
-                self.restore_btns = {}
             self.restore_btns[key] = rb
             try:
                 if key == "chain":

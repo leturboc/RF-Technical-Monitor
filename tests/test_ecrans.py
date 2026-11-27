@@ -14,6 +14,24 @@ json.dump({"synchronousWindowSystemEvents": False, "windowFrameMargins": False, 
 os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + cfgf
 os.environ["APPDATA"] = tmp
 os.environ["TSM_NO_BROWSER"] = "1"
+import faulthandler, threading  # noqa: E401,E402
+
+
+def _stuck():
+    """CI : test bloqué -> dire OÙ (pile de chaque fil) et sortir, au lieu d'attendre la limite de 15 min."""
+    import traceback as _tb
+    main_ = sys._current_frames().get(threading.main_thread().ident)
+    where = " > ".join(f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in _tb.extract_stack(main_)[-7:]) \
+        if main_ is not None else "?"
+    print("Error: test_ecrans bloqué depuis 240 s dans : " + where, flush=True)
+    faulthandler.dump_traceback(all_threads=True)
+    sys.stdout.flush()
+    os._exit(1)
+
+
+_wd = threading.Timer(240, _stuck)
+_wd.daemon = True
+_wd.start()
 errs = []
 sys.excepthook = lambda t, v, tb: errs.append("".join(traceback.format_exception(t, v, tb)))
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -40,6 +58,7 @@ def check(label, cond, extra=""):
     global fails
     fails += not cond
     print(("OK  " if cond else "FAIL"), label, "" if cond else extra, flush=True)
+    sys.stdout.flush()
 
 
 def dead():
@@ -99,6 +118,24 @@ check("🧪 Simuler : tinySA démo + SDR démo, surveillance lancée, mode combi
       and e.running() and win.rf_mode == "both", f"sim={win.simulating()} run={win.is_running()} sdr={e.running()} "
       f"mode={win.rf_mode}")
 check("🧪 Simuler : marqué simulé", win.simulated())
+_lv0 = win.ui_level
+win.set_level("expert")
+rxd_ = [d_ for d_ in win.docks if d_.objectName() == "dock_sdr_rx"][0]
+win.resizeDocks([rxd_], [260], QtCore.Qt.Orientation.Vertical)
+win.resizeDocks([rxd_], [420], QtCore.Qt.Orientation.Horizontal)
+wait(1200)
+sc_ = rxd_.widget()
+hs_ = []
+long_ = "charge 65 % · saturation 0.0 % · spectre 7 · démod 24 · reste 0 ms/50 (mix 0 · filtre 8 · FM) " * 3
+for i_ in range(10):                     # texte d'état qui s'allonge / raccourcit à chaque image (vidéo de Clément)
+    sc_.panel.stats.setText(long_ if i_ % 2 else "charge 61 %")
+    sc_.panel.row_pil.setVisible(bool(i_ % 3 == 1))
+    wait(350)
+    hs_.append((sc_.horizontalScrollBar().isVisible(), sc_.verticalScrollBar().value(), sc_.widget().height()))
+check("Récepteur : un texte qui s'allonge ne fait plus apparaître de barre horizontale ni sauter le panneau",
+      not any(h_[0] for h_ in hs_) and len({h_[1] for h_ in hs_}) == 1
+      and all(b_[2] >= a_[2] for a_, b_ in zip(hs_, hs_[1:])), str(hs_))
+win.set_level(_lv0)
 win.home.refresh(win.home_info())
 check("🧪 Simuler : le bouton de l'accueil suit", win.home.sim_btn.isChecked())
 win.simulate(False)
@@ -137,5 +174,6 @@ try:
     win.close()
 except Exception:  # noqa: BLE001
     pass
+_wd.cancel()
 print("ÉCHECS:", fails)
 os._exit(1 if fails else 0)

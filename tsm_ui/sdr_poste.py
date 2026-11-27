@@ -1268,16 +1268,71 @@ def idle_sdr_view(plot, e, yr):
         pass
 
 
+class ElideLabel(QtWidgets.QLabel):
+    """Étiquette d'une ligne qui ne force JAMAIS la largeur de sa rangée : trop long = coupé avec « … » (texte entier dans
+    la bulle). Vidéo de Clément 27/11 : « charge … · démod … » qui s'allongeait faisait apparaître / disparaître la barre
+    de défilement horizontale du Récepteur à chaque image -> tout le panneau sautait."""
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(40, super().minimumSizeHint().height())
+
+    def sizeHint(self):
+        s = super().sizeHint()
+        return QtCore.QSize(min(s.width(), 260), s.height())
+
+    def setText(self, t):
+        super().setText(t)
+        if self.property("base_tip") is None:
+            self.setProperty("base_tip", self.toolTip())
+        b_ = self.property("base_tip") or ""
+        self.setToolTip((b_ + "\n" + t) if (b_ and t) else (t or b_))
+        self.update()
+
+    def paintEvent(self, ev):
+        p = QtGui.QPainter(self)
+        fm = self.fontMetrics()
+        p.setPen(self.palette().color(QtGui.QPalette.ColorRole.WindowText))
+        p.drawText(self.rect(), int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
+                   fm.elidedText(self.text(), Qt.TextElideMode.ElideRight, self.width()))
+        p.end()
+
+
 class SdrScroll(QtWidgets.QScrollArea):
     """Panneau SDR qui défile quand on le rétrécit (8.0.1). Le reste du programme parle au panneau à travers lui :
     les attributs inconnus (apply_level, refresh, go_btn…) sont ceux du panneau."""
 
     def __init__(self, panel):
         super().__init__()
+        self._hmax, self._w = 0, -1
         self.panel = panel
         self.setWidgetResizable(True)
         self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)   # jamais de barre qui va et vient
         self.setWidget(panel)
+        self._steady_tm = QtCore.QTimer(self)               # 8.1 (vidéo de Clément 27/11) : en direct, une ligne qui
+        self._steady_tm.setInterval(250)                    # passe d'une à deux lignes (texte « charge … » qui change)
+        self._steady_tm.timeout.connect(self._steady)       # faisait sauter tout le panneau : sa hauteur ne redescend
+        self._steady_tm.start()                             # plus (recalculée si on le redimensionne ou change de niveau)
+
+    def _steady(self):
+        p = self.__dict__.get("panel")
+        if p is None or not self.isVisible():
+            return
+        w = self.viewport().width()
+        if w != self._w:
+            self._w, self._hmax = w, 0
+            p.setMinimumHeight(0)
+        lay = p.layout()
+        h = lay.totalHeightForWidth(w) if lay is not None and lay.hasHeightForWidth() else -1
+        h = max(h, p.sizeHint().height())
+        if h > self._hmax:
+            self._hmax = h
+            p.setMinimumHeight(h)
+
+    def apply_level(self, *a, **k):
+        self._hmax, self._w = 0, -1
+        self.panel.setMinimumHeight(0)
+        return self.panel.apply_level(*a, **k)
 
     def __getattr__(self, name):
         p = self.__dict__.get("panel")
@@ -1585,8 +1640,8 @@ class SdrReceiverPanel(SdrPanelBase):
         self.set_btn = QtWidgets.QPushButton("⚙ Réglages SDR")
         self.set_btn.setToolTip("Choisir le SDR, sa sensibilité, le tester.")
         self.set_btn.clicked.connect(lambda *_: o.open_sdr())
-        self.stats = QtWidgets.QLabel("")
-        self.stats.setToolTip("Charge du calcul et saturation de l'entrée du SDR.")
+        self.stats = ElideLabel("")                   # 8.1 : un texte trop long est coupé (« … ») au lieu d'élargir le
+        self.stats.setToolTip("Charge du calcul et saturation de l'entrée du SDR.")    # panneau (vidéo de Clément)
         self.row_tools = QtWidgets.QWidget()
         rt = o._row(self.rec_btn, self.iq_btn, None, self.nfft, self.set_btn, self.stats)
         rt.setContentsMargins(0, 0, 0, 0)
@@ -1883,6 +1938,7 @@ class SdrReceiverPanel(SdrPanelBase):
         if fr.get("load", 0) > 1.0:                     # 8.1 : le PC ne suit pas -> calcul ou attente ?
             self.stats.setText(self.stats.text() + " · " + TR("calcul {} %, attente {} %").format(
                 f"{100 * fr.get('load_cpu', 0):.0f}", f"{100 * max(0.0, fr.get('load', 0) - fr.get('load_cpu', 0)):.0f}"))
+
             self.stats.setToolTip(TR("Le PC ne suit pas le débit du SDR : le son aura des trous.\n"
                                      "« Calcul » = le temps que le traitement prend vraiment ; « attente » = le temps où il "
                                      "attend le processeur\n(l'affichage ou un autre programme l'occupe). Beaucoup "

@@ -103,6 +103,14 @@ sont bloqués par le proxy. Sous Windows, **ne pas** lancer Qt en `offscreen` : 
     préfixe SI ; `ch_res` ne rétrécit pas en direct ; « je ne sais pas remettre un graphe masqué » -> bouton orange
     `restore_btns[panneau]` « ↺ N graphe(s) masqué(s) » (`_hidden_ui`, `panel_restore`) ; 🧪 Simuler quittait
     l'affichage Labo (changement de mode) -> `simulate` y revient. Tout dans test_ecrans.
+    Vidéo de Clément (27/11, 13:17) : le panneau **SDR · Récepteur** sautait de ~44 px à chaque image : le texte d'état
+    « charge … · démod … · reste … » s'allongeait au-delà de la largeur -> barre de défilement HORIZONTALE qui apparaissait
+    / disparaissait. -> `ElideLabel` (une ligne, jamais plus large que sa rangée, coupé avec « … », texte entier en bulle)
+    pour `stats` ; `SdrScroll` : pas de défilement horizontal + hauteur du contenu qui ne redescend pas (`_steady`,
+    remise à zéro si la largeur ou le niveau change). Test discriminant dans test_ecrans (ancienne version : barre
+    présente, 667 ↔ 686 px). test_ecrans bloqué 15 min sur la CI Linux (pas chez moi) : chien de garde 240 s qui écrit
+    « Error: … bloqué dans … » (annotation) puis sort ; cause à lire au prochain passage. Piège faux Qt : `hasattr` sur un
+    objet du faux Qt répond toujours oui -> initialiser les attributs dans `__init__` (restore_btns, badges).
 - **FAIT (branche refonte-8.1, 8.1.0) : renommage + nouvelle DA.** Tous les textes (code, lang_en, manuels, README, CI,
   build.bat, kit Pi, kit SDR) : « RF Technical Monitor », exe `RF-Technical-Monitor.exe`, dossiers
   `%APPDATA%\RFTechnicalMonitor` / `Documents\RF Technical Monitor` (`DOCS_ROOT`). `migrate_legacy` (au chargement du
